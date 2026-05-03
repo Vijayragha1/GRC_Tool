@@ -1,0 +1,213 @@
+<%- include('partials/header', { title: 'Risk methodology', user, ws, active: 'risks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px;">← Back to risk register</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Risk methodology</h1>
+    <div class="page-subtitle">Customize the likelihood scale, impact scale, and risk matrix used across the risk register. Saving a new methodology activates it for all subsequent scoring; existing risk scores are kept as-is until re-assessed.</div>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;">
+    <% const presets = [['iso_27005', 'ISO 27005'], ['nist_800_30', 'NIST 800-30'], ['fair_lite', 'FAIR-lite'], ['three_by_three', '3×3 lightweight']]; %>
+    <details style="position:relative;">
+      <summary class="btn btn-secondary btn-xs">Apply preset</summary>
+      <div style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;z-index:5;box-shadow:var(--shadow-lg);min-width:220px;">
+        <% presets.forEach(([k, l]) => { %>
+          <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= k %>" style="margin-bottom:4px;">
+            <button class="btn btn-ghost btn-xs" style="width:100%;text-align:left;justify-content:flex-start;"><%= l %></button>
+          </form>
+        <% }) %>
+      </div>
+    </details>
+    <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/reset" onsubmit="return confirm('Reset to the default 5×5 methodology?')">
+      <button class="btn btn-secondary btn-xs">Reset</button>
+    </form>
+  </div>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology" id="methForm">
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Identification</h2></div>
+    <div class="panel-pad" style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
+      <div><label class="label">Name</label><input class="input" name="name" value="<%= methodology.name %>"></div>
+      <div><label class="label">Description</label><input class="input" name="description" value="<%= methodology.description || '' %>"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Likelihood scale</h2><button type="button" class="btn btn-secondary btn-xs" onclick="addRow('likelihood')">+ Level</button></div>
+    <table class="t" id="likelihoodTbl">
+      <thead><tr><th style="width:80px">Value</th><th>Label</th><th>Description</th><th></th></tr></thead>
+      <tbody>
+        <% methodology.likelihood_scale.forEach((l, i) => { %>
+          <tr>
+            <td class="num"><%= i + 1 %></td>
+            <td><input class="input" data-field="label" value="<%= l.label %>"></td>
+            <td><input class="input" data-field="description" value="<%= l.description || '' %>"></td>
+            <td><button type="button" class="btn btn-danger btn-xs" onclick="this.closest('tr').remove();renumber('likelihood')">×</button></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Impact scale</h2><button type="button" class="btn btn-secondary btn-xs" onclick="addRow('impact')">+ Level</button></div>
+    <table class="t" id="impactTbl">
+      <thead><tr><th style="width:80px">Value</th><th>Label</th><th>Description</th><th></th></tr></thead>
+      <tbody>
+        <% methodology.impact_scale.forEach((l, i) => { %>
+          <tr>
+            <td class="num"><%= i + 1 %></td>
+            <td><input class="input" data-field="label" value="<%= l.label %>"></td>
+            <td><input class="input" data-field="description" value="<%= l.description || '' %>"></td>
+            <td><button type="button" class="btn btn-danger btn-xs" onclick="this.closest('tr').remove();renumber('impact')">×</button></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Risk matrix</h2><span class="meta">Click any cell to cycle the risk band.</span></div>
+    <div class="panel-pad" id="matrixWrap">
+      <!-- matrix rendered by JS -->
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Bands &amp; treatment thresholds</h2><button type="button" class="btn btn-secondary btn-xs" onclick="addBand()">+ Band</button></div>
+    <table class="t" id="bandTbl">
+      <thead><tr><th>Key</th><th style="width:120px">Color</th><th>Default action</th><th style="width:140px">Review (months)</th><th></th></tr></thead>
+      <tbody>
+        <% Object.entries(methodology.thresholds).forEach(([k, v]) => { %>
+          <tr>
+            <td><input class="input" data-field="key" value="<%= k %>"></td>
+            <td><input type="color" data-field="color" value="<%= v.color %>" style="width:60px;height:32px;padding:2px;"></td>
+            <td><input class="input" data-field="action" value="<%= v.action %>"></td>
+            <td><input class="input num" data-field="review_months" type="number" min="1" value="<%= v.review_months %>"></td>
+            <td><button type="button" class="btn btn-danger btn-xs" onclick="this.closest('tr').remove();renderMatrix()">×</button></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <input type="hidden" name="likelihood_scale" id="hLikelihood">
+  <input type="hidden" name="impact_scale" id="hImpact">
+  <input type="hidden" name="matrix" id="hMatrix">
+  <input type="hidden" name="thresholds" id="hThresholds">
+
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-primary" onclick="prepareSubmit()">Save methodology</button>
+    <a href="/workspaces/<%= ws.id %>/risks" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<script>
+let MATRIX = <%- JSON.stringify(methodology.matrix) %>;
+
+function getRows(tblId) {
+  return Array.from(document.querySelectorAll('#'+tblId+' tbody tr')).map(tr => {
+    const o = {};
+    tr.querySelectorAll('[data-field]').forEach(el => { o[el.dataset.field] = el.value; });
+    return o;
+  });
+}
+
+function getBands() {
+  const out = {};
+  document.querySelectorAll('#bandTbl tbody tr').forEach(tr => {
+    const o = {};
+    tr.querySelectorAll('[data-field]').forEach(el => o[el.dataset.field] = el.value);
+    if (o.key) out[o.key] = { color: o.color, action: o.action, review_months: parseInt(o.review_months || 12, 10) };
+  });
+  return out;
+}
+
+function bandKeys() { return Object.keys(getBands()); }
+
+function renumber(which) {
+  const rows = document.querySelectorAll((which==='likelihood'?'#likelihoodTbl':'#impactTbl')+' tbody tr');
+  rows.forEach((tr, i) => tr.children[0].textContent = i + 1);
+  reshapeMatrix();
+}
+
+function reshapeMatrix() {
+  const lN = document.querySelectorAll('#likelihoodTbl tbody tr').length;
+  const iN = document.querySelectorAll('#impactTbl tbody tr').length;
+  const fallback = bandKeys()[0] || 'low';
+  const next = [];
+  for (let l = 0; l < lN; l++) {
+    const row = [];
+    for (let i = 0; i < iN; i++) {
+      row.push((MATRIX[l] && MATRIX[l][i]) ? (bandKeys().includes(MATRIX[l][i]) ? MATRIX[l][i] : fallback) : fallback);
+    }
+    next.push(row);
+  }
+  MATRIX = next;
+  renderMatrix();
+}
+
+function renderMatrix() {
+  const lScale = getRows('likelihoodTbl');
+  const iScale = getRows('impactTbl');
+  const bands = getBands();
+  const keys = Object.keys(bands);
+  let html = '<table class="t"><thead><tr><th></th>';
+  iScale.forEach((iL, ii) => html += '<th class="num">'+ (ii+1) +' · '+ (iL.label||'')+'</th>');
+  html += '</tr></thead><tbody>';
+  lScale.forEach((lL, li) => {
+    html += '<tr><td><strong>'+ (li+1) +' · '+ (lL.label||'') +'</strong></td>';
+    iScale.forEach((iL, ii) => {
+      const k = (MATRIX[li] && MATRIX[li][ii]) || keys[0];
+      const c = bands[k]?.color || '#cbd5e1';
+      html += '<td style="cursor:pointer;background:'+c+'33;color:'+c+';font-weight:600;text-align:center;" onclick="cycleCell('+li+','+ii+')">'+ k +'</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('matrixWrap').innerHTML = html;
+}
+
+function cycleCell(li, ii) {
+  const keys = bandKeys();
+  if (!keys.length) return;
+  const cur = MATRIX[li][ii];
+  const idx = keys.indexOf(cur);
+  MATRIX[li][ii] = keys[(idx + 1) % keys.length];
+  renderMatrix();
+}
+
+function addRow(which) {
+  const tbody = document.querySelector((which==='likelihood'?'#likelihoodTbl':'#impactTbl')+' tbody');
+  const n = tbody.children.length + 1;
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="num">'+n+'</td><td><input class="input" data-field="label" value="Level '+n+'"></td><td><input class="input" data-field="description"></td><td><button type="button" class="btn btn-danger btn-xs" onclick="this.closest(\'tr\').remove();renumber(\''+which+'\')">×</button></td>';
+  tbody.appendChild(tr);
+  reshapeMatrix();
+}
+
+function addBand() {
+  const tbody = document.querySelector('#bandTbl tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td><input class="input" data-field="key" value="newband"></td><td><input type="color" data-field="color" value="#71717a" style="width:60px;height:32px;padding:2px;"></td><td><input class="input" data-field="action" value="Review"></td><td><input class="input num" data-field="review_months" type="number" min="1" value="12"></td><td><button type="button" class="btn btn-danger btn-xs" onclick="this.closest(\'tr\').remove();renderMatrix()">×</button></td>';
+  tbody.appendChild(tr);
+}
+
+function prepareSubmit() {
+  document.getElementById('hLikelihood').value = JSON.stringify(getRows('likelihoodTbl').map((r, i) => ({ value: i+1, label: r.label, description: r.description })));
+  document.getElementById('hImpact').value     = JSON.stringify(getRows('impactTbl').map((r, i) => ({ value: i+1, label: r.label, description: r.description })));
+  document.getElementById('hMatrix').value     = JSON.stringify(MATRIX);
+  document.getElementById('hThresholds').value = JSON.stringify(getBands());
+  return true;
+}
+
+document.addEventListener('input', e => {
+  if (e.target.matches('#bandTbl input,#likelihoodTbl input,#impactTbl input')) renderMatrix();
+});
+
+renderMatrix();
+</script>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,40 @@
+<%- include('partials/header', { title: tpl.name, user, ws, active: 'reports' }) %>
+
+<a href="/workspaces/<%= ws.id %>/reports" class="link-muted" style="font-size:12px;">← Reports</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title"><%= tpl.name %></h1></div>
+  <a href="/workspaces/<%= ws.id %>/reports/<%= tpl.id %>/docx" class="btn btn-accent btn-xs">Download .docx</a>
+</div>
+
+<div class="panel">
+  <div class="panel-pad markdown" id="rb">
+  </div>
+</div>
+
+<script>
+const md = <%- JSON.stringify(body) %>;
+function render(s) {
+  const esc = x => x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = s.split('\n'); let out = ''; let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    let m;
+    if ((m = l.match(/^(#{1,6})\s+(.+)/))) { out += `<h${m[1].length}>${esc(m[2])}</h${m[1].length}>`; i++; continue; }
+    if (/^\|/.test(l) && i + 1 < lines.length && /^\|[-\s|:]+\|/.test(lines[i+1])) {
+      const head = lines[i].split('|').slice(1,-1).map(s=>s.trim());
+      i += 2; let rows = [];
+      while (i < lines.length && /^\|/.test(lines[i])) { rows.push(lines[i].split('|').slice(1,-1).map(s=>s.trim())); i++; }
+      out += '<table><thead><tr>'+head.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'
+        + rows.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('') + '</tbody></table>';
+      continue;
+    }
+    if (l.trim() === '') { i++; continue; }
+    out += '<p>'+esc(l)+'</p>'; i++;
+  }
+  return out;
+}
+document.getElementById('rb').innerHTML = render(md);
+</script>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,458 @@
+<%- include('partials/header', { title: v.name, user, ws, active: 'vendors' }) %>
+
+<a href="/workspaces/<%= ws.id %>/vendors" class="link-muted" style="font-size:12px;">← All suppliers</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= v.name %></h1>
+    <div class="page-subtitle">
+      <%= v.service_provided || 'No service description' %>
+      <% if (v.location) { %> · <%= v.location %><% } %>
+      <% if (v.industry) { %> · <%= v.industry %><% } %>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="tag <%= v.tier === 'tier_1' ? 'tag-danger' : v.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (v.tier || 'tier_2').replace('_',' ') %></span>
+    <span class="status s-<%= v.lifecycle_stage === 'terminated' ? 'closed' : 'in_progress' %>"><%= (v.lifecycle_stage || 'active').replace(/_/g,' ') %></span>
+  </div>
+</div>
+
+<!-- Risk summary tiles -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+  <div class="panel kpi">
+    <div class="kpi-num num" style="color:<%= (inherent||0) >= 18 ? '#b91c1c' : (inherent||0) >= 10 ? '#a16207' : '#15803d' %>"><%= inherent || '—' %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/25</span></div>
+    <div class="kpi-label">Inherent risk</div>
+    <div class="kpi-meta">data × criticality × dependency</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num num" style="color:<%= (residual||0) >= 18 ? '#b91c1c' : (residual||0) >= 10 ? '#a16207' : '#15803d' %>"><%= residual || '—' %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/25</span></div>
+    <div class="kpi-label">Residual risk</div>
+    <div class="kpi-meta">after attestations + controls</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num num"><%= docs.length %></div>
+    <div class="kpi-label">Attestations & contracts</div>
+    <% const expDocs = docs.filter(d => d.expiry_date && d.expiry_date < new Date(Date.now()+30*86400000).toISOString().split('T')[0]).length; %>
+    <% if (expDocs > 0) { %><div class="kpi-meta" style="color:#b91c1c;"><%= expDocs %> expiring soon</div><% } %>
+  </div>
+  <div class="panel kpi">
+    <% const presentClauses = clauses.filter(c => c.status === 'present').length; const totalClauses = clauses.length; %>
+    <div class="kpi-num num"><%= presentClauses %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/<%= totalClauses %></span></div>
+    <div class="kpi-label">Contract clauses present</div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);">
+  <% const tabs = [['overview','Overview'],['documents','Documents'],['questionnaires','Questionnaires'],['clauses','Contract clauses'],['subprocessors','Sub-processors'],['reviews','Reviews'],['monitoring','Monitoring'],['termination','Termination'],['notes','Notes']]; %>
+  <% tabs.forEach(([k, label]) => { %>
+    <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= reviews.length %>)</span><% } %></a>
+  <% }) %>
+</div>
+
+<% if (tab === 'overview') { %>
+<div class="panel">
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div style="grid-column:1/3"><label class="label">Name</label><input class="input" name="name" value="<%= v.name %>" required></div>
+    <div><label class="label">Lifecycle stage</label>
+      <select class="select" name="lifecycle_stage">
+        <% ['prospect','in_review','approved','active','offboarding','terminated'].forEach(s => { %>
+          <option value="<%= s %>" <%= v.lifecycle_stage === s ? 'selected' : '' %>><%= s.replace(/_/g,' ') %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div style="grid-column:1/-1"><label class="label">Service provided</label><input class="input" name="service_provided" value="<%= v.service_provided || '' %>"></div>
+
+    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Risk drivers (recompute on save)</div></div>
+    <div><label class="label">Business criticality</label>
+      <select class="select" name="business_criticality">
+        <% ['low','medium','high','critical'].forEach(s => { %><option value="<%= s %>" <%= v.business_criticality === s ? 'selected' : '' %>><%= s %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Data access</label>
+      <select class="select" name="data_access">
+        <% ['none','public','internal','confidential','restricted'].forEach(s => { %><option value="<%= s %>" <%= v.data_access === s ? 'selected' : '' %>><%= s %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Data volume</label>
+      <select class="select" name="data_volume">
+        <% ['none','low','medium','high'].forEach(s => { %><option value="<%= s %>" <%= v.data_volume === s ? 'selected' : '' %>><%= s %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Dependency</label>
+      <select class="select" name="dependency_type">
+        <option value="multi_source" <%= v.dependency_type === 'multi_source' ? 'selected' : '' %>>Multi-source</option>
+        <option value="alternative" <%= v.dependency_type === 'alternative' ? 'selected' : '' %>>Alternative available</option>
+        <option value="single_source" <%= v.dependency_type === 'single_source' ? 'selected' : '' %>>Single source</option>
+      </select>
+    </div>
+    <div><label class="label">Tier (auto from inherent)</label>
+      <select class="select" name="tier">
+        <% ['tier_1','tier_2','tier_3'].forEach(s => { %><option value="<%= s %>" <%= v.tier === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Regulatory exposure</label><input class="input" name="regulatory_exposure" value="<%= v.regulatory_exposure || '' %>" placeholder="GDPR, HIPAA, PCI…"></div>
+
+    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Profile</div></div>
+    <div><label class="label">Industry</label><input class="input" name="industry" value="<%= v.industry || '' %>"></div>
+    <div><label class="label">Location / HQ</label><input class="input" name="location" value="<%= v.location || '' %>"></div>
+    <div><label class="label">Parent company</label><input class="input" name="parent_company" value="<%= v.parent_company || '' %>"></div>
+    <div style="grid-column:1/2"><label class="label">Website</label><input class="input" name="website" value="<%= v.website || '' %>"></div>
+    <div style="grid-column:2/-1"><label class="label">Primary contact</label><input class="input" name="contact" value="<%= v.contact || '' %>"></div>
+
+    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Contract & commercial</div></div>
+    <div><label class="label">Contract start</label><input class="input" type="date" name="contract_start" value="<%= v.contract_start || '' %>"></div>
+    <div><label class="label">Contract end</label><input class="input" type="date" name="contract_end" value="<%= v.contract_end || '' %>"></div>
+    <div><label class="label">Renewal notice (days)</label><input class="input" type="number" name="renewal_notice_days" value="<%= v.renewal_notice_days || '' %>"></div>
+    <div><label class="label">Annual spend</label><input class="input" name="annual_spend" value="<%= v.annual_spend || '' %>" placeholder="$"></div>
+    <div><label class="label">Auto-renew</label>
+      <select class="select" name="auto_renew">
+        <option value="0" <%= !v.auto_renew ? 'selected' : '' %>>No</option>
+        <option value="1" <%= v.auto_renew ? 'selected' : '' %>>Yes</option>
+      </select>
+    </div>
+    <div><label class="label">Approved by</label><input class="input" name="approved_by" value="<%= v.approved_by || '' %>"></div>
+
+    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Review schedule</div></div>
+    <div><label class="label">Last assessed</label><input class="input" type="date" name="last_assessed" value="<%= v.last_assessed || '' %>"></div>
+    <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date" value="<%= v.next_review_date || '' %>"></div>
+    <div><label class="label">Attestations summary</label><input class="input" name="attestations" value="<%= v.attestations || '' %>" placeholder="ISO 27001, SOC 2…"></div>
+
+    <div style="grid-column:1/-1"><label class="label">Internal notes</label><textarea class="textarea" name="notes" rows="3"><%= v.notes || '' %></textarea></div>
+
+    <div style="grid-column:1/-1;display:flex;gap:6px;">
+      <button class="btn btn-primary">Save changes</button>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/delete" onsubmit="return confirm('Delete supplier and all related data?')" style="display:inline">
+        <button class="btn btn-danger">Delete supplier</button>
+      </form>
+    </div>
+  </form>
+</div>
+<% } %>
+
+<% if (tab === 'documents') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Upload attestation / contract / report</h2><span class="meta">Risk score recomputes on upload</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents" enctype="multipart/form-data" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div><label class="label">Document type</label>
+      <select class="select" name="doc_type">
+        <option value="soc2_type2">SOC 2 Type II</option><option value="soc2_type1">SOC 2 Type I</option>
+        <option value="iso_27001">ISO 27001</option><option value="iso_27017">ISO 27017 (cloud)</option>
+        <option value="iso_27018">ISO 27018 (privacy)</option><option value="iso_27701">ISO 27701 (PIMS)</option>
+        <option value="pentest">Penetration test report</option><option value="vulnerability_assessment">Vulnerability assessment</option>
+        <option value="dpa">Data Processing Agreement</option><option value="msa">Master Services Agreement</option>
+        <option value="sla">Service Level Agreement</option><option value="insurance">Insurance certificate</option>
+        <option value="bcp_test">BCP / DR test results</option><option value="compliance_letter">Compliance letter</option>
+        <option value="questionnaire_response">Questionnaire response (external)</option><option value="other">Other</option>
+      </select>
+    </div>
+    <div><label class="label">Document name</label><input class="input" name="name" required placeholder="e.g., SOC 2 Type II — FY2026"></div>
+    <div><label class="label">Effective date</label><input class="input" type="date" name="effective_date"></div>
+    <div><label class="label">Expiry date</label><input class="input" type="date" name="expiry_date"></div>
+    <div style="grid-column:1/-1"><label class="label">File</label><input class="input" type="file" name="file"></div>
+    <div style="grid-column:1/-1"><label class="label">Notes</label><input class="input" name="notes" placeholder="Optional: scope, opinion, exceptions noted"></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Upload</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Document</th><th style="width:160px">Type</th>
+      <th style="width:120px">Effective</th><th style="width:120px">Expiry</th>
+      <th style="width:100px">File</th><th style="width:80px"></th>
+    </tr></thead>
+    <tbody>
+      <% docs.forEach(d => {
+        const today = new Date().toISOString().split('T')[0];
+        const expired = d.expiry_date && d.expiry_date < today;
+        const expiringSoon = d.expiry_date && d.expiry_date >= today && d.expiry_date < new Date(Date.now()+30*86400000).toISOString().split('T')[0];
+      %>
+        <tr>
+          <td>
+            <div style="font-weight:500"><%= d.name %></div>
+            <% if (d.notes) { %><div class="meta"><%= d.notes %></div><% } %>
+          </td>
+          <td style="font-size:12px;color:var(--text-secondary);"><%= (d.doc_type || '').replace(/_/g,' ') %></td>
+          <td class="num meta"><%= d.effective_date || '—' %></td>
+          <td class="num <%= expired ? 'tag tag-danger' : expiringSoon ? 'tag tag-warn' : 'meta' %>" style="font-size:12px;"><%= d.expiry_date || '—' %><% if (expired) { %> · expired<% } else if (expiringSoon) { %> · soon<% } %></td>
+          <td>
+            <% if (d.stored_path) { %>
+              <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/download" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">Download</a>
+            <% } else { %><span class="meta">—</span><% } %>
+          </td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/delete" onsubmit="return confirm('Delete?')">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (docs.length === 0) { %>
+        <tr><td colspan="6" class="t-empty">No documents yet. Upload SOC 2, ISO 27001, pentest reports, DPAs, etc.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (tab === 'questionnaires') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Send a questionnaire</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/questionnaires" class="panel-pad" style="display:flex;gap:8px;">
+    <select name="template_id" class="select" required>
+      <option value="">— pick a template —</option>
+      <% templates.forEach(t => { %>
+        <option value="<%= t.id %>"><%= t.name %> (<%= t.q_count %> questions)</option>
+      <% }) %>
+    </select>
+    <button class="btn btn-primary" style="white-space:nowrap;">Create questionnaire</button>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Template</th><th style="width:100px">Sent</th><th style="width:120px">Status</th>
+      <th style="width:120px">Score</th><th style="width:100px">Risk</th><th style="width:120px">Progress</th>
+    </tr></thead>
+    <tbody>
+      <% questionnaires.forEach(q => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= v.id %>/questionnaires/<%= q.id %>'">
+          <td>
+            <div style="font-weight:500"><%= q.template_name %></div>
+            <div class="meta"><%= q.category %></div>
+          </td>
+          <td class="num meta"><%= q.sent_at ? q.sent_at.split(' ')[0] : '—' %></td>
+          <td><span class="status s-<%= q.status === 'reviewed' ? 'done' : q.status === 'responded' ? 'in_review' : 'todo' %>"><%= q.status %></span></td>
+          <td>
+            <% if (q.score !== null) { %>
+              <span class="num" style="font-weight:500;color:<%= q.score >= 80 ? '#15803d' : q.score >= 60 ? '#a16207' : '#b91c1c' %>"><%= q.score %>%</span>
+            <% } else { %><span class="meta">—</span><% } %>
+          </td>
+          <td>
+            <% if (q.risk_rating) { %>
+              <span class="tag <%= q.risk_rating === 'high' ? 'tag-danger' : q.risk_rating === 'medium' ? 'tag-warn' : 'tag-success' %>"><%= q.risk_rating %></span>
+            <% } else { %><span class="meta">—</span><% } %>
+          </td>
+          <td class="meta"><%= q.answered_questions %>/<%= q.total_questions %></td>
+        </tr>
+      <% }) %>
+      <% if (questionnaires.length === 0) { %><tr><td colspan="6" class="t-empty">No questionnaires sent yet.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (tab === 'clauses') { %>
+<div class="panel">
+  <div class="panel-head"><h2>Contract clauses checklist</h2><span class="meta">Per A.5.20</span></div>
+  <div class="divide-row">
+    <% clauses.forEach(c => { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/clauses/<%= c.id %>" style="display:grid;grid-template-columns:1fr 160px 1fr 80px;gap:12px;align-items:center;padding:10px 16px;">
+        <div>
+          <div style="font-size:13px;font-weight:500;"><%= c.clause_label %></div>
+          <% if (c.reviewed_at) { %><div class="meta">reviewed <%= c.reviewed_at.split(' ')[0] %></div><% } %>
+        </div>
+        <select name="status" class="select" style="font-size:12px;padding:4px 8px;">
+          <option value="pending" <%= c.status === 'pending' ? 'selected' : '' %>>Pending</option>
+          <option value="present" <%= c.status === 'present' ? 'selected' : '' %>>Present</option>
+          <option value="absent" <%= c.status === 'absent' ? 'selected' : '' %>>Absent</option>
+          <option value="na" <%= c.status === 'na' ? 'selected' : '' %>>N/A</option>
+        </select>
+        <input class="input" name="notes" value="<%= c.notes || '' %>" placeholder="notes / clause reference">
+        <button class="btn btn-secondary btn-xs">Save</button>
+      </form>
+    <% }) %>
+  </div>
+</div>
+<% } %>
+
+<% if (tab === 'subprocessors') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Add sub-processor</h2><span class="meta">A.5.21 — ICT supply chain</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/subprocessors" class="panel-pad" style="display:grid;grid-template-columns:repeat(4,1fr) auto;gap:12px;">
+    <div><label class="label">Name</label><input class="input" name="name" required></div>
+    <div><label class="label">Service</label><input class="input" name="service_provided"></div>
+    <div><label class="label">Data access</label>
+      <select class="select" name="data_access">
+        <option value="none">None</option><option value="metadata">Metadata only</option>
+        <option value="customer_data">Customer data</option><option value="pii">PII</option>
+      </select>
+    </div>
+    <div><label class="label">Location</label><input class="input" name="location"></div>
+    <div style="align-self:end"><label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);"><input type="checkbox" name="approved" value="1"> Approved</label><button class="btn btn-primary" style="margin-top:6px;">Add</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th>Name</th><th>Service</th><th style="width:140px">Data access</th><th style="width:120px">Location</th><th style="width:120px">Status</th><th style="width:60px"></th></tr></thead>
+    <tbody>
+      <% subprocessors.forEach(s => { %>
+        <tr>
+          <td style="font-weight:500"><%= s.name %></td>
+          <td style="font-size:12px;color:var(--text-secondary);"><%= s.service_provided || '—' %></td>
+          <td><span class="tag <%= s.data_access === 'pii' || s.data_access === 'customer_data' ? 'tag-warn' : 'tag-neutral' %>"><%= s.data_access || '—' %></span></td>
+          <td style="font-size:12px;color:var(--text-secondary);"><%= s.location || '—' %></td>
+          <td><% if (s.approved) { %><span class="status s-done">approved</span><% } else { %><span class="status s-open">pending</span><% } %></td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/subprocessors/<%= s.id %>/delete" onsubmit="return confirm('Delete?')">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">×</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (subprocessors.length === 0) { %><tr><td colspan="6" class="t-empty">No sub-processors recorded.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (tab === 'reviews') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Log a review</h2><span class="meta">A.5.22 — periodic supplier review</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/reviews" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div><label class="label">Review date</label><input class="input" type="date" name="review_date" value="<%= new Date().toISOString().split('T')[0] %>" required></div>
+    <div><label class="label">Reviewer</label><input class="input" name="reviewer" placeholder="Name"></div>
+    <div><label class="label">Outcome</label>
+      <select class="select" name="outcome">
+        <option value="approved">Approved</option>
+        <option value="conditional">Approved with conditions</option>
+        <option value="escalated">Escalated</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </div>
+    <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date"></div>
+    <div style="grid-column:1/-1"><label class="label">Findings</label><textarea class="textarea" name="findings" rows="3" placeholder="What did the review identify?"></textarea></div>
+    <div style="grid-column:1/-1"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2" placeholder="Required follow-ups, owners, dates"></textarea></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Log review</button></div>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Review history</h2></div>
+  <% if (reviews.length === 0) { %>
+    <div class="t-empty">No reviews logged yet.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% reviews.forEach(r => { %>
+        <div style="padding:12px 16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="num meta"><%= r.review_date %></span>
+              <span class="tag <%= r.outcome === 'approved' ? 'tag-success' : r.outcome === 'conditional' ? 'tag-warn' : 'tag-danger' %>"><%= r.outcome %></span>
+              <% if (r.reviewer) { %><span class="meta">· <%= r.reviewer %></span><% } %>
+            </div>
+            <% if (r.next_review_date) { %><span class="meta">next: <%= r.next_review_date %></span><% } %>
+          </div>
+          <div style="display:flex;gap:8px;font-size:11px;color:var(--text-tertiary);margin-bottom:6px;">
+            <% if (r.inherent_risk !== null) { %><span>inherent: <%= r.inherent_risk %>/25</span><% } %>
+            <% if (r.residual_risk !== null) { %><span>· residual: <%= r.residual_risk %>/25</span><% } %>
+          </div>
+          <% if (r.findings) { %><div style="font-size:13px;margin-bottom:4px;"><strong>Findings:</strong> <%= r.findings %></div><% } %>
+          <% if (r.action_items) { %><div style="font-size:13px;color:var(--text-secondary);"><strong>Actions:</strong> <%= r.action_items %></div><% } %>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+<% } %>
+
+<% if (tab === 'monitoring') { %>
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>External monitoring scores</h2><span class="meta">SecurityScorecard / BitSight / RiskRecon — paste in or capture manually each cycle.</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/monitoring" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr 100px 1fr 1fr auto;gap:10px;align-items:end;">
+    <div><label class="label">Source</label><select class="select" name="source"><option>SecurityScorecard</option><option>BitSight</option><option>RiskRecon</option><option>UpGuard</option><option>Other</option></select></div>
+    <div><label class="label">Score</label><input class="input num" type="number" step="0.01" name="score"></div>
+    <div><label class="label">Grade</label><input class="input" name="grade" placeholder="A/B/C…"></div>
+    <div><label class="label">Date</label><input class="input" type="date" name="recorded_at" value="<%= new Date().toISOString().slice(0,10) %>"></div>
+    <div><label class="label">Notes</label><input class="input" name="notes"></div>
+    <div><button class="btn btn-primary btn-xs">Record</button></div>
+  </form>
+</div>
+<div class="panel"><table class="t">
+  <thead><tr><th>Date</th><th>Source</th><th class="num">Score</th><th>Grade</th><th>Notes</th></tr></thead>
+  <tbody>
+    <% if (!monitoring.length) { %><tr><td colspan="5" class="t-empty">No monitoring scores recorded yet.</td></tr><% } %>
+    <% monitoring.forEach(m => { %>
+      <tr><td class="num meta"><%= m.recorded_at %></td><td><%= m.source %></td><td class="num"><%= m.score != null ? m.score : '—' %></td><td><%= m.grade || '—' %></td><td class="meta"><%= m.notes || '' %></td></tr>
+    <% }) %>
+  </tbody>
+</table></div>
+<% } %>
+
+<% if (tab === 'termination') { %>
+<% if (!v.termination_started_at && terminationItems.length === 0) { %>
+<div class="panel">
+  <div class="panel-head"><h2>Termination workflow</h2></div>
+  <div class="panel-pad">
+    <div class="meta" style="margin-bottom:10px;">Start the termination workflow to generate the standard checklist (data return, access revoke, certificate of destruction, …).</div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/termination/start" style="display:flex;gap:6px;align-items:end;">
+      <div><label class="label">Termination owner</label><input class="input" name="termination_owner" value="<%= user.name %>"></div>
+      <button class="btn btn-danger btn-xs">Start termination</button>
+    </form>
+  </div>
+</div>
+<% } else { %>
+<div class="panel">
+  <div class="panel-head"><h2>Termination checklist</h2><span class="meta">Owner: <%= v.termination_owner || '—' %> · started <%= v.termination_started_at || '—' %></span></div>
+  <table class="t">
+    <thead><tr><th style="width:30px"></th><th>Step</th><th>Evidence</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      <% terminationItems.forEach(it => { %>
+        <tr>
+          <td><span style="font-size:18px;color:<%= it.done ? '#16a34a' : '#a1a1aa' %>;"><%= it.done ? '✓' : '○' %></span></td>
+          <td><strong><%= it.label %></strong><% if (it.done_at) { %><div class="meta">done <%= it.done_at %></div><% } %></td>
+          <td class="meta" style="max-width:200px;"><%= it.evidence || '—' %></td>
+          <td class="meta" style="max-width:200px;"><%= it.notes || '—' %></td>
+          <td>
+            <details>
+              <summary class="btn btn-secondary btn-xs">Update</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/termination/<%= it.id %>" style="margin-top:6px;display:grid;gap:6px;width:280px;">
+                <label style="font-size:12px;display:flex;gap:6px;align-items:center;"><input type="checkbox" name="done" value="1" <%= it.done ? 'checked' : '' %>> Done</label>
+                <input class="input" name="evidence" placeholder="Evidence ref" value="<%= it.evidence || '' %>">
+                <textarea class="textarea" name="notes" rows="2" placeholder="Notes"><%= it.notes || '' %></textarea>
+                <button class="btn btn-primary btn-xs">Save</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+<% } %>
+
+<% if (tab === 'notes') { %>
+<div class="panel">
+  <div class="panel-head"><h2>Notes & communication</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/notes" class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+    <textarea name="body" class="textarea" rows="2" placeholder="Add a note about this supplier (e.g., recent call, issue raised, change announced)…" required></textarea>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+      <label class="meta" style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="internal_only" value="1" checked> Internal only</label>
+      <button class="btn btn-primary btn-xs">Add note</button>
+    </div>
+  </form>
+  <% if (notes.length === 0) { %>
+    <div class="t-empty">No notes yet.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% notes.forEach(n => { %>
+        <div style="padding:12px 16px;<%= n.internal_only ? 'background:#fefce8;' : '' %>">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="meta"><%= n.user_name %> · <%= n.created_at %><% if (n.internal_only) { %> · <span style="color:#a16207;font-weight:500;">internal</span><% } %></div>
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/notes/<%= n.id %>/delete">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">×</button>
+            </form>
+          </div>
+          <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;"><%= n.body %></div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>

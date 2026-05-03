@@ -1,0 +1,55 @@
+<%- include('partials/header', { title: 'Internal audits', user, ws, active: 'audits' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Internal audits</h1>
+    <div class="page-subtitle">Plan and conduct internal audits per Clause 9.2. Promote findings to nonconformities.</div>
+  </div>
+  <button onclick="document.getElementById('newAudit').classList.toggle('hidden')" class="btn btn-primary">New audit</button>
+</div>
+
+<div id="newAudit" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New audit</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., 2026 Q1 ISMS Internal Audit"></div>
+    <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" placeholder="e.g., All Annex A controls + Clauses 4-10"></div>
+    <div><label class="label">Audit date</label><input class="input" type="date" name="audit_date"></div>
+    <div><label class="label">Auditor</label><input class="input" name="auditor_name" placeholder="Name / company"></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Title</th><th style="width:120px">Date</th><th style="width:160px">Auditor</th>
+      <th style="width:130px">Status</th><th style="width:140px">Findings</th>
+    </tr></thead>
+    <tbody>
+      <% audits.forEach(a => { %>
+        <tr>
+          <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= a.title %></a></td>
+          <td class="num meta"><%= a.audit_date || '—' %></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= a.auditor_name || '—' %></td>
+          <td><span class="status s-<%= a.status === 'complete' ? 'done' : a.status %>"><%= a.status %></span></td>
+          <td class="meta">
+            <%= a.finding_count %>
+            <% if (a.open_findings > 0) { %> · <span style="color:#b91c1c;font-weight:500;"><%= a.open_findings %> open</span><% } %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (audits.length === 0) { %>
+        <tr><td colspan="5" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+            <div class="empty-title">Plan an internal audit</div>
+            <div class="empty-sub">Clause 9.2 requires internal audits at planned intervals. Create an audit, conduct it against the criteria, and promote findings to nonconformities.</div>
+            <button onclick="document.getElementById('newAudit').classList.toggle('hidden')" class="btn btn-primary">New audit</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

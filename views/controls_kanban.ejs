@@ -1,0 +1,87 @@
+<%- include('partials/header', { title: 'Controls — Kanban', user, ws, active: 'controls' }) %>
+
+<a href="/workspaces/<%= ws.id %>/controls" class="link-muted" style="font-size:12px;">← Table view</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Controls — Kanban</h1>
+    <div class="page-subtitle">Drag-friendly view across status columns. Click any card to open the control.</div></div>
+  <div style="display:flex;gap:6px;">
+    <a href="/workspaces/<%= ws.id %>/controls/export.csv" class="btn btn-secondary btn-xs">Export CSV</a>
+    <details style="position:relative;">
+      <summary class="btn btn-secondary btn-xs">Import CSV</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/controls/import" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;width:380px;z-index:5;box-shadow:var(--shadow-lg);">
+        <div class="meta" style="margin-bottom:6px;">CSV with headers: id,status,applicability,maturity,notes</div>
+        <textarea class="textarea mono" name="csv" rows="6" required></textarea>
+        <button class="btn btn-primary btn-xs" style="margin-top:8px;">Import</button>
+      </form>
+    </details>
+  </div>
+</div>
+
+<%
+  const cols = [
+    { key: 'Not Assessed', label: 'Not assessed', color: '#a1a1aa' },
+    { key: 'Not Implemented', label: 'Not implemented', color: '#dc2626' },
+    { key: 'Work In Progress', label: 'Work in progress', color: '#2563eb' },
+    { key: 'Partially Implemented', label: 'Partially implemented', color: '#ca8a04' },
+    { key: 'Implemented', label: 'Implemented', color: '#16a34a' },
+    { key: 'Not Applicable', label: 'Not applicable', color: '#71717a' }
+  ];
+  const grouped = {};
+  cols.forEach(c => grouped[c.key] = []);
+  rows.forEach(r => { (grouped[r.status] || grouped['Not Assessed']).push(r); });
+%>
+
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;overflow-x:auto;" id="kanban-board">
+  <% cols.forEach(c => { %>
+    <div class="panel kanban-col" data-status="<%= c.key %>" style="padding:10px;min-width:180px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;color:var(--text-secondary);">
+        <span style="width:7px;height:7px;border-radius:50%;background:<%= c.color %>;"></span><%= c.label %>
+        <span class="meta col-count" style="margin-left:auto;font-weight:500;text-transform:none;letter-spacing:0;"><%= grouped[c.key].length %></span>
+      </div>
+      <div class="kanban-drop" style="min-height:30px;">
+      <% grouped[c.key].forEach(r => { %>
+        <a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" draggable="true" data-iso="<%= r.id %>" class="kanban-card" style="display:block;padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--text);font-size:12px;cursor:grab;">
+          <div style="font-weight:500;line-height:1.3;"><%= r.title %></div>
+          <div class="meta mono" style="font-size:10.5px;margin-top:2px;"><%= r.id.replace('annex-','').toUpperCase() %><% if (r.maturity) { %> · M<%= r.maturity %><% } %><% if (r.owner) { %> · <%= r.owner %><% } %></div>
+        </a>
+      <% }) %>
+      </div>
+    </div>
+  <% }) %>
+</div>
+
+<script>
+let dragged = null;
+document.querySelectorAll('.kanban-card').forEach(c => {
+  c.addEventListener('dragstart', e => { dragged = c; e.dataTransfer.effectAllowed = 'move'; c.style.opacity = '0.5'; });
+  c.addEventListener('dragend', e => { c.style.opacity = '1'; });
+  c.addEventListener('click', e => { if (dragged === c) e.preventDefault(); });
+});
+document.querySelectorAll('.kanban-drop').forEach(zone => {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.parentElement.style.background = 'var(--accent-soft)'; });
+  zone.addEventListener('dragleave', e => { zone.parentElement.style.background = ''; });
+  zone.addEventListener('drop', async e => {
+    e.preventDefault();
+    zone.parentElement.style.background = '';
+    if (!dragged) return;
+    const newStatus = zone.parentElement.dataset.status;
+    const isoId = dragged.dataset.iso;
+    zone.appendChild(dragged);
+    // Update column counts
+    document.querySelectorAll('.kanban-col').forEach(col => {
+      col.querySelector('.col-count').textContent = col.querySelectorAll('.kanban-card').length;
+    });
+    // POST update via the existing autosave endpoint (which already accepts JSON status)
+    try {
+      await fetch(`/workspaces/<%= ws.id %>/controls/${isoId}/autosave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (err) { console.warn('autosave failed', err); }
+  });
+});
+</script>
+
+<%- include('partials/footer') %>

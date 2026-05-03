@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: 'Task templates', user, ws, active: 'tasks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/tasks" class="link-muted" style="font-size:12px;">← Tasks</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Task templates</h1>
+    <div class="page-subtitle">Spawn a set of related tasks in one click. Built-in templates: onboarding, offboarding, quarterly access review, annual policy review, audit kickoff, vendor onboarding.</div></div>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Template</th><th>Category</th><th>Steps</th><th></th></tr></thead>
+  <tbody>
+    <% templates.forEach(t => {
+         const steps = JSON.parse(t.steps || '[]');
+    %>
+      <tr>
+        <td>
+          <strong><%= t.name %></strong>
+          <% if (t.is_system) { %><span class="tag tag-info" style="font-size:10.5px;">system</span><% } %>
+          <% if (t.description) { %><div class="meta" style="margin-top:2px;"><%= t.description %></div><% } %>
+        </td>
+        <td class="meta"><%= t.category %></td>
+        <td class="meta"><%= steps.length %> steps</td>
+        <td>
+          <details>
+            <summary class="btn btn-secondary btn-xs">Use template</summary>
+            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/from-template/<%= t.id %>" style="margin-top:6px;width:280px;display:grid;gap:6px;">
+              <label class="label">Base date (day-0 of the workflow)</label>
+              <input class="input" type="date" name="base_date" value="<%= new Date().toISOString().slice(0,10) %>">
+              <button class="btn btn-primary btn-xs">Spawn <%= steps.length %> tasks</button>
+            </form>
+            <details style="margin-top:8px;">
+              <summary style="font-size:11.5px;color:var(--text-secondary);cursor:pointer;">Show steps</summary>
+              <ol style="font-size:12px;margin:6px 0 0 18px;color:var(--text-secondary);">
+                <% steps.forEach(s => { %><li><%= s.title %> <span class="meta">(day <%= s.days_offset >= 0 ? '+' + s.days_offset : s.days_offset %>)</span></li><% }) %>
+              </ol>
+            </details>
+          </details>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Security questionnaire — <%= q.supplier_name %></title>
+<link rel="preconnect" href="https://rsms.me/"><link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+body { font-family:'Inter',sans-serif; background:#f7f7f8; max-width:880px; margin:0 auto; padding:32px 28px; line-height:1.5; }
+.panel { background:#fff; border:1px solid #ececef; border-radius:8px; padding:18px 22px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+h1 { font-size:22px; margin:0 0 4px; }
+h2 { font-size:14px; margin:18px 0 8px; }
+.meta { color:#71717a; font-size:13px; }
+input[type=text] { width:100%; padding:6px 10px; border:1px solid #d6d6db; border-radius:5px; font-size:12px; margin-top:4px; }
+.opt { display:inline-block; padding:4px 10px; border:1px solid #d6d6db; border-radius:5px; font-size:12px; margin:2px 4px 2px 0; cursor:pointer; }
+.opt input { display:none; }
+.opt.selected { border-color:#4f46e5; background:#eef2ff; }
+button { background:#0a0a0a; color:#fff; border:0; padding:10px 18px; font-size:13px; border-radius:6px; cursor:pointer; font-weight:500; }
+.q { padding:10px 0; border-bottom:1px solid #ececef; }
+</style>
+</head><body>
+<div class="panel">
+  <h1>Security questionnaire — <%= q.supplier_name %></h1>
+  <div class="meta"><%= q.template_name %><% if (q.tpl_description) { %> · <%= q.tpl_description %><% } %></div>
+</div>
+
+<form method="POST">
+<% Object.keys(sections).forEach(secName => { %>
+  <div class="panel">
+    <h2><%= secName %></h2>
+    <% sections[secName].forEach(qu => { const r = respMap[qu.id] || {}; %>
+      <div class="q">
+        <div style="font-size:13px;font-weight:500;"><%= qu.question %></div>
+        <div style="margin-top:6px;">
+          <% ['yes','partial','no','na'].forEach(opt => { %>
+            <label class="opt <%= r.answer === opt ? 'selected' : '' %>">
+              <input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %>><%= opt %>
+            </label>
+          <% }) %>
+        </div>
+        <input type="text" name="comment_<%= qu.id %>" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)">
+      </div>
+    <% }) %>
+  </div>
+<% }) %>
+
+<div class="panel" style="text-align:right;">
+  <button>Submit responses</button>
+</div>
+</form>
+
+<script>
+document.querySelectorAll('.opt input').forEach(el => el.addEventListener('change', e => {
+  const name = e.target.name;
+  document.querySelectorAll(`input[name="${name}"]`).forEach(r => r.parentElement.classList.toggle('selected', r.checked));
+}));
+</script>
+</body></html>

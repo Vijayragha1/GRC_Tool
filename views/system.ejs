@@ -1,0 +1,59 @@
+<%- include('partials/header', { title: 'System', user, ws, active: 'system' }) %>
+
+<div class="page-head">
+  <div><h1 class="page-title">System</h1>
+    <div class="page-subtitle">Backup runs and master-key rotations. Firm-owner only.</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div><div class="meta">Master key fingerprint</div><div class="mono" style="font-weight:600;font-size:14px;"><%= masterFp %></div></div>
+    <div><div class="meta">Backup retention</div><div style="font-weight:600;font-size:14px;">Last <%= backups.length %> backups</div></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Backups</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/system/backup" class="panel-pad" style="border-bottom:1px solid var(--border);"><button class="btn btn-primary btn-xs">Run backup now</button></form>
+  <table class="t">
+    <thead><tr><th>File</th><th>Size</th><th>Created</th></tr></thead>
+    <tbody>
+      <% if (!backups.length) { %><tr><td colspan="3" class="t-empty">No backups yet — run one above. Daily backups auto-run after server start.</td></tr><% } %>
+      <% backups.forEach(b => { %>
+        <tr><td class="mono meta"><%= b.name %></td><td class="num meta"><%= (b.size / 1024).toFixed(1) %> KB</td><td class="meta"><%= b.mtime.toISOString() %></td></tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Master key rotation</h2></div>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+    <div class="callout" style="margin-bottom:12px;background:rgba(202,138,4,0.06);border-color:#ca8a04;">
+      <div class="callout-title" style="color:#a16207;">Heavy operation</div>
+      Rotates the master encryption key. Re-encrypts every encrypted column under the new key inside one transaction. Old key fingerprint is logged. Backups taken before rotation will not decrypt under the new key — back up first if you need recoverability across the rotation.
+    </div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/system/rotate-key" onsubmit="return confirm('Rotate master key now? This re-encrypts all data.')">
+      <input type="hidden" name="confirm" value="rotate">
+      <button class="btn btn-danger btn-xs">Rotate master key</button>
+    </form>
+  </div>
+  <table class="t">
+    <thead><tr><th>When</th><th>By</th><th>Old fp</th><th>New fp</th><th>Rows re-encrypted</th><th>Status</th></tr></thead>
+    <tbody>
+      <% if (!rotations.length) { %><tr><td colspan="6" class="t-empty">No rotations yet.</td></tr><% } %>
+      <% rotations.forEach(r => { %>
+        <tr>
+          <td class="meta"><%= r.rotated_at %></td>
+          <td class="meta">user #<%= r.rotated_by || '—' %></td>
+          <td class="mono meta"><%= r.prev_key_fp %></td>
+          <td class="mono meta"><%= r.new_key_fp %></td>
+          <td class="num"><%= r.rows_reencrypted %></td>
+          <td><span class="tag <%= r.status === 'ok' ? 'tag-success' : 'tag-danger' %>"><%= r.status %></span></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

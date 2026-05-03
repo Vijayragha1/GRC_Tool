@@ -1,0 +1,83 @@
+<%- include('partials/header', { title: q.template_name, user, ws, active: 'vendors' }) %>
+
+<a href="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>?tab=questionnaires" class="link-muted" style="font-size:12px;">← Back to <%= q.supplier_name %></a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= q.template_name %></h1>
+    <div class="page-subtitle"><%= q.supplier_name %> · <%= q.tpl_description || '' %></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <% if (q.score !== null) { %>
+      <span class="tag <%= q.score >= 80 ? 'tag-success' : q.score >= 60 ? 'tag-warn' : 'tag-danger' %>" style="font-size:14px;padding:4px 12px;font-weight:600;">Score: <%= q.score %>%</span>
+    <% } %>
+    <span class="status s-<%= q.status === 'reviewed' ? 'done' : q.status === 'responded' ? 'in_review' : 'todo' %>"><%= q.status %></span>
+  </div>
+</div>
+
+<div class="panel kpi" style="margin-bottom:16px;display:flex;justify-content:space-around;text-align:center;">
+  <div><div class="kpi-num num"><%= q.total_questions %></div><div class="kpi-label">Total questions</div></div>
+  <div><div class="kpi-num num"><%= q.answered_questions %></div><div class="kpi-label">Answered</div></div>
+  <div>
+    <div class="kpi-num num" style="color:<%= q.score === null ? 'var(--text-tertiary)' : q.score >= 80 ? '#15803d' : q.score >= 60 ? '#a16207' : '#b91c1c' %>"><%= q.score === null ? '—' : q.score + '%' %></div>
+    <div class="kpi-label">Score</div>
+  </div>
+  <div>
+    <div class="kpi-num num"><%= q.risk_rating ? q.risk_rating : '—' %></div>
+    <div class="kpi-label">Risk rating</div>
+  </div>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>">
+  <% Object.keys(sections).forEach(secName => { %>
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2><%= secName %></h2><span class="meta"><%= sections[secName].length %> questions</span></div>
+      <div class="divide-row">
+        <% sections[secName].forEach(qu => {
+          const r = respMap[qu.id] || {};
+          const isCorrect = r.answer && qu.expected_answer && r.answer.toLowerCase() === qu.expected_answer.toLowerCase();
+          const isWrong = r.answer && qu.expected_answer && r.answer.toLowerCase() !== qu.expected_answer.toLowerCase();
+        %>
+          <div style="padding:12px 16px;<%= isWrong ? 'background:#fef2f2;' : isCorrect ? 'background:#f0fdf4;' : '' %>">
+            <div style="display:flex;align-items:flex-start;gap:12px;">
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:500;line-height:1.4;"><%= qu.question %></div>
+                <% if (qu.iso_control_ref) { %><div class="meta" style="margin-top:3px;">→ <%= qu.iso_control_ref %></div><% } %>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                <% ['yes','partial','no','na'].forEach(opt => { %>
+                  <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid <%= r.answer === opt ? 'var(--accent)' : 'var(--border-strong)' %>;background:<%= r.answer === opt ? 'var(--accent-soft)' : 'var(--bg)' %>;border-radius:6px;font-size:12px;cursor:pointer;text-transform:capitalize;font-weight:<%= r.answer === opt ? '500' : '400' %>;">
+                    <input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %> style="display:none">
+                    <%= opt %>
+                  </label>
+                <% }) %>
+              </div>
+            </div>
+            <input type="text" name="comment_<%= qu.id %>" class="input" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)" style="margin-top:8px;font-size:12px;">
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  <% }) %>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Reviewer notes</h2></div>
+    <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><label class="label">Reviewer</label><input class="input" name="reviewer" value="<%= q.reviewer || '' %>"></div>
+      <div></div>
+      <div style="grid-column:1/-1"><label class="label">Reviewer comments</label><textarea class="textarea" name="reviewer_comments" rows="3"><%= q.reviewer_comments || '' %></textarea></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:6px;">
+    <button name="action" value="save" class="btn btn-secondary">Save draft</button>
+    <button name="action" value="submit" class="btn btn-primary">Submit responses</button>
+    <button name="action" value="review" class="btn btn-accent">Mark reviewed</button>
+    <div style="flex:1;"></div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/delete" onsubmit="return confirm('Delete this questionnaire and responses?')" style="display:inline">
+      <button class="btn btn-danger">Delete</button>
+    </form>
+  </div>
+</form>
+
+<%- include('partials/footer') %>

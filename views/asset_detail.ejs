@@ -1,0 +1,87 @@
+<%- include('partials/header', { title: asset.name, user, ws, active: 'assets' }) %>
+
+<a href="/workspaces/<%= ws.id %>/assets" class="link-muted" style="font-size:12px;">← Assets</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= asset.name %></h1>
+    <div class="page-subtitle"><%= asset.type || '—' %> · classification <strong><%= asset.classification || '—' %></strong> · CIA <%= asset.cia_c %>/<%= asset.cia_i %>/<%= asset.cia_a %><% if (asset.entity_name) { %> · entity: <%= asset.entity_name %><% } %></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px"><div class="panel-pad"><strong>Owner:</strong> <%= asset.owner_name || '—' %><br><strong>Description:</strong> <%= asset.description || '—' %></div></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+  <div class="panel">
+    <div class="panel-head"><h2>Depends on (parents)</h2></div>
+    <% if (parents.length) { %>
+      <% parents.forEach(p => { %>
+        <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <a href="/workspaces/<%= ws.id %>/assets/<%= p.parent_asset_id %>" class="link-muted" style="color:var(--text);"><%= p.asset_name %></a>
+          <span class="meta"><%= p.relation %></span>
+        </div>
+      <% }) %>
+    <% } else { %><div class="t-empty">None.</div><% } %>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Depended on by (children)</h2></div>
+    <% if (children.length) { %>
+      <% children.forEach(c => { %>
+        <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <a href="/workspaces/<%= ws.id %>/assets/<%= c.child_asset_id %>" class="link-muted" style="color:var(--text);"><%= c.asset_name %></a>
+          <span class="meta"><%= c.relation %></span>
+          <form method="POST" action="/workspaces/<%= ws.id %>/assets/relationships/<%= c.id %>/delete" style="display:inline"><button class="btn btn-ghost btn-xs">×</button></form>
+        </div>
+      <% }) %>
+    <% } else { %><div class="t-empty">None.</div><% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Add relationship</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= asset.id %>/relationships" class="panel-pad" style="display:grid;grid-template-columns:1fr 200px 1fr auto;gap:8px;align-items:end;">
+    <div><label class="label">Child asset</label><select class="select" name="child_asset_id" required><option value="">—</option><% allAssets.forEach(a => { %><option value="<%= a.id %>"><%= a.name %></option><% }) %></select></div>
+    <div><label class="label">Relation</label><select class="select" name="relation"><option value="hosted_on">hosted on</option><option value="depends_on">depends on</option><option value="processes">processes</option><option value="contains">contains</option></select></div>
+    <div><label class="label">Notes</label><input class="input" name="notes"></div>
+    <div><button class="btn btn-primary btn-xs">Add</button></div>
+  </form>
+</div>
+
+<% if (parents.length || children.length) { %>
+<div class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Relationship diagram</h2></div>
+  <svg viewBox="0 0 600 240" style="width:100%;max-width:600px;display:block;margin:0 auto;padding:12px;">
+    <% parents.forEach((p, i) => { const x = 60 + i * 130; %>
+      <g>
+        <rect x="<%= x - 50 %>" y="20" width="100" height="36" rx="4" fill="#eef2ff" stroke="#4f46e5"/>
+        <text x="<%= x %>" y="42" font-size="11" text-anchor="middle" font-family="Inter,sans-serif" fill="#3730a3"><%= p.asset_name %></text>
+        <line x1="<%= x %>" y1="56" x2="300" y2="100" stroke="#a1a1aa" stroke-width="1.5"/>
+      </g>
+    <% }) %>
+    <g>
+      <rect x="240" y="100" width="120" height="40" rx="6" fill="#0a0a0a"/>
+      <text x="300" y="124" font-size="12" text-anchor="middle" font-family="Inter,sans-serif" fill="#fff" font-weight="600"><%= asset.name %></text>
+    </g>
+    <% children.forEach((c, i) => { const x = 60 + i * 130; %>
+      <g>
+        <line x1="300" y1="140" x2="<%= x %>" y2="184" stroke="#a1a1aa" stroke-width="1.5"/>
+        <rect x="<%= x - 50 %>" y="184" width="100" height="36" rx="4" fill="#fef3c7" stroke="#ca8a04"/>
+        <text x="<%= x %>" y="206" font-size="11" text-anchor="middle" font-family="Inter,sans-serif" fill="#854d0e"><%= c.asset_name %></text>
+      </g>
+    <% }) %>
+  </svg>
+</div>
+<% } %>
+
+<% if (linkedRisks.length) { %>
+<div class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Linked risks</h2></div>
+  <% linkedRisks.forEach(r => { %>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);"><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title %></a> <span class="meta">L<%= r.likelihood %> × I<%= r.impact %></span></div>
+  <% }) %>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>

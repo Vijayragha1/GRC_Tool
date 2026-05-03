@@ -1,0 +1,28 @@
+<%- include('partials/header', { title: 'Campaign — ' + c.name, user, ws, active: 'documents' }) %>
+
+<a href="/workspaces/<%= ws.id %>/campaigns" class="link-muted" style="font-size:12px;">← Campaigns</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= c.name %></h1>
+    <div class="page-subtitle"><%= c.doc_name %><% if (c.due_date) { %> · due <%= c.due_date %><% } %></div>
+  </div>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Recipient</th><th>Email</th><th>Role</th><th>Tokenized link</th><th>Status</th><th>Acknowledged</th></tr></thead>
+  <tbody>
+    <% recipients.forEach(r => { %>
+      <tr>
+        <td><%= r.recipient_name %></td>
+        <td class="meta"><%= r.recipient_email || '—' %></td>
+        <td class="meta"><%= r.recipient_role || '—' %></td>
+        <td class="mono meta" style="font-size:11px;">/ack/<%= r.token.slice(0,12) %>… <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText(window.location.origin + '/ack/<%= r.token %>')">copy</button></td>
+        <td><% if (r.acknowledged_at) { %><span class="tag tag-success">acknowledged</span><% } else { %><span class="tag tag-neutral">pending</span><% } %></td>
+        <td class="meta"><%= r.acknowledged_at || '—' %><% if (r.ip_address) { %><div class="meta mono" style="font-size:10.5px;"><%= r.ip_address %></div><% } %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

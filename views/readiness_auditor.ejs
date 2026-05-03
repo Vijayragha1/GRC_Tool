@@ -1,0 +1,27 @@
+<%- include('partials/header', { title: 'Auditor view', user, ws, active: 'readiness' }) %>
+
+<a href="/workspaces/<%= ws.id %>/readiness" class="link-muted" style="font-size:12px;">← Readiness</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Auditor view</h1>
+    <div class="page-subtitle">For each clause / Annex A control: status, evidence count, risk linkage, last update. Use this to walk an external auditor through the ISMS in one page.</div></div>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th style="width:140px">ID</th><th>Title</th><th>Status</th><th>Applicability</th><th class="num">Evidence</th><th class="num">Risk links</th><th>Last update</th></tr></thead>
+  <tbody>
+    <% items.forEach(i => { %>
+      <tr>
+        <td class="mono meta"><%= i.id %></td>
+        <td><a href="/workspaces/<%= ws.id %>/controls/<%= i.id %>" class="link-muted" style="color:var(--text);"><%= i.title %></a></td>
+        <td><span class="status s-<%= (i.status || 'Not Assessed').toLowerCase().replace(/\s+/g,'-') %>"><%= i.status || 'Not Assessed' %></span></td>
+        <td><span class="status s-<%= i.applicability || 'undecided' %>"><%= i.applicability || 'undecided' %></span></td>
+        <td class="num" style="color:<%= i.evidence_count > 0 ? '#16a34a' : '#b91c1c' %>;font-weight:600;"><%= i.evidence_count %></td>
+        <td class="num"><%= i.risk_links %></td>
+        <td class="meta"><%= i.last_updated || '—' %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

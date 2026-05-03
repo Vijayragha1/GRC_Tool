@@ -1,0 +1,27 @@
+<%- include('partials/header', { title: 'Risk appetite', user, ws, active: 'risks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px;">← Risks</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Risk appetite</h1>
+    <div class="page-subtitle">A formal statement of how much risk this organisation is willing to take. Drives auto-accept thresholds and acceptance approver routing.</div></div>
+</div>
+
+<div class="panel">
+  <form method="POST" action="/workspaces/<%= ws.id %>/risk-appetite" class="panel-pad" style="display:grid;gap:12px;">
+    <div><label class="label">Risk appetite statement</label>
+      <textarea class="textarea" name="statement" rows="5" placeholder="e.g., We maintain a low appetite for risks affecting customer data confidentiality. We accept moderate risk in service availability where mitigation cost exceeds 6 months of revenue impact. We have zero appetite for regulatory non-compliance."><%= appetite.statement || '' %></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div><label class="label">Low band — score ≤</label><input class="input num" type="number" step="0.5" name="appetite_low_max" value="<%= appetite.appetite_low_max %>"></div>
+      <div><label class="label">Medium band — score ≤</label><input class="input num" type="number" step="0.5" name="appetite_med_max" value="<%= appetite.appetite_med_max %>"></div>
+      <div><label class="label">Approver role for acceptances</label><input class="input" name="approver_role" value="<%= appetite.approver_role || '' %>" placeholder="e.g., CISO"></div>
+    </div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:13px;">
+      <input type="checkbox" name="auto_accept_below" <%= appetite.auto_accept_below ? 'checked' : '' %>> Auto-accept risks within the low band (no e-sign required)
+    </label>
+    <div><button class="btn btn-primary">Save appetite</button></div>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

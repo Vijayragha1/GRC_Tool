@@ -1,0 +1,33 @@
+<%- include('partials/header', { title: 'Continuous control monitoring', user, ws, active: 'controls' }) %>
+
+<div class="page-head">
+  <div><h1 class="page-title">Continuous control monitoring</h1>
+    <div class="page-subtitle">Automated checks that keep firing without you needing to remember. Runs on the workspace's own state — no external services.</div></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/ccm/run"><button class="btn btn-primary btn-xs">Run all checks now</button></form>
+</div>
+
+<div class="panel kpi" style="margin-bottom:16px;display:grid;grid-template-columns:repeat(4,1fr);text-align:center;">
+  <div style="padding:18px;"><div class="kpi-num num" style="color:#16a34a;"><%= summary.pass %></div><div class="kpi-label">Pass</div></div>
+  <div style="padding:18px;border-left:1px solid var(--border)"><div class="kpi-num num" style="color:#b91c1c;"><%= summary.fail %></div><div class="kpi-label">Fail</div></div>
+  <div style="padding:18px;border-left:1px solid var(--border)"><div class="kpi-num num" style="color:#ca8a04;"><%= summary.warn %></div><div class="kpi-label">Warn</div></div>
+  <div style="padding:18px;border-left:1px solid var(--border)"><div class="kpi-num num" style="color:var(--text-tertiary);"><%= summary.never %></div><div class="kpi-label">Never run</div></div>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Check</th><th>Control</th><th>Status</th><th>Measurement</th><th>Last run</th><th>Details</th></tr></thead>
+  <tbody>
+    <% results.forEach(r => { %>
+      <% const c = r.status === 'pass' ? '#16a34a' : r.status === 'fail' ? '#b91c1c' : r.status === 'warn' ? '#ca8a04' : '#71717a'; %>
+      <tr>
+        <td><strong><%= r.name %></strong><% if (r.description) { %><div class="meta" style="margin-top:2px;max-width:380px;white-space:normal;"><%= r.description %></div><% } %></td>
+        <td class="mono meta"><%= r.iso_item_id || '—' %></td>
+        <td><span class="tag" style="background:<%= c %>1a;color:<%= c %>;border-color:<%= c %>40;text-transform:uppercase;font-size:10.5px;"><%= r.status || 'never' %></span></td>
+        <td class="meta num"><%= r.measured_value || '—' %></td>
+        <td class="meta"><%= r.ran_at || '—' %></td>
+        <td class="meta" style="max-width:340px;"><%= r.details || '' %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

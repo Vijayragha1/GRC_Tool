@@ -1,0 +1,143 @@
+<%- include('partials/header', { title: risk.title, user, ws, active: 'risks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px;">← All risks</a>
+
+<%
+  const lScale = methodology.likelihood_scale;
+  const iScale = methodology.impact_scale;
+  const bands = methodology.thresholds;
+  const ihColor = inherentBand && bands[inherentBand] ? bands[inherentBand].color : '#71717a';
+  const resColor = residualBand && bands[residualBand] ? bands[residualBand].color : '#71717a';
+%>
+
+<div class="panel" style="margin-top:12px;margin-bottom:16px">
+  <div class="panel-pad" style="border-bottom:1px solid var(--border)">
+    <div class="mono meta" style="margin-bottom:4px;">R-<%= String(risk.id).padStart(3,'0') %><% if (risk.entity_name) { %> · entity: <%= risk.entity_name %><% } %></div>
+    <h1 class="page-title"><%= risk.title %></h1>
+    <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+      <div>
+        <span class="meta">Inherent</span>
+        <span class="tag" style="background:<%= ihColor %>1a;color:<%= ihColor %>;border-color:<%= ihColor %>40;text-transform:uppercase;letter-spacing:0.04em;margin-left:4px;"><%= inherentBand %></span>
+        <span class="meta">L<%= risk.likelihood %> · I<%= risk.impact %></span>
+      </div>
+      <% if (residualBand) { %>
+        <div>
+          <span class="meta">Residual</span>
+          <span class="tag" style="background:<%= resColor %>1a;color:<%= resColor %>;border-color:<%= resColor %>40;text-transform:uppercase;letter-spacing:0.04em;margin-left:4px;"><%= residualBand %></span>
+          <span class="meta">L<%= risk.residual_likelihood %> · I<%= risk.residual_impact %></span>
+        </div>
+      <% } %>
+      <div style="margin-left:auto;"><a href="/workspaces/<%= ws.id %>/risk-methodology" class="link-muted" style="font-size:12px;color:var(--accent);">Methodology: <%= methodology.name %></a></div>
+    </div>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= risk.title %>" required></div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= risk.description || '' %></textarea></div>
+    <div><label class="label">Asset</label>
+      <select class="select" name="asset_id">
+        <option value="">— none —</option>
+        <% assets.forEach(a => { %><option value="<%= a.id %>" <%= risk.asset_id == a.id ? 'selected' : '' %>><%= a.name %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Owner</label><input class="input" name="owner_name" value="<%= risk.owner_name || '' %>"></div>
+    <div><label class="label">Threat</label><input class="input" name="threat" value="<%= risk.threat || '' %>"></div>
+    <div><label class="label">Vulnerability</label><input class="input" name="vulnerability" value="<%= risk.vulnerability || '' %>"></div>
+    <div><label class="label">Likelihood</label>
+      <select class="select" name="likelihood">
+        <% lScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.likelihood===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Impact</label>
+      <select class="select" name="impact">
+        <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.impact===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Treatment</label>
+      <select class="select" name="treatment">
+        <% ['modify','retain','avoid','share'].forEach(t => { %><option value="<%= t %>" <%= risk.treatment === t ? 'selected' : '' %>><%= t %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Status</label>
+      <select class="select" name="status">
+        <% ['open','treated','accepted','closed'].forEach(s => { %><option value="<%= s %>" <%= risk.status === s ? 'selected' : '' %>><%= s %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Residual likelihood</label>
+      <select class="select" name="residual_likelihood"><option value="">—</option>
+        <% lScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.residual_likelihood===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Residual impact</label>
+      <select class="select" name="residual_impact"><option value="">—</option>
+        <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.residual_impact===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
+      </select>
+    </div>
+    <div style="grid-column:1/-1;display:flex;gap:6px;">
+      <button class="btn btn-primary">Save</button>
+      <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="btn btn-secondary">Treatment plan →</a>
+      <a href="/workspaces/<%= ws.id %>/kris" class="btn btn-secondary">KRIs →</a>
+      <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/delete" onsubmit="return confirm('Delete this risk?')" style="display:inline">
+        <button class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </form>
+</div>
+
+<% if (risk.likelihood && risk.impact && risk.residual_likelihood && risk.residual_impact) { %>
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Inherent → residual delta</h2></div>
+  <div class="panel-pad">
+    <% const inherentScore = risk.likelihood * risk.impact;
+       const residualScore = risk.residual_likelihood * risk.residual_impact;
+       const reduction = inherentScore - residualScore;
+       const pctReduction = inherentScore ? Math.round(reduction / inherentScore * 100) : 0; %>
+    <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:14px;align-items:center;">
+      <div style="text-align:center;padding:14px;background:<%= ihColor %>1a;border-radius:8px;">
+        <div class="meta">Inherent</div>
+        <div style="font-size:28px;font-weight:600;color:<%= ihColor %>;"><%= inherentScore %></div>
+        <div class="meta">L<%= risk.likelihood %> · I<%= risk.impact %></div>
+      </div>
+      <div style="font-size:24px;color:var(--text-tertiary);">→</div>
+      <div style="text-align:center;padding:14px;background:#eef2ff;border-radius:8px;border:1px dashed var(--accent);">
+        <div class="meta">Controls applied</div>
+        <div style="font-size:18px;font-weight:600;color:var(--accent);"><%= reduction > 0 ? '−' : '+' %><%= Math.abs(reduction) %></div>
+        <div class="meta"><%= pctReduction %>% reduction</div>
+      </div>
+      <div style="font-size:24px;color:var(--text-tertiary);">→</div>
+      <div style="text-align:center;padding:14px;background:<%= resColor %>1a;border-radius:8px;">
+        <div class="meta">Residual</div>
+        <div style="font-size:28px;font-weight:600;color:<%= resColor %>;"><%= residualScore %></div>
+        <div class="meta">L<%= risk.residual_likelihood %> · I<%= risk.residual_impact %></div>
+      </div>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<div class="panel">
+  <div class="panel-head"><h2>Linked Annex A controls</h2><span class="meta">Linking auto-includes the control in the SoA</span></div>
+  <% if (linked.length) { %>
+    <div class="divide-row">
+      <% linked.forEach(c => { %>
+        <div style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+          <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted" style="color:var(--text);"><%= c.title %></a>
+          <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/unlink">
+            <input type="hidden" name="iso_item_id" value="<%= c.id %>">
+            <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Unlink</button>
+          </form>
+        </div>
+      <% }) %>
+    </div>
+  <% } else { %>
+    <div class="t-empty">No controls linked yet.</div>
+  <% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/link" class="panel-pad" style="display:flex;gap:6px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+    <select name="iso_item_id" class="select" required>
+      <option value="">— pick a control —</option>
+      <% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %>
+    </select>
+    <button class="btn btn-primary btn-xs" style="white-space:nowrap;">Link</button>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

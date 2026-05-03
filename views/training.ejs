@@ -1,0 +1,78 @@
+<%- include('partials/header', { title: 'Training', user, ws, active: 'training' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Training & awareness</h1>
+    <div class="page-subtitle">Per Clause 7.3 and A.6.3: assign training to personnel, track completion, surface overdue items.</div>
+  </div>
+  <button onclick="document.getElementById('newT').classList.toggle('hidden')" class="btn btn-primary">Assign training</button>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+  <div class="panel kpi"><div class="kpi-num num"><%= summary.total || 0 %></div><div class="kpi-label">Total assignments</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:#15803d"><%= summary.completed || 0 %></div><div class="kpi-label">Completed</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:#a16207"><%= summary.pending || 0 %></div><div class="kpi-label">Pending</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.overdue > 0 ? '#b91c1c' : 'var(--text)' %>"><%= summary.overdue || 0 %></div><div class="kpi-label">Overdue</div></div>
+</div>
+
+<div id="newT" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Assign training</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/training" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div><label class="label">User name</label><input class="input" name="user_name" required></div>
+    <div><label class="label">Role</label><input class="input" name="user_role" placeholder="e.g., Developer, Manager"></div>
+    <div><label class="label">Training</label><input class="input" name="training_name" required placeholder="e.g., ISO 27001 awareness"></div>
+    <div><label class="label">Assigned date</label><input class="input" type="date" name="assigned_date"></div>
+    <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
+    <div></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Assign</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>User</th><th>Training</th><th style="width:120px">Assigned</th>
+      <th style="width:120px">Due</th><th style="width:140px">Status</th><th style="width:120px">Completed</th><th style="width:60px"></th>
+    </tr></thead>
+    <tbody>
+      <% records.forEach(r => { %>
+        <tr>
+          <td>
+            <div style="font-weight:500;font-size:13px;"><%= r.user_name %></div>
+            <% if (r.user_role) { %><div class="meta"><%= r.user_role %></div><% } %>
+          </td>
+          <td><%= r.training_name %></td>
+          <td class="num meta"><%= r.assigned_date || '—' %></td>
+          <td class="num meta" style="color:<%= r.due_date && r.due_date < new Date().toISOString().split('T')[0] && r.status !== 'completed' ? '#b91c1c' : '' %>"><%= r.due_date || '—' %></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/training/<%= r.id %>">
+              <select name="status" onchange="this.form.submit()" class="select" style="font-size:12px;padding:4px 8px;">
+                <% ['assigned','in_progress','completed','expired'].forEach(s => { %>
+                  <option value="<%= s %>" <%= r.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option>
+                <% }) %>
+              </select>
+            </form>
+          </td>
+          <td class="num meta"><%= r.completed_date || '—' %></td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/training/<%= r.id %>/delete" onsubmit="return confirm('Delete?')">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (records.length === 0) { %>
+        <tr><td colspan="7" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></div>
+            <div class="empty-title">Track training and awareness</div>
+            <div class="empty-sub">Clause 7.3 and A.6.3 require records of awareness, education, and training. Assign training and track completion to evidence the program.</div>
+            <button onclick="document.getElementById('newT').classList.toggle('hidden')" class="btn btn-primary">Assign training</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

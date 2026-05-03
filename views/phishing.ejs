@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: 'Phishing simulations', user, ws, active: 'training' }) %>
+
+<a href="/workspaces/<%= ws.id %>/training" class="link-muted" style="font-size:12px;">← Training</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Phishing simulations</h1>
+    <div class="page-subtitle">Track click-through, report-rate, and credential-entry rates per simulation campaign.</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Log a new simulation</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/phishing" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+    <div style="grid-column:1/-1"><label class="label">Name</label><input class="input" name="name" required placeholder="Q3 2026 — fake invoice lure"></div>
+    <div><label class="label">Date</label><input class="input" type="date" name="campaign_date"></div>
+    <div><label class="label">Recipients</label><input class="input num" name="recipients_count" type="number"></div>
+    <div><label class="label">Clicked</label><input class="input num" name="clicked_count" type="number"></div>
+    <div><label class="label">Reported</label><input class="input num" name="reported_count" type="number"></div>
+    <div><label class="label">Credentials entered</label><input class="input num" name="credentials_entered_count" type="number"></div>
+    <div style="grid-column:1/-1"><label class="label">Notes</label><textarea class="textarea" name="notes" rows="2"></textarea></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Record</button></div>
+  </form>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Name</th><th>Date</th><th class="num">Recipients</th><th class="num">Click %</th><th class="num">Report %</th><th class="num">Cred-leak %</th></tr></thead>
+  <tbody>
+    <% if (!sims.length) { %><tr><td colspan="6" class="t-empty">No simulations yet.</td></tr><% } %>
+    <% sims.forEach(s => {
+         const click = s.recipients_count ? Math.round((s.clicked_count || 0) / s.recipients_count * 100) : 0;
+         const rep = s.recipients_count ? Math.round((s.reported_count || 0) / s.recipients_count * 100) : 0;
+         const leak = s.recipients_count ? Math.round((s.credentials_entered_count || 0) / s.recipients_count * 100) : 0;
+    %>
+      <tr>
+        <td><strong><%= s.name %></strong><% if (s.notes) { %><div class="meta"><%= s.notes %></div><% } %></td>
+        <td class="meta num"><%= s.campaign_date || '—' %></td>
+        <td class="num"><%= s.recipients_count || '—' %></td>
+        <td class="num"><span style="color:<%= click > 30 ? '#b91c1c' : click > 15 ? '#ca8a04' : '#16a34a' %>;font-weight:600;"><%= click %>%</span></td>
+        <td class="num"><span style="color:<%= rep > 30 ? '#16a34a' : rep > 15 ? '#ca8a04' : '#b91c1c' %>;font-weight:600;"><%= rep %>%</span></td>
+        <td class="num"><span style="color:<%= leak > 5 ? '#b91c1c' : leak > 0 ? '#ca8a04' : '#16a34a' %>;font-weight:600;"><%= leak %>%</span></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

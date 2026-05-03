@@ -1,0 +1,156 @@
+<%- include('partials/header', { title: 'Suppliers', user, ws, active: 'vendors' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Supplier risk management</h1>
+    <div class="page-subtitle">Per A.5.19–A.5.23: tier suppliers by risk, track contractual obligations, attestations, sub-processors, and re-assessments.</div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <select onchange="window.location='?filter='+this.value" class="select" style="width:160px">
+      <option value="active" <%= filter==='active'?'selected':'' %>>Active</option>
+      <option value="all" <%= filter==='all'?'selected':'' %>>All</option>
+      <option value="review" <%= filter==='review'?'selected':'' %>>Review due (30d)</option>
+      <option value="high_risk" <%= filter==='high_risk'?'selected':'' %>>High residual risk</option>
+    </select>
+    <button onclick="document.getElementById('newV').classList.toggle('hidden')" class="btn btn-primary">Add supplier</button>
+  </div>
+</div>
+
+<!-- TPRM dashboard summary -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;">
+  <div class="panel kpi"><div class="kpi-num num"><%= summary.total %></div><div class="kpi-label">Active suppliers</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.tier1 > 0 ? '#b91c1c' : 'var(--text)' %>"><%= summary.tier1 %></div><div class="kpi-label">Critical (tier 1)</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.expiring > 0 ? '#a16207' : 'var(--text)' %>"><%= summary.expiring %></div><div class="kpi-label">Docs expiring (30d)</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.overdueReview > 0 ? '#b91c1c' : 'var(--text)' %>"><%= summary.overdueReview %></div><div class="kpi-label">Reviews overdue</div></div>
+  <div class="panel kpi"><div class="kpi-num num"><%= summary.questionnairesPending %></div><div class="kpi-label">Questionnaires pending</div></div>
+</div>
+
+<div id="newV" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New supplier</h2><span class="meta">Inherent risk auto-computed from inputs below</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div style="grid-column:1/3"><label class="label">Name</label><input class="input" name="name" required></div>
+    <div><label class="label">Service provided</label><input class="input" name="service_provided" placeholder="e.g., Cloud hosting"></div>
+    <div><label class="label">Business criticality</label>
+      <select class="select" name="business_criticality">
+        <option value="low">Low</option><option value="medium" selected>Medium</option>
+        <option value="high">High</option><option value="critical">Critical</option>
+      </select>
+    </div>
+    <div><label class="label">Data access</label>
+      <select class="select" name="data_access">
+        <option value="none">None</option><option value="public">Public</option>
+        <option value="internal">Internal</option><option value="confidential">Confidential</option>
+        <option value="restricted">Restricted / PII</option>
+      </select>
+    </div>
+    <div><label class="label">Data volume</label>
+      <select class="select" name="data_volume">
+        <option value="none">None</option><option value="low" selected>Low</option>
+        <option value="medium">Medium</option><option value="high">High</option>
+      </select>
+    </div>
+    <div><label class="label">Dependency</label>
+      <select class="select" name="dependency_type">
+        <option value="multi_source" selected>Multi-source</option>
+        <option value="alternative">Alternative available</option>
+        <option value="single_source">Single source</option>
+      </select>
+    </div>
+    <div><label class="label">Location / region</label><input class="input" name="location" placeholder="e.g., US, EU"></div>
+    <div><label class="label">Regulatory exposure</label><input class="input" name="regulatory_exposure" placeholder="e.g., GDPR, HIPAA"></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Add supplier</button></div>
+  </form>
+</div>
+
+<% if (renewals && renewals.length) { %>
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Upcoming renewals (next 90 days)</h2></div>
+  <table class="t">
+    <thead><tr><th>Supplier</th><th>Contract end</th><th>Notice (days)</th><th>Auto-renew</th></tr></thead>
+    <tbody>
+      <% renewals.forEach(r => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= r.id %>'">
+          <td><strong><%= r.name %></strong></td>
+          <td class="num meta"><%= r.contract_end %></td>
+          <td class="meta"><%= r.renewal_notice_days || '—' %></td>
+          <td><span class="tag <%= r.auto_renew ? 'tag-warn' : 'tag-neutral' %>"><%= r.auto_renew ? 'auto-renew' : 'manual' %></span></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (concentration && (concentration.by_region.length || concentration.by_parent.length || concentration.single_source > 0)) { %>
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Concentration risk</h2><span class="meta">Where multiple high-risk dependencies cluster.</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+    <div>
+      <div class="sec-label">By region (high+ risk)</div>
+      <% concentration.by_region.forEach(r => { %>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border);font-size:12.5px;"><span><%= r.location %></span><strong><%= r.c %></strong></div>
+      <% }) %>
+      <% if (!concentration.by_region.length) { %><div class="meta">No clustering by region.</div><% } %>
+    </div>
+    <div>
+      <div class="sec-label">By parent company</div>
+      <% concentration.by_parent.forEach(r => { %>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border);font-size:12.5px;"><span><%= r.parent_company %></span><strong><%= r.c %></strong></div>
+      <% }) %>
+      <% if (!concentration.by_parent.length) { %><div class="meta">No multi-supplier parents detected.</div><% } %>
+    </div>
+    <div>
+      <div class="sec-label">Single-source dependencies</div>
+      <div style="font-size:32px;font-weight:600;color:<%= concentration.single_source > 3 ? '#b91c1c' : concentration.single_source > 0 ? '#ca8a04' : 'var(--text)' %>;line-height:1;"><%= concentration.single_source %></div>
+      <div class="meta">No alternative provider available</div>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Supplier</th>
+      <th style="width:100px">Tier</th>
+      <th style="width:100px">Inherent</th>
+      <th style="width:100px">Residual</th>
+      <th style="width:120px">Stage</th>
+      <th style="width:100px">Docs</th>
+      <th style="width:80px">Q</th>
+      <th style="width:130px">Next review</th>
+    </tr></thead>
+    <tbody>
+      <% vendors.forEach(v => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= v.id %>'">
+          <td>
+            <div style="font-weight:500"><%= v.name %></div>
+            <% if (v.service_provided) { %><div class="meta"><%= v.service_provided %></div><% } %>
+          </td>
+          <td><span class="tag <%= v.tier === 'tier_1' ? 'tag-danger' : v.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (v.tier || 'tier_2').replace('_',' ') %></span></td>
+          <td><span class="tag <%= (v.inherent_risk_score||0) >= 18 ? 'tag-danger' : (v.inherent_risk_score||0) >= 10 ? 'tag-warn' : 'tag-success' %> num"><%= v.inherent_risk_score || '—' %></span></td>
+          <td><span class="tag <%= (v.residual_risk_score||0) >= 18 ? 'tag-danger' : (v.residual_risk_score||0) >= 10 ? 'tag-warn' : 'tag-success' %> num"><%= v.residual_risk_score || '—' %></span></td>
+          <td><span class="status s-<%= v.lifecycle_stage === 'terminated' ? 'closed' : v.lifecycle_stage === 'approved' || v.lifecycle_stage === 'active' ? 'in_progress' : 'todo' %>"><%= (v.lifecycle_stage || 'active').replace(/_/g,' ') %></span></td>
+          <td class="meta">
+            <%= v.doc_count %>
+            <% if (v.expired_docs > 0) { %><span style="color:#b91c1c;font-weight:500;"> · <%= v.expired_docs %> exp</span><% } else if (v.expiring_docs > 0) { %><span style="color:#a16207;font-weight:500;"> · <%= v.expiring_docs %> ⏱</span><% } %>
+          </td>
+          <td class="meta"><%= v.q_count %><% if (v.best_q_score !== null) { %> · <span style="color:<%= v.best_q_score >= 80 ? '#15803d' : v.best_q_score >= 60 ? '#a16207' : '#b91c1c' %>;font-weight:500;"><%= v.best_q_score %>%</span><% } %></td>
+          <td class="num meta" style="color:<%= v.next_review_date && v.next_review_date < new Date().toISOString().split('T')[0] ? '#b91c1c' : '' %>"><%= v.next_review_date || '—' %></td>
+        </tr>
+      <% }) %>
+      <% if (vendors.length === 0) { %>
+        <tr><td colspan="8" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+            <div class="empty-title">Build the supplier register</div>
+            <div class="empty-sub">A.5.19–A.5.23 require managing information security risks across supplier relationships, including periodic review and sub-processor oversight.</div>
+            <button onclick="document.getElementById('newV').classList.toggle('hidden')" class="btn btn-primary">Add supplier</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

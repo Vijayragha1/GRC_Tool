@@ -1,0 +1,32 @@
+<%- include('partials/header', { title: 'Permission: ' + perm, user, ws, active: 'access' }) %>
+
+<a href="/workspaces/<%= ws.id %>/access" class="link-muted" style="font-size:12px;">← Access</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Who has <span class="mono"><%= perm %></span>?</h1>
+    <div class="page-subtitle"><%= allPerms[perm] %></div>
+  </div>
+  <form method="GET" style="display:flex;gap:6px;">
+    <select class="select" onchange="window.location='/workspaces/<%= ws.id %>/access/who-has/'+this.value;">
+      <% Object.keys(allPerms).forEach(p => { %><option value="<%= p %>" <%= p === perm ? 'selected' : '' %>><%= p %></option><% }) %>
+    </select>
+  </form>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Role</th><th>Has permission?</th></tr></thead>
+  <tbody>
+    <% results.forEach(r => { %>
+      <tr>
+        <td><strong><%= r.name %></strong></td>
+        <td class="meta"><%= r.email %></td>
+        <td><span class="tag <%= r.user_type === 'firm' ? 'tag-info' : 'tag-neutral' %>"><%= r.user_type %></span><% if (r.firm_role === 'owner') { %> <span class="tag tag-accent">owner</span><% } %></td>
+        <td class="meta"><%= r.member_role || r.firm_role || '—' %></td>
+        <td><span class="tag <%= r.has ? 'tag-success' : 'tag-neutral' %>"><%= r.has ? 'YES' : 'no' %></span></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

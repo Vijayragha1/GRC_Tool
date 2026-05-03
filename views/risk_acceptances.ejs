@@ -1,0 +1,50 @@
+<%- include('partials/header', { title: 'Risk acceptances — ' + risk.title, user, ws, active: 'risks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="link-muted" style="font-size:12px;">← Back to risk</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Acceptances — <%= risk.title %></h1>
+    <div class="page-subtitle">Tamper-evident attestations that this residual risk has been formally accepted.</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Record new acceptance</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/accept" class="panel-pad" style="display:grid;gap:10px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div><label class="label">Accepter (full name)</label><input class="input" name="accepter_name" required></div>
+      <div><label class="label">Role</label><input class="input" name="accepter_role" placeholder="e.g., CISO"></div>
+    </div>
+    <div><label class="label">Rationale</label><textarea class="textarea" name="rationale" rows="3" required placeholder="Why is this residual risk acceptable? What compensating controls / mitigating circumstances apply?"></textarea></div>
+    <div><label class="label">Acceptance expires (re-review date)</label><input class="input" type="date" name="expires_at"></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;">
+      <input type="checkbox" name="attestation" value="1" required>
+      <span>I attest under my own authority that this residual risk has been considered and is hereby formally accepted. My identity and signing IP / timestamp are recorded as a legally binding electronic signature against this risk.</span>
+    </label>
+    <div><button class="btn btn-primary">Sign acceptance</button></div>
+  </form>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Accepter</th><th>Role</th><th>Rationale</th><th>Residual</th><th>Expires</th><th>Signed at</th><th>IP</th><th>Signature</th><th></th></tr></thead>
+  <tbody>
+    <% if (!list.length) { %><tr><td colspan="9" class="t-empty">No acceptances on file.</td></tr><% } %>
+    <% list.forEach(a => { %>
+      <tr style="<%= a.revoked_at ? 'opacity:0.6;' : '' %>">
+        <td><strong><%= a.accepter_name %></strong></td>
+        <td class="meta"><%= a.accepter_role || '—' %></td>
+        <td class="meta" style="max-width:300px"><%= a.rationale %></td>
+        <td class="num"><%= a.residual_score || '—' %></td>
+        <td class="meta num"><%= a.expires_at || 'no expiry' %></td>
+        <td class="meta"><%= a.signed_at %></td>
+        <td class="mono meta"><%= a.ip_address || '—' %></td>
+        <td class="mono meta" style="font-size:10.5px;"><%= a.signature.slice(0,16) %>…</td>
+        <td>
+          <% if (a.revoked_at) { %><span class="tag tag-danger">revoked</span>
+          <% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= a.id %>/revoke"><button class="btn btn-danger btn-xs">Revoke</button></form><% } %>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

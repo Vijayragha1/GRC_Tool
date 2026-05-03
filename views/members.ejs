@@ -1,0 +1,66 @@
+<%- include('partials/header', { title: 'Members', user, ws, active: 'members' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Workspace members</h1>
+    <div class="page-subtitle">Consultants and client users with access to this engagement.</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;overflow:hidden">
+  <div class="panel-head"><h2>Current members</h2></div>
+  <table class="t">
+    <thead><tr><th>Name</th><th>Email</th><th style="width:80px">Type</th><th style="width:140px">Role</th><th style="width:80px"></th></tr></thead>
+    <tbody>
+      <% members.forEach(m => { %>
+        <tr>
+          <td style="font-weight:500"><%= m.name %></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= m.email %></td>
+          <td><span class="tag <%= m.user_type === 'firm' ? 'tag-info' : 'tag-success' %>"><%= m.user_type %></span></td>
+          <td><span class="tag tag-neutral"><%= m.role.replace(/_/g, ' ') %></span></td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/members/<%= m.id %>/remove" onsubmit="return confirm('Remove?')">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Remove</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<% if (user.user_type === 'firm') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Add firm consultant</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/members/firm" class="panel-pad" style="display:flex;gap:8px;">
+    <select name="user_id" class="select" required>
+      <option value="">— pick a consultant —</option>
+      <% firmConsultants.forEach(c => { %><option value="<%= c.id %>"><%= c.name %> (<%= c.email %>)</option><% }) %>
+    </select>
+    <select name="role" class="select" style="width:200px">
+      <option value="consultant">Consultant</option>
+      <option value="lead_consultant">Lead consultant</option>
+    </select>
+    <button class="btn btn-primary" style="white-space:nowrap;">Add</button>
+  </form>
+</div>
+<% } %>
+
+<div class="panel">
+  <div class="panel-head"><h2>Invite a client user</h2><span class="meta">Creates an account scoped to this workspace</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/members/client" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div><label class="label">Name</label><input class="input" name="name" required></div>
+    <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
+    <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>
+    <div><label class="label">Role</label>
+      <select class="select" name="role">
+        <option value="client_admin">Client admin (CISO / ISMS owner)</option>
+        <option value="contributor" selected>Contributor</option>
+        <option value="reviewer">Reviewer (read-only)</option>
+      </select>
+    </div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Invite</button></div>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: 'Management review', user, ws, active: 'mrms' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Management review</h1>
+    <div class="page-subtitle">Top management ISMS review per Clause 9.3. Required at planned intervals.</div>
+  </div>
+  <button onclick="document.getElementById('newMrm').classList.toggle('hidden')" class="btn btn-primary">Schedule MRM</button>
+</div>
+
+<div id="newMrm" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New review</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/mrms" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date"></div>
+    <div><label class="label">Attendees</label><input class="input" name="attendees" placeholder="CEO, CISO, CTO"></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th style="width:140px">Date</th><th>Attendees</th><th style="width:130px">Status</th></tr></thead>
+    <tbody>
+      <% mrms.forEach(m => { %>
+        <tr>
+          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= m.meeting_date || 'unscheduled' %></a></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= m.attendees || '—' %></td>
+          <td><span class="status s-<%= m.status === 'complete' ? 'done' : 'todo' %>"><%= m.status %></span></td>
+        </tr>
+      <% }) %>
+      <% if (mrms.length === 0) { %>
+        <tr><td colspan="3" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+            <div class="empty-title">Schedule the first management review</div>
+            <div class="empty-sub">Clause 9.3 requires top management to review the ISMS at planned intervals. The review record auto-pulls live workspace state for required inputs.</div>
+            <button onclick="document.getElementById('newMrm').classList.toggle('hidden')" class="btn btn-primary">Schedule MRM</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

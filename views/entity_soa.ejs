@@ -1,0 +1,49 @@
+<%- include('partials/header', { title: entity.name + ' — SoA', user, ws, active: 'entities' }) %>
+
+<a href="/workspaces/<%= ws.id %>/entities" class="link-muted" style="font-size:12px;">← Entities</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= entity.name %> — SoA overrides</h1>
+    <div class="page-subtitle">A control may differ between entities. Empty entity column = inherit from workspace SoA.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/entities/<%= entity.id %>/readiness" class="btn btn-secondary btn-xs">Entity readiness</a>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Control</th><th>Title</th><th style="width:140px">Workspace</th><th style="width:140px">Entity override</th><th style="width:200px">Justification</th><th></th></tr></thead>
+  <tbody>
+    <% rows.forEach(r => { %>
+      <tr>
+        <td class="mono meta"><%= r.id.replace('annex-','').toUpperCase() %></td>
+        <td><%= r.title %></td>
+        <td><span class="status s-<%= r.ws_applicability %>"><%= r.ws_applicability %></span></td>
+        <td>
+          <% if (r.e_applicability) { %>
+            <span class="status s-<%= r.e_applicability %>"><%= r.e_applicability %></span> <span class="tag tag-info">override</span>
+          <% } else { %>
+            <span class="meta">inherit</span>
+          <% } %>
+        </td>
+        <td class="meta" style="max-width:200px"><%= (r.e_inc || r.e_exc || r.e_notes || '').slice(0,120) %></td>
+        <td>
+          <details>
+            <summary class="btn btn-secondary btn-xs">Edit</summary>
+            <form method="POST" action="/workspaces/<%= ws.id %>/entities/<%= entity.id %>/soa/<%= r.id %>" style="margin-top:8px;display:grid;gap:6px;width:280px;">
+              <select class="select" name="applicability"><option value="">— inherit —</option><% ['undecided','included','excluded'].forEach(a => { %><option value="<%= a %>" <%= r.e_applicability === a ? 'selected' : '' %>><%= a %></option><% }) %></select>
+              <select class="select" name="status"><option value="">— inherit —</option><% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %><option value="<%= s %>" <%= r.e_status === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+              <textarea class="textarea" name="inclusion_justification" rows="2" placeholder="Inclusion justification (entity-specific)"><%= r.e_inc || '' %></textarea>
+              <textarea class="textarea" name="exclusion_justification" rows="2" placeholder="Exclusion justification (entity-specific)"><%= r.e_exc || '' %></textarea>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-primary btn-xs">Save override</button>
+                <button name="clear" value="1" class="btn btn-ghost btn-xs">Inherit (clear)</button>
+              </div>
+            </form>
+          </details>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

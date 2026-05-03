@@ -1,0 +1,7 @@
+node_modules
+iso27001.db*
+uploads
+data
+.git
+*.log
+.DS_Store

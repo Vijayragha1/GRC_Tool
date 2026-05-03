@@ -1,0 +1,44 @@
+<%- include('partials/header', { title: doc.name + ' — diff', user, ws, active: 'documents' }) %>
+
+<a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/versions" class="link-muted" style="font-size:12px;">← Versions</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Compare versions</h1>
+    <div class="page-subtitle"><%= doc.name %></div>
+  </div>
+  <form method="GET" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/diff" style="display:flex;gap:6px;align-items:center;">
+    <select name="a" class="select" style="width:auto"><% all.forEach(v => { %><option value="<%= v.id %>" <%= va && va.id === v.id ? 'selected' : '' %>>v<%= v.version %> · <%= v.status %></option><% }) %></select>
+    <span class="meta">vs</span>
+    <select name="b" class="select" style="width:auto"><% all.forEach(v => { %><option value="<%= v.id %>" <%= vb && vb.id === v.id ? 'selected' : '' %>>v<%= v.version %> · <%= v.status %></option><% }) %></select>
+    <button class="btn btn-secondary btn-xs">Compare</button>
+  </form>
+</div>
+
+<% if (!diff) { %>
+  <div class="panel"><div class="panel-pad meta">Pick two versions above to compare.</div></div>
+<% } else { %>
+  <div class="panel">
+    <div class="panel-head">
+      <h2>v<%= va.version %> → v<%= vb.version %></h2>
+      <span class="meta">
+        <%= diff.filter(d => d.k === 'add').length %> additions ·
+        <%= diff.filter(d => d.k === 'del').length %> deletions ·
+        <%= diff.filter(d => d.k === 'eq').length %> unchanged
+      </span>
+    </div>
+    <div style="font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.6;padding:8px 0;background:var(--bg);">
+      <% diff.forEach(d => { %>
+        <% if (d.k === 'eq') { %>
+          <div style="padding:1px 16px;color:var(--text-secondary);"><span style="display:inline-block;width:14px;color:var(--text-tertiary);"> </span><%= escapeHtml(d.a) %></div>
+        <% } else if (d.k === 'add') { %>
+          <div style="padding:1px 16px;background:rgba(22,163,74,0.08);color:#15803d;"><span style="display:inline-block;width:14px;font-weight:600;">+</span><%= escapeHtml(d.b) %></div>
+        <% } else { %>
+          <div style="padding:1px 16px;background:rgba(220,38,38,0.06);color:#b91c1c;text-decoration:line-through;"><span style="display:inline-block;width:14px;font-weight:600;">−</span><%= escapeHtml(d.a) %></div>
+        <% } %>
+      <% }) %>
+    </div>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

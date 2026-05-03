@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= typeof title !== 'undefined' ? title : 'ISO 27001' %> · ISMS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-subtle: #fafafa;
+    --bg-muted: #f4f4f5;
+    --bg-deep: #f7f7f8;
+    --border: #ececef;
+    --border-strong: #d6d6db;
+    --text: #0a0a0a;
+    --text-secondary: #51525c;
+    --text-tertiary: #9c9ca5;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --accent-deep: #3730a3;
+    --ink: #0f0f12;
+    --shadow-sm: 0 1px 2px rgba(15,15,18,0.04);
+    --shadow-md: 0 1px 3px rgba(15,15,18,0.05), 0 1px 2px rgba(15,15,18,0.03);
+    --shadow-lg: 0 4px 12px rgba(15,15,18,0.06), 0 1px 3px rgba(15,15,18,0.04);
+    --shadow-xl: 0 20px 50px rgba(15,15,18,0.18), 0 4px 12px rgba(15,15,18,0.08);
+    --radius: 8px;
+    --radius-sm: 6px;
+  }
+  [data-theme="dark"] {
+    --bg: #0f0f12;
+    --bg-subtle: #18181b;
+    --bg-muted: #27272a;
+    --bg-deep: #09090b;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --text: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --text-tertiary: #71717a;
+    --accent: #818cf8;
+    --accent-soft: rgba(129,140,248,0.12);
+    --accent-deep: #c7d2fe;
+    --ink: #fafafa;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 1px 3px rgba(0,0,0,0.4);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow-xl: 0 20px 50px rgba(0,0,0,0.6);
+  }
+  html { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  @supports (font-variation-settings: normal) { html { font-family: 'Inter var', system-ui, sans-serif; } }
+  body { background: var(--bg-deep); color: var(--text); font-size: 14px; line-height: 1.5; font-feature-settings: "ss01","cv11"; transition: background 0.15s, color 0.15s; }
+  *, *::before, *::after { box-sizing: border-box; }
+  .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-feature-settings: "ss01"; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Layout */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 248px; flex-shrink: 0;
+    background: linear-gradient(180deg, #0f0f12 0%, #18181b 100%);
+    color: #d4d4d8;
+    display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+    transition: width 0.18s cubic-bezier(.4,0,.2,1), transform 0.18s cubic-bezier(.4,0,.2,1);
+  }
+  .sidebar-section { padding: 14px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); transition: padding 0.18s; }
+  .sidebar-nav { flex: 1; padding: 10px 8px; overflow-y: auto; overflow-x: hidden; }
+  .sidebar-foot { padding: 14px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 8px; }
+  .sidebar-nav::-webkit-scrollbar { width: 5px; }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .nav-group-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.4); padding: 14px 10px 6px; transition: opacity 0.12s; white-space: nowrap; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px;
+    font-size: 13px; color: rgba(255,255,255,0.65); text-decoration: none; line-height: 1.4;
+    transition: all 0.12s ease; position: relative; white-space: nowrap; overflow: hidden;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+  .nav-item.active { background: rgba(255,255,255,0.08); color: #fff; font-weight: 500; }
+  .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 2px; background: var(--accent); border-radius: 0 2px 2px 0; }
+  .nav-item .ico { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; }
+  .nav-item.active .ico { opacity: 1; }
+  .nav-item-text { transition: opacity 0.12s; }
+
+  .brand-mark { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%); display: inline-flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 11px; box-shadow: 0 1px 0 rgba(255,255,255,0.1) inset, 0 1px 3px rgba(0,0,0,0.2); flex-shrink: 0; }
+
+  /* Sidebar collapsed */
+  .app.sidebar-collapsed .sidebar { width: 60px; }
+  .app.sidebar-collapsed .sidebar-section > a > div,
+  .app.sidebar-collapsed .nav-group-label,
+  .app.sidebar-collapsed .nav-item-text,
+  .app.sidebar-collapsed .ws-context > *,
+  .app.sidebar-collapsed .sidebar-foot > div:not(.avatar) { display: none; }
+  .app.sidebar-collapsed .sidebar-section { padding: 14px 8px; }
+  .app.sidebar-collapsed .sidebar-foot { justify-content: center; padding: 14px 8px; }
+  .app.sidebar-collapsed .nav-item { justify-content: center; padding: 8px; }
+
+  /* Mobile drawer */
+  .menu-toggle { display: none; }
+  @media (max-width: 900px) {
+    .sidebar { position: fixed; z-index: 60; transform: translateX(-100%); box-shadow: var(--shadow-xl); }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; }
+    .sidebar-backdrop.open { display: block; }
+    .menu-toggle { display: inline-flex; }
+  }
+
+  .main { flex: 1; min-width: 0; background: var(--bg-deep); }
+  .main-inner { max-width: 1280px; margin: 0 auto; padding: 28px 36px 96px; }
+  @media (max-width: 600px) { .main-inner { padding: 20px 16px 60px; } }
+
+  .topbar { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .topbar-spacer { flex: 1; }
+  .palette-trigger {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px 6px 12px;
+    background: var(--bg); border: 1px solid var(--border-strong); border-radius: 7px;
+    font-size: 12.5px; color: var(--text-tertiary); cursor: pointer; transition: all 0.12s;
+    box-shadow: var(--shadow-sm); font-family: inherit; min-width: 220px;
+  }
+  .palette-trigger:hover { border-color: var(--text-tertiary); color: var(--text-secondary); }
+  .palette-trigger .kbd { margin-left: auto; padding: 1px 5px; font-size: 10.5px; background: var(--bg-muted); border: 1px solid var(--border); border-radius: 3px; color: var(--text-tertiary); font-family: ui-monospace, monospace; }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border-strong); color: var(--text-secondary); cursor: pointer; transition: all 0.12s; box-shadow: var(--shadow-sm); }
+  .icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
+
+  .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  .page-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink); }
+  .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 6px; max-width: 720px; }
+
+  /* Surfaces */
+  .panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+  .panel-pad { padding: 20px; }
+  .panel-tight { padding: 14px 18px; }
+  .panel-head { padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .panel-head h2, .panel-head h3 { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; color: var(--ink); }
+  .divide-row > * + * { border-top: 1px solid var(--border); }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; line-height: 1.2; transition: all 0.12s; cursor: pointer; border: 1px solid transparent; white-space: nowrap; user-select: none; font-family: inherit; }
+  .btn-primary { background: var(--ink); color: var(--bg); border-color: var(--ink); box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, var(--shadow-sm); }
+  [data-theme="dark"] .btn-primary { background: var(--bg); color: var(--ink); border-color: var(--bg); }
+  .btn-primary:hover { transform: translateY(-0.5px); box-shadow: var(--shadow-md); }
+  .btn-secondary { background: var(--bg); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .btn-secondary:hover { background: var(--bg-subtle); border-color: var(--text-tertiary); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); }
+  .btn-ghost:hover { background: var(--bg-muted); color: var(--text); }
+  .btn-danger { background: var(--bg); color: #b91c1c; border-color: #fecaca; box-shadow: var(--shadow-sm); }
+  [data-theme="dark"] .btn-danger { background: rgba(220,38,38,0.1); color: #fca5a5; border-color: rgba(220,38,38,0.3); }
+  .btn-danger:hover { background: #fef2f2; }
+  [data-theme="dark"] .btn-danger:hover { background: rgba(220,38,38,0.2); }
+  .btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-accent:hover { background: var(--accent-deep); }
+  .btn-xs { padding: 4px 10px; font-size: 12px; }
+
+  .link { color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border-strong); transition: border-color 0.12s; }
+  .link:hover { border-bottom-color: var(--text); }
+  .link-muted { color: var(--text-secondary); text-decoration: none; transition: color 0.12s; }
+  .link-muted:hover { color: var(--text); }
+
+  /* Inputs */
+  .input, .select, .textarea {
+    width: 100%; padding: 7px 11px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    font-size: 13px; background: var(--bg); color: var(--text); font-family: inherit;
+    transition: all 0.12s; box-shadow: var(--shadow-sm);
+  }
+  .input:hover, .select:hover, .textarea:hover { border-color: var(--text-tertiary); }
+  .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .input::placeholder, .textarea::placeholder { color: var(--text-tertiary); }
+  .input:disabled { background: var(--bg-muted); color: var(--text-tertiary); cursor: not-allowed; }
+  .label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 5px; letter-spacing: -0.005em; }
+
+  select.select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2351525c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center; background-size: 10px 6px;
+    cursor: pointer;
+  }
+  [data-theme="dark"] select.select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  select.select::-ms-expand { display: none; }
+  select.select option { padding: 4px; background: var(--bg); color: var(--text); }
+  select.select optgroup { font-weight: 600; color: var(--text); }
+
+  input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 15px; height: 15px; border: 1.5px solid var(--border-strong); border-radius: 4px;
+    background: var(--bg); cursor: pointer; position: relative; vertical-align: -2px;
+    transition: all 0.12s; flex-shrink: 0;
+  }
+  input[type="checkbox"]:hover { border-color: var(--text-secondary); }
+  input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+  input[type="checkbox"]:checked::after {
+    content: ''; position: absolute; top: 1px; left: 4px; width: 4px; height: 8px;
+    border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  }
+  input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  input[type="file"] { font-size: 12px; color: var(--text-secondary); }
+  input[type="file"]::file-selector-button { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; margin-right: 10px; transition: all 0.12s; font-family: inherit; }
+  input[type="file"]::file-selector-button:hover { background: var(--bg-subtle); border-color: var(--text-tertiary); }
+
+  /* Status */
+  .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  .status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .s-implemented { color: #16a34a; } .s-partial, .s-partially-implemented { color: #ca8a04; }
+  .s-progress, .s-work-in-progress, .s-in_progress { color: #2563eb; }
+  .s-not-impl, .s-not-implemented { color: #dc2626; } .s-na, .s-not-applicable { color: #71717a; }
+  .s-not-assessed { color: #a1a1aa; } .s-included { color: #16a34a; } .s-excluded { color: #dc2626; }
+  .s-undecided { color: #a1a1aa; } .s-todo { color: #71717a; } .s-in_review { color: #ca8a04; }
+  .s-done, .s-closed, .s-verified { color: #16a34a; } .s-blocked { color: #dc2626; }
+  .s-open { color: #dc2626; } .s-treated { color: #2563eb; } .s-accepted { color: #ca8a04; }
+  .s-major { color: #dc2626; } .s-minor { color: #ca8a04; } .s-observation { color: #71717a; }
+
+  /* Tags */
+  .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; line-height: 1.6; letter-spacing: 0.005em; border: 1px solid transparent; }
+  .tag-neutral { background: var(--bg-muted); color: var(--text-secondary); border-color: var(--border); }
+  .tag-success { background: rgba(22,163,74,0.08); color: #15803d; border-color: rgba(22,163,74,0.25); }
+  .tag-warn { background: rgba(202,138,4,0.08); color: #b45309; border-color: rgba(202,138,4,0.25); }
+  .tag-danger { background: rgba(220,38,38,0.08); color: #b91c1c; border-color: rgba(220,38,38,0.25); }
+  .tag-info { background: var(--accent-soft); color: var(--accent-deep); border-color: rgba(79,70,229,0.25); }
+  .tag-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Tables */
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t thead th { text-align: left; padding: 9px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+  table.t tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.t tbody tr:last-child td { border-bottom: none; }
+  table.t tbody tr { transition: background 0.08s; }
+  table.t tbody tr:hover { background: var(--bg-subtle); }
+  .t-empty { padding: 48px 16px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+
+  /* Empty state */
+  .empty-state { padding: 56px 24px; text-align: center; }
+  .empty-icon { width: 44px; height: 44px; margin: 0 auto 14px; border-radius: 10px; background: var(--bg-muted); display: inline-flex; align-items: center; justify-content: center; color: var(--text-tertiary); }
+  .empty-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .empty-sub { font-size: 13px; color: var(--text-secondary); max-width: 380px; margin: 0 auto 16px; line-height: 1.5; }
+
+  /* KPI tile */
+  .kpi { padding: 18px 20px; position: relative; overflow: hidden; transition: all 0.15s; }
+  a.kpi:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: var(--text-tertiary); }
+  .kpi-num { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kpi-label { font-size: 12px; color: var(--text-secondary); margin-top: 6px; font-weight: 500; }
+  .kpi-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
+  .kpi-accent::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--accent); }
+
+  /* Misc */
+  details > summary { cursor: pointer; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .grid-list { display: grid; gap: 8px; }
+  .meta { font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+  .sec-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); margin-bottom: 8px; }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 6px; font-size: 13px; color: var(--text); }
+  .callout-title { font-weight: 600; color: var(--accent-deep); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+
+  /* Markdown */
+  .markdown h1 { font-size: 22px; font-weight: 600; margin: 18px 0 10px; letter-spacing: -0.01em; color: var(--ink); }
+  .markdown h2 { font-size: 17px; font-weight: 600; margin: 16px 0 8px; color: var(--ink); }
+  .markdown h3 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: var(--ink); }
+  .markdown p { margin: 8px 0; color: var(--text); }
+  .markdown ul { list-style: disc; padding-left: 22px; margin: 8px 0; }
+  .markdown li { margin: 3px 0; }
+  .markdown table { border-collapse: collapse; margin: 10px 0; font-size: 12px; }
+  .markdown th, .markdown td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; }
+  .markdown th { background: var(--bg-subtle); font-weight: 600; }
+  .markdown code { background: var(--bg-muted); padding: 1px 5px; border-radius: 3px; font-size: 12px; font-family: ui-monospace, monospace; }
+  .markdown blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text-secondary); margin: 8px 0; font-style: italic; }
+
+  /* Command palette */
+  .cp-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding-top: 14vh; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+  .cp-backdrop.open { opacity: 1; pointer-events: auto; }
+  .cp-modal { width: 100%; max-width: 600px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-xl); overflow: hidden; transform: translateY(-8px); transition: transform 0.15s; }
+  .cp-backdrop.open .cp-modal { transform: translateY(0); }
+  .cp-search { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .cp-search-icon { color: var(--text-tertiary); flex-shrink: 0; }
+  .cp-search input { flex: 1; border: 0; outline: 0; background: transparent; font-size: 15px; color: var(--text); font-family: inherit; }
+  .cp-search input::placeholder { color: var(--text-tertiary); }
+  .cp-search .kbd { padding: 2px 6px; font-size: 10.5px; background: var(--bg-muted); border: 1px solid var(--border); border-radius: 3px; color: var(--text-tertiary); font-family: ui-monospace, monospace; }
+  .cp-results { max-height: 380px; overflow-y: auto; padding: 6px; }
+  .cp-results::-webkit-scrollbar { width: 8px; }
+  .cp-results::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  .cp-result { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: background 0.08s; text-decoration: none; color: var(--text); }
+  .cp-result.selected, .cp-result:hover { background: var(--bg-muted); }
+  .cp-type { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); width: 70px; flex-shrink: 0; }
+  .cp-label { flex: 1; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cp-sub { font-size: 12px; color: var(--text-tertiary); margin-left: auto; flex-shrink: 0; padding-left: 12px; }
+  .cp-empty { padding: 32px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+  .cp-foot { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-tertiary); background: var(--bg-subtle); }
+  .cp-foot .kbd { padding: 1px 5px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; font-family: ui-monospace, monospace; font-size: 10.5px; }
+
+  /* Toasts */
+  .toast-stack { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200; pointer-events: none; }
+  .toast { background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow-xl); display: flex; align-items: center; gap: 10px; min-width: 240px; pointer-events: auto; animation: toastIn 0.18s cubic-bezier(.4,0,.2,1); }
+  [data-theme="dark"] .toast { background: var(--bg); color: var(--ink); border: 1px solid var(--border); }
+  .toast.success::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
+  .toast.error::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #f87171; }
+  .toast.info::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateX(20px); } }
+  .toast.leaving { animation: toastOut 0.18s forwards; }
+
+  /* Help modal (?) */
+  .help-modal .cp-modal { max-width: 460px; }
+  .help-shortcuts { padding: 16px 18px; }
+  .help-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 13px; color: var(--text); }
+  .help-row .kbd { padding: 2px 7px; background: var(--bg-muted); border: 1px solid var(--border); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--text-secondary); }
+
+  /* Sparkline */
+  .spark { display: inline-block; vertical-align: middle; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+  .main-inner { animation: fadeIn 0.18s ease-out; }
+</style>
+</head>
+<body>
+<% if (typeof user !== 'undefined' && user) { %>
+<div class="app" id="app">
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+      <a href="/dashboard" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#fff;">
+        <span class="brand-mark">I</span>
+        <div style="line-height:1.1">
+          <div style="font-weight:600;font-size:14px;letter-spacing:-0.01em;">ISMS</div>
+          <div style="font-size:10.5px;color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.04em;text-transform:uppercase;">ISO 27001</div>
+        </div>
+      </a>
+    </div>
+
+    <% if (typeof ws !== 'undefined' && ws) { %>
+    <div class="sidebar-section ws-context">
+      <a href="/dashboard" style="font-size:11px;color:rgba(255,255,255,0.5);text-decoration:none;">← All clients</a>
+      <div style="margin-top:10px;font-size:13px;font-weight:600;letter-spacing:-0.005em;line-height:1.3;color:#fff;"><%= ws.client_name %></div>
+      <div style="margin-top:3px;font-size:11px;color:rgba(255,255,255,0.45);"><%= ws.industry || ws.stage.replace(/_/g,' ') %></div>
+    </div>
+    <% } %>
+
+    <nav class="sidebar-nav">
+      <% if (typeof ws !== 'undefined' && ws) { %>
+        <div class="nav-group-label">Engagement</div>
+        <a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= (typeof active !== 'undefined' && active === 'overview') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span class="nav-item-text">Overview</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/readiness" data-shortcut="g e" class="nav-item <%= (typeof active !== 'undefined' && active === 'readiness') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14 9 11"/></svg>
+          <span class="nav-item-text">Readiness</span>
+        </a>
+
+        <div class="nav-group-label">Implementation</div>
+        <a href="/workspaces/<%= ws.id %>/controls" data-shortcut="g c" class="nav-item <%= (typeof active !== 'undefined' && active === 'controls') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="nav-item-text">Controls</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/assets" data-shortcut="g a" class="nav-item <%= (typeof active !== 'undefined' && active === 'assets') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span class="nav-item-text">Assets</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/risks" data-shortcut="g r" class="nav-item <%= (typeof active !== 'undefined' && active === 'risks') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span class="nav-item-text">Risks</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/kris" class="nav-item <%= (typeof active !== 'undefined' && active === 'kris') ? 'active' : '' %>" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-item-text">KRIs</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/soa" data-shortcut="g s" class="nav-item <%= (typeof active !== 'undefined' && active === 'soa') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="nav-item-text">Statement of Applicability</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/documents" data-shortcut="g d" class="nav-item <%= (typeof active !== 'undefined' && active === 'documents') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span class="nav-item-text">Documents</span>
+        </a>
+
+        <div class="nav-group-label">Operations</div>
+        <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="nav-item-text">Internal audits</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/audit-programme" class="nav-item" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="nav-item-text">Audit programme</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/mrms" data-shortcut="g m" class="nav-item <%= (typeof active !== 'undefined' && active === 'mrms') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="nav-item-text">Management review</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/nonconformities" data-shortcut="g n" class="nav-item <%= (typeof active !== 'undefined' && active === 'nc') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span class="nav-item-text">Nonconformities</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/incidents" data-shortcut="g x" class="nav-item <%= (typeof active !== 'undefined' && active === 'incidents') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <span class="nav-item-text">Incidents</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/vendors" data-shortcut="g v" class="nav-item <%= (typeof active !== 'undefined' && active === 'vendors') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span class="nav-item-text">Suppliers</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/training" data-shortcut="g h" class="nav-item <%= (typeof active !== 'undefined' && active === 'training') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          <span class="nav-item-text">Training</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/training/catalogue" class="nav-item" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span class="nav-item-text">Course catalogue</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/phishing" class="nav-item" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V11"/><polyline points="22 11 12 18 2 11"/></svg>
+          <span class="nav-item-text">Phishing</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/campaigns" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-8v18l-18-8z"/><path d="M11 7v10"/></svg>
+          <span class="nav-item-text">Ack campaigns</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span class="nav-item-text">Tasks</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/task-templates" class="nav-item" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+          <span class="nav-item-text">Task templates</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/time" class="nav-item" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="nav-item-text">Time tracking</span>
+        </a>
+
+        <div class="nav-group-label">Workspace</div>
+        <a href="/workspaces/<%= ws.id %>/cross-map" class="nav-item <%= (typeof active !== 'undefined' && active === 'cross-map') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          <span class="nav-item-text">Cross-mapping</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/entities" class="nav-item <%= (typeof active !== 'undefined' && active === 'entities') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 22V12h6v10"/></svg>
+          <span class="nav-item-text">Entities</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/risk-methodology" class="nav-item <%= (typeof active !== 'undefined' && active === 'methodology') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          <span class="nav-item-text">Risk methodology</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/risk-appetite" class="nav-item" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          <span class="nav-item-text">Risk appetite</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/dpias" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="12" cy="14" r="2"/></svg>
+          <span class="nav-item-text">DPIAs</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="nav-item-text">Compliance calendar</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/ccm" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          <span class="nav-item-text">CCM checks</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/search" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="nav-item-text">Search</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/reports" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span class="nav-item-text">Reports</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/onboarding" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span class="nav-item-text">Onboarding</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/crisis-comms" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="nav-item-text">Crisis comms</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/api-tokens" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M11.4 13.6 21 4M15 6h5v5"/></svg>
+          <span class="nav-item-text">API tokens</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/custom-fields" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <span class="nav-item-text">Custom fields</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/retention" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+          <span class="nav-item-text">Retention rules</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/widgets" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span class="nav-item-text">My widgets</span>
+        </a>
+        <% if (user.firm_role === 'owner') { %>
+        <a href="/workspaces/<%= ws.id %>/system" class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="nav-item-text">System</span>
+        </a>
+        <% } %>
+        <a href="/workspaces/<%= ws.id %>/members" class="nav-item <%= (typeof active !== 'undefined' && active === 'members') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <span class="nav-item-text">Members</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/access" class="nav-item <%= (typeof active !== 'undefined' && active === 'access') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="nav-item-text">Access &amp; permissions</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/activity-log" class="nav-item <%= (typeof active !== 'undefined' && active === 'activity') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-item-text">Activity log</span>
+        </a>
+      <% } else { %>
+        <div class="nav-group-label">Firm</div>
+        <a href="/dashboard" class="nav-item active">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span class="nav-item-text">Clients</span>
+        </a>
+      <% } %>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="avatar" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:11px;flex-shrink:0;"><%= user.name.charAt(0).toUpperCase() %></div>
+      <div style="min-width:0;flex:1;">
+        <div style="font-size:13px;font-weight:500;line-height:1.2;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= user.name %></div>
+        <div style="font-size:10.5px;color:rgba(255,255,255,0.4);">local · no auth</div>
+      </div>
+      <form method="POST" action="/i18n/switch" style="margin:0;">
+        <select name="locale" onchange="this.form.submit()" style="background:transparent;border:0;color:rgba(255,255,255,0.5);font-size:11px;cursor:pointer;outline:none;font-family:inherit;">
+          <option value="en" <%= user.locale === 'en' ? 'selected' : '' %> style="color:#000">EN</option>
+          <option value="es" <%= user.locale === 'es' ? 'selected' : '' %> style="color:#000">ES</option>
+        </select>
+      </form>
+      <button onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:rgba(255,255,255,0.5);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.color='rgba(255,255,255,0.5)';this.style.background='transparent'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-inner">
+      <div class="topbar">
+        <button class="icon-btn menu-toggle" onclick="toggleSidebar(true)" title="Menu" aria-label="Open menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <button class="icon-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+        </button>
+        <button class="palette-trigger" onclick="openPalette()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Search or jump to…</span>
+          <span class="kbd" id="kbdHint">⌘K</span>
+        </button>
+        <% if (typeof entitySelectorWs !== 'undefined' && entitySelectorWs && typeof workspaceEntities !== 'undefined' && workspaceEntities && workspaceEntities.length) { %>
+          <form method="POST" action="/workspaces/<%= entitySelectorWs.id %>/entities/select" style="margin-left:6px;">
+            <input type="hidden" name="return_to" value="<%= typeof returnTo !== 'undefined' ? returnTo : '' %>">
+            <select name="entity_id" class="select" style="font-size:12px;padding:5px 28px 5px 10px;width:auto;min-width:160px;height:30px;" onchange="this.form.submit()">
+              <option value="">All entities (workspace-wide)</option>
+              <% workspaceEntities.forEach(e => { %>
+                <option value="<%= e.id %>" <%= (typeof activeEntity !== 'undefined' && activeEntity && activeEntity.id === e.id) ? 'selected' : '' %>><%= e.name %><% if (e.code) { %> · <%= e.code %><% } %></option>
+              <% }) %>
+            </select>
+          </form>
+        <% } %>
+        <div class="topbar-spacer"></div>
+        <% if (typeof entitySelectorWs !== 'undefined' && entitySelectorWs) { %>
+          <a href="/workspaces/<%= entitySelectorWs.id %>/notifications" class="icon-btn" title="Notifications" style="position:relative;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <% if (typeof unreadNotifications !== 'undefined' && unreadNotifications > 0) { %>
+              <span style="position:absolute;top:-3px;right:-3px;background:#dc2626;color:white;font-size:9.5px;font-weight:600;border-radius:9px;min-width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0 3px;"><%= unreadNotifications > 99 ? '99+' : unreadNotifications %></span>
+            <% } %>
+          </a>
+        <% } %>
+        <button class="icon-btn" onclick="openHelp()" title="Keyboard shortcuts (?)" aria-label="Help">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </button>
+      </div>
+<% } else { %>
+<div class="app" style="background:var(--bg-deep)">
+  <main class="main">
+    <div class="main-inner" style="max-width:420px;">
+<% } %>

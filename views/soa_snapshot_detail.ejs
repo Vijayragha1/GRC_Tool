@@ -1,0 +1,27 @@
+<%- include('partials/header', { title: 'SoA snapshot — ' + (snapshot.label || snapshot.created_at), user, ws, active: 'soa' }) %>
+
+<a href="/workspaces/<%= ws.id %>/soa/snapshots" class="link-muted" style="font-size:12px;">← Snapshots</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= snapshot.label || 'Snapshot' %></h1>
+    <div class="page-subtitle"><%= snapshot.created_at %> · SHA-256 <span class="mono"><%= snapshot.payload_hash %></span></div>
+  </div>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Control</th><th>Title</th><th>Applicability</th><th>Status</th><th>Inclusion / exclusion</th></tr></thead>
+  <tbody>
+    <% rows.forEach(r => { %>
+      <tr>
+        <td class="mono meta"><%= r.id.replace('annex-','').toUpperCase() %></td>
+        <td><%= r.title %></td>
+        <td><span class="status s-<%= r.applicability %>"><%= r.applicability %></span></td>
+        <td><span class="status s-<%= (r.status || '').replace(/\s+/g,'-').toLowerCase() %>"><%= r.status %></span></td>
+        <td class="meta" style="max-width:380px"><%= (r.inclusion_justification || r.exclusion_justification || '').slice(0,120) %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

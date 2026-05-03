@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Acknowledgement — <%= r.doc_name %></title>
+<link rel="preconnect" href="https://rsms.me/"><link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; background:#f7f7f8; color:#0a0a0a; max-width:880px; margin:0 auto; padding:32px 28px; line-height:1.5; }
+.panel { background:#fff; border:1px solid #ececef; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04); padding:24px 28px; margin-bottom:18px; }
+h1 { font-size:22px; font-weight:600; margin:0 0 4px; }
+.meta { color:#71717a; font-size:13px; }
+.markdown h1 { font-size:20px; }
+.markdown h2 { font-size:16px; margin:16px 0 6px; }
+.markdown h3 { font-size:14px; margin:14px 0 4px; }
+.markdown p { margin:8px 0; }
+.markdown table { border-collapse:collapse; margin:10px 0; font-size:12px; }
+.markdown th, .markdown td { border:1px solid #ececef; padding:5px 9px; text-align:left; }
+.btn { display:inline-flex; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:500; border:1px solid #0a0a0a; background:#0a0a0a; color:#fff; cursor:pointer; }
+input[type=checkbox] { transform:scale(1.1); margin-right:6px; }
+.callout { border-left:3px solid #4f46e5; background:#eef2ff; padding:12px 16px; border-radius:6px; margin:12px 0; font-size:13px; }
+.mono { font-family:ui-monospace,Menlo,monospace; }
+</style>
+</head><body>
+<div class="panel">
+  <h1>Acknowledge: <%= r.doc_name %></h1>
+  <div class="meta">For <strong><%= r.recipient_name %></strong> · campaign: <%= r.campaign_name %><% if (r.due_date) { %> · due <%= r.due_date %><% } %></div>
+  <% if (r.campaign_desc) { %><div style="margin-top:10px;"><%= r.campaign_desc %></div><% } %>
+</div>
+
+<div class="panel">
+  <div class="markdown" style="white-space:normal;">
+<%
+  const lines = (content || '').split('\n');
+  let out = ''; let i = 0;
+  while (i < lines.length) {
+    let l = lines[i];
+    let m;
+    if ((m = l.match(/^(#{1,6})\s+(.+)/))) {
+      const lvl = m[1].length;
+      out += '<h'+lvl+'>'+m[2].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</h'+lvl+'>';
+      i++; continue;
+    }
+    if (/^[-*]\s/.test(l)) { out += '<ul>'; while (i < lines.length && /^[-*]\s/.test(lines[i])) { out += '<li>'+lines[i].replace(/^[-*]\s/,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</li>'; i++; } out += '</ul>'; continue; }
+    if (l.trim() === '') { i++; continue; }
+    out += '<p>'+l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>';
+    i++;
+  }
+%>
+<%- out %>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="callout">
+    Document content SHA-256: <span class="mono"><%= r.content_hash %></span><br>
+    Version: v<%= r.version %>
+  </div>
+  <% if (r.acknowledged_at) { %>
+    <p style="color:#16a34a;font-weight:600;">✓ Already acknowledged on <%= r.acknowledged_at %>.</p>
+  <% } else { %>
+    <form method="POST">
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;margin-bottom:14px;">
+        <input type="checkbox" name="attestation" value="1" required>
+        <span>I, <strong><%= r.recipient_name %></strong>, confirm that I have read the document above. I intend my electronic acknowledgement to be the legally binding equivalent of my handwritten signature on this version of the policy. My IP address, browser and timestamp will be recorded.</span>
+      </label>
+      <button class="btn">Acknowledge</button>
+    </form>
+  <% } %>
+</div>
+</body></html>

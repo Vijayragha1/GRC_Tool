@@ -1,0 +1,137 @@
+<%- include('partials/header', { title: 'Risks', user, ws, active: 'risks' }) %>
+
+<%
+  const lScale = methodology.likelihood_scale;
+  const iScale = methodology.impact_scale;
+  const bands = methodology.thresholds;
+%>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Risk register</h1>
+    <div class="page-subtitle">Methodology: <strong><%= methodology.name %></strong> · <%= lScale.length %>×<%= iScale.length %> matrix · <a href="/workspaces/<%= ws.id %>/risk-methodology" class="link-muted" style="color:var(--accent);">edit methodology</a></div>
+  </div>
+  <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
+</div>
+
+<div id="newRisk" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New risk</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Unauthorized access to customer data via stolen credentials"></div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %>
+      <div><label class="label">Entity</label>
+        <select class="select" name="entity_id">
+          <option value="">Workspace-wide</option>
+          <% workspaceEntities.forEach(e => { %><option value="<%= e.id %>" <%= (typeof activeEntity !== 'undefined' && activeEntity && activeEntity.id === e.id) ? 'selected' : '' %>><%= e.name %></option><% }) %>
+        </select>
+      </div>
+    <% } %>
+    <div><label class="label">Asset</label>
+      <select class="select" name="asset_id">
+        <option value="">— none —</option>
+        <% assets.forEach(a => { %><option value="<%= a.id %>"><%= a.name %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Owner</label><input class="input" name="owner_name" placeholder="Person or team"></div>
+    <div><label class="label">Threat</label><input class="input" name="threat" placeholder="Credential theft, malware, insider…"></div>
+    <div><label class="label">Vulnerability</label><input class="input" name="vulnerability" placeholder="No MFA, unpatched system…"></div>
+    <div><label class="label">Likelihood</label>
+      <select class="select" name="likelihood">
+        <% lScale.forEach(l => { %><option value="<%= l.value %>" <%= l.value === Math.ceil(lScale.length/2) ? 'selected' : '' %>><%= l.value %> · <%= l.label %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Impact</label>
+      <select class="select" name="impact">
+        <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= l.value === Math.ceil(iScale.length/2) ? 'selected' : '' %>><%= l.value %> · <%= l.label %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Treatment</label>
+      <select class="select" name="treatment">
+        <option value="modify">Modify (apply controls)</option>
+        <option value="retain">Retain (accept)</option>
+        <option value="avoid">Avoid (eliminate)</option>
+        <option value="share">Share (transfer)</option>
+      </select>
+    </div>
+    <div></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+  </form>
+</div>
+
+<% if (risks.length > 0) { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Risk heatmap</h2><span class="meta">Inherent risk · per active methodology</span></div>
+  <div class="panel-pad">
+    <table class="t" style="margin:0;">
+      <thead><tr><th></th><% iScale.forEach(i => { %><th class="num" style="text-align:center;"><%= i.value %> · <%= i.label %></th><% }) %></tr></thead>
+      <tbody>
+        <% for (let li = lScale.length - 1; li >= 0; li--) { const l = lScale[li]; %>
+          <tr>
+            <td><strong><%= l.value %> · <%= l.label %></strong></td>
+            <% iScale.forEach((iL, ii) => {
+                 const band = methodology.matrix[li][ii];
+                 const c = bands[band].color;
+                 const cellRisks = risks.filter(r => r.likelihood === l.value && r.impact === iL.value);
+            %>
+              <td style="text-align:center;background:<%= c %>22;color:<%= c %>;font-weight:600;">
+                <% if (cellRisks.length) { %>
+                  <span class="num" style="font-size:15px;"><%= cellRisks.length %></span>
+                  <div class="meta" style="font-size:10px;color:<%= c %>"><%= band %></div>
+                <% } else { %>
+                  <span style="opacity:0.5;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;"><%= band %></span>
+                <% } %>
+              </td>
+            <% }) %>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th style="width:60px">ID</th>
+      <th>Title</th>
+      <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %><th style="width:120px">Entity</th><% } %>
+      <th style="width:140px">Asset</th>
+      <th style="width:110px">L × I</th>
+      <th style="width:90px">Band</th>
+      <th style="width:120px">Treatment</th>
+      <th style="width:120px">Status</th>
+    </tr></thead>
+    <tbody>
+      <% risks.forEach(r => {
+           const bandColor = bands[r.band] ? bands[r.band].color : '#71717a';
+      %>
+        <tr>
+          <td class="mono meta">R-<%= String(r.id).padStart(3, '0') %></td>
+          <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= r.title %></a></td>
+          <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %><td class="meta"><%= r.entity_name || '—' %></td><% } %>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= r.asset_name || '—' %></td>
+          <td class="num meta"><%= r.likelihood %> · <%= r.impact %></td>
+          <td><span class="tag" style="background:<%= bandColor %>1a;color:<%= bandColor %>;border-color:<%= bandColor %>40;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;"><%= r.band %></span></td>
+          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= r.treatment %></td>
+          <td><span class="status s-<%= r.status %>"><%= r.status %></span></td>
+        </tr>
+      <% }) %>
+      <% if (risks.length === 0) { %>
+        <tr><td colspan="<%= 7 + ((typeof workspaceEntities !== 'undefined' && workspaceEntities.length) ? 1 : 0) %>" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div class="empty-title">Start the risk register</div>
+            <div class="empty-sub">Identify risks to confidentiality, integrity, and availability. Linking each risk to Annex A controls drives the Statement of Applicability automatically.</div>
+            <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

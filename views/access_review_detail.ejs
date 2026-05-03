@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Access review', user, ws, active: 'access' }) %>
+
+<a href="/workspaces/<%= ws.id %>/access-reviews" class="link-muted" style="font-size:12px;">← Reviews</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Access review · <%= review.period_end %></h1>
+    <div class="page-subtitle"><%= review.period_start %> → <%= review.period_end %> · reviewer: <%= review.reviewer || '—' %> · status: <%= review.status %></div></div>
+  <% if (review.status === 'open') { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/access-reviews/<%= review.id %>/close" style="display:flex;gap:6px;align-items:center;">
+      <input class="input" name="outcome" placeholder="Outcome / summary">
+      <button class="btn btn-primary btn-xs">Close review</button>
+    </form>
+  <% } %>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>User</th><th>Email</th><th>Current role</th><th>Decision</th><th>Reason</th><th>Decided</th></tr></thead>
+  <tbody>
+    <% items.forEach(i => { %>
+      <tr>
+        <td><strong><%= i.name %></strong></td>
+        <td class="meta"><%= i.email %></td>
+        <td class="meta"><%= i.current_role %></td>
+        <td>
+          <% if (review.status === 'open') { %>
+            <form method="POST" action="/workspaces/<%= ws.id %>/access-reviews/<%= review.id %>/items/<%= i.id %>" style="display:inline-flex;gap:4px;align-items:center;">
+              <select class="select" name="decision" style="font-size:11px;padding:3px 22px 3px 6px;width:auto;">
+                <option value="">—</option>
+                <option value="retain" <%= i.decision === 'retain' ? 'selected' : '' %>>Retain</option>
+                <option value="modify" <%= i.decision === 'modify' ? 'selected' : '' %>>Modify</option>
+                <option value="remove" <%= i.decision === 'remove' ? 'selected' : '' %>>Remove access</option>
+              </select>
+              <input class="input" name="decision_reason" placeholder="Reason" style="font-size:11px;width:140px;">
+              <button class="btn btn-primary btn-xs">Save</button>
+            </form>
+          <% } else { %>
+            <%= i.decision || '—' %>
+          <% } %>
+        </td>
+        <td class="meta"><%= i.decision_reason || '—' %></td>
+        <td class="meta"><%= i.decided_at || '—' %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

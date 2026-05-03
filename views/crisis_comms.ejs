@@ -1,0 +1,23 @@
+<%- include('partials/header', { title: 'Crisis communications', user, ws, active: 'incidents' }) %>
+
+<a href="/workspaces/<%= ws.id %>/incidents" class="link-muted" style="font-size:12px;">← Incidents</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Crisis communications templates</h1>
+    <div class="page-subtitle">Pre-approved message bodies for different audiences. Copy / adapt during a real incident — saves writing under pressure.</div></div>
+</div>
+
+<% list.forEach(t => { %>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-head">
+      <div>
+        <h2><%= t.name %></h2>
+        <div class="meta" style="margin-top:2px;">Audience: <span class="tag tag-info"><%= t.audience %></span> · Channel: <%= t.channel || '—' %></div>
+      </div>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('cc-<%= t.id %>').textContent); this.textContent='Copied'" class="btn btn-secondary btn-xs">Copy</button>
+    </div>
+    <pre id="cc-<%= t.id %>" style="white-space:pre-wrap;padding:14px 18px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.55;background:var(--bg-subtle);border-top:1px solid var(--border);margin:0;border-radius:0 0 var(--radius) var(--radius);"><%= t.body %></pre>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

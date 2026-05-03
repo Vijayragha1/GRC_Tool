@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Notifications', user, ws, active: 'notifications' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Notifications</h1>
+    <div class="page-subtitle">Reminders raised by the scheduled jobs (policy review due, supplier review overdue, ack campaign nearing deadline, expired permission overrides, …)</div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <a href="?filter=unread" class="btn <%= filter === 'unread' ? 'btn-primary' : 'btn-secondary' %> btn-xs">Unread</a>
+    <a href="?filter=all" class="btn <%= filter === 'all' ? 'btn-primary' : 'btn-secondary' %> btn-xs">All</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/notifications/mark-all-read"><button class="btn btn-secondary btn-xs">Mark all read</button></form>
+  </div>
+</div>
+
+<div class="panel" style="overflow:hidden;">
+  <% if (notifications.length === 0) { %>
+    <div class="empty-state">
+      <div class="empty-icon">✓</div>
+      <div class="empty-title">All caught up</div>
+      <div class="empty-sub">No <%= filter === 'unread' ? 'unread' : '' %> notifications. The scheduled jobs run every <%= 60 %> minutes; come back later.</div>
+    </div>
+  <% } else { %>
+    <% notifications.forEach(n => { %>
+      <div style="padding:12px 18px;border-bottom:1px solid var(--border);<%= n.read_at ? 'opacity:0.6;' : '' %>display:flex;align-items:flex-start;gap:12px;">
+        <span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:5px;background:<%= n.severity === 'high' ? '#dc2626' : n.severity === 'medium' ? '#ca8a04' : 'var(--accent)' %>;"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;gap:8px;">
+            <strong style="font-size:13.5px;"><%= n.title %></strong>
+            <span class="meta"><%= n.created_at %></span>
+          </div>
+          <% if (n.body) { %><div class="meta" style="margin-top:2px;font-size:12.5px;color:var(--text-secondary);"><%= n.body %></div><% } %>
+          <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+            <span class="tag tag-neutral" style="font-size:10.5px;"><%= n.category %></span>
+            <% if (n.link) { %><a href="<%= n.link %>" class="link-muted" style="font-size:12px;color:var(--accent);">Open →</a><% } %>
+            <span style="flex:1"></span>
+            <% if (!n.read_at) { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/notifications/<%= n.id %>/read" style="display:inline"><button class="btn btn-ghost btn-xs">Read</button></form>
+            <% } %>
+            <form method="POST" action="/workspaces/<%= ws.id %>/notifications/<%= n.id %>/dismiss" style="display:inline"><button class="btn btn-ghost btn-xs">Dismiss</button></form>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

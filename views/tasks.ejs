@@ -1,0 +1,87 @@
+<%- include('partials/header', { title: 'Tasks', user, ws, active: 'tasks' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Tasks</h1>
+    <div class="page-subtitle">Implementation work assigned to consultants and client team members.</div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <select onchange="window.location='?filter='+this.value" class="select" style="width:140px">
+      <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
+      <option value="mine" <%= filter==='mine'?'selected':'' %>>Assigned to me</option>
+      <option value="all" <%= filter==='all'?'selected':'' %>>All</option>
+    </select>
+    <button onclick="document.getElementById('newTask').classList.toggle('hidden')" class="btn btn-primary">New task</button>
+  </div>
+</div>
+
+<div id="newTask" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New task</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/tasks" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required></div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div><label class="label">Assignee</label>
+      <select class="select" name="assignee_id">
+        <option value="">— unassigned —</option>
+        <% wsUsers.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Title</th><th style="width:160px">Assignee</th>
+      <th style="width:110px">Due</th><th style="width:160px">Status</th><th style="width:80px"></th>
+    </tr></thead>
+    <tbody>
+      <% tasks.forEach(t => { %>
+        <tr>
+          <td>
+            <div style="font-weight:500;font-size:13px;"><%= t.title %></div>
+            <% if (t.description) { %><div class="meta" style="margin-top:2px;"><%= t.description %></div><% } %>
+            <% if (t.iso_title) { %><div class="meta" style="color:var(--text-secondary);margin-top:2px;">→ <%= t.iso_title %></div><% } %>
+          </td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>">
+              <select name="assignee_id" onchange="this.form.submit()" class="select" style="font-size:12px;padding:4px 8px;">
+                <option value="">— unassigned —</option>
+                <% wsUsers.forEach(u => { %><option value="<%= u.id %>" <%= t.assignee_id == u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
+              </select>
+            </form>
+          </td>
+          <td class="num meta"><%= t.due_date || '—' %></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>">
+              <select name="status" onchange="this.form.submit()" class="select" style="font-size:12px;padding:4px 8px;">
+                <% ['todo','in_progress','in_review','done','blocked'].forEach(s => { %>
+                  <option value="<%= s %>" <%= t.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option>
+                <% }) %>
+              </select>
+            </form>
+          </td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>/delete" onsubmit="return confirm('Delete?')">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (tasks.length === 0) { %>
+        <tr><td colspan="5" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="empty-title">Nothing to do</div>
+            <div class="empty-sub">Use tasks to assign implementation work to consultants and client team members. Each task can link to a control or risk.</div>
+            <button onclick="document.getElementById('newTask').classList.toggle('hidden')" class="btn btn-primary">New task</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

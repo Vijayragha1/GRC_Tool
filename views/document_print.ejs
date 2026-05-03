@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title><%= doc.name %> — <%= ws.client_name %></title>
+<style>
+  body { font-family: Georgia, 'Times New Roman', serif; max-width: 8.5in; margin: 0.75in auto; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 0.4rem; font-size: 1.8rem; }
+  h2 { font-size: 1.3rem; margin-top: 1.5rem; }
+  h3 { font-size: 1.1rem; margin-top: 1rem; }
+  table { border-collapse: collapse; margin: 1rem 0; font-size: 0.9em; }
+  th, td { border: 1px solid #888; padding: 0.4rem 0.7rem; text-align: left; }
+  th { background: #f0f0f0; }
+  ul, ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+  li { margin: 0.2rem 0; }
+  hr { border: none; border-top: 1px solid #ccc; margin: 1.5rem 0; }
+  code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .meta { color: #666; font-size: 0.85em; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #ddd; }
+  .print-toolbar { background: #4f46e5; color: white; padding: 0.5rem 1rem; margin: -0.75in -0.75in 1rem; display: flex; justify-content: space-between; align-items: center; }
+  .print-toolbar button { background: white; color: #4f46e5; padding: 0.3rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+  @media print { .print-toolbar { display: none; } body { margin: 0.5in; } }
+</style>
+</head><body>
+<div class="print-toolbar">
+  <span><%= ws.client_name %> · <%= doc.category %> · v<%= doc.version %></span>
+  <button onclick="window.print()">Print / Save as PDF</button>
+</div>
+<div class="meta"><%= ws.client_name %> · v<%= doc.version %> · status: <%= doc.status %></div>
+<div id="content"></div>
+<script>
+const md = `<%- doc.content.replace(/`/g, '\\`').replace(/\$/g, '\\$') %>`;
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function inline(s){ s = esc(s);
+  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  s = s.replace(/`(.+?)`/g,'<code>$1</code>');
+  return s;
+}
+function render(md){
+  const lines = md.split('\n'); let html=''; let i=0;
+  while(i<lines.length){
+    const l = lines[i];
+    let m;
+    if (m = l.match(/^(#{1,6})\s(.+)/)) { html += `<h${m[1].length}>${esc(m[2])}</h${m[1].length}>`; i++; continue; }
+    if (/^\|/.test(l)) {
+      let t = '<table><thead><tr>';
+      lines[i].split('|').slice(1,-1).forEach(c => t += '<th>'+esc(c.trim())+'</th>');
+      t += '</tr></thead><tbody>'; i += 2;
+      while (i < lines.length && /^\|/.test(lines[i])) {
+        t += '<tr>';
+        lines[i].split('|').slice(1,-1).forEach(c => t += '<td>'+esc(c.trim())+'</td>');
+        t += '</tr>'; i++;
+      }
+      html += t + '</tbody></table>'; continue;
+    }
+    if (/^[-*]\s/.test(l)) {
+      html += '<ul>';
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        html += '<li>'+inline(lines[i].replace(/^[-*]\s/, ''))+'</li>'; i++;
+      }
+      html += '</ul>'; continue;
+    }
+    if (/^---+$/.test(l)) { html += '<hr>'; i++; continue; }
+    if (l.trim() === '') { i++; continue; }
+    html += '<p>'+inline(l)+'</p>'; i++;
+  }
+  return html;
+}
+document.getElementById('content').innerHTML = render(md);
+</script>
+</body></html>

@@ -1,0 +1,24 @@
+<%- include('partials/header', { title: 'Acknowledgement campaigns', user, ws, active: 'documents' }) %>
+
+<div class="page-head">
+  <div><h1 class="page-title">Acknowledgement campaigns</h1>
+    <div class="page-subtitle">Distribute a published policy and collect tamper-evident attestations from each recipient. Each recipient gets a unique tokenized link — no login required.</div></div>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Campaign</th><th>Document</th><th>Due</th><th class="num">Progress</th><th>Status</th></tr></thead>
+  <tbody>
+    <% if (!campaigns.length) { %><tr><td colspan="5" class="t-empty">No campaigns yet. Open any approved document and start one from there.</td></tr><% } %>
+    <% campaigns.forEach(c => { %>
+      <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/campaigns/<%= c.id %>'">
+        <td><strong><%= c.name %></strong><% if (c.description) { %><div class="meta"><%= c.description %></div><% } %></td>
+        <td class="meta"><%= c.doc_name %></td>
+        <td class="num meta"><%= c.due_date || '—' %></td>
+        <td class="num"><%= c.done %> / <%= c.total %></td>
+        <td><span class="tag <%= c.status === 'completed' ? 'tag-success' : c.status === 'active' ? 'tag-info' : 'tag-neutral' %>"><%= c.status %></span></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,221 @@
+    </div>
+  </main>
+</div>
+
+<% if (typeof user !== 'undefined' && user) { %>
+<!-- Command palette -->
+<div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()">
+  <div class="cp-modal">
+    <div class="cp-search">
+      <svg class="cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="cpInput" placeholder="Search controls, risks, documents, clients…" autocomplete="off" spellcheck="false">
+      <span class="kbd">esc</span>
+    </div>
+    <div class="cp-results" id="cpResults"><div class="cp-empty">Start typing to search</div></div>
+    <div class="cp-foot">
+      <span><span class="kbd">↑</span> <span class="kbd">↓</span> navigate</span>
+      <span><span class="kbd">↵</span> open</span>
+      <span style="margin-left:auto;"><span class="kbd">esc</span> close</span>
+    </div>
+  </div>
+</div>
+
+<!-- Help modal -->
+<div class="cp-backdrop help-modal" id="helpBackdrop" onclick="if(event.target===this)closeHelp()">
+  <div class="cp-modal">
+    <div class="cp-search" style="padding:14px 18px;border-bottom:1px solid var(--border);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-tertiary);"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span style="font-size:14px;font-weight:600;flex:1;">Keyboard shortcuts</span>
+      <span class="kbd">esc</span>
+    </div>
+    <div class="help-shortcuts">
+      <div class="help-row"><span>Open command palette</span><span><span class="kbd" id="hk1">⌘K</span></span></div>
+      <div class="help-row"><span>Search</span><span><span class="kbd">/</span></span></div>
+      <div class="help-row"><span>Show this help</span><span><span class="kbd">?</span></span></div>
+      <div class="help-row"><span>Toggle dark mode</span><span><span class="kbd" id="hk2">⌘⇧L</span></span></div>
+      <div style="margin:10px 0 6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);">Go to (within a workspace)</div>
+      <div class="help-row"><span>Overview</span><span><span class="kbd">g</span> <span class="kbd">o</span></span></div>
+      <div class="help-row"><span>Readiness</span><span><span class="kbd">g</span> <span class="kbd">e</span></span></div>
+      <div class="help-row"><span>Controls</span><span><span class="kbd">g</span> <span class="kbd">c</span></span></div>
+      <div class="help-row"><span>Assets</span><span><span class="kbd">g</span> <span class="kbd">a</span></span></div>
+      <div class="help-row"><span>Risks</span><span><span class="kbd">g</span> <span class="kbd">r</span></span></div>
+      <div class="help-row"><span>SoA</span><span><span class="kbd">g</span> <span class="kbd">s</span></span></div>
+      <div class="help-row"><span>Documents</span><span><span class="kbd">g</span> <span class="kbd">d</span></span></div>
+      <div class="help-row"><span>Internal audits</span><span><span class="kbd">g</span> <span class="kbd">i</span></span></div>
+      <div class="help-row"><span>Management review</span><span><span class="kbd">g</span> <span class="kbd">m</span></span></div>
+      <div class="help-row"><span>Nonconformities</span><span><span class="kbd">g</span> <span class="kbd">n</span></span></div>
+      <div class="help-row"><span>Tasks</span><span><span class="kbd">g</span> <span class="kbd">t</span></span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast stack -->
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+// ----- Theme -----
+(function() {
+  const saved = localStorage.getItem('isms-theme');
+  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+})();
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'dark' ? null : 'dark';
+  if (next) document.documentElement.setAttribute('data-theme', next);
+  else document.documentElement.removeAttribute('data-theme');
+  localStorage.setItem('isms-theme', next || 'light');
+}
+
+// ----- Sidebar -----
+(function() {
+  if (localStorage.getItem('isms-sidebar') === 'collapsed') {
+    document.getElementById('app')?.classList.add('sidebar-collapsed');
+  }
+})();
+function toggleSidebar(open) {
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  if (!sb) return;
+  sb.classList.toggle('open', open);
+  bd.classList.toggle('open', open);
+}
+function toggleSidebarCollapse() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  app.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('isms-sidebar', app.classList.contains('sidebar-collapsed') ? 'collapsed' : 'open');
+}
+
+// ----- Toasts -----
+function toast(msg, kind) {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + (kind || 'success');
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(() => { t.classList.add('leaving'); setTimeout(() => t.remove(), 200); }, 2800);
+}
+// Read flash from query params on page load
+(function() {
+  const p = new URLSearchParams(location.search);
+  if (p.has('toast')) {
+    const msg = decodeURIComponent(p.get('toast'));
+    const kind = p.get('toastKind') || 'success';
+    setTimeout(() => toast(msg, kind), 50);
+    p.delete('toast'); p.delete('toastKind');
+    const newUrl = location.pathname + (p.toString() ? '?' + p.toString() : '');
+    history.replaceState({}, '', newUrl);
+  }
+})();
+
+// ----- Command palette -----
+const wsIdMatch = location.pathname.match(/\/workspaces\/(\d+)/);
+const wsIdParam = wsIdMatch ? wsIdMatch[1] : '';
+let cpResults = [];
+let cpSelected = 0;
+let cpDebounce;
+
+function openPalette() {
+  document.getElementById('cpBackdrop').classList.add('open');
+  setTimeout(() => document.getElementById('cpInput').focus(), 50);
+  cpSearch('');
+}
+function closePalette() {
+  document.getElementById('cpBackdrop').classList.remove('open');
+  document.getElementById('cpInput').value = '';
+}
+async function cpSearch(q) {
+  const box = document.getElementById('cpResults');
+  if (!q || !q.trim()) {
+    box.innerHTML = '<div class="cp-empty">Type to search controls, risks, documents…</div>';
+    cpResults = []; return;
+  }
+  try {
+    const url = '/api/search?q=' + encodeURIComponent(q) + (wsIdParam ? '&wsId=' + wsIdParam : '');
+    const r = await fetch(url);
+    const data = await r.json();
+    cpResults = data;
+    cpSelected = 0;
+    renderCp();
+  } catch (e) {
+    box.innerHTML = '<div class="cp-empty">Search failed.</div>';
+  }
+}
+function renderCp() {
+  const box = document.getElementById('cpResults');
+  if (!cpResults.length) { box.innerHTML = '<div class="cp-empty">No matches</div>'; return; }
+  box.innerHTML = cpResults.map((r, i) => `
+    <a href="${r.href}" class="cp-result${i === cpSelected ? ' selected' : ''}" data-idx="${i}">
+      <span class="cp-type">${r.type}</span>
+      <span class="cp-label">${escapeHtml(r.label)}</span>
+      ${r.sublabel ? '<span class="cp-sub">' + escapeHtml(r.sublabel) + '</span>' : ''}
+    </a>
+  `).join('');
+  box.querySelectorAll('.cp-result').forEach(el => {
+    el.addEventListener('mouseenter', () => { cpSelected = parseInt(el.dataset.idx, 10); renderCp(); });
+  });
+}
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.getElementById('cpInput')?.addEventListener('input', e => {
+  clearTimeout(cpDebounce);
+  cpDebounce = setTimeout(() => cpSearch(e.target.value), 120);
+});
+document.getElementById('cpInput')?.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); cpSelected = Math.min(cpSelected+1, cpResults.length-1); renderCp(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cpSelected = Math.max(cpSelected-1, 0); renderCp(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (cpResults[cpSelected]) location.href = cpResults[cpSelected].href; }
+  else if (e.key === 'Escape') { closePalette(); }
+});
+
+// ----- Help modal -----
+function openHelp() { document.getElementById('helpBackdrop').classList.add('open'); }
+function closeHelp() { document.getElementById('helpBackdrop').classList.remove('open'); }
+
+// ----- Keyboard shortcuts -----
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+if (!isMac) {
+  document.getElementById('kbdHint') && (document.getElementById('kbdHint').textContent = 'Ctrl K');
+  document.getElementById('hk1') && (document.getElementById('hk1').textContent = 'Ctrl K');
+  document.getElementById('hk2') && (document.getElementById('hk2').textContent = 'Ctrl ⇧L');
+}
+
+let gPressed = false; let gTimer;
+function inEditable(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+document.addEventListener('keydown', e => {
+  // ⌘K / Ctrl+K → palette
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
+  // ⌘⇧L → toggle theme
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); toggleTheme(); return; }
+  if (e.key === 'Escape') {
+    if (document.getElementById('cpBackdrop').classList.contains('open')) closePalette();
+    else if (document.getElementById('helpBackdrop').classList.contains('open')) closeHelp();
+    return;
+  }
+  if (inEditable(e.target)) return;
+  // / → open palette
+  if (e.key === '/') { e.preventDefault(); openPalette(); return; }
+  // ? → help
+  if (e.key === '?') { e.preventDefault(); openHelp(); return; }
+  // g _ → navigate
+  if (e.key === 'g') {
+    gPressed = true;
+    clearTimeout(gTimer);
+    gTimer = setTimeout(() => { gPressed = false; }, 1000);
+    return;
+  }
+  if (gPressed) {
+    gPressed = false;
+    const target = document.querySelector(`[data-shortcut="g ${e.key}"]`);
+    if (target) { e.preventDefault(); location.href = target.getAttribute('href'); }
+  }
+});
+</script>
+<% } %>
+</body>
+</html>

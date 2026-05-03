@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Encryption master key — NEVER commit
+data/master.key
+
+# SQLite databases (live data, hashed audit chain, encrypted records)
+*.db
+*.db-shm
+*.db-wal
+
+# Backups & user uploads
+data/backups/
+backups/
+uploads/
+
+# Environment / local config
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Coverage / build artefacts
+coverage/
+dist/
+build/

@@ -1,0 +1,81 @@
+<%- include('partials/header', { title: audit.title, user, ws, active: 'audits' }) %>
+
+<a href="/workspaces/<%= ws.id %>/audits" class="link-muted" style="font-size:12px;">← All audits</a>
+
+<div class="panel" style="margin-top:12px;margin-bottom:16px">
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= audit.title %>" required></div>
+    <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" value="<%= audit.scope || '' %>"></div>
+    <div><label class="label">Audit date</label><input class="input" type="date" name="audit_date" value="<%= audit.audit_date || '' %>"></div>
+    <div><label class="label">Auditor</label><input class="input" name="auditor_name" value="<%= audit.auditor_name || '' %>"></div>
+    <div><label class="label">Status</label>
+      <select class="select" name="status">
+        <% ['planned','in_progress','complete'].forEach(s => { %><option value="<%= s %>" <%= audit.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
+      </select>
+    </div>
+    <div></div>
+    <div style="grid-column:1/-1"><label class="label">Summary / executive notes</label><textarea class="textarea" name="summary" rows="3"><%= audit.summary || '' %></textarea></div>
+    <div style="grid-column:1/-1;display:flex;gap:6px;">
+      <button class="btn btn-primary">Save</button>
+      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+        <button class="btn btn-danger">Delete audit</button>
+      </form>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Findings</h2><span class="meta"><%= findings.length %> total</span></div>
+  <% if (findings.length === 0) { %>
+    <div class="t-empty">No findings yet.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% findings.forEach(f => { %>
+        <div style="padding:12px 16px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span class="tag <%= f.finding_type === 'major_nc' ? 'tag-danger' : f.finding_type === 'minor_nc' ? 'tag-warn' : 'tag-neutral' %>"><%= f.finding_type.replace('_',' ') %></span>
+                <span class="tag <%= f.severity === 'high' ? 'tag-danger' : f.severity === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= f.severity %></span>
+                <% if (f.iso_title) { %><span class="meta"><%= f.iso_title %></span><% } %>
+              </div>
+              <div style="font-size:13px;"><%= f.description %></div>
+            </div>
+            <% if (f.nonconformity_id) { %>
+              <a href="/workspaces/<%= ws.id %>/nonconformities/<%= f.nonconformity_id %>" class="btn btn-secondary btn-xs">→ NC #<%= f.nonconformity_id %></a>
+            <% } else if (f.finding_type === 'major_nc' || f.finding_type === 'minor_nc') { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/findings/<%= f.id %>/promote">
+                <button class="btn btn-secondary btn-xs">Promote to NC</button>
+              </form>
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+
+  <details>
+    <summary class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);font-size:13px;color:var(--text-secondary);">+ Add finding</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/findings" class="panel-pad" style="border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div><label class="label">Type</label>
+        <select class="select" name="finding_type">
+          <option value="major_nc">Major NC</option><option value="minor_nc">Minor NC</option>
+          <option value="observation" selected>Observation</option><option value="ofi">OFI</option>
+        </select>
+      </div>
+      <div><label class="label">Severity</label>
+        <select class="select" name="severity"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+      </div>
+      <div><label class="label">Related ISO item</label>
+        <select class="select" name="iso_item_id">
+          <option value="">— none —</option>
+          <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.title %></option><% }) %>
+        </select>
+      </div>
+      <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" required></textarea></div>
+      <div style="grid-column:1/-1"><button class="btn btn-primary btn-xs">Add finding</button></div>
+    </form>
+  </details>
+</div>
+
+<%- include('partials/footer') %>

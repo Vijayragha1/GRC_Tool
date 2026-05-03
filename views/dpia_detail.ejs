@@ -1,0 +1,69 @@
+<%- include('partials/header', { title: dpia.title + ' — DPIA', user, ws, active: 'risks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/dpias" class="link-muted" style="font-size:12px;">← DPIAs</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= dpia.title %></h1>
+    <div class="page-subtitle">Status: <span class="tag <%= dpia.status === 'approved' ? 'tag-success' : 'tag-neutral' %>"><%= dpia.status %></span><% if (dpia.approver) { %> · approved by <%= dpia.approver %> on <%= dpia.approved_at %><% } %></div>
+  </div>
+  <% if (dpia.status !== 'approved') { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/dpias/<%= dpia.id %>/delete" onsubmit="return confirm('Delete?')"><button class="btn btn-danger btn-xs">Delete</button></form>
+  <% } %>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/dpias/<%= dpia.id %>" class="panel" style="margin-bottom:16px;">
+  <div class="panel-pad" style="display:grid;gap:14px;">
+    <div><label class="label">Title</label><input class="input" name="title" value="<%= dpia.title %>" <%= dpia.status === 'approved' ? 'readonly' : '' %>></div>
+
+    <fieldset style="border:1px solid var(--border);border-radius:6px;padding:14px;">
+      <legend style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-secondary);padding:0 8px;">Processing description</legend>
+      <textarea class="textarea" name="processing_description" rows="3" <%= dpia.status === 'approved' ? 'readonly' : '' %>><%= dpia.processing_description || '' %></textarea>
+    </fieldset>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;">
+      <div><label class="label">Data categories</label><textarea class="textarea" name="data_categories" rows="3"><%= dpia.data_categories || '' %></textarea></div>
+      <div><label class="label">Data subjects</label><textarea class="textarea" name="data_subjects" rows="3"><%= dpia.data_subjects || '' %></textarea></div>
+      <div><label class="label">Lawful basis (GDPR Art. 6 / Art. 9)</label><textarea class="textarea" name="lawful_basis" rows="3"><%= dpia.lawful_basis || '' %></textarea></div>
+      <div><label class="label">Retention period</label><input class="input" name="retention_period" value="<%= dpia.retention_period || '' %>"></div>
+      <div><label class="label">Necessity test</label><textarea class="textarea" name="necessity_test" rows="3"><%= dpia.necessity_test || '' %></textarea></div>
+      <div><label class="label">Proportionality test</label><textarea class="textarea" name="proportionality_test" rows="3"><%= dpia.proportionality_test || '' %></textarea></div>
+      <div style="grid-column:1/-1"><label class="label">Data flows (sources, processing, recipients, transfers)</label><textarea class="textarea" name="data_flows" rows="3"><%= dpia.data_flows || '' %></textarea></div>
+      <div><label class="label">International transfers + safeguards</label><textarea class="textarea" name="international_transfers" rows="3"><%= dpia.international_transfers || '' %></textarea></div>
+      <div><label class="label">Consultations (DPO / data subjects)</label><textarea class="textarea" name="consultations" rows="3"><%= dpia.consultations || '' %></textarea></div>
+      <div style="grid-column:1/-1"><label class="label">Identified risks</label><textarea class="textarea" name="identified_risks" rows="4"><%= dpia.identified_risks || '' %></textarea></div>
+      <div style="grid-column:1/-1"><label class="label">Mitigations</label><textarea class="textarea" name="mitigations" rows="4"><%= dpia.mitigations || '' %></textarea></div>
+      <div><label class="label">Residual risk level</label>
+        <select class="select" name="residual_risk_level"><option value="">—</option><% ['low','medium','high'].forEach(l => { %><option <%= dpia.residual_risk_level === l ? 'selected' : '' %>><%= l %></option><% }) %></select>
+      </div>
+      <div><label class="label">Outcome</label>
+        <select class="select" name="outcome"><option value="">—</option><option <%= dpia.outcome === 'proceed' ? 'selected' : '' %>>proceed</option><option <%= dpia.outcome === 'proceed_with_mitigations' ? 'selected' : '' %>>proceed_with_mitigations</option><option <%= dpia.outcome === 'do_not_proceed' ? 'selected' : '' %>>do_not_proceed</option><option <%= dpia.outcome === 'consult_dpa' ? 'selected' : '' %>>consult_dpa</option></select>
+      </div>
+      <div><label class="label">Status</label>
+        <select class="select" name="status"><% ['draft','review','approved'].forEach(s => { %><option <%= dpia.status === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+      </div>
+    </div>
+    <div><button class="btn btn-primary">Save</button></div>
+  </div>
+</form>
+
+<% if (dpia.status !== 'approved') { %>
+<div class="panel">
+  <div class="panel-head"><h2>Approve (DPO sign-off)</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/dpias/<%= dpia.id %>/approve" class="panel-pad" style="display:grid;gap:10px;">
+    <div><label class="label">Approver name + role</label><input class="input" name="approver" placeholder="Jane Smith, DPO" required></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;">
+      <input type="checkbox" name="attestation" value="1" required>
+      <span>I attest that this DPIA accurately describes the processing, that mitigations are appropriate, and that the outcome above is approved by my own authority. My signature is bound to the DPIA contents at this moment in time.</span>
+    </label>
+    <div><button class="btn btn-primary">Sign DPIA</button></div>
+  </form>
+</div>
+<% } else { %>
+<div class="callout" style="background:rgba(22,163,74,0.06);border-color:#16a34a;">
+  <div class="callout-title" style="color:#15803d;">Approved</div>
+  <%= dpia.approver %> on <%= dpia.approved_at %> · signature <span class="mono"><%= dpia.approver_signature.slice(0,16) %>…</span>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>

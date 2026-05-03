@@ -1,0 +1,60 @@
+<%- include('partials/header', { title: nc.title, user, ws, active: 'nc' }) %>
+
+<a href="/workspaces/<%= ws.id %>/nonconformities" class="link-muted" style="font-size:12px;">← All NCs</a>
+
+<div class="panel" style="margin-top:12px">
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div class="mono meta">NC-<%= String(nc.id).padStart(3,'0') %></div>
+      <h1 class="page-title" style="margin-top:2px;"><%= nc.title %></h1>
+    </div>
+    <span class="status s-<%= nc.status === 'verified' || nc.status === 'closed' ? 'done' : nc.status %>"><%= nc.status %></span>
+  </div>
+
+  <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= nc.title %>" required></div>
+    <div><label class="label">Source</label>
+      <select class="select" name="source">
+        <% ['internal_audit','external_audit','incident','customer','monitoring','other'].forEach(s => { %>
+          <option value="<%= s %>" <%= nc.source === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div><label class="label">Source reference</label><input class="input" name="source_ref" value="<%= nc.source_ref || '' %>"></div>
+    <div><label class="label">Severity</label>
+      <select class="select" name="severity">
+        <% ['major','minor','observation'].forEach(s => { %><option value="<%= s %>" <%= nc.severity === s ? 'selected' : '' %>><%= s %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Related ISO item</label>
+      <select class="select" name="iso_item_id">
+        <option value="">— none —</option>
+        <% allItems.forEach(i => { %><option value="<%= i.id %>" <%= nc.iso_item_id === i.id ? 'selected' : '' %>><%= i.title %></option><% }) %>
+      </select>
+    </div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= nc.description || '' %></textarea></div>
+
+    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;">
+      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Corrective action (CAPA)</div>
+    </div>
+    <div style="grid-column:1/-1"><label class="label">Root cause analysis</label><textarea class="textarea" name="root_cause" rows="3"><%= nc.root_cause || '' %></textarea></div>
+    <div style="grid-column:1/-1"><label class="label">Corrective action</label><textarea class="textarea" name="corrective_action" rows="3"><%= nc.corrective_action || '' %></textarea></div>
+    <div><label class="label">Responsible</label><input class="input" name="responsible" value="<%= nc.responsible || '' %>"></div>
+    <div><label class="label">Due date</label><input class="input" type="date" name="due_date" value="<%= nc.due_date || '' %>"></div>
+    <div style="grid-column:1/-1"><label class="label">Effectiveness check</label><textarea class="textarea" name="effectiveness_check" rows="2"><%= nc.effectiveness_check || '' %></textarea></div>
+    <div><label class="label">Status</label>
+      <select class="select" name="status">
+        <% ['open','in_progress','closed','verified'].forEach(s => { %><option value="<%= s %>" <%= nc.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
+      </select>
+    </div>
+    <div></div>
+    <div style="grid-column:1/-1;display:flex;gap:6px;">
+      <button class="btn btn-primary">Save</button>
+      <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+        <button class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

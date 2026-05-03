@@ -1,0 +1,14 @@
+services:
+  isms:
+    build: .
+    image: iso27001-tool:latest
+    container_name: iso27001-tool
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads

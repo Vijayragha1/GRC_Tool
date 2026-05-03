@@ -1,0 +1,29 @@
+<%- include('partials/header', { title: 'Activity timeline', user, ws, active: 'activity' }) %>
+
+<a href="/workspaces/<%= ws.id %>/activity-log" class="link-muted" style="font-size:12px;">← Activity log</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">User session timeline</h1></div>
+  <form method="GET" style="display:flex;gap:6px;">
+    <select name="user_id" class="select"><% users.forEach(u => { %><option value="<%= u.id %>" <%= u.id === userId ? 'selected' : '' %>><%= u.name %></option><% }) %></select>
+    <input class="input" type="date" name="day" value="<%= day %>">
+    <button class="btn btn-primary btn-xs">Show</button>
+  </form>
+</div>
+
+<div class="panel">
+  <% if (!log.length) { %><div class="empty-state"><div class="empty-sub">No activity for this user on this day.</div></div><% } %>
+  <% log.forEach((l, i) => { %>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:120px 1fr;gap:12px;">
+      <div class="meta mono" style="font-size:11px;"><%= l.created_at.slice(11, 19) %></div>
+      <div>
+        <span class="mono" style="font-size:12.5px;font-weight:500;"><%= l.action %></span>
+        <% if (l.entity_type) { %><span class="meta">· <%= l.entity_type %><% if (l.entity_id) { %> #<%= l.entity_id %><% } %></span><% } %>
+        <% if (l.ip_address) { %><span class="meta mono" style="font-size:10.5px;float:right;"><%= l.ip_address %></span><% } %>
+        <% if (l.details) { %><div class="meta" style="font-family:ui-monospace,monospace;font-size:11px;margin-top:2px;"><%= l.details.slice(0,160) %></div><% } %>
+      </div>
+    </div>
+  <% }) %>
+</div>
+
+<%- include('partials/footer') %>

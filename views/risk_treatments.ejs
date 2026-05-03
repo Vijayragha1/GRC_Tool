@@ -1,0 +1,64 @@
+<%- include('partials/header', { title: 'Treatment plan — ' + risk.title, user, ws, active: 'risks' }) %>
+
+<a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="link-muted" style="font-size:12px;">← Back to risk</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Treatment plan</h1>
+    <div class="page-subtitle"><%= risk.title %></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Add treatment action</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Enable MFA on all admin accounts"></div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div><label class="label">Owner</label><input class="input" name="owner_name"></div>
+    <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
+    <div><label class="label">Status</label><select class="select" name="status"><option>planned</option><option>in_progress</option><option>done</option><option>blocked</option></select></div>
+    <div><label class="label">Cost estimate</label><input class="input" name="cost_estimate" placeholder="€"></div>
+    <div><label class="label">Expected residual L</label><input class="input num" name="expected_residual_l" type="number" min="1" max="9"></div>
+    <div><label class="label">Expected residual I</label><input class="input num" name="expected_residual_i" type="number" min="1" max="9"></div>
+    <div style="grid-column:1/-1"><label class="label">Implementing control</label><select class="select" name="iso_item_id"><option value="">— none —</option><% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %></select></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Add action</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th>Action</th><th>Owner</th><th>Due</th><th>Status</th><th>Cost</th><th>Expected residual</th><th></th></tr></thead>
+    <tbody>
+      <% if (!treatments.length) { %>
+        <tr><td colspan="7" class="t-empty">No treatment actions yet.</td></tr>
+      <% } %>
+      <% treatments.forEach(t => { %>
+        <tr>
+          <td>
+            <strong><%= t.title %></strong>
+            <% if (t.description) { %><div class="meta" style="margin-top:2px;max-width:380px;white-space:normal;"><%= t.description %></div><% } %>
+            <% if (t.iso_item_id) { %><div class="meta">→ <%= t.iso_item_id %></div><% } %>
+          </td>
+          <td class="meta"><%= t.owner_name || '—' %></td>
+          <td class="meta num" style="<%= t.due_date && t.due_date < new Date().toISOString().slice(0,10) && t.status !== 'done' ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.due_date || '—' %></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments/<%= t.id %>" style="display:inline-flex;gap:4px;align-items:center;">
+              <select class="select" name="status" onchange="this.form.submit()" style="font-size:11px;padding:3px 22px 3px 6px;width:auto;">
+                <% ['planned','in_progress','done','blocked'].forEach(s => { %><option value="<%= s %>" <%= t.status === s ? 'selected' : '' %>><%= s %></option><% }) %>
+              </select>
+            </form>
+          </td>
+          <td class="meta"><%= t.cost_estimate || '—' %></td>
+          <td class="meta num"><%= t.expected_residual_l && t.expected_residual_i ? t.expected_residual_l + ' × ' + t.expected_residual_i : '—' %></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments/<%= t.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+              <button class="btn btn-danger btn-xs">×</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

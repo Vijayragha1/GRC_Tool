@@ -1,0 +1,294 @@
+<%- include('partials/header', { title: doc.name, user, ws, active: 'documents' }) %>
+
+<a href="/workspaces/<%= ws.id %>/documents" class="link-muted" style="font-size:12px;">← All documents</a>
+
+<%
+  const can = p => userPerms && userPerms.has && userPerms.has(p);
+  const pendingApprover = currentVersion && approvers.find(a => a.user_id === user.id && !a.decision);
+  const nextSeq = currentVersion ? approvers.filter(a => !a.decision).map(a => a.sequence).sort()[0] : null;
+  const isMyTurn = pendingApprover && pendingApprover.sequence === nextSeq;
+%>
+
+<div class="panel" style="margin-top:12px;margin-bottom:16px">
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+      <div style="flex:1;min-width:0;">
+        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" style="display:flex;gap:6px;">
+          <input class="input" name="name" value="<%= doc.name %>" style="font-size:18px;font-weight:600;" <%= doc.locked ? 'disabled' : '' %>>
+          <% if (!doc.locked && can('document.edit')) { %><button class="btn btn-secondary btn-xs">Rename</button><% } %>
+        </form>
+        <div class="meta" style="margin-top:4px;">
+          v<%= doc.version %> · <%= doc.category %> · status:
+          <span class="tag <%= doc.status === 'approved' || doc.status === 'published' ? 'tag-success' : doc.status === 'in_review' ? 'tag-warn' : doc.status === 'retired' ? 'tag-neutral' : doc.status === 'rejected' ? 'tag-danger' : 'tag-neutral' %>"><%= doc.status %></span>
+          <% if (doc.locked) { %> · <span class="tag tag-info">locked</span><% } %>
+          · updated <%= doc.updated_at %>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/versions" class="btn btn-secondary btn-xs">Versions (<%= versions.length %>)</a>
+        <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/docx" class="btn btn-accent btn-xs">.docx</a>
+        <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/print" target="_blank" class="btn btn-secondary btn-xs">Print</a>
+        <% if (can('document.delete')) { %>
+          <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete?')">
+            <button class="btn btn-danger btn-xs">Delete</button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <% if (signatureIssues && signatureIssues.length) { %>
+    <div class="panel-pad" style="background:rgba(220,38,38,0.06);border-bottom:1px solid var(--border);">
+      <div class="callout-title" style="color:#b91c1c;">Signature integrity warning</div>
+      <ul style="font-size:13px;color:#b91c1c;margin:6px 0 0 18px;">
+        <% signatureIssues.forEach(i => { %><li><%= i %></li><% }) %>
+      </ul>
+    </div>
+  <% } %>
+
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span class="meta" style="font-weight:500;">Lifecycle:</span>
+    <% if (doc.status === 'draft' || doc.status === 'rejected') { %>
+      <% if (can('document.submit_review')) { %>
+        <button class="btn btn-primary btn-xs" onclick="document.getElementById('reviewPanel').classList.toggle('hidden')">Submit for review</button>
+      <% } %>
+    <% } else if (doc.status === 'in_review') { %>
+      <span class="meta">Awaiting approval — <%= approvers.filter(a => !a.decision).length %> remaining</span>
+      <% if (isMyTurn && can('document.review')) { %>
+        <button class="btn btn-accent btn-xs" onclick="document.getElementById('decidePanel').classList.toggle('hidden')">Decide (your turn)</button>
+      <% } %>
+    <% } else if (doc.status === 'approved') { %>
+      <% if (can('document.publish')) { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/publish" style="display:inline">
+          <button class="btn btn-primary btn-xs">Publish</button>
+        </form>
+      <% } %>
+    <% } else if (doc.status === 'published') { %>
+      <% if (can('document.retire')) { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/retire" onsubmit="return confirm('Retire this published document?')" style="display:inline">
+          <button class="btn btn-danger btn-xs">Retire</button>
+        </form>
+      <% } %>
+    <% } %>
+    <% if (doc.locked && can('document.edit')) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/new-version" style="display:inline">
+        <button class="btn btn-secondary btn-xs">Open new version</button>
+      </form>
+    <% } %>
+    <% if (currentVersion && can('document.sign')) { %>
+      <button class="btn btn-secondary btn-xs" onclick="document.getElementById('signPanel').classList.toggle('hidden')">E-sign current version</button>
+    <% } %>
+    <span style="flex:1"></span>
+    <% if (signatures && signatures.length) { %>
+      <span class="meta" style="color:#15803d;">✓ <%= signatures.length %> signature<%= signatures.length === 1 ? '' : 's' %> on v<%= currentVersion ? currentVersion.version : doc.version %></span>
+    <% } %>
+  </div>
+
+  <% if ((doc.status === 'draft' || doc.status === 'rejected') && can('document.submit_review')) { %>
+    <div id="reviewPanel" class="hidden panel-pad" style="background:var(--accent-soft);border-bottom:1px solid var(--border);">
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/submit-review" id="submitReviewForm">
+        <div class="sec-label">Submit for review</div>
+        <div style="margin-bottom:10px;">
+          <label class="label">Approver chain (in order)</label>
+          <div id="approverList" style="display:grid;gap:6px;"></div>
+          <button type="button" class="btn btn-secondary btn-xs" onclick="addApprover()" style="margin-top:6px;">+ Add approver</button>
+        </div>
+        <div style="margin-bottom:10px;"><label class="label">Change summary</label><textarea class="textarea" name="change_summary" rows="2" placeholder="What changed? Why submit now?"></textarea></div>
+        <input type="hidden" name="approver_ids" id="approverIdsField">
+        <button class="btn btn-primary btn-xs" onclick="serializeApprovers()">Submit for review</button>
+      </form>
+    </div>
+  <% } %>
+
+  <% if (isMyTurn && can('document.review')) { %>
+    <div id="decidePanel" class="hidden panel-pad" style="background:rgba(202,138,4,0.06);border-bottom:1px solid var(--border);">
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/decide">
+        <div class="sec-label">Your decision (approver #<%= pendingApprover.sequence %><% if (pendingApprover.role_label) { %> · <%= pendingApprover.role_label %><% } %>)</div>
+        <div style="margin-bottom:10px;"><label class="label">Reason / comment</label><textarea class="textarea" name="reason" rows="2"></textarea></div>
+        <div style="display:flex;gap:6px;">
+          <button name="decision" value="approve" class="btn btn-primary btn-xs">Approve</button>
+          <button name="decision" value="reject" class="btn btn-danger btn-xs" onclick="return confirm('Reject and send back to draft?')">Reject</button>
+        </div>
+      </form>
+    </div>
+  <% } %>
+
+  <% if (currentVersion && can('document.sign')) { %>
+    <div id="signPanel" class="hidden panel-pad" style="background:var(--bg-subtle);border-bottom:1px solid var(--border);">
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/sign">
+        <div class="sec-label">Apply electronic signature on v<%= currentVersion.version %></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div><label class="label">Intent</label>
+            <select class="select" name="intent" required>
+              <option value="approve">Approve</option>
+              <option value="acknowledge">Acknowledge / read</option>
+              <option value="witness">Witness</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div><label class="label">Your role (e.g. CISO, ISMS Manager)</label><input class="input" name="signature_role" placeholder="ISMS Manager"></div>
+        </div>
+        <label class="meta" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin-bottom:10px;">
+          <input type="checkbox" name="attestation" value="1" required>
+          <span>I attest that I am <strong><%= user.name %></strong> and intend my electronic signature to be the legally binding equivalent of my handwritten signature on the document content as it stands at SHA-256: <code style="font-size:10.5px;"><%= currentVersion.content_hash.slice(0,16) %>…</code></span>
+        </label>
+        <button class="btn btn-primary btn-xs">Sign now</button>
+      </form>
+    </div>
+  <% } %>
+
+  <% if (currentVersion && approvers && approvers.length) { %>
+    <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+      <div class="sec-label">Approval chain · v<%= currentVersion.version %></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <% approvers.forEach((a, i) => { %>
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;<%= a.decision === 'approved' ? 'background:rgba(22,163,74,0.06);' : a.decision === 'rejected' ? 'background:rgba(220,38,38,0.06);' : '' %>">
+            <span class="num" style="width:18px;height:18px;border-radius:9px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;"><%= a.sequence %></span>
+            <div>
+              <div style="font-size:12.5px;font-weight:500;"><%= a.user_name %><% if (a.role_label) { %> · <span class="meta"><%= a.role_label %></span><% } %></div>
+              <div class="meta"><%= a.decision || 'pending' %><% if (a.decided_at) { %> · <%= a.decided_at %><% } %></div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  <% } %>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+    <div style="padding:16px 20px;border-right:1px solid var(--border);">
+      <div class="meta" style="margin-bottom:6px;">Markdown source <% if (doc.locked) { %>· <span style="color:#b91c1c;">locked</span><% } %></div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" id="docForm">
+        <textarea name="content" id="docContent" rows="28" class="textarea mono" style="font-size:12px;line-height:1.5;" oninput="renderPreview()" <%= doc.locked ? 'readonly' : '' %>><%= doc.content %></textarea>
+        <% if (!doc.locked && can('document.edit')) { %>
+          <button class="btn btn-primary btn-xs" style="margin-top:8px;">Save</button>
+        <% } %>
+      </form>
+    </div>
+    <div style="padding:16px 20px;">
+      <div class="meta" style="margin-bottom:6px;">Preview</div>
+      <div id="docPreview" class="markdown" style="border:1px solid var(--border);border-radius:6px;padding:16px 20px;background:white;min-height:30rem;max-height:30rem;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Comments</h2></div>
+  <% comments.forEach(c => { %>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);<%= c.internal_only ? 'background:#fefce8;' : '' %>">
+      <div class="meta"><%= c.author %> · <%= c.created_at %><% if (c.internal_only) { %> · <span style="color:#a16207;font-weight:500;">internal</span><% } %></div>
+      <div style="font-size:13px;margin-top:2px;"><%= c.body %></div>
+    </div>
+  <% }) %>
+  <% if (can('comment.create')) { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/comments" class="panel-pad">
+      <input type="hidden" name="parent_type" value="document">
+      <input type="hidden" name="parent_id" value="<%= doc.id %>">
+      <textarea name="body" rows="2" class="textarea" placeholder="Add a comment…" required></textarea>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+        <% if (isFirm) { %>
+          <label class="meta" style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="internal_only" value="1"> Internal only</label>
+        <% } else { %><span></span><% } %>
+        <button class="btn btn-primary btn-xs">Post</button>
+      </div>
+    </form>
+  <% } %>
+</div>
+
+<script>
+const wsUsers = <%- JSON.stringify(wsUsers || []) %>;
+
+function renderApprovers() {
+  const wrap = document.getElementById('approverList');
+  if (!wrap) return;
+  if (!wrap.children.length) addApprover();
+}
+
+function addApprover() {
+  const wrap = document.getElementById('approverList');
+  const idx = wrap.children.length + 1;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:grid;grid-template-columns:30px 2fr 1.5fr auto;gap:6px;align-items:center;';
+  div.innerHTML = `
+    <span class="num" style="width:22px;height:22px;border-radius:11px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;">${idx}</span>
+    <select class="select approver-user"><option value="">-- pick approver --</option>${wsUsers.map(u => `<option value="${u.id}">${u.name}</option>`).join('')}</select>
+    <input class="input approver-role" placeholder="Role label (e.g. CISO)">
+    <button type="button" class="btn btn-danger btn-xs" onclick="this.parentElement.remove();renumberApprovers()">×</button>
+  `;
+  wrap.appendChild(div);
+}
+
+function renumberApprovers() {
+  const wrap = document.getElementById('approverList');
+  Array.from(wrap.children).forEach((row, i) => {
+    row.firstElementChild.textContent = i + 1;
+  });
+}
+
+function serializeApprovers() {
+  const wrap = document.getElementById('approverList');
+  const ids = []; const roles = {};
+  Array.from(wrap.children).forEach(row => {
+    const u = row.querySelector('.approver-user').value;
+    const r = row.querySelector('.approver-role').value;
+    if (u) { ids.push(u); roles[u] = r; }
+  });
+  if (ids.length === 0) { alert('Add at least one approver.'); return false; }
+  document.getElementById('approverIdsField').value = ids.join(',');
+  // Inject role hidden fields too
+  const form = document.getElementById('submitReviewForm');
+  ids.forEach(uid => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'role_' + uid; inp.value = roles[uid] || '';
+    form.appendChild(inp);
+  });
+  return true;
+}
+
+renderApprovers();
+
+function renderMd(md){
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = ''; const lines = md.split('\n'); let i = 0;
+  while (i < lines.length) {
+    let l = lines[i];
+    if (/^#{1,6}\s/.test(l)) { const m = l.match(/^(#{1,6})\s(.+)/); html += '<h'+m[1].length+'>'+esc(m[2])+'</h'+m[1].length+'>'; i++; continue; }
+    if (/^\|/.test(l)) {
+      let table = '<table><thead><tr>';
+      lines[i].split('|').slice(1, -1).forEach(c => table += '<th>'+esc(c.trim())+'</th>');
+      table += '</tr></thead><tbody>'; i += 2;
+      while (i < lines.length && /^\|/.test(lines[i])) {
+        table += '<tr>'; lines[i].split('|').slice(1, -1).forEach(c => table += '<td>'+esc(c.trim())+'</td>'); table += '</tr>'; i++;
+      }
+      html += table + '</tbody></table>'; continue;
+    }
+    if (/^[-*]\s/.test(l)) { html += '<ul>'; while (i < lines.length && /^[-*]\s/.test(lines[i])) { html += '<li>'+inline(lines[i].replace(/^[-*]\s/, ''))+'</li>'; i++; } html += '</ul>'; continue; }
+    if (/^---+$/.test(l)) { html += '<hr>'; i++; continue; }
+    if (l.trim() === '') { i++; continue; }
+    html += '<p>'+inline(l)+'</p>'; i++;
+  }
+  function inline(s) {
+    s = esc(s);
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    s = s.replace(/`(.+?)`/g, '<code>$1</code>');
+    return s;
+  }
+  return html;
+}
+function renderPreview(){ document.getElementById('docPreview').innerHTML = renderMd(document.getElementById('docContent').value); }
+renderPreview();
+
+let saveT;
+const docContent = document.getElementById('docContent');
+if (docContent && !docContent.readOnly) {
+  docContent.addEventListener('input', () => {
+    clearTimeout(saveT);
+    saveT = setTimeout(() => {
+      const fd = new FormData(document.getElementById('docForm'));
+      fetch(document.getElementById('docForm').action, { method: 'POST', body: new URLSearchParams(fd), headers: { 'Accept': 'application/json' } });
+    }, 1500);
+  });
+}
+</script>
+
+<%- include('partials/footer') %>

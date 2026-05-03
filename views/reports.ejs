@@ -1,0 +1,34 @@
+<%- include('partials/header', { title: 'Reports', user, ws, active: 'reports' }) %>
+
+<div class="page-head">
+  <div><h1 class="page-title">Reports</h1>
+    <div class="page-subtitle">Choose a built-in template or define a custom markdown body with <code>{{placeholders}}</code>.</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Add custom report template</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/reports" class="panel-pad" style="display:grid;gap:10px;">
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
+      <div><label class="label">Name</label><input class="input" name="name" required></div>
+      <div><label class="label">Description</label><input class="input" name="description"></div>
+    </div>
+    <div><label class="label">Body (markdown, supports {{placeholders}})</label><textarea class="textarea mono" name="body" rows="6" required></textarea></div>
+    <div><button class="btn btn-primary btn-xs">Save template</button></div>
+  </form>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Name</th><th>Source</th><th>Description</th><th></th></tr></thead>
+  <tbody>
+    <% list.forEach(r => { %>
+      <tr>
+        <td><a href="/workspaces/<%= ws.id %>/reports/<%= r.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= r.name %></a></td>
+        <td><% if (r.is_system) { %><span class="tag tag-info">system</span><% } else { %><span class="tag tag-neutral">custom</span><% } %></td>
+        <td class="meta" style="max-width:480px;"><%= r.description %></td>
+        <td><a href="/workspaces/<%= ws.id %>/reports/<%= r.id %>/docx" class="btn btn-accent btn-xs">.docx</a></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

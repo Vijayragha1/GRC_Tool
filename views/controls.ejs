@@ -1,0 +1,91 @@
+<%- include('partials/header', { title: 'Controls', user, ws, active: 'controls' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Clauses & controls</h1>
+    <div class="page-subtitle">25 ISMS clauses (4–10) and 93 Annex A controls. Bulk-edit with checkboxes.</div>
+  </div>
+  <form method="GET" style="display:flex;gap:6px;">
+    <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
+    <select name="filter" class="select" style="width:200px" onchange="this.form.submit()">
+      <option value="all" <%= filter==='all'?'selected':'' %>>All items</option>
+      <option value="clauses" <%= filter==='clauses'?'selected':'' %>>Clauses (4–10)</option>
+      <option value="annex" <%= filter==='annex'?'selected':'' %>>Annex A only</option>
+      <option value="org" <%= filter==='org'?'selected':'' %>>A.5 Organizational</option>
+      <option value="people" <%= filter==='people'?'selected':'' %>>A.6 People</option>
+      <option value="physical" <%= filter==='physical'?'selected':'' %>>A.7 Physical</option>
+      <option value="tech" <%= filter==='tech'?'selected':'' %>>A.8 Technological</option>
+      <option value="open" <%= filter==='open'?'selected':'' %>>Needs attention</option>
+    </select>
+    <button class="btn btn-secondary">Apply</button>
+  </form>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/bulk-controls" id="bulkForm">
+  <div id="bulkBar" class="hidden panel" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;font-size:13px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
+    <span><span id="bulkCount">0</span> selected</span>
+    <span style="color:var(--text-tertiary);">·</span>
+    <select name="status" class="select" style="width:200px;font-size:12px;padding:4px 8px;">
+      <option value="">Set status…</option>
+      <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %>
+        <option value="<%= s %>"><%= s %></option>
+      <% }) %>
+    </select>
+    <select name="applicability" class="select" style="width:170px;font-size:12px;padding:4px 8px;">
+      <option value="">Applicability…</option>
+      <option value="undecided">Undecided</option>
+      <option value="included">Included</option>
+      <option value="excluded">Excluded</option>
+    </select>
+    <button class="btn btn-primary btn-xs">Apply</button>
+    <button type="button" onclick="clearSel()" class="btn btn-ghost btn-xs">Clear</button>
+  </div>
+
+  <div class="panel" style="overflow:hidden">
+    <table class="t">
+      <thead><tr>
+        <th style="width:36px;padding-right:0"><input type="checkbox" onclick="toggleAll(this)"></th>
+        <th style="width:80px;">ID</th>
+        <th>Title</th>
+        <th style="width:170px;">Status</th>
+        <th style="width:90px;">Maturity</th>
+        <th style="width:140px;">Owner</th>
+        <th style="width:110px;">Due</th>
+      </tr></thead>
+      <tbody>
+        <% rows.forEach(r => { %>
+          <tr>
+            <td style="padding-right:0"><input type="checkbox" name="ids" value="<%= r.id %>" class="bulkChk" onclick="updBulk()"></td>
+            <td><span class="mono" style="font-size:11px;color:var(--text-tertiary);"><%= r.id.startsWith('clause') ? '§' + r.id.replace('clause-', '') : r.id.replace('annex-', '').toUpperCase() %></span></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></a></td>
+            <td><span class="status s-<%= r.status.toLowerCase().replace(/ /g,'-') %>"><%= r.status %></span></td>
+            <td class="num" style="color:var(--text-secondary);"><%= r.maturity || 0 %>/5</td>
+            <td style="color:var(--text-secondary);font-size:12px;"><%= r.owner_name || '—' %></td>
+            <td class="num meta"><%= r.due_date || '—' %></td>
+          </tr>
+        <% }) %>
+        <% if (rows.length === 0) { %>
+          <tr><td colspan="7" class="t-empty">No items match this filter.</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<script>
+function updBulk(){
+  const n = document.querySelectorAll('.bulkChk:checked').length;
+  document.getElementById('bulkCount').textContent = n;
+  document.getElementById('bulkBar').classList.toggle('hidden', n === 0);
+}
+function toggleAll(el){
+  document.querySelectorAll('.bulkChk').forEach(c => c.checked = el.checked);
+  updBulk();
+}
+function clearSel(){
+  document.querySelectorAll('.bulkChk').forEach(c => c.checked = false);
+  updBulk();
+}
+</script>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,85 @@
+<%- include('partials/header', { title: 'Assets', user, ws, active: 'assets' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Asset inventory</h1>
+    <div class="page-subtitle">Information, hardware, software, services, people — the assets your ISMS protects.</div>
+  </div>
+  <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
+</div>
+
+<div id="newAsset" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Add asset</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/assets" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div style="grid-column:1/3"><label class="label">Name</label><input class="input" name="name" required></div>
+    <div><label class="label">Type</label>
+      <select class="select" name="type">
+        <option value="information">Information</option>
+        <option value="hardware">Hardware</option>
+        <option value="software">Software</option>
+        <option value="service">Service</option>
+        <option value="people">People</option>
+        <option value="intangible">Intangible</option>
+      </select>
+    </div>
+    <div><label class="label">Classification</label>
+      <select class="select" name="classification">
+        <option value="public">Public</option>
+        <option value="internal" selected>Internal</option>
+        <option value="confidential">Confidential</option>
+        <option value="restricted">Restricted</option>
+      </select>
+    </div>
+    <div style="grid-column:2/-1"><label class="label">Owner</label><input class="input" name="owner_name" placeholder="Person or team"></div>
+    <div><label class="label">Confidentiality</label>
+      <select class="select" name="cia_c"><option value="1">1 Low</option><option value="2" selected>2 Med</option><option value="3">3 High</option></select>
+    </div>
+    <div><label class="label">Integrity</label>
+      <select class="select" name="cia_i"><option value="1">1 Low</option><option value="2" selected>2 Med</option><option value="3">3 High</option></select>
+    </div>
+    <div><label class="label">Availability</label>
+      <select class="select" name="cia_a"><option value="1">1 Low</option><option value="2" selected>2 Med</option><option value="3">3 High</option></select>
+    </div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Save asset</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Name</th><th style="width:120px">Type</th><th style="width:140px">Classification</th>
+      <th style="width:140px">Owner</th><th style="width:80px">CIA</th><th style="width:60px"></th>
+    </tr></thead>
+    <tbody>
+      <% assets.forEach(a => { %>
+        <tr>
+          <td style="font-weight:500"><%= a.name %></td>
+          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= a.type || '—' %></td>
+          <td><span class="tag <%= a.classification === 'restricted' ? 'tag-danger' : a.classification === 'confidential' ? 'tag-warn' : a.classification === 'internal' ? 'tag-info' : 'tag-neutral' %>"><%= a.classification || '—' %></span></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= a.owner_name || '—' %></td>
+          <td class="num meta"><%= a.cia_c %>·<%= a.cia_i %>·<%= a.cia_a %></td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return confirm('Delete?')">
+              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (assets.length === 0) { %>
+        <tr><td colspan="6" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            </div>
+            <div class="empty-title">Build the asset inventory</div>
+            <div class="empty-sub">A.5.9 requires identifying information and associated assets with owners. Add information, software, hardware, services, people, and intangibles in scope.</div>
+            <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,205 @@
+<%- include('partials/header', { title: ws.client_name, user, ws, active: 'overview' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title"><%= ws.client_name %></h1>
+    <div class="page-subtitle">
+      <%= ws.industry || 'Industry not set' %>
+      <% if (ws.target_cert_date) { %> · target certification <%= ws.target_cert_date %><% } %>
+      · stage: <%= ws.stage.replace(/_/g, ' ') %>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <a href="/workspaces/<%= ws.id %>/audit-pack" class="btn btn-accent">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Audit pack
+    </a>
+    <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">SoA CSV</a>
+    <a href="/workspaces/<%= ws.id %>/export/risks.csv" class="btn btn-secondary btn-xs">Risks CSV</a>
+    <a href="/workspaces/<%= ws.id %>/export/assets.csv" class="btn btn-secondary btn-xs">Assets CSV</a>
+  </div>
+</div>
+
+<!-- Headline KPIs -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi kpi-accent" style="text-decoration:none;color:var(--text);">
+    <div class="kpi-num <%= readiness.stage1 >= 80 ? '' : readiness.stage1 >= 50 ? '' : '' %>" style="color:<%= readiness.stage1 >= 80 ? '#15803d' : readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= readiness.stage1 %><span style="font-size:15px;color:var(--text-tertiary);font-weight:400;margin-left:1px;">%</span></div>
+    <div class="kpi-label">Stage 1 readiness</div>
+    <div class="kpi-meta"><%= readiness.flags.filter(f => f.severity==='high').length %> high-severity gap<%= readiness.flags.filter(f => f.severity==='high').length === 1 ? '' : 's' %></div>
+  </a>
+  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi" style="text-decoration:none;color:var(--text);">
+    <div class="kpi-num" style="color:<%= readiness.stage2 >= 80 ? '#15803d' : readiness.stage2 >= 50 ? '#a16207' : '#b91c1c' %>"><%= readiness.stage2 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-label">Stage 2 readiness</div>
+    <div class="kpi-meta">operational evidence</div>
+  </a>
+  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi" style="text-decoration:none;color:var(--text);">
+    <div class="kpi-num"><%= readiness.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= readiness.records.total %></span></div>
+    <div class="kpi-label">Mandatory documented info</div>
+    <div class="kpi-meta">required by ISO 27001:2022</div>
+  </a>
+  <div class="panel kpi">
+    <div class="kpi-num" style="color:<%= readiness.daysToTarget !== null && readiness.daysToTarget < 30 ? '#b91c1c' : 'var(--text)' %>"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '—' %></div>
+    <div class="kpi-label">Days to target</div>
+    <div class="kpi-meta"><%= ws.target_cert_date || 'no target set' %></div>
+  </div>
+</div>
+
+<!-- Secondary metrics -->
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px;">
+  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= progress.percent %>%</div><div class="kpi-meta">Assessed (<%= progress.assessed %>/<%= progress.total %>)</div></div>
+  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= assetCount %></div><div class="kpi-meta">Assets</div></div>
+  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= riskCount %></div><div class="kpi-meta">Risks</div></div>
+  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= docCount %></div><div class="kpi-meta">Documents</div></div>
+  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= auditCount %></div><div class="kpi-meta">Audits</div></div>
+  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em;color:<%= ncOpen > 0 ? '#b91c1c' : 'var(--text)' %>" class="num"><%= ncOpen %></div><div class="kpi-meta">Open NCs</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Top open risks</h2><a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px">View all →</a></div>
+    <% if (openRisks.length === 0) { %>
+      <div class="t-empty">No open risks yet.</div>
+    <% } else { %>
+      <div class="divide-row">
+        <% openRisks.forEach(r => { %>
+          <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;">
+            <span style="font-size:13px"><%= r.title %></span>
+            <span class="tag <%= (r.likelihood * r.impact) >= 15 ? 'tag-danger' : (r.likelihood * r.impact) >= 8 ? 'tag-warn' : 'tag-success' %> num">L<%= r.likelihood %>·I<%= r.impact %> = <%= r.likelihood*r.impact %></span>
+          </a>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Open tasks</h2><a href="/workspaces/<%= ws.id %>/tasks" class="link-muted" style="font-size:12px">View all →</a></div>
+    <% if (openTasks.length === 0) { %>
+      <div class="t-empty">No open tasks.</div>
+    <% } else { %>
+      <div class="divide-row">
+        <% openTasks.forEach(t => { %>
+          <div style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
+            <div style="min-width:0">
+              <div style="font-size:13px;font-weight:500"><%= t.title %></div>
+              <div class="meta"><%= t.assignee_name || 'unassigned' %><% if (t.due_date) { %> · due <%= t.due_date %><% } %></div>
+            </div>
+            <span class="status s-<%= t.status %>"><%= t.status.replace('_',' ') %></span>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>30-day trends</h2><span class="meta">Daily counts</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;">
+    <div>
+      <div class="meta" style="margin-bottom:6px">Risks created</div>
+      <div id="tr-risks" style="height:48px;"></div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-risks-tot"></div>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:6px">Controls implemented</div>
+      <div id="tr-controls" style="height:48px;"></div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-controls-tot"></div>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:6px">NCs opened</div>
+      <div id="tr-ncs-open" style="height:48px;"></div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-ncs-open-tot"></div>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:6px">NCs closed</div>
+      <div id="tr-ncs-closed" style="height:48px;"></div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-ncs-closed-tot"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
+  const drawSpark = (id, series, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const w = el.clientWidth || 200, h = 48;
+    const max = Math.max(1, ...series.map(d => d.c));
+    const step = w / (series.length - 1);
+    const path = series.map((d, i) => `${i===0?'M':'L'}${(i*step).toFixed(1)},${(h - (d.c/max)*(h-6)).toFixed(1)}`).join(' ');
+    el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow:visible">
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${path} L${w},${h} L0,${h} Z" fill="${color}" opacity="0.08"/>
+    </svg>`;
+    document.getElementById(id + '-tot').textContent = series.reduce((s,d) => s+d.c, 0) + ' total';
+  };
+  drawSpark('tr-risks', data.risks, '#dc2626');
+  drawSpark('tr-controls', data.controls, '#16a34a');
+  drawSpark('tr-ncs-open', data.ncs_open, '#dc2626');
+  drawSpark('tr-ncs-closed', data.ncs_closed, '#16a34a');
+});
+</script>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Action items</h2><span class="meta">Not / Partially Implemented</span></div>
+  <% if (actionItems.length === 0) { %>
+    <div class="t-empty">Nothing flagged.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% actionItems.forEach(a => { %>
+        <a href="/workspaces/<%= ws.id %>/controls/<%= a.id %>" class="link-muted" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;font-size:13px;">
+          <span><%= a.title %></span>
+          <span class="status s-<%= a.status.toLowerCase().replace(/ /g,'-') %>"><%= a.status %></span>
+        </a>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <h2>Recent activity</h2>
+      <% const maxC = Math.max(1, ...sparkline.map(d => d.c)); const w = 180; const h = 28; const step = w / (sparkline.length - 1); %>
+      <svg class="spark" width="<%= w %>" height="<%= h %>" viewBox="0 0 <%= w %> <%= h %>" preserveAspectRatio="none" style="overflow:visible">
+        <path d="<%= sparkline.map((d, i) => `${i===0?'M':'L'}${(i*step).toFixed(1)},${(h - (d.c/maxC)*(h-4)).toFixed(1)}`).join(' ') %>" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="<%= sparkline.map((d, i) => `${i===0?'M':'L'}${(i*step).toFixed(1)},${(h - (d.c/maxC)*(h-4)).toFixed(1)}`).join(' ') %> L<%= w %>,<%= h %> L0,<%= h %> Z" fill="var(--accent)" opacity="0.08"/>
+      </svg>
+      <span class="meta">30-day events</span>
+    </div>
+    <a href="/workspaces/<%= ws.id %>/activity" class="link-muted" style="font-size:12px">Full audit log →</a>
+  </div>
+  <% if (recentActivity.length === 0) { %>
+    <div class="t-empty">No activity yet.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% recentActivity.forEach(a => { %>
+        <div style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+          <span><span style="font-weight:500"><%= a.user_name %></span> <span style="color:var(--text-secondary);"><%= a.action.replace(/_/g, ' ') %></span> <span class="meta"><%= a.entity_type || '' %></span></span>
+          <span class="meta num"><%= a.created_at %></span>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<details style="margin-top:24px">
+  <summary class="link-muted" style="font-size:13px;">Workspace settings</summary>
+  <div class="panel panel-pad" style="margin-top:8px">
+    <form method="POST" action="/workspaces/<%= ws.id %>/update" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
+      <div><label class="label">Industry</label><input class="input" name="industry" value="<%= ws.industry || '' %>"></div>
+      <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" value="<%= ws.scope || '' %>"></div>
+      <div><label class="label">Target cert date</label><input class="input" name="target_cert_date" type="date" value="<%= ws.target_cert_date || '' %>"></div>
+      <div><label class="label">Stage</label>
+        <select class="select" name="stage">
+          <% ['gap_assessment','risk_assessment','implementation','internal_audit','stage_1','stage_2','certified','surveillance'].forEach(s => { %>
+            <option value="<%= s %>" <%= ws.stage === s ? 'selected' : '' %>><%= s.replace(/_/g, ' ') %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div style="grid-column:1/-1"><button class="btn btn-primary">Save</button></div>
+    </form>
+  </div>
+</details>
+
+<%- include('partials/footer') %>

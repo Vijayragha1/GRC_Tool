@@ -1,0 +1,91 @@
+<%- include('partials/header', { title: doc.name + ' — versions', user, ws, active: 'documents' }) %>
+
+<a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" class="link-muted" style="font-size:12px;">← Back to <%= doc.name %></a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Version history</h1>
+    <div class="page-subtitle"><%= doc.name %> · <%= versions.length %> version<%= versions.length === 1 ? '' : 's' %>. Each version is an immutable snapshot with content hash and signature trail.</div>
+  </div>
+  <% if (versions.length >= 2) { %>
+    <form method="GET" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/diff" style="display:flex;gap:6px;align-items:center;">
+      <select name="a" class="select" style="width:auto"><% versions.forEach(v => { %><option value="<%= v.id %>">v<%= v.version %> · <%= v.status %></option><% }) %></select>
+      <span class="meta">vs</span>
+      <select name="b" class="select" style="width:auto"><% versions.forEach((v,i) => { %><option value="<%= v.id %>" <%= i === 0 ? 'selected' : '' %>>v<%= v.version %> · <%= v.status %></option><% }) %></select>
+      <button class="btn btn-secondary btn-xs">Diff</button>
+    </form>
+  <% } %>
+</div>
+
+<% versions.forEach(v => { %>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-head">
+      <div>
+        <h2>v<%= v.version %> · <%= v.name %></h2>
+        <div class="meta" style="margin-top:2px;">
+          <%= v.status %> · created <%= v.created_at %> by <%= v.author %>
+          <% if (v.change_summary) { %> · <%= v.change_summary %><% } %>
+        </div>
+      </div>
+      <div class="meta mono" style="font-size:10.5px;">SHA-256: <%= v.content_hash.slice(0,16) %>…</div>
+    </div>
+
+    <% if (v.approvers.length) { %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+        <div class="sec-label">Approval chain</div>
+        <table class="t">
+          <thead><tr><th style="width:40px">#</th><th>Approver</th><th>Role</th><th>Decision</th><th>When</th><th>Reason</th></tr></thead>
+          <tbody>
+            <% v.approvers.forEach(a => { %>
+              <tr>
+                <td class="num"><%= a.sequence %></td>
+                <td><%= a.user_name %><div class="meta"><%= a.user_email %></div></td>
+                <td class="meta"><%= a.role_label || '—' %></td>
+                <td><span class="tag <%= a.decision === 'approved' ? 'tag-success' : a.decision === 'rejected' ? 'tag-danger' : 'tag-neutral' %>"><%= a.decision || 'pending' %></span></td>
+                <td class="meta"><%= a.decided_at || '—' %></td>
+                <td class="meta"><%= a.decision_reason || '' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <% if (v.signatures.length) { %>
+      <div class="panel-pad">
+        <div class="sec-label">E-signatures</div>
+        <% if (v.signatureIssues.length) { %>
+          <div class="callout" style="background:rgba(220,38,38,0.08);border-color:#dc2626;color:#b91c1c;margin-bottom:12px;">
+            <div class="callout-title" style="color:#b91c1c;">Integrity warning</div>
+            <ul style="margin:6px 0 0 18px;">
+              <% v.signatureIssues.forEach(issue => { %><li><%= issue %></li><% }) %>
+            </ul>
+          </div>
+        <% } else { %>
+          <div class="meta" style="margin-bottom:8px;color:#16a34a;">✓ All <%= v.signatures.length %> signature<%= v.signatures.length === 1 ? '' : 's' %> verified against content hash.</div>
+        <% } %>
+        <table class="t">
+          <thead><tr><th>Signer</th><th>Role</th><th>Intent</th><th>When</th><th>IP</th><th>HMAC</th></tr></thead>
+          <tbody>
+            <% v.signatures.forEach(s => { %>
+              <tr>
+                <td><%= s.user_name %></td>
+                <td class="meta"><%= s.signature_role || '—' %></td>
+                <td class="meta"><%= s.intent %></td>
+                <td class="meta"><%= s.signed_at %></td>
+                <td class="meta mono"><%= s.ip_address || '—' %></td>
+                <td class="meta mono" style="font-size:10.5px;"><%= s.signature.slice(0,16) %>…</td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <% if (!v.approvers.length && !v.signatures.length) { %>
+      <div class="panel-pad" style="text-align:center;color:var(--text-tertiary);font-size:13px;padding:20px;">No review or signing activity on this version.</div>
+    <% } %>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

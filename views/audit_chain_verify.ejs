@@ -1,0 +1,37 @@
+<%- include('partials/header', { title: 'Audit log integrity', user, ws, active: 'activity' }) %>
+
+<a href="/workspaces/<%= ws.id %>/activity-log" class="link-muted" style="font-size:12px;">← Activity log</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Audit log integrity</h1>
+    <div class="page-subtitle">Each entry is hashed with the previous entry's hash. Any insertion, mutation or deletion breaks the chain. Re-run any time.</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+    <div><div class="meta">Entries inspected</div><div style="font-size:24px;font-weight:600;"><%= total %></div></div>
+    <div><div class="meta">Issues</div><div style="font-size:24px;font-weight:600;color:<%= issues.length === 0 ? '#16a34a' : '#b91c1c' %>;"><%= issues.length %></div></div>
+  </div>
+</div>
+
+<% if (issues.length === 0) { %>
+  <div class="callout" style="background:rgba(22,163,74,0.08);border-color:#16a34a;color:#15803d;">
+    <div class="callout-title" style="color:#15803d;">✓ Chain intact</div>
+    Every audit log entry verifies cleanly. The log has not been tampered with since each entry was first recorded.
+  </div>
+<% } else { %>
+  <div class="callout" style="background:rgba(220,38,38,0.06);border-color:#dc2626;color:#b91c1c;">
+    <div class="callout-title" style="color:#b91c1c;">Tampering detected</div>
+    The audit log has been modified outside the application. Investigate immediately.
+  </div>
+  <div class="panel" style="margin-top:14px"><table class="t">
+    <thead><tr><th>Audit log row</th><th>Issue</th><th>Description</th></tr></thead>
+    <tbody>
+      <% issues.forEach(i => { %>
+        <tr><td class="num">#<%= i.id %></td><td><span class="tag tag-danger"><%= i.kind %></span></td><td class="meta"><%= i.desc %></td></tr>
+      <% }) %>
+    </tbody>
+  </table></div>
+<% } %>
+
+<%- include('partials/footer') %>

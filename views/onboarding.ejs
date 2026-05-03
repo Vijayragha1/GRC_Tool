@@ -1,0 +1,43 @@
+<%- include('partials/header', { title: 'Get started', user, ws, active: 'overview' }) %>
+
+<div class="page-head">
+  <div><h1 class="page-title">Get started</h1>
+    <div class="page-subtitle">Eight steps to a baseline ISMS. Everything turns green as you complete it. You can dismiss this and come back any time.</div></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/onboarding/dismiss"><button class="btn btn-ghost btn-xs">Dismiss</button></form>
+</div>
+
+<%
+  const steps = [
+    { k: 'step_workspace', title: 'Set up the workspace', desc: 'Client name, industry, target certification date.', link: `/workspaces/${ws.id}` },
+    { k: 'step_scope', title: 'Define ISMS scope', desc: 'Clause 4.3 — what is in / out of the ISMS, in plain language.', link: `/workspaces/${ws.id}` },
+    { k: 'step_methodology', title: 'Pick a risk methodology', desc: 'Default 5×5 is fine for most. Apply a preset (ISO 27005 / NIST 800-30 / FAIR-lite / 3×3) from the methodology page.', link: `/workspaces/${ws.id}/risk-methodology` },
+    { k: 'step_assets', title: 'Inventory assets', desc: 'A.5.9 — at least your top 10 information assets, with classification.', link: `/workspaces/${ws.id}/assets` },
+    { k: 'step_risk', title: 'Identify your first 5 risks', desc: 'Clause 6.1.2 — link each to assets and Annex A controls.', link: `/workspaces/${ws.id}/risks` },
+    { k: 'step_policies', title: 'Approve your information security policy', desc: 'Clause 5.2 — generate from template, submit, approve, publish.', link: `/workspaces/${ws.id}/documents` },
+    { k: 'step_team', title: 'Add team members', desc: 'Invite client-side stakeholders. Assign roles (and override individual permissions if needed).', link: `/workspaces/${ws.id}/access` },
+    { k: 'step_supplier', title: 'Add your top supplier', desc: 'A.5.19 — register your most critical supplier, send a SIG-Lite questionnaire.', link: `/workspaces/${ws.id}/vendors` }
+  ];
+  const completedCount = steps.filter(s => real[s.k]).length;
+%>
+
+<div class="panel kpi" style="margin-bottom:14px;text-align:center;">
+  <div style="padding:18px;">
+    <div class="kpi-num num"><%= completedCount %> / <%= steps.length %></div>
+    <div class="kpi-label">Steps complete</div>
+  </div>
+</div>
+
+<div class="panel">
+  <% steps.forEach((s, i) => { const done = real[s.k]; %>
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:36px 1fr auto;gap:14px;align-items:center;">
+      <span style="width:30px;height:30px;border-radius:50%;background:<%= done ? '#16a34a' : 'var(--bg-muted)' %>;color:<%= done ? '#fff' : 'var(--text-secondary)' %>;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;"><%= done ? '✓' : (i + 1) %></span>
+      <div>
+        <div style="font-weight:600;font-size:14px;<%= done ? 'color:var(--text-secondary);text-decoration:line-through;' : '' %>"><%= s.title %></div>
+        <div class="meta" style="margin-top:2px;font-size:12.5px;line-height:1.45;"><%= s.desc %></div>
+      </div>
+      <a href="<%= s.link %>" class="btn <%= done ? 'btn-ghost' : 'btn-primary' %> btn-xs"><%= done ? 'Open' : 'Start' %></a>
+    </div>
+  <% }) %>
+</div>
+
+<%- include('partials/footer') %>

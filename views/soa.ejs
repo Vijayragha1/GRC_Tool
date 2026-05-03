@@ -1,0 +1,58 @@
+<%- include('partials/header', { title: 'Statement of Applicability', user, ws, active: 'soa' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Statement of Applicability</h1>
+    <div class="page-subtitle">Mandatory ISO 27001 document. Applicability and justification for all 93 Annex A controls.</div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <a href="/workspaces/<%= ws.id %>/soa/snapshots" class="btn btn-secondary btn-xs">Snapshots</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return confirm('Auto-include and justify every control linked to a risk?')"><button class="btn btn-secondary btn-xs">Auto-justify from risks</button></form>
+    <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs">Capture snapshot</button></form>
+    <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
+  </div>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th style="width:60px">ID</th>
+      <th>Control</th>
+      <th style="width:90px">Risks</th>
+      <th style="width:140px">Applicability</th>
+      <th style="width:170px">Status</th>
+      <th>Justification</th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(r => { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/soa/<%= r.id %>" class="contents">
+          <tr>
+            <td class="mono meta"><%= r.id.replace('annex-', '').toUpperCase() %></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a></td>
+            <td><% if (r.risk_count > 0) { %><span class="tag tag-success num"><%= r.risk_count %></span><% } else { %><span class="meta">—</span><% } %></td>
+            <td>
+              <select name="applicability" class="select" style="font-size:12px;padding:4px 8px;">
+                <option value="undecided" <%= r.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>
+                <option value="included" <%= r.applicability === 'included' ? 'selected' : '' %>>Included</option>
+                <option value="excluded" <%= r.applicability === 'excluded' ? 'selected' : '' %>>Excluded</option>
+              </select>
+            </td>
+            <td>
+              <select name="status" class="select" style="font-size:12px;padding:4px 8px;">
+                <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %>
+                  <option value="<%= s %>" <%= r.status === s ? 'selected' : '' %>><%= s %></option>
+                <% }) %>
+              </select>
+            </td>
+            <td>
+              <textarea name="<%= r.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea" style="font-size:12px;padding:4px 8px;" placeholder="<%= r.applicability === 'excluded' ? 'Why excluded' : 'Why included' %>"><%= r.applicability === 'excluded' ? (r.exclusion_justification || '') : (r.inclusion_justification || '') %></textarea>
+              <button class="btn btn-ghost btn-xs" style="margin-top:4px;font-size:11px;">Save</button>
+            </td>
+          </tr>
+        </form>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

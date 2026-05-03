@@ -1,0 +1,207 @@
+<%- include('partials/header', { title: item.title, user, ws, active: 'controls' }) %>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+  <a href="/workspaces/<%= ws.id %>/controls" class="link-muted" style="font-size:12px;">← All controls</a>
+  <div style="display:flex;gap:6px;">
+    <% if (prev) { %><a href="/workspaces/<%= ws.id %>/controls/<%= prev %>" class="btn btn-secondary btn-xs">← Prev</a><% } %>
+    <% if (next) { %><a href="/workspaces/<%= ws.id %>/controls/<%= next %>" class="btn btn-secondary btn-xs">Next →</a><% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-pad">
+    <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;" class="mono"><%= item.id.startsWith('clause') ? 'Clause ' + item.id.replace('clause-', '') : item.id.replace('annex-', '').toUpperCase() %></div>
+    <h1 class="page-title" style="margin-bottom:6px"><%= item.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></h1>
+    <p style="color:var(--text-secondary);font-size:13px;line-height:1.5;"><%= item.summary %></p>
+    <% if (item.id === 'clause-4.1' || item.id === 'clause-4.2') { %>
+      <div class="callout" style="margin-top:14px;">
+        <div class="callout-title">Amendment 1:2024 — Climate change</div>
+        <% if (item.id === 'clause-4.1') { %>
+          The 2024 amendment requires the organization to determine whether climate change is a relevant issue. Examples include physical risks to facilities, climate-driven supplier disruption, energy availability, or regulatory disclosure obligations affecting in-scope information. Record the determination outcome — even if it is "not relevant" with rationale.
+        <% } else { %>
+          The 2024 amendment requires consideration of relevant interested parties' requirements related to climate change. Examples include customer or investor sustainability disclosure expectations, regulatory reporting regimes (CSRD, SEC climate rules), or contractual climate clauses that intersect with the ISMS.
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+
+  <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>" style="border-top:1px solid var(--border);padding:16px 20px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div>
+      <label class="label">Status</label>
+      <select class="select" name="status">
+        <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %>
+          <option value="<%= s %>" <%= state.status === s ? 'selected' : '' %>><%= s %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Maturity</label>
+      <select class="select" name="maturity">
+        <% [0,1,2,3,4,5].forEach(m => { %>
+          <option value="<%= m %>" <%= state.maturity == m ? 'selected' : '' %>><%= m %> — <%= ['None','Initial','Repeatable','Defined','Managed','Optimized'][m] %></option>
+        <% }) %>
+      </select>
+    </div>
+    <% if (item.type === 'control') { %>
+      <div>
+        <label class="label">Applicability (SoA)</label>
+        <select class="select" name="applicability">
+          <option value="undecided" <%= state.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>
+          <option value="included" <%= state.applicability === 'included' ? 'selected' : '' %>>Included</option>
+          <option value="excluded" <%= state.applicability === 'excluded' ? 'selected' : '' %>>Excluded</option>
+        </select>
+      </div>
+    <% } %>
+    <div>
+      <label class="label">Owner</label>
+      <select class="select" name="owner_id">
+        <option value="">— unassigned —</option>
+        <% wsUsers.forEach(u => { %><option value="<%= u.id %>" <%= state.owner_id == u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Due date</label>
+      <input class="input" type="date" name="due_date" value="<%= state.due_date || '' %>">
+    </div>
+    <% if (item.type === 'control') { %>
+      <div style="grid-column:1/-1"><label class="label">Inclusion justification</label><textarea class="textarea" name="inclusion_justification" rows="2"><%= state.inclusion_justification || '' %></textarea></div>
+      <div style="grid-column:1/-1"><label class="label">Exclusion justification</label><textarea class="textarea" name="exclusion_justification" rows="2"><%= state.exclusion_justification || '' %></textarea></div>
+    <% } %>
+    <div style="grid-column:1/-1"><label class="label">Notes <span style="color:var(--text-tertiary);font-weight:400;">(visible to client)</span></label><textarea class="textarea" name="notes" rows="3"><%= state.notes || '' %></textarea></div>
+    <% if (isFirm) { %>
+      <div style="grid-column:1/-1"><label class="label" style="color:#a16207;">Internal notes <span style="color:var(--text-tertiary);font-weight:400;">(consultants only)</span></label><textarea class="textarea" name="internal_notes" rows="2" style="background:#fefce8;border-color:#fde68a;"><%= state.internal_notes || '' %></textarea></div>
+    <% } %>
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:12px;">
+      <button class="btn btn-primary">Save</button>
+      <span id="autosaveStatus" class="meta"></span>
+    </div>
+  </form>
+</div>
+
+<% if (item.questions.length || item.evidence_needed.length || item.documentation_needed.length) { %>
+<% const isControl = item.type === 'control'; %>
+<div class="panel panel-pad" style="margin-bottom:16px">
+  <% if (item.questions.length) { %>
+    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:6px;"><%= isControl ? 'Applicability' : 'Audit questions' %></div>
+    <ul style="list-style:disc;padding-left:18px;font-size:13px;line-height:1.5;color:var(--text);margin-bottom:14px;">
+      <% item.questions.forEach(q => { %><li style="margin:2px 0;"><%= q %></li><% }) %>
+    </ul>
+  <% } %>
+  <% if (item.evidence_needed.length) { %>
+    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:6px;"><%= isControl ? 'Implementation considerations' : 'Evidence needed' %></div>
+    <ul style="list-style:disc;padding-left:18px;font-size:13px;line-height:1.5;color:var(--text);margin-bottom:14px;">
+      <% item.evidence_needed.forEach(e => { %><li style="margin:2px 0;"><%= e %></li><% }) %>
+    </ul>
+  <% } %>
+  <% if (item.documentation_needed.length) { %>
+    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:6px;"><%= isControl ? 'Audit evidence' : 'Documentation needed' %></div>
+    <ul style="list-style:disc;padding-left:18px;font-size:13px;line-height:1.5;color:var(--text);">
+      <% item.documentation_needed.forEach(d => { %><li style="margin:2px 0;"><%= d %></li><% }) %>
+    </ul>
+  <% } %>
+</div>
+<% } %>
+
+<% if (mappings && mappings.length) { %>
+<div class="panel panel-pad" style="margin-bottom:16px">
+  <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:8px;">Cross-mapped frameworks</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;">
+    <% mappings.forEach(m => { %>
+      <span class="tag tag-info"><%= m.framework.toUpperCase().replace('_',' ') %> · <%= m.external_ref %></span>
+    <% }) %>
+  </div>
+</div>
+<% } %>
+
+<% if (linkedRisks.length) { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Linked risks</h2></div>
+  <div class="divide-row">
+    <% linkedRisks.forEach(r => { %>
+      <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;font-size:13px;">
+        <span><%= r.title %></span>
+        <span class="tag <%= (r.likelihood * r.impact) >= 15 ? 'tag-danger' : (r.likelihood * r.impact) >= 8 ? 'tag-warn' : 'tag-success' %> num">score <%= r.likelihood*r.impact %></span>
+      </a>
+    <% }) %>
+  </div>
+</div>
+<% } %>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Evidence</h2><span class="meta"><%= evidenceList.length %> files</span></div>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+    <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;">
+      <input type="hidden" name="iso_item_id" value="<%= item.id %>">
+      <input type="file" name="file" required class="input" style="font-size:12px;">
+      <input type="text" name="description" placeholder="Description (optional)" class="input">
+      <button class="btn btn-primary btn-xs" style="white-space:nowrap;">Upload</button>
+    </form>
+  </div>
+  <% if (evidenceList.length === 0) { %>
+    <div class="t-empty">No evidence uploaded yet.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% evidenceList.forEach(e => { %>
+        <div style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
+          <div style="min-width:0">
+            <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" class="link-muted" style="font-size:13px;font-weight:500;color:var(--text);"><%= e.filename %></a>
+            <% if (e.description) { %><div class="meta" style="margin-top:2px;"><%= e.description %></div><% } %>
+            <div class="meta" style="margin-top:2px;"><%= e.uploader %> · <%= e.uploaded_at %> · <span class="mono">SHA-256 <%= e.sha256.substring(0, 12) %>…</span></div>
+          </div>
+          <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return confirm('Delete?')">
+            <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+          </form>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Comments</h2></div>
+  <% comments.forEach(c => { %>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);<%= c.internal_only ? 'background:#fefce8;' : '' %>">
+      <div class="meta"><%= c.author %> · <%= c.created_at %><% if (c.internal_only) { %> · <span style="color:#a16207;font-weight:500;">internal</span><% } %></div>
+      <div style="font-size:13px;margin-top:2px;"><%= c.body %></div>
+    </div>
+  <% }) %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/comments" class="panel-pad">
+    <input type="hidden" name="parent_type" value="control">
+    <input type="hidden" name="parent_id" value="<%= item.id %>">
+    <textarea name="body" rows="2" class="textarea" placeholder="Add a comment…" required></textarea>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+      <% if (isFirm) { %>
+        <label class="meta" style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="internal_only" value="1"> Internal only</label>
+      <% } else { %><span></span><% } %>
+      <button class="btn btn-primary btn-xs">Post</button>
+    </div>
+  </form>
+</div>
+
+<script>
+const form = document.querySelector('form[action$="/controls/<%= item.id %>"]');
+if (form) {
+  const status = document.getElementById('autosaveStatus');
+  const url = form.action + '/autosave';
+  let timer;
+  form.querySelectorAll('input, select, textarea').forEach(f => {
+    f.addEventListener('blur', () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        if (!f.name) return;
+        try {
+          status.textContent = 'saving…';
+          const r = await fetch(url, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ [f.name]: f.value })
+          });
+          const j = await r.json();
+          if (j.ok) { status.textContent = 'saved'; setTimeout(() => status.textContent = '', 1500); }
+        } catch(e) { status.textContent = 'failed'; }
+      }, 300);
+    });
+  });
+}
+</script>
+
+<%- include('partials/footer') %>

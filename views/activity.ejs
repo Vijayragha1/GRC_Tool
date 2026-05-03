@@ -1,0 +1,31 @@
+<%- include('partials/header', { title: 'Activity', user, ws, active: 'activity' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Activity log</h1>
+    <div class="page-subtitle">Immutable audit trail of changes in this workspace. Required evidence for ISO 27001 certification.</div>
+  </div>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th style="width:160px">When</th><th style="width:160px">Who</th>
+      <th style="width:180px">Action</th><th style="width:200px">Entity</th><th>Details</th>
+    </tr></thead>
+    <tbody>
+      <% log.forEach(l => { %>
+        <tr>
+          <td class="num meta"><%= l.created_at %></td>
+          <td style="font-size:13px;"><%= l.user_name %></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= l.action.replace(/_/g, ' ') %></td>
+          <td class="meta"><%= l.entity_type || '' %> <%= l.entity_id || '' %></td>
+          <td class="mono meta" style="font-size:11px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= l.details || '' %></td>
+        </tr>
+      <% }) %>
+      <% if (log.length === 0) { %><tr><td colspan="5" class="t-empty">No activity yet.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

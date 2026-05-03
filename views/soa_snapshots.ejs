@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'SoA snapshots', user, ws, active: 'soa' }) %>
+
+<a href="/workspaces/<%= ws.id %>/soa" class="link-muted" style="font-size:12px;">← Back to SoA</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">SoA snapshots</h1>
+    <div class="page-subtitle">Immutable, hashed snapshots of the Statement of Applicability. Auditors will ask "what changed since last cert?" — capture before each MRM and before each audit.</div></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:flex;gap:6px;align-items:center;">
+    <input class="input" name="label" placeholder="Snapshot label">
+    <input class="input" name="reason" placeholder="Reason">
+    <button class="btn btn-primary btn-xs">Capture now</button>
+  </form>
+</div>
+
+<% if (snapshots.length >= 2) { %>
+<div class="panel" style="margin-bottom:14px">
+  <form method="GET" action="/workspaces/<%= ws.id %>/soa/snapshots/diff" class="panel-pad" style="display:flex;gap:8px;align-items:center;">
+    <span class="meta">Compare:</span>
+    <select name="a" class="select" style="width:auto"><% snapshots.forEach(s => { %><option value="<%= s.id %>"><%= s.label || s.created_at %></option><% }) %></select>
+    <span class="meta">vs</span>
+    <select name="b" class="select" style="width:auto"><% snapshots.forEach((s,i) => { %><option value="<%= s.id %>" <%= i === 0 ? 'selected' : '' %>><%= s.label || s.created_at %></option><% }) %></select>
+    <button class="btn btn-secondary btn-xs">Diff</button>
+  </form>
+</div>
+<% } %>
+
+<div class="panel">
+  <table class="t">
+    <thead><tr><th>Label</th><th>When</th><th>Author</th><th class="num">Controls</th><th class="num">Inc.</th><th class="num">Exc.</th><th>Hash</th></tr></thead>
+    <tbody>
+      <% if (!snapshots.length) { %><tr><td colspan="7" class="t-empty">No snapshots yet — capture one before your first audit.</td></tr><% } %>
+      <% snapshots.forEach(s => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/soa/snapshots/<%= s.id %>'">
+          <td><strong><%= s.label || '(unlabelled)' %></strong><% if (s.reason) { %><div class="meta"><%= s.reason %></div><% } %></td>
+          <td class="meta"><%= s.created_at %></td>
+          <td class="meta"><%= s.author %></td>
+          <td class="num"><%= s.control_count %></td>
+          <td class="num" style="color:#16a34a;"><%= s.included_count %></td>
+          <td class="num" style="color:#b91c1c;"><%= s.excluded_count %></td>
+          <td class="meta mono" style="font-size:10.5px;"><%= s.payload_hash.slice(0,12) %>…</td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

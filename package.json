@@ -1,0 +1,20 @@
+{
+  "name": "iso27001-tool",
+  "version": "0.1.0",
+  "description": "ISO 27001:2022 implementation and audit tool for consulting firms and their clients",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.3.0",
+    "docx": "^9.0.2",
+    "ejs": "^3.1.10",
+    "express": "^4.21.0",
+    "express-session": "^1.18.1",
+    "multer": "^1.4.5-lts.1"
+  }
+}

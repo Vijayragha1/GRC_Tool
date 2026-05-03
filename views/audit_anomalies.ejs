@@ -1,0 +1,35 @@
+<%- include('partials/header', { title: 'Anomaly detection', user, ws, active: 'activity' }) %>
+
+<a href="/workspaces/<%= ws.id %>/activity-log" class="link-muted" style="font-size:12px;">← Activity log</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title">Anomaly detection</h1>
+    <div class="page-subtitle">Heuristic flags on the activity log: after-hours actions, action bursts, IP changes mid-session, permission denials.</div></div>
+</div>
+
+<% if (!flags.length) { %>
+  <div class="callout" style="background:rgba(22,163,74,0.08);border-color:#16a34a;color:#15803d;">No anomalies detected.</div>
+<% } %>
+
+<% flags.forEach(f => { %>
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-head"><h2><%= f.label %></h2><span class="tag tag-warn"><%= f.kind %></span></div>
+    <div class="panel-pad" style="font-size:12.5px;font-family:ui-monospace,monospace;max-height:300px;overflow-y:auto;">
+      <% if (f.kind === 'after_hours' || f.kind === 'denials') { %>
+        <% f.items.forEach(i => { %>
+          <div style="padding:4px 0;border-bottom:1px dashed var(--border);"><%= i.created_at %> · <%= i.user_name %> · <%= i.action %><% if (i.entity_type) { %> · <%= i.entity_type %> <%= i.entity_id %><% } %><% if (i.ip_address) { %> · <%= i.ip_address %><% } %></div>
+        <% }) %>
+      <% } else if (f.kind === 'burst') { %>
+        <% f.items.forEach(i => { %>
+          <div style="padding:4px 0;border-bottom:1px dashed var(--border);">user #<%= i.user_id %> at <%= i.m %>: <%= i.c %> actions in one minute</div>
+        <% }) %>
+      <% } else if (f.kind === 'ip_change') { %>
+        <% f.items.forEach(i => { %>
+          <div style="padding:4px 0;border-bottom:1px dashed var(--border);">user #<%= i.user_id %> on <%= i.d %>: <%= i.ips %> distinct IPs</div>
+        <% }) %>
+      <% } %>
+    </div>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

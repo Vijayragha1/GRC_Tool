@@ -1,0 +1,129 @@
+<%- include('partials/header', { title: 'Access &amp; permissions', user, ws, active: 'access' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Access &amp; permissions</h1>
+    <div class="page-subtitle">Roles bundle a set of permissions. Per-user overrides grant or revoke individual permissions on top of the role baseline. Every change is recorded in the activity log.</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Members &amp; roles</h2></div>
+  <table class="t">
+    <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Role</th><th>Effective permissions</th></tr></thead>
+    <tbody>
+      <% firmUsers.forEach(u => { %>
+        <% const eff = permsFor(u); %>
+        <tr>
+          <td><strong><%= u.name %></strong></td>
+          <td class="meta"><%= u.email %></td>
+          <td><span class="tag tag-info">firm</span><% if (u.firm_role === 'owner') { %> <span class="tag tag-accent">owner</span><% } %></td>
+          <td class="meta"><%= u.firm_role === 'owner' ? 'Firm owner (all)' : 'Consultant' %></td>
+          <td class="meta"><%= u.firm_role === 'owner' ? 'All' : eff.length + ' / ' + Object.keys(permissions).length %></td>
+        </tr>
+      <% }) %>
+      <% members.forEach(m => { %>
+        <% const eff = permsFor(m); %>
+        <tr>
+          <td><strong><%= m.name %></strong></td>
+          <td class="meta"><%= m.email %></td>
+          <td><span class="tag tag-neutral">client</span></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/access/role" style="display:inline-flex;gap:6px;align-items:center">
+              <input type="hidden" name="user_id" value="<%= m.user_id %>">
+              <select class="select" name="role" style="width:auto;min-width:160px;font-size:12px;padding:4px 28px 4px 8px;">
+                <% Object.entries(roles).forEach(([k, v]) => { %>
+                  <% if (['client_admin','contributor','reviewer','auditor','read_only'].includes(k)) { %>
+                    <option value="<%= k %>" <%= m.role === k ? 'selected' : '' %>><%= v %></option>
+                  <% } %>
+                <% }) %>
+              </select>
+              <button class="btn btn-secondary btn-xs">Apply</button>
+            </form>
+          </td>
+          <td class="meta"><%= eff.length %> / <%= Object.keys(permissions).length %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Permission overrides</h2><span class="meta">Grant or revoke individual permissions on top of a role.</span></div>
+  <% if (overrides.length === 0) { %>
+    <div class="empty-state" style="padding:32px">
+      <div class="empty-sub">No overrides yet. Use the form below to grant a single permission to a user without changing their role.</div>
+    </div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>User</th><th>Permission</th><th>Effect</th><th>Reason</th><th>Applied</th><th></th></tr></thead>
+      <tbody>
+        <% overrides.forEach(o => { %>
+          <tr>
+            <td><%= o.name %></td>
+            <td class="mono meta"><%= o.permission %></td>
+            <td><span class="tag <%= o.granted ? 'tag-success' : 'tag-danger' %>"><%= o.granted ? 'GRANT' : 'REVOKE' %></span></td>
+            <td class="meta"><%= o.reason || '—' %></td>
+            <td class="meta"><%= o.created_at %></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/access/override/<%= o.id %>/delete" style="display:inline">
+                <button class="btn btn-danger btn-xs">Remove</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/access/override" class="panel-pad" style="display:grid;grid-template-columns:1.4fr 2fr 0.8fr 1.6fr auto;gap:10px;align-items:end;">
+    <div>
+      <label class="label">User</label>
+      <select class="select" name="user_id" required>
+        <option value="">—</option>
+        <% members.forEach(m => { %><option value="<%= m.user_id %>"><%= m.name %> (<%= m.role %>)</option><% }) %>
+        <% firmUsers.forEach(u => { if (u.firm_role !== 'owner') { %><option value="<%= u.id %>"><%= u.name %> (firm)</option><% } }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Permission</label>
+      <select class="select" name="permission" required>
+        <option value="">—</option>
+        <% Object.entries(permissions).forEach(([k, v]) => { %><option value="<%= k %>"><%= k %> — <%= v %></option><% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Effect</label>
+      <select class="select" name="granted">
+        <option value="1">Grant</option>
+        <option value="0">Revoke</option>
+      </select>
+    </div>
+    <div>
+      <label class="label">Reason (audit trail)</label>
+      <input class="input" name="reason" placeholder="e.g. Backup approver while X is OOO">
+    </div>
+    <div><button class="btn btn-primary btn-xs">Apply override</button></div>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Role catalogue</h2><span class="meta">Reference: what each role grants by default.</span></div>
+  <table class="t">
+    <thead><tr><th style="width:170px">Role</th><th>Default permissions</th></tr></thead>
+    <tbody>
+      <% Object.entries(roles).forEach(([k, v]) => { %>
+        <% const list = rolePerms[k]; %>
+        <tr>
+          <td><strong><%= v %></strong><div class="meta mono"><%= k %></div></td>
+          <td class="meta">
+            <% if (list === '*') { %>All permissions<% } else { %>
+              <%= (list || []).join(', ') %>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

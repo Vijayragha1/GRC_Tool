@@ -1,0 +1,79 @@
+<%- include('partials/header', { title: 'MRM ' + (mrm.meeting_date || 'draft'), user, ws, active: 'mrms' }) %>
+
+<a href="/workspaces/<%= ws.id %>/mrms" class="link-muted" style="font-size:12px;">← All MRMs</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Management review<% if (mrm.meeting_date) { %> · <%= mrm.meeting_date %><% } %></h1>
+    <div class="page-subtitle">Auto-collected inputs from this workspace; complete the review fields below.</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Auto-collected inputs (9.3.2)</h2><span class="meta">live</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div>
+      <div class="meta" style="margin-bottom:4px;">ISMS progress</div>
+      <div style="font-size:14px;font-weight:500;"><%= progress.percent %>% (<%= progress.assessed %>/<%= progress.total %>)</div>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">Risk status</div>
+      <% if (riskSummary.length === 0) { %><div style="color:var(--text-tertiary);font-size:13px;">no risks</div><% } %>
+      <% riskSummary.forEach(r => { %><div style="font-size:13px;"><%= r.status %>: <%= r.c %></div><% }) %>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">Recent audits</div>
+      <% if (audits.length === 0) { %><div style="color:var(--text-tertiary);font-size:13px;">none</div><% } %>
+      <% audits.slice(0, 4).forEach(a => { %><div style="font-size:13px;"><%= a.title %> <span class="meta">(<%= a.status %>)</span></div><% }) %>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">Open nonconformities</div>
+      <% const openN = ncs.filter(n => n.status !== 'closed' && n.status !== 'verified'); %>
+      <% if (openN.length === 0) { %><div style="color:var(--text-tertiary);font-size:13px;">none</div><% } %>
+      <% openN.slice(0, 5).forEach(n => { %><div style="font-size:13px;"><%= n.title %></div><% }) %>
+    </div>
+  </div>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>" class="panel" style="margin-bottom:16px">
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date" value="<%= mrm.meeting_date || '' %>"></div>
+    <div><label class="label">Attendees</label><input class="input" name="attendees" value="<%= mrm.attendees || '' %>"></div>
+    <div><label class="label">Status</label>
+      <select class="select" name="status" style="width:200px">
+        <option value="planned" <%= mrm.status === 'planned' ? 'selected' : '' %>>Planned</option>
+        <option value="complete" <%= mrm.status === 'complete' ? 'selected' : '' %>>Complete</option>
+      </select>
+    </div>
+    <div></div>
+  </div>
+
+  <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);">
+    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Required inputs · 9.3.2</div>
+  </div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr;gap:12px;">
+    <div><label class="label">Status of actions from previous MRMs</label><textarea class="textarea" name="prior_actions_status" rows="2"><%= mrm.prior_actions_status || '' %></textarea></div>
+    <div><label class="label">Changes in external & internal issues</label><textarea class="textarea" name="context_changes" rows="2"><%= mrm.context_changes || '' %></textarea></div>
+    <div><label class="label">ISMS performance (audits, NCs, monitoring)</label><textarea class="textarea" name="performance_review" rows="3"><%= mrm.performance_review || '' %></textarea></div>
+    <div><label class="label">Feedback from interested parties</label><textarea class="textarea" name="feedback_interested_parties" rows="2"><%= mrm.feedback_interested_parties || '' %></textarea></div>
+    <div><label class="label">Risk assessment & treatment status</label><textarea class="textarea" name="risk_treatment_status" rows="2"><%= mrm.risk_treatment_status || '' %></textarea></div>
+    <div><label class="label">Opportunities for continual improvement</label><textarea class="textarea" name="improvement_opportunities" rows="2"><%= mrm.improvement_opportunities || '' %></textarea></div>
+  </div>
+
+  <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);">
+    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Outputs · 9.3.3</div>
+  </div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr;gap:12px;">
+    <div><label class="label">Decisions made</label><textarea class="textarea" name="decisions" rows="3"><%= mrm.decisions || '' %></textarea></div>
+    <div><label class="label">Action items (with owners and dates)</label><textarea class="textarea" name="action_items" rows="4"><%= mrm.action_items || '' %></textarea></div>
+  </div>
+
+  <div class="panel-pad" style="border-top:1px solid var(--border);display:flex;gap:6px;">
+    <button class="btn btn-primary">Save</button>
+    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+      <button class="btn btn-danger">Delete</button>
+    </form>
+  </div>
+</form>
+
+<%- include('partials/footer') %>

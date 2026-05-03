@@ -1,0 +1,85 @@
+<%- include('partials/header', { title: 'Entities', user, ws, active: 'entities' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Entities &amp; business units</h1>
+    <div class="page-subtitle">Multi-entity scoping. Each artefact (risk, asset, supplier, incident, policy, audit) can be tagged with one entity, or left workspace-wide. Switch the active entity from the topbar to filter views.</div>
+  </div>
+  <div>
+    <button onclick="document.getElementById('newE').classList.toggle('hidden')" class="btn btn-primary">Add entity</button>
+  </div>
+</div>
+
+<div id="newE" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New entity</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/entities" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div style="grid-column:1/2"><label class="label">Name</label><input class="input" name="name" required placeholder="EU Operations"></div>
+    <div><label class="label">Code</label><input class="input" name="code" placeholder="EU-OPS"></div>
+    <div><label class="label">Type</label>
+      <select class="select" name="entity_type">
+        <option value="business_unit">Business unit</option>
+        <option value="legal_entity">Legal entity</option>
+        <option value="region">Region</option>
+        <option value="subsidiary">Subsidiary</option>
+        <option value="department">Department</option>
+        <option value="product">Product line</option>
+      </select>
+    </div>
+    <div><label class="label">Region</label><input class="input" name="region" placeholder="EU / EMEA / APAC"></div>
+    <div style="grid-column:2/4"><label class="label">Contact</label><input class="input" name="contact" placeholder="entity-lead@org.com"></div>
+    <div style="grid-column:1/-1"><label class="label">ISMS scope statement (entity-specific, optional)</label><textarea class="textarea" name="scope_statement" rows="2" placeholder="What information assets, sites and processes belong to this entity for the purpose of the ISMS?"></textarea></div>
+    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Create entity</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th>Name</th><th>Code</th><th>Type</th><th>Region</th><th class="num">Assets</th><th class="num">Risks</th><th class="num">Suppliers</th><th class="num">Incidents</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      <% entities.forEach(e => { %>
+        <tr>
+          <td><div style="font-weight:500"><%= e.name %></div><% if (e.scope_statement) { %><div class="meta" style="margin-top:2px;max-width:360px;white-space:normal;"><%= e.scope_statement.slice(0,140) %><%= e.scope_statement.length > 140 ? '…' : '' %></div><% } %></td>
+          <td class="meta mono"><%= e.code || '—' %></td>
+          <td class="meta"><%= (e.entity_type || 'business_unit').replace(/_/g,' ') %></td>
+          <td class="meta"><%= e.region || '—' %></td>
+          <td class="num"><%= e.asset_count %></td>
+          <td class="num"><%= e.risk_count %></td>
+          <td class="num"><%= e.supplier_count %></td>
+          <td class="num"><%= e.incident_count %></td>
+          <td><span class="status s-<%= e.is_active ? 'in_progress' : 'closed' %>"><%= e.is_active ? 'active' : 'inactive' %></span></td>
+          <td>
+            <details style="position:relative;">
+              <summary class="btn btn-secondary btn-xs">Edit</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/entities/<%= e.id %>" style="position:absolute;right:0;top:28px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;box-shadow:var(--shadow-lg);width:340px;z-index:5;display:grid;gap:10px;">
+                <div><label class="label">Name</label><input class="input" name="name" value="<%= e.name %>"></div>
+                <div><label class="label">Code</label><input class="input" name="code" value="<%= e.code || '' %>"></div>
+                <div><label class="label">Region</label><input class="input" name="region" value="<%= e.region || '' %>"></div>
+                <div><label class="label">Contact</label><input class="input" name="contact" value="<%= e.contact || '' %>"></div>
+                <div><label class="label">Scope statement</label><textarea class="textarea" name="scope_statement" rows="2"><%= e.scope_statement || '' %></textarea></div>
+                <div><label style="display:flex;gap:6px;align-items:center;font-size:12px;"><input type="checkbox" name="is_active" value="1" <%= e.is_active ? 'checked' : '' %>> Active</label></div>
+                <div style="display:flex;gap:6px;justify-content:flex-end;">
+                  <button class="btn btn-primary btn-xs">Save</button>
+                </div>
+              </form>
+            </details>
+            <form method="POST" action="/workspaces/<%= ws.id %>/entities/<%= e.id %>/delete" style="display:inline" onsubmit="return confirm('Delete entity? Artefacts tagged with this entity will become workspace-wide.')">
+              <button class="btn btn-danger btn-xs">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (entities.length === 0) { %>
+        <tr><td colspan="10" style="padding:0">
+          <div class="empty-state">
+            <div class="empty-icon">⊙</div>
+            <div class="empty-title">No entities yet</div>
+            <div class="empty-sub">If your client is a single legal entity in a single region, you can ignore this page. For groups with multiple sites or subsidiaries, add an entity per business unit so artefacts can be scoped and reported on separately.</div>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

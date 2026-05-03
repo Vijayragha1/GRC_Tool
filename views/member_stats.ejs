@@ -1,0 +1,22 @@
+<%- include('partials/header', { title: member.name + ' — stats', user, ws, active: 'members' }) %>
+
+<a href="/workspaces/<%= ws.id %>/members" class="link-muted" style="font-size:12px;">← Members</a>
+
+<div class="page-head" style="margin-top:8px">
+  <div><h1 class="page-title"><%= member.name %></h1>
+    <div class="page-subtitle"><%= member.email %> · last active <%= member.last_active_at || 'never' %></div></div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+    <div><div class="meta">Controls owned</div><div style="font-size:24px;font-weight:600;"><%= stats.controls_owned %></div></div>
+    <div><div class="meta">Documents created</div><div style="font-size:24px;font-weight:600;"><%= stats.docs_created %></div></div>
+    <div><div class="meta">Evidence uploaded</div><div style="font-size:24px;font-weight:600;"><%= stats.evidence_uploaded %></div></div>
+    <div><div class="meta">Tasks owned</div><div style="font-size:24px;font-weight:600;"><%= stats.tasks_owned %></div></div>
+    <div><div class="meta">Audit log actions</div><div style="font-size:24px;font-weight:600;"><%= stats.actions_logged %></div></div>
+    <div><div class="meta">Documents signed</div><div style="font-size:24px;font-weight:600;"><%= stats.signatures %></div></div>
+    <div><div class="meta">Time logged</div><div style="font-size:24px;font-weight:600;"><%= (stats.minutes_tracked / 60).toFixed(1) %>h</div></div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

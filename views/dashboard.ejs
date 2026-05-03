@@ -1,0 +1,122 @@
+<%- include('partials/header', { title: 'Clients', user, ws: null }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title"><%= user.user_type === 'firm' ? 'Portfolio' : 'My workspaces' %></h1>
+    <div class="page-subtitle"><%= user.user_type === 'firm' ? 'All client engagements your firm is managing.' : 'Engagements you have access to.' %></div>
+  </div>
+  <% if (user.user_type === 'firm') { %>
+    <button onclick="document.getElementById('newWs').classList.toggle('hidden')" class="btn btn-primary">New client</button>
+  <% } %>
+</div>
+
+<% if (workspaces.length > 0) { %>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;">
+  <div class="panel kpi"><div class="kpi-num num"><%= totals.total %></div><div class="kpi-label">Active engagements</div></div>
+  <div class="panel kpi kpi-accent"><div class="kpi-num num"><%= totals.avgStage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div><div class="kpi-label">Avg stage 1 readiness</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= totals.nearCert > 0 ? '#a16207' : 'var(--text)' %>"><%= totals.nearCert %></div><div class="kpi-label">Near cert (&lt; 90 days)</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= totals.redFlags > 0 ? '#b91c1c' : 'var(--text)' %>"><%= totals.redFlags %></div><div class="kpi-label">Engagements needing attention</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= totals.totalOpenNCs > 0 ? '#b91c1c' : 'var(--text)' %>"><%= totals.totalOpenNCs %></div><div class="kpi-label">Open / overdue NCs</div></div>
+</div>
+<% } %>
+
+<% if (user.user_type === 'firm') { %>
+<div id="newWs" class="panel hidden" style="margin-bottom:24px">
+  <div class="panel-head"><h2>New client engagement</h2></div>
+  <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div><label class="label">Client name</label><input class="input" name="client_name" required></div>
+    <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
+    <div style="grid-column:1/-1"><label class="label">ISMS scope</label><input class="input" name="scope" placeholder="Production SaaS platform and supporting infrastructure"></div>
+    <div><label class="label">Target certification date</label><input class="input" name="target_cert_date" type="date"></div>
+    <div></div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Create workspace</button></div>
+  </form>
+</div>
+<% } %>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th>Client</th><th style="width:140px">Stage</th>
+      <th style="width:90px">Stage 1</th><th style="width:90px">Days</th>
+      <th style="width:80px">NCs</th><th style="width:200px">Progress</th>
+    </tr></thead>
+    <tbody>
+      <% workspaces.forEach(w => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= w.id %>'">
+          <td>
+            <div style="font-weight:500"><%= w.client_name %></div>
+            <% if (w.industry) { %><div class="meta" style="margin-top:2px"><%= w.industry %></div><% } %>
+          </td>
+          <td><span class="status s-<%= w.stage === 'certified' ? 'done' : 'in_progress' %>"><%= w.stage.replace(/_/g,' ') %></span></td>
+          <td><span class="num" style="font-weight:500;color:<%= w.readiness.stage1 >= 80 ? '#15803d' : w.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= w.readiness.stage1 %>%</span></td>
+          <td class="num meta" style="color:<%= w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30 ? '#b91c1c' : w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 90 ? '#a16207' : '' %>"><%= w.readiness.daysToTarget !== null ? w.readiness.daysToTarget + 'd' : '—' %></td>
+          <td>
+            <% if (w.openMajorNCs > 0 || w.overdueNCs > 0) { %>
+              <span class="tag tag-danger num"><%= w.openMajorNCs + w.overdueNCs %></span>
+            <% } else { %><span class="meta">—</span><% } %>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:120px;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;"><div style="height:100%;background:var(--accent);width:<%= w.progress.percent %>%;"></div></div>
+              <span class="num" style="font-size:11px;color:var(--text-tertiary);min-width:42px;"><%= w.progress.assessed %>/<%= w.progress.total %></span>
+            </div>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (workspaces.length === 0) { %>
+        <tr><td colspan="6" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+            <div class="empty-title">No clients yet</div>
+            <div class="empty-sub">Create a workspace for each client engagement. Each workspace gets its own scope, risks, controls, and audit trail.</div>
+            <% if (user.user_type === 'firm') { %>
+              <button onclick="document.getElementById('newWs').classList.toggle('hidden')" class="btn btn-primary">New client</button>
+            <% } %>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<% if (user.user_type === 'firm' && user.firm_role === 'owner') { %>
+<div class="panel" style="margin-top:32px;overflow:hidden">
+  <div class="panel-head">
+    <h2>Firm team</h2>
+    <button onclick="document.getElementById('newUser').classList.toggle('hidden')" class="btn btn-secondary btn-xs">Add consultant</button>
+  </div>
+  <div id="newUser" class="hidden panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+    <form method="POST" action="/firm/users" style="display:grid;grid-template-columns:1fr 1fr 1fr 140px auto;gap:8px;align-items:end;">
+      <div><label class="label">Name</label><input class="input" name="name" required></div>
+      <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
+      <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>
+      <div><label class="label">Role</label><select class="select" name="firm_role"><option value="consultant">Consultant</option><option value="owner">Owner</option></select></div>
+      <button class="btn btn-primary">Create</button>
+    </form>
+  </div>
+  <table class="t">
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+    <tbody>
+      <% firmUsers.forEach(u => { %>
+        <tr>
+          <td><%= u.name %></td>
+          <td style="color:var(--text-secondary);"><%= u.email %></td>
+          <td><span class="tag tag-neutral"><%= u.firm_role %></span></td>
+          <td style="text-align:right">
+            <% if (u.id !== user.id) { %>
+              <form method="POST" action="/firm/users/<%= u.id %>/deactivate" onsubmit="return confirm('Deactivate this user?')">
+                <button class="btn btn-ghost btn-xs" style="color:#b91c1c">Deactivate</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>

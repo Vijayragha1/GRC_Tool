@@ -1,0 +1,42 @@
+<%- include('partials/header', { title: 'Evidence retention', user, ws, active: 'workspace' }) %>
+
+<div class="page-head">
+  <div><h1 class="page-title">Evidence retention rules</h1>
+    <div class="page-subtitle">A.5.33 / regulatory requirements — different evidence types must be retained for different durations. Define rules here; existing evidence files get an auto-computed retention_until date.</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head"><h2>Add rule</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/retention" class="panel-pad" style="display:grid;grid-template-columns:1fr 2fr 1fr 2fr auto;gap:10px;align-items:end;">
+    <div><label class="label">Applies to</label>
+      <select class="select" name="applies_to" required>
+        <option value="evidence">Evidence files</option>
+        <option value="audit_log">Audit log entries</option>
+        <option value="incident">Incidents</option>
+        <option value="training">Training records</option>
+      </select>
+    </div>
+    <div><label class="label">Pattern (regex on filename / iso ref, optional)</label><input class="input mono" name="pattern" placeholder=".*payroll.*  or  annex-a.5\\."></div>
+    <div><label class="label">Retain for (years)</label><input class="input num" type="number" min="1" name="retain_years" required></div>
+    <div><label class="label">Reason</label><input class="input" name="reason" placeholder="e.g., HMRC 7yr requirement"></div>
+    <div><button class="btn btn-primary btn-xs">Add</button></div>
+  </form>
+</div>
+
+<div class="panel"><table class="t">
+  <thead><tr><th>Applies to</th><th>Pattern</th><th>Retain</th><th>Reason</th><th></th></tr></thead>
+  <tbody>
+    <% if (!rules.length) { %><tr><td colspan="5" class="t-empty">No rules yet. Common defaults: evidence 7 years, audit log 10 years.</td></tr><% } %>
+    <% rules.forEach(r => { %>
+      <tr>
+        <td class="meta"><%= r.applies_to %></td>
+        <td class="meta mono"><%= r.pattern || '(all)' %></td>
+        <td class="num"><%= r.retain_years %>y</td>
+        <td class="meta"><%= r.reason || '—' %></td>
+        <td><form method="POST" action="/workspaces/<%= ws.id %>/retention/<%= r.id %>/delete"><button class="btn btn-danger btn-xs">×</button></form></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table></div>
+
+<%- include('partials/footer') %>

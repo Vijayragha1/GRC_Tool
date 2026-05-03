@@ -1,0 +1,120 @@
+<%- include('partials/header', { title: 'Readiness', user, ws, active: 'readiness' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Certification readiness</h1>
+    <div class="page-subtitle">Live assessment against ISO 27001:2022 stage 1 and stage 2 audit requirements.</div>
+  </div>
+  <% if (r.daysToTarget !== null) { %>
+    <div style="text-align:right">
+      <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span style="font-size:13px;font-weight:400;color:var(--text-tertiary);"> days</span></div>
+      <div class="meta">to target cert · <%= ws.target_cert_date %></div>
+    </div>
+  <% } %>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+  <div class="panel kpi">
+    <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-label">Stage 1 readiness</div>
+    <div class="kpi-meta">documentation & ISMS framework</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num" style="color:<%= r.stage2 >= 80 ? '#15803d' : r.stage2 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage2 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-label">Stage 2 readiness</div>
+    <div class="kpi-meta">operational effectiveness</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num"><%= r.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= r.records.total %></span></div>
+    <div class="kpi-label">Mandatory documented information</div>
+    <div class="kpi-meta">explicitly required by ISO 27001:2022</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num num"><%= r.metrics.avgMaturity %></div>
+    <div class="kpi-label">Average maturity</div>
+    <div class="kpi-meta">controls scored 0–5</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Detected gaps</h2><span class="meta"><%= r.flags.length %> total</span></div>
+    <% if (r.flags.length === 0) { %>
+      <div class="t-empty" style="color:#15803d;">No gaps detected.</div>
+    <% } else { %>
+      <div class="divide-row">
+        <% r.flags.forEach(f => { %>
+          <div style="padding:12px 16px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:500;line-height:1.4;"><%= f.label %></div>
+                <% if (f.items.length) { %>
+                  <ul style="margin-top:6px;font-size:12px;color:var(--text-secondary);list-style:none;padding:0;">
+                    <% f.items.slice(0, 5).forEach(it => { %>
+                      <li style="padding:1px 0;">·
+                        <% if (it.id && (String(it.id).startsWith('clause') || String(it.id).startsWith('annex'))) { %>
+                          <a href="/workspaces/<%= ws.id %>/controls/<%= it.id %>" class="link-muted"><%= it.title %></a>
+                        <% } else if (f.kind === 'overdue_ncs' || f.kind === 'open_major_ncs') { %>
+                          <a href="/workspaces/<%= ws.id %>/nonconformities/<%= it.id %>" class="link-muted"><%= it.title %></a>
+                        <% } else if (f.kind === 'orphan_risks' || f.kind === 'no_owner_risks') { %>
+                          <a href="/workspaces/<%= ws.id %>/risks/<%= it.id %>" class="link-muted"><%= it.title %></a>
+                        <% } else { %><%= it.title %><% } %>
+                      </li>
+                    <% }) %>
+                    <% if (f.items.length > 5) { %><li style="color:var(--text-tertiary);">… and <%= f.items.length - 5 %> more</li><% } %>
+                  </ul>
+                <% } %>
+              </div>
+              <span class="tag <%= f.severity === 'high' ? 'tag-danger' : 'tag-warn' %>"><%= f.severity %></span>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Documented information</h2><span class="meta">Heuristic detection — confirm manually</span></div>
+    <div class="panel-pad">
+      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:8px;">Explicitly required by ISO 27001:2022 (<%= r.records.mandatory.found %>/<%= r.records.mandatory.total %>)</div>
+      <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;margin-bottom:16px;">
+        <% r.records.mandatory.checks.forEach(c => { %>
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : '#b91c1c' %>;"><%= c.found ? '✓' : '✗' %></span>
+            <div style="flex:1;">
+              <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text);font-weight:500' %>"><%= c.name %></span>
+              <span class="mono meta" style="margin-left:6px;">Cl. <%= c.clause %></span>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+
+      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:8px;">Required if related Annex A control is included (<%= r.records.expected.found %>/<%= r.records.expected.total %>)</div>
+      <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;">
+        <% r.records.expected.checks.forEach(c => { %>
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : 'var(--text-tertiary)' %>;"><%= c.found ? '✓' : '○' %></span>
+            <div style="flex:1;">
+              <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text-secondary)' %>"><%= c.name %></span>
+              <span class="mono meta" style="margin-left:6px;"><%= c.clause %></span>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Control implementation status</h2></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
+    <div><div class="kpi-num num" style="color:#15803d"><%= r.metrics.implemented %></div><div class="kpi-meta">Implemented</div></div>
+    <div><div class="kpi-num num" style="color:#a16207"><%= r.metrics.partial %></div><div class="kpi-meta">Partial</div></div>
+    <div><div class="kpi-num num" style="color:#1d4ed8"><%= r.metrics.wip %></div><div class="kpi-meta">In progress</div></div>
+    <div><div class="kpi-num num" style="color:#b91c1c"><%= r.metrics.notImpl %></div><div class="kpi-meta">Not implemented</div></div>
+    <div><div class="kpi-num num" style="color:var(--text-tertiary)"><%= r.metrics.na %></div><div class="kpi-meta">N/A</div></div>
+    <div><div class="kpi-num num"><%= r.metrics.evidenceCount %></div><div class="kpi-meta">Evidence files</div></div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
