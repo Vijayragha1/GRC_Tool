@@ -12,8 +12,8 @@
 
 <%
   const today = new Date().toISOString().slice(0,10);
-  const labels = { doc_review:'Policy review', supplier_review:'Supplier review', nc_due:'NC due', task_due:'Task due', training_expiry:'Training expiry', attestation_expiry:'Attestation expiry', audit_planned:'Audit · scheduled', audit_in_progress:'Audit · in progress', audit_complete:'Audit · complete', mrm:'Management review', risk_acceptance_expiry:'Risk acceptance expiry' };
-  const colors = { doc_review:'#4f46e5', supplier_review:'#0ea5e9', nc_due:'#dc2626', task_due:'#71717a', training_expiry:'#ea580c', attestation_expiry:'#a855f7', audit_planned:'#0ea5e9', audit_in_progress:'#ea580c', audit_complete:'#16a34a', mrm:'#0891b2', risk_acceptance_expiry:'#b91c1c' };
+  const labels = { doc_review:'Policy review', supplier_review:'Supplier review', nc_due:'NC due', task_due:'Task due', attestation_expiry:'Supplier doc expiry', audit_planned:'Audit · scheduled', audit_in_progress:'Audit · in progress', audit_complete:'Audit · complete', mrm:'Management review', risk_acceptance_expiry:'Risk acceptance expiry' };
+  const colors = { doc_review:'#4f46e5', supplier_review:'#0ea5e9', nc_due:'#dc2626', task_due:'#71717a', attestation_expiry:'#a855f7', audit_planned:'#0ea5e9', audit_in_progress:'#ea580c', audit_complete:'#16a34a', mrm:'#0891b2', risk_acceptance_expiry:'#b91c1c' };
   const groups = {};
   events.forEach(e => { (groups[e.d] = groups[e.d] || []).push(e); });
   const dates = Object.keys(groups).sort();

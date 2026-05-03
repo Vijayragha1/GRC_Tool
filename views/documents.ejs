@@ -7,21 +7,35 @@
   </div>
   <div style="display:flex;gap:6px;">
     <button onclick="document.getElementById('newFromTpl').classList.toggle('hidden')" class="btn btn-primary">From template</button>
+    <button onclick="document.getElementById('newUpload').classList.toggle('hidden')" class="btn btn-secondary">Upload existing</button>
     <button onclick="document.getElementById('newBlank').classList.toggle('hidden')" class="btn btn-secondary">Blank</button>
   </div>
 </div>
 
 <div id="newFromTpl" class="hidden panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>Generate from template</h2><span class="meta">Placeholders auto-filled</span></div>
+  <div class="panel-head"><h2>Generate from template</h2><span class="meta">Mandatory templates are starred — start with those</span></div>
+  <% const tierLabel = { mandatory: '★ Mandatory (ISO requires)', expected: '◆ Expected (auditors look for)', recommended: '· Recommended' };
+     const tierOrder = ['mandatory','expected','recommended'];
+     const tieredCounts = { mandatory: 0, expected: 0, recommended: 0 };
+     templates.forEach(t => { tieredCounts[t.tier || 'recommended']++; }); %>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);font-size:12px;display:flex;gap:14px;">
+    <span><strong style="color:#b91c1c;">★ <%= tieredCounts.mandatory %></strong> mandatory</span>
+    <span><strong style="color:#a16207;">◆ <%= tieredCounts.expected %></strong> expected</span>
+    <span><strong style="color:var(--text-secondary);">· <%= tieredCounts.recommended %></strong> recommended</span>
+    <span class="meta" style="margin-left:auto;">68 total templates · Clauses 7.5, 6.1.3, 5.2 mandate documented information</span>
+  </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/documents/from-template" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
     <div style="grid-column:1/-1">
       <label class="label">Template</label>
       <select class="select" name="template_id" required>
-        <option value="">— pick a template —</option>
-        <% const cats = {}; templates.forEach(t => { (cats[t.category] = cats[t.category] || []).push(t); }); %>
-        <% Object.keys(cats).forEach(cat => { %>
-          <optgroup label="<%= cat %>">
-            <% cats[cat].forEach(t => { %><option value="<%= t.id %>"><%= t.name %></option><% }) %>
+        <option value="">— pick a template (mandatory ones first) —</option>
+        <% tierOrder.forEach(tier => {
+             const tplsInTier = templates.filter(t => (t.tier || 'recommended') === tier);
+             if (!tplsInTier.length) return; %>
+          <optgroup label="<%= tierLabel[tier] %>">
+            <% tplsInTier.forEach(t => { %>
+              <option value="<%= t.id %>"><%= t.name %> <%= t.category ? '· ' + t.category : '' %></option>
+            <% }) %>
           </optgroup>
         <% }) %>
       </select>
@@ -31,6 +45,26 @@
     <div><label class="label">Review period</label><input class="input" name="review_period" value="Annual"></div>
     <div></div>
     <div style="grid-column:1/-1"><button class="btn btn-primary">Generate document</button></div>
+  </form>
+</div>
+
+<div id="newUpload" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Upload existing document</h2><span class="meta">Bring your client's current policies/procedures into the ISMS</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/documents/upload" enctype="multipart/form-data" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="grid-column:1/-1">
+      <label class="label">File</label>
+      <input class="input" type="file" name="file" accept=".docx,.pdf,.md,.markdown,.txt" required>
+      <div class="meta" style="margin-top:4px;">Accepts .docx, .pdf, .md, .txt. The file is converted to editable markdown; the original is preserved as the approved source-of-truth.</div>
+    </div>
+    <div><label class="label">Name <span class="meta">(optional — defaults to filename)</span></label><input class="input" name="name" placeholder="e.g. Information Security Policy"></div>
+    <div><label class="label">Category</label>
+      <select class="select" name="category">
+        <option value="policy">Policy</option><option value="procedure">Procedure</option>
+        <option value="plan">Plan</option><option value="record">Record</option>
+        <option value="form">Form</option><option value="other">Other</option>
+      </select>
+    </div>
+    <div style="grid-column:1/-1"><button class="btn btn-primary">Upload &amp; convert</button></div>
   </form>
 </div>
 

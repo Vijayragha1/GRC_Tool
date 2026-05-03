@@ -1,11 +1,11 @@
 <%- include('partials/header', { title: 'Risk appetite', user, ws, active: 'risks' }) %>
 
-<a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px;">← Risks</a>
-
-<div class="page-head" style="margin-top:8px">
-  <div><h1 class="page-title">Risk appetite</h1>
+<div class="page-head">
+  <div><h1 class="page-title">Risks</h1>
     <div class="page-subtitle">A formal statement of how much risk this organisation is willing to take. Drives auto-accept thresholds and acceptance approver routing.</div></div>
 </div>
+
+<%- include('partials/risk_tabs', { ws, active: 'appetite' }) %>
 
 <div class="panel">
   <form method="POST" action="/workspaces/<%= ws.id %>/risk-appetite" class="panel-pad" style="display:grid;gap:12px;">

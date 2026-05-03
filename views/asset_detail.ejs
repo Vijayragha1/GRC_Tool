@@ -84,4 +84,24 @@
 </div>
 <% } %>
 
+<% if (typeof controlsInScope !== 'undefined' && controlsInScope.length) { %>
+<div class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Annex A controls in scope</h2><span class="meta">via this asset's risk treatments</span></div>
+  <table class="t">
+    <thead><tr><th style="width:80px;">ID</th><th>Control</th><th style="width:120px;">Applicability</th><th style="width:170px;">Status</th><th style="width:80px;" title="Documents covering this control">Docs</th></tr></thead>
+    <tbody>
+      <% controlsInScope.forEach(c => { %>
+        <tr>
+          <td class="mono meta"><%= c.id.replace('annex-','').toUpperCase() %></td>
+          <td><a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted" style="color:var(--text);"><%= c.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
+          <td class="meta" style="text-transform:capitalize;"><%= c.applicability %></td>
+          <td class="meta"><%= c.status %></td>
+          <td><% if (c.doc_count > 0) { %><span class="tag tag-info num"><%= c.doc_count %></span><% } else { %><span class="meta">—</span><% } %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
 <%- include('partials/footer') %>

@@ -1,0 +1,5 @@
+<div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);">
+  <% [['register','Risk register','/risks'], ['methodology','Methodology','/risk-methodology'], ['appetite','Appetite','/risk-appetite']].forEach(([k, label, path]) => { %>
+    <a href="/workspaces/<%= ws.id %><%= path %>" style="padding:8px 14px;border-bottom:2px solid <%= active === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= active === k ? '600' : '500' %>;color:<%= active === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %></a>
+  <% }) %>
+</div>

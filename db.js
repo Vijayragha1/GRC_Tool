@@ -134,6 +134,32 @@ CREATE TABLE IF NOT EXISTS risk_controls (
   FOREIGN KEY (iso_item_id) REFERENCES iso_items(id)
 );
 
+CREATE TABLE IF NOT EXISTS document_controls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  document_id INTEGER NOT NULL,
+  iso_item_id TEXT NOT NULL,
+  section_ref TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(document_id, iso_item_id),
+  FOREIGN KEY (document_id) REFERENCES generated_docs(id) ON DELETE CASCADE,
+  FOREIGN KEY (iso_item_id) REFERENCES iso_items(id)
+);
+CREATE INDEX IF NOT EXISTS idx_doc_controls_doc ON document_controls(document_id);
+CREATE INDEX IF NOT EXISTS idx_doc_controls_iso ON document_controls(iso_item_id);
+
+CREATE TABLE IF NOT EXISTS supplier_controls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER NOT NULL,
+  iso_item_id TEXT NOT NULL,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(supplier_id, iso_item_id),
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
+  FOREIGN KEY (iso_item_id) REFERENCES iso_items(id)
+);
+CREATE INDEX IF NOT EXISTS idx_sup_ctrl_sup ON supplier_controls(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_sup_ctrl_iso ON supplier_controls(iso_item_id);
+
 CREATE TABLE IF NOT EXISTS evidence (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace_id INTEGER NOT NULL,
@@ -1265,6 +1291,47 @@ function init() {
    'doc_kind TEXT', 'reference_code TEXT', 'controlled_copy INTEGER DEFAULT 0']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('generated_docs', n, d.join(' ')); });
 
+  // Documents — uploaded source (preserves the originally approved file alongside the editable markdown)
+  ['source_filename TEXT', 'source_stored_path TEXT', 'source_mime TEXT', 'source_size_bytes INTEGER', 'source_sha256 TEXT']
+    .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('generated_docs', n, d.join(' ')); });
+
+  // Phase E: training trigger on doc approval (Clauses 7.2, 7.3, A.6.3)
+  ['requires_training INTEGER DEFAULT 0', 'training_audience TEXT']
+    .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('generated_docs', n, d.join(' ')); });
+  addColumnIfMissing('training_records', 'source_doc_id', 'INTEGER REFERENCES generated_docs(id) ON DELETE SET NULL');
+
+  // Document templates — flag ISO-mandatory vs recommended (so freshers know what's required vs nice-to-have)
+  addColumnIfMissing('doc_templates', 'tier', "TEXT DEFAULT 'recommended'");
+  // Re-tag every run (idempotent) so newly added templates get the right tier.
+  const MANDATORY_PATTERNS = [
+    'Information Security Policy',
+    'Risk Assessment Methodology', 'Risk Methodology', 'Risk Assessment Process', 'Risk Management Process',
+    'Risk Treatment Plan',
+    'Statement of Applicability',
+    'ISMS Scope',
+    'Information Security Objectives',
+    'Roles and Responsibilities',
+    'Internal Audit Programme', 'Internal Audit Plan', 'Internal Audit Procedure',
+    'Management Review',
+    'Nonconformity', 'Corrective Action',
+    'Operations Security Procedure'
+  ];
+  const EXPECTED_PATTERNS = [
+    'Access Control', 'Acceptable Use', 'Asset Management', 'Asset Inventory',
+    'Cryptography', 'Cryptographic', 'Backup', 'Business Continuity',
+    'Incident Response', 'Incident Management', 'Change Management',
+    'Supplier', 'Vendor', 'Secure Development', 'Communication Plan',
+    'Physical and Environmental', 'Logging', 'Monitoring',
+    'Awareness', 'Competence', 'Legal', 'Regulatory', 'Compliance Register',
+    'Data Classification', 'Information Classification',
+    'Privileged Access', 'Authentication', 'ISMS Governance'
+  ];
+  const tagOne = db.prepare(`UPDATE doc_templates SET tier=? WHERE is_system=1 AND name LIKE ?`);
+  // Reset all to recommended first, then promote
+  db.prepare(`UPDATE doc_templates SET tier='recommended' WHERE is_system=1`).run();
+  EXPECTED_PATTERNS.forEach(p => tagOne.run('expected', `%${p}%`));
+  MANDATORY_PATTERNS.forEach(p => tagOne.run('mandatory', `%${p}%`));
+
   // Audits — programme link, competence, independence
   ['programme_id INTEGER REFERENCES audit_programmes(id) ON DELETE SET NULL',
    'auditor_competence TEXT', 'auditor_independence TEXT',
@@ -1297,8 +1364,15 @@ function init() {
    'recurrence TEXT', 'recurrence_until DATE',
    'depends_on_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL',
    'estimated_minutes INTEGER',
-   'template_id INTEGER REFERENCES task_templates(id) ON DELETE SET NULL']
+   'template_id INTEGER REFERENCES task_templates(id) ON DELETE SET NULL',
+   'nonconformity_id INTEGER REFERENCES nonconformities(id) ON DELETE SET NULL']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('tasks', n, d.join(' ')); });
+
+  // Phase C: control verification timestamp on closure of NC / audit
+  addColumnIfMissing('control_states', 'last_verified_at', 'DATETIME');
+
+  // Gap-assessment universal questions — JSON-encoded answers per item.
+  addColumnIfMissing('control_states', 'assessment_answers', 'TEXT');
 
   // Risks — KRI link convenience
   addColumnIfMissing('risks', 'is_systemic', 'INTEGER DEFAULT 0');
@@ -1374,22 +1448,28 @@ function init() {
     console.log(`[db] Seeded ${catalog.length} ISO items`);
   }
 
-  // Seed system policy templates
+  // Seed system policy templates (idempotent — adds any missing by name)
   const tplCount = db.prepare('SELECT COUNT(*) AS c FROM doc_templates WHERE is_system = 1').get().c;
-  if (tplCount === 0) {
+  if (true) {
     const tIns = db.prepare(`INSERT INTO doc_templates (firm_id, name, category, description, content, is_system)
                              VALUES (NULL, ?, ?, ?, ?, 1)`);
+    const tplExistsStmt = db.prepare('SELECT 1 FROM doc_templates WHERE name = ? AND is_system = 1');
     const tTx = db.transaction((tpls) => {
-      for (const t of tpls) tIns.run(t.name, t.category, t.description, t.content);
+      let added = 0;
+      for (const t of tpls) {
+        if (!tplExistsStmt.get(t.name)) { tIns.run(t.name, t.category, t.description, t.content); added++; }
+      }
+      return added;
     });
     // Core 15 + ISO 27001:2022 expanded pack (people, physical, technical, organisational, forms, roles)
     const peoplePhysical = require('./data/policy-templates-people-physical');
     const technical = require('./data/policy-templates-technical');
     const organisational = require('./data/policy-templates-organisational');
     const formsRoles = require('./data/policy-templates-forms-roles');
-    const allTemplates = [...policyTemplates, ...peoplePhysical, ...technical, ...organisational, ...formsRoles];
-    tTx(allTemplates);
-    console.log(`[db] Seeded ${allTemplates.length} policy templates (core ${policyTemplates.length} + expanded ${peoplePhysical.length + technical.length + organisational.length + formsRoles.length})`);
+    const bundles = require('./data/policy-templates-bundles');
+    const allTemplates = [...policyTemplates, ...peoplePhysical, ...technical, ...organisational, ...formsRoles, ...bundles];
+    const tplAdded = tTx(allTemplates);
+    if (tplAdded) console.log(`[db] Added ${tplAdded} new system policy templates (catalog now: ${allTemplates.length})`);
   }
 
   // Seed default firm + user (no-auth mode)

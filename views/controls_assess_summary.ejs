@@ -1,0 +1,175 @@
+<%- include('partials/header', { title: 'Post-assessment summary', user, ws, active: 'controls' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Post-assessment summary</h1>
+    <div class="page-subtitle">Your gap walkthrough turned into a worklist. Spawn remediation tasks, generate missing policies, and surface evidence the auditor will ask for.</div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-secondary btn-xs">Re-open wizard</a>
+    <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-secondary btn-xs">Pre-cert blocker check →</a>
+    <a href="/workspaces/<%= ws.id %>/soa" class="btn btn-primary btn-xs">Go to SoA →</a>
+  </div>
+</div>
+
+<!-- Status distribution -->
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;">
+  <div class="panel kpi"><div class="kpi-num num" style="color:#16a34a;"><%= dist.Implemented %></div><div class="kpi-label" style="font-size:11px;">Implemented</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:#a16207;"><%= dist['Partially Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Partial</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:#ea580c;"><%= dist['Work In Progress'] %></div><div class="kpi-label" style="font-size:11px;">In progress</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:#b91c1c;"><%= dist['Not Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Not implemented</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:var(--text-secondary);"><%= dist['Not Applicable'] %></div><div class="kpi-label" style="font-size:11px;">Not applicable</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= notAssessedCount > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;"><%= notAssessedCount %></div><div class="kpi-label" style="font-size:11px;">Not assessed</div></div>
+</div>
+
+<% if (notAssessedCount > 0) { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);">
+    <div class="panel-pad">
+      <div style="font-weight:600;color:#b91c1c;margin-bottom:4px;">⚠ <%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</div>
+      <div class="meta">The gap assessment is incomplete. Finish the wizard before treating this as a final view. <a href="/workspaces/<%= ws.id %>/controls/assess" style="color:var(--accent);">→ Re-open wizard</a></div>
+    </div>
+  </div>
+<% } %>
+
+<!-- Section 1: Spawn remediation tasks for gaps -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head">
+    <h2>1. Remediation tasks (<%= gaps.length %> gap<%= gaps.length === 1 ? '' : 's' %>)</h2>
+    <span class="meta">Pick gaps below; one task per item. Pre-existing open tasks are flagged so you don't duplicate.</span>
+  </div>
+  <% if (gaps.length === 0) { %>
+    <div class="panel-pad meta">No gaps in `Not Implemented` / `Partially Implemented` / `Work In Progress` state. Nice.</div>
+  <% } else { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/summary/spawn-tasks">
+      <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+        <button type="button" onclick="pickGaps(true)" class="btn btn-secondary btn-xs">Select all gaps without an open task</button>
+        <button type="button" onclick="pickGaps(false)" class="btn btn-secondary btn-xs">Clear</button>
+        <span class="meta" style="margin-left:8px;font-size:12px;"><span id="gapCount">0</span> selected</span>
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+          <label class="meta" style="font-size:12px;">Default due:</label>
+          <input type="date" name="due_date" class="input" style="width:140px;font-size:12px;">
+          <button type="submit" class="btn btn-primary btn-xs">Spawn selected tasks</button>
+        </span>
+      </div>
+      <table class="t">
+        <thead><tr>
+          <th style="width:30px;"></th><th style="width:90px;">ID</th><th>Title</th>
+          <th style="width:140px;">Status</th><th style="width:80px;">Maturity</th><th style="width:120px;">Existing task?</th>
+        </tr></thead>
+        <tbody>
+          <% gaps.forEach(g => {
+               const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
+               const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+               const sevColor = g.status === 'Not Implemented' ? '#b91c1c' : g.status === 'Partially Implemented' ? '#a16207' : '#ea580c';
+          %>
+            <tr>
+              <td><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
+              <td class="mono meta"><%= refCode %></td>
+              <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info" style="font-size:10px;">clause</span><% } %></td>
+              <td><span class="tag" style="background:<%= sevColor %>;color:white;font-size:10.5px;"><%= g.status %></span></td>
+              <td class="meta"><%= g.maturity != null ? g.maturity : '—' %></td>
+              <td><% if (g.has_open_task) { %><span class="tag tag-warn" style="font-size:10px;">open task exists</span><% } else { %><span class="meta">—</span><% } %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </form>
+  <% } %>
+</div>
+
+<!-- Section 2: Missing documents -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head">
+    <h2>2. Items lacking a linked document (<%= docGaps.length %>)</h2>
+    <span class="meta">Gap-state items with no policy/procedure linked via the doc-control mapping</span>
+  </div>
+  <% if (docGaps.length === 0) { %>
+    <div class="panel-pad meta">Every gap-state item already has at least one document linked.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th style="width:90px;">ID</th><th>Title</th><th style="width:140px;">Status</th><th style="width:200px;text-align:right;">Action</th></tr></thead>
+      <tbody>
+        <% docGaps.slice(0, 30).forEach(g => {
+             const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
+             const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+        %>
+          <tr>
+            <td class="mono meta"><%= refCode %></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a></td>
+            <td class="meta"><%= g.status %></td>
+            <td style="text-align:right;"><a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">Pick template →</a></td>
+          </tr>
+        <% }) %>
+        <% if (docGaps.length > 30) { %>
+          <tr><td colspan="4" class="meta" style="text-align:center;padding:8px;">… and <%= docGaps.length - 30 %> more — open the document detail view and link controls one at a time</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<!-- Section 3: Evidence asks -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head">
+    <h2>3. Evidence asks (<%= evidenceAsks.length %>)</h2>
+    <span class="meta">You marked these as "Implemented" but no evidence file is attached — the auditor's first question</span>
+  </div>
+  <% if (evidenceAsks.length === 0) { %>
+    <div class="panel-pad meta">Every "Implemented" item has at least one evidence file attached.</div>
+  <% } else { %>
+    <div style="max-height:320px;overflow-y:auto;">
+      <% evidenceAsks.forEach(e => {
+           const refCode = e.id.replace('annex-','').replace('clause-','').toUpperCase();
+           const cleanTitle = e.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+      %>
+        <a href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--text);font-size:13px;">
+          <span><span class="mono meta" style="margin-right:8px;"><%= refCode %></span><%= cleanTitle %></span>
+          <span class="meta" style="font-size:11.5px;">→ Upload evidence</span>
+        </a>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<!-- Section 4: Risks needing treatment update -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head">
+    <h2>4. Risks linked to gap controls (<%= untreatedLinkedRisks.length %>)</h2>
+    <span class="meta">Open risks whose treatment depends on a control still in gap state — re-evaluate residual risk</span>
+  </div>
+  <% if (untreatedLinkedRisks.length === 0) { %>
+    <div class="panel-pad meta">No open risks are blocked on gap controls.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>Risk</th><th style="width:80px;">L × I</th><th style="width:120px;">Status</th></tr></thead>
+      <tbody>
+        <% untreatedLinkedRisks.forEach(r => { %>
+          <tr>
+            <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title %></a></td>
+            <td class="num meta"><%= r.likelihood %> × <%= r.impact %></td>
+            <td><span class="status s-<%= r.status %>"><%= r.status %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<script>
+function updateGapCount() {
+  const n = document.querySelectorAll('input.gap-pick:checked').length;
+  document.getElementById('gapCount').textContent = n;
+}
+function pickGaps(state) {
+  document.querySelectorAll('input.gap-pick').forEach(cb => {
+    if (state) {
+      cb.checked = (cb.dataset.hasTask !== '1');
+    } else {
+      cb.checked = false;
+    }
+  });
+  updateGapCount();
+}
+</script>
+
+<%- include('partials/footer') %>

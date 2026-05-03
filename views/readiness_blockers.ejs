@@ -1,0 +1,48 @@
+<%- include('partials/header', { title: 'Audit-readiness blockers', user, ws, active: 'readiness' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Audit-readiness blockers</h1>
+    <div class="page-subtitle">Concrete things an external auditor will catch. Fix the high-severity ones before booking your stage-1 audit.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/readiness" class="btn btn-secondary btn-xs">Readiness overview</a>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= blockers.length === 0 ? '#16a34a' : 'var(--text)' %>;"><%= blockers.length %></div><div class="kpi-label">Total blockers</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= high > 0 ? '#b91c1c' : '#16a34a' %>;"><%= high %></div><div class="kpi-label">High severity</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= med > 0 ? '#a16207' : '#16a34a' %>;"><%= med %></div><div class="kpi-label">Medium severity</div></div>
+</div>
+
+<% if (blockers.length === 0) { %>
+  <div class="panel" style="border-color:#16a34a;background:rgba(22,163,74,0.04);">
+    <div class="panel-pad" style="text-align:center;">
+      <div style="font-size:18px;font-weight:600;color:#16a34a;margin-bottom:6px;">No blockers detected</div>
+      <div class="meta">All concrete pre-cert checks pass. This doesn't replace a real readiness audit, but it means no obvious red flags.</div>
+    </div>
+  </div>
+<% } else { %>
+  <% blockers.forEach((b, idx) => {
+       const sevColor = b.severity === 'high' ? '#b91c1c' : b.severity === 'medium' ? '#a16207' : '#0ea5e9';
+       const sevBg    = b.severity === 'high' ? 'rgba(185,28,28,0.06)' : b.severity === 'medium' ? 'rgba(161,98,7,0.06)' : 'rgba(14,165,233,0.06)';
+  %>
+    <div class="panel" style="margin-bottom:12px;border-left:3px solid <%= sevColor %>;">
+      <div class="panel-pad" style="background:<%= sevBg %>;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="tag" style="background:<%= sevColor %>;color:white;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;font-weight:600;"><%= b.severity %></span>
+          <div style="font-size:14px;font-weight:600;"><%= b.title %></div>
+        </div>
+        <div class="meta" style="font-size:12.5px;margin-top:4px;line-height:1.5;"><%= b.detail %></div>
+      </div>
+      <% if (b.items && b.items.length) { %>
+        <div style="max-height:240px;overflow-y:auto;">
+          <% b.items.forEach(it => { %>
+            <a href="<%= it.link %>" style="display:block;padding:7px 16px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text);text-decoration:none;"><%= it.label %></a>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  <% }) %>
+<% } %>
+
+<%- include('partials/footer') %>

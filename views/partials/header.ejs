@@ -362,10 +362,6 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <span class="nav-item-text">Risks</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/kris" class="nav-item <%= (typeof active !== 'undefined' && active === 'kris') ? 'active' : '' %>" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="nav-item-text">KRIs</span>
-        </a>
         <a href="/workspaces/<%= ws.id %>/soa" data-shortcut="g s" class="nav-item <%= (typeof active !== 'undefined' && active === 'soa') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span class="nav-item-text">Statement of Applicability</span>
@@ -400,22 +396,6 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           <span class="nav-item-text">Suppliers</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/training" data-shortcut="g h" class="nav-item <%= (typeof active !== 'undefined' && active === 'training') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-          <span class="nav-item-text">Training</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/training/catalogue" class="nav-item" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          <span class="nav-item-text">Course catalogue</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/phishing" class="nav-item" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V11"/><polyline points="22 11 12 18 2 11"/></svg>
-          <span class="nav-item-text">Phishing</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/campaigns" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-8v18l-18-8z"/><path d="M11 7v10"/></svg>
-          <span class="nav-item-text">Ack campaigns</span>
-        </a>
         <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span class="nav-item-text">Tasks</span>
@@ -424,39 +404,11 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
           <span class="nav-item-text">Task templates</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/time" class="nav-item" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span class="nav-item-text">Time tracking</span>
-        </a>
 
         <div class="nav-group-label">Workspace</div>
-        <a href="/workspaces/<%= ws.id %>/cross-map" class="nav-item <%= (typeof active !== 'undefined' && active === 'cross-map') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-          <span class="nav-item-text">Cross-mapping</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/entities" class="nav-item <%= (typeof active !== 'undefined' && active === 'entities') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 22V12h6v10"/></svg>
-          <span class="nav-item-text">Entities</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/risk-methodology" class="nav-item <%= (typeof active !== 'undefined' && active === 'methodology') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-          <span class="nav-item-text">Risk methodology</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/risk-appetite" class="nav-item" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-          <span class="nav-item-text">Risk appetite</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/dpias" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="12" cy="14" r="2"/></svg>
-          <span class="nav-item-text">DPIAs</span>
-        </a>
         <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="nav-item-text">Compliance calendar</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/ccm" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-          <span class="nav-item-text">CCM checks</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/search" class="nav-item">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -465,30 +417,6 @@
         <a href="/workspaces/<%= ws.id %>/reports" class="nav-item">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="nav-item-text">Reports</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/onboarding" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span class="nav-item-text">Onboarding</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/crisis-comms" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="nav-item-text">Crisis comms</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/api-tokens" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M11.4 13.6 21 4M15 6h5v5"/></svg>
-          <span class="nav-item-text">API tokens</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/custom-fields" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-          <span class="nav-item-text">Custom fields</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/retention" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-          <span class="nav-item-text">Retention rules</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/widgets" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          <span class="nav-item-text">My widgets</span>
         </a>
         <% if (user.firm_role === 'owner') { %>
         <a href="/workspaces/<%= ws.id %>/system" class="nav-item">
@@ -523,12 +451,6 @@
         <div style="font-size:13px;font-weight:500;line-height:1.2;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= user.name %></div>
         <div style="font-size:10.5px;color:rgba(255,255,255,0.4);">local · no auth</div>
       </div>
-      <form method="POST" action="/i18n/switch" style="margin:0;">
-        <select name="locale" onchange="this.form.submit()" style="background:transparent;border:0;color:rgba(255,255,255,0.5);font-size:11px;cursor:pointer;outline:none;font-family:inherit;">
-          <option value="en" <%= user.locale === 'en' ? 'selected' : '' %> style="color:#000">EN</option>
-          <option value="es" <%= user.locale === 'es' ? 'selected' : '' %> style="color:#000">ES</option>
-        </select>
-      </form>
       <button onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:rgba(255,255,255,0.5);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.color='rgba(255,255,255,0.5)';this.style.background='transparent'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
@@ -549,17 +471,6 @@
           <span>Search or jump to…</span>
           <span class="kbd" id="kbdHint">⌘K</span>
         </button>
-        <% if (typeof entitySelectorWs !== 'undefined' && entitySelectorWs && typeof workspaceEntities !== 'undefined' && workspaceEntities && workspaceEntities.length) { %>
-          <form method="POST" action="/workspaces/<%= entitySelectorWs.id %>/entities/select" style="margin-left:6px;">
-            <input type="hidden" name="return_to" value="<%= typeof returnTo !== 'undefined' ? returnTo : '' %>">
-            <select name="entity_id" class="select" style="font-size:12px;padding:5px 28px 5px 10px;width:auto;min-width:160px;height:30px;" onchange="this.form.submit()">
-              <option value="">All entities (workspace-wide)</option>
-              <% workspaceEntities.forEach(e => { %>
-                <option value="<%= e.id %>" <%= (typeof activeEntity !== 'undefined' && activeEntity && activeEntity.id === e.id) ? 'selected' : '' %>><%= e.name %><% if (e.code) { %> · <%= e.code %><% } %></option>
-              <% }) %>
-            </select>
-          </form>
-        <% } %>
         <div class="topbar-spacer"></div>
         <% if (typeof entitySelectorWs !== 'undefined' && entitySelectorWs) { %>
           <a href="/workspaces/<%= entitySelectorWs.id %>/notifications" class="icon-btn" title="Notifications" style="position:relative;">

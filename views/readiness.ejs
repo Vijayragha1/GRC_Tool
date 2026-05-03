@@ -5,12 +5,15 @@
     <h1 class="page-title">Certification readiness</h1>
     <div class="page-subtitle">Live assessment against ISO 27001:2022 stage 1 and stage 2 audit requirements.</div>
   </div>
-  <% if (r.daysToTarget !== null) { %>
-    <div style="text-align:right">
-      <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span style="font-size:13px;font-weight:400;color:var(--text-tertiary);"> days</span></div>
-      <div class="meta">to target cert · <%= ws.target_cert_date %></div>
-    </div>
-  <% } %>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-primary btn-xs">Pre-cert blocker check →</a>
+    <% if (r.daysToTarget !== null) { %>
+      <div style="text-align:right">
+        <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span style="font-size:13px;font-weight:400;color:var(--text-tertiary);"> days</span></div>
+        <div class="meta">to target cert · <%= ws.target_cert_date %></div>
+      </div>
+    <% } %>
+  </div>
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">

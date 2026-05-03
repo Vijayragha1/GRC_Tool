@@ -1,10 +1,8 @@
 <%- include('partials/header', { title: 'Risk methodology', user, ws, active: 'risks' }) %>
 
-<a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px;">← Back to risk register</a>
-
-<div class="page-head" style="margin-top:8px">
+<div class="page-head">
   <div>
-    <h1 class="page-title">Risk methodology</h1>
+    <h1 class="page-title">Risks</h1>
     <div class="page-subtitle">Customize the likelihood scale, impact scale, and risk matrix used across the risk register. Saving a new methodology activates it for all subsequent scoring; existing risk scores are kept as-is until re-assessed.</div>
   </div>
   <div style="display:flex;gap:6px;align-items:center;">
@@ -24,6 +22,8 @@
     </form>
   </div>
 </div>
+
+<%- include('partials/risk_tabs', { ws, active: 'methodology' }) %>
 
 <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology" id="methForm">
   <div class="panel" style="margin-bottom:16px">

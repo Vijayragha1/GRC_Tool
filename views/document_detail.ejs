@@ -27,6 +27,9 @@
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/versions" class="btn btn-secondary btn-xs">Versions (<%= versions.length %>)</a>
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/docx" class="btn btn-accent btn-xs">.docx</a>
+        <% if (doc.source_filename) { %>
+          <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/source" class="btn btn-secondary btn-xs" title="Download originally uploaded file (<%= doc.source_filename %>)">Original file</a>
+        <% } %>
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/print" target="_blank" class="btn btn-secondary btn-xs">Print</a>
         <% if (can('document.delete')) { %>
           <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete?')">
@@ -154,20 +157,67 @@
     </div>
   <% } %>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
-    <div style="padding:16px 20px;border-right:1px solid var(--border);">
-      <div class="meta" style="margin-bottom:6px;">Markdown source <% if (doc.locked) { %>· <span style="color:#b91c1c;">locked</span><% } %></div>
-      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" id="docForm">
-        <textarea name="content" id="docContent" rows="28" class="textarea mono" style="font-size:12px;line-height:1.5;" oninput="renderPreview()" <%= doc.locked ? 'readonly' : '' %>><%= doc.content %></textarea>
-        <% if (!doc.locked && can('document.edit')) { %>
-          <button class="btn btn-primary btn-xs" style="margin-top:8px;">Save</button>
-        <% } %>
+  <div style="padding:16px 20px;">
+    <div class="meta" style="margin-bottom:6px;">Document body <% if (doc.locked) { %>· <span style="color:#b91c1c;">locked</span><% } %><span id="autosaveBadge" class="meta" style="margin-left:8px;color:#16a34a;display:none;">saved</span></div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" id="docForm">
+      <textarea name="content" id="docContent" <%= doc.locked ? 'readonly' : '' %>><%= doc.content %></textarea>
+      <% if (!doc.locked && can('document.edit')) { %>
+        <button class="btn btn-primary btn-xs" style="margin-top:8px;">Save</button>
+      <% } %>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h2>Linked ISO 27001 controls / clauses</h2>
+    <span class="meta">What this document operationalizes — drives the SoA "covered by" view</span>
+  </div>
+  <div class="panel-pad">
+    <% if (!linkedControls || linkedControls.length === 0) { %>
+      <div class="meta" style="margin-bottom:12px;">No links yet. Tag the Annex A controls or main-body clauses this document covers — auditors use this to trace coverage.</div>
+    <% } else { %>
+      <table class="t" style="margin-bottom:12px;">
+        <thead><tr><th style="width:140px;">Reference</th><th>Title</th><th style="width:140px;">Type</th><th style="width:160px;">Section ref</th><th style="width:60px;"></th></tr></thead>
+        <tbody>
+          <% linkedControls.forEach(lc => { %>
+            <tr>
+              <td><code style="font-size:11.5px;"><%= lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code></td>
+              <td><%= lc.title %></td>
+              <td class="meta" style="text-transform:capitalize;"><%= lc.type %><% if (lc.category) { %> · <%= lc.category %><% } %></td>
+              <td class="meta"><%= lc.section_ref || '—' %></td>
+              <td style="text-align:right;">
+                <% if (can('document.edit')) { %>
+                  <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls/<%= lc.link_id %>/delete" style="display:inline;" onsubmit="return confirm('Remove this control link?')">
+                    <button class="btn btn-danger btn-xs">×</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+    <% if (can('document.edit') && !doc.locked) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls" style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;">
+        <div>
+          <label class="label">Add control / clause</label>
+          <select class="select" name="iso_item_id" required>
+            <option value="">— pick —</option>
+            <% const grp = {}; allControls.forEach(c => { (grp[c.type] = grp[c.type] || []).push(c); }); %>
+            <% Object.keys(grp).forEach(t => { %>
+              <optgroup label="<%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>">
+                <% grp[t].forEach(c => { %>
+                  <option value="<%= c.id %>"><%= c.id.replace('annex-','').replace('clause-','').toUpperCase() %> — <%= c.title %></option>
+                <% }) %>
+              </optgroup>
+            <% }) %>
+          </select>
+        </div>
+        <div><label class="label">Section ref <span class="meta">(optional)</span></label><input class="input" name="section_ref" placeholder="e.g. §4.2"></div>
+        <div><button class="btn btn-primary btn-xs">Link</button></div>
       </form>
-    </div>
-    <div style="padding:16px 20px;">
-      <div class="meta" style="margin-bottom:6px;">Preview</div>
-      <div id="docPreview" class="markdown" style="border:1px solid var(--border);border-radius:6px;padding:16px 20px;background:white;min-height:30rem;max-height:30rem;overflow-y:auto;"></div>
-    </div>
+    <% } %>
   </div>
 </div>
 
@@ -246,49 +296,55 @@ function serializeApprovers() {
 
 renderApprovers();
 
-function renderMd(md){
-  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  let html = ''; const lines = md.split('\n'); let i = 0;
-  while (i < lines.length) {
-    let l = lines[i];
-    if (/^#{1,6}\s/.test(l)) { const m = l.match(/^(#{1,6})\s(.+)/); html += '<h'+m[1].length+'>'+esc(m[2])+'</h'+m[1].length+'>'; i++; continue; }
-    if (/^\|/.test(l)) {
-      let table = '<table><thead><tr>';
-      lines[i].split('|').slice(1, -1).forEach(c => table += '<th>'+esc(c.trim())+'</th>');
-      table += '</tr></thead><tbody>'; i += 2;
-      while (i < lines.length && /^\|/.test(lines[i])) {
-        table += '<tr>'; lines[i].split('|').slice(1, -1).forEach(c => table += '<td>'+esc(c.trim())+'</td>'); table += '</tr>'; i++;
-      }
-      html += table + '</tbody></table>'; continue;
-    }
-    if (/^[-*]\s/.test(l)) { html += '<ul>'; while (i < lines.length && /^[-*]\s/.test(lines[i])) { html += '<li>'+inline(lines[i].replace(/^[-*]\s/, ''))+'</li>'; i++; } html += '</ul>'; continue; }
-    if (/^---+$/.test(l)) { html += '<hr>'; i++; continue; }
-    if (l.trim() === '') { i++; continue; }
-    html += '<p>'+inline(l)+'</p>'; i++;
-  }
-  function inline(s) {
-    s = esc(s);
-    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    s = s.replace(/`(.+?)`/g, '<code>$1</code>');
-    return s;
-  }
-  return html;
+// Hide autosave badge after a short delay
+let badgeTimer;
+function flashSaved() {
+  const b = document.getElementById('autosaveBadge');
+  if (!b) return;
+  b.style.display = 'inline';
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => { b.style.display = 'none'; }, 1500);
 }
-function renderPreview(){ document.getElementById('docPreview').innerHTML = renderMd(document.getElementById('docContent').value); }
-renderPreview();
 
-let saveT;
-const docContent = document.getElementById('docContent');
-if (docContent && !docContent.readOnly) {
-  docContent.addEventListener('input', () => {
-    clearTimeout(saveT);
-    saveT = setTimeout(() => {
-      const fd = new FormData(document.getElementById('docForm'));
-      fetch(document.getElementById('docForm').action, { method: 'POST', body: new URLSearchParams(fd), headers: { 'Accept': 'application/json' } });
-    }, 1500);
-  });
-}
+const docTextarea = document.getElementById('docContent');
+const isLocked = docTextarea && docTextarea.hasAttribute('readonly');
+</script>
+<script src="/vendor/tinymce/tinymce.min.js" referrerpolicy="origin"></script>
+<script>
+tinymce.init({
+  selector: '#docContent',
+  license_key: 'gpl',
+  height: 720,
+  menubar: 'file edit view insert format tools table',
+  plugins: 'advlist autolink lists link image charmap searchreplace visualblocks visualchars code fullscreen insertdatetime media table emoticons help wordcount pagebreak nonbreaking anchor',
+  toolbar: 'undo redo | blocks fontfamily fontsize | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link image table hr pagebreak | removeformat searchreplace | code fullscreen',
+  toolbar_mode: 'sliding',
+  branding: false,
+  promotion: false,
+  statusbar: true,
+  readonly: isLocked,
+  content_style: 'body { font-family: Calibri, Arial, sans-serif; font-size: 12pt; line-height: 1.5; padding: 24px; max-width: 900px; margin: 0 auto; } table { border-collapse: collapse; } table td, table th { border: 1px solid #ccc; padding: 6px 10px; }',
+  setup: (editor) => {
+    let saveT;
+    editor.on('input change keyup', () => {
+      if (isLocked) return;
+      clearTimeout(saveT);
+      saveT = setTimeout(() => {
+        editor.save(); // sync TinyMCE -> textarea
+        const form = document.getElementById('docForm');
+        const fd = new FormData(form);
+        fetch(form.action, { method: 'POST', body: new URLSearchParams(fd), headers: { 'Accept': 'application/json' } })
+          .then(() => flashSaved())
+          .catch(() => {});
+      }, 1500);
+    });
+  }
+});
+
+// On manual Save submit, ensure textarea is in sync first
+document.getElementById('docForm')?.addEventListener('submit', () => {
+  if (window.tinymce && tinymce.activeEditor) tinymce.activeEditor.save();
+});
 </script>
 
 <%- include('partials/footer') %>

@@ -24,6 +24,24 @@
   </form>
 </div>
 
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head"><h2>Generate audit checklist</h2><span class="meta">Pre-populates observations with starter questions for every control in the chosen scope</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist" class="panel-pad" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+    <div style="flex:1;min-width:240px;">
+      <label class="label">Audit scope</label>
+      <select class="select" name="category" required>
+        <option value="">— pick a section —</option>
+        <option value="org">A.5 Organisational controls (37)</option>
+        <option value="people">A.6 People controls (8)</option>
+        <option value="physical">A.7 Physical controls (14)</option>
+        <option value="tech">A.8 Technological controls (34)</option>
+        <option value="clauses">Main body clauses (4–10)</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-xs" onclick="return confirm('This adds one observation per control. Continue?')">Generate</button>
+  </form>
+</div>
+
 <div class="panel">
   <div class="panel-head"><h2>Findings</h2><span class="meta"><%= findings.length %> total</span></div>
   <% if (findings.length === 0) { %>

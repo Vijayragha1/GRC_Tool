@@ -57,4 +57,29 @@
   </form>
 </div>
 
+<div class="panel" style="margin-top:14px">
+  <div class="panel-head"><h2>Corrective action tasks</h2><span class="meta">Closes the audit → NC → task → control loop</span></div>
+  <% if (!correctiveTasks || correctiveTasks.length === 0) { %>
+    <div class="panel-pad meta">No tasks spawned yet.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>Title</th><th style="width:140px;">Assignee</th><th style="width:120px;">Due</th><th style="width:120px;">Status</th></tr></thead>
+      <tbody>
+        <% correctiveTasks.forEach(t => { %>
+          <tr>
+            <td><a href="/workspaces/<%= ws.id %>/tasks/<%= t.id %>" class="link-muted" style="color:var(--text);"><%= t.title %></a></td>
+            <td class="meta"><%= t.assignee_name || '—' %></td>
+            <td class="meta"><%= t.due_date || '—' %></td>
+            <td><span class="status s-<%= t.status === 'done' ? 'done' : t.status %>"><%= t.status %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>/spawn-task" class="panel-pad" style="display:flex;gap:8px;align-items:end;border-top:1px solid var(--border);">
+    <div><label class="label">Due date <span class="meta">(defaults to NC due)</span></label><input type="date" class="input" name="due_date"></div>
+    <button class="btn btn-primary btn-xs">+ Spawn corrective action task</button>
+  </form>
+</div>
+
 <%- include('partials/footer') %>

@@ -10,27 +10,52 @@
 </div>
 
 <div class="panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>Auto-collected inputs (9.3.2)</h2><span class="meta">live</span></div>
-  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <div class="panel-head"><h2>Auto-collected inputs (9.3.2)</h2><span class="meta">live · ticks off the Clause 9.3.2 inputs automatically</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
     <div>
-      <div class="meta" style="margin-bottom:4px;">ISMS progress</div>
-      <div style="font-size:14px;font-weight:500;"><%= progress.percent %>% (<%= progress.assessed %>/<%= progress.total %>)</div>
+      <div class="meta" style="margin-bottom:4px;">a) Status of prior actions</div>
+      <% if (!priorMrm) { %><div style="font-size:13px;color:var(--text-tertiary);">no prior MRM</div>
+      <% } else { %>
+        <div style="font-size:13px;"><%= priorActions.filter(t => t.status === 'done').length %> / <%= priorActions.length %> closed (from <%= priorMrm.meeting_date || 'last MRM' %>)</div>
+        <% priorActions.slice(0,3).forEach(t => { %><div style="font-size:12px;color:var(--text-secondary);"><%= t.title %> <span class="meta">[<%= t.status %>]</span></div><% }) %>
+      <% } %>
     </div>
     <div>
-      <div class="meta" style="margin-bottom:4px;">Risk status</div>
-      <% if (riskSummary.length === 0) { %><div style="color:var(--text-tertiary);font-size:13px;">no risks</div><% } %>
+      <div class="meta" style="margin-bottom:4px;">b) Changes in context / risks</div>
+      <% if (riskSummary.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">no risks</div><% } %>
       <% riskSummary.forEach(r => { %><div style="font-size:13px;"><%= r.status %>: <%= r.c %></div><% }) %>
     </div>
     <div>
-      <div class="meta" style="margin-bottom:4px;">Recent audits</div>
-      <% if (audits.length === 0) { %><div style="color:var(--text-tertiary);font-size:13px;">none</div><% } %>
-      <% audits.slice(0, 4).forEach(a => { %><div style="font-size:13px;"><%= a.title %> <span class="meta">(<%= a.status %>)</span></div><% }) %>
+      <div class="meta" style="margin-bottom:4px;">c) ISMS performance — KPIs</div>
+      <div style="font-size:13px;">Coverage: <%= progress.percent %>% (<%= progress.assessed %>/<%= progress.total %>)</div>
     </div>
     <div>
-      <div class="meta" style="margin-bottom:4px;">Open nonconformities</div>
+      <div class="meta" style="margin-bottom:4px;">c.i) Nonconformities & corrective action</div>
       <% const openN = ncs.filter(n => n.status !== 'closed' && n.status !== 'verified'); %>
-      <% if (openN.length === 0) { %><div style="color:var(--text-tertiary);font-size:13px;">none</div><% } %>
-      <% openN.slice(0, 5).forEach(n => { %><div style="font-size:13px;"><%= n.title %></div><% }) %>
+      <div style="font-size:13px;"><strong><%= openN.length %></strong> open / <%= ncs.length %> total</div>
+      <% openN.slice(0, 3).forEach(n => { %><div style="font-size:12px;color:var(--text-secondary);"><%= n.title %> <span class="meta">[<%= n.severity %>]</span></div><% }) %>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">c.iii) Audit results</div>
+      <% if (audits.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">none</div><% } %>
+      <% audits.slice(0, 4).forEach(a => { %><div style="font-size:12px;"><%= a.title %> <span class="meta">[<%= a.status %>]</span></div><% }) %>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">c.iv) Incidents</div>
+      <div style="font-size:13px;"><strong><%= incidentSummary.open || 0 %></strong> open · <%= incidentSummary.last12m || 0 %> in last 12 months</div>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">d) Suppliers</div>
+      <div style="font-size:13px;"><%= supplierReviewStatus.reviewed_last_year || 0 %> / <%= supplierReviewStatus.total_suppliers || 0 %> reviewed last year<% if (supplierReviewStatus.overdue) { %> · <span style="color:#dc2626;"><%= supplierReviewStatus.overdue %> overdue</span><% } %></div>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">f) Risk-treatment status</div>
+      <% if (riskSummary.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">—</div>
+      <% } else { %><% riskSummary.forEach(r => { %><div style="font-size:12px;"><%= r.status %>: <%= r.c %></div><% }) %><% } %>
+    </div>
+    <div>
+      <div class="meta" style="margin-bottom:4px;">g) Improvement opportunities</div>
+      <div style="font-size:12px;color:var(--text-secondary);">Capture in field below.</div>
     </div>
   </div>
 </div>

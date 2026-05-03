@@ -44,7 +44,7 @@
 
 <!-- Tabs -->
 <div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);">
-  <% const tabs = [['overview','Overview'],['documents','Documents'],['questionnaires','Questionnaires'],['clauses','Contract clauses'],['subprocessors','Sub-processors'],['reviews','Reviews'],['monitoring','Monitoring'],['termination','Termination'],['notes','Notes']]; %>
+  <% const tabs = [['overview','Overview'],['documents','Documents'],['questionnaires','Questionnaires'],['clauses','Contract clauses'],['controls','Controls handled'],['subprocessors','Sub-processors'],['reviews','Reviews'],['monitoring','Monitoring'],['termination','Termination'],['notes','Notes']]; %>
   <% tabs.forEach(([k, label]) => { %>
     <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= reviews.length %>)</span><% } %></a>
   <% }) %>
@@ -265,6 +265,46 @@
       </form>
     <% }) %>
   </div>
+</div>
+<% } %>
+
+<% if (tab === 'controls') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Annex A controls handled by this supplier</h2><span class="meta">A.5.19–A.5.23 — declare which ISO controls this supplier operates on your behalf</span></div>
+  <% if (!supplierControls || supplierControls.length === 0) { %>
+    <div class="panel-pad meta">No controls linked yet. Tag the controls this supplier delivers — e.g. a SaaS HR vendor handles A.5.34 (privacy) and A.8.2 (privileged access).</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th style="width:90px;">ID</th><th>Control</th><th>Notes</th><th style="width:60px;"></th></tr></thead>
+      <tbody>
+        <% supplierControls.forEach(sc => { %>
+          <tr>
+            <td class="mono meta"><%= sc.iso_item_id.replace('annex-','').toUpperCase() %></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= sc.iso_item_id %>" class="link-muted" style="color:var(--text);"><%= sc.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
+            <td class="meta"><%= sc.notes || '—' %></td>
+            <td style="text-align:right;">
+              <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/controls/<%= sc.link_id %>/delete" onsubmit="return confirm('Remove?')" style="display:inline;">
+                <button class="btn btn-danger btn-xs">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/controls" class="panel-pad" style="display:grid;grid-template-columns:1.5fr 2fr auto;gap:8px;align-items:end;border-top:1px solid var(--border);">
+    <div>
+      <label class="label">Add control</label>
+      <select class="select" name="iso_item_id" required>
+        <option value="">— pick —</option>
+        <% allControlsForVendor.forEach(c => { %>
+          <option value="<%= c.id %>"><%= c.id.replace('annex-','').toUpperCase() %> — <%= c.title.replace(/^A\.[0-9.]+ /,'') %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div><label class="label">Notes <span class="meta">(optional)</span></label><input class="input" name="notes" placeholder="e.g. handles all log retention"></div>
+    <div><button class="btn btn-primary btn-xs">Link</button></div>
+  </form>
 </div>
 <% } %>
 

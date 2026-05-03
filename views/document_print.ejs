@@ -25,46 +25,5 @@
   <button onclick="window.print()">Print / Save as PDF</button>
 </div>
 <div class="meta"><%= ws.client_name %> · v<%= doc.version %> · status: <%= doc.status %></div>
-<div id="content"></div>
-<script>
-const md = `<%- doc.content.replace(/`/g, '\\`').replace(/\$/g, '\\$') %>`;
-function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function inline(s){ s = esc(s);
-  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-  s = s.replace(/\*(.+?)\*/g,'<em>$1</em>');
-  s = s.replace(/`(.+?)`/g,'<code>$1</code>');
-  return s;
-}
-function render(md){
-  const lines = md.split('\n'); let html=''; let i=0;
-  while(i<lines.length){
-    const l = lines[i];
-    let m;
-    if (m = l.match(/^(#{1,6})\s(.+)/)) { html += `<h${m[1].length}>${esc(m[2])}</h${m[1].length}>`; i++; continue; }
-    if (/^\|/.test(l)) {
-      let t = '<table><thead><tr>';
-      lines[i].split('|').slice(1,-1).forEach(c => t += '<th>'+esc(c.trim())+'</th>');
-      t += '</tr></thead><tbody>'; i += 2;
-      while (i < lines.length && /^\|/.test(lines[i])) {
-        t += '<tr>';
-        lines[i].split('|').slice(1,-1).forEach(c => t += '<td>'+esc(c.trim())+'</td>');
-        t += '</tr>'; i++;
-      }
-      html += t + '</tbody></table>'; continue;
-    }
-    if (/^[-*]\s/.test(l)) {
-      html += '<ul>';
-      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
-        html += '<li>'+inline(lines[i].replace(/^[-*]\s/, ''))+'</li>'; i++;
-      }
-      html += '</ul>'; continue;
-    }
-    if (/^---+$/.test(l)) { html += '<hr>'; i++; continue; }
-    if (l.trim() === '') { i++; continue; }
-    html += '<p>'+inline(l)+'</p>'; i++;
-  }
-  return html;
-}
-document.getElementById('content').innerHTML = render(md);
-</script>
+<div id="content"><%- doc.content %></div>
 </body></html>

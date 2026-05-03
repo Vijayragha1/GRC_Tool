@@ -18,18 +18,30 @@
     <thead><tr>
       <th style="width:60px">ID</th>
       <th>Control</th>
-      <th style="width:90px">Risks</th>
+      <th style="width:60px" title="Risks linked to this control">R</th>
+      <th style="width:60px" title="Evidence files linked to this control">E</th>
+      <th style="width:60px" title="Open nonconformities on this control">NC</th>
+      <th style="width:280px">Covered by (linked documents)</th>
       <th style="width:140px">Applicability</th>
       <th style="width:170px">Status</th>
       <th>Justification</th>
     </tr></thead>
     <tbody>
-      <% rows.forEach(r => { %>
+      <% rows.forEach(r => { const linkedDocs = (docsByControl && docsByControl[r.id]) || []; %>
         <form method="POST" action="/workspaces/<%= ws.id %>/soa/<%= r.id %>" class="contents">
           <tr>
             <td class="mono meta"><%= r.id.replace('annex-', '').toUpperCase() %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.systemic_count >= 3) { %> <span class="tag tag-danger" style="font-size:10px;" title="<%= r.systemic_count %> findings in last 12 months">SYSTEMIC</span><% } %><% if (r.last_verified_at) { %><div class="meta" style="font-size:10.5px;">verified <%= r.last_verified_at.slice(0,10) %></div><% } %></td>
             <td><% if (r.risk_count > 0) { %><span class="tag tag-success num"><%= r.risk_count %></span><% } else { %><span class="meta">—</span><% } %></td>
+            <td><% if (r.evidence_count > 0) { %><span class="tag tag-info num"><%= r.evidence_count %></span><% } else { %><span class="meta">—</span><% } %></td>
+            <td><% if (r.open_nc_count > 0) { %><span class="tag tag-danger num"><%= r.open_nc_count %></span><% } else { %><span class="meta">—</span><% } %></td>
+            <td>
+              <% if (linkedDocs.length === 0) { %>
+                <span class="meta">—</span>
+              <% } else { %>
+                <% linkedDocs.forEach((d, idx) => { %><a href="/workspaces/<%= ws.id %>/documents/<%= d.doc_id %>" style="font-size:12px;color:var(--accent);text-decoration:none;" title="<%= d.category || '' %> · <%= d.doc_status %>"><%= d.doc_name %><% if (d.section_ref) { %> <%= d.section_ref %><% } %></a><% if (idx < linkedDocs.length - 1) { %><span class="meta">, </span><% } %><% }) %>
+              <% } %>
+            </td>
             <td>
               <select name="applicability" class="select" style="font-size:12px;padding:4px 8px;">
                 <option value="undecided" <%= r.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>

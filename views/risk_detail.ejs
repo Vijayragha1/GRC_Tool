@@ -75,7 +75,6 @@
     <div style="grid-column:1/-1;display:flex;gap:6px;">
       <button class="btn btn-primary">Save</button>
       <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="btn btn-secondary">Treatment plan →</a>
-      <a href="/workspaces/<%= ws.id %>/kris" class="btn btn-secondary">KRIs →</a>
       <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/delete" onsubmit="return confirm('Delete this risk?')" style="display:inline">
         <button class="btn btn-danger">Delete</button>
       </form>

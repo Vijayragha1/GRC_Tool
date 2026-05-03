@@ -1,0 +1,268 @@
+<%- include('partials/header', { title: 'Gap assessment', user, ws, active: 'controls' }) %>
+
+<%
+  const isClause = item.type === 'clause';
+  const isExcluded = state.applicability === 'excluded';
+  const overallTotal = totals.clausesTotal + totals.controlsTotal;
+  const overallAssessed = totals.clausesAssessed + totals.controlsAssessed;
+  const pct = overallTotal ? Math.round((overallAssessed / overallTotal) * 100) : 0;
+  const sectionTotal = isClause ? totals.clausesTotal : totals.controlsTotal;
+  const sectionLabel = isClause ? 'Management system clauses (4–10)' : 'Annex A controls';
+  const refCode = item.id.replace('annex-','').replace('clause-','').toUpperCase();
+  const cleanTitle = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+  const sectionTag = isClause
+    ? 'Clause ' + refCode + ' · management system requirement'
+    : refCode + ' · ' + (item.category === 'org' ? 'Organisational' : item.category === 'people' ? 'People' : item.category === 'physical' ? 'Physical' : 'Technological');
+%>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Gap assessment</h1>
+    <div class="page-subtitle">Walks all 25 ISO 27001 main-body clauses (the "shall" requirements) plus 93 Annex A controls — one item at a time, with the prompts and evidence auditors expect.</div>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;">
+    <a href="/workspaces/<%= ws.id %>/controls/assess?start=clauses" class="btn btn-secondary btn-xs">Jump to clauses</a>
+    <a href="/workspaces/<%= ws.id %>/controls/assess?start=controls" class="btn btn-secondary btn-xs">Jump to Annex A</a>
+    <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-primary btn-xs">View summary →</a>
+  </div>
+</div>
+
+<% if (doneFlag) { %>
+  <div class="panel" style="margin-bottom:16px;border-color:#16a34a;background:rgba(22,163,74,0.04);">
+    <div class="panel-pad">
+      <div style="font-weight:600;color:#16a34a;margin-bottom:4px;">All clauses and controls assessed</div>
+      <div class="meta">Every item has a status other than "Not Assessed". The post-assessment summary turns your answers into a worklist — remediation tasks, missing policies, evidence asks, and risks needing treatment updates.</div>
+      <div style="margin-top:10px;display:flex;gap:6px;">
+        <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-primary">View post-assessment summary →</a>
+        <a href="/workspaces/<%= ws.id %>/soa" class="btn btn-secondary btn-xs">Go to SoA</a>
+        <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-secondary btn-xs">Pre-cert blocker check</a>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<!-- Two-section progress: clauses + Annex A -->
+<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:14px;margin-bottom:16px;align-items:center;">
+  <div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
+      <span class="meta" style="font-weight:500;">Clauses (4–10)</span>
+      <span class="meta"><strong style="color:var(--text);"><%= totals.clausesAssessed %></strong> / <%= totals.clausesTotal %></span>
+    </div>
+    <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
+      <div style="height:100%;width:<%= totals.clausesTotal ? Math.round(totals.clausesAssessed / totals.clausesTotal * 100) : 0 %>%;background:#0891b2;transition:width 0.2s;"></div>
+    </div>
+  </div>
+  <div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
+      <span class="meta" style="font-weight:500;">Annex A controls</span>
+      <span class="meta"><strong style="color:var(--text);"><%= totals.controlsAssessed %></strong> / <%= totals.controlsTotal %></span>
+    </div>
+    <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
+      <div style="height:100%;width:<%= totals.controlsTotal ? Math.round(totals.controlsAssessed / totals.controlsTotal * 100) : 0 %>%;background:var(--accent);transition:width 0.2s;"></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:4px;align-items:center;">
+    <span class="meta" style="font-size:12px;margin-right:6px;"><strong style="color:var(--text);"><%= overallAssessed %></strong> / <%= overallTotal %> · <%= pct %>%</span>
+    <% if (prevId) { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= prevId %>" class="btn btn-secondary btn-xs" title="Previous">←</a><% } %>
+    <% if (nextId) { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= nextId %>" class="btn btn-secondary btn-xs" title="Next">→</a><% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);<%= isClause ? 'background:rgba(8,145,178,0.04);' : '' %>">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div class="meta" style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;color:<%= isClause ? '#0891b2' : 'var(--text-secondary)' %>;">
+        <%= sectionTag %>
+      </div>
+      <span class="meta" style="font-size:11.5px;"><%= isClause ? 'Clause' : 'Control' %> <%= sectionPosition %> of <%= sectionTotal %></span>
+    </div>
+    <h2 style="margin:0;font-size:18px;font-weight:600;line-height:1.3;"><%= cleanTitle %></h2>
+    <p style="margin:8px 0 0 0;font-size:14px;line-height:1.55;color:var(--text);"><%= item.summary %></p>
+    <% if (isClause) { %>
+      <div class="meta" style="font-size:12px;margin-top:8px;font-style:italic;">This is a "shall" requirement of ISO 27001:2022 — every certified ISMS must satisfy it. Applicability is not a choice.</div>
+    <% } %>
+  </div>
+
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-bottom:1px solid var(--border);">
+    <div>
+      <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">
+        <%= isClause ? 'Applicability notes' : 'Applicability — points to consider' %>
+      </div>
+      <% if (item.questions.length === 0) { %>
+        <div class="meta" style="font-size:12.5px;">Generally applies to all organizations within the ISMS scope.</div>
+      <% } else { %>
+        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+          <% item.questions.forEach(q => { %><li style="margin-bottom:4px;"><%= q %></li><% }) %>
+        </ul>
+      <% } %>
+    </div>
+    <div>
+      <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">What it requires</div>
+      <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+        <% item.evidence_needed.forEach(e => { %><li style="margin-bottom:4px;"><%= e %></li><% }) %>
+      </ul>
+    </div>
+    <div>
+      <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">Evidence auditors expect</div>
+      <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+        <% item.documentation_needed.forEach(d => { %><li style="margin-bottom:4px;"><%= d %></li><% }) %>
+      </ul>
+    </div>
+  </div>
+
+  <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>" class="panel-pad" id="assessForm">
+    <!-- Per-item diagnostic questions — specific to this clause/control -->
+    <% if (questions && questions.length) { %>
+      <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
+        <div class="panel-pad" style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:13px;font-weight:600;">Current-state diagnostic <span class="meta" style="font-weight:400;">— <%= questions.length %> question<%= questions.length === 1 ? '' : 's' %> for this <%= isClause ? 'clause' : 'control' %></span></div>
+            <div class="meta" style="font-size:11.5px;">Answer each based on what's actually in place today. The tool suggests an implementation status from your answers.</div>
+          </div>
+          <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>">
+            Suggested status: <strong id="suggestedStatusText" style="color:var(--accent);"><%= suggestedStatus || '' %></strong>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr;">
+          <% questions.forEach((q, i) => { %>
+            <div style="display:grid;grid-template-columns:1fr 220px;gap:12px;padding:9px 14px;<%= i < questions.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>align-items:center;">
+              <div style="font-size:12.5px;line-height:1.45;"><%= q %></div>
+              <div style="display:flex;gap:4px;justify-content:flex-end;">
+                <% ['yes','partial','no'].forEach(opt => {
+                     const isOn = savedAnswers[String(i)] === opt;
+                     const color = opt === 'yes' ? '#16a34a' : opt === 'partial' ? '#a16207' : '#b91c1c';
+                %>
+                  <label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border:1px solid <%= isOn ? color : 'var(--border)' %>;border-radius:14px;font-size:11.5px;background:<%= isOn ? color : 'var(--bg)' %>;color:<%= isOn ? 'white' : 'var(--text-secondary)' %>;font-weight:<%= isOn ? '600' : '500' %>;transition:all 0.12s;">
+                    <input type="radio" name="q_<%= i %>" value="<%= opt %>" <%= isOn ? 'checked' : '' %> style="display:none;" onchange="recomputeSuggested()">
+                    <%= opt === 'yes' ? 'Yes' : opt === 'partial' ? 'Partial' : 'No' %>
+                  </label>
+                <% }) %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+
+    <div style="display:grid;grid-template-columns:<%= isClause ? '1fr 1fr' : 'repeat(3,1fr)' %>;gap:14px;margin-bottom:14px;">
+      <% if (!isClause) { %>
+        <div>
+          <label class="label">Applicability</label>
+          <select class="select" name="applicability" id="applicabilityField" onchange="toggleExclusion()">
+            <option value="undecided" <%= state.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>
+            <option value="included" <%= state.applicability === 'included' ? 'selected' : '' %>>Included in SoA</option>
+            <option value="excluded" <%= state.applicability === 'excluded' ? 'selected' : '' %>>Excluded from SoA</option>
+          </select>
+        </div>
+      <% } %>
+      <div>
+        <label class="label">Implementation status<% if (isClause) { %> <span class="meta" style="color:#0891b2;">required for cert</span><% } %></label>
+        <select class="select" name="status">
+          <% let statusOpts = isClause
+               ? ['Not Assessed','Not Implemented','Work In Progress','Partially Implemented','Implemented']
+               : ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'];
+             // If a previously saved value is no longer in the allowed set (e.g. legacy 'Not Applicable' on a clause),
+             // surface it so the user can change it.
+             if (state.status && !statusOpts.includes(state.status)) statusOpts = [state.status, ...statusOpts]; %>
+          <% statusOpts.forEach(s => { %>
+            <option value="<%= s %>" <%= state.status === s ? 'selected' : '' %>><%= s %><%= (isClause && s === 'Not Applicable') ? ' — invalid for clauses, please change' : '' %></option>
+          <% }) %>
+        </select>
+        <% if (isClause) { %>
+          <div class="meta" style="font-size:11px;margin-top:4px;line-height:1.4;">Clauses are mandatory "shalls" — every certified ISMS must reach <strong>Implemented</strong>. There is no "Not Applicable" path.</div>
+        <% } %>
+      </div>
+      <div>
+        <label class="label">Maturity (0–4) <span class="meta">CMMI-style</span></label>
+        <select class="select" name="maturity">
+          <option value="0" <%= state.maturity == 0 ? 'selected' : '' %>>0 — Not performed</option>
+          <option value="1" <%= state.maturity == 1 ? 'selected' : '' %>>1 — Ad-hoc / informal</option>
+          <option value="2" <%= state.maturity == 2 ? 'selected' : '' %>>2 — Documented and repeatable</option>
+          <option value="3" <%= state.maturity == 3 ? 'selected' : '' %>>3 — Measured and reviewed</option>
+          <option value="4" <%= state.maturity == 4 ? 'selected' : '' %>>4 — Continuously improved</option>
+        </select>
+      </div>
+    </div>
+
+    <% if (!isClause) { %>
+      <div id="inclusionBlock" style="margin-bottom:14px;<%= isExcluded ? 'display:none;' : '' %>">
+        <label class="label">Inclusion justification <span class="meta">audit-defensible — why this control is in scope</span></label>
+        <textarea class="textarea" name="inclusion_justification" rows="2" placeholder="e.g., Required by risks R-12 and R-23 affecting customer data; mandated by client SLAs."><%= state.inclusion_justification || '' %></textarea>
+      </div>
+
+      <div id="exclusionBlock" style="margin-bottom:14px;<%= !isExcluded ? 'display:none;' : '' %>">
+        <label class="label">Exclusion justification <span class="meta">audit-defensible — why this control is NOT applicable</span></label>
+        <textarea class="textarea" name="exclusion_justification" rows="2" placeholder="e.g., No remote workers — all access from controlled office locations. Reviewed annually."><%= state.exclusion_justification || '' %></textarea>
+      </div>
+    <% } %>
+
+    <div style="margin-bottom:14px;">
+      <label class="label">Notes — current state, gaps, planned actions</label>
+      <textarea class="textarea" name="notes" rows="3" placeholder="Describe what's in place today, what's missing, and what you'll do about it."><%= state.notes || '' %></textarea>
+    </div>
+
+    <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
+      <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>" class="meta link-muted" style="font-size:12px;">Open full <%= isClause ? 'clause' : 'control' %> detail (evidence, comments, linked risks) →</a>
+      <div style="display:flex;gap:6px;">
+        <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
+        <button name="action" value="save" class="btn btn-primary">Save &amp; next →</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleExclusion() {
+  const f = document.getElementById('applicabilityField');
+  if (!f) return;
+  const incBlock = document.getElementById('inclusionBlock');
+  const excBlock = document.getElementById('exclusionBlock');
+  if (incBlock) incBlock.style.display = (f.value === 'excluded') ? 'none' : 'block';
+  if (excBlock) excBlock.style.display = (f.value === 'excluded') ? 'block' : 'none';
+}
+
+// Live-update suggested status as the user answers
+const QUESTION_COUNT = <%= questions ? questions.length : 0 %>;
+function recomputeSuggested() {
+  // Update the visual pill state on the just-clicked label
+  document.querySelectorAll('label[style*="border-radius:14px"]').forEach(lbl => {
+    const radio = lbl.querySelector('input[type="radio"]');
+    if (!radio) return;
+    const isOn = radio.checked;
+    const opt = radio.value;
+    const color = opt === 'yes' ? '#16a34a' : opt === 'partial' ? '#a16207' : '#b91c1c';
+    lbl.style.borderColor = isOn ? color : 'var(--border)';
+    lbl.style.background = isOn ? color : 'var(--bg)';
+    lbl.style.color = isOn ? 'white' : 'var(--text-secondary)';
+    lbl.style.fontWeight = isOn ? '600' : '500';
+  });
+  if (QUESTION_COUNT === 0) return;
+  // Compute suggested status from current radio state
+  const score = { yes: 1, partial: 0.5, no: 0 };
+  let total = 0, count = 0;
+  for (let i = 0; i < QUESTION_COUNT; i++) {
+    const sel = document.querySelector('input[name="q_' + i + '"]:checked');
+    if (sel) { total += score[sel.value] || 0; count++; }
+  }
+  const hint = document.getElementById('suggestedStatusHint');
+  const text = document.getElementById('suggestedStatusText');
+  if (!hint || !text) return;
+  if (count < QUESTION_COUNT) {
+    hint.style.display = 'inline';
+    text.textContent = `${count} of ${QUESTION_COUNT} answered…`;
+    text.style.color = 'var(--text-secondary)';
+    return;
+  }
+  const ratio = total / count;
+  let status, color;
+  if (ratio >= 0.85)      { status = 'Implemented';            color = '#16a34a'; }
+  else if (ratio >= 0.5)  { status = 'Partially Implemented';  color = '#a16207'; }
+  else if (ratio > 0)     { status = 'Work In Progress';       color = '#ea580c'; }
+  else                    { status = 'Not Implemented';        color = '#b91c1c'; }
+  hint.style.display = 'inline';
+  text.textContent = status;
+  text.style.color = color;
+}
+</script>
+
+<%- include('partials/footer') %>
