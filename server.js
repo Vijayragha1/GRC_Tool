@@ -197,6 +197,23 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Coerce a form value that may be a scalar, an array, or undefined into a
+// clean array of non-empty strings (deduped). Defends against trailing-`&`
+// in URL-encoded bodies that produce empty entries, and against duplicate
+// checkboxes posting the same value twice.
+function parseFormArray(raw) {
+  const arr = Array.isArray(raw) ? raw : (raw == null ? [] : [raw]);
+  const seen = new Set();
+  const out = [];
+  for (const v of arr) {
+    const s = (v == null ? '' : String(v)).trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
 function withToast(url, msg, kind) {
   const sep = url.includes('?') ? '&' : '?';
   return url + sep + 'toast=' + encodeURIComponent(msg) + (kind ? '&toastKind=' + kind : '');
@@ -344,7 +361,7 @@ const ONBOARDING_STEPS = [
     desc: 'A workspace is one client engagement. You\'ll do most of your work inside one.',
     cta: 'Create workspace',
     isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=?`).get(firmId).c > 0,
-    href: '/dashboard'
+    href: '/workspaces/new'
   },
   { num: 2, title: 'Define ISMS scope',
     desc: 'What products, locations, and systems are in scope of the ISMS? This decision drives everything else (clause 4.3).',
@@ -494,6 +511,11 @@ app.post('/firm/users/:id/deactivate', requireAuth, (req, res) => {
 });
 
 // ==================== WORKSPACE CRUD ====================
+app.get('/workspaces/new', requireAuth, (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'Only firm users can create workspaces.' });
+  res.render('workspace_new', { user: req.user, ws: null });
+});
+
 app.post('/workspaces', requireAuth, (req, res) => {
   if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
   const { client_name, industry, scope, target_cert_date } = req.body;
@@ -928,7 +950,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
 //   Partially Implemented              → normal
 //   Work In Progress                   → low (already being worked)
 app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
-  const ids = Array.isArray(req.body.iso_id) ? req.body.iso_id : (req.body.iso_id ? [req.body.iso_id] : []);
+  const ids = parseFormArray(req.body.iso_id);
   if (!ids.length) return res.redirect('back');
   const due = req.body.due_date || null;
   const ins = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, due_date, status, priority, created_by)
@@ -1203,8 +1225,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
 app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
-  const raw = req.body.iso_item_id;
-  const ids = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return res.redirect('back');
   const sectionRef = req.body.section_ref || null;
   const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
@@ -1328,7 +1349,7 @@ app.get('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requir
 });
 
 app.post('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
-  const picked = Array.isArray(req.body.pick) ? req.body.pick : (req.body.pick ? [req.body.pick] : []);
+  const picked = parseFormArray(req.body.pick);
   if (!picked.length) return res.redirect('back');
   const ins = db.prepare(`INSERT INTO risks (workspace_id, entity_id, title, description, threat, vulnerability,
                          likelihood, impact, treatment, status)
@@ -1648,6 +1669,11 @@ app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, (r
 
 // ==================== SOA ====================
 app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
+  // Ensure every Annex A control has a control_states row so subsequent SoA
+  // POSTs and bulk operations can UPDATE without silent no-ops. Idempotent.
+  db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
+              SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
+
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification,
@@ -1691,8 +1717,8 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
 });
 
 app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
-  // Reserved literal sub-routes (snapshot, auto-justify) must fall through.
-  if (['snapshot','auto-justify','snapshots'].includes(req.params.isoId)) return nextMw();
+  // Reserved literal sub-routes (snapshot, auto-justify, bulk) must fall through.
+  if (['snapshot','auto-justify','snapshots','bulk'].includes(req.params.isoId)) return nextMw();
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   getOrCreateState(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
@@ -1704,6 +1730,45 @@ app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, re
          status || null, req.workspace.id, req.params.isoId);
   logAction(req.user.id, req.workspace.id, 'update_soa', 'control', req.params.isoId, null);
   res.redirect('/workspaces/' + req.workspace.id + '/soa');
+});
+
+// Bulk SoA applicability + justification. Body shape:
+//   action       = 'include_all' | 'include_undecided' | 'apply_to_selected' | 'exclude_selected'
+//   iso_id       = repeated for 'apply_to_selected' / 'exclude_selected'
+//   justification = applied to every affected row (inclusion_justification or
+//                   exclusion_justification depending on the action)
+app.post('/workspaces/:wsId/soa/bulk', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
+  const { action, justification } = req.body;
+  const ids = parseFormArray(req.body.iso_id);
+  // Make sure every Annex A control has a control_states row to update.
+  db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
+              SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
+  let affected = 0;
+  if (action === 'include_all') {
+    affected = db.prepare(`UPDATE control_states SET applicability='included',
+                           inclusion_justification = COALESCE(?, inclusion_justification),
+                           last_updated = CURRENT_TIMESTAMP
+                           WHERE workspace_id=? AND iso_item_id IN (SELECT id FROM iso_items WHERE type='control')`)
+      .run(justification || null, req.workspace.id).changes;
+  } else if (action === 'include_undecided') {
+    affected = db.prepare(`UPDATE control_states SET applicability='included',
+                           inclusion_justification = COALESCE(?, inclusion_justification),
+                           last_updated = CURRENT_TIMESTAMP
+                           WHERE workspace_id=? AND applicability IN ('undecided','')
+                             AND iso_item_id IN (SELECT id FROM iso_items WHERE type='control')`)
+      .run(justification || null, req.workspace.id).changes;
+  } else if ((action === 'apply_to_selected' || action === 'exclude_selected') && ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    const applicability = action === 'exclude_selected' ? 'excluded' : 'included';
+    const justCol = applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification';
+    affected = db.prepare(`UPDATE control_states SET applicability=?,
+                           ${justCol} = COALESCE(?, ${justCol}),
+                           last_updated = CURRENT_TIMESTAMP
+                           WHERE workspace_id=? AND iso_item_id IN (${placeholders})`)
+      .run(applicability, justification || null, req.workspace.id, ...ids).changes;
+  }
+  logAction(req.user.id, req.workspace.id, 'soa_bulk', 'soa', null, { action, affected, count: ids.length }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `${affected} control${affected === 1 ? '' : 's'} updated`));
 });
 
 // ==================== TASKS ====================
@@ -2086,8 +2151,7 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
   // iso_item_id can be a single value (single-pick form) or an array (bulk
   // multi-pick form). The section_ref applies to the bulk batch when used —
   // typically left blank for bulk operations and set per link on single ones.
-  const raw = req.body.iso_item_id;
-  const ids = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return res.redirect('back');
   const sectionRef = req.body.section_ref || null;
   const ins = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
