@@ -2025,13 +2025,23 @@ app.get('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requir
 app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return res.status(404).send('Not found');
-  const { iso_item_id, section_ref } = req.body;
-  if (!iso_item_id) return res.redirect('back');
-  try {
-    db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
-      .run(doc.id, iso_item_id, section_ref || null);
-    logAction(req.user.id, req.workspace.id, 'link_doc_control', 'document', doc.id, { iso_item_id, section_ref: section_ref || null }, auditCtx(req));
-  } catch (e) { /* ignore */ }
+  // iso_item_id can be a single value (single-pick form) or an array (bulk
+  // multi-pick form). The section_ref applies to the bulk batch when used —
+  // typically left blank for bulk operations and set per link on single ones.
+  const raw = req.body.iso_item_id;
+  const ids = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  if (!ids.length) return res.redirect('back');
+  const sectionRef = req.body.section_ref || null;
+  const ins = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+  let added = 0;
+  const tx = db.transaction(() => {
+    for (const id of ids) {
+      const r = ins.run(doc.id, id, sectionRef);
+      if (r.changes > 0) added++;
+    }
+  });
+  try { tx(); } catch (_) {}
+  logAction(req.user.id, req.workspace.id, 'link_doc_control', 'document', doc.id, { ids, count: added, section_ref: sectionRef }, auditCtx(req));
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
 

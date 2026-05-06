@@ -198,16 +198,19 @@
         </tbody>
       </table>
     <% } %>
-    <% if (can('document.edit') && !doc.locked) { %>
+    <% if (can('document.edit') && !doc.locked) {
+         const grp = {}; allControls.forEach(c => { (grp[c.type] = grp[c.type] || []).push(c); });
+         const linkedIds = new Set((linkedControls || []).map(lc => lc.iso_item_id));
+    %>
+      <!-- Single-pick form (with optional section ref) -->
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls" style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;">
         <div>
-          <label class="label">Add control / clause</label>
+          <label class="label">Link a single control / clause</label>
           <select class="select" name="iso_item_id" required>
             <option value="">— pick —</option>
-            <% const grp = {}; allControls.forEach(c => { (grp[c.type] = grp[c.type] || []).push(c); }); %>
             <% Object.keys(grp).forEach(t => { %>
               <optgroup label="<%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>">
-                <% grp[t].forEach(c => { %>
+                <% grp[t].filter(c => !linkedIds.has(c.id)).forEach(c => { %>
                   <option value="<%= c.id %>"><%= c.id.replace('annex-','').replace('clause-','').toUpperCase() %> — <%= c.title %></option>
                 <% }) %>
               </optgroup>
@@ -217,6 +220,54 @@
         <div><label class="label">Section ref <span class="meta">(optional)</span></label><input class="input" name="section_ref" placeholder="e.g. §4.2"></div>
         <div><button class="btn btn-primary btn-xs">Link</button></div>
       </form>
+
+      <!-- Bulk multi-pick (collapsible — most docs cover 5–10 items) -->
+      <details style="margin-top:12px;">
+        <summary class="link-muted" style="font-size:12.5px;cursor:pointer;">+ Link many at once <span class="meta" style="font-weight:400;">— useful for umbrella policies that cover several controls</span></summary>
+        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls" style="margin-top:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);">
+          <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:12px;">
+            <button type="button" onclick="document.querySelectorAll('.bulk-pick').forEach(c => c.checked = true); updateBulkCount()" class="btn btn-secondary btn-xs">Select all</button>
+            <button type="button" onclick="document.querySelectorAll('.bulk-pick').forEach(c => c.checked = false); updateBulkCount()" class="btn btn-secondary btn-xs">Clear</button>
+            <input type="text" id="bulkFilter" placeholder="filter…" oninput="filterBulk(this.value)" class="input" style="font-size:12px;width:160px;">
+            <span class="meta" style="margin-left:auto;font-size:12px;"><span id="bulkCount">0</span> selected</span>
+          </div>
+          <div style="max-height:340px;overflow-y:auto;padding:8px 12px;">
+            <% Object.keys(grp).forEach(t => {
+                 const available = grp[t].filter(c => !linkedIds.has(c.id));
+                 if (!available.length) return; %>
+              <div class="meta" style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;">
+                <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;">
+                <% available.forEach(c => {
+                     const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
+                %>
+                  <label class="bulk-row" data-search="<%= (code + ' ' + c.title).toLowerCase() %>" style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12.5px;cursor:pointer;">
+                    <input type="checkbox" class="bulk-pick" name="iso_item_id" value="<%= c.id %>" onchange="updateBulkCount()">
+                    <span class="mono meta" style="font-size:11px;width:80px;flex-shrink:0;"><%= code %></span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= c.title %></span>
+                  </label>
+                <% }) %>
+              </div>
+            <% }) %>
+          </div>
+          <div style="padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--bg);">
+            <input class="input" name="section_ref" placeholder="Optional section ref applied to every link in this batch" style="flex:1;font-size:12px;">
+            <button class="btn btn-primary btn-xs">Link selected</button>
+          </div>
+        </form>
+        <script>
+          function updateBulkCount(){
+            document.getElementById('bulkCount').textContent = document.querySelectorAll('.bulk-pick:checked').length;
+          }
+          function filterBulk(q){
+            const s = (q || '').toLowerCase();
+            document.querySelectorAll('.bulk-row').forEach(row => {
+              row.style.display = !s || row.dataset.search.includes(s) ? '' : 'none';
+            });
+          }
+        </script>
+      </details>
     <% } %>
   </div>
 </div>
