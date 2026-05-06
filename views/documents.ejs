@@ -113,11 +113,12 @@
   <table class="t">
     <thead><tr>
       <th>Name</th>
-      <th style="width:110px">Category</th>
-      <th style="width:120px">Status</th>
-      <th style="width:60px">Ver</th>
-      <th style="width:280px">Tagged clauses / controls</th>
-      <th style="width:140px">Updated</th>
+      <th style="width:100px">Category</th>
+      <th style="width:110px">Status</th>
+      <th style="width:50px">Ver</th>
+      <th style="width:240px">Tagged clauses / controls</th>
+      <th style="width:120px">Review by</th>
+      <th style="width:130px">Updated</th>
       <th style="width:120px"></th>
     </tr></thead>
     <tbody>
@@ -148,6 +149,17 @@
               </div>
             <% } %>
           </td>
+          <td>
+            <% if (!d.next_review_date) { %>
+              <span class="meta" style="font-size:11.5px;">—</span>
+            <% } else {
+                 const rsColor = d.review_status === 'overdue' ? '#b91c1c' : d.review_status === 'due_soon' ? '#a16207' : 'var(--text-secondary)';
+            %>
+              <span style="font-size:11.5px;color:<%= rsColor %>;font-weight:<%= d.review_status === 'overdue' ? 600 : 500 %>;"><%= d.next_review_date %></span>
+              <% if (d.review_status === 'overdue') { %><div style="font-size:10px;font-weight:600;color:#b91c1c;text-transform:uppercase;letter-spacing:0.04em;">overdue</div>
+              <% } else if (d.review_status === 'due_soon') { %><div style="font-size:10px;font-weight:600;color:#a16207;text-transform:uppercase;letter-spacing:0.04em;">due soon</div><% } %>
+            <% } %>
+          </td>
           <td class="num meta" style="font-size:11.5px;"><%= d.updated_at %></td>
           <td style="text-align:right">
             <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/docx" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">.docx</a>
@@ -159,7 +171,7 @@
         </tr>
       <% }) %>
       <% if (docs.length === 0) { %>
-        <tr><td colspan="7" style="padding:0;">
+        <tr><td colspan="8" style="padding:0;">
           <div class="empty-state">
             <div class="empty-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>

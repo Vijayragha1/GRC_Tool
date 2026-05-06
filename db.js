@@ -1544,6 +1544,73 @@ function init() {
     FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE CASCADE
   );`);
 
+  // ========================================================================
+  // Final-pass expansion (12 features across Tiers A/B/C).
+  // ========================================================================
+
+  // A.1 — Evidence-to-many-controls. The same evidence file often satisfies
+  // several controls (and clauses). Mirror the document_controls pattern:
+  // join table with optional section_ref. Existing evidence.iso_item_id stays
+  // as the "primary" link for backwards-compat; views UNION both sources.
+  db.exec(`CREATE TABLE IF NOT EXISTS evidence_controls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_id INTEGER NOT NULL,
+    iso_item_id TEXT NOT NULL,
+    section_ref TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(evidence_id, iso_item_id),
+    FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE,
+    FOREIGN KEY (iso_item_id) REFERENCES iso_items(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_ec_evidence ON evidence_controls(evidence_id);
+  CREATE INDEX IF NOT EXISTS idx_ec_iso ON evidence_controls(iso_item_id);`);
+
+  // Backfill: every existing evidence row with an iso_item_id seeds a row in
+  // evidence_controls (idempotent — INSERT OR IGNORE).
+  db.exec(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id)
+    SELECT id, iso_item_id FROM evidence WHERE iso_item_id IS NOT NULL`);
+
+  // C.10 — Continual improvement register (clause 10.1). Improvements driven
+  // by data — distinct from corrective actions on NCs (10.2).
+  db.exec(`CREATE TABLE IF NOT EXISTS improvements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    source TEXT,                  -- audit / mrm / monitoring / ad-hoc
+    source_ref TEXT,              -- optional reference to source artefact
+    owner_name TEXT,
+    due_date DATE,
+    status TEXT DEFAULT 'open',   -- open / in_progress / done / cancelled
+    closed_at DATETIME,
+    impact_notes TEXT,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_imp_ws ON improvements(workspace_id, status);`);
+
+  // C.9 — Per-audit sampling justification + per-control sample records.
+  // The audits table already has sample_size/population_size; add a
+  // narrative sampling-justification column and a child table for per-
+  // control sampled items.
+  addColumnIfMissing('audits', 'sampling_justification', 'TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS audit_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    audit_id INTEGER NOT NULL,
+    iso_item_id TEXT,
+    description TEXT NOT NULL,
+    sample_taken_at DATE,
+    population_size INTEGER,
+    sample_size INTEGER,
+    finding TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
+    FOREIGN KEY (iso_item_id) REFERENCES iso_items(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_audsamp_audit ON audit_samples(audit_id);`);
+
   // Workspaces — locale + retention defaults
   addColumnIfMissing('workspaces', 'locale', "TEXT DEFAULT 'en'");
 

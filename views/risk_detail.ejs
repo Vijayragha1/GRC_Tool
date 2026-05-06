@@ -202,4 +202,73 @@
   </form>
 </div>
 
+<!-- Tier A.2 — Risk acceptance (clause 6.1.3 e — risk owner accepts residual risk) -->
+<%
+  const today = new Date().toISOString().slice(0,10);
+  const acc = activeAcceptance;
+  const expSoonDate = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+  const accExpired = acc && acc.expires_at && acc.expires_at < today;
+  const accExpiringSoon = acc && !accExpired && acc.expires_at && acc.expires_at < expSoonDate;
+%>
+<div class="panel" style="margin-top:18px;">
+  <div class="panel-head">
+    <h2>Risk acceptance <span class="meta" style="font-weight:400;font-size:13px;">· Clause 6.1.3 e</span></h2>
+    <% if (acc) { %>
+      <span class="meta">
+        Accepted by <strong><%= acc.accepter_name %></strong>
+        <% if (acc.expires_at) { %> · expires <strong style="color:<%= accExpired ? '#b91c1c' : accExpiringSoon ? '#a16207' : 'var(--text)' %>;"><%= acc.expires_at %></strong><% } %>
+      </span>
+    <% } %>
+  </div>
+
+  <% if (acc) {
+       const sevColor = accExpired ? '#b91c1c' : accExpiringSoon ? '#a16207' : '#16a34a';
+       const sevLabel = accExpired ? 'EXPIRED — RE-ACCEPT' : accExpiringSoon ? 'EXPIRES SOON' : 'CURRENT';
+  %>
+    <div class="panel-pad" style="background:<%= accExpired ? 'rgba(185,28,28,0.04)' : accExpiringSoon ? 'rgba(161,98,7,0.04)' : 'rgba(22,163,74,0.04)' %>;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <span style="font-size:9.5px;font-weight:700;color:white;background:<%= sevColor %>;padding:2px 7px;border-radius:3px;letter-spacing:0.05em;"><%= sevLabel %></span>
+        <span class="meta" style="font-size:12px;">Signed <%= acc.signed_at %></span>
+      </div>
+      <% if (acc.accepter_role) { %><div class="meta" style="font-size:12px;"><strong>Role:</strong> <%= acc.accepter_role %></div><% } %>
+      <div class="meta" style="font-size:12.5px;margin-top:6px;line-height:1.55;"><strong>Rationale:</strong> <%= acc.rationale %></div>
+      <div class="meta" style="font-size:11px;margin-top:6px;font-family:monospace;">Residual score at acceptance: <%= acc.residual_score %> · Signature: <%= acc.signature.slice(0,20) %>…</div>
+      <div style="margin-top:10px;display:flex;gap:6px;">
+        <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances" class="btn btn-secondary btn-xs">View acceptance history →</a>
+        <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= acc.id %>/revoke" onsubmit="return confirm('Revoke this acceptance? Risk will return to open.')" style="display:inline;">
+          <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Revoke</button>
+        </form>
+      </div>
+    </div>
+  <% } %>
+
+  <% if (!acc || accExpired) { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/accept" class="panel-pad" style="<%= acc ? 'border-top:1px solid var(--border);' : '' %>display:grid;grid-template-columns:1fr 1fr 140px;gap:10px;align-items:start;">
+      <div>
+        <label class="label">Accepter name</label>
+        <input class="input" name="accepter_name" required placeholder="Person formally accepting" style="font-size:12.5px;">
+      </div>
+      <div>
+        <label class="label">Role / authority</label>
+        <input class="input" name="accepter_role" placeholder="e.g., CISO, Risk Owner" style="font-size:12.5px;">
+      </div>
+      <div>
+        <label class="label">Expires on <span class="meta">re-accept by this date</span></label>
+        <input class="input" type="date" name="expires_at" required style="font-size:12.5px;">
+      </div>
+      <div style="grid-column:1/-1;">
+        <label class="label">Rationale <span class="meta">why is this residual risk acceptable</span></label>
+        <textarea class="textarea" name="rationale" rows="3" required placeholder="Why is the residual risk acceptable to the business? What compensating factors? When and why will it be re-evaluated?" style="font-size:12.5px;"></textarea>
+      </div>
+      <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;">
+        <label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer;">
+          <input type="checkbox" name="attestation" value="1" required>
+          I attest that I am authorised to accept this risk on behalf of the organisation.
+        </label>
+        <button class="btn btn-primary btn-xs" style="margin-left:auto;"><%= acc ? 'Re-accept risk' : 'Accept risk' %></button>
+      </div>
+    </form>
+  <% } %>
+</div>
+
 <%- include('partials/footer') %>

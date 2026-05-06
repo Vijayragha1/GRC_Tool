@@ -347,6 +347,7 @@
                 <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="color:var(--text);text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
                 <% if (badgeLabel) { %><span style="font-size:9px;font-weight:700;color:white;background:<%= badgeColor %>;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;"><%= badgeLabel %></span><% } %>
                 <% if (e.clause_section) { %><span class="mono meta" style="font-size:10.5px;background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
+                <% if (e.link_count && e.link_count > 1) { %><span class="mono" style="font-size:10px;color:#7c3aed;background:rgba(124,58,237,0.10);padding:1px 5px;border-radius:3px;" title="Linked to <%= e.link_count %> controls/clauses">×<%= e.link_count %></span><% } %>
               </div>
               <div class="meta" style="font-size:11px;"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
             </div>

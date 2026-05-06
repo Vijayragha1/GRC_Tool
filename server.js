@@ -1028,11 +1028,22 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
 
   // Evidence files attached to this control — displayed in a panel on the wizard
   // since the standalone control detail page was removed and there's no other home.
-  const evidenceList = db.prepare(`SELECT e.id, e.filename, e.size_bytes, e.description, e.uploaded_at,
-    e.valid_from, e.valid_until, e.period_label, e.clause_section,
-    u.name AS uploader
+  // Evidence linked to this control via either the legacy primary
+  // (evidence.iso_item_id) OR the new evidence_controls join. UNION + DISTINCT
+  // because the primary is also seeded into the join, but a non-primary join
+  // entry might exist independently.
+  const evidenceList = db.prepare(`
+    SELECT e.id, e.filename, e.size_bytes, e.description, e.uploaded_at,
+           e.valid_from, e.valid_until, e.period_label, e.clause_section,
+           u.name AS uploader,
+           (SELECT COUNT(*) FROM evidence_controls ec WHERE ec.evidence_id = e.id) AS link_count
     FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
-    WHERE e.workspace_id=? AND e.iso_item_id=? ORDER BY e.uploaded_at DESC`).all(req.workspace.id, item.id);
+    WHERE e.workspace_id=? AND e.id IN (
+      SELECT id FROM evidence WHERE workspace_id=? AND iso_item_id=?
+      UNION
+      SELECT evidence_id FROM evidence_controls WHERE iso_item_id=?
+    )
+    ORDER BY e.uploaded_at DESC`).all(req.workspace.id, req.workspace.id, item.id, item.id);
 
   // Linked risks, documents, and open NCs — read-only summary panels.
   const linkedRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.status
@@ -1168,16 +1179,51 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
   const { iso_item_id, description, valid_from, valid_until, period_label, clause_section } = req.body;
   const buf = fs.readFileSync(req.file.path);
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
-  db.prepare(`INSERT INTO evidence
+  const evId = db.prepare(`INSERT INTO evidence
     (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description,
      valid_from, valid_until, period_label, clause_section)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, iso_item_id || null, req.file.originalname, req.file.filename,
          sha, req.file.size, req.user.id, description || null,
-         valid_from || null, valid_until || null, period_label || null, clause_section || null);
+         valid_from || null, valid_until || null, period_label || null, clause_section || null).lastInsertRowid;
+  // Mirror the primary link into the join so the new many-to-many path is
+  // consistent with the legacy column.
+  if (iso_item_id) {
+    try { db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`).run(evId, iso_item_id, clause_section || null); } catch (_) {}
+  }
   logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', iso_item_id, { filename: req.file.originalname });
   const back = req.headers.referer || '/workspaces/' + req.workspace.id;
   res.redirect(back);
+});
+
+// Tier A.1 — Add/remove additional control links on an evidence file
+app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  const raw = req.body.iso_item_id;
+  const ids = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  if (!ids.length) return res.redirect('back');
+  const sectionRef = req.body.section_ref || null;
+  const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+  const tx = db.transaction(() => { for (const id of ids) ins.run(ev.id, id, sectionRef); });
+  try { tx(); } catch (_) {}
+  logAction(req.user.id, req.workspace.id, 'link_evidence_control', 'evidence', ev.id, { ids, count: ids.length }, auditCtx(req));
+  res.redirect('back');
+});
+
+app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id, iso_item_id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  const link = db.prepare(`SELECT * FROM evidence_controls WHERE id=? AND evidence_id=?`).get(req.params.linkId, ev.id);
+  if (link) {
+    db.prepare(`DELETE FROM evidence_controls WHERE id=?`).run(link.id);
+    // If the deleted link was the primary, also clear evidence.iso_item_id
+    // so the legacy column doesn't drift back into existence on next render.
+    if (ev.iso_item_id === link.iso_item_id) {
+      db.prepare(`UPDATE evidence SET iso_item_id=NULL WHERE id=?`).run(ev.id);
+    }
+  }
+  res.redirect('back');
 });
 
 app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace, (req, res) => {
@@ -1318,7 +1364,10 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
   const actions = db.prepare(`SELECT * FROM risk_treatment_actions
     WHERE risk_id=? AND workspace_id=?
     ORDER BY (CASE status WHEN 'planned' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 ELSE 3 END), due_date IS NULL, due_date`).all(risk.id, req.workspace.id);
-  res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, methodology, inherentBand, residualBand, actions });
+  // Tier A.2 — risk acceptance state
+  const activeAcceptance = db.prepare(`SELECT * FROM risk_acceptances
+    WHERE risk_id=? AND revoked_at IS NULL ORDER BY signed_at DESC LIMIT 1`).get(risk.id);
+  res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, methodology, inherentBand, residualBand, actions, activeAcceptance });
 });
 
 // Tier 1.1 — Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
@@ -1818,7 +1867,13 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
 
   const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name,
-    (SELECT COUNT(*) FROM document_controls dc WHERE dc.document_id = d.id) AS tag_count
+    (SELECT COUNT(*) FROM document_controls dc WHERE dc.document_id = d.id) AS tag_count,
+    (CASE
+       WHEN d.next_review_date IS NULL THEN NULL
+       WHEN d.next_review_date < date('now') THEN 'overdue'
+       WHEN d.next_review_date < date('now','+30 days') THEN 'due_soon'
+       ELSE 'current'
+     END) AS review_status
     FROM generated_docs d
     LEFT JOIN users u ON u.id = d.created_by
     LEFT JOIN doc_templates t ON t.id = d.template_id
@@ -2240,12 +2295,10 @@ app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
   res.render('mrms', { user: req.user, ws: req.workspace, mrms });
 });
 
-app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
-  const { meeting_date, attendees } = req.body;
-  // Tier 2.5 — Auto-fill the 9.3.2 input pack at MRM creation time. Saves the
-  // ~30 minutes of manually pulling status numbers from each module.
-  const wsId = req.workspace.id;
+// Helper — compute the auto-fillable 9.3.2 input fields from current data.
+// Used both by MRM creation (Tier 2.5) and by the on-demand refresh action
+// (Tier A.4) so the saved values can be brought back in line with reality.
+function compute932InputPack(wsId) {
   const today = new Date().toISOString().slice(0,10);
   const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(wsId).c;
   const ncMajor = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(wsId).c;
@@ -2257,23 +2310,45 @@ app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => 
   const treatmentOpen = db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=? AND status NOT IN ('done','cancelled')`).get(wsId).c;
   const treatmentDone = db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=? AND status='done'`).get(wsId).c;
   const lastMrm = db.prepare(`SELECT meeting_date, action_items FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
+  return {
+    prior_actions_status: lastMrm
+      ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
+      : 'No prior management review on record. This is the first one.',
+    performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\n[Add commentary on KPIs, monitoring metrics (9.1), and trends.]`,
+    risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
+    refreshedAt: new Date().toISOString()
+  };
+}
 
-  const priorActionsStatus = lastMrm
-    ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
-    : 'No prior management review on record. This is the first one.';
-
-  const performanceReview = `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\n[Add commentary on KPIs, monitoring metrics (9.1), and trends.]`;
-
-  const riskTreatmentStatus = `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`;
-
+app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
+  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+  const { meeting_date, attendees } = req.body;
+  const pack = compute932InputPack(req.workspace.id);
   const id = db.prepare(`INSERT INTO mrms
     (workspace_id, meeting_date, attendees, prior_actions_status, performance_review,
      risk_treatment_status, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(wsId, meeting_date || null, attendees || null,
-         priorActionsStatus, performanceReview, riskTreatmentStatus, req.user.id).lastInsertRowid;
-  logAction(req.user.id, wsId, 'create_mrm', 'mrm', id, null);
-  res.redirect('/workspaces/' + wsId + '/mrms/' + id);
+    .run(req.workspace.id, meeting_date || null, attendees || null,
+         pack.prior_actions_status, pack.performance_review, pack.risk_treatment_status,
+         req.user.id).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'create_mrm', 'mrm', id, null);
+  res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + id);
+});
+
+// Tier A.4 — Refresh the auto-fillable inputs against current workspace data.
+// Useful when a saved MRM has gone stale (e.g., NCs closed since the meeting
+// was scheduled, new audit findings recorded). Re-saves the three auto-pack
+// fields from a fresh compute.
+app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, (req, res) => {
+  const mrm = db.prepare('SELECT id, status FROM mrms WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!mrm) return res.status(404).send('Not found');
+  const pack = compute932InputPack(req.workspace.id);
+  db.prepare(`UPDATE mrms SET prior_actions_status=?, performance_review=?, risk_treatment_status=?
+              WHERE id=? AND workspace_id=?`)
+    .run(pack.prior_actions_status, pack.performance_review, pack.risk_treatment_status,
+         mrm.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'refresh_mrm_inputs', 'mrm', mrm.id, null, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/mrms/${mrm.id}`, 'MRM inputs refreshed from current data'));
 });
 
 app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) => {
