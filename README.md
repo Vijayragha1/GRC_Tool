@@ -1,151 +1,210 @@
-# ISO 27001:2022 Implementation Tool — V3
+# ISO 27001:2022 Implementation Tool
 
-A multi-tenant web app for consulting firms to drive their clients through ISO 27001 implementation, internal audit, management review, and certification.
+A self-hosted web app for taking an organization through ISO 27001:2022 implementation, internal audit, management review, and certification. Built around the auditor-evidence workflow rather than process orchestration: the artefacts an ISO 27001 auditor actually opens during a Stage 2 visit are first-class; everything else is supporting.
+
+Single-binary install (Node + SQLite + EJS), no cloud dependencies, encryption at rest for sensitive fields.
+
+## Status
+
+- **Auth is currently disabled** — the tool runs in single-user-per-tenant local mode. Real auth (login, session enforcement, RBAC at the route level) is on the deferred list. If this leaves your machine, that's the work to do first.
+- **Suitable for**: walking through gap assessments and SoA decisions, drafting documents, capturing evidence, dogfooding the workflow.
+- **Not yet suitable for**: production multi-user engagements over the network. CSRF, XSS sanitization, and per-user audit attribution all depend on real auth being on.
 
 ## What it does
 
-### Compliance Intelligence (V3)
-- **Stage 1 & Stage 2 readiness scores** — weighted live KPIs visible on every workspace dashboard
-- **Mandatory records detection** — 22 ISO 27001 documented information items auto-detected from your workspace data
-- **Validation engine** — automatic detection of: controls marked Implemented without evidence, SoA-included controls without driving risk or justification, SoA-excluded controls without justification, open major NCs, overdue NCs, orphan risks, ownerless risks, stale access reviews
-- **Annex A control specifications** — every one of the 93 controls populated with: applicability criteria, acceptable evidence types, common audit failure modes (audit-reference voice, not tutorial)
-- **5×5 risk heatmap** — visual inherent-risk distribution by likelihood × impact
+### Audit-grade content for every clause and control
 
-### Foundation
-- **Multi-tenant**: one consulting firm, many client workspaces
-- **Role-based access**: firm owner / consultant / lead consultant / client admin / contributor / reviewer
-- **Full ISO 27001:2022 catalog**: 25 ISMS clauses (4–10) + 93 Annex A controls
-- **Audit log** of every change — required certification evidence
+All **118 ISO 27001:2022 items** (25 main-body clauses + 93 Annex A controls) are written up in [data/iso-content.js](data/iso-content.js) with a structured shape:
 
-### Implementation
-- **Asset inventory** with CIA scoring
-- **Risk register** with likelihood × impact, treatment, residual risk
-- **Risk → control linkage** that auto-populates the SoA
-- **Statement of Applicability** with inclusion/exclusion + justification
-- **Per-control state**: status, maturity (0–5), owner, due date
-- **Evidence upload** with SHA-256 integrity hashing
-- **Tasks** with assignees and statuses
-- **Comments** per control + per document, with consultant-only "internal" notes
+- **Purpose** — what the clause/control is actually trying to achieve, in plain English
+- **What good looks like** — a credible mid-size-org implementation
+- **Where this usually goes wrong** — real audit-finding patterns
+- **Evidence the auditor will ask for** — concrete artefacts and what each tells the auditor
+- **Scoping notes** — common carve-outs and structure decisions
+- **Maturity ladder** — concrete description per CMMI level (1–4)
+- **Related items** — cross-references to other clauses/controls
 
-### Certification Operations (V2)
-- **Document Generation** — 15 ISO 27001 policy & procedure templates with auto-filled placeholders ({{client_name}}, {{scope}}, {{date}}, etc.). Markdown editor + live preview + print/PDF + autosave.
-- **Internal Audit Module** (Clause 9.2) — audit programs, findings (Major NC / Minor NC / Observation / OFI), one-click promotion of findings to nonconformities
-- **Management Review Module** (Clause 9.3) — meeting records with all required inputs (9.3.2) and outputs (9.3.3); auto-pulled context (open NCs, audit status, risk summary)
-- **Nonconformity & CAPA** (Clause 10.2) — NC register, root-cause analysis, corrective action, effectiveness check, close-out
-- **Framework Cross-Mapping** — Annex A controls mapped to SOC 2 (TSC), NIST CSF 2.0, GDPR Articles. 100+ mappings shipped.
+This is the spine of the wizard. Edits go in `data/iso-content.js`; the migration syncs them into `iso_items` columns on every server restart.
 
-### UX
-- **Bulk control updates** — select multiple controls, update status/applicability/owner in one action
-- **Autosave** on control fields — no more "did I forget to click save?"
-- **Live activity feed** on workspace dashboard
-- **Search + filter** on controls (by clause/control/category/needs-attention)
-- **CSV exports** for SoA, Risk Register, Asset Inventory
+### PDCA-aligned implementation roadmap
 
-## How to run
+The workspace overview shows an 18-step roadmap mapped to the ISO 27001:2022 PDCA structure:
+
+- **Plan** (clauses 4–7): scope, context (4.1 + 4.2), policy, roles, objectives, methodology, asset register, gap assessment, risks, SoA, awareness/competence/comms, mandatory documented information
+- **Do** (clause 8): implement Annex A controls, run supplier security operationally
+- **Check** (clause 9): monitoring, internal audit, management review
+- **Act** (clause 10): nonconformity + corrective action
+
+Each step has a tracked completion signal — workspace data, registered records, or approved-document detection where there's no dedicated module.
+
+### Gap-assessment wizard
+
+- Walks all 25 clauses + 93 Annex A controls one item at a time, in audit order
+- Per-item diagnostic questions (Yes / Partial / No) — bespoke per item, not generic checklist text
+- Heuristic status hint computed from answers; user always sets the final status
+- Scope-of-implementation slider (0–100%) — captures partial coverage that pure status hides
+- Append-only history snapshot per save → `control_state_history`
+- Bulk-spawn remediation tasks from the post-assessment summary, with auto-derived priority (critical / high / normal / low) based on gap severity × max linked-risk score
+- Pre-fill notes from gap answers, evidence upload, linked risks/documents/NCs all in the same view
+
+### Statement of Applicability that's audit-defensible
+
+- Every "included" control surfaces the actual risks treating it (R-12, R-19) inline, satisfying the 6.1.3.d.1 requirement that controls be derived from risks
+- Bare "included" controls with no linked risk are flagged `unjustified`
+- CSV export includes the risk-treatment chain
+
+### Risk register
+
+- Risks linked to assets, threats, vulnerabilities
+- Risk methodology (likelihood/impact scales, acceptance criteria, matrix) configurable per workspace
+- Starter library of 40 pre-written ISO 27001 risks across 11 domains
+- Risk-control linkage drives the SoA
+
+### Document management
+
+- Word-like WYSIWYG editor (TinyMCE) with full inline formatting
+- Upload existing client docs (DOCX / PDF / MD / TXT) — original preserved as audit-source-of-truth, content extracted to editable HTML
+- ~70 ISO 27001 policy/procedure templates seeded
+- Approval workflow (draft → in_review → approved)
+- Document-control linkage drives "Covered by" data on the SoA
+- Native DOCX export
+
+### Other modules
+
+- **Asset register** with classification and ownership
+- **Suppliers** with risk tiering, security review tracking, document attachments
+- **Internal audit** records (programme + per-audit findings)
+- **Management review** records with all 9.3.2 inputs auto-pulled from workspace data
+- **Nonconformities + corrective actions** with task linkage
+- **Pre-cert blocker check** — surfaces the things that will fail Stage 2
+
+### Multitenancy
+
+- Each tenant (firm) has its own workspaces, users, evidence storage, audit log
+- Tenant switcher in the topbar; tenant management page at `/tenants`
+- Per-tenant uploads partitioning at `uploads/firm_{id}/` with legacy fallback
+- Workspace-scoped field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`)
+
+## Quick start
 
 ```bash
-cd ~/iso27001-tool
+git clone https://github.com/Vijayragha1/GRC_Tool.git
+cd GRC_Tool
+npm install
 npm start
 ```
 
-Open: **http://localhost:3000**
+Open **http://localhost:3000**. First boot creates the database, seeds ISO 27001 content + document templates, and generates an encryption master key at `data/master.key` (mode 0600 — back this up; losing it makes encrypted document content unrecoverable).
 
-First time? Click "Register here" to create your firm account.
+A default tenant ("My firm") and workspace ("Acme") are seeded so you can start exploring immediately.
 
-## Workflow guide (consultant)
+## Daily workflow
 
-1. **Register your firm** — first user is the firm owner
-2. **(Owner)** Add other consultants
-3. **Create a client workspace** — one per engagement
-4. In the workspace:
-   - **Members** → invite client users
-   - **Assets** → build inventory
-   - **Risks** → identify, link to Annex A controls (auto-includes them in SoA)
-   - **Documents** → generate policies from templates
-   - **Controls** → assess each clause/control, attach evidence
-   - **SoA** → review applicability + justifications
-   - **Audits** → plan and run internal audits, promote findings to NCs
-   - **MRM** → record management reviews
-   - **NCs** → track corrective actions to closure
-   - **Tasks** → assign work to consultants and client team
-   - **Cross-map** → see which evidence also satisfies SOC 2 / NIST / GDPR
-   - **Activity** → full audit trail
+1. **Top of overview** → walk the PDCA roadmap. Each step links to the page that moves it forward.
+2. **Gap assessment** → walk every clause + Annex A control once. Status, scope %, notes; save & next.
+3. **Risks** → identify, score, link to relevant Annex A controls.
+4. **SoA** → review applicability decisions; check that every included control traces back to a risk.
+5. **Documents** → generate policies from templates, edit, approve.
+6. **Evidence** → upload per control via the wizard's Evidence panel.
+7. **Internal audit + MRM** → record per the standard's input/output requirements.
+8. **NCs** → track to closure with root-cause analysis.
 
-## Roles
+## Editing the content
 
-| Role | Scope | Key abilities |
-|---|---|---|
-| Firm owner | All firm workspaces | Add/remove consultants, full edit on every workspace |
-| Consultant | Firm workspaces | Full edit on every workspace |
-| Lead consultant | One workspace | Same as consultant; the "owner" of that engagement |
-| Client admin | One workspace | Edit everything in their workspace, invite contributors/reviewers |
-| Contributor | One workspace | Upload evidence, edit assigned items, comment |
-| Reviewer | One workspace | Read-only, can comment & approve |
+To refine a clause or control's audit-grade content:
 
-## Document Generation
+1. Open [data/iso-content.js](data/iso-content.js)
+2. Find the entry by id (`clause-9.3`, `annex-a.5.15`, etc.)
+3. Edit the `purpose`, `what_good_looks_like`, `common_pitfalls`, etc.
+4. Restart the server — changes propagate automatically via the boot-time sync
 
-The 15 system templates ship with the app:
+Diagnostic questions live in [data/assessment-questions.js](data/assessment-questions.js) keyed by the same ids.
 
-| Category | Templates |
-|---|---|
-| Policy | Information Security, Access Control, Acceptable Use, Incident Management, Cryptography, Supplier Security |
-| Procedure | Risk Management, Backup & Restore, Asset Management, Internal Audit, Management Review, Document Control |
-| Plan | Business Continuity, Awareness & Training |
-| Record | Statement of Applicability (cover page) |
-
-**To generate**: pick a template, fill three fields (document owner, approval authority, review period), click Generate. The tool auto-fills `{{client_name}}`, `{{scope}}`, `{{date}}`, `{{firm_name}}`, etc., and produces a Markdown document you can edit, version, approve, and print to PDF.
-
-## Framework Cross-Mapping
-
-Each Annex A control is mapped to equivalent requirements in:
-- **SOC 2** (Trust Services Criteria — CC, A, P series)
-- **NIST CSF 2.0** (GV / ID / PR / DE / RS / RC functions)
-- **GDPR** (Article references)
-
-The cross-map view tells your client: "evidence collected here satisfies these other audits too."
-
-## Reset / fresh start
+## Backup
 
 ```bash
-rm iso27001.db iso27001.db-wal iso27001.db-shm
-rm -rf uploads/*
-npm start
+npm run backup                  # writes to ./backups/iso27001-{timestamp}/
+npm run backup /path/to/dir     # custom destination
 ```
 
-## What's still NOT in (V3 candidates)
+Online SQLite backup (no downtime) + tar of `uploads/` + master.key + manifest. Schedule via cron and rsync the output offsite.
 
-- **Cryptographic e-signatures** with HSM integration (currently: status-based approval + audit log)
-- **Email notifications** (currently: in-app activity feed)
-- **Native .docx / .pdf export** (currently: print-to-PDF from browser, .md download)
-- **Vendor / supplier risk register** (use the manual NC + supplier policy template for now)
-- **Training tracker** (use the awareness training plan template + tasks for now)
-- **Incident log** (use the NC module with source = "incident")
-- **White-label branding** per firm
-- **LDAP / SSO**
-- **Time tracking** for engagements
+## Tests
+
+```bash
+npm test
+```
+
+Bare-node smoke tests (no framework dependency) covering boot, wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering. 21 assertions; runs in a fresh tmp directory so the live database isn't touched.
 
 ## Tech stack
 
-- Node.js + Express
-- SQLite (better-sqlite3)
-- EJS templates + Tailwind CSS via CDN
-- bcrypt + express-session for auth
-- multer for uploads
-- ~3,500 lines of code total
+- Node.js + Express + EJS
+- SQLite via better-sqlite3 (single file, no migration tooling, schema declared inline in [db.js](db.js))
+- TinyMCE 6 (GPL self-hosted) for the document editor
+- mammoth / pdf-parse for DOCX/PDF extraction
+- bcrypt + express-session (currently auth-disabled; framework wired in for when it's enabled)
+- multer for uploads, with per-tenant disk-storage partitioning
+- AES-256-GCM field encryption with per-workspace HKDF-derived keys
+- No frontend build step — server-rendered EJS, vanilla JS where interactivity is needed
 
 ## Folder structure
 
 ```
-iso27001-tool/
-├── server.js              # Express app — all routes
-├── db.js                  # Schema + seed
+.
+├── server.js                       # Express app — all routes
+├── db.js                           # Schema, migrations, content sync, seeding
 ├── data/
-│   ├── iso-catalog.js     # Clauses + Annex A
-│   ├── policy-templates.js  # 15 starter policies
-│   └── framework-mappings.js  # SOC 2 / NIST / GDPR mappings
-├── views/                 # EJS templates (15+)
-├── public/
-├── uploads/               # evidence files
-├── iso27001.db            # SQLite (auto-created)
-└── package.json
+│   ├── iso-content.js              # Audit-grade content for all 118 items
+│   ├── assessment-questions.js     # Per-item diagnostic questions
+│   ├── risk-library.js             # Starter library of 40 ISO 27001 risks
+│   └── ...                         # Catalog, policy templates, methodology presets
+├── lib/
+│   ├── encryption.js               # AES-256-GCM + HKDF
+│   ├── rbac.js                     # Permissions model (ready for auth-on)
+│   └── ...
+├── views/                          # EJS templates
+│   ├── workspace.ejs               # Overview with PDCA roadmap
+│   ├── controls_assess.ejs         # The wizard (= canonical control page)
+│   ├── controls_assess_summary.ejs # Post-assessment worklist
+│   ├── soa.ejs                     # Statement of Applicability
+│   ├── tenants.ejs                 # Tenant management
+│   ├── partials/header.ejs         # Topbar incl. tenant switcher
+│   └── ...
+├── scripts/
+│   └── backup.js                   # Online backup
+├── tests/
+│   └── smoke.test.js               # Bare-node smoke suite
+├── public/                         # Static assets, TinyMCE bundle
+├── uploads/                        # Evidence files (partitioned per firm)
+└── data/master.key                 # Encryption master key (auto-generated, 0600)
 ```
+
+## What's intentionally NOT in scope
+
+The tool has been deliberately pruned to focus on auditor-evidence workflows. The following are out of scope by design — re-add only if there's clear engagement value:
+
+- Real-time integrations with Microsoft 365 / Google Workspace / cloud providers (out of roadmap)
+- AI-assisted assessment / auto-classification (out of roadmap)
+- Training-record tracking (zero value at audit; record-keeping outside the tool)
+- Phishing-simulation tracking (not part of any cert audit)
+- Document acknowledgement campaigns (paper exercise; auditors look at the policy + sample staff)
+- DPIAs / GDPR-specific privacy modules (privacy is its own discipline)
+- KRIs / KPI dashboards beyond what monitoring + objectives produce naturally
+- Cross-framework mapping (SOC 2 / NIST CSF / GDPR) — was in V2, removed; reintroduce if a real customer needs it
+
+## What I'd build next
+
+In priority order:
+
+1. **Risk treatment plan as a tracked workflow** (clause 6.1.3) — actions, owners, due dates, residual-risk re-evaluation. The single biggest correctness gap against the standard.
+2. **Evidence expiry / freshness tracking** — auditors care that evidence is current; the tool should warn on expiring items.
+3. **Surveillance audit cadence calendar** — Stage 1 → Stage 2 → annual surveillance → 3-year recertification.
+4. **Internal audit lifecycle** — currently just metadata; needs plan → fieldwork → findings → report → follow-up.
+5. **MRM creation pre-fills the 9.3.2 input pack** automatically.
+6. **Audit-log drill-down view** — the data is being written; just no UI.
+7. **Real auth** — the elephant. Required for any deployment beyond a single user.
+
+## License
+
+Private — repository is for personal / engagement use. Not currently open-sourced.
