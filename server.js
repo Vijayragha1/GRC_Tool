@@ -1040,9 +1040,13 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE rc.iso_item_id=? AND r.workspace_id=?
     ORDER BY (r.likelihood * r.impact) DESC`).all(item.id, req.workspace.id);
 
-  const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status, dc.section_ref
+  const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status, dc.section_ref, dc.id AS link_id
     FROM document_controls dc INNER JOIN generated_docs d ON d.id=dc.document_id
     WHERE dc.iso_item_id=? AND d.workspace_id=? ORDER BY d.name`).all(item.id, req.workspace.id);
+  // Workspace's documents that aren't already linked — the add-link dropdown.
+  const linkableDocs = db.prepare(`SELECT id, name, category, status FROM generated_docs
+    WHERE workspace_id=? AND id NOT IN (SELECT document_id FROM document_controls WHERE iso_item_id=?)
+    ORDER BY name`).all(req.workspace.id, item.id);
 
   const openNCs = db.prepare(`SELECT id, title, severity, status, due_date FROM nonconformities
     WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
@@ -1052,7 +1056,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     user: req.user, ws: req.workspace, item, state, totals, position, sectionPosition, relatedRows,
     prevId, nextId: nextById, doneFlag: !!req.query.done,
     questions, savedAnswers, suggestedStatus,
-    evidenceList, linkedRisks, linkedDocs, openNCs
+    evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs
   });
 });
 
@@ -2040,6 +2044,37 @@ app.post('/workspaces/:wsId/documents/:id/controls/:linkId/delete', requireAuth,
     logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
   }
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
+});
+
+// Bidirectional document tagging — mirror routes from the control side. The
+// document-side routes above redirect back to the document; these redirect
+// back to the wizard so the user stays in the assessment flow.
+app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('ISO item not found');
+  const { document_id, section_ref } = req.body;
+  if (!document_id) return res.redirect('back');
+  // Defend against linking a doc from a different workspace.
+  const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(document_id, req.workspace.id);
+  if (!doc) return res.redirect('back');
+  try {
+    db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
+      .run(doc.id, item.id, section_ref || null);
+    logAction(req.user.id, req.workspace.id, 'link_doc_control', 'control', item.id, { document_id: doc.id, section_ref: section_ref || null }, auditCtx(req));
+  } catch (_) { /* ignore unique-constraint conflict */ }
+  res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
+});
+
+app.post('/workspaces/:wsId/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  // Verify the link belongs to a doc in this workspace before deleting.
+  const link = db.prepare(`SELECT dc.* FROM document_controls dc
+    INNER JOIN generated_docs d ON d.id = dc.document_id
+    WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+  if (link) {
+    db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
+    logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${req.params.isoId}`);
 });
 
 app.post('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {

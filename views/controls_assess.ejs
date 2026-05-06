@@ -403,22 +403,49 @@
     <% } %>
   </div>
 
-  <!-- Linked documents -->
+  <!-- Linked documents (bidirectional tagging — add / remove from this side too) -->
   <div class="panel">
     <div class="panel-head">
       <h2 style="font-size:14px;">Documents covering this <%= isClause ? 'clause' : 'control' %> (<%= linkedDocs ? linkedDocs.length : 0 %>)</h2>
     </div>
     <% if (!linkedDocs || linkedDocs.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No documents linked. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Link from the document library →</a></div>
+      <div class="panel-pad meta" style="font-size:12px;">No documents linked yet — pick one below or generate a template from the document library.</div>
     <% } else { %>
       <div style="max-height:240px;overflow-y:auto;">
         <% linkedDocs.forEach(d => { %>
-          <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="display:block;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;text-decoration:none;color:var(--text);">
-            <div style="font-weight:500;"><%= d.name %></div>
-            <div class="meta" style="font-size:11px;"><%= d.category || '—' %> · <%= d.status || '—' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
-          </a>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;">
+            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="text-decoration:none;color:var(--text);flex:1;min-width:0;">
+              <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= d.name %></div>
+              <div class="meta" style="font-size:11px;"><%= d.category || '—' %> · <%= d.status || '—' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
+            </a>
+            <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents/<%= d.link_id %>/delete" onsubmit="return confirm('Remove this document link?')" style="margin:0;">
+              <button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);" title="Remove link">×</button>
+            </form>
+          </div>
         <% }) %>
       </div>
+    <% } %>
+    <% if (linkableDocs && linkableDocs.length > 0) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
+        <div>
+          <label class="label" style="font-size:10px;">Link a document</label>
+          <select class="select" name="document_id" required style="font-size:12px;">
+            <option value="">— pick a document —</option>
+            <% linkableDocs.forEach(d => { %>
+              <option value="<%= d.id %>"><%= d.name %><% if (d.status) { %> (<%= d.status %>)<% } %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label class="label" style="font-size:10px;">Section</label>
+          <input class="input" name="section_ref" style="font-size:12px;" placeholder="e.g. §4.2">
+        </div>
+        <button class="btn btn-primary btn-xs">Link</button>
+      </form>
+    <% } else if (linkedDocs && linkedDocs.length > 0) { %>
+      <div class="meta panel-pad" style="font-size:11.5px;border-top:1px solid var(--border);background:var(--bg-subtle);">All workspace documents are already linked. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate another →</a></div>
+    <% } else { %>
+      <div class="meta panel-pad" style="font-size:11.5px;border-top:1px solid var(--border);background:var(--bg-subtle);">This workspace has no documents yet. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate one from a template →</a></div>
     <% } %>
   </div>
 </div>
