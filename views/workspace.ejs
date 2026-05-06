@@ -20,6 +20,36 @@
   </div>
 </div>
 
+<!-- Tier B.6 — Needs your attention (top 8 actionable items) -->
+<% if (typeof needsAttention !== 'undefined' && needsAttention.length > 0) {
+     const naHigh = needsAttention.filter(i => i.severity === 'high').length;
+     const naMedium = needsAttention.filter(i => i.severity === 'medium').length;
+%>
+  <div class="panel" style="margin-bottom:18px;border-left:3px solid <%= naHigh > 0 ? '#dc2626' : '#a16207' %>;">
+    <div class="panel-head">
+      <h2>Needs your attention <span class="meta" style="font-weight:400;font-size:13px;">· live from data</span></h2>
+      <span class="meta">
+        <% if (naHigh > 0) { %><strong style="color:#b91c1c;"><%= naHigh %></strong> high · <% } %>
+        <% if (naMedium > 0) { %><strong style="color:#a16207;"><%= naMedium %></strong> medium · <% } %>
+        <a href="/workspaces/<%= ws.id %>/notifications" style="color:var(--accent);">view all in inbox →</a>
+      </span>
+    </div>
+    <% needsAttention.forEach(c => {
+         const dotColor = c.severity === 'high' ? '#dc2626' : c.severity === 'medium' ? '#ca8a04' : 'var(--accent)';
+    %>
+      <div style="padding:9px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+        <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:<%= dotColor %>;"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12.5px;font-weight:500;"><%= c.title %></div>
+          <% if (c.detail) { %><div class="meta" style="font-size:11px;"><%= c.detail %></div><% } %>
+        </div>
+        <span class="tag tag-neutral" style="font-size:10px;"><%= c.category %></span>
+        <a href="<%= c.link %>" class="btn btn-secondary btn-xs">→</a>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
 <!-- Implementation roadmap, grouped by PDCA -->
 <% if (typeof roadmap !== 'undefined') {
      const completed = roadmap.filter(r => r.done).length;

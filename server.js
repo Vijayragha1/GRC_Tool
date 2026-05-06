@@ -719,11 +719,14 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
       link: `/workspaces/${ws.id}/nonconformities`, link_label: 'Nonconformities' }
   ];
 
+  // Tier B.6 — top "needs your attention" items for the overview
+  const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
+
   res.render('workspace', {
     user: req.user, ws, progress, breakdown, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
-    roadmap
+    roadmap, needsAttention
   });
 });
 
@@ -4118,6 +4121,80 @@ app.get('/workspaces/:wsId/activity-log', requireAuth, requireWorkspace, require
 });
 
 // ==================== NOTIFICATIONS ====================
+// Tier B.5/B.6 — Surface actionable items derived from current workspace state.
+// Used by /notifications (the inbox) and on the overview's "Needs attention"
+// panel. Computed on-demand from live data — no cron required.
+function computeNeedsAttention(wsId) {
+  const today = new Date().toISOString().slice(0,10);
+  const expSoon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+
+  const items = [];
+  const push = (severity, category, title, link, detail) =>
+    items.push({ severity, category, title, link, detail });
+
+  // Overdue / soon-due nonconformities
+  db.prepare(`SELECT id, title, due_date FROM nonconformities
+    WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < ?`)
+    .all(wsId, today).forEach(n => push('high', 'nc', `Overdue NC: ${n.title}`, `/workspaces/${wsId}/nonconformities/${n.id}`, `Due ${n.due_date}`));
+  db.prepare(`SELECT id, title, due_date FROM nonconformities
+    WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date >= ? AND due_date < ?`)
+    .all(wsId, today, expSoon).forEach(n => push('medium', 'nc', `NC due soon: ${n.title}`, `/workspaces/${wsId}/nonconformities/${n.id}`, `Due ${n.due_date}`));
+
+  // Expired / expiring evidence
+  db.prepare(`SELECT id, filename, valid_until, iso_item_id FROM evidence
+    WHERE workspace_id=? AND valid_until IS NOT NULL AND valid_until < ?`)
+    .all(wsId, today).forEach(e => push('high', 'evidence', `Expired evidence: ${e.filename}`, `/workspaces/${wsId}/controls/assess/${e.iso_item_id || 'summary'}`, `Valid until ${e.valid_until}`));
+  db.prepare(`SELECT id, filename, valid_until, iso_item_id FROM evidence
+    WHERE workspace_id=? AND valid_until IS NOT NULL AND valid_until >= ? AND valid_until < ?`)
+    .all(wsId, today, expSoon).forEach(e => push('medium', 'evidence', `Evidence expires soon: ${e.filename}`, `/workspaces/${wsId}/controls/assess/${e.iso_item_id || 'summary'}`, `Valid until ${e.valid_until}`));
+
+  // Documents overdue / due for review
+  db.prepare(`SELECT id, name, next_review_date FROM generated_docs
+    WHERE workspace_id=? AND next_review_date IS NOT NULL AND next_review_date < ?`)
+    .all(wsId, today).forEach(d => push('high', 'document', `Document overdue for review: ${d.name}`, `/workspaces/${wsId}/documents/${d.id}`, `Review by ${d.next_review_date}`));
+  db.prepare(`SELECT id, name, next_review_date FROM generated_docs
+    WHERE workspace_id=? AND next_review_date IS NOT NULL AND next_review_date >= ? AND next_review_date < ?`)
+    .all(wsId, today, expSoon).forEach(d => push('medium', 'document', `Document due for review: ${d.name}`, `/workspaces/${wsId}/documents/${d.id}`, `Review by ${d.next_review_date}`));
+
+  // Risk acceptances expired / expiring
+  db.prepare(`SELECT a.id, a.risk_id, a.expires_at, r.title FROM risk_acceptances a
+    INNER JOIN risks r ON r.id=a.risk_id
+    WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL AND a.expires_at < ?`)
+    .all(wsId, today).forEach(a => push('high', 'risk', `Expired acceptance: R-${a.risk_id} ${a.title}`, `/workspaces/${wsId}/risks/${a.risk_id}`, `Expired ${a.expires_at} — re-accept or treat`));
+  db.prepare(`SELECT a.id, a.risk_id, a.expires_at, r.title FROM risk_acceptances a
+    INNER JOIN risks r ON r.id=a.risk_id
+    WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL AND a.expires_at >= ? AND a.expires_at < ?`)
+    .all(wsId, today, expSoon).forEach(a => push('medium', 'risk', `Acceptance expires soon: R-${a.risk_id} ${a.title}`, `/workspaces/${wsId}/risks/${a.risk_id}`, `Expires ${a.expires_at}`));
+
+  // Treatment actions overdue / due
+  db.prepare(`SELECT rta.id, rta.title, rta.due_date, rta.risk_id FROM risk_treatment_actions rta
+    WHERE rta.workspace_id=? AND rta.status NOT IN ('done','cancelled') AND rta.due_date IS NOT NULL AND rta.due_date < ?`)
+    .all(wsId, today).forEach(a => push('high', 'treatment', `Overdue treatment action: ${a.title}`, `/workspaces/${wsId}/risks/${a.risk_id}`, `Due ${a.due_date}`));
+  db.prepare(`SELECT rta.id, rta.title, rta.due_date, rta.risk_id FROM risk_treatment_actions rta
+    WHERE rta.workspace_id=? AND rta.status NOT IN ('done','cancelled') AND rta.due_date IS NOT NULL AND rta.due_date >= ? AND rta.due_date < ?`)
+    .all(wsId, today, expSoon).forEach(a => push('medium', 'treatment', `Treatment action due soon: ${a.title}`, `/workspaces/${wsId}/risks/${a.risk_id}`, `Due ${a.due_date}`));
+
+  // Cert events upcoming
+  db.prepare(`SELECT id, event_type, planned_date FROM cert_cycle_events
+    WHERE workspace_id=? AND status NOT IN ('closed') AND planned_date IS NOT NULL AND planned_date >= ? AND planned_date < ?`)
+    .all(wsId, today, expSoon).forEach(e => push('medium', 'cert', `Upcoming: ${e.event_type.replace('_',' ')}`, `/workspaces/${wsId}/cert-cycle`, `Planned ${e.planned_date}`));
+
+  // ISMS-stale signals — last MRM / audit older than 12 months
+  const lastMrm = db.prepare(`SELECT meeting_date FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
+  if (!lastMrm) push('medium', 'mrm', 'No completed management review on record', `/workspaces/${wsId}/mrms`, '');
+  else if (lastMrm.meeting_date < new Date(Date.now() - 365*86400000).toISOString().slice(0,10))
+    push('medium', 'mrm', 'Last management review > 12 months ago', `/workspaces/${wsId}/mrms`, `Last: ${lastMrm.meeting_date}`);
+
+  const lastAudit = db.prepare(`SELECT audit_date FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL ORDER BY audit_date DESC LIMIT 1`).get(wsId);
+  if (!lastAudit) push('medium', 'audit', 'No internal audit on record', `/workspaces/${wsId}/audits`, '');
+  else if (lastAudit.audit_date < new Date(Date.now() - 365*86400000).toISOString().slice(0,10))
+    push('medium', 'audit', 'Last internal audit > 12 months ago', `/workspaces/${wsId}/audits`, `Last: ${lastAudit.audit_date}`);
+
+  // Sort: high before medium, newer/sooner deadlines first within severity
+  items.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1));
+  return items;
+}
+
 app.get('/workspaces/:wsId/notifications', requireAuth, requireWorkspace, (req, res) => {
   const filter = req.query.filter || 'unread';
   let q = `SELECT * FROM notifications WHERE workspace_id=? AND (user_id IS NULL OR user_id=?)`;
@@ -4125,7 +4202,10 @@ app.get('/workspaces/:wsId/notifications', requireAuth, requireWorkspace, (req, 
   else if (filter === 'all') q += ` AND dismissed_at IS NULL`;
   q += ` ORDER BY created_at DESC LIMIT 200`;
   const list = db.prepare(q).all(req.workspace.id, req.user.id);
-  res.render('notifications', { user: req.user, ws: req.workspace, notifications: list, filter });
+  // Augment with computed items so the inbox always shows live actionable
+  // signals, even before any notifications have been written by background jobs.
+  const computed = computeNeedsAttention(req.workspace.id);
+  res.render('notifications', { user: req.user, ws: req.workspace, notifications: list, filter, computed });
 });
 
 app.post('/workspaces/:wsId/notifications/:id/read', requireAuth, requireWorkspace, (req, res) => {
@@ -4139,6 +4219,66 @@ app.post('/workspaces/:wsId/notifications/:id/dismiss', requireAuth, requireWork
 app.post('/workspaces/:wsId/notifications/mark-all-read', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND read_at IS NULL`).run(req.workspace.id);
   res.redirect('back');
+});
+
+// Tier B.8 — Calendar view aggregating every due-dated item across the workspace.
+// Month grid; navigate prev/next via ?month=YYYY-MM. Pulls audits, MRMs,
+// NCs, cert events, doc reviews, treatment actions, risk-acceptance expiries.
+app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) => {
+  const wsId = req.workspace.id;
+  const today = new Date();
+  const monthStr = req.query.month && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month
+                  : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}`;
+  const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
+  const monthStart = `${monthStr}-01`;
+  const nextMo = new Date(yr, mo, 1).toISOString().slice(0, 10); // first of next month
+  const prevMo = new Date(yr, mo - 2, 1).toISOString().slice(0, 7);
+  const nextLabel = new Date(yr, mo, 1).toISOString().slice(0, 7);
+
+  // Aggregate every dated item that falls inside the visible window
+  // (first to last of selected month).
+  const events = [];
+  const add = (date, kind, title, link, severity) => {
+    if (!date) return;
+    if (date < monthStart || date >= nextMo) return;
+    events.push({ date, kind, title, link, severity });
+  };
+
+  db.prepare(`SELECT id, title, audit_date FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL`).all(wsId)
+    .forEach(a => add(a.audit_date, 'audit', a.title, `/workspaces/${wsId}/audits/${a.id}`, 'low'));
+  db.prepare(`SELECT id, meeting_date FROM mrms WHERE workspace_id=? AND meeting_date IS NOT NULL`).all(wsId)
+    .forEach(m => add(m.meeting_date, 'mrm', `MRM`, `/workspaces/${wsId}/mrms/${m.id}`, 'low'));
+  db.prepare(`SELECT id, title, due_date, status FROM nonconformities WHERE workspace_id=? AND due_date IS NOT NULL`).all(wsId)
+    .forEach(n => add(n.due_date, 'nc', n.title, `/workspaces/${wsId}/nonconformities/${n.id}`, n.status === 'closed' ? 'low' : 'high'));
+  db.prepare(`SELECT id, event_type, planned_date, status FROM cert_cycle_events WHERE workspace_id=? AND planned_date IS NOT NULL`).all(wsId)
+    .forEach(e => add(e.planned_date, 'cert', e.event_type.replace(/_/g, ' '), `/workspaces/${wsId}/cert-cycle`, 'medium'));
+  db.prepare(`SELECT id, name, next_review_date FROM generated_docs WHERE workspace_id=? AND next_review_date IS NOT NULL`).all(wsId)
+    .forEach(d => add(d.next_review_date, 'doc-review', `Review: ${d.name}`, `/workspaces/${wsId}/documents/${d.id}`, 'medium'));
+  db.prepare(`SELECT rta.id, rta.title, rta.due_date, rta.status, rta.risk_id FROM risk_treatment_actions rta WHERE rta.workspace_id=? AND rta.due_date IS NOT NULL`).all(wsId)
+    .forEach(a => add(a.due_date, 'treatment', a.title, `/workspaces/${wsId}/risks/${a.risk_id}`, a.status === 'done' ? 'low' : 'medium'));
+  db.prepare(`SELECT a.id, a.expires_at, a.risk_id, r.title FROM risk_acceptances a INNER JOIN risks r ON r.id=a.risk_id WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL`).all(wsId)
+    .forEach(a => add(a.expires_at, 'risk-accept', `R-${a.risk_id} acceptance expires`, `/workspaces/${wsId}/risks/${a.risk_id}`, 'medium'));
+
+  // Group by date for the grid
+  const byDate = {};
+  events.forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+
+  // Build month grid (with Sun-Sat layout, padded)
+  const firstDay = new Date(yr, mo - 1, 1).getDay(); // 0..6
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = `${monthStr}-${String(d).padStart(2,'0')}`;
+    cells.push({ day: d, date, events: byDate[date] || [] });
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  res.render('calendar', {
+    user: req.user, ws: req.workspace, monthStr, prevMo, nextMo: nextLabel,
+    cells, totalEvents: events.length,
+    monthLabel: new Date(yr, mo - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' })
+  });
 });
 
 // Manual job-run trigger (for admins / debugging)
@@ -4893,28 +5033,7 @@ app.post('/workspaces/:wsId/risks/:id/acceptances/:aid/revoke', requireAuth, req
 });
 
 // ==================== COMPLIANCE CALENDAR ====================
-app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-  const wsId = req.workspace.id;
-  const horizon = parseInt(req.query.days || '90', 10);
-  const events = [];
-  db.prepare(`SELECT 'doc_review' AS k, id, name AS title, next_review_date AS d FROM generated_docs WHERE workspace_id=? AND next_review_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/documents/${r.id}` }));
-  db.prepare(`SELECT 'supplier_review' AS k, id, name AS title, next_review_date AS d FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' AND next_review_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/vendors/${r.id}` }));
-  db.prepare(`SELECT 'nc_due' AS k, id, title, due_date AS d FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/nonconformities/${r.id}` }));
-  db.prepare(`SELECT 'task_due' AS k, id, title, due_date AS d FROM tasks WHERE workspace_id=? AND status != 'done' AND due_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/tasks` }));
-  db.prepare(`SELECT 'attestation_expiry' AS k, d.id, (s.name || ' — ' || d.name) AS title, d.expiry_date AS d FROM supplier_documents d INNER JOIN suppliers s ON s.id=d.supplier_id WHERE s.workspace_id=? AND d.expiry_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/vendors/${r.id}?tab=documents` }));
-  db.prepare(`SELECT 'audit' AS k, id, title, audit_date AS d, status FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, k: r.status === 'complete' ? 'audit_complete' : r.status === 'in_progress' ? 'audit_in_progress' : 'audit_planned', link: `/workspaces/${wsId}/audits/${r.id}` }));
-  db.prepare(`SELECT 'mrm' AS k, id, ('MRM ' || meeting_date) AS title, meeting_date AS d FROM mrms WHERE workspace_id=? AND meeting_date IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/mrms/${r.id}` }));
-  db.prepare(`SELECT 'risk_acceptance_expiry' AS k, id, ('Risk #' || id || ' acceptance') AS title, accepted_until AS d FROM risks WHERE workspace_id=? AND accepted_until IS NOT NULL`).all(wsId).forEach(r => events.push({ ...r, link: `/workspaces/${wsId}/risks/${r.id}` }));
-  events.sort((a, b) => (a.d || '').localeCompare(b.d || ''));
-
-  // Filter to horizon (past 7 days through future N days)
-  const today = new Date();
-  const past = new Date(today.getTime() - 7 * 86400000).toISOString().slice(0,10);
-  const future = new Date(today.getTime() + horizon * 86400000).toISOString().slice(0,10);
-  const filtered = events.filter(e => e.d >= past && e.d <= future);
-
-  res.render('calendar', { user: req.user, ws: req.workspace, events: filtered, horizon });
-});
+// (Old list-style calendar removed — replaced by Tier B.8 month-view above.)
 
 // ==================== FTS5 SEARCH UI ====================
 app.get('/workspaces/:wsId/search', requireAuth, requireWorkspace, (req, res) => {
