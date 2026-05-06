@@ -313,21 +313,42 @@
       <h2 style="font-size:14px;">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
       <span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span>
     </div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
       <input type="hidden" name="iso_item_id" value="<%= item.id %>">
-      <input type="file" name="file" required style="font-size:12px;flex:1;">
-      <input type="text" name="description" placeholder="Optional note" class="input" style="font-size:12px;width:140px;">
-      <button class="btn btn-primary btn-xs">Upload</button>
+      <div style="grid-column:1/-1;"><input type="file" name="file" required style="font-size:12px;width:100%;"></div>
+      <div><label class="label" style="font-size:10px;">Period (e.g., Q1 2026) — optional</label><input type="text" name="period_label" class="input" style="font-size:12px;" placeholder="Q1 2026"></div>
+      <div><label class="label" style="font-size:10px;">Sub-clause / section</label><input type="text" name="clause_section" class="input" style="font-size:12px;" placeholder="e.g., A.5.18.b"></div>
+      <div></div>
+      <div><label class="label" style="font-size:10px;">Valid from</label><input type="date" name="valid_from" class="input" style="font-size:12px;"></div>
+      <div><label class="label" style="font-size:10px;">Valid until</label><input type="date" name="valid_until" class="input" style="font-size:12px;"></div>
+      <div></div>
+      <div style="grid-column:1/-1;display:flex;gap:6px;align-items:end;">
+        <input type="text" name="description" placeholder="Optional note about what this evidences" class="input" style="font-size:12px;flex:1;">
+        <button class="btn btn-primary btn-xs">Upload evidence</button>
+      </div>
     </form>
     <% if (!evidenceList || evidenceList.length === 0) { %>
       <div class="panel-pad meta" style="font-size:12px;">No evidence yet.</div>
     <% } else { %>
-      <div style="max-height:240px;overflow-y:auto;">
-        <% evidenceList.forEach(e => { %>
-          <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <%
+        const today = new Date().toISOString().slice(0,10);
+        const expSoon = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
+      %>
+      <div style="max-height:280px;overflow-y:auto;">
+        <% evidenceList.forEach(e => {
+             const isExpired = e.valid_until && e.valid_until < today;
+             const isExpiringSoon = !isExpired && e.valid_until && e.valid_until < expSoon;
+             const badgeColor = isExpired ? '#b91c1c' : isExpiringSoon ? '#a16207' : '#16a34a';
+             const badgeLabel = isExpired ? 'EXPIRED' : isExpiringSoon ? 'EXPIRES SOON' : (e.valid_until ? 'CURRENT' : null);
+        %>
+          <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;<%= isExpired ? 'background:rgba(185,28,28,0.04);' : '' %>">
             <div style="flex:1;min-width:0;">
-              <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="color:var(--text);text-decoration:none;font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= e.filename %></a>
-              <div class="meta" style="font-size:11px;"><%= e.uploader || 'unknown' %> · <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.description) { %> · <%= e.description %><% } %></div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="color:var(--text);text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
+                <% if (badgeLabel) { %><span style="font-size:9px;font-weight:700;color:white;background:<%= badgeColor %>;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;"><%= badgeLabel %></span><% } %>
+                <% if (e.clause_section) { %><span class="mono meta" style="font-size:10.5px;background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
+              </div>
+              <div class="meta" style="font-size:11px;"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
             </div>
             <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return confirm('Delete this evidence file?')"><button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);">×</button></form>
           </div>

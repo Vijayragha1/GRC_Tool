@@ -1,0 +1,118 @@
+<%- include('partials/header', { title: 'Certification cycle', user, ws, active: 'cert-cycle' }) %>
+
+<%
+  const today = new Date().toISOString().slice(0,10);
+  const ETYPES = {};
+  eventTypes.forEach(t => { ETYPES[t.key] = t; });
+  const daysUntil = (d) => {
+    if (!d) return null;
+    const ms = new Date(d).getTime() - Date.now();
+    return Math.floor(ms / 86400000);
+  };
+  // Find next upcoming event for the headline.
+  const upcoming = events.filter(e => e.status !== 'closed' && e.planned_date && e.planned_date >= today)
+                          .sort((a,b) => (a.planned_date < b.planned_date ? -1 : 1))[0];
+%>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Certification cycle</h1>
+    <div class="page-subtitle">Stage 1 → Stage 2 → annual surveillance for two years → 3-year recertification. Plan the calendar, track actuals, never miss a surveillance window.</div>
+  </div>
+</div>
+
+<% if (upcoming) {
+     const days = daysUntil(upcoming.planned_date);
+     const t = ETYPES[upcoming.event_type];
+%>
+  <div class="panel kpi" style="margin-bottom:18px;border-left:3px solid #0891b2;">
+    <div class="panel-pad">
+      <div class="meta" style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.05em;">Next event</div>
+      <div style="font-size:18px;font-weight:600;margin-top:4px;"><%= t ? t.label : upcoming.event_type %></div>
+      <div class="meta" style="font-size:13px;margin-top:2px;">
+        <%= upcoming.planned_date %>
+        <% if (days >= 0) { %>· <strong style="color:<%= days < 30 ? '#b91c1c' : days < 90 ? '#a16207' : 'var(--text)' %>;"><%= days %> day<%= days === 1 ? '' : 's' %></strong> away<% } %>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<% if (events.length === 0) { %>
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-head"><h2>No cycle planned yet</h2></div>
+    <div class="panel-pad">
+      <div style="font-size:13px;line-height:1.55;margin-bottom:14px;">
+        A typical first-cert path: Stage 1 in ~60 days, Stage 2 ~30 days after Stage 1, surveillance audits at year 1 and year 2, recertification at year 3. Seed these defaults to start, then edit the dates as the cert body confirms.
+      </div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/cert-cycle/seed" style="display:inline;">
+        <button class="btn btn-primary">Seed default cycle (5 events)</button>
+      </form>
+    </div>
+  </div>
+<% } else { %>
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-head"><h2>Cycle (<%= events.length %>)</h2></div>
+    <table class="t">
+      <thead><tr>
+        <th style="width:240px;">Event</th>
+        <th style="width:130px;">Planned</th>
+        <th style="width:130px;">Actual</th>
+        <th style="width:120px;">Status</th>
+        <th style="width:160px;">Cert body</th>
+        <th>Notes</th>
+        <th style="width:80px;"></th>
+      </tr></thead>
+      <tbody>
+        <% events.forEach(e => {
+             const t = ETYPES[e.event_type] || { label: e.event_type, desc: '' };
+             const days = daysUntil(e.planned_date);
+             const overdue = e.planned_date && e.planned_date < today && e.status !== 'closed' && !e.actual_date;
+        %>
+          <form method="POST" action="/workspaces/<%= ws.id %>/cert-cycle/<%= e.id %>" class="contents">
+            <tr>
+              <td>
+                <div style="font-size:13px;font-weight:500;"><%= t.label %></div>
+                <div class="meta" style="font-size:11.5px;"><%= t.desc %></div>
+              </td>
+              <td>
+                <input type="date" name="planned_date" value="<%= e.planned_date || '' %>" class="input" style="font-size:12px;<%= overdue ? 'border-color:#b91c1c;color:#b91c1c;' : '' %>">
+                <% if (days != null && e.status !== 'closed' && !e.actual_date) { %>
+                  <div class="meta" style="font-size:10.5px;"><%= days < 0 ? Math.abs(days) + 'd overdue' : days + 'd away' %></div>
+                <% } %>
+              </td>
+              <td><input type="date" name="actual_date" value="<%= e.actual_date || '' %>" class="input" style="font-size:12px;"></td>
+              <td>
+                <select name="status" class="select" style="font-size:12px;">
+                  <% ['planned','in_progress','closed','rescheduled'].forEach(s => { %>
+                    <option value="<%= s %>" <%= e.status === s ? 'selected' : '' %>><%= s %></option>
+                  <% }) %>
+                </select>
+              </td>
+              <td><input type="text" name="certification_body" value="<%= e.certification_body || '' %>" class="input" style="font-size:12px;" placeholder="—"></td>
+              <td><input type="text" name="notes" value="<%= e.notes || '' %>" class="input" style="font-size:12px;" placeholder="—"></td>
+              <td><button class="btn btn-ghost btn-xs" style="font-size:11px;">Save</button></td>
+            </tr>
+          </form>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<div class="panel">
+  <div class="panel-head"><h2>Add ad-hoc event</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/cert-cycle" class="panel-pad" style="display:grid;grid-template-columns:200px 130px 1fr 1fr auto;gap:8px;align-items:end;">
+    <div>
+      <label class="label">Event type</label>
+      <select name="event_type" class="select" required>
+        <% eventTypes.forEach(t => { %><option value="<%= t.key %>"><%= t.label %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">Planned</label><input type="date" name="planned_date" class="input"></div>
+    <div><label class="label">Cert body</label><input type="text" name="certification_body" class="input" placeholder="BSI / DNV / etc."></div>
+    <div><label class="label">Notes</label><input type="text" name="notes" class="input"></div>
+    <div><button class="btn btn-primary">Add</button></div>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

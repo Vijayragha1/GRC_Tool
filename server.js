@@ -325,19 +325,97 @@ app.post('/tenants', requireAuth, (req, res) => {
   const name = (req.body.name || '').trim();
   if (!name) return res.redirect('/tenants');
   const fid = db.prepare('INSERT INTO firms (name) VALUES (?)').run(name).lastInsertRowid;
-  // Auto-create a firm-owner user — when auth is disabled this is the
-  // implicit "default user" for the new tenant. Email/password are placeholder
-  // strings since they're never actually used for authentication.
   const placeholderEmail = `owner+firm${fid}@local`;
   const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
   db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
               VALUES (?, ?, ?, 'firm', ?, 'owner', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, fid);
-  // Auto-create the per-tenant uploads directory so subsequent uploads have
-  // somewhere to land without first checking existence.
   const tenantDir = path.join(__dirname, 'uploads', `firm_${fid}`);
   try { fs.mkdirSync(tenantDir, { recursive: true }); } catch (_) {}
-  // Switch into the new tenant so the user lands in it.
+  // Tier 3.10 — Track onboarding state for the new tenant so the wizard can
+  // resume where left off.
+  db.prepare(`INSERT INTO tenant_onboarding (firm_id, current_step) VALUES (?, 1)`).run(fid);
   req.session.active_firm_id = fid;
+  res.redirect('/onboarding');
+});
+
+// ==================== TIER 3.10 — TENANT ONBOARDING WIZARD ====================
+const ONBOARDING_STEPS = [
+  { num: 1, title: 'Create your first workspace',
+    desc: 'A workspace is one client engagement. You\'ll do most of your work inside one.',
+    cta: 'Create workspace',
+    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=?`).get(firmId).c > 0,
+    href: '/dashboard'
+  },
+  { num: 2, title: 'Define ISMS scope',
+    desc: 'What products, locations, and systems are in scope of the ISMS? This decision drives everything else (clause 4.3).',
+    cta: 'Set scope',
+    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=? AND scope IS NOT NULL AND length(scope) > 10`).get(firmId).c > 0,
+    href: 'first-ws'
+  },
+  { num: 3, title: 'Build the asset register',
+    desc: 'Identify the information and supporting assets in scope. Five to ten entries is enough to start.',
+    cta: 'Add assets',
+    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM assets a INNER JOIN workspaces w ON w.id=a.workspace_id WHERE w.firm_id=?`).get(firmId).c >= 3,
+    href: 'first-ws-assets'
+  },
+  { num: 4, title: 'Document the risk-assessment methodology',
+    desc: 'Define your likelihood and impact scales, and your risk-acceptance criteria. Required by clause 6.1.2.',
+    cta: 'Configure methodology',
+    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM risk_methodologies m INNER JOIN workspaces w ON w.id=m.workspace_id WHERE w.firm_id=? AND m.is_active=1`).get(firmId).c > 0,
+    href: 'first-ws-methodology'
+  },
+  { num: 5, title: 'Run the gap assessment',
+    desc: 'Walk every clause and Annex A control, scoring current state. The wizard takes you through all 118 items.',
+    cta: 'Open wizard',
+    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM control_states cs INNER JOIN workspaces w ON w.id=cs.workspace_id WHERE w.firm_id=? AND cs.status != 'Not Assessed'`).get(firmId).c >= 20,
+    href: 'first-ws-assess'
+  },
+  { num: 6, title: 'Plan the certification cycle',
+    desc: 'Lay out Stage 1 → Stage 2 → annual surveillance → recertification dates so you\'re working backwards from a real target.',
+    cta: 'Plan cycle',
+    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM cert_cycle_events e INNER JOIN workspaces w ON w.id=e.workspace_id WHERE w.firm_id=?`).get(firmId).c > 0,
+    href: 'first-ws-cert-cycle'
+  }
+];
+
+function resolveOnboardingHref(href, firmId) {
+  if (!href.startsWith('first-ws')) return href;
+  const ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1`).get(firmId);
+  if (!ws) return '/dashboard';
+  const subpath = href.replace('first-ws', '').replace(/^-/, '/');
+  if (!subpath || subpath === '') return `/workspaces/${ws.id}#workspace-settings`;
+  return `/workspaces/${ws.id}/${subpath.replace(/^\//, '')}`.replace(/\/$/, '');
+}
+
+app.get('/onboarding', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  let onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
+  if (!onb) {
+    db.prepare(`INSERT INTO tenant_onboarding (firm_id) VALUES (?)`).run(firmId);
+    onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
+  }
+  const stepStates = ONBOARDING_STEPS.map(s => ({
+    ...s,
+    done: !!s.isDone(firmId),
+    href: resolveOnboardingHref(s.href, firmId)
+  }));
+  const completedCount = stepStates.filter(s => s.done).length;
+  res.render('onboarding', {
+    user: req.user, ws: null, steps: stepStates, completedCount,
+    totalSteps: ONBOARDING_STEPS.length, onb
+  });
+});
+
+app.post('/onboarding/skip', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (firmId) db.prepare(`UPDATE tenant_onboarding SET skipped=1, completed_at=CURRENT_TIMESTAMP WHERE firm_id=?`).run(firmId);
+  res.redirect('/dashboard');
+});
+
+app.post('/onboarding/complete', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (firmId) db.prepare(`UPDATE tenant_onboarding SET completed_at=CURRENT_TIMESTAMP WHERE firm_id=?`).run(firmId);
   res.redirect('/dashboard');
 });
 
@@ -898,7 +976,10 @@ app.get('/workspaces/:wsId/controls/assess', requireAuth, requireWorkspace, requ
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${first.id}?done=1`);
 });
 
-app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
+  // Reserved literal sub-routes — let them fall through to their own handlers
+  // registered later in the file.
+  if (['summary.docx'].includes(req.params.isoId)) return nextMw();
   const item = db.prepare(`SELECT * FROM iso_items WHERE id=? AND type IN ('clause','control')`).get(req.params.isoId);
   if (!item) return res.status(404).send('ISO item not found');
   item.questions = JSON.parse(item.questions || '[]');
@@ -947,7 +1028,9 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
 
   // Evidence files attached to this control — displayed in a panel on the wizard
   // since the standalone control detail page was removed and there's no other home.
-  const evidenceList = db.prepare(`SELECT e.id, e.filename, e.size_bytes, e.description, e.uploaded_at, u.name AS uploader
+  const evidenceList = db.prepare(`SELECT e.id, e.filename, e.size_bytes, e.description, e.uploaded_at,
+    e.valid_from, e.valid_until, e.period_label, e.clause_section,
+    u.name AS uploader
     FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
     WHERE e.workspace_id=? AND e.iso_item_id=? ORDER BY e.uploaded_at DESC`).all(req.workspace.id, item.id);
 
@@ -1078,13 +1161,16 @@ app.post('/workspaces/:wsId/comments', requireAuth, requireWorkspace, requirePer
 app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   if (!req.file) return res.redirect('back');
-  const { iso_item_id, description } = req.body;
+  const { iso_item_id, description, valid_from, valid_until, period_label, clause_section } = req.body;
   const buf = fs.readFileSync(req.file.path);
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
-  db.prepare(`INSERT INTO evidence (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+  db.prepare(`INSERT INTO evidence
+    (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description,
+     valid_from, valid_until, period_label, clause_section)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, iso_item_id || null, req.file.originalname, req.file.filename,
-         sha, req.file.size, req.user.id, description || null);
+         sha, req.file.size, req.user.id, description || null,
+         valid_from || null, valid_until || null, period_label || null, clause_section || null);
   logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', iso_item_id, { filename: req.file.originalname });
   const back = req.headers.referer || '/workspaces/' + req.workspace.id;
   res.redirect(back);
@@ -1123,12 +1209,19 @@ app.get('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermis
 });
 
 app.post('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
-  const { name, type, classification, owner_name, cia_c, cia_i, cia_a, description, entity_id } = req.body;
+  const { name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
+          business_criticality, rto_hours, rpo_hours, bia_notes } = req.body;
   if (!name) return res.redirect('back');
-  const id = db.prepare(`INSERT INTO assets (workspace_id, entity_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(req.workspace.id, entity_id || req.entityScopeId || null, name.trim(), type || null, classification || null, owner_name || null,
-         parseInt(cia_c) || 1, parseInt(cia_i) || 1, parseInt(cia_a) || 1, description || null).lastInsertRowid;
+  const id = db.prepare(`INSERT INTO assets
+    (workspace_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
+     business_criticality, rto_hours, rpo_hours, bia_notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, name.trim(), type || null, classification || null, owner_name || null,
+         parseInt(cia_c) || 1, parseInt(cia_i) || 1, parseInt(cia_a) || 1, description || null,
+         business_criticality || null,
+         rto_hours !== undefined && rto_hours !== '' ? parseInt(rto_hours, 10) : null,
+         rpo_hours !== undefined && rpo_hours !== '' ? parseInt(rpo_hours, 10) : null,
+         bia_notes || null).lastInsertRowid;
   logAction(req.user.id, req.workspace.id, 'create_asset', 'asset', id, { name }, auditCtx(req));
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/assets', 'Asset added'));
 });
@@ -1217,7 +1310,236 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
   const methodology = getActiveMethodology(req.workspace.id);
   const inherentBand = methodologyBand(methodology, risk.likelihood, risk.impact);
   const residualBand = (risk.residual_likelihood && risk.residual_impact) ? methodologyBand(methodology, risk.residual_likelihood, risk.residual_impact) : null;
-  res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, methodology, inherentBand, residualBand });
+  // Tier 1.1 — treatment plan actions for this risk
+  const actions = db.prepare(`SELECT * FROM risk_treatment_actions
+    WHERE risk_id=? AND workspace_id=?
+    ORDER BY (CASE status WHEN 'planned' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 ELSE 3 END), due_date IS NULL, due_date`).all(risk.id, req.workspace.id);
+  res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, methodology, inherentBand, residualBand, actions });
+});
+
+// Tier 1.1 — Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
+app.post('/workspaces/:wsId/risks/:id/actions', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  const { title, description, owner_name, due_date } = req.body;
+  if (!title || !title.trim()) return res.redirect('back');
+  db.prepare(`INSERT INTO risk_treatment_actions
+    (workspace_id, risk_id, title, description, owner_name, due_date, status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)`).run(
+    req.workspace.id, req.params.id, title.trim(), description || null,
+    owner_name || null, due_date || null, req.user.id
+  );
+  logAction(req.user.id, req.workspace.id, 'add_treatment_action', 'risk', req.params.id, { title }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
+});
+
+app.post('/workspaces/:wsId/risks/:id/actions/:aid', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  const { title, description, owner_name, due_date, status, residual_likelihood, residual_impact } = req.body;
+  const closedAt = status === 'done' ? `CURRENT_TIMESTAMP` : 'NULL';
+  db.prepare(`UPDATE risk_treatment_actions SET
+    title=COALESCE(?, title), description=?, owner_name=?, due_date=?, status=?,
+    residual_likelihood=?, residual_impact=?,
+    closed_at=CASE WHEN ?='done' AND closed_at IS NULL THEN CURRENT_TIMESTAMP ELSE closed_at END
+    WHERE id=? AND risk_id=? AND workspace_id=?`).run(
+    title || null, description || null, owner_name || null, due_date || null, status || 'planned',
+    residual_likelihood ? parseInt(residual_likelihood) : null,
+    residual_impact ? parseInt(residual_impact) : null,
+    status, req.params.aid, req.params.id, req.workspace.id
+  );
+  // If status is 'done' and residuals are filled, propagate to the parent risk's residual fields.
+  if (status === 'done' && residual_likelihood && residual_impact) {
+    db.prepare(`UPDATE risks SET residual_likelihood=?, residual_impact=? WHERE id=? AND workspace_id=?`)
+      .run(parseInt(residual_likelihood), parseInt(residual_impact), req.params.id, req.workspace.id);
+  }
+  logAction(req.user.id, req.workspace.id, 'update_treatment_action', 'risk', req.params.id, { action_id: req.params.aid, status }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
+});
+
+app.post('/workspaces/:wsId/risks/:id/actions/:aid/delete', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  db.prepare(`DELETE FROM risk_treatment_actions WHERE id=? AND risk_id=? AND workspace_id=?`)
+    .run(req.params.aid, req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
+});
+
+// ==================== TIER 1.3 — CERT CYCLE CALENDAR ====================
+// Stage 1 → Stage 2 → annual surveillance → 3-year recertification.
+// Most consultants miss the post-cert lifecycle; this surfaces it.
+const CERT_EVENT_TYPES = [
+  { key: 'stage_1', label: 'Stage 1 audit', desc: 'Documentation review' },
+  { key: 'stage_2', label: 'Stage 2 audit', desc: 'Implementation audit (cert decision)' },
+  { key: 'surveillance_y1', label: 'Surveillance audit (Year 1)', desc: 'First annual surveillance' },
+  { key: 'surveillance_y2', label: 'Surveillance audit (Year 2)', desc: 'Second annual surveillance' },
+  { key: 'recertification', label: 'Recertification audit', desc: 'Full cycle reset (Year 3)' }
+];
+
+app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
+  const events = db.prepare(`SELECT * FROM cert_cycle_events
+    WHERE workspace_id=? ORDER BY planned_date IS NULL, planned_date`).all(req.workspace.id);
+  // Auto-suggest a default cycle if no events exist yet — Stage 1 in 60 days,
+  // Stage 2 30 days after, surveillance year 1 = 12 months from Stage 2, etc.
+  const today = new Date();
+  const suggestions = events.length ? [] : (() => {
+    const s1 = new Date(today); s1.setDate(s1.getDate() + 60);
+    const s2 = new Date(s1); s2.setDate(s2.getDate() + 30);
+    const sy1 = new Date(s2); sy1.setFullYear(sy1.getFullYear() + 1);
+    const sy2 = new Date(sy1); sy2.setFullYear(sy2.getFullYear() + 1);
+    const recert = new Date(s2); recert.setFullYear(recert.getFullYear() + 3);
+    return [
+      { event_type: 'stage_1',          planned_date: s1.toISOString().slice(0,10) },
+      { event_type: 'stage_2',          planned_date: s2.toISOString().slice(0,10) },
+      { event_type: 'surveillance_y1',  planned_date: sy1.toISOString().slice(0,10) },
+      { event_type: 'surveillance_y2',  planned_date: sy2.toISOString().slice(0,10) },
+      { event_type: 'recertification',  planned_date: recert.toISOString().slice(0,10) }
+    ];
+  })();
+  res.render('cert_cycle', { user: req.user, ws: req.workspace, events, suggestions, eventTypes: CERT_EVENT_TYPES });
+});
+
+app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
+  const { event_type, planned_date, certification_body, notes } = req.body;
+  if (!event_type || !CERT_EVENT_TYPES.find(t => t.key === event_type)) return res.redirect('back');
+  db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date, certification_body, notes)
+              VALUES (?, ?, ?, ?, ?)`).run(
+    req.workspace.id, event_type, planned_date || null, certification_body || null, notes || null
+  );
+  logAction(req.user.id, req.workspace.id, 'add_cert_event', 'cert_cycle', null, { event_type, planned_date }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+});
+
+app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, (req, res) => {
+  // Insert all five suggested events from the no-events fallback above.
+  const today = new Date();
+  const s1 = new Date(today); s1.setDate(s1.getDate() + 60);
+  const s2 = new Date(s1); s2.setDate(s2.getDate() + 30);
+  const sy1 = new Date(s2); sy1.setFullYear(sy1.getFullYear() + 1);
+  const sy2 = new Date(sy1); sy2.setFullYear(sy2.getFullYear() + 1);
+  const recert = new Date(s2); recert.setFullYear(recert.getFullYear() + 3);
+  const ins = db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date) VALUES (?, ?, ?)`);
+  const tx = db.transaction(() => {
+    ins.run(req.workspace.id, 'stage_1',          s1.toISOString().slice(0,10));
+    ins.run(req.workspace.id, 'stage_2',          s2.toISOString().slice(0,10));
+    ins.run(req.workspace.id, 'surveillance_y1',  sy1.toISOString().slice(0,10));
+    ins.run(req.workspace.id, 'surveillance_y2',  sy2.toISOString().slice(0,10));
+    ins.run(req.workspace.id, 'recertification',  recert.toISOString().slice(0,10));
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'seed_cert_cycle', 'cert_cycle', null, null, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+});
+
+app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, (req, res) => {
+  const { planned_date, actual_date, status, certification_body, notes } = req.body;
+  db.prepare(`UPDATE cert_cycle_events SET
+    planned_date=?, actual_date=?, status=?, certification_body=?, notes=?
+    WHERE id=? AND workspace_id=?`).run(
+    planned_date || null, actual_date || null, status || 'planned',
+    certification_body || null, notes || null,
+    req.params.id, req.workspace.id
+  );
+  res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+});
+
+app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+  db.prepare(`DELETE FROM cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+});
+
+// ==================== TIER 2.7 — GAP ASSESSMENT REPORT (DOCX) ====================
+// Renders the post-assessment summary as a downloadable DOCX. Replaces the
+// 2–4 hours of manual report-writing per gap assessment.
+app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
+  const wsId = req.workspace.id;
+
+  const dist = { Implemented: 0, 'Partially Implemented': 0, 'Work In Progress': 0, 'Not Implemented': 0, 'Not Applicable': 0, 'Not Assessed': 0 };
+  db.prepare(`SELECT COALESCE(cs.status,'Not Assessed') AS s, COUNT(*) AS c FROM iso_items i
+    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    WHERE i.type IN ('clause','control') GROUP BY s`).all(wsId).forEach(r => { dist[r.s] = r.c; });
+  const total = Object.values(dist).reduce((a,b) => a+b, 0);
+
+  const gaps = db.prepare(`SELECT i.id, i.type, i.title, cs.status, cs.maturity, cs.scope_pct, cs.notes
+    FROM iso_items i INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    WHERE i.type IN ('clause','control')
+      AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
+    ORDER BY i.sort_order`).all(wsId);
+
+  const evidenceAsks = db.prepare(`SELECT i.id, i.title FROM iso_items i
+    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    WHERE i.type IN ('clause','control') AND cs.status='Implemented'
+      AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.iso_item_id=i.id AND e.workspace_id=?)
+    ORDER BY i.sort_order`).all(wsId, wsId);
+
+  const today = new Date().toISOString().slice(0,10);
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const refCode = id => id.replace('annex-','').replace('clause-','').toUpperCase();
+
+  const sevColor = (status) => status === 'Not Implemented' ? '#b91c1c' : status === 'Partially Implemented' ? '#a16207' : '#ea580c';
+
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111; }
+    h1 { font-size: 22pt; margin-bottom: 4pt; }
+    h2 { font-size: 14pt; margin-top: 20pt; margin-bottom: 6pt; border-bottom: 1pt solid #ccc; padding-bottom: 4pt; }
+    h3 { font-size: 12pt; margin-top: 14pt; margin-bottom: 4pt; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8pt; font-size: 10pt; }
+    th, td { border: 1pt solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; font-weight: bold; }
+    .meta { color: #666; font-size: 10pt; }
+    .tag { font-size: 9pt; font-weight: bold; padding: 1pt 6pt; color: white; }
+  </style></head><body>`;
+
+  html += `<h1>Gap Assessment Report</h1>`;
+  html += `<p class="meta"><strong>${esc(req.workspace.client_name)}</strong> · Generated ${today}</p>`;
+
+  html += `<h2>1. Executive summary</h2>`;
+  html += `<p>This report summarises the current-state gap assessment of the Information Security Management System (ISMS) against ISO 27001:2022. The assessment covered ${total} items: ${dist.Implemented} fully implemented, ${dist['Partially Implemented']} partially implemented, ${dist['Work In Progress']} in progress, ${dist['Not Implemented']} not yet implemented, ${dist['Not Applicable']} not applicable, ${dist['Not Assessed']} not yet assessed.</p>`;
+
+  html += `<h2>2. Status distribution</h2>`;
+  html += `<table><tr><th>Status</th><th>Count</th><th>% of total</th></tr>`;
+  ['Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable','Not Assessed'].forEach(s => {
+    const c = dist[s] || 0;
+    const pct = total ? Math.round(c / total * 100) : 0;
+    html += `<tr><td>${esc(s)}</td><td>${c}</td><td>${pct}%</td></tr>`;
+  });
+  html += `</table>`;
+
+  html += `<h2>3. Identified gaps (${gaps.length})</h2>`;
+  if (gaps.length === 0) {
+    html += `<p>No gaps in Not Implemented / Partially Implemented / Work In Progress state.</p>`;
+  } else {
+    html += `<table><tr><th>ID</th><th>Title</th><th>Status</th><th>Maturity</th><th>Scope %</th><th>Notes</th></tr>`;
+    gaps.forEach(g => {
+      const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+      html += `<tr><td>${esc(refCode(g.id))}</td><td>${esc(cleanTitle)}</td><td><span class="tag" style="background:${sevColor(g.status)}">${esc(g.status)}</span></td><td>${g.maturity != null ? g.maturity : '—'}</td><td>${g.scope_pct != null ? g.scope_pct + '%' : '—'}</td><td>${esc(g.notes || '')}</td></tr>`;
+    });
+    html += `</table>`;
+  }
+
+  html += `<h2>4. Items marked Implemented without evidence (${evidenceAsks.length})</h2>`;
+  if (evidenceAsks.length === 0) {
+    html += `<p>Every Implemented item has at least one evidence file attached.</p>`;
+  } else {
+    html += `<p>The following items are marked as Implemented in the assessment but have no evidence file attached. Auditors will sample these first.</p>`;
+    html += `<table><tr><th>ID</th><th>Title</th></tr>`;
+    evidenceAsks.forEach(e => {
+      const cleanTitle = e.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+      html += `<tr><td>${esc(refCode(e.id))}</td><td>${esc(cleanTitle)}</td></tr>`;
+    });
+    html += `</table>`;
+  }
+
+  html += `<h2>5. Recommended next steps</h2>`;
+  html += `<ol>`;
+  if (dist['Not Assessed'] > 0) html += `<li>Complete the gap assessment for the ${dist['Not Assessed']} item(s) still in Not Assessed state.</li>`;
+  if (gaps.filter(g => g.status === 'Not Implemented').length > 0) html += `<li>Prioritise remediation of the ${gaps.filter(g => g.status === 'Not Implemented').length} Not Implemented gap(s); these block certification.</li>`;
+  if (evidenceAsks.length > 0) html += `<li>Attach evidence to the ${evidenceAsks.length} Implemented item(s) currently lacking it.</li>`;
+  html += `<li>Convert this report into remediation tasks via the post-assessment summary's Spawn-tasks action.</li>`;
+  html += `<li>Schedule a follow-up gap assessment to verify remediation effectiveness before the Stage 1 audit.</li>`;
+  html += `</ol>`;
+
+  html += `</body></html>`;
+
+  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const filename = `Gap-Assessment-Report-${req.workspace.client_name.replace(/[^\w]/g,'_')}-${today}.docx`;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buf);
 });
 
 app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, (req, res) => {
@@ -1385,10 +1707,43 @@ app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, (r
 
 // ==================== ACTIVITY / AUDIT LOG ====================
 app.get('/workspaces/:wsId/activity', requireAuth, requireWorkspace, (req, res) => {
+  // Tier 2.6 — Audit-log drill-down with filters: user, action, entity_type,
+  // free-text search, date range. Pagination by 100. The audit_log table is
+  // appended to throughout the app; this is the read interface.
+  const { user_id, action, entity_type, q, since, until } = req.query;
+  const page = Math.max(1, parseInt(req.query.page || '1', 10));
+  const pageSize = 100;
+
+  const where = ['a.workspace_id=?'];
+  const params = [req.workspace.id];
+  if (user_id)     { where.push('a.user_id=?');     params.push(parseInt(user_id, 10)); }
+  if (action)      { where.push('a.action=?');      params.push(action); }
+  if (entity_type) { where.push('a.entity_type=?'); params.push(entity_type); }
+  if (since)       { where.push('a.created_at >= ?'); params.push(since + ' 00:00:00'); }
+  if (until)       { where.push('a.created_at <= ?'); params.push(until + ' 23:59:59'); }
+  if (q)           { where.push('(a.action LIKE ? OR a.entity_type LIKE ? OR a.entity_id LIKE ? OR u.name LIKE ?)');
+                     const like = `%${q}%`; params.push(like, like, like, like); }
+
+  const whereSql = where.join(' AND ');
+  const totalRow = db.prepare(`SELECT COUNT(*) c FROM audit_log a INNER JOIN users u ON u.id=a.user_id WHERE ${whereSql}`).get(...params);
+  const total = totalRow.c;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
   const log = db.prepare(`SELECT a.*, u.name AS user_name FROM audit_log a
-    INNER JOIN users u ON u.id = a.user_id
-    WHERE a.workspace_id = ? ORDER BY a.created_at DESC LIMIT 200`).all(req.workspace.id);
-  res.render('activity', { user: req.user, ws: req.workspace, log });
+    INNER JOIN users u ON u.id=a.user_id WHERE ${whereSql}
+    ORDER BY a.created_at DESC LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize);
+
+  // Distinct values for filter dropdowns (workspace-scoped).
+  const distinctActions      = db.prepare(`SELECT DISTINCT action      FROM audit_log WHERE workspace_id=? AND action      IS NOT NULL ORDER BY action`).all(req.workspace.id).map(r => r.action);
+  const distinctEntityTypes  = db.prepare(`SELECT DISTINCT entity_type FROM audit_log WHERE workspace_id=? AND entity_type IS NOT NULL ORDER BY entity_type`).all(req.workspace.id).map(r => r.entity_type);
+  const distinctUsers        = db.prepare(`SELECT DISTINCT u.id, u.name FROM audit_log a INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY u.name`).all(req.workspace.id);
+
+  res.render('activity', {
+    user: req.user, ws: req.workspace, log,
+    filters: { user_id, action, entity_type, q, since, until },
+    distinctActions, distinctEntityTypes, distinctUsers,
+    page, totalPages, total
+  });
 });
 
 // ==================== EXPORTS ====================
@@ -1748,6 +2103,24 @@ app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, re
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
 });
 
+// Tier 1.4 — Audit lifecycle stage transitions (planned → fieldwork →
+// findings_review → report → follow_up → closed). Transitions auto-timestamp
+// the milestone columns so the engagement timeline is reconstructable.
+app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const { stage } = req.body;
+  const allowed = ['planned','fieldwork','findings_review','report','follow_up','closed'];
+  if (!allowed.includes(stage)) return res.redirect('back');
+  const sets = ['lifecycle_stage=?'];
+  const vals = [stage];
+  if (stage === 'fieldwork') { sets.push('fieldwork_started_at=COALESCE(fieldwork_started_at, CURRENT_TIMESTAMP)'); }
+  if (stage === 'report')    { sets.push('report_issued_at=COALESCE(report_issued_at, CURRENT_TIMESTAMP)'); }
+  if (stage === 'closed')    { sets.push('closed_at=COALESCE(closed_at, CURRENT_TIMESTAMP)'); }
+  vals.push(req.params.id, req.workspace.id);
+  db.prepare(`UPDATE audits SET ${sets.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+  logAction(req.user.id, req.workspace.id, 'audit_lifecycle', 'audit', req.params.id, { stage }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
+});
+
 app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { iso_item_id, finding_type, description, severity } = req.body;
@@ -1790,11 +2163,37 @@ app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
 app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { meeting_date, attendees } = req.body;
-  const id = db.prepare(`INSERT INTO mrms (workspace_id, meeting_date, attendees, created_by)
-                         VALUES (?, ?, ?, ?)`)
-    .run(req.workspace.id, meeting_date || null, attendees || null, req.user.id).lastInsertRowid;
-  logAction(req.user.id, req.workspace.id, 'create_mrm', 'mrm', id, null);
-  res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + id);
+  // Tier 2.5 — Auto-fill the 9.3.2 input pack at MRM creation time. Saves the
+  // ~30 minutes of manually pulling status numbers from each module.
+  const wsId = req.workspace.id;
+  const today = new Date().toISOString().slice(0,10);
+  const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(wsId).c;
+  const ncMajor = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(wsId).c;
+  const ncOverdue = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < ?`).get(wsId, today).c;
+  const auditsLast12 = db.prepare(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND audit_date > date('now','-12 months')`).get(wsId).c;
+  const findingsLast12 = db.prepare(`SELECT COUNT(*) c FROM audit_findings af INNER JOIN audits a ON a.id=af.audit_id WHERE a.workspace_id=? AND a.audit_date > date('now','-12 months')`).get(wsId).c;
+  const openRisks = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status='open'`).get(wsId).c;
+  const highRisks = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status='open' AND (likelihood * impact) >= 16`).get(wsId).c;
+  const treatmentOpen = db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=? AND status NOT IN ('done','cancelled')`).get(wsId).c;
+  const treatmentDone = db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=? AND status='done'`).get(wsId).c;
+  const lastMrm = db.prepare(`SELECT meeting_date, action_items FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
+
+  const priorActionsStatus = lastMrm
+    ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
+    : 'No prior management review on record. This is the first one.';
+
+  const performanceReview = `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\n[Add commentary on KPIs, monitoring metrics (9.1), and trends.]`;
+
+  const riskTreatmentStatus = `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`;
+
+  const id = db.prepare(`INSERT INTO mrms
+    (workspace_id, meeting_date, attendees, prior_actions_status, performance_review,
+     risk_treatment_status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(wsId, meeting_date || null, attendees || null,
+         priorActionsStatus, performanceReview, riskTreatmentStatus, req.user.id).lastInsertRowid;
+  logAction(req.user.id, wsId, 'create_mrm', 'mrm', id, null);
+  res.redirect('/workspaces/' + wsId + '/mrms/' + id);
 });
 
 app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) => {

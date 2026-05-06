@@ -2,7 +2,48 @@
 
 <a href="/workspaces/<%= ws.id %>/audits" class="link-muted" style="font-size:12px;">← All audits</a>
 
-<div class="panel" style="margin-top:12px;margin-bottom:16px">
+<%
+  // Tier 1.4 — Internal audit lifecycle stages
+  const lifecycleStages = [
+    { key: 'planned',          label: 'Planned',          desc: 'Scope, criteria, methods, schedule' },
+    { key: 'fieldwork',        label: 'Fieldwork',        desc: 'Sampling, interviews, evidence collection' },
+    { key: 'findings_review',  label: 'Findings review',  desc: 'Classify NCs / OFIs; sanity-check with auditees' },
+    { key: 'report',           label: 'Report',           desc: 'Issue audit report to relevant management' },
+    { key: 'follow_up',        label: 'Follow-up',        desc: 'Track corrective actions to closure' },
+    { key: 'closed',           label: 'Closed',           desc: 'All findings actioned; archived' }
+  ];
+  const currentStage = audit.lifecycle_stage || 'planned';
+  const currentIdx = lifecycleStages.findIndex(s => s.key === currentStage);
+%>
+
+<div class="panel" style="margin-top:12px;margin-bottom:14px;">
+  <div class="panel-head"><h2>Audit lifecycle</h2><span class="meta">Stage: <strong style="color:var(--accent);"><%= currentStage.replace('_',' ') %></strong></span></div>
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;border-top:1px solid var(--border);">
+    <% lifecycleStages.forEach((s, i) => {
+         const isActive = s.key === currentStage;
+         const isPast = i < currentIdx;
+         const color = isActive ? '#0891b2' : isPast ? '#16a34a' : 'var(--text-tertiary)';
+         const bg = isActive ? 'rgba(8,145,178,0.08)' : isPast ? 'rgba(22,163,74,0.04)' : 'var(--bg-subtle)';
+    %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/lifecycle" style="margin:0;">
+        <input type="hidden" name="stage" value="<%= s.key %>">
+        <button type="submit" style="width:100%;height:100%;border:none;<%= i < lifecycleStages.length - 1 ? 'border-right:1px solid var(--border);' : '' %>background:<%= bg %>;color:<%= color %>;padding:10px 8px;font-size:11px;font-weight:600;cursor:pointer;text-align:left;" title="<%= s.desc %>">
+          <div style="text-transform:uppercase;letter-spacing:0.04em;"><%= s.label %></div>
+          <div style="font-size:10px;font-weight:400;line-height:1.3;margin-top:2px;color:<%= isActive || isPast ? color : 'var(--text-secondary)' %>;"><%= s.desc %></div>
+        </button>
+      </form>
+    <% }) %>
+  </div>
+  <% if (audit.fieldwork_started_at || audit.report_issued_at || audit.closed_at) { %>
+    <div class="meta" style="font-size:11px;padding:6px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+      <% if (audit.fieldwork_started_at) { %>Fieldwork started: <strong><%= audit.fieldwork_started_at %></strong><% } %>
+      <% if (audit.report_issued_at) { %> · Report issued: <strong><%= audit.report_issued_at %></strong><% } %>
+      <% if (audit.closed_at) { %> · Closed: <strong><%= audit.closed_at %></strong><% } %>
+    </div>
+  <% } %>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
   <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
     <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= audit.title %>" required></div>
     <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" value="<%= audit.scope || '' %>"></div>

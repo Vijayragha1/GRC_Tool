@@ -3,29 +3,89 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Activity log</h1>
-    <div class="page-subtitle">Immutable audit trail of changes in this workspace. Required evidence for ISO 27001 certification.</div>
+    <div class="page-subtitle">Append-only audit trail of every change in this workspace. Filter, search, paginate — required evidence for ISO 27001 certification.</div>
   </div>
+  <div class="meta" style="font-size:12px;"><strong style="color:var(--text);"><%= total %></strong> total event<%= total === 1 ? '' : 's' %> · page <%= page %> of <%= totalPages %></div>
+</div>
+
+<!-- Filter bar -->
+<div class="panel" style="margin-bottom:14px;">
+  <form method="GET" action="/workspaces/<%= ws.id %>/activity" class="panel-pad" style="display:grid;grid-template-columns:1fr 160px 160px 160px 130px 130px auto;gap:8px;align-items:end;">
+    <div>
+      <label class="label">Search</label>
+      <input class="input" name="q" value="<%= filters.q || '' %>" placeholder="action, entity, user…">
+    </div>
+    <div>
+      <label class="label">Action</label>
+      <select class="select" name="action">
+        <option value="">All actions</option>
+        <% distinctActions.forEach(a => { %><option value="<%= a %>" <%= filters.action === a ? 'selected' : '' %>><%= a %></option><% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Entity type</label>
+      <select class="select" name="entity_type">
+        <option value="">All entities</option>
+        <% distinctEntityTypes.forEach(e => { %><option value="<%= e %>" <%= filters.entity_type === e ? 'selected' : '' %>><%= e %></option><% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">User</label>
+      <select class="select" name="user_id">
+        <option value="">All users</option>
+        <% distinctUsers.forEach(u => { %><option value="<%= u.id %>" <%= filters.user_id == u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">From</label><input class="input" type="date" name="since" value="<%= filters.since || '' %>"></div>
+    <div><label class="label">To</label><input class="input" type="date" name="until" value="<%= filters.until || '' %>"></div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-primary btn-xs">Apply</button>
+      <a href="/workspaces/<%= ws.id %>/activity" class="btn btn-secondary btn-xs">Clear</a>
+    </div>
+  </form>
 </div>
 
 <div class="panel" style="overflow:hidden">
   <table class="t">
     <thead><tr>
-      <th style="width:160px">When</th><th style="width:160px">Who</th>
-      <th style="width:180px">Action</th><th style="width:200px">Entity</th><th>Details</th>
+      <th style="width:160px">When</th>
+      <th style="width:140px">Who</th>
+      <th style="width:170px">Action</th>
+      <th style="width:180px">Entity</th>
+      <th>Details</th>
     </tr></thead>
     <tbody>
       <% log.forEach(l => { %>
         <tr>
-          <td class="num meta"><%= l.created_at %></td>
+          <td class="num meta" style="font-size:11.5px;"><%= l.created_at %></td>
           <td style="font-size:13px;"><%= l.user_name %></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= l.action.replace(/_/g, ' ') %></td>
-          <td class="meta"><%= l.entity_type || '' %> <%= l.entity_id || '' %></td>
-          <td class="mono meta" style="font-size:11px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= l.details || '' %></td>
+          <td><span class="mono meta" style="font-size:11.5px;"><%= l.action %></span></td>
+          <td class="meta" style="font-size:12px;"><%= l.entity_type || '' %><% if (l.entity_id) { %> · <span class="mono"><%= l.entity_id %></span><% } %></td>
+          <td class="mono meta" style="font-size:11px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= l.details || '' %>"><%= l.details || '' %></td>
         </tr>
       <% }) %>
-      <% if (log.length === 0) { %><tr><td colspan="5" class="t-empty">No activity yet.</td></tr><% } %>
+      <% if (log.length === 0) { %><tr><td colspan="5" class="t-empty">No matching events.</td></tr><% } %>
     </tbody>
   </table>
 </div>
+
+<% if (totalPages > 1) {
+     const qs = (overrides) => {
+       const p = Object.assign({}, filters, overrides);
+       const usp = new URLSearchParams();
+       Object.keys(p).forEach(k => { if (p[k]) usp.set(k, p[k]); });
+       return usp.toString();
+     };
+%>
+  <div style="margin-top:14px;display:flex;gap:6px;justify-content:center;align-items:center;">
+    <% if (page > 1) { %>
+      <a href="?<%= qs({ page: page - 1 }) %>" class="btn btn-secondary btn-xs">← Prev</a>
+    <% } %>
+    <span class="meta" style="font-size:12px;">Page <%= page %> of <%= totalPages %></span>
+    <% if (page < totalPages) { %>
+      <a href="?<%= qs({ page: page + 1 }) %>" class="btn btn-secondary btn-xs">Next →</a>
+    <% } %>
+  </div>
+<% } %>
 
 <%- include('partials/footer') %>

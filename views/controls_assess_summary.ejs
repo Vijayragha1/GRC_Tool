@@ -6,6 +6,7 @@
     <div class="page-subtitle">Your gap walkthrough turned into a worklist. Spawn remediation tasks, generate missing policies, and surface evidence the auditor will ask for.</div>
   </div>
   <div style="display:flex;gap:6px;">
+    <a href="/workspaces/<%= ws.id %>/controls/assess/summary.docx" class="btn btn-secondary btn-xs">Export report (DOCX)</a>
     <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-secondary btn-xs">Re-open wizard</a>
     <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-secondary btn-xs">Pre-cert blocker check →</a>
     <a href="/workspaces/<%= ws.id %>/soa" class="btn btn-primary btn-xs">Go to SoA →</a>

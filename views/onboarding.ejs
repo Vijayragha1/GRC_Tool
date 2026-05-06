@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Welcome — get started', user, ws, active: 'onboarding' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Welcome — let's get this tenant ready</h1>
+    <div class="page-subtitle">Six steps to go from "fresh tenant" to "ready to run a gap assessment". Each step is its own page; this wizard tracks progress and lets you skip back to here from anywhere.</div>
+  </div>
+  <div class="meta" style="font-size:13px;"><strong style="color:var(--text);"><%= completedCount %></strong> / <%= totalSteps %> done</div>
+</div>
+
+<!-- Progress bar -->
+<div style="margin-bottom:18px;">
+  <div style="height:6px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
+    <div style="height:100%;width:<%= Math.round(completedCount / totalSteps * 100) %>%;background:#16a34a;transition:width 0.3s;"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <% steps.forEach(s => {
+       const tickColor = s.done ? '#16a34a' : 'var(--text-tertiary)';
+       const tickBg    = s.done ? 'rgba(22,163,74,0.10)' : 'var(--bg-subtle)';
+       const tickGlyph = s.done ? '✓' : s.num;
+  %>
+    <div style="display:grid;grid-template-columns:40px 1fr auto;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center;">
+      <div style="width:32px;height:32px;border-radius:16px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;"><%= tickGlyph %></div>
+      <div style="min-width:0;">
+        <div style="font-size:14px;font-weight:600;line-height:1.3;<%= s.done ? 'color:var(--text-secondary);' : '' %>"><%= s.title %></div>
+        <div class="meta" style="font-size:12.5px;margin-top:3px;line-height:1.5;"><%= s.desc %></div>
+      </div>
+      <a href="<%= s.href %>" class="btn <%= s.done ? 'btn-ghost' : 'btn-primary' %> btn-xs" style="white-space:nowrap;"><%= s.done ? 'Review →' : '→ ' + s.cta %></a>
+    </div>
+  <% }) %>
+</div>
+
+<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">
+  <% if (completedCount === totalSteps) { %>
+    <form method="POST" action="/onboarding/complete">
+      <button class="btn btn-primary">Mark onboarding complete →</button>
+    </form>
+  <% } else { %>
+    <form method="POST" action="/onboarding/skip">
+      <button class="btn btn-secondary btn-xs">Skip onboarding (you can return any time)</button>
+    </form>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

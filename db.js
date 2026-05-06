@@ -1460,6 +1460,90 @@ function init() {
   addColumnIfMissing('evidence', 'retention_until', 'DATE');
   addColumnIfMissing('evidence', 'retention_rule_id', 'INTEGER');
 
+  // ========================================================================
+  // Tier-1, Tier-2, Tier-3 expansion — see roadmap in README.
+  // ========================================================================
+
+  // Tier 1.1 — Risk treatment plan as a tracked workflow (clause 6.1.3).
+  // Each open risk gets a list of treatment actions with owners, dates,
+  // status, and (optionally) a residual L×I re-evaluation when the action
+  // closes. This is the artefact auditors sample most for 6.1.3.
+  db.exec(`CREATE TABLE IF NOT EXISTS risk_treatment_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    risk_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    owner_name TEXT,
+    due_date DATE,
+    status TEXT DEFAULT 'planned',
+    residual_likelihood INTEGER,
+    residual_impact INTEGER,
+    closed_at DATETIME,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (risk_id) REFERENCES risks(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_rta_risk ON risk_treatment_actions(risk_id);
+  CREATE INDEX IF NOT EXISTS idx_rta_workspace ON risk_treatment_actions(workspace_id, status);`);
+
+  // Tier 1.2 — Evidence freshness/expiry. valid_from / valid_until reflect
+  // the period the evidence covers (e.g., a Q1-2026 access review is valid
+  // for that period). Distinct from retention_until which is how long we
+  // keep the file, not how long the audit will accept it as current.
+  addColumnIfMissing('evidence', 'valid_from', 'DATE');
+  addColumnIfMissing('evidence', 'valid_until', 'DATE');
+  addColumnIfMissing('evidence', 'period_label', 'TEXT'); // e.g. "Q1 2026", "January 2026"
+  // Tier 3.9 — Section/sub-clause that this evidence specifically addresses
+  // (e.g., A.5.18.b for the leaver-revocation aspect of access rights).
+  addColumnIfMissing('evidence', 'clause_section', 'TEXT');
+
+  // Tier 1.3 — Certification cycle calendar. Stage 1 → Stage 2 →
+  // surveillance year 1 → surveillance year 2 → recertification.
+  // One row per planned/actual cert event per workspace.
+  db.exec(`CREATE TABLE IF NOT EXISTS cert_cycle_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    planned_date DATE,
+    actual_date DATE,
+    status TEXT DEFAULT 'planned',
+    certification_body TEXT,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_ccev_workspace ON cert_cycle_events(workspace_id, planned_date);`);
+
+  // Tier 1.4 — Internal audit lifecycle. The existing 'audits' table is
+  // metadata-only; add columns to track the engagement workflow.
+  addColumnIfMissing('audits', 'lifecycle_stage', "TEXT DEFAULT 'planned'");
+  // Stages: planned, fieldwork, findings_review, report, follow_up, closed
+  addColumnIfMissing('audits', 'fieldwork_started_at', 'DATETIME');
+  addColumnIfMissing('audits', 'report_issued_at', 'DATETIME');
+  addColumnIfMissing('audits', 'closed_at', 'DATETIME');
+
+  // Tier 3.8 — Asset criticality / BIA modeling. Existing CIA scoring
+  // covers confidentiality/integrity/availability; BIA adds business
+  // criticality + recovery objectives.
+  addColumnIfMissing('assets', 'business_criticality', 'TEXT'); // low / medium / high / critical
+  addColumnIfMissing('assets', 'rto_hours', 'INTEGER'); // recovery time objective
+  addColumnIfMissing('assets', 'rpo_hours', 'INTEGER'); // recovery point objective
+  addColumnIfMissing('assets', 'bia_notes', 'TEXT');
+
+  // Tier 3.10 — Onboarding state per tenant (firm). Tracks which onboarding
+  // steps the tenant has completed so the wizard can resume where left off.
+  db.exec(`CREATE TABLE IF NOT EXISTS tenant_onboarding (
+    firm_id INTEGER PRIMARY KEY,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    current_step INTEGER DEFAULT 1,
+    skipped INTEGER DEFAULT 0,
+    FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE CASCADE
+  );`);
+
   // Workspaces — locale + retention defaults
   addColumnIfMissing('workspaces', 'locale', "TEXT DEFAULT 'en'");
 
