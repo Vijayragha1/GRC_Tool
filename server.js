@@ -51,19 +51,71 @@ app.use(session({
   cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
 }));
 
+// Per-tenant upload partitioning: each firm gets its own subdirectory under
+// uploads/. The destination function inspects req.workspace (set by
+// requireWorkspace) or, for routes that operate without a workspace context,
+// falls back to req.user.firm_id. The stored_path written to the DB is just
+// the basename — resolveUploadPath() rebuilds the absolute path on read,
+// trying the per-firm location first and falling back to legacy uploads/ for
+// files written before partitioning existed.
 const upload = multer({
-  dest: path.join(__dirname, 'uploads'),
+  storage: multer.diskStorage({
+    destination: function (req, _file, cb) {
+      const firmId = (req.workspace && req.workspace.firm_id) || (req.user && req.user.firm_id) || 0;
+      const dir = path.join(__dirname, 'uploads', `firm_${firmId}`);
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+      cb(null, dir);
+    },
+    filename: function (_req, file, cb) {
+      const rand = require('crypto').randomBytes(8).toString('hex');
+      cb(null, `${Date.now()}-${rand}-${file.originalname.replace(/[^\w.\-]/g, '_')}`);
+    }
+  }),
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
+// Resolve a stored_path back to an absolute filesystem path. Tries the
+// per-firm directory first; falls back to the legacy unpartitioned uploads/
+// directory for files uploaded before partitioning existed.
+function resolveUploadPath(storedPath, firmId) {
+  if (!storedPath) return null;
+  if (firmId) {
+    const partitioned = path.join(__dirname, 'uploads', `firm_${firmId}`, storedPath);
+    if (fs.existsSync(partitioned)) return partitioned;
+  }
+  const legacy = path.join(__dirname, 'uploads', storedPath);
+  return fs.existsSync(legacy) ? legacy : (firmId ? path.join(__dirname, 'uploads', `firm_${firmId}`, storedPath) : legacy);
+}
+
 // ==================== HELPERS ====================
-// Auth is disabled — single-user local mode. Always returns the default firm owner.
+// Auth is disabled — single-user-per-tenant local mode. The "active tenant" is
+// stored in the session; currentUser returns the firm-owner of that tenant so
+// every existing firm_id-based query naturally scopes to the active tenant.
+function getActiveFirmId(req) {
+  const sessId = parseInt((req.session && req.session.active_firm_id) || 0, 10);
+  if (sessId) {
+    const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(sessId);
+    if (exists) return sessId;
+  }
+  // Fall back to the lowest-id firm (the one created at first boot).
+  const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
+  return first ? first.id : null;
+}
+
 function currentUser(req) {
-  if (req.session.userId) {
+  if (req.session && req.session.userId) {
     const u = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(req.session.userId);
     if (u) return u;
   }
-  return db.prepare(`SELECT * FROM users WHERE user_type='firm' AND active=1 ORDER BY id LIMIT 1`).get();
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return null;
+  return db.prepare(`SELECT * FROM users WHERE user_type='firm' AND firm_id=? AND active=1 ORDER BY id LIMIT 1`).get(firmId);
+}
+
+function listAllFirms() {
+  return db.prepare(`SELECT f.id, f.name, f.created_at,
+    (SELECT COUNT(*) FROM workspaces w WHERE w.firm_id=f.id) AS workspace_count
+    FROM firms f ORDER BY f.id`).all();
 }
 
 function requireAuth(req, res, next) {
@@ -88,21 +140,10 @@ function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'No access to this workspace.' });
   req.workspace = ws;
-  // Load active entity scope from session (if any).
-  const eid = parseInt(req.session['ws_entity_' + ws.id] || 0, 10);
-  if (eid) {
-    const ent = db.prepare('SELECT * FROM entities WHERE id=? AND workspace_id=? AND is_active=1').get(eid, ws.id);
-    if (ent) {
-      req.activeEntity = ent;
-      req.entityScopeId = ent.id;
-      res.locals.activeEntity = ent;
-    } else {
-      // Stale entity ref — clear it.
-      delete req.session['ws_entity_' + ws.id];
-    }
-  }
+  // Multi-entity scoping was removed — keep the locals as empty stubs so views that
+  // still reference them degrade gracefully without re-rendering work.
   res.locals.entitySelectorWs = ws;
-  res.locals.workspaceEntities = listWorkspaceEntities(ws.id);
+  res.locals.workspaceEntities = [];
   res.locals.userPerms = permissionsFor(req.user, ws);
   // Ensure default risk methodology exists.
   ensureWorkspaceMethodology(ws.id);
@@ -229,26 +270,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// ==================== MULTI-ENTITY SCOPING ====================
-// The active entity scope is stored in the session and applies a filter to
-// list views via SQL: `entity_id = ?` (or NULL fallthrough for workspace-wide).
-function activeEntityFilter(req, sqlAlias) {
-  if (!req.session) return { sql: '', params: [] };
-  const eid = parseInt(req.session['ws_entity_' + (req.workspace?.id || 0)] || 0, 10);
-  if (!eid) return { sql: '', params: [] };
-  const col = sqlAlias ? `${sqlAlias}.entity_id` : 'entity_id';
-  return { sql: ` AND (${col}=? OR ${col} IS NULL)`, params: [eid] };
-}
-
-function requireEntity(req) {
-  const eid = parseInt(req.session['ws_entity_' + req.workspace.id] || 0, 10);
-  if (!eid) return null;
-  return db.prepare('SELECT * FROM entities WHERE id=? AND workspace_id=?').get(eid, req.workspace.id);
-}
-
-function listWorkspaceEntities(wsId) {
-  return db.prepare('SELECT * FROM entities WHERE workspace_id=? AND is_active=1 ORDER BY name').all(wsId);
-}
+// Multi-entity scoping was removed. These stubs preserve call-site signatures
+// so server.js can be simplified incrementally rather than in one sweeping diff.
+function activeEntityFilter(_req, _sqlAlias) { return { sql: '', params: [] }; }
+function requireEntity(_req) { return null; }
+function listWorkspaceEntities(_wsId) { return []; }
 app.locals.listWorkspaceEntities = listWorkspaceEntities;
 
 // Make the active entity available to every view via res.locals.
@@ -256,6 +282,15 @@ app.use((req, res, next) => {
   res.locals.activeEntity = null;
   res.locals.entitySelectorWs = null;
   res.locals.unreadNotifications = 0;
+  // Expose active tenant + tenant list to every view for the header switcher.
+  try {
+    const firmId = getActiveFirmId(req);
+    res.locals.activeFirm = firmId ? db.prepare('SELECT id, name FROM firms WHERE id=?').get(firmId) : null;
+    res.locals.allFirms = listAllFirms();
+  } catch (_) {
+    res.locals.activeFirm = null;
+    res.locals.allFirms = [];
+  }
   next();
 });
 
@@ -274,6 +309,54 @@ app.post('/login', (req, res) => res.redirect('/dashboard'));
 app.get('/register', (req, res) => res.redirect('/dashboard'));
 app.post('/register', (req, res) => res.redirect('/dashboard'));
 app.post('/logout', (req, res) => res.redirect('/dashboard'));
+
+// ==================== TENANTS ====================
+// Tenants are firms. The active tenant lives in the session; switching swaps
+// which firm-owner currentUser() returns, which transitively scopes every
+// firm_id-filtered query to the active tenant. New tenants get their own
+// firm-owner user, their own workspaces, their own evidence directory.
+app.get('/tenants', requireAuth, (req, res) => {
+  const firms = listAllFirms();
+  const activeFirmId = getActiveFirmId(req);
+  res.render('tenants', { user: req.user, firms, activeFirmId });
+});
+
+app.post('/tenants', requireAuth, (req, res) => {
+  const name = (req.body.name || '').trim();
+  if (!name) return res.redirect('/tenants');
+  const fid = db.prepare('INSERT INTO firms (name) VALUES (?)').run(name).lastInsertRowid;
+  // Auto-create a firm-owner user — when auth is disabled this is the
+  // implicit "default user" for the new tenant. Email/password are placeholder
+  // strings since they're never actually used for authentication.
+  const placeholderEmail = `owner+firm${fid}@local`;
+  const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
+  db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
+              VALUES (?, ?, ?, 'firm', ?, 'owner', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, fid);
+  // Auto-create the per-tenant uploads directory so subsequent uploads have
+  // somewhere to land without first checking existence.
+  const tenantDir = path.join(__dirname, 'uploads', `firm_${fid}`);
+  try { fs.mkdirSync(tenantDir, { recursive: true }); } catch (_) {}
+  // Switch into the new tenant so the user lands in it.
+  req.session.active_firm_id = fid;
+  res.redirect('/dashboard');
+});
+
+app.post('/tenants/:id/switch', requireAuth, (req, res) => {
+  const fid = parseInt(req.params.id, 10);
+  const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(fid);
+  if (exists) req.session.active_firm_id = fid;
+  // The previously-active workspace likely belongs to the previous tenant —
+  // bounce to the dashboard rather than a now-403 workspace URL.
+  res.redirect('/dashboard');
+});
+
+app.post('/tenants/:id/rename', requireAuth, (req, res) => {
+  const fid = parseInt(req.params.id, 10);
+  const name = (req.body.name || '').trim();
+  if (!name) return res.redirect('/tenants');
+  db.prepare('UPDATE firms SET name=? WHERE id=?').run(name, fid);
+  res.redirect('/tenants');
+});
 
 // ==================== DASHBOARD ====================
 app.get('/dashboard', requireAuth, (req, res) => {
@@ -400,7 +483,7 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     sparkline.push({ d: key, c: sparkMap[key] || 0 });
   }
 
-  // Implementation roadmap — sequenced steps a fresher should walk through.
+  // Implementation roadmap — PDCA-aligned, mapped to ISO 27001:2022 clauses.
   // Each step is "complete" when a sensible signal exists; otherwise "pending".
   const annexAssessed = stateRows.filter(r => r.type === 'control' && r.status !== 'Not Assessed').length;
   const annexTotal = stateRows.filter(r => r.type === 'control').length;
@@ -416,46 +499,145 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const mrmsHeld = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete'`).get(ws.id).c;
   const supplierCount = db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=?`).get(ws.id).c;
 
+  // Document-presence signals for the clauses where there's no dedicated module.
+  // Each signal is "any approved doc whose name matches the relevant template" —
+  // e.g., approving the ISMS Governance Manual signals that clause 4.1 / 4.2
+  // (context + interested parties) has been documented.
+  const docSignal = (patterns) => {
+    const ors = patterns.map(() => `name LIKE ?`).join(' OR ');
+    return db.prepare(`SELECT COUNT(*) c FROM generated_docs
+      WHERE workspace_id=? AND status IN ('approved','published') AND (${ors})`).get(ws.id, ...patterns).c;
+  };
+
+  // Clause 5.2 — Information Security Policy approved by top management.
+  const ispApproved = docSignal(['Information Security Policy%']);
+  // Clauses 4.1 + 4.2 — context (internal/external issues) and interested parties.
+  const contextApproved = docSignal(['ISMS Governance Manual%', 'ISMS Manual%', 'Context%', 'Interested Parties%']);
+  // Clause 5.3 — ISMS roles and responsibilities defined.
+  const rolesApproved = docSignal(['ISMS Role —%', 'ISMS Steering%', 'Roles and Responsibilities%', 'RACI%']);
+  // Clause 6.2 — information security objectives.
+  const objectivesApproved = docSignal(['Information Security Objectives%']);
+  // Clauses 7.2 + 7.3 + 7.4 — competence, awareness, communication. The
+  // Awareness and Training Plan is the canonical doc; Communication Plan
+  // also accepted.
+  const awarenessApproved = docSignal(['Awareness and Training%', 'Awareness%', 'Communication Plan%']);
+  // Clause 9.1 — monitoring, measurement, analysis, evaluation.
+  const monitoringApproved = docSignal(['Logging and Monitoring%', 'Monitoring%', 'Measurement%', 'KPI%']);
+
+  // Risk-assessment methodology documented (clause 6.1.2 — the rules for how
+  // risks are identified, scored, and accepted; pre-requisite to running 6.1.2).
+  const methodologyActive = db.prepare(`SELECT COUNT(*) c FROM risk_methodologies
+    WHERE workspace_id=? AND is_active=1`).get(ws.id).c;
+  // Annex A controls actually implemented (clause 8.3 / Annex A.5–A.8 — the
+  // Do-phase work of running the controls included in the SoA).
+  const includedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).get(ws.id).c;
+  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
+      AND cs.status='Implemented'`).get(ws.id).c;
+
+  // PDCA mapping per the canonical ISO 27001:2022 structure:
+  //   Plan  = clauses 4, 5, 6, 7 — context, leadership, planning, support
+  //   Do    = clause 8           — operation
+  //   Check = clause 9           — monitoring, audit, review
+  //   Act   = clause 10          — improvement, NC/CA
+  // Items where the tool has no dedicated module use approved-doc presence as
+  // the signal — generating and approving the relevant template counts as
+  // "done" for that requirement.
   const roadmap = [
-    { key: 'scope', label: 'Define ISMS scope', clause: 'Clause 4.3',
+    // ============================ PLAN ============================
+    { phase: 'plan', key: 'scope', label: 'Define ISMS scope', clause: 'Clause 4.3',
       done: !!(ws.scope && ws.scope.length > 10),
       detail: ws.scope ? 'Scope statement set' : 'Set the scope on workspace settings or in an ISMS Scope document',
+      link: `/workspaces/${ws.id}#workspace-settings`, link_label: 'Edit scope' },
+    { phase: 'plan', key: 'context', label: 'Document context — internal/external issues + interested parties', clause: 'Clauses 4.1 & 4.2',
+      done: contextApproved >= 1,
+      detail: contextApproved >= 1
+        ? 'Context register / ISMS Governance Manual approved'
+        : 'Document internal & external issues and interested-party requirements (incl. climate-related per Amendment 1:2024)',
       link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { key: 'assets', label: 'Build asset register', clause: 'Clause 8.1, A.5.9',
+    { phase: 'plan', key: 'isp', label: 'Approve Information Security Policy', clause: 'Clause 5.2',
+      done: ispApproved >= 1,
+      detail: ispApproved >= 1 ? 'ISP approved' : 'Approved ISP is the foundation document — generate from template and approve',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'roles', label: 'Define ISMS roles & responsibilities', clause: 'Clause 5.3',
+      done: rolesApproved >= 1,
+      detail: rolesApproved >= 1
+        ? 'Roles & responsibilities documented'
+        : 'Assign CISO, asset owners, risk owners, internal auditor; document responsibilities and authority',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'objectives', label: 'Set information security objectives', clause: 'Clause 6.2',
+      done: objectivesApproved >= 1,
+      detail: objectivesApproved >= 1
+        ? 'Information Security Objectives approved'
+        : 'Set measurable, time-bound objectives consistent with the policy (3–7 typically)',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'methodology', label: 'Document risk-assessment methodology', clause: 'Clause 6.1.2',
+      done: methodologyActive >= 1,
+      detail: methodologyActive >= 1 ? 'Active methodology defined (scales, criteria)' : 'Likelihood/impact scales and risk-acceptance criteria must be set before scoring risks',
+      link: `/workspaces/${ws.id}/risk-methodology`, link_label: 'Methodology' },
+    { phase: 'plan', key: 'assets', label: 'Build asset register', clause: 'A.5.9 (input to 6.1.2)',
       done: assetCount >= 5, partial: assetCount > 0 && assetCount < 5,
       detail: `${assetCount} asset${assetCount === 1 ? '' : 's'} registered${assetCount > 0 && assetCount < 5 ? ' — most ISMS scopes need at least 5–10' : ''}`,
       link: `/workspaces/${ws.id}/assets`, link_label: 'Assets' },
-    { key: 'risks', label: 'Identify and score risks', clause: 'Clause 6.1.2, 8.2',
-      done: riskCount >= 5, partial: riskCount > 0 && riskCount < 5,
-      detail: `${riskCount} risk${riskCount === 1 ? '' : 's'} in register${riskCount === 0 ? ' — start from the library if unsure' : ''}`,
-      link: `/workspaces/${ws.id}/risks`, link_label: 'Risks' },
-    { key: 'gap', label: 'Gap-assess clauses & Annex A', clause: 'Clauses 4–10 + A.5–A.8',
+    { phase: 'plan', key: 'gap', label: 'Gap-assess clauses & Annex A', clause: 'Project activity (covers 4–10, A.5–A.8)',
       done: allAssessed === allTotal && allTotal > 0, partial: allAssessed > 0 && allAssessed < allTotal,
       detail: `${clausesAssessed} / ${clausesTotal} clauses · ${annexAssessed} / ${annexTotal} controls assessed`,
       link: `/workspaces/${ws.id}/controls/assess`, link_label: 'Run gap assessment' },
-    { key: 'soa', label: 'Finalize Statement of Applicability', clause: 'Clause 6.1.3 d',
+    { phase: 'plan', key: 'risks', label: 'Identify, score, and treat risks', clause: 'Clauses 6.1.2 & 6.1.3',
+      done: riskCount >= 5, partial: riskCount > 0 && riskCount < 5,
+      detail: `${riskCount} risk${riskCount === 1 ? '' : 's'} in register${riskCount === 0 ? ' — start from the library if unsure' : ''}`,
+      link: `/workspaces/${ws.id}/risks`, link_label: 'Risks' },
+    { phase: 'plan', key: 'soa', label: 'Finalize Statement of Applicability', clause: 'Clause 6.1.3 d',
       done: soaDecided === annexTotal && annexTotal > 0, partial: soaDecided > 0 && soaDecided < annexTotal,
-      detail: `${soaDecided} / ${annexTotal} controls have inclusion/exclusion decision`,
+      detail: `${soaDecided} / ${annexTotal} controls have inclusion/exclusion decision with justification`,
       link: `/workspaces/${ws.id}/soa`, link_label: 'SoA' },
-    { key: 'docs', label: 'Approve mandatory documents', clause: 'Clause 7.5',
-      done: approvedDocs >= 8, partial: approvedDocs > 0 && approvedDocs < 8,
-      detail: `${approvedDocs} document${approvedDocs === 1 ? '' : 's'} approved`,
+    { phase: 'plan', key: 'awareness', label: 'Establish competence, awareness & communication', clause: 'Clauses 7.2, 7.3, 7.4',
+      done: awarenessApproved >= 1,
+      detail: awarenessApproved >= 1
+        ? 'Awareness & Training Plan approved'
+        : 'Plan competence requirements, awareness programme (induction + annual refresh), and communication channels',
       link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { key: 'suppliers', label: 'Capture suppliers', clause: 'A.5.19–A.5.23',
+    { phase: 'plan', key: 'docs', label: 'Approve mandatory documented information', clause: 'Clause 7.5',
+      done: approvedDocs >= 8, partial: approvedDocs > 0 && approvedDocs < 8,
+      detail: `${approvedDocs} document${approvedDocs === 1 ? '' : 's'} approved (target: at least the 8 mandatory artefacts)`,
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+
+    // ============================ DO ============================
+    { phase: 'do', key: 'controls', label: 'Implement applicable Annex A controls', clause: 'Clause 8.3 + A.5–A.8',
+      done: includedControls > 0 && implementedControls === includedControls,
+      partial: implementedControls > 0 && implementedControls < includedControls,
+      detail: includedControls === 0
+        ? 'Decide applicability in the SoA first, then implement included controls'
+        : `${implementedControls} / ${includedControls} included controls marked Implemented`,
+      link: `/workspaces/${ws.id}/controls/assess`, link_label: 'Controls' },
+    { phase: 'do', key: 'suppliers', label: 'Manage supplier security operationally', clause: 'Clause 8.1 + A.5.19–A.5.22',
       done: supplierCount >= 1,
-      detail: `${supplierCount} supplier${supplierCount === 1 ? '' : 's'} registered`,
+      detail: supplierCount === 0 ? 'Identify in-scope suppliers; assess and review per supplier risk tier' : `${supplierCount} supplier${supplierCount === 1 ? '' : 's'} registered`,
       link: `/workspaces/${ws.id}/vendors`, link_label: 'Suppliers' },
-    { key: 'audit', label: 'Run an internal audit', clause: 'Clause 9.2',
+
+    // =========================== CHECK ===========================
+    { phase: 'check', key: 'monitoring', label: 'Define monitoring, measurement & evaluation', clause: 'Clause 9.1',
+      done: monitoringApproved >= 1,
+      detail: monitoringApproved >= 1
+        ? 'Monitoring approach documented'
+        : 'Determine what to monitor, methods, frequency, who analyses — KPIs aligned with objectives (6.2)',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'check', key: 'audit', label: 'Run an internal audit', clause: 'Clause 9.2',
       done: auditsScheduled >= 1,
-      detail: `${auditsScheduled} audit${auditsScheduled === 1 ? '' : 's'} scheduled or run`,
+      detail: auditsScheduled === 0 ? 'Plan the audit programme; first audit must precede Stage 1 cert audit' : `${auditsScheduled} audit${auditsScheduled === 1 ? '' : 's'} scheduled or run`,
       link: `/workspaces/${ws.id}/audits`, link_label: 'Internal audits' },
-    { key: 'mrm', label: 'Hold a management review', clause: 'Clause 9.3',
+    { phase: 'check', key: 'mrm', label: 'Hold a management review', clause: 'Clause 9.3',
       done: mrmsHeld >= 1,
-      detail: `${mrmsHeld} MRM${mrmsHeld === 1 ? '' : 's'} completed`,
+      detail: mrmsHeld === 0 ? 'Top management must review the ISMS at planned intervals; cover all 9.3.2 inputs' : `${mrmsHeld} MRM${mrmsHeld === 1 ? '' : 's'} completed`,
       link: `/workspaces/${ws.id}/mrms`, link_label: 'Management review' },
-    { key: 'ncs', label: 'Close any open nonconformities', clause: 'Clause 10.1, 10.2',
+
+    // ============================ ACT ============================
+    { phase: 'act', key: 'ncs', label: 'Track nonconformities to closure with root-cause', clause: 'Clause 10.2',
       done: ncOpen === 0,
-      detail: ncOpen === 0 ? 'No open NCs' : `${ncOpen} open NC${ncOpen === 1 ? '' : 's'} to close before cert`,
+      detail: ncOpen === 0 ? 'No open NCs' : `${ncOpen} open NC${ncOpen === 1 ? '' : 's'} — RCA + corrective action + effectiveness review per NC`,
       link: `/workspaces/${ws.id}/nonconformities`, link_label: 'Nonconformities' }
   ];
 
@@ -596,14 +778,19 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
 
   // Gaps = anything Not Implemented / Partially Implemented / Work In Progress
   // (clauses + controls). Excludes Not Applicable and Not Assessed (those are different problems).
+  // max_risk_score is the worst L*I across linked risks — used to bump priority for
+  // Not-Implemented controls protecting high-impact risks.
   const gaps = db.prepare(`
     SELECT i.id, i.type, i.title, i.category, cs.status, cs.maturity, cs.notes,
-      EXISTS (SELECT 1 FROM tasks t WHERE t.workspace_id=? AND t.iso_item_id=i.id AND t.status NOT IN ('done')) AS has_open_task
+      EXISTS (SELECT 1 FROM tasks t WHERE t.workspace_id=? AND t.iso_item_id=i.id AND t.status NOT IN ('done')) AS has_open_task,
+      (SELECT MAX(r.likelihood * r.impact) FROM risk_controls rc
+       INNER JOIN risks r ON r.id = rc.risk_id
+       WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS max_risk_score
     FROM iso_items i
     INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
-    ORDER BY i.sort_order`).all(wsId, wsId);
+    ORDER BY i.sort_order`).all(wsId, wsId, wsId);
 
   // Items still Not Assessed
   const notAssessedCount = db.prepare(`SELECT COUNT(*) c FROM iso_items i
@@ -630,12 +817,14 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
 
   // Risks linked to gap-state controls (treatment plan needs updating)
   const untreatedLinkedRisks = db.prepare(`
-    SELECT DISTINCT r.id, r.title, r.likelihood, r.impact, r.status
+    SELECT r.id, r.title, r.likelihood, r.impact, r.status,
+      GROUP_CONCAT(DISTINCT i.id || '|' || cs.status) AS blocking_controls
     FROM risks r INNER JOIN risk_controls rc ON rc.risk_id=r.id
     INNER JOIN iso_items i ON i.id=rc.iso_item_id
     INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE r.workspace_id=? AND r.status='open'
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
+    GROUP BY r.id, r.title, r.likelihood, r.impact, r.status
     ORDER BY (r.likelihood * r.impact) DESC`).all(wsId, wsId);
 
   // Status distribution for header
@@ -650,29 +839,46 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
   });
 });
 
-// Bulk-spawn remediation tasks for selected gap items
+// Bulk-spawn remediation tasks for selected gap items.
+// Priority is derived from the gap severity:
+//   Not Implemented + clause           → critical (mandatory shall not met)
+//   Not Implemented + control linked to high-risk → critical
+//   Not Implemented (control)          → high
+//   Partially Implemented              → normal
+//   Work In Progress                   → low (already being worked)
 app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const ids = Array.isArray(req.body.iso_id) ? req.body.iso_id : (req.body.iso_id ? [req.body.iso_id] : []);
   if (!ids.length) return res.redirect('back');
   const due = req.body.due_date || null;
-  const ins = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, due_date, status, created_by)
-                          VALUES (?, ?, ?, ?, ?, 'todo', ?)`);
+  const ins = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, due_date, status, priority, created_by)
+                          VALUES (?, ?, ?, ?, ?, 'todo', ?, ?)`);
   let added = 0;
   const tx = db.transaction(() => {
     for (const id of ids) {
-      const item = db.prepare(`SELECT i.id, i.type, i.title, cs.notes FROM iso_items i
+      const item = db.prepare(`SELECT i.id, i.type, i.title, cs.status, cs.notes,
+        (SELECT MAX(r.likelihood * r.impact) FROM risk_controls rc
+         INNER JOIN risks r ON r.id = rc.risk_id
+         WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS max_risk_score
+        FROM iso_items i
         LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
-        WHERE i.id=?`).get(req.workspace.id, id);
+        WHERE i.id=?`).get(req.workspace.id, req.workspace.id, id);
       if (!item) continue;
       const cleanTitle = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
       const taskTitle = `Remediate ${item.id.replace('annex-','').replace('clause-','').toUpperCase()} — ${cleanTitle}`;
-      ins.run(req.workspace.id, taskTitle, item.notes || `Close the gap identified in the gap assessment for ${item.title}.`, item.id, due, req.user.id);
+      let priority = 'normal';
+      if (item.status === 'Not Implemented') {
+        if (item.type === 'clause') priority = 'critical';
+        else if ((item.max_risk_score || 0) >= 16) priority = 'critical';
+        else priority = 'high';
+      } else if (item.status === 'Partially Implemented') priority = 'normal';
+      else if (item.status === 'Work In Progress') priority = 'low';
+      ins.run(req.workspace.id, taskTitle, item.notes || `Close the gap identified in the gap assessment for ${item.title}.`, item.id, due, priority, req.user.id);
       added++;
     }
   });
   tx();
   logAction(req.user.id, req.workspace.id, 'spawn_remediation_tasks', 'task', null, { count: added }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/controls/assess/summary`, `Spawned ${added} remediation task${added === 1 ? '' : 's'}`));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/controls/assess/summary`, `Spawned ${added} remediation task${added === 1 ? '' : 's'} with auto-priority`));
 });
 
 app.get('/workspaces/:wsId/controls/assess', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
@@ -698,6 +904,12 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   item.questions = JSON.parse(item.questions || '[]');
   item.evidence_needed = JSON.parse(item.evidence_needed || '[]');
   item.documentation_needed = JSON.parse(item.documentation_needed || '[]');
+  // Audit-grade content (data/iso-content.js → iso_items columns). Parsed once
+  // here so the template doesn't have to know about JSON encoding.
+  item.common_pitfalls = item.common_pitfalls ? JSON.parse(item.common_pitfalls) : null;
+  item.evidence_to_look_for = item.evidence_to_look_for ? JSON.parse(item.evidence_to_look_for) : null;
+  item.maturity_ladder = item.maturity_ladder ? JSON.parse(item.maturity_ladder) : null;
+  item.related_items = item.related_items ? JSON.parse(item.related_items) : null;
 
   const state = getOrCreateState(req.workspace.id, item.id);
 
@@ -726,10 +938,38 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   try { if (state.assessment_answers) savedAnswers = JSON.parse(state.assessment_answers) || {}; } catch (e) {}
   const suggestedStatus = suggestStatusFromAnswers(savedAnswers, questions.length);
 
+  // Resolve related item ids → titles for cross-reference rendering
+  let relatedRows = [];
+  if (item.related_items && item.related_items.length) {
+    const placeholders = item.related_items.map(() => '?').join(',');
+    relatedRows = db.prepare(`SELECT id, type, title FROM iso_items WHERE id IN (${placeholders})`).all(...item.related_items);
+  }
+
+  // Evidence files attached to this control — displayed in a panel on the wizard
+  // since the standalone control detail page was removed and there's no other home.
+  const evidenceList = db.prepare(`SELECT e.id, e.filename, e.size_bytes, e.description, e.uploaded_at, u.name AS uploader
+    FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
+    WHERE e.workspace_id=? AND e.iso_item_id=? ORDER BY e.uploaded_at DESC`).all(req.workspace.id, item.id);
+
+  // Linked risks, documents, and open NCs — read-only summary panels.
+  const linkedRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.status
+    FROM risks r INNER JOIN risk_controls rc ON rc.risk_id=r.id
+    WHERE rc.iso_item_id=? AND r.workspace_id=?
+    ORDER BY (r.likelihood * r.impact) DESC`).all(item.id, req.workspace.id);
+
+  const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status, dc.section_ref
+    FROM document_controls dc INNER JOIN generated_docs d ON d.id=dc.document_id
+    WHERE dc.iso_item_id=? AND d.workspace_id=? ORDER BY d.name`).all(item.id, req.workspace.id);
+
+  const openNCs = db.prepare(`SELECT id, title, severity, status, due_date FROM nonconformities
+    WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
+    ORDER BY (CASE severity WHEN 'major' THEN 0 WHEN 'minor' THEN 1 ELSE 2 END), due_date IS NULL, due_date`).all(item.id, req.workspace.id);
+
   res.render('controls_assess', {
-    user: req.user, ws: req.workspace, item, state, totals, position, sectionPosition,
+    user: req.user, ws: req.workspace, item, state, totals, position, sectionPosition, relatedRows,
     prevId, nextId: nextById, doneFlag: !!req.query.done,
-    questions, savedAnswers, suggestedStatus
+    questions, savedAnswers, suggestedStatus,
+    evidenceList, linkedRisks, linkedDocs, openNCs
   });
 });
 
@@ -738,7 +978,7 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   if (!item) return res.status(404).send('Not found');
   getOrCreateState(req.workspace.id, item.id);
 
-  const { applicability, status, maturity, inclusion_justification, exclusion_justification, notes } = req.body;
+  const { applicability, status, maturity, inclusion_justification, exclusion_justification, notes, scope_pct } = req.body;
   const sets = [], vals = [];
   // Clauses are not subject to SoA applicability — every certified ISMS must satisfy them.
   if (item.type === 'control' && applicability !== undefined) { sets.push('applicability=?'); vals.push(applicability); }
@@ -748,6 +988,10 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   if (item.type === 'control' && inclusion_justification !== undefined) { sets.push('inclusion_justification=?'); vals.push(inclusion_justification || null); }
   if (item.type === 'control' && exclusion_justification !== undefined) { sets.push('exclusion_justification=?'); vals.push(exclusion_justification || null); }
   if (notes !== undefined) { sets.push('notes=?'); vals.push(notes || null); }
+  if (scope_pct !== undefined) {
+    const n = parseInt(scope_pct, 10);
+    sets.push('scope_pct=?'); vals.push(Number.isFinite(n) && n >= 0 && n <= 100 ? n : null);
+  }
 
   // Diagnostic answers — persist as JSON keyed by question index (questions vary per item).
   const answers = {};
@@ -760,6 +1004,21 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   sets.push('last_updated=CURRENT_TIMESTAMP');
   vals.push(req.workspace.id, item.id);
   db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+
+  // Append-only history snapshot — written after the UPDATE so it captures the new
+  // values exactly. An auditor can later request the timeline for any control.
+  const cur = db.prepare(`SELECT status, applicability, maturity, scope_pct,
+    inclusion_justification, exclusion_justification, notes, assessment_answers
+    FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+  if (cur) {
+    db.prepare(`INSERT INTO control_state_history (workspace_id, iso_item_id, changed_by,
+      status, applicability, maturity, scope_pct, inclusion_justification, exclusion_justification, notes, assessment_answers)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        req.workspace.id, item.id, req.user.id,
+        cur.status, cur.applicability, cur.maturity, cur.scope_pct,
+        cur.inclusion_justification, cur.exclusion_justification, cur.notes, cur.assessment_answers
+      );
+  }
   logAction(req.user.id, req.workspace.id, 'gap_assess_item', item.type, item.id, { status, applicability }, auditCtx(req));
 
   const action = req.body.action || 'save';
@@ -777,73 +1036,27 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
     : `/workspaces/${req.workspace.id}/controls/assess?done=1`);
 });
 
+// Append-only history of every wizard save for one item — what the auditor asks for.
+app.get('/workspaces/:wsId/controls/:isoId/history', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const item = db.prepare(`SELECT id, type, title FROM iso_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  const rows = db.prepare(`SELECT h.*, u.name AS changed_by_name FROM control_state_history h
+    LEFT JOIN users u ON u.id = h.changed_by
+    WHERE h.workspace_id=? AND h.iso_item_id=?
+    ORDER BY h.snapshot_at DESC LIMIT 200`).all(req.workspace.id, item.id);
+  res.render('control_history', { user: req.user, ws: req.workspace, item, rows });
+});
+
+// The standalone control detail page was removed — the wizard now hosts
+// evidence, linked risks, linked documents, NCs, and history alongside
+// the audit-grade reference content and assessment form. Existing inbound
+// links from SoA, risks, NCs, etc. continue to work via this redirect.
 app.get('/workspaces/:wsId/controls/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
   // Reserved literal sub-routes — let them fall through.
   if (['kanban','export.csv','import','assess'].includes(req.params.isoId)) return nextMw();
-  const item = db.prepare('SELECT * FROM iso_items WHERE id = ?').get(req.params.isoId);
+  const item = db.prepare('SELECT id FROM iso_items WHERE id = ?').get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
-  item.questions = JSON.parse(item.questions || '[]');
-  item.evidence_needed = JSON.parse(item.evidence_needed || '[]');
-  item.documentation_needed = JSON.parse(item.documentation_needed || '[]');
-
-  const state = getOrCreateState(req.workspace.id, item.id);
-  const evidenceList = db.prepare(`SELECT e.*, u.name AS uploader FROM evidence e
-    LEFT JOIN users u ON u.id = e.uploaded_by
-    WHERE e.workspace_id = ? AND e.iso_item_id = ? ORDER BY e.uploaded_at DESC`)
-    .all(req.workspace.id, item.id);
-  const comments = db.prepare(`SELECT c.*, u.name AS author FROM comments c
-    INNER JOIN users u ON u.id = c.user_id
-    WHERE c.workspace_id = ? AND c.parent_type = 'control' AND c.parent_id = ?
-    ORDER BY c.created_at`).all(req.workspace.id, item.id);
-  const decComments = comments.map(c => ({ ...c, body: enc.decryptIfNeeded(c.body, req.workspace.id) }));
-  const filteredComments = isFirmUser(req.user) ? decComments : decComments.filter(c => !c.internal_only);
-  const linkedRisks = db.prepare(`SELECT r.* FROM risks r
-    INNER JOIN risk_controls rc ON rc.risk_id = r.id
-    WHERE rc.iso_item_id = ? AND r.workspace_id = ?`).all(item.id, req.workspace.id);
-  const wsUsers = db.prepare(`SELECT u.id, u.name FROM users u
-    INNER JOIN workspace_members m ON m.user_id = u.id
-    WHERE m.workspace_id = ?
-    UNION
-    SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1`)
-    .all(req.workspace.id, req.workspace.firm_id);
-
-  // Prev/next nav
-  const all = db.prepare('SELECT id FROM iso_items ORDER BY sort_order').all();
-  const idx = all.findIndex(r => r.id === item.id);
-  const prev = idx > 0 ? all[idx - 1].id : null;
-  const next = idx < all.length - 1 ? all[idx + 1].id : null;
-
-  const mappings = db.prepare(`SELECT framework, external_ref, notes FROM framework_mappings
-                               WHERE iso_item_id = ?`).all(item.id);
-
-  res.render('control_detail', {
-    user: req.user, ws: req.workspace, item, state,
-    evidenceList, comments: filteredComments, linkedRisks, wsUsers,
-    mappings, prev, next, isFirm: isFirmUser(req.user)
-  });
-});
-
-app.post('/workspaces/:wsId/controls/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
-  if (['import','kanban'].includes(req.params.isoId)) return nextMw();
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
-  const isoId = req.params.isoId;
-  getOrCreateState(req.workspace.id, isoId);
-  const fields = ['status','applicability','inclusion_justification','exclusion_justification',
-                  'maturity','notes','owner_id','due_date'];
-  if (isFirmUser(req.user)) fields.push('internal_notes');
-  const update = {};
-  fields.forEach(f => { if (req.body[f] !== undefined) update[f] = req.body[f] || null; });
-  if (update.maturity) update.maturity = parseInt(update.maturity, 10) || 0;
-  if (update.owner_id === '') update.owner_id = null;
-
-  const set = Object.keys(update).map(k => `${k} = ?`).join(', ');
-  if (set) {
-    db.prepare(`UPDATE control_states SET ${set}, last_updated = CURRENT_TIMESTAMP
-                WHERE workspace_id = ? AND iso_item_id = ?`)
-      .run(...Object.values(update), req.workspace.id, isoId);
-    logAction(req.user.id, req.workspace.id, 'update_control', 'control', isoId, update);
-  }
-  res.redirect('/workspaces/' + req.workspace.id + '/controls/' + isoId);
+  return res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
 });
 
 // ==================== COMMENTS ====================
@@ -881,8 +1094,8 @@ app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace
   const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
     .get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
-  const fp = path.join(__dirname, 'uploads', ev.stored_path);
-  if (!fs.existsSync(fp)) return res.status(404).send('File missing');
+  const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
+  if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
   res.download(fp, ev.filename);
 });
 
@@ -891,8 +1104,8 @@ app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace,
   const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
     .get(req.params.id, req.workspace.id);
   if (ev) {
-    const fp = path.join(__dirname, 'uploads', ev.stored_path);
-    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
+    if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
     db.prepare('DELETE FROM evidence WHERE id = ?').run(ev.id);
     logAction(req.user.id, req.workspace.id, 'delete_evidence', 'evidence', ev.id, null);
   }
@@ -1083,7 +1296,20 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   const docsByControl = {};
   docLinks.forEach(l => { (docsByControl[l.iso_item_id] = docsByControl[l.iso_item_id] || []).push(l); });
 
-  res.render('soa', { user: req.user, ws: req.workspace, rows, docsByControl });
+  // ISO 27001 6.1.3.d.1: SoA must show which risks make each control "necessary".
+  // Pull the actual risks linked to each control so the auditor can see the chain
+  // from risk → control → SoA inclusion without clicking through.
+  const riskLinks = db.prepare(`
+    SELECT rc.iso_item_id, r.id AS risk_id, r.title AS risk_title, r.likelihood, r.impact, r.status
+    FROM risk_controls rc
+    INNER JOIN risks r ON r.id = rc.risk_id
+    WHERE r.workspace_id = ?
+    ORDER BY (r.likelihood * r.impact) DESC
+  `).all(req.workspace.id);
+  const risksByControl = {};
+  riskLinks.forEach(l => { (risksByControl[l.iso_item_id] = risksByControl[l.iso_item_id] || []).push(l); });
+
+  res.render('soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl });
 });
 
 app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
@@ -1170,16 +1396,19 @@ app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req,
   const rows = db.prepare(`SELECT i.id, i.title, i.category,
     COALESCE(cs.applicability,'undecided') AS applicability,
     COALESCE(cs.status,'Not Assessed') AS status,
-    cs.inclusion_justification, cs.exclusion_justification
+    cs.inclusion_justification, cs.exclusion_justification,
+    (SELECT GROUP_CONCAT('R-' || r.id, '; ') FROM risk_controls rc
+     INNER JOIN risks r ON r.id = rc.risk_id
+     WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS risks_treated
     FROM iso_items i
     LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-    WHERE i.type = 'control' ORDER BY i.sort_order`).all(req.workspace.id);
+    WHERE i.type = 'control' ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id);
 
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
-  const lines = ['Control ID,Title,Category,Applicability,Status,Inclusion Justification,Exclusion Justification'];
+  const lines = ['Control ID,Title,Category,Applicability,Status,Risks Treated (6.1.3.d.1),Inclusion Justification,Exclusion Justification'];
   rows.forEach(r => {
     lines.push([r.id.replace('annex-', '').toUpperCase(), r.title, r.category, r.applicability,
-                r.status, r.inclusion_justification, r.exclusion_justification].map(esc).join(','));
+                r.status, r.risks_treated || '', r.inclusion_justification, r.exclusion_justification].map(esc).join(','));
   });
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="SoA-${req.workspace.client_name.replace(/[^\w]/g,'_')}.csv"`);
@@ -1340,8 +1569,8 @@ app.get('/workspaces/:wsId/documents/:id/source', requireAuth, requireWorkspace,
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id = ? AND workspace_id = ?')
     .get(req.params.id, req.workspace.id);
   if (!doc || !doc.source_stored_path) return res.status(404).send('No source file attached');
-  const fp = path.join(__dirname, 'uploads', doc.source_stored_path);
-  if (!fs.existsSync(fp)) return res.status(404).send('Source file missing');
+  const fp = resolveUploadPath(doc.source_stored_path, req.workspace.firm_id);
+  if (!fp || !fs.existsSync(fp)) return res.status(404).send('Source file missing');
   res.download(fp, doc.source_filename || 'source');
 });
 
@@ -2467,8 +2696,8 @@ app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace, async (re
   const evidence = db.prepare(`SELECT * FROM evidence WHERE workspace_id=?`).all(ws.id);
   let evIdx = 'EVIDENCE INDEX\n' + '='.repeat(40) + '\n\n';
   for (const e of evidence) {
-    const fp = path.join(__dirname, 'uploads', e.stored_path);
-    if (fs.existsSync(fp)) {
+    const fp = resolveUploadPath(e.stored_path, ws.firm_id);
+    if (fp && fs.existsSync(fp)) {
       zip.file(fp, { name: `08_Evidence/${e.id}_${e.filename}` });
       evIdx += `${e.id}_${e.filename}\n  Linked to: ${e.iso_item_id || '(general)'}\n  Uploaded: ${e.uploaded_at}\n  SHA-256: ${e.sha256}\n  Size: ${e.size_bytes} bytes\n  Description: ${e.description || '(none)'}\n\n`;
     }
@@ -2779,15 +3008,15 @@ app.get('/workspaces/:wsId/vendors/:id/documents/:docId/download', requireAuth, 
   const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=? AND workspace_id=?`)
     .get(req.params.docId, req.params.id, req.workspace.id);
   if (!d || !d.stored_path) return res.status(404).send('Not found');
-  const fp = path.join(__dirname, 'uploads', d.stored_path);
-  if (!fs.existsSync(fp)) return res.status(404).send('File missing');
+  const fp = resolveUploadPath(d.stored_path, req.workspace.firm_id);
+  if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
   res.download(fp, d.filename);
 });
 
 app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, requireWorkspace, (req, res) => {
   const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=?`).get(req.params.docId, req.params.id);
   if (d) {
-    if (d.stored_path) { const fp = path.join(__dirname, 'uploads', d.stored_path); if (fs.existsSync(fp)) fs.unlinkSync(fp); }
+    if (d.stored_path) { const fp = resolveUploadPath(d.stored_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); }
     db.prepare(`DELETE FROM supplier_documents WHERE id=?`).run(d.id);
     recomputeSupplierRisk(req.params.id, req.workspace.id);
   }
@@ -4193,15 +4422,15 @@ app.get('/workspaces/:wsId/handover', requireAuth, requireWorkspace, requirePerm
   // All evidence files
   const evidence = db.prepare(`SELECT * FROM evidence WHERE workspace_id=?`).all(ws.id);
   for (const e of evidence) {
-    const fp = path.join(__dirname, 'uploads', e.stored_path);
-    if (fs.existsSync(fp)) zip.file(fp, { name: `evidence/${e.id}_${e.filename}` });
+    const fp = resolveUploadPath(e.stored_path, ws.firm_id);
+    if (fp && fs.existsSync(fp)) zip.file(fp, { name: `evidence/${e.id}_${e.filename}` });
   }
   // All supplier files
   const supDocs = db.prepare(`SELECT d.* FROM supplier_documents d INNER JOIN suppliers s ON s.id=d.supplier_id WHERE s.workspace_id=?`).all(ws.id);
   for (const d of supDocs) {
     if (d.stored_path) {
-      const fp = path.join(__dirname, 'uploads', d.stored_path);
-      if (fs.existsSync(fp)) zip.file(fp, { name: `supplier-files/${d.id}_${d.filename}` });
+      const fp = resolveUploadPath(d.stored_path, ws.firm_id);
+      if (fp && fs.existsSync(fp)) zip.file(fp, { name: `supplier-files/${d.id}_${d.filename}` });
     }
   }
 
@@ -4367,8 +4596,8 @@ app.post('/workspaces/:wsId/system/rotate-key', requireAuth, requireWorkspace, (
 app.get('/workspaces/:wsId/evidence/:id/preview', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   const ev = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
-  const fp = path.join(__dirname, 'uploads', ev.stored_path);
-  if (!fs.existsSync(fp)) return res.status(404).send('File missing');
+  const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
+  if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
   const ext = path.extname(ev.filename).toLowerCase();
   const ct = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.pdf':'application/pdf','.svg':'image/svg+xml','.txt':'text/plain' }[ext] || 'application/octet-stream';
   res.setHeader('Content-Type', ct);

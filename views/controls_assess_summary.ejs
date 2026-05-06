@@ -54,19 +54,28 @@
       <table class="t">
         <thead><tr>
           <th style="width:30px;"></th><th style="width:90px;">ID</th><th>Title</th>
-          <th style="width:140px;">Status</th><th style="width:80px;">Maturity</th><th style="width:120px;">Existing task?</th>
+          <th style="width:140px;">Status</th><th style="width:90px;">Auto priority</th><th style="width:80px;">Maturity</th><th style="width:120px;">Existing task?</th>
         </tr></thead>
         <tbody>
           <% gaps.forEach(g => {
                const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
                const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
                const sevColor = g.status === 'Not Implemented' ? '#b91c1c' : g.status === 'Partially Implemented' ? '#a16207' : '#ea580c';
+               // Mirror the priority derivation on server.js spawn-tasks route.
+               let prio = 'normal';
+               if (g.status === 'Not Implemented') {
+                 if (g.type === 'clause') prio = 'critical';
+                 else if ((g.max_risk_score || 0) >= 16) prio = 'critical';
+                 else prio = 'high';
+               } else if (g.status === 'Work In Progress') prio = 'low';
+               const prioColor = prio === 'critical' ? '#b91c1c' : prio === 'high' ? '#ea580c' : prio === 'normal' ? '#a16207' : 'var(--text-secondary)';
           %>
             <tr>
               <td><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
               <td class="mono meta"><%= refCode %></td>
               <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info" style="font-size:10px;">clause</span><% } %></td>
               <td><span class="tag" style="background:<%= sevColor %>;color:white;font-size:10.5px;"><%= g.status %></span></td>
+              <td><span style="font-size:10.5px;font-weight:600;color:<%= prioColor %>;text-transform:uppercase;"><%= prio %></span></td>
               <td class="meta"><%= g.maturity != null ? g.maturity : '—' %></td>
               <td><% if (g.has_open_task) { %><span class="tag tag-warn" style="font-size:10px;">open task exists</span><% } else { %><span class="meta">—</span><% } %></td>
             </tr>
@@ -141,11 +150,21 @@
     <div class="panel-pad meta">No open risks are blocked on gap controls.</div>
   <% } else { %>
     <table class="t">
-      <thead><tr><th>Risk</th><th style="width:80px;">L × I</th><th style="width:120px;">Status</th></tr></thead>
+      <thead><tr><th>Risk</th><th>Blocking control(s)</th><th style="width:80px;">L × I</th><th style="width:120px;">Status</th></tr></thead>
       <tbody>
-        <% untreatedLinkedRisks.forEach(r => { %>
+        <% untreatedLinkedRisks.forEach(r => {
+             const blocks = (r.blocking_controls || '').split(',').filter(Boolean).map(s => {
+               const [id, st] = s.split('|');
+               return { id, st, code: id.replace('annex-','').replace('clause-','').toUpperCase() };
+             });
+        %>
           <tr>
             <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title %></a></td>
+            <td style="font-size:12px;">
+              <% blocks.forEach((b, idx) => {
+                   const color = b.st === 'Not Implemented' ? '#b91c1c' : b.st === 'Partially Implemented' ? '#a16207' : '#ea580c';
+              %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= b.id %>" class="mono" style="color:<%= color %>;text-decoration:none;border-bottom:1px dotted <%= color %>;"><%= b.code %></a><%= idx < blocks.length - 1 ? ', ' : '' %><% }) %>
+            </td>
             <td class="num meta"><%= r.likelihood %> × <%= r.impact %></td>
             <td><span class="status s-<%= r.status %>"><%= r.status %></span></td>
           </tr>

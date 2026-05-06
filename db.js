@@ -1371,8 +1371,73 @@ function init() {
   // Phase C: control verification timestamp on closure of NC / audit
   addColumnIfMissing('control_states', 'last_verified_at', 'DATETIME');
 
+  // Tasks — priority for triage of bulk-spawned remediation backlogs.
+  addColumnIfMissing('tasks', 'priority', "TEXT DEFAULT 'normal'");
+
+  // Audit-grade content for each clause/control. Authored in data/iso-content.js
+  // and synced into iso_items on every boot — change the file, restart, content
+  // updates. Existing summary/questions/evidence_needed columns stay (legacy).
+  addColumnIfMissing('iso_items', 'purpose', 'TEXT');
+  addColumnIfMissing('iso_items', 'what_good_looks_like', 'TEXT');
+  addColumnIfMissing('iso_items', 'common_pitfalls', 'TEXT');         // JSON array
+  addColumnIfMissing('iso_items', 'evidence_to_look_for', 'TEXT');    // JSON array
+  addColumnIfMissing('iso_items', 'scoping_notes', 'TEXT');
+  addColumnIfMissing('iso_items', 'maturity_ladder', 'TEXT');         // JSON {1,2,3,4}
+  addColumnIfMissing('iso_items', 'related_items', 'TEXT');           // JSON array of ids
+  try {
+    const content = require('./data/iso-content');
+    const upd = db.prepare(`UPDATE iso_items SET
+      purpose=?, what_good_looks_like=?, common_pitfalls=?, evidence_to_look_for=?,
+      scoping_notes=?, maturity_ladder=?, related_items=? WHERE id=?`);
+    let n = 0;
+    for (const [id, c] of Object.entries(content)) {
+      const r = upd.run(
+        c.purpose || null,
+        c.what_good_looks_like || null,
+        c.common_pitfalls ? JSON.stringify(c.common_pitfalls) : null,
+        c.evidence_to_look_for ? JSON.stringify(c.evidence_to_look_for) : null,
+        c.scoping_notes || null,
+        c.maturity_ladder ? JSON.stringify(c.maturity_ladder) : null,
+        c.related_items ? JSON.stringify(c.related_items) : null,
+        id
+      );
+      if (r.changes > 0) n++;
+    }
+    if (n > 0) console.log(`[content] synced ${n} ISO item(s) from data/iso-content.js`);
+  } catch (e) {
+    if (e.code !== 'MODULE_NOT_FOUND') console.warn('[content] failed to sync:', e.message);
+  }
+
   // Gap-assessment universal questions — JSON-encoded answers per item.
   addColumnIfMissing('control_states', 'assessment_answers', 'TEXT');
+
+  // Scope-of-implementation: 0-100 percentage of in-scope systems/processes where
+  // the control is actually operating. A control can be "Implemented" globally yet
+  // applied to only 60% of in-scope systems — auditors care about that gap.
+  addColumnIfMissing('control_states', 'scope_pct', 'INTEGER');
+
+  // Append-only version history of every wizard save. Lets you show an auditor
+  // exactly how a control's status, scope, and notes changed over time without
+  // tampering with the live row.
+  db.exec(`CREATE TABLE IF NOT EXISTS control_state_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    iso_item_id TEXT NOT NULL,
+    snapshot_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    changed_by INTEGER,
+    status TEXT,
+    applicability TEXT,
+    maturity INTEGER,
+    scope_pct INTEGER,
+    inclusion_justification TEXT,
+    exclusion_justification TEXT,
+    notes TEXT,
+    assessment_answers TEXT,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (iso_item_id) REFERENCES iso_items(id),
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_csh_ws_item ON control_state_history(workspace_id, iso_item_id, snapshot_at DESC);`);
 
   // Risks — KRI link convenience
   addColumnIfMissing('risks', 'is_systemic', 'INTEGER DEFAULT 0');

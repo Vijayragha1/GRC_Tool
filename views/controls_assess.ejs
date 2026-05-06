@@ -83,32 +83,115 @@
     <% } %>
   </div>
 
-  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-bottom:1px solid var(--border);">
-    <div>
-      <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">
-        <%= isClause ? 'Applicability notes' : 'Applicability — points to consider' %>
-      </div>
-      <% if (item.questions.length === 0) { %>
-        <div class="meta" style="font-size:12.5px;">Generally applies to all organizations within the ISMS scope.</div>
-      <% } else { %>
-        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
-          <% item.questions.forEach(q => { %><li style="margin-bottom:4px;"><%= q %></li><% }) %>
-        </ul>
+  <% if (item.purpose || item.what_good_looks_like) { %>
+    <% // Audit-grade content shape — rich, narrative, cross-referenced. %>
+    <%
+      const hLabel = (s) => `<div class="meta" style="font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">${s}</div>`;
+    %>
+    <div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <% if (item.purpose) { %>
+        <div>
+          <%- hLabel('What this is actually for') %>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text);"><%= item.purpose %></p>
+        </div>
+      <% } %>
+      <% if (item.what_good_looks_like) { %>
+        <div>
+          <%- hLabel('What good looks like') %>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text);"><%= item.what_good_looks_like %></p>
+        </div>
       <% } %>
     </div>
-    <div>
-      <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">What it requires</div>
-      <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
-        <% item.evidence_needed.forEach(e => { %><li style="margin-bottom:4px;"><%= e %></li><% }) %>
-      </ul>
+
+    <% if (item.common_pitfalls && item.common_pitfalls.length) { %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(185,28,28,0.03);">
+        <%- hLabel('Where this usually goes wrong') %>
+        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.55;">
+          <% item.common_pitfalls.forEach(p => { %><li style="margin-bottom:4px;"><%= p %></li><% }) %>
+        </ul>
+      </div>
+    <% } %>
+
+    <% if (item.evidence_to_look_for && item.evidence_to_look_for.length) { %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+        <%- hLabel('Evidence the auditor will ask for') %>
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+          <% item.evidence_to_look_for.forEach((e, i) => { %>
+            <tr style="<%= i < item.evidence_to_look_for.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>">
+              <td style="padding:6px 14px 6px 0;width:42%;line-height:1.5;font-weight:500;"><%= e.item %></td>
+              <td style="padding:6px 0;line-height:1.5;color:var(--text-secondary);"><%= e.what_it_tells_you %></td>
+            </tr>
+          <% }) %>
+        </table>
+      </div>
+    <% } %>
+
+    <div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:<%= item.maturity_ladder ? '1fr 1fr' : '1fr' %>;gap:24px;">
+      <% if (item.scoping_notes) { %>
+        <div>
+          <%- hLabel('Scoping notes') %>
+          <p style="margin:0;font-size:12.5px;line-height:1.55;color:var(--text);"><%= item.scoping_notes %></p>
+        </div>
+      <% } %>
+      <% if (item.maturity_ladder) { %>
+        <div>
+          <%- hLabel('Maturity ladder for this control') %>
+          <div style="display:grid;grid-template-columns:30px 1fr;gap:6px 10px;font-size:12px;line-height:1.5;">
+            <% [1,2,3,4].forEach(lvl => { if (item.maturity_ladder[lvl]) { %>
+              <div class="mono meta" style="font-weight:600;color:var(--text);"><%= lvl %> —</div>
+              <div><%= item.maturity_ladder[lvl] %></div>
+            <% } }) %>
+          </div>
+        </div>
+      <% } %>
     </div>
-    <div>
-      <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">Evidence auditors expect</div>
-      <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
-        <% item.documentation_needed.forEach(d => { %><li style="margin-bottom:4px;"><%= d %></li><% }) %>
-      </ul>
+
+    <% if (relatedRows && relatedRows.length) { %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+        <%- hLabel('Related items the auditor will check alongside') %>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <% relatedRows.forEach(r => {
+               const code = r.id.replace('annex-','').replace('clause-','').toUpperCase();
+               const title = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+          %>
+            <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" style="display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-decoration:none;color:var(--text);background:var(--bg);">
+              <span class="mono meta" style="font-weight:600;"><%= code %></span>
+              <span><%= title %></span>
+            </a>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+  <% } else { %>
+    <%# Fallback to legacy 3-column layout for items not yet authored %>
+    <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-bottom:1px solid var(--border);">
+      <div>
+        <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">
+          <%= isClause ? 'Applicability notes' : 'Applicability — points to consider' %>
+          <span class="tag tag-warn" style="font-size:9px;margin-left:6px;">legacy content — not yet rewritten</span>
+        </div>
+        <% if (item.questions.length === 0) { %>
+          <div class="meta" style="font-size:12.5px;">Generally applies to all organizations within the ISMS scope.</div>
+        <% } else { %>
+          <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+            <% item.questions.forEach(q => { %><li style="margin-bottom:4px;"><%= q %></li><% }) %>
+          </ul>
+        <% } %>
+      </div>
+      <div>
+        <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">What it requires</div>
+        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+          <% item.evidence_needed.forEach(e => { %><li style="margin-bottom:4px;"><%= e %></li><% }) %>
+        </ul>
+      </div>
+      <div>
+        <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">Evidence auditors expect</div>
+        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+          <% item.documentation_needed.forEach(d => { %><li style="margin-bottom:4px;"><%= d %></li><% }) %>
+        </ul>
+      </div>
     </div>
-  </div>
+  <% } %>
 
   <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>" class="panel-pad" id="assessForm">
     <!-- Per-item diagnostic questions — specific to this clause/control -->
@@ -117,10 +200,12 @@
         <div class="panel-pad" style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-size:13px;font-weight:600;">Current-state diagnostic <span class="meta" style="font-weight:400;">— <%= questions.length %> question<%= questions.length === 1 ? '' : 's' %> for this <%= isClause ? 'clause' : 'control' %></span></div>
-            <div class="meta" style="font-size:11.5px;">Answer each based on what's actually in place today. The tool suggests an implementation status from your answers.</div>
+            <div class="meta" style="font-size:11.5px;line-height:1.45;">Answer based on evidence you can show an auditor — not on what you intend to do. The status hint below is a rough heuristic; <strong>you</strong> set the final status based on your judgement and the evidence available.</div>
           </div>
-          <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>">
-            Suggested status: <strong id="suggestedStatusText" style="color:var(--accent);"><%= suggestedStatus || '' %></strong>
+          <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>;display:flex;gap:8px;align-items:center;" title="A heuristic from your answers. Always override with your own judgement.">
+            <span>Heuristic hint: <strong id="suggestedStatusText" style="color:var(--text-secondary);"><%= suggestedStatus || '' %></strong></span>
+            <a href="#" id="applySuggestedLink" onclick="applySuggested(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;<%= suggestedStatus ? '' : 'display:none;' %>" title="Copies the hint into the status dropdown — review before saving">Use as draft</a>
+            <a href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;">Pre-fill notes from gaps</a>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr;">
@@ -184,6 +269,15 @@
       </div>
     </div>
 
+    <div style="margin-bottom:14px;">
+      <label class="label">Scope of implementation <span class="meta">% of in-scope systems / processes / sites where this control actually operates</span></label>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="range" name="scope_pct" min="0" max="100" step="5" value="<%= state.scope_pct != null ? state.scope_pct : 100 %>" oninput="document.getElementById('scopePctReadout').textContent = this.value + '%'" style="flex:1;">
+        <span id="scopePctReadout" class="mono" style="font-size:13px;font-weight:600;width:50px;text-align:right;"><%= (state.scope_pct != null ? state.scope_pct : 100) %>%</span>
+      </div>
+      <div class="meta" style="font-size:11px;margin-top:3px;line-height:1.4;">A control marked "Implemented" at 60% scope means it's working on 60% of in-scope assets. Auditors will sample what's *not* covered.</div>
+    </div>
+
     <% if (!isClause) { %>
       <div id="inclusionBlock" style="margin-bottom:14px;<%= isExcluded ? 'display:none;' : '' %>">
         <label class="label">Inclusion justification <span class="meta">audit-defensible — why this control is in scope</span></label>
@@ -202,7 +296,7 @@
     </div>
 
     <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
-      <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>" class="meta link-muted" style="font-size:12px;">Open full <%= isClause ? 'clause' : 'control' %> detail (evidence, comments, linked risks) →</a>
+      <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>/history" class="meta link-muted" style="font-size:12px;">View change history →</a>
       <div style="display:flex;gap:6px;">
         <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
         <button name="action" value="save" class="btn btn-primary">Save &amp; next →</button>
@@ -211,7 +305,136 @@
   </form>
 </div>
 
+<!-- Evidence + linked items panels (folded in from the deleted standalone control detail page) -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+  <!-- Evidence -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2 style="font-size:14px;">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
+      <span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span>
+    </div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;">
+      <input type="hidden" name="iso_item_id" value="<%= item.id %>">
+      <input type="file" name="file" required style="font-size:12px;flex:1;">
+      <input type="text" name="description" placeholder="Optional note" class="input" style="font-size:12px;width:140px;">
+      <button class="btn btn-primary btn-xs">Upload</button>
+    </form>
+    <% if (!evidenceList || evidenceList.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No evidence yet.</div>
+    <% } else { %>
+      <div style="max-height:240px;overflow-y:auto;">
+        <% evidenceList.forEach(e => { %>
+          <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="flex:1;min-width:0;">
+              <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="color:var(--text);text-decoration:none;font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= e.filename %></a>
+              <div class="meta" style="font-size:11px;"><%= e.uploader || 'unknown' %> · <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.description) { %> · <%= e.description %><% } %></div>
+            </div>
+            <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return confirm('Delete this evidence file?')"><button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);">×</button></form>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Open NCs -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2 style="font-size:14px;">Open nonconformities (<%= openNCs ? openNCs.length : 0 %>)</h2>
+      <span class="meta">NCs raised against this item</span>
+    </div>
+    <% if (!openNCs || openNCs.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No open NCs.</div>
+    <% } else { %>
+      <div style="max-height:300px;overflow-y:auto;">
+        <% openNCs.forEach(n => {
+             const sev = n.severity === 'major' ? '#b91c1c' : n.severity === 'minor' ? '#a16207' : 'var(--text-secondary)';
+        %>
+          <a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" style="display:block;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;text-decoration:none;color:var(--text);">
+            <div style="display:flex;justify-content:space-between;gap:8px;">
+              <span style="font-weight:500;flex:1;"><%= n.title %></span>
+              <span class="tag" style="background:<%= sev %>;color:white;font-size:10px;"><%= n.severity %></span>
+            </div>
+            <div class="meta" style="font-size:11px;">Status: <%= n.status %><% if (n.due_date) { %> · due <%= n.due_date %><% } %></div>
+          </a>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+  <!-- Linked risks -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2 style="font-size:14px;">Risks treated by this <%= isClause ? 'clause' : 'control' %> (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2>
+    </div>
+    <% if (!linkedRisks || linkedRisks.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No risks linked. <% if (!isClause) { %><a href="/workspaces/<%= ws.id %>/risks" style="color:var(--accent);">Link from the risk register →</a><% } %></div>
+    <% } else { %>
+      <div style="max-height:240px;overflow-y:auto;">
+        <% linkedRisks.forEach(r => { %>
+          <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;text-decoration:none;color:var(--text);">
+            <span style="flex:1;"><span class="mono meta" style="margin-right:6px;">R-<%= r.id %></span><%= r.title %></span>
+            <span class="num meta" style="font-size:11px;"><%= r.likelihood %>×<%= r.impact %></span>
+          </a>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Linked documents -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2 style="font-size:14px;">Documents covering this <%= isClause ? 'clause' : 'control' %> (<%= linkedDocs ? linkedDocs.length : 0 %>)</h2>
+    </div>
+    <% if (!linkedDocs || linkedDocs.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No documents linked. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Link from the document library →</a></div>
+    <% } else { %>
+      <div style="max-height:240px;overflow-y:auto;">
+        <% linkedDocs.forEach(d => { %>
+          <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="display:block;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;text-decoration:none;color:var(--text);">
+            <div style="font-weight:500;"><%= d.name %></div>
+            <div class="meta" style="font-size:11px;"><%= d.category || '—' %> · <%= d.status || '—' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
+          </a>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
 <script>
+const QUESTION_TEXTS = <%- JSON.stringify(questions || []) %>;
+
+function applySuggested(e) {
+  if (e) e.preventDefault();
+  const txt = document.getElementById('suggestedStatusText');
+  const sel = document.querySelector('select[name="status"]');
+  if (!txt || !sel) return;
+  const val = txt.textContent.trim();
+  const allowed = ['Implemented','Partially Implemented','Work In Progress','Not Implemented'];
+  if (!allowed.includes(val)) return;
+  for (const o of sel.options) { if (o.value === val) { sel.value = val; break; } }
+}
+
+function prefillNotesFromGaps(e) {
+  if (e) e.preventDefault();
+  const ta = document.querySelector('textarea[name="notes"]');
+  if (!ta) return;
+  const lines = ['Gaps identified during assessment:'];
+  for (let i = 0; i < QUESTION_TEXTS.length; i++) {
+    const sel = document.querySelector('input[name="q_' + i + '"]:checked');
+    if (!sel) continue;
+    if (sel.value === 'no') lines.push('- [No] ' + QUESTION_TEXTS[i]);
+    else if (sel.value === 'partial') lines.push('- [Partial] ' + QUESTION_TEXTS[i]);
+  }
+  if (lines.length === 1) {
+    alert('No gaps to pre-fill — answer questions with No or Partial first.');
+    return;
+  }
+  ta.value = (ta.value && ta.value.trim() ? ta.value.trim() + '\n\n' : '') + lines.join('\n');
+  ta.focus();
+}
+
 function toggleExclusion() {
   const f = document.getElementById('applicabilityField');
   if (!f) return;
@@ -247,10 +470,12 @@ function recomputeSuggested() {
   const hint = document.getElementById('suggestedStatusHint');
   const text = document.getElementById('suggestedStatusText');
   if (!hint || !text) return;
+  const applyLink = document.getElementById('applySuggestedLink');
   if (count < QUESTION_COUNT) {
-    hint.style.display = 'inline';
+    hint.style.display = 'flex';
     text.textContent = `${count} of ${QUESTION_COUNT} answered…`;
     text.style.color = 'var(--text-secondary)';
+    if (applyLink) applyLink.style.display = 'none';
     return;
   }
   const ratio = total / count;
@@ -259,9 +484,10 @@ function recomputeSuggested() {
   else if (ratio >= 0.5)  { status = 'Partially Implemented';  color = '#a16207'; }
   else if (ratio > 0)     { status = 'Work In Progress';       color = '#ea580c'; }
   else                    { status = 'Not Implemented';        color = '#b91c1c'; }
-  hint.style.display = 'inline';
+  hint.style.display = 'flex';
   text.textContent = status;
   text.style.color = color;
+  if (applyLink) applyLink.style.display = 'inline';
 }
 </script>
 

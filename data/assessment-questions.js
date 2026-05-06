@@ -296,6 +296,359 @@ const BESPOKE = {
     'Are secure coding practices documented and followed?',
     'Are developers trained in secure coding?',
     'Is code reviewed (peer review, SAST) before production deployment?'
+  ],
+
+  // ===== Remaining Annex A.5 organizational controls =====
+  'annex-a.5.2': [
+    'Are information security roles and responsibilities defined in writing (policy, RACI, job descriptions)?',
+    'Are these allocated to specific people or functions?',
+    'Are the people in these roles aware of their responsibilities?'
+  ],
+  'annex-a.5.3': [
+    'Have duties whose combination creates risk been identified (e.g., request and approve access; develop and deploy)?',
+    'Is segregation enforced through process or system controls?',
+    'Where segregation is impractical, are compensating controls (logging, peer review) in place?'
+  ],
+  'annex-a.5.4': [
+    'Are managers expected to ensure their teams understand and apply security responsibilities?',
+    'Is this expectation documented (in policy, in job descriptions)?',
+    'Are channels available for staff to raise security concerns or questions?'
+  ],
+  'annex-a.5.5': [
+    'Are relevant authorities (regulators, law enforcement, CERT) and the circumstances for contacting them identified?',
+    'Are contact details and escalation paths documented and current?',
+    'Have responsibilities for making contact been assigned?'
+  ],
+  'annex-a.5.6': [
+    'Are memberships, subscriptions, or participation in special interest groups (ISACs, sector forums, vendor groups) maintained?',
+    'Is intelligence from these groups acted on (feeds into risk assessment, controls)?'
+  ],
+  'annex-a.5.8': [
+    'Are information security activities embedded in the project lifecycle (kickoff risk assessment, security requirements, design review, security testing, closure)?',
+    'Are security responsibilities defined for project roles?',
+    'Are project records (risk assessments, decisions) retained?'
+  ],
+  'annex-a.5.9': [
+    'Is there an inventory of information and associated assets (systems, data sets, devices)?',
+    'Does each asset have an assigned owner?',
+    'Is the inventory kept current as assets are procured, transferred, or decommissioned?'
+  ],
+  'annex-a.5.10': [
+    'Is there a documented acceptable use policy covering devices, networks, applications, removable media, and information sharing?',
+    'Has it been communicated and acknowledged by users?',
+    'Are violations addressed through the disciplinary process?'
+  ],
+  'annex-a.5.11': [
+    'Is there a documented off-boarding / transfer process covering return of physical and information assets?',
+    'Are access rights revoked at the same time?',
+    'Are returns tracked (asset list, signatures)?'
+  ],
+  'annex-a.5.12': [
+    'Is there a documented information classification scheme (e.g., Public / Internal / Confidential / Restricted)?',
+    'Is information actually classified by owners?',
+    'Is the classification reviewed when value or sensitivity changes?'
+  ],
+  'annex-a.5.13': [
+    'Are labelling procedures defined for the formats in use (documents, emails, databases, removable media)?',
+    'Are labels applied in practice (visible on documents, in email subject lines, in metadata)?',
+    'Are tools used to automate labelling where possible?'
+  ],
+  'annex-a.5.14': [
+    'Are rules for transferring information (internal and external) defined per classification level?',
+    'Are appropriate protective controls used (encryption in transit, secure courier, NDAs)?',
+    'Are transfers with third parties covered by agreements?'
+  ],
+  'annex-a.5.19': [
+    'Is there a list of suppliers in scope (those processing org information or providing critical services)?',
+    'Are risks assessed for each supplier relationship?',
+    'Are security requirements defined and proportional to the relationship?'
+  ],
+  'annex-a.5.20': [
+    'Do supplier agreements include security clauses (confidentiality, incident notification, sub-processor controls, audit rights, data return/destruction)?',
+    'Are clauses tailored to the relationship rather than boilerplate-only?',
+    'Are agreements reviewed when scope changes?'
+  ],
+  'annex-a.5.21': [
+    'Are security requirements defined for ICT acquisition (hardware, software, services)?',
+    'Are supply-chain risks (sub-suppliers, software components, dependencies) considered?',
+    'Are these requirements included in procurement and contracts?'
+  ],
+  'annex-a.5.22': [
+    'Is supplier performance and security reviewed against agreements at planned intervals?',
+    'Are supplier changes (sub-processor changes, scope changes) controlled and approved?',
+    'Are review records retained?'
+  ],
+  'annex-a.5.23': [
+    'Are security requirements for cloud services defined and documented per service?',
+    'Is the shared-responsibility split documented for each cloud service in use?',
+    'Are exit arrangements (data return / deletion) defined?'
+  ],
+  'annex-a.5.27': [
+    'Are post-incident reviews conducted to identify root causes and improvement opportunities?',
+    'Are lessons fed back into ISMS controls, training, monitoring?',
+    'Are records of lessons learned and actions retained?'
+  ],
+  'annex-a.5.28': [
+    'Are procedures defined for collecting and preserving evidence (chain of custody, secure storage)?',
+    'Are responders trained in evidence handling?',
+    'Are tools/processes ready for legally admissible collection if required?'
+  ],
+  'annex-a.5.32': [
+    'Are software licensing obligations tracked?',
+    'Are users educated on IPR (no unauthorized copying, software installation)?',
+    'Are technical controls in place to restrict unauthorized software installation?'
+  ],
+  'annex-a.5.33': [
+    'Is retention defined for records (regulatory, contractual, business)?',
+    'Are records protected against unauthorized access, modification, and loss per classification?',
+    'Are records disposed of securely at end of retention?'
+  ],
+  'annex-a.5.34': [
+    'Are applicable privacy laws and contractual obligations (GDPR, DPDP, CCPA, etc.) identified?',
+    'Are technical and organizational measures implemented (consent, lawful basis records, DSR processes)?',
+    'Are data subject rights (access, deletion, correction) supported in practice?'
+  ],
+  'annex-a.5.35': [
+    'Are independent reviews of information security planned and conducted (internal audit, external assessor)?',
+    'Are reviewers independent of the area being reviewed?',
+    'Are review outputs fed into management review and improvement?'
+  ],
+  'annex-a.5.36': [
+    'Is compliance with policies, rules, and standards reviewed (self-assessment, internal audit, technical compliance checks)?',
+    'Are non-compliances tracked to remediation?',
+    'Is the review evidence retained?'
+  ],
+  'annex-a.5.37': [
+    'Are operating procedures documented for routine operations and security-relevant tasks (backup, patch, incident, access)?',
+    'Are procedures kept current and accessible to those who need them?',
+    'Are procedures reviewed when systems or processes change?'
+  ],
+
+  // ===== Annex A.6 — People controls =====
+  'annex-a.6.1': [
+    'Are background screening requirements defined per role sensitivity?',
+    'Is screening completed before access is granted?',
+    'Are equivalent expectations applied to contractors and third-party personnel?'
+  ],
+  'annex-a.6.2': [
+    'Do employment and contractor agreements include information security responsibilities?',
+    'Do they include post-termination obligations (confidentiality, IPR)?',
+    'Are agreements signed before access is granted?'
+  ],
+  'annex-a.6.4': [
+    'Is the disciplinary process for security violations documented?',
+    'Has it been communicated to staff?',
+    'Is it applied consistently and proportionately?'
+  ],
+  'annex-a.6.7': [
+    'Are remote-working rules documented (locations, device requirements, environment)?',
+    'Are technical controls in place (endpoint hardening, secure access, MFA)?',
+    'Have remote workers been briefed on the rules?'
+  ],
+  'annex-a.6.8': [
+    'Is there a clear channel for reporting information security events (email, ticket, hotline)?',
+    'Have staff been trained on what to report and how?',
+    'Are reports acknowledged and acted on within defined timeframes?'
+  ],
+
+  // ===== Annex A.7 — Physical controls =====
+  'annex-a.7.1': [
+    'Are physical security perimeters defined for areas containing information assets?',
+    'Are perimeter controls (walls, doors, locks, fences) maintained and inspected?',
+    'Are perimeters proportional to the sensitivity of what they protect?'
+  ],
+  'annex-a.7.2': [
+    'Are entry controls (badges, keys, biometric, escorted entry) implemented for restricted areas?',
+    'Are visitor logs maintained where appropriate?',
+    'Are access rights to physical areas reviewed periodically?'
+  ],
+  'annex-a.7.3': [
+    'Are offices, rooms, and facilities secured according to their sensitivity (locks, restricted lists)?',
+    'Are environmental factors (no signage advertising sensitive areas) considered?',
+    'Are sensitive rooms (server rooms, SOC) given additional protection?'
+  ],
+  'annex-a.7.5': [
+    'Are physical and environmental threats (fire, flood, power loss, civil events) identified for each location?',
+    'Are protective controls in place (suppression systems, UPS, climate control)?',
+    'Are detective controls in place (smoke alarms, water sensors, monitoring)?'
+  ],
+  'annex-a.7.6': [
+    'Are rules defined for working in secure areas (escort policy, devices allowed, observation)?',
+    'Are these rules communicated to those who work in or visit these areas?',
+    'Are logs maintained for entry to secure areas?'
+  ],
+  'annex-a.7.7': [
+    'Is there a clear-desk and clear-screen policy?',
+    'Are screen auto-lock timeouts enforced via configuration?',
+    'Is awareness reinforced (signage, periodic checks, walk-throughs)?'
+  ],
+  'annex-a.7.8': [
+    'Is equipment sited to reduce environmental and unauthorized-access risks?',
+    'Are cabling and physical access to equipment protected?',
+    'Are equipment moves controlled to maintain protections?'
+  ],
+  'annex-a.7.9': [
+    'Are rules defined for off-premises use of organizational equipment (laptops, mobile devices)?',
+    'Are protections (encryption, MDM, physical security guidance) applied?',
+    'Are losses and thefts reported and tracked?'
+  ],
+  'annex-a.7.10': [
+    'Are storage media (USB, removable drives, backup tapes) handled per classification?',
+    'Is media securely sanitized or destroyed before disposal or reuse?',
+    'Is destruction documented (certificates, logs)?'
+  ],
+  'annex-a.7.11': [
+    'Are supporting utilities (power, cooling, network) provisioned with redundancy or alternatives appropriate to availability needs?',
+    'Are UPS / generators tested at planned intervals?',
+    'Is utility maintenance scheduled and documented?'
+  ],
+  'annex-a.7.12': [
+    'Is cabling protected from interception and damage (conduits, segregation, secured routing)?',
+    'Are cables labeled to support change without errors?',
+    'Are cable rooms / risers access-controlled?'
+  ],
+  'annex-a.7.13': [
+    'Is equipment maintained per manufacturer guidance and on schedule?',
+    'Are maintenance providers vetted and access-controlled?',
+    'Are security controls applied when equipment leaves site for service (data wipe, escort)?'
+  ],
+  'annex-a.7.14': [
+    'Are storage media sanitized or destroyed before disposal or reuse, regardless of cause?',
+    'Is the procedure documented and followed (certificates of destruction)?',
+    'Are records of disposal retained?'
+  ],
+
+  // ===== Annex A.8 — Technological controls =====
+  'annex-a.8.1': [
+    'Are endpoint security requirements defined (configuration baseline, anti-malware, encryption, screen lock)?',
+    'Are endpoints managed (centrally configured, patched, monitored)?',
+    'Are equivalent expectations applied to BYOD where allowed?'
+  ],
+  'annex-a.8.3': [
+    'Are technical access controls aligned with the access control policy?',
+    'Are restrictions enforced at function and data levels where appropriate?',
+    'Are exceptions tracked and reviewed?'
+  ],
+  'annex-a.8.4': [
+    'Is access to source code restricted (repository ACLs, branch protection)?',
+    'Are protected branches and review requirements enforced for production code?',
+    'Are access rights to source code reviewed periodically?'
+  ],
+  'annex-a.8.6': [
+    'Is system capacity (compute, storage, network) monitored?',
+    'Are future capacity needs projected based on growth and business plans?',
+    'Are capacity adjustments made before service degrades?'
+  ],
+  'annex-a.8.9': [
+    'Are secure configuration baselines defined for systems in scope (servers, endpoints, network devices)?',
+    'Are baselines actually applied (verified by tooling, drift detected)?',
+    'Are configuration changes controlled through change management?'
+  ],
+  'annex-a.8.10': [
+    'Is information retention defined per data type?',
+    'Are deletion processes implemented (including backups and cloud storage)?',
+    'Is deletion documented (logs, certificates) where required?'
+  ],
+  'annex-a.8.11': [
+    'Are masking, anonymization, or pseudonymization techniques used where appropriate (e.g., test environments, analytics)?',
+    'Is the approach documented and approved?',
+    'Is the technique effective (i.e., re-identification risk considered)?'
+  ],
+  'annex-a.8.12': [
+    'Are DLP measures in place across relevant channels (email, web, endpoint, cloud)?',
+    'Are rules tuned to minimize false positives while catching real leakage?',
+    'Are alerts triaged and incidents recorded?'
+  ],
+  'annex-a.8.14': [
+    'Are redundancy needs determined from availability and RTO/RPO requirements?',
+    'Is redundancy implemented for critical processing facilities?',
+    'Is failover tested at planned intervals (not just designed)?'
+  ],
+  'annex-a.8.15': [
+    'Is logging configured for systems based on risk and policy (auth, admin actions, data access)?',
+    'Are logs protected from tampering (immutability, access control)?',
+    'Are logs retained per defined timeframes?',
+    'Are logs analyzed (SIEM, periodic review) for security-relevant events?'
+  ],
+  'annex-a.8.17': [
+    'Are systems synchronized to authoritative time sources (NTP)?',
+    'Is time-sync monitored for drift?',
+    'Are time stamps consistent across systems for correlation?'
+  ],
+  'annex-a.8.18': [
+    'Is the use of privileged utility programs (e.g., system tools that can override controls) restricted?',
+    'Is their use logged and monitored?',
+    'Are users of these utilities identified and approved?'
+  ],
+  'annex-a.8.19': [
+    'Is software installation controlled through change management or technical restrictions (allowlisting, restricted permissions)?',
+    'Are users prevented from installing unauthorized software on managed endpoints?',
+    'Is approved software tracked?'
+  ],
+  'annex-a.8.20': [
+    'Are network security controls (firewalls, hardening, access control) deployed appropriate to risk?',
+    'Are network device configurations reviewed and hardened?',
+    'Is network access logged and monitored?'
+  ],
+  'annex-a.8.21': [
+    'Are security features identified for each network service in use?',
+    'Are these requirements included in agreements when services are outsourced?',
+    'Is service security monitored against agreements?'
+  ],
+  'annex-a.8.22': [
+    'Is the network segmented based on risk (e.g., user, server, management, DMZ)?',
+    'Is traffic between segments controlled and monitored?',
+    'Are segmentation rules documented and reviewed?'
+  ],
+  'annex-a.8.23': [
+    'Is web filtering deployed for users on the corporate network and on managed endpoints?',
+    'Are categories blocked aligned with risk (malware, phishing, inappropriate)?',
+    'Are exceptions documented and time-limited?'
+  ],
+  'annex-a.8.25': [
+    'Is security integrated into each phase of the development lifecycle (requirements, design, code, test, release, maintain)?',
+    'Are security activities documented (threat modeling, security testing)?',
+    'Are gates enforced before release?'
+  ],
+  'annex-a.8.26': [
+    'Are security requirements defined upfront for applications (auth, encryption, logging, input validation)?',
+    'Are these requirements approved before build or acquisition?',
+    'Are they verified before release?'
+  ],
+  'annex-a.8.27': [
+    'Are secure architecture principles documented (defense in depth, least privilege, secure defaults, fail-secure)?',
+    'Are these principles applied in design reviews?',
+    'Are deviations justified and approved?'
+  ],
+  'annex-a.8.29': [
+    'Is security testing performed throughout development (SAST, DAST, dependency scanning)?',
+    'Is penetration testing performed before major releases or annually?',
+    'Are findings tracked to remediation with defined SLAs?'
+  ],
+  'annex-a.8.30': [
+    'Are security requirements included in outsourced development agreements?',
+    'Are deliverables verified (code review, security testing) before acceptance?',
+    'Is supplier development practice assessed (e.g., questionnaires, audits)?'
+  ],
+  'annex-a.8.31': [
+    'Are development, test, and production environments separated technically?',
+    'Is promotion between environments controlled (change management, segregation of duties)?',
+    'Is production data prevented from leaking to lower environments?'
+  ],
+  'annex-a.8.32': [
+    'Is there a documented change management process covering standard, normal, and emergency changes?',
+    'Are changes risk-assessed, approved, tested, and documented?',
+    'Are emergency changes reviewed retrospectively?'
+  ],
+  'annex-a.8.33': [
+    'Is production data avoided in test environments where possible?',
+    'When production data is used, is it masked, anonymized, or access-restricted?',
+    'Is test data managed under the same protections as production where required?'
+  ],
+  'annex-a.8.34': [
+    'Are scope and timing of audit testing on operational systems agreed in advance with system owners?',
+    'Are protections in place to minimize disruption (read-only access, off-peak windows)?',
+    'Are audit access rights logged and revoked after the audit?'
   ]
 };
 

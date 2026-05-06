@@ -18,21 +18,34 @@
     <thead><tr>
       <th style="width:60px">ID</th>
       <th>Control</th>
-      <th style="width:60px" title="Risks linked to this control">R</th>
+      <th style="width:200px" title="Risks treated by this control — required by 6.1.3.d.1">Risks treated</th>
       <th style="width:60px" title="Evidence files linked to this control">E</th>
       <th style="width:60px" title="Open nonconformities on this control">NC</th>
-      <th style="width:280px">Covered by (linked documents)</th>
+      <th style="width:240px">Covered by (linked documents)</th>
       <th style="width:140px">Applicability</th>
       <th style="width:170px">Status</th>
       <th>Justification</th>
     </tr></thead>
     <tbody>
-      <% rows.forEach(r => { const linkedDocs = (docsByControl && docsByControl[r.id]) || []; %>
+      <% rows.forEach(r => {
+           const linkedDocs = (docsByControl && docsByControl[r.id]) || [];
+           const linkedRisks = (typeof risksByControl !== 'undefined' && risksByControl[r.id]) || [];
+      %>
         <form method="POST" action="/workspaces/<%= ws.id %>/soa/<%= r.id %>" class="contents">
           <tr>
             <td class="mono meta"><%= r.id.replace('annex-', '').toUpperCase() %></td>
             <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.systemic_count >= 3) { %> <span class="tag tag-danger" style="font-size:10px;" title="<%= r.systemic_count %> findings in last 12 months">SYSTEMIC</span><% } %><% if (r.last_verified_at) { %><div class="meta" style="font-size:10.5px;">verified <%= r.last_verified_at.slice(0,10) %></div><% } %></td>
-            <td><% if (r.risk_count > 0) { %><span class="tag tag-success num"><%= r.risk_count %></span><% } else { %><span class="meta">—</span><% } %></td>
+            <td style="font-size:11.5px;line-height:1.4;">
+              <% if (linkedRisks.length === 0) { %>
+                <% if (r.applicability === 'included') { %>
+                  <span class="tag tag-warn" style="font-size:10px;" title="An included control with no linked risk fails 6.1.3.d.1">unjustified</span>
+                <% } else { %>
+                  <span class="meta">—</span>
+                <% } %>
+              <% } else { %>
+                <% linkedRisks.slice(0, 3).forEach((rk, idx) => { %><a href="/workspaces/<%= ws.id %>/risks/<%= rk.risk_id %>" title="<%= rk.risk_title %> · L<%= rk.likelihood %>×I<%= rk.impact %>" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">R-<%= rk.risk_id %></a><% if (idx < Math.min(linkedRisks.length, 3) - 1) { %><span class="meta">, </span><% } %><% }) %><% if (linkedRisks.length > 3) { %><span class="meta"> +<%= linkedRisks.length - 3 %></span><% } %>
+              <% } %>
+            </td>
             <td><% if (r.evidence_count > 0) { %><span class="tag tag-info num"><%= r.evidence_count %></span><% } else { %><span class="meta">—</span><% } %></td>
             <td><% if (r.open_nc_count > 0) { %><span class="tag tag-danger num"><%= r.open_nc_count %></span><% } else { %><span class="meta">—</span><% } %></td>
             <td>

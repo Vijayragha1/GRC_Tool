@@ -1,0 +1,63 @@
+<%- include('partials/header', { title: 'Tenants', user, ws: null, active: 'tenants' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Tenants</h1>
+    <div class="page-subtitle">Each tenant has its own workspaces, users, evidence storage, and audit log. Switching tenants in the header sets the active context for everything you do.</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head"><h2>Create new tenant</h2></div>
+  <form method="POST" action="/tenants" class="panel-pad" style="display:flex;gap:8px;align-items:flex-end;">
+    <div style="flex:1;">
+      <label class="label">Tenant name</label>
+      <input class="input" name="name" required placeholder="e.g., Acme Consulting" autofocus>
+    </div>
+    <button class="btn btn-primary">Create + switch</button>
+  </form>
+  <div class="meta panel-pad" style="border-top:1px solid var(--border);font-size:12px;padding-top:8px;">
+    A new tenant gets a fresh firm-owner user, a clean uploads directory at <code>uploads/firm_{id}/</code>, and zero workspaces. You'll switch into it after creation.
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h2>All tenants (<%= firms.length %>)</h2>
+  </div>
+  <table class="t">
+    <thead><tr>
+      <th style="width:60px;">ID</th>
+      <th>Name</th>
+      <th style="width:140px;">Workspaces</th>
+      <th style="width:160px;">Created</th>
+      <th style="width:280px;text-align:right;">Action</th>
+    </tr></thead>
+    <tbody>
+      <% firms.forEach(f => { %>
+        <tr style="<%= f.id === activeFirmId ? 'background:rgba(8,145,178,0.05);' : '' %>">
+          <td class="mono meta"><%= f.id %></td>
+          <td>
+            <form method="POST" action="/tenants/<%= f.id %>/rename" style="display:flex;gap:6px;align-items:center;">
+              <input class="input" name="name" value="<%= f.name %>" style="font-size:13px;flex:1;">
+              <button class="btn btn-ghost btn-xs" title="Rename">Save</button>
+            </form>
+          </td>
+          <td class="num meta"><%= f.workspace_count %></td>
+          <td class="meta" style="font-size:11.5px;"><%= f.created_at ? f.created_at.slice(0,10) : '—' %></td>
+          <td style="text-align:right;">
+            <% if (f.id === activeFirmId) { %>
+              <span class="tag tag-success" style="font-size:10.5px;">active</span>
+            <% } else { %>
+              <form method="POST" action="/tenants/<%= f.id %>/switch" style="display:inline;">
+                <button class="btn btn-secondary btn-xs">Switch to this tenant →</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

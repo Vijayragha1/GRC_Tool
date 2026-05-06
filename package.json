@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "backup": "node scripts/backup.js",
+    "test": "node tests/smoke.test.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",

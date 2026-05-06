@@ -20,32 +20,66 @@
   </div>
 </div>
 
-<!-- Implementation roadmap -->
+<!-- Implementation roadmap, grouped by PDCA -->
 <% if (typeof roadmap !== 'undefined') {
      const completed = roadmap.filter(r => r.done).length;
      const partials = roadmap.filter(r => r.partial).length;
+     const phases = [
+       { key: 'plan',  label: 'Plan',  blurb: 'Context, scope, risks, SoA',           color: '#0891b2' },
+       { key: 'do',    label: 'Do',    blurb: 'Implement controls and documents',     color: '#7c3aed' },
+       { key: 'check', label: 'Check', blurb: 'Internal audit and management review', color: '#a16207' },
+       { key: 'act',   label: 'Act',   blurb: 'Close NCs and improve',                color: '#16a34a' }
+     ];
 %>
 <div class="panel" style="margin-bottom:20px;">
-  <div class="panel-head"><h2>Implementation roadmap</h2><span class="meta"><strong style="color:var(--text);"><%= completed %></strong> / <%= roadmap.length %> done<% if (partials) { %> · <%= partials %> in progress<% } %> · sequenced steps to certification</span></div>
-  <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:0;">
-    <% roadmap.forEach((r, i) => {
-         const tickColor = r.done ? '#16a34a' : r.partial ? '#ea580c' : 'var(--text-tertiary)';
-         const tickBg    = r.done ? 'rgba(22,163,74,0.10)' : r.partial ? 'rgba(234,88,12,0.10)' : 'var(--bg-subtle)';
-         const tickGlyph = r.done ? '✓' : r.partial ? '·' : (i + 1);
-         const evenSide  = i % 2 === 1;
+  <div class="panel-head">
+    <h2>Implementation roadmap <span class="meta" style="font-weight:400;font-size:13px;">· PDCA</span></h2>
+    <span class="meta"><strong style="color:var(--text);"><%= completed %></strong> / <%= roadmap.length %> done<% if (partials) { %> · <%= partials %> in progress<% } %></span>
+  </div>
+
+  <!-- Phase progress strip -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border);">
+    <% phases.forEach((ph, idx) => {
+         const items = roadmap.filter(r => r.phase === ph.key);
+         const phDone = items.filter(r => r.done).length;
+         const phPct  = items.length ? Math.round(phDone / items.length * 100) : 0;
     %>
-      <div style="display:grid;grid-template-columns:30px 1fr;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);<%= evenSide ? 'border-left:1px solid var(--border);' : '' %>align-items:start;">
-        <div style="width:26px;height:26px;border-radius:13px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0;"><%= tickGlyph %></div>
-        <div style="min-width:0;">
-          <div style="font-size:13.5px;font-weight:500;line-height:1.3;"><%= r.label %> <span class="meta" style="font-weight:400;">· <%= r.clause %></span></div>
-          <div class="meta" style="font-size:12px;margin-top:2px;line-height:1.4;"><%= r.detail %></div>
-          <% if (!r.done) { %>
-            <a href="<%= r.link %>" style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:500;">→ <%= r.link_label %></a>
-          <% } %>
+      <div style="padding:10px 14px;<%= idx > 0 ? 'border-left:1px solid var(--border);' : '' %>">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <span style="font-weight:600;font-size:13px;color:<%= ph.color %>;text-transform:uppercase;letter-spacing:0.04em;"><%= ph.label %></span>
+          <span class="num meta" style="font-size:11.5px;"><%= phDone %>/<%= items.length %></span>
+        </div>
+        <div class="meta" style="font-size:11px;margin-bottom:6px;"><%= ph.blurb %></div>
+        <div style="height:4px;background:var(--bg-subtle);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:<%= phPct %>%;background:<%= ph.color %>;transition:width 0.2s;"></div>
         </div>
       </div>
     <% }) %>
   </div>
+
+  <!-- Steps grouped by phase -->
+  <% phases.forEach(ph => {
+       const items = roadmap.filter(r => r.phase === ph.key);
+       if (items.length === 0) return;
+  %>
+    <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:<%= ph.color %>;">
+      <%= ph.label %> <span class="meta" style="font-weight:400;text-transform:none;letter-spacing:normal;">· <%= ph.blurb %></span>
+    </div>
+    <% items.forEach((r, i) => {
+         const tickColor = r.done ? '#16a34a' : r.partial ? '#ea580c' : 'var(--text-tertiary)';
+         const tickBg    = r.done ? 'rgba(22,163,74,0.10)' : r.partial ? 'rgba(234,88,12,0.10)' : 'var(--bg-subtle)';
+         const tickGlyph = r.done ? '✓' : r.partial ? '·' : (i + 1);
+    %>
+      <div style="display:grid;grid-template-columns:30px 1fr auto;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:start;">
+        <div style="width:26px;height:26px;border-radius:13px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0;"><%= tickGlyph %></div>
+        <div style="min-width:0;">
+          <div style="font-size:13.5px;font-weight:500;line-height:1.3;"><%= r.label %> <span class="meta" style="font-weight:400;">· <%= r.clause %></span></div>
+          <div class="meta" style="font-size:12px;margin-top:2px;line-height:1.4;"><%= r.detail %></div>
+        </div>
+        <a href="<%= r.link %>" class="btn <%= r.done ? 'btn-ghost' : 'btn-secondary' %> btn-xs" style="white-space:nowrap;<%= r.done ? 'color:var(--text-secondary);' : '' %>"><%= r.done ? 'Review →' : '→ ' + r.link_label %></a>
+      </div>
+    <% }) %>
+  <% }) %>
 </div>
 <% } %>
 
@@ -211,13 +245,13 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
   <% } %>
 </div>
 
-<details style="margin-top:24px">
+<details id="workspace-settings" style="margin-top:24px">
   <summary class="link-muted" style="font-size:13px;">Workspace settings</summary>
   <div class="panel panel-pad" style="margin-top:8px">
     <form method="POST" action="/workspaces/<%= ws.id %>/update" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
       <div><label class="label">Industry</label><input class="input" name="industry" value="<%= ws.industry || '' %>"></div>
-      <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" value="<%= ws.scope || '' %>"></div>
+      <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" id="scope-input" name="scope" value="<%= ws.scope || '' %>"></div>
       <div><label class="label">Target cert date</label><input class="input" name="target_cert_date" type="date" value="<%= ws.target_cert_date || '' %>"></div>
       <div><label class="label">Stage</label>
         <select class="select" name="stage">
@@ -230,5 +264,31 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
     </form>
   </div>
 </details>
+
+<script>
+  // Open the Workspace-settings <details> AND focus the scope input when
+  // arriving via #workspace-settings. Lands the user on the field they came
+  // to edit, not on the summary line above an unopened collapsible.
+  (function () {
+    const focusScope = () => {
+      if (window.location.hash !== '#workspace-settings') return;
+      const det = document.getElementById('workspace-settings');
+      const inp = document.getElementById('scope-input');
+      if (det) det.open = true;
+      // Two animation frames so the details has finished rendering its expanded
+      // size before we scroll, otherwise the browser scrolls to a wrong offset
+      // computed against the collapsed height.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (inp) {
+          inp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          inp.focus({ preventScroll: true });
+          inp.select();
+        }
+      }));
+    };
+    focusScope();
+    window.addEventListener('hashchange', focusScope);
+  })();
+</script>
 
 <%- include('partials/footer') %>
