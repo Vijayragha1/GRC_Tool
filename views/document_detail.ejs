@@ -26,7 +26,7 @@
           <% linkedControls.forEach(lc => { %>
             <tr>
               <td><code style="font-size:11.5px;"><%= lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code></td>
-              <td><%= lc.title %></td>
+              <td><%= (lc.title || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '') %></td>
               <td class="meta" style="text-transform:capitalize;"><%= lc.type %><% if (lc.category) { %> · <%= lc.category %><% } %></td>
               <td class="meta"><%= lc.section_ref || '—' %></td>
               <td style="text-align:right;">
@@ -44,17 +44,24 @@
     <% if (can('document.edit') && !doc.locked) {
          const grp = {}; allControls.forEach(c => { (grp[c.type] = grp[c.type] || []).push(c); });
          const linkedIds = new Set((linkedControls || []).map(lc => lc.iso_item_id));
+         // Strip the leading code prefix from the canonical title so the option
+         // renders as "A.5.15 — Access control" instead of "A.5.15 — A.5.15 Access control".
+         const cleanTitle = (t) => (t || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '');
     %>
-      <!-- Single-pick form (with optional section ref) -->
+      <!-- Single-pick form with type-to-search filter (with optional section ref) -->
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls" style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;">
         <div>
           <label class="label">Link a single control / clause</label>
-          <select class="select" name="iso_item_id" required>
+          <input type="text" id="single-pick-search" placeholder="Type to filter — e.g. access control, A.5.15, monitoring…" oninput="filterSinglePick(this.value)" class="input" style="font-size:12.5px;margin-bottom:4px;">
+          <select class="select" name="iso_item_id" id="single-pick-select" required>
             <option value="">— pick —</option>
             <% Object.keys(grp).forEach(t => { %>
-              <optgroup label="<%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>">
-                <% grp[t].filter(c => !linkedIds.has(c.id)).forEach(c => { %>
-                  <option value="<%= c.id %>"><%= c.id.replace('annex-','').replace('clause-','').toUpperCase() %> — <%= c.title %></option>
+              <optgroup label="<%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>" data-search="<%= t %>">
+                <% grp[t].filter(c => !linkedIds.has(c.id)).forEach(c => {
+                     const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const ctitle = cleanTitle(c.title);
+                %>
+                  <option value="<%= c.id %>" data-search="<%= (code + ' ' + ctitle).toLowerCase() %>"><%= code %> — <%= ctitle %></option>
                 <% }) %>
               </optgroup>
             <% }) %>
@@ -63,6 +70,24 @@
         <div><label class="label">Section ref <span class="meta">(optional)</span></label><input class="input" name="section_ref" placeholder="e.g. §4.2"></div>
         <div><button class="btn btn-primary btn-xs">Link</button></div>
       </form>
+      <script>
+        // Filter the single-pick <select>'s <option>s by data-search match.
+        // Empty optgroups are hidden so the dropdown stays clean.
+        function filterSinglePick(q) {
+          const s = (q || '').toLowerCase().trim();
+          const sel = document.getElementById('single-pick-select');
+          if (!sel) return;
+          sel.querySelectorAll('optgroup').forEach(grp => {
+            let visibleCount = 0;
+            grp.querySelectorAll('option').forEach(opt => {
+              const match = !s || (opt.dataset.search || '').includes(s);
+              opt.hidden = !match;
+              if (match) visibleCount++;
+            });
+            grp.hidden = visibleCount === 0;
+          });
+        }
+      </script>
 
       <!-- Bulk multi-pick (collapsible — most docs cover 5–10 items) -->
       <details style="margin-top:12px;">
@@ -84,11 +109,12 @@
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;">
                 <% available.forEach(c => {
                      const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const ctitle = cleanTitle(c.title);
                 %>
-                  <label class="bulk-row" data-search="<%= (code + ' ' + c.title).toLowerCase() %>" style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12.5px;cursor:pointer;">
+                  <label class="bulk-row" data-search="<%= (code + ' ' + ctitle).toLowerCase() %>" style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12.5px;cursor:pointer;">
                     <input type="checkbox" class="bulk-pick" name="iso_item_id" value="<%= c.id %>" onchange="updateBulkCount()">
                     <span class="mono meta" style="font-size:11px;width:80px;flex-shrink:0;"><%= code %></span>
-                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= c.title %></span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= ctitle %></span>
                   </label>
                 <% }) %>
               </div>
