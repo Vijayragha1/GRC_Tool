@@ -82,20 +82,73 @@
   </form>
 </div>
 
+<!-- Tag filter bar -->
+<% if (typeof taggedItems !== 'undefined' && taggedItems.length > 0) { %>
+  <div class="panel" style="margin-bottom:14px;">
+    <form method="GET" action="/workspaces/<%= ws.id %>/documents" class="panel-pad" style="display:flex;gap:8px;align-items:end;">
+      <div style="flex:1;">
+        <label class="label">Filter by tagged clause / control</label>
+        <select class="select" name="tag" onchange="this.form.submit()">
+          <option value="">All documents (<%= docs.length %><%= tagFilter ? '+' : '' %>)</option>
+          <optgroup label="Main body clauses">
+            <% taggedItems.filter(i => i.type === 'clause').forEach(i => { %>
+              <option value="<%= i.id %>" <%= tagFilter === i.id ? 'selected' : '' %>><%= i.id.replace('clause-','').toUpperCase() %> — <%= i.title %></option>
+            <% }) %>
+          </optgroup>
+          <optgroup label="Annex A controls">
+            <% taggedItems.filter(i => i.type === 'control').forEach(i => { %>
+              <option value="<%= i.id %>" <%= tagFilter === i.id ? 'selected' : '' %>><%= i.id.replace('annex-','').toUpperCase() %> — <%= i.title.replace(/^A\.[0-9.]+ /, '') %></option>
+            <% }) %>
+          </optgroup>
+        </select>
+      </div>
+      <% if (tagFilter) { %>
+        <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">Clear filter</a>
+      <% } %>
+    </form>
+  </div>
+<% } %>
+
 <div class="panel" style="overflow:hidden">
   <table class="t">
     <thead><tr>
-      <th>Name</th><th style="width:120px">Category</th><th style="width:140px">Status</th>
-      <th style="width:80px">Version</th><th style="width:160px">Updated</th><th style="width:120px"></th>
+      <th>Name</th>
+      <th style="width:110px">Category</th>
+      <th style="width:120px">Status</th>
+      <th style="width:60px">Ver</th>
+      <th style="width:280px">Tagged clauses / controls</th>
+      <th style="width:140px">Updated</th>
+      <th style="width:120px"></th>
     </tr></thead>
     <tbody>
-      <% docs.forEach(d => { %>
+      <% docs.forEach(d => {
+           const tags = (typeof tagsByDoc !== 'undefined' && tagsByDoc[d.id]) || [];
+           const visibleTags = tags.slice(0, 4);
+           const hiddenCount = tags.length - visibleTags.length;
+      %>
         <tr>
           <td><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= d.name %></a></td>
           <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= d.category || '—' %></td>
           <td><span class="status s-<%= d.status === 'approved' || d.status === 'published' ? 'done' : d.status %>"><%= d.status %></span></td>
           <td class="num meta">v<%= d.version %></td>
-          <td class="num meta"><%= d.updated_at %></td>
+          <td>
+            <% if (tags.length === 0) { %>
+              <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="font-size:11.5px;color:#a16207;text-decoration:none;font-style:italic;" title="No tags — auditors use these to trace coverage">+ tag</a>
+            <% } else { %>
+              <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                <% visibleTags.forEach(t => {
+                     const code = t.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const isClause = t.type === 'clause';
+                %>
+                  <a href="?tag=<%= t.iso_item_id %>" class="mono" style="font-size:10.5px;font-weight:500;padding:1px 6px;border-radius:3px;text-decoration:none;background:<%= isClause ? 'rgba(8,145,178,0.10)' : 'rgba(124,58,237,0.10)' %>;color:<%= isClause ? '#0891b2' : '#7c3aed' %>;" title="<%= t.section_ref ? '§' + t.section_ref : '' %>"><%= code %></a>
+                <% }) %>
+                <% if (hiddenCount > 0) { %>
+                  <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="meta" style="font-size:10.5px;text-decoration:none;padding:1px 4px;">+<%= hiddenCount %></a>
+                <% } %>
+              </div>
+            <% } %>
+          </td>
+          <td class="num meta" style="font-size:11.5px;"><%= d.updated_at %></td>
           <td style="text-align:right">
             <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/docx" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">.docx</a>
             <span style="color:var(--text-tertiary);">·</span>
@@ -106,7 +159,7 @@
         </tr>
       <% }) %>
       <% if (docs.length === 0) { %>
-        <tr><td colspan="6" style="padding:0;">
+        <tr><td colspan="7" style="padding:0;">
           <div class="empty-state">
             <div class="empty-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>

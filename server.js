@@ -1804,14 +1804,49 @@ function substitutePlaceholders(content, vars) {
 }
 
 app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res) => {
-  const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name
+  // Optional tag filter — `?tag=annex-a.5.15` shows only docs linked to that
+  // clause/control. Drives the auditor-side question "which documents cover
+  // A.5.15?" without leaving the documents list.
+  const tagFilter = req.query.tag || '';
+  const docFilterClause = tagFilter
+    ? `AND d.id IN (SELECT document_id FROM document_controls WHERE iso_item_id = ?)`
+    : '';
+  const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
+
+  const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name,
+    (SELECT COUNT(*) FROM document_controls dc WHERE dc.document_id = d.id) AS tag_count
     FROM generated_docs d
     LEFT JOIN users u ON u.id = d.created_by
     LEFT JOIN doc_templates t ON t.id = d.template_id
-    WHERE d.workspace_id = ? ORDER BY d.updated_at DESC`).all(req.workspace.id);
+    WHERE d.workspace_id = ? ${docFilterClause}
+    ORDER BY d.updated_at DESC`).all(...params);
+
+  // Pull the tag chips for each doc — keep the per-doc list small (top 4 +
+  // "and N more" overflow) so the table stays compact even on heavily-tagged
+  // documents.
+  const tagsByDoc = {};
+  if (docs.length) {
+    const placeholders = docs.map(() => '?').join(',');
+    const tagRows = db.prepare(`SELECT dc.document_id, dc.iso_item_id, dc.section_ref, i.type
+      FROM document_controls dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
+      WHERE dc.document_id IN (${placeholders}) ORDER BY i.sort_order`).all(...docs.map(d => d.id));
+    tagRows.forEach(r => { (tagsByDoc[r.document_id] = tagsByDoc[r.document_id] || []).push(r); });
+  }
+
+  // Distinct tagged iso_items in this workspace — for the filter dropdown.
+  const taggedItems = db.prepare(`SELECT DISTINCT i.id, i.type, i.title
+    FROM document_controls dc
+    INNER JOIN generated_docs d ON d.id = dc.document_id
+    INNER JOIN iso_items i ON i.id = dc.iso_item_id
+    WHERE d.workspace_id = ? ORDER BY i.sort_order`).all(req.workspace.id);
+
   const templates = db.prepare(`SELECT * FROM doc_templates
     WHERE is_system = 1 OR firm_id = ? ORDER BY category, name`).all(req.workspace.firm_id);
-  res.render('documents', { user: req.user, ws: req.workspace, docs, templates });
+
+  res.render('documents', {
+    user: req.user, ws: req.workspace, docs, templates,
+    tagsByDoc, taggedItems, tagFilter
+  });
 });
 
 app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
