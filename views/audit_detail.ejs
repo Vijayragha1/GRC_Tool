@@ -137,4 +137,66 @@
   </details>
 </div>
 
+<!-- Tier C.9 — Sampling justification + per-control sample log (clause 9.2) -->
+<div class="panel" style="margin-top:18px;">
+  <div class="panel-head">
+    <h2>Sampling <span class="meta" style="font-weight:400;font-size:13px;">· Clause 9.2</span></h2>
+    <span class="meta">Pop. <%= audit.population_size || '—' %> · sample <%= audit.sample_size || '—' %></span>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/sampling" class="panel-pad" style="display:grid;grid-template-columns:1fr 100px 100px;gap:8px;align-items:end;">
+    <div>
+      <label class="label">Overall sampling justification</label>
+      <textarea class="textarea" name="sampling_justification" rows="2" placeholder="e.g., 10% sample stratified by criticality; high-risk controls fully sampled; population from system inventory dated 2026-04-01."><%= audit.sampling_justification || '' %></textarea>
+    </div>
+    <div><label class="label">Population size</label><input class="input" type="number" name="population_size" value="<%= audit.population_size || '' %>"></div>
+    <div><label class="label">Sample size</label><input class="input" type="number" name="sample_size" value="<%= audit.sample_size || '' %>"></div>
+    <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Save sampling</button></div>
+  </form>
+
+  <% if (samples && samples.length > 0) { %>
+    <table class="t" style="border-top:1px solid var(--border);">
+      <thead><tr>
+        <th style="width:140px;">Control</th>
+        <th>What was sampled</th>
+        <th style="width:110px;">Date</th>
+        <th style="width:90px;">Pop / Sample</th>
+        <th style="width:240px;">Finding</th>
+        <th style="width:50px;"></th>
+      </tr></thead>
+      <tbody>
+        <% samples.forEach(s => { %>
+          <tr>
+            <td class="mono meta" style="font-size:11.5px;"><%= s.iso_item_id ? s.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() : '—' %></td>
+            <td style="font-size:12.5px;"><%= s.description %></td>
+            <td class="meta" style="font-size:11.5px;"><%= s.sample_taken_at || '—' %></td>
+            <td class="num meta" style="font-size:11.5px;"><%= s.population_size || '—' %> / <%= s.sample_size || '—' %></td>
+            <td style="font-size:12px;"><%= s.finding || '—' %></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples/<%= s.id %>/delete" onsubmit="return confirm('Delete sample?')" style="display:inline;">
+                <button class="btn btn-ghost btn-xs" style="color:var(--text-secondary);">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:160px 1fr 110px 80px 80px 1fr auto;gap:6px;align-items:end;">
+    <div>
+      <label class="label">Control / clause</label>
+      <select name="iso_item_id" class="select" style="font-size:12px;">
+        <option value="">— optional —</option>
+        <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.id.replace('annex-','').replace('clause-','').toUpperCase() %></option><% }) %>
+      </select>
+    </div>
+    <div><label class="label">What was sampled</label><input class="input" name="description" required placeholder="e.g., 5 of 28 access reviews from Q1" style="font-size:12px;"></div>
+    <div><label class="label">Date</label><input class="input" type="date" name="sample_taken_at" style="font-size:12px;"></div>
+    <div><label class="label">Pop</label><input class="input" type="number" name="population_size" style="font-size:12px;"></div>
+    <div><label class="label">Sample</label><input class="input" type="number" name="sample_size" style="font-size:12px;"></div>
+    <div><label class="label">Finding</label><input class="input" name="finding" placeholder="OK / minor NC / major NC" style="font-size:12px;"></div>
+    <div><button class="btn btn-primary btn-xs">Add</button></div>
+  </form>
+</div>
+
 <%- include('partials/footer') %>

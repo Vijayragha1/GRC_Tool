@@ -2228,7 +2228,11 @@ app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res
     LEFT JOIN iso_items i ON i.id = f.iso_item_id
     WHERE f.audit_id = ? ORDER BY f.created_at`).all(audit.id);
   const allItems = db.prepare(`SELECT id, title FROM iso_items ORDER BY sort_order`).all();
-  res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems });
+  // Tier C.9 — per-control samples taken during the audit
+  const samples = db.prepare(`SELECT s.*, i.title AS iso_title FROM audit_samples s
+    LEFT JOIN iso_items i ON i.id=s.iso_item_id
+    WHERE s.audit_id=? ORDER BY s.sample_taken_at IS NULL, s.sample_taken_at DESC`).all(audit.id);
+  res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples });
 });
 
 app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res) => {
@@ -2239,6 +2243,99 @@ app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, re
     .run(title, scope || null, audit_date || null, auditor_name || null,
          status || 'planned', summary || null, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
+});
+
+// ==================== TIER C.10 — CONTINUAL IMPROVEMENT REGISTER ====================
+// Improvements driven by data (audit findings, MRM outputs, monitoring),
+// distinct from corrective actions on NCs (10.2). Required by clause 10.1.
+app.get('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, res) => {
+  const filter = req.query.filter || 'open';
+  let q = `SELECT * FROM improvements WHERE workspace_id=?`;
+  if (filter === 'open') q += ` AND status NOT IN ('done','cancelled')`;
+  q += ` ORDER BY (CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 ELSE 3 END), due_date IS NULL, due_date`;
+  const items = db.prepare(q).all(req.workspace.id);
+  res.render('improvements', { user: req.user, ws: req.workspace, items, filter });
+});
+
+app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, res) => {
+  const { title, description, source, source_ref, owner_name, due_date } = req.body;
+  if (!title || !title.trim()) return res.redirect('back');
+  db.prepare(`INSERT INTO improvements (workspace_id, title, description, source, source_ref, owner_name, due_date, created_by)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    req.workspace.id, title.trim(), description || null,
+    source || null, source_ref || null, owner_name || null, due_date || null, req.user.id
+  );
+  logAction(req.user.id, req.workspace.id, 'add_improvement', 'improvement', null, { title }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/improvements`);
+});
+
+app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, (req, res) => {
+  const { title, description, source, source_ref, owner_name, due_date, status, impact_notes } = req.body;
+  db.prepare(`UPDATE improvements SET
+    title=?, description=?, source=?, source_ref=?, owner_name=?, due_date=?, status=?, impact_notes=?,
+    closed_at=CASE WHEN ? IN ('done','cancelled') AND closed_at IS NULL THEN CURRENT_TIMESTAMP
+                   WHEN ? NOT IN ('done','cancelled') THEN NULL
+                   ELSE closed_at END
+    WHERE id=? AND workspace_id=?`).run(
+    title, description || null, source || null, source_ref || null, owner_name || null,
+    due_date || null, status || 'open', impact_notes || null,
+    status, status, req.params.id, req.workspace.id
+  );
+  res.redirect(`/workspaces/${req.workspace.id}/improvements`);
+});
+
+app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+  db.prepare(`DELETE FROM improvements WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/improvements`);
+});
+
+// ==================== TIER C.11 — ASSET RELATIONSHIPS GRAPH ====================
+// SVG graph of how assets depend on each other. Useful for blast-radius
+// reasoning: "if this database is compromised / unavailable, what else is
+// affected?". The asset_relationships table already exists and is populated
+// from the asset detail page.
+app.get('/workspaces/:wsId/assets/graph', requireAuth, requireWorkspace, requirePermission('asset.view'), (req, res) => {
+  const assets = db.prepare(`SELECT id, name, type, classification, business_criticality
+    FROM assets WHERE workspace_id=? ORDER BY name`).all(req.workspace.id);
+  const rels = db.prepare(`SELECT parent_asset_id, child_asset_id, relation
+    FROM asset_relationships WHERE workspace_id=?`).all(req.workspace.id);
+  res.render('assets_graph', { user: req.user, ws: req.workspace, assets, rels });
+});
+
+// Tier C.9 — Per-audit sampling justification + per-control sample log.
+// Clause 9.2 expects sampling decisions to be defensible. The audit detail
+// gets two new bits: (1) a sampling-justification narrative, and (2) a
+// table of per-control samples taken with population/sample sizes and findings.
+app.post('/workspaces/:wsId/audits/:id/sampling', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const { sampling_justification, sample_size, population_size } = req.body;
+  db.prepare(`UPDATE audits SET sampling_justification=?, sample_size=?, population_size=?
+              WHERE id=? AND workspace_id=?`).run(
+    sampling_justification || null,
+    sample_size ? parseInt(sample_size, 10) : null,
+    population_size ? parseInt(population_size, 10) : null,
+    req.params.id, req.workspace.id
+  );
+  res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
+});
+
+app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const { iso_item_id, description, sample_taken_at, population_size, sample_size, finding } = req.body;
+  if (!description) return res.redirect('back');
+  db.prepare(`INSERT INTO audit_samples
+    (audit_id, iso_item_id, description, sample_taken_at, population_size, sample_size, finding)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    req.params.id, iso_item_id || null, description.trim(),
+    sample_taken_at || null,
+    population_size ? parseInt(population_size, 10) : null,
+    sample_size ? parseInt(sample_size, 10) : null,
+    finding || null
+  );
+  res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
+});
+
+app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  db.prepare(`DELETE FROM audit_samples WHERE id=? AND audit_id=?`).run(req.params.sid, req.params.id);
+  res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
 });
 
 // Tier 1.4 — Audit lifecycle stage transitions (planned → fieldwork →
