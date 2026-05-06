@@ -48,45 +48,112 @@
          // renders as "A.5.15 — Access control" instead of "A.5.15 — A.5.15 Access control".
          const cleanTitle = (t) => (t || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '');
     %>
-      <!-- Single-pick form with type-to-search filter (with optional section ref) -->
+      <!-- Single-pick combobox: input + searchable dropdown panel.
+           Native <select> can't filter as you type; this is a small custom
+           combobox that does. Hidden input holds the chosen iso_item_id. -->
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls" style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;">
         <div>
           <label class="label">Link a single control / clause</label>
-          <input type="text" id="single-pick-search" placeholder="Type to filter — e.g. access control, A.5.15, monitoring…" oninput="filterSinglePick(this.value)" class="input" style="font-size:12.5px;margin-bottom:4px;">
-          <select class="select" name="iso_item_id" id="single-pick-select" required>
-            <option value="">— pick —</option>
-            <% Object.keys(grp).forEach(t => { %>
-              <optgroup label="<%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>" data-search="<%= t %>">
-                <% grp[t].filter(c => !linkedIds.has(c.id)).forEach(c => {
+          <div class="combo" data-combo style="position:relative;">
+            <input type="hidden" name="iso_item_id" data-combo-value required>
+            <input type="text" data-combo-input class="input" placeholder="Click or type to search — e.g. access control, A.5.15, monitoring…" autocomplete="off" style="font-size:12.5px;">
+            <div data-combo-panel style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow-lg);max-height:280px;overflow-y:auto;">
+              <% Object.keys(grp).forEach(t => {
+                   const available = grp[t].filter(c => !linkedIds.has(c.id));
+                   if (!available.length) return;
+              %>
+                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
+                  <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
+                </div>
+                <% available.forEach(c => {
                      const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
                      const ctitle = cleanTitle(c.title);
+                     const label = code + ' — ' + ctitle;
                 %>
-                  <option value="<%= c.id %>" data-search="<%= (code + ' ' + ctitle).toLowerCase() %>"><%= code %> — <%= ctitle %></option>
+                  <div data-combo-option data-value="<%= c.id %>" data-label="<%= label %>" data-search="<%= (code + ' ' + ctitle).toLowerCase() %>" style="padding:6px 10px;font-size:12.5px;cursor:pointer;display:flex;gap:8px;align-items:baseline;">
+                    <span class="mono meta" style="font-size:11px;width:80px;flex-shrink:0;"><%= code %></span>
+                    <span><%= ctitle %></span>
+                  </div>
                 <% }) %>
-              </optgroup>
-            <% }) %>
-          </select>
+              <% }) %>
+            </div>
+          </div>
         </div>
         <div><label class="label">Section ref <span class="meta">(optional)</span></label><input class="input" name="section_ref" placeholder="e.g. §4.2"></div>
         <div><button class="btn btn-primary btn-xs">Link</button></div>
       </form>
       <script>
-        // Filter the single-pick <select>'s <option>s by data-search match.
-        // Empty optgroups are hidden so the dropdown stays clean.
-        function filterSinglePick(q) {
-          const s = (q || '').toLowerCase().trim();
-          const sel = document.getElementById('single-pick-select');
-          if (!sel) return;
-          sel.querySelectorAll('optgroup').forEach(grp => {
-            let visibleCount = 0;
-            grp.querySelectorAll('option').forEach(opt => {
-              const match = !s || (opt.dataset.search || '').includes(s);
-              opt.hidden = !match;
-              if (match) visibleCount++;
+        // Reusable searchable-combobox initialiser. Wires every [data-combo]
+        // on the page so we can use the same component elsewhere.
+        (function initCombos() {
+          document.querySelectorAll('[data-combo]').forEach(root => {
+            if (root.dataset.comboInit === '1') return;
+            root.dataset.comboInit = '1';
+            const input = root.querySelector('[data-combo-input]');
+            const valueEl = root.querySelector('[data-combo-value]');
+            const panel = root.querySelector('[data-combo-panel]');
+            const options = panel.querySelectorAll('[data-combo-option]');
+            const groupLabels = panel.querySelectorAll('[data-combo-grouplabel]');
+            let activeIdx = -1;
+
+            const open = () => { panel.style.display = 'block'; };
+            const close = () => { panel.style.display = 'none'; };
+            const filter = (q) => {
+              const s = (q || '').toLowerCase().trim();
+              let firstVisible = -1;
+              options.forEach((o, i) => {
+                const match = !s || (o.dataset.search || '').includes(s);
+                o.style.display = match ? '' : 'none';
+                if (match && firstVisible === -1) firstVisible = i;
+              });
+              // Hide group label when none of its following options are visible.
+              groupLabels.forEach(gl => {
+                let visible = 0;
+                let n = gl.nextElementSibling;
+                while (n && !n.hasAttribute('data-combo-grouplabel')) {
+                  if (n.hasAttribute('data-combo-option') && n.style.display !== 'none') visible++;
+                  n = n.nextElementSibling;
+                }
+                gl.style.display = visible ? '' : 'none';
+              });
+              activeIdx = firstVisible;
+              highlight();
+            };
+            const highlight = () => {
+              options.forEach((o, i) => {
+                o.style.background = (i === activeIdx) ? 'var(--bg-subtle)' : '';
+              });
+              if (activeIdx >= 0) options[activeIdx].scrollIntoView({ block: 'nearest' });
+            };
+            const choose = (opt) => {
+              if (!opt) return;
+              valueEl.value = opt.dataset.value;
+              input.value = opt.dataset.label;
+              close();
+            };
+
+            input.addEventListener('focus', () => { filter(input.value); open(); });
+            input.addEventListener('input', () => { valueEl.value = ''; filter(input.value); open(); });
+            input.addEventListener('keydown', (e) => {
+              const visible = Array.from(options).filter(o => o.style.display !== 'none');
+              if (e.key === 'ArrowDown') { e.preventDefault(); open();
+                const cur = visible.indexOf(options[activeIdx]);
+                activeIdx = options.indexOf(visible[Math.min(cur + 1, visible.length - 1)]);
+                highlight();
+              } else if (e.key === 'ArrowUp') { e.preventDefault();
+                const cur = visible.indexOf(options[activeIdx]);
+                activeIdx = options.indexOf(visible[Math.max(cur - 1, 0)]);
+                highlight();
+              } else if (e.key === 'Enter') {
+                if (panel.style.display === 'block' && activeIdx >= 0) {
+                  e.preventDefault(); choose(options[activeIdx]);
+                }
+              } else if (e.key === 'Escape') { close(); }
             });
-            grp.hidden = visibleCount === 0;
+            options.forEach(o => o.addEventListener('mousedown', (e) => { e.preventDefault(); choose(o); }));
+            document.addEventListener('click', (e) => { if (!root.contains(e.target)) close(); });
           });
-        }
+        })();
       </script>
 
       <!-- Bulk multi-pick (collapsible — most docs cover 5–10 items) -->
