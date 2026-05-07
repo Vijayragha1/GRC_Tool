@@ -68,7 +68,37 @@ Asset register · risk register with starter library of 40 ISO 27001 risks · ri
 
 Each tenant has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`).
 
-## Quick start
+## Install
+
+You need Node.js 20 or newer and Git. `better-sqlite3` is a native module so the install step compiles C++ on first run — that needs the platform's build tools.
+
+### Windows
+
+1. Install **Node.js LTS** from https://nodejs.org/. In the installer, **tick "Tools for Native Modules"** — it pulls in Python and Visual Studio Build Tools, which `better-sqlite3` needs. Reboot after.
+2. Install **Git for Windows** from https://git-scm.com/download/win.
+3. Open PowerShell or Git Bash and run:
+
+```powershell
+git clone https://github.com/Vijayragha1/GRC_Tool.git
+cd GRC_Tool
+npm install
+npm start
+```
+
+If `npm install` fails on `better-sqlite3`, the build tools didn't install. Either re-run the Node installer with "Tools for Native Modules" ticked, or install Visual Studio Build Tools directly from https://visualstudio.microsoft.com/visual-cpp-build-tools/ (pick the "Desktop development with C++" workload), then retry.
+
+Don't put the project inside OneDrive — SQLite + sync conflicts are bad. Use a short path like `C:\dev\GRC_Tool`.
+
+### macOS
+
+1. Install **Homebrew** if you don't have it: https://brew.sh
+2. Install Node + Git:
+
+```bash
+brew install node git
+```
+
+3. Clone and run:
 
 ```bash
 git clone https://github.com/Vijayragha1/GRC_Tool.git
@@ -77,12 +107,53 @@ npm install
 npm start
 ```
 
-http://localhost:3000. First boot creates the database, seeds the ISO content + document templates + glossary, generates an encryption master key at `data/master.key` (mode 0600 — back this up; losing it makes encrypted document content unrecoverable). A default tenant and workspace are seeded.
+If `npm install` errors on `better-sqlite3`, install Xcode Command Line Tools: `xcode-select --install`, then retry.
+
+### Linux (Debian / Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install -y nodejs npm git build-essential python3
+git clone https://github.com/Vijayragha1/GRC_Tool.git
+cd GRC_Tool
+npm install
+npm start
+```
+
+If your distro's `nodejs` package is older than 20, install from NodeSource:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+### Linux (Fedora / RHEL)
+
+```bash
+sudo dnf install -y nodejs git gcc-c++ make python3
+git clone https://github.com/Vijayragha1/GRC_Tool.git
+cd GRC_Tool
+npm install
+npm start
+```
+
+### After install
+
+Open http://localhost:3000. First boot creates the SQLite database, seeds the ISO content + document templates + glossary, and generates an encryption master key at `data/master.key`. A default tenant and workspace are seeded.
+
+**Back up `data/master.key` immediately.** If you lose it, encrypted document content in the database is unrecoverable.
 
 For dev with auto-restart on file save:
 
 ```bash
 npm run dev      # node --watch server.js
+```
+
+To run on a different port:
+
+```bash
+PORT=3001 npm start            # macOS / Linux
+$env:PORT=3001; npm start      # PowerShell
 ```
 
 ## Editing the content
