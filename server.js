@@ -219,6 +219,14 @@ function withToast(url, msg, kind) {
   return url + sep + 'toast=' + encodeURIComponent(msg) + (kind ? '&toastKind=' + kind : '');
 }
 
+// Express 5 deprecated using "back" as a magic redirect target. This helper
+// bounces the user back to the previous page (or /dashboard if no Referer
+// header). Optional toastMsg attaches a flash-style notice to the redirect URL.
+function redirectBack(req, res, toastMsg, toastKind) {
+  const target = req.headers.referer || '/dashboard';
+  return res.redirect(toastMsg ? withToast(target, toastMsg, toastKind) : target);
+}
+
 app.locals.escapeHtml = escapeHtml;
 app.locals.rbac = rbac;
 
@@ -478,7 +486,42 @@ app.get('/dashboard', requireAuth, (req, res) => {
     firmUsers = db.prepare(`SELECT id, name, email, firm_role FROM users
       WHERE firm_id = ? AND user_type = 'firm' AND active = 1 ORDER BY name`).all(req.user.firm_id);
   }
-  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals });
+
+  // At-risk engagements — workspaces with active passes and meaningful warning
+  // signals: stale controls, overdue NCs, missed targets, no recent pass.
+  const portfolioRisk = workspacesWithProgress.map(w => {
+    const lastPass = db.prepare(`SELECT pass_number, status, started_at, completed_at
+      FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(w.id);
+    const staleControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+      INNER JOIN iso_items i ON i.id = cs.iso_item_id
+      WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
+        AND (cs.last_verified_at IS NULL OR cs.last_verified_at < datetime('now','-365 days'))
+        AND cs.status NOT IN ('Not Assessed','Not Applicable')`).get(w.id).c;
+    const overdueNCs = w.overdueNCs || 0;
+    const overdueObj = db.prepare(`SELECT COUNT(*) c FROM security_objectives
+      WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < date('now') AND status NOT IN ('achieved','paused')`).get(w.id).c;
+    const overdueParty = db.prepare(`SELECT COUNT(*) c FROM interested_parties
+      WHERE workspace_id=? AND next_review IS NOT NULL AND next_review < date('now')`).get(w.id).c;
+    const noPassFor90 = lastPass && lastPass.completed_at
+      && lastPass.completed_at < new Date(Date.now() - 90 * 86400000).toISOString().slice(0,10);
+    const reasons = [];
+    let severity = 'ok';
+    if (overdueNCs > 0) { reasons.push(`${overdueNCs} overdue NC`); severity = 'high'; }
+    if (w.openMajorNCs > 0) { reasons.push(`${w.openMajorNCs} open major NC`); severity = 'high'; }
+    if (w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30) { reasons.push('cert target < 30 days'); severity = 'high'; }
+    if (overdueObj > 0) { reasons.push(`${overdueObj} overdue objective`); if (severity !== 'high') severity = 'medium'; }
+    if (staleControls > 5) { reasons.push(`${staleControls} stale controls`); if (severity !== 'high') severity = 'medium'; }
+    if (overdueParty > 0) { reasons.push(`${overdueParty} overdue party review`); if (severity !== 'high') severity = 'medium'; }
+    if (noPassFor90 && (!lastPass || lastPass.status !== 'in_progress')) {
+      reasons.push('no active pass · last completed > 90d'); if (severity !== 'high') severity = 'medium';
+    }
+    if (!lastPass) { reasons.push('no gap assessment ever started'); if (severity !== 'high') severity = 'medium'; }
+    return { ...w, lastPass, staleControls, overdueObj, overdueParty, severity, reasons };
+  });
+  const atRisk = portfolioRisk.filter(r => r.severity !== 'ok')
+    .sort((a, b) => (a.severity === 'high' && b.severity !== 'high' ? -1 : a.severity !== 'high' && b.severity === 'high' ? 1 : 0));
+
+  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk });
 });
 
 // ==================== FIRM TEAM MANAGEMENT ====================
@@ -508,6 +551,120 @@ app.post('/firm/users/:id/deactivate', requireAuth, (req, res) => {
   db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(req.params.id);
   logAction(req.user.id, null, 'deactivate_user', 'user', req.params.id, null);
   res.redirect('/dashboard');
+});
+
+// ==================== GLOSSARY ====================
+// Workspace-agnostic learning resource. Static content, no DB.
+const GLOSSARY = require('./data/glossary');
+
+// Set of valid iso_items.id values, computed once at boot. Used to decide
+// whether a clause/Annex-A reference in glossary text resolves to a real
+// page in the tool — only resolvable refs become clickable.
+const ISO_ITEM_IDS = new Set(db.prepare('SELECT id FROM iso_items').all().map(r => r.id));
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Render a clauseRef string with recognised refs as <a> links. Caller passes
+// the workspace ID to use as the link target. If wsId is missing, returns
+// plain escaped text — refs are not clickable without a workspace.
+function renderClauseRefHtml(text, wsId) {
+  const escaped = escapeHtml(text);
+  if (!text || !wsId) return escaped;
+  let html = escaped;
+  // Annex A — match A.X or A.X.Y. Longer match attempted first.
+  html = html.replace(/A\.\d+(?:\.\d+)?/g, (m) => {
+    const slug = 'annex-' + m.toLowerCase();
+    if (ISO_ITEM_IDS.has(slug)) {
+      return `<a href="/workspaces/${wsId}/controls/${slug}" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">${m}</a>`;
+    }
+    return m;
+  });
+  // Clause refs — match "Clause(s) N[, N, …]" where each N is a dotted number
+  // optionally followed by a sub-section letter. Resolves each number to the
+  // longest existing clause-id prefix and wraps it in a link.
+  function linkClauseToken(token) {
+    // token might be "6.1.2" or "6.1.3.d.1". The slug uses only the digit prefix.
+    const digitMatch = token.match(/^\d+(?:\.\d+){0,2}/);
+    if (!digitMatch) return token;
+    const parts = digitMatch[0].split('.');
+    while (parts.length > 0) {
+      const candidate = 'clause-' + parts.join('.');
+      if (ISO_ITEM_IDS.has(candidate)) {
+        return `<a href="/workspaces/${wsId}/controls/${candidate}" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">${token}</a>`;
+      }
+      parts.pop();
+    }
+    return token;
+  }
+  html = html.replace(/(Clauses?\s+)(\d+(?:\.\d+){0,2}(?:\.[a-z](?:\.\d+)?)?(?:\s*,\s*\d+(?:\.\d+){0,2}(?:\.[a-z](?:\.\d+)?)?)*)/g,
+    (whole, prefix, list) => prefix + list.replace(/\d+(?:\.\d+){0,2}(?:\.[a-z](?:\.\d+)?)?/g, linkClauseToken)
+  );
+  return html;
+}
+
+function firstWorkspaceIdFor(user) {
+  const ws = listWorkspaces(user)[0];
+  return ws ? ws.id : null;
+}
+
+app.get('/glossary', requireAuth, (req, res) => {
+  const q = (req.query.q || '').toString();
+  const category = (req.query.category || 'all').toString();
+  const letter = (req.query.letter || 'all').toString();
+  const results = GLOSSARY.searchEntries(q, category, letter)
+    .slice()
+    .sort((a, b) => a.term.localeCompare(b.term));
+  // Letter buckets — only show letters that have entries (post-filter, so the bar reflects what's available).
+  const letterCounts = {};
+  for (const e of GLOSSARY.ENTRIES) {
+    const first = /[A-Z]/.test(e.term[0]) ? e.term[0].toUpperCase() : '#';
+    letterCounts[first] = (letterCounts[first] || 0) + 1;
+  }
+  // Category counts (across full corpus, ignoring search filter — so users see what's available).
+  const categoryCounts = {};
+  for (const e of GLOSSARY.ENTRIES) categoryCounts[e.category] = (categoryCounts[e.category] || 0) + 1;
+  const starter = GLOSSARY.STARTER_TERMS
+    .map(slug => GLOSSARY.ENTRIES.find(e => e.slug === slug))
+    .filter(Boolean);
+  const linkWsId = firstWorkspaceIdFor(req.user);
+  res.render('glossary', {
+    user: req.user,
+    ws: null,
+    title: 'Glossary',
+    active: 'glossary',
+    q, category, letter,
+    results,
+    total: GLOSSARY.ENTRIES.length,
+    letterCounts,
+    categoryCounts,
+    categories: GLOSSARY.CATEGORIES,
+    starter,
+    renderClauseRef: (t) => renderClauseRefHtml(t, linkWsId)
+  });
+});
+
+app.get('/glossary/:slug', requireAuth, (req, res) => {
+  const idx = GLOSSARY.indexBySlug();
+  const entry = idx[req.params.slug];
+  if (!entry) return res.status(404).render('error', { user: req.user, message: 'Glossary entry not found.' });
+  const related = (entry.related || []).map(s => idx[s]).filter(Boolean);
+  const categoryLabel = (GLOSSARY.CATEGORIES.find(c => c.key === entry.category) || {}).label || entry.category;
+  const linkWsId = firstWorkspaceIdFor(req.user);
+  res.render('glossary_detail', {
+    user: req.user,
+    ws: null,
+    title: entry.term,
+    active: 'glossary',
+    entry,
+    related,
+    categoryLabel,
+    categories: GLOSSARY.CATEGORIES,
+    renderClauseRef: (t) => renderClauseRefHtml(t, linkWsId)
+  });
 });
 
 // ==================== WORKSPACE CRUD ====================
@@ -583,171 +740,35 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     sparkline.push({ d: key, c: sparkMap[key] || 0 });
   }
 
-  // Implementation roadmap — PDCA-aligned, mapped to ISO 27001:2022 clauses.
-  // Each step is "complete" when a sensible signal exists; otherwise "pending".
-  const annexAssessed = stateRows.filter(r => r.type === 'control' && r.status !== 'Not Assessed').length;
-  const annexTotal = stateRows.filter(r => r.type === 'control').length;
-  const clausesAssessed = stateRows.filter(r => r.type === 'clause' && r.status !== 'Not Assessed').length;
-  const clausesTotal = stateRows.filter(r => r.type === 'clause').length;
-  const allAssessed = annexAssessed + clausesAssessed;
-  const allTotal = annexTotal + clausesTotal;
-  const soaDecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
-    INNER JOIN iso_items i ON i.id = cs.iso_item_id
-    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(ws.id).c;
-  const approvedDocs = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(ws.id).c;
-  const auditsScheduled = db.prepare(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL`).get(ws.id).c;
-  const mrmsHeld = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete'`).get(ws.id).c;
-  const supplierCount = db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=?`).get(ws.id).c;
-
-  // Document-presence signals for the clauses where there's no dedicated module.
-  // Each signal is "any approved doc whose name matches the relevant template" —
-  // e.g., approving the ISMS Governance Manual signals that clause 4.1 / 4.2
-  // (context + interested parties) has been documented.
-  const docSignal = (patterns) => {
-    const ors = patterns.map(() => `name LIKE ?`).join(' OR ');
-    return db.prepare(`SELECT COUNT(*) c FROM generated_docs
-      WHERE workspace_id=? AND status IN ('approved','published') AND (${ors})`).get(ws.id, ...patterns).c;
-  };
-
-  // Clause 5.2 — Information Security Policy approved by top management.
-  const ispApproved = docSignal(['Information Security Policy%']);
-  // Clauses 4.1 + 4.2 — context (internal/external issues) and interested parties.
-  const contextApproved = docSignal(['ISMS Governance Manual%', 'ISMS Manual%', 'Context%', 'Interested Parties%']);
-  // Clause 5.3 — ISMS roles and responsibilities defined.
-  const rolesApproved = docSignal(['ISMS Role —%', 'ISMS Steering%', 'Roles and Responsibilities%', 'RACI%']);
-  // Clause 6.2 — information security objectives.
-  const objectivesApproved = docSignal(['Information Security Objectives%']);
-  // Clauses 7.2 + 7.3 + 7.4 — competence, awareness, communication. The
-  // Awareness and Training Plan is the canonical doc; Communication Plan
-  // also accepted.
-  const awarenessApproved = docSignal(['Awareness and Training%', 'Awareness%', 'Communication Plan%']);
-  // Clause 9.1 — monitoring, measurement, analysis, evaluation.
-  const monitoringApproved = docSignal(['Logging and Monitoring%', 'Monitoring%', 'Measurement%', 'KPI%']);
-
-  // Risk-assessment methodology documented (clause 6.1.2 — the rules for how
-  // risks are identified, scored, and accepted; pre-requisite to running 6.1.2).
-  const methodologyActive = db.prepare(`SELECT COUNT(*) c FROM risk_methodologies
-    WHERE workspace_id=? AND is_active=1`).get(ws.id).c;
-  // Annex A controls actually implemented (clause 8.3 / Annex A.5–A.8 — the
-  // Do-phase work of running the controls included in the SoA).
-  const includedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
-    INNER JOIN iso_items i ON i.id = cs.iso_item_id
-    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).get(ws.id).c;
-  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
-    INNER JOIN iso_items i ON i.id = cs.iso_item_id
-    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
-      AND cs.status='Implemented'`).get(ws.id).c;
-
-  // PDCA mapping per the canonical ISO 27001:2022 structure:
-  //   Plan  = clauses 4, 5, 6, 7 — context, leadership, planning, support
-  //   Do    = clause 8           — operation
-  //   Check = clause 9           — monitoring, audit, review
-  //   Act   = clause 10          — improvement, NC/CA
-  // Items where the tool has no dedicated module use approved-doc presence as
-  // the signal — generating and approving the relevant template counts as
-  // "done" for that requirement.
-  const roadmap = [
-    // ============================ PLAN ============================
-    { phase: 'plan', key: 'scope', label: 'Define ISMS scope', clause: 'Clause 4.3',
-      done: !!(ws.scope && ws.scope.length > 10),
-      detail: ws.scope ? 'Scope statement set' : 'Set the scope on workspace settings or in an ISMS Scope document',
-      link: `/workspaces/${ws.id}#workspace-settings`, link_label: 'Edit scope' },
-    { phase: 'plan', key: 'context', label: 'Document context — internal/external issues + interested parties', clause: 'Clauses 4.1 & 4.2',
-      done: contextApproved >= 1,
-      detail: contextApproved >= 1
-        ? 'Context register / ISMS Governance Manual approved'
-        : 'Document internal & external issues and interested-party requirements (incl. climate-related per Amendment 1:2024)',
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { phase: 'plan', key: 'isp', label: 'Approve Information Security Policy', clause: 'Clause 5.2',
-      done: ispApproved >= 1,
-      detail: ispApproved >= 1 ? 'ISP approved' : 'Approved ISP is the foundation document — generate from template and approve',
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { phase: 'plan', key: 'roles', label: 'Define ISMS roles & responsibilities', clause: 'Clause 5.3',
-      done: rolesApproved >= 1,
-      detail: rolesApproved >= 1
-        ? 'Roles & responsibilities documented'
-        : 'Assign CISO, asset owners, risk owners, internal auditor; document responsibilities and authority',
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { phase: 'plan', key: 'objectives', label: 'Set information security objectives', clause: 'Clause 6.2',
-      done: objectivesApproved >= 1,
-      detail: objectivesApproved >= 1
-        ? 'Information Security Objectives approved'
-        : 'Set measurable, time-bound objectives consistent with the policy (3–7 typically)',
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { phase: 'plan', key: 'methodology', label: 'Document risk-assessment methodology', clause: 'Clause 6.1.2',
-      done: methodologyActive >= 1,
-      detail: methodologyActive >= 1 ? 'Active methodology defined (scales, criteria)' : 'Likelihood/impact scales and risk-acceptance criteria must be set before scoring risks',
-      link: `/workspaces/${ws.id}/risk-methodology`, link_label: 'Methodology' },
-    { phase: 'plan', key: 'assets', label: 'Build asset register', clause: 'A.5.9 (input to 6.1.2)',
-      done: assetCount >= 5, partial: assetCount > 0 && assetCount < 5,
-      detail: `${assetCount} asset${assetCount === 1 ? '' : 's'} registered${assetCount > 0 && assetCount < 5 ? ' — most ISMS scopes need at least 5–10' : ''}`,
-      link: `/workspaces/${ws.id}/assets`, link_label: 'Assets' },
-    { phase: 'plan', key: 'gap', label: 'Gap-assess clauses & Annex A', clause: 'Project activity (covers 4–10, A.5–A.8)',
-      done: allAssessed === allTotal && allTotal > 0, partial: allAssessed > 0 && allAssessed < allTotal,
-      detail: `${clausesAssessed} / ${clausesTotal} clauses · ${annexAssessed} / ${annexTotal} controls assessed`,
-      link: `/workspaces/${ws.id}/controls/assess`, link_label: 'Run gap assessment' },
-    { phase: 'plan', key: 'risks', label: 'Identify, score, and treat risks', clause: 'Clauses 6.1.2 & 6.1.3',
-      done: riskCount >= 5, partial: riskCount > 0 && riskCount < 5,
-      detail: `${riskCount} risk${riskCount === 1 ? '' : 's'} in register${riskCount === 0 ? ' — start from the library if unsure' : ''}`,
-      link: `/workspaces/${ws.id}/risks`, link_label: 'Risks' },
-    { phase: 'plan', key: 'soa', label: 'Finalize Statement of Applicability', clause: 'Clause 6.1.3 d',
-      done: soaDecided === annexTotal && annexTotal > 0, partial: soaDecided > 0 && soaDecided < annexTotal,
-      detail: `${soaDecided} / ${annexTotal} controls have inclusion/exclusion decision with justification`,
-      link: `/workspaces/${ws.id}/soa`, link_label: 'SoA' },
-    { phase: 'plan', key: 'awareness', label: 'Establish competence, awareness & communication', clause: 'Clauses 7.2, 7.3, 7.4',
-      done: awarenessApproved >= 1,
-      detail: awarenessApproved >= 1
-        ? 'Awareness & Training Plan approved'
-        : 'Plan competence requirements, awareness programme (induction + annual refresh), and communication channels',
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { phase: 'plan', key: 'docs', label: 'Approve mandatory documented information', clause: 'Clause 7.5',
-      done: approvedDocs >= 8, partial: approvedDocs > 0 && approvedDocs < 8,
-      detail: `${approvedDocs} document${approvedDocs === 1 ? '' : 's'} approved (target: at least the 8 mandatory artefacts)`,
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-
-    // ============================ DO ============================
-    { phase: 'do', key: 'controls', label: 'Implement applicable Annex A controls', clause: 'Clause 8.3 + A.5–A.8',
-      done: includedControls > 0 && implementedControls === includedControls,
-      partial: implementedControls > 0 && implementedControls < includedControls,
-      detail: includedControls === 0
-        ? 'Decide applicability in the SoA first, then implement included controls'
-        : `${implementedControls} / ${includedControls} included controls marked Implemented`,
-      link: `/workspaces/${ws.id}/controls/assess`, link_label: 'Controls' },
-    { phase: 'do', key: 'suppliers', label: 'Manage supplier security operationally', clause: 'Clause 8.1 + A.5.19–A.5.22',
-      done: supplierCount >= 1,
-      detail: supplierCount === 0 ? 'Identify in-scope suppliers; assess and review per supplier risk tier' : `${supplierCount} supplier${supplierCount === 1 ? '' : 's'} registered`,
-      link: `/workspaces/${ws.id}/vendors`, link_label: 'Suppliers' },
-
-    // =========================== CHECK ===========================
-    { phase: 'check', key: 'monitoring', label: 'Define monitoring, measurement & evaluation', clause: 'Clause 9.1',
-      done: monitoringApproved >= 1,
-      detail: monitoringApproved >= 1
-        ? 'Monitoring approach documented'
-        : 'Determine what to monitor, methods, frequency, who analyses — KPIs aligned with objectives (6.2)',
-      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
-    { phase: 'check', key: 'audit', label: 'Run an internal audit', clause: 'Clause 9.2',
-      done: auditsScheduled >= 1,
-      detail: auditsScheduled === 0 ? 'Plan the audit programme; first audit must precede Stage 1 cert audit' : `${auditsScheduled} audit${auditsScheduled === 1 ? '' : 's'} scheduled or run`,
-      link: `/workspaces/${ws.id}/audits`, link_label: 'Internal audits' },
-    { phase: 'check', key: 'mrm', label: 'Hold a management review', clause: 'Clause 9.3',
-      done: mrmsHeld >= 1,
-      detail: mrmsHeld === 0 ? 'Top management must review the ISMS at planned intervals; cover all 9.3.2 inputs' : `${mrmsHeld} MRM${mrmsHeld === 1 ? '' : 's'} completed`,
-      link: `/workspaces/${ws.id}/mrms`, link_label: 'Management review' },
-
-    // ============================ ACT ============================
-    { phase: 'act', key: 'ncs', label: 'Track nonconformities to closure with root-cause', clause: 'Clause 10.2',
-      done: ncOpen === 0,
-      detail: ncOpen === 0 ? 'No open NCs' : `${ncOpen} open NC${ncOpen === 1 ? '' : 's'} — RCA + corrective action + effectiveness review per NC`,
-      link: `/workspaces/${ws.id}/nonconformities`, link_label: 'Nonconformities' }
-  ];
-
+  // Implementation roadmap — extracted to a helper so the new /roadmap page
+  // can share the same source of truth as the Overview dashboard.
+  const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
   // Tier B.6 — top "needs your attention" items for the overview
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
-
   res.render('workspace', {
     user: req.user, ws, progress, breakdown, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
+    roadmap, needsAttention
+  });
+});
+
+// Implementation roadmap + needs-attention — moved out of the Overview page
+// (which is now a pure dashboard). Same data, dedicated home.
+app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) => {
+  const ws = req.workspace;
+  // Prepare the scalars computeRoadmap needs.
+  const stateRows = db.prepare(`SELECT cs.iso_item_id, cs.status, i.type
+    FROM control_states cs INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=?`).all(ws.id);
+  const assetCount = db.prepare('SELECT COUNT(*) c FROM assets WHERE workspace_id=?').get(ws.id).c;
+  const riskCount = db.prepare('SELECT COUNT(*) c FROM risks WHERE workspace_id=?').get(ws.id).c;
+  const ncOpen = db.prepare(`SELECT COUNT(*) AS c FROM nonconformities
+    WHERE workspace_id = ? AND status NOT IN ('closed','verified')`).get(ws.id).c;
+  const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
+  const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
+  res.render('roadmap', {
+    user: req.user, ws, title: 'Roadmap', active: 'roadmap',
     roadmap, needsAttention
   });
 });
@@ -951,7 +972,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
 //   Work In Progress                   → low (already being worked)
 app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const ids = parseFormArray(req.body.iso_id);
-  if (!ids.length) return res.redirect('back');
+  if (!ids.length) return redirectBack(req, res);
   const due = req.body.due_date || null;
   const ins = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, due_date, status, priority, created_by)
                           VALUES (?, ?, ?, ?, ?, 'todo', ?, ?)`);
@@ -1088,11 +1109,42 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
     ORDER BY (CASE severity WHEN 'major' THEN 0 WHEN 'minor' THEN 1 ELSE 2 END), due_date IS NULL, due_date`).all(item.id, req.workspace.id);
 
+  // Per-pass notes — derived from history. The current pass's textarea shows
+  // ONLY notes saved within the active pass; prior-pass notes appear above as
+  // read-only context blocks so the consultant can verify against earlier
+  // commentary without overwriting it. This is the per-pass-notes contract:
+  // each pass keeps its own free-text record, anchored to history.
+  const activePass = getActivePass(req.workspace.id);
+  let currentPassNotes = '';
+  if (activePass) {
+    const cur = db.prepare(`SELECT notes FROM control_state_history
+      WHERE workspace_id=? AND iso_item_id=? AND pass_id=?
+      ORDER BY snapshot_at DESC, id DESC LIMIT 1`).get(req.workspace.id, item.id, activePass.id);
+    if (cur && cur.notes) currentPassNotes = cur.notes;
+  }
+  // Latest snapshot per prior pass (one row per pass that touched this item).
+  // Excludes the active pass; ordered most recent prior pass first.
+  const priorPassNotes = db.prepare(`
+    SELECT p.pass_number, p.label, p.completed_at, p.status AS pass_status,
+           h.notes, h.status AS item_status, h.maturity, h.snapshot_at
+    FROM (
+      SELECT MAX(id) AS max_id, pass_id
+      FROM control_state_history
+      WHERE workspace_id=? AND iso_item_id=? AND pass_id IS NOT NULL ${activePass ? 'AND pass_id != ?' : ''}
+      GROUP BY pass_id
+    ) latest
+    INNER JOIN control_state_history h ON h.id = latest.max_id
+    INNER JOIN assessment_passes p ON p.id = h.pass_id
+    WHERE h.notes IS NOT NULL AND TRIM(h.notes) != ''
+    ORDER BY p.pass_number DESC
+  `).all(...(activePass ? [req.workspace.id, item.id, activePass.id] : [req.workspace.id, item.id]));
+
   res.render('controls_assess', {
     user: req.user, ws: req.workspace, item, state, totals, position, sectionPosition, relatedRows,
     prevId, nextId: nextById, doneFlag: !!req.query.done,
     questions, savedAnswers, suggestedStatus,
-    evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs
+    evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs,
+    activePass, currentPassNotes, priorPassNotes
   });
 });
 
@@ -1125,6 +1177,12 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   if (Object.keys(answers).length) { sets.push('assessment_answers=?'); vals.push(JSON.stringify(answers)); }
 
   sets.push('last_updated=CURRENT_TIMESTAMP');
+  // Stamp last_verified_at when the consultant explicitly assesses a control
+  // (any save other than "Not Assessed"). This drives the staleness flagger:
+  // controls that haven't been touched in 12+ months bubble up for re-assessment.
+  if (status && status !== 'Not Assessed') {
+    sets.push('last_verified_at=CURRENT_TIMESTAMP');
+  }
   vals.push(req.workspace.id, item.id);
   db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
 
@@ -1134,12 +1192,16 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
     inclusion_justification, exclusion_justification, notes, assessment_answers
     FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
   if (cur) {
+    // Tag the snapshot with the active pass (auto-creates Pass 1 lazily on
+    // the very first wizard save in a fresh workspace, so passes always exist).
+    const activePassId = ensureActivePassId(req.workspace.id, req.user.id);
     db.prepare(`INSERT INTO control_state_history (workspace_id, iso_item_id, changed_by,
-      status, applicability, maturity, scope_pct, inclusion_justification, exclusion_justification, notes, assessment_answers)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      status, applicability, maturity, scope_pct, inclusion_justification, exclusion_justification, notes, assessment_answers, pass_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         req.workspace.id, item.id, req.user.id,
         cur.status, cur.applicability, cur.maturity, cur.scope_pct,
-        cur.inclusion_justification, cur.exclusion_justification, cur.notes, cur.assessment_answers
+        cur.inclusion_justification, cur.exclusion_justification, cur.notes, cur.assessment_answers,
+        activePassId
       );
   }
   logAction(req.user.id, req.workspace.id, 'gap_assess_item', item.type, item.id, { status, applicability }, auditCtx(req));
@@ -1157,6 +1219,291 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   return res.redirect(nextU
     ? `/workspaces/${req.workspace.id}/controls/assess/${nextU.id}`
     : `/workspaces/${req.workspace.id}/controls/assess?done=1`);
+});
+
+// ==================== GAP ASSESSMENT (PASSES) ====================
+// A "pass" is one round of consultant assessment. Pass 1 = initial gap
+// assessment; Pass 2+ = re-assessments after the client has implemented
+// some of the prior pass's recommendations. Every wizard save during an
+// in-progress pass tags its history snapshot with that pass_id so we can
+// diff state between any two passes.
+
+function getActivePass(wsId) {
+  return db.prepare(`SELECT * FROM assessment_passes
+    WHERE workspace_id=? AND status='in_progress'
+    ORDER BY pass_number DESC LIMIT 1`).get(wsId);
+}
+
+function ensureActivePassId(wsId, userId) {
+  const active = getActivePass(wsId);
+  if (active) return active.id;
+  // Lazy auto-start Pass 1 on the very first wizard save.
+  const lastNum = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n
+    FROM assessment_passes WHERE workspace_id=?`).get(wsId).n;
+  const nextNum = lastNum + 1;
+  return db.prepare(`INSERT INTO assessment_passes
+    (workspace_id, pass_number, label, status, started_by)
+    VALUES (?, ?, ?, 'in_progress', ?)`)
+    .run(wsId, nextNum, nextNum === 1 ? 'Initial gap assessment' : `Re-assessment ${nextNum - 1}`, userId).lastInsertRowid;
+}
+
+app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req, res) => {
+  const wsId = req.workspace.id;
+  // All passes for this workspace, with per-pass save count derived from history.
+  const passes = db.prepare(`
+    SELECT p.*,
+           u1.name AS started_by_name,
+           u2.name AS completed_by_name,
+           (SELECT COUNT(DISTINCT iso_item_id) FROM control_state_history WHERE pass_id = p.id) AS items_touched,
+           (SELECT COUNT(*) FROM control_state_history WHERE pass_id = p.id) AS save_count
+    FROM assessment_passes p
+    LEFT JOIN users u1 ON u1.id = p.started_by
+    LEFT JOIN users u2 ON u2.id = p.completed_by
+    WHERE p.workspace_id = ?
+    ORDER BY p.pass_number DESC
+  `).all(wsId);
+
+  const active = passes.find(p => p.status === 'in_progress') || null;
+
+  // Total clauses + controls for progress denominator.
+  const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items WHERE type IN ('clause','control')`).get().c;
+  const assessedNow = db.prepare(`SELECT COUNT(*) c FROM control_states
+    WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
+
+  // Find the next un-assessed item (continue button target).
+  const nextItem = nextUnassessedItem(wsId, -1);
+
+  // Re-engagement orientation — when a new pass is starting (or active),
+  // surface what's changed since the prior pass closed: new evidence, new
+  // NCs, controls touched, documents superseded, time elapsed.
+  let orientation = null;
+  const priorClosed = passes.find(p => p.status === 'completed');
+  if (priorClosed && priorClosed.completed_at) {
+    const since = priorClosed.completed_at;
+    orientation = {
+      priorPass: priorClosed,
+      since,
+      newEvidence: db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=? AND uploaded_at > ?`).get(wsId, since).c,
+      newNCs: db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND created_at > ?`).get(wsId, since).c,
+      newIncidents: db.prepare(`SELECT COUNT(*) c FROM incidents WHERE workspace_id=? AND created_at > ?`).get(wsId, since).c,
+      controlsTouched: db.prepare(`SELECT COUNT(DISTINCT iso_item_id) c FROM control_state_history h
+        INNER JOIN assessment_passes p ON p.id = h.pass_id
+        WHERE h.workspace_id=? AND p.pass_number > ?`).get(wsId, priorClosed.pass_number).c,
+      docsSuperseded: db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=? AND superseded_at IS NOT NULL AND superseded_at > ?`).get(wsId, since).c,
+      docsApproved: db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published') AND updated_at > ?`).get(wsId, since).c
+    };
+  }
+
+  // Trend across passes — average maturity per Annex A theme per pass.
+  // Theme = first segment of A.X.Y (X = 5/6/7/8 → Organizational/People/Physical/Technological).
+  // For each pass, take the LATEST snapshot per item up to and including that
+  // pass; group by theme; average maturity. Pass 0 = baseline (Not Assessed).
+  const ANNEX_THEMES = { '5':'Organizational', '6':'People', '7':'Physical', '8':'Technological' };
+  let trend = null;
+  if (passes.length > 0) {
+    const ascPasses = [...passes].sort((a,b) => a.pass_number - b.pass_number);
+    const stmt = db.prepare(`
+      SELECT h.iso_item_id, h.maturity, i.id AS code
+      FROM (
+        SELECT MAX(h2.id) AS max_id, h2.iso_item_id
+        FROM control_state_history h2
+        INNER JOIN assessment_passes p ON p.id = h2.pass_id
+        WHERE h2.workspace_id = ? AND p.pass_number <= ? AND h2.maturity IS NOT NULL
+        GROUP BY h2.iso_item_id
+      ) latest
+      INNER JOIN control_state_history h ON h.id = latest.max_id
+      INNER JOIN iso_items i ON i.id = h.iso_item_id
+      WHERE i.type='control'
+    `);
+    trend = ascPasses.map(p => {
+      const rows = stmt.all(wsId, p.pass_number);
+      const buckets = { '5': [], '6': [], '7': [], '8': [] };
+      for (const r of rows) {
+        const m = r.code.match(/^annex-a\.(\d)\./);
+        if (m && buckets[m[1]]) buckets[m[1]].push(r.maturity);
+      }
+      const themes = {};
+      for (const k of Object.keys(buckets)) {
+        themes[k] = {
+          name: ANNEX_THEMES[k],
+          avg: buckets[k].length ? (buckets[k].reduce((a,b)=>a+b,0) / buckets[k].length) : null,
+          count: buckets[k].length
+        };
+      }
+      return { pass: p, themes };
+    });
+  }
+
+  // Annex A heatmap — current coverage by theme.
+  const themeRows = db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS status,
+      COALESCE(cs.applicability,'undecided') AS applicability,
+      cs.maturity
+    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    WHERE i.type='control'`).all(wsId);
+  const heatmap = { '5':[], '6':[], '7':[], '8':[] };
+  for (const r of themeRows) {
+    const m = r.id.match(/^annex-a\.(\d)\./);
+    if (m && heatmap[m[1]]) heatmap[m[1]].push(r);
+  }
+
+  res.render('gap_assessment', {
+    user: req.user, ws: req.workspace,
+    title: 'Gap assessment',
+    active: 'gap-assessment',
+    passes, activePass: active,
+    totalItems, assessedNow,
+    nextItem,
+    orientation, trend, heatmap, themeNames: ANNEX_THEMES
+  });
+});
+
+app.post('/workspaces/:wsId/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const wsId = req.workspace.id;
+  // If an active pass exists, complete it before starting a new one — only
+  // one pass can be in_progress at a time.
+  const active = getActivePass(wsId);
+  if (active) {
+    db.prepare(`UPDATE assessment_passes
+      SET status='completed', completed_at=datetime('now'), completed_by=?
+      WHERE id=?`).run(req.user.id, active.id);
+  }
+  const lastNum = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n
+    FROM assessment_passes WHERE workspace_id=?`).get(wsId).n;
+  const nextNum = lastNum + 1;
+  const label = (req.body.label || '').toString().trim()
+    || (nextNum === 1 ? 'Initial gap assessment' : `Re-assessment ${nextNum - 1}`);
+  const notes = (req.body.notes || '').toString().trim() || null;
+  const id = db.prepare(`INSERT INTO assessment_passes
+    (workspace_id, pass_number, label, notes, status, started_by)
+    VALUES (?, ?, ?, ?, 'in_progress', ?)`)
+    .run(wsId, nextNum, label, notes, req.user.id).lastInsertRowid;
+  logAction(req.user.id, wsId, 'start_assessment_pass', 'pass', id, { pass_number: nextNum, label });
+  res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`, `Started Pass ${nextNum}: ${label}`));
+});
+
+app.post('/workspaces/:wsId/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const wsId = req.workspace.id;
+  const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
+  if (!p) return res.status(404).send('Not found');
+  if (p.status === 'completed') return res.redirect(`/workspaces/${wsId}/gap-assessment`);
+  db.prepare(`UPDATE assessment_passes
+    SET status='completed', completed_at=datetime('now'), completed_by=?
+    WHERE id=?`).run(req.user.id, p.id);
+  logAction(req.user.id, wsId, 'complete_assessment_pass', 'pass', p.id, { pass_number: p.pass_number });
+  res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`, `Completed Pass ${p.pass_number}: ${p.label}`));
+});
+
+app.post('/workspaces/:wsId/gap-assessment/:passId/reopen', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const wsId = req.workspace.id;
+  const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
+  if (!p) return res.status(404).send('Not found');
+  // Only one pass can be in_progress — close any other before reopening.
+  const other = getActivePass(wsId);
+  if (other && other.id !== p.id) {
+    db.prepare(`UPDATE assessment_passes
+      SET status='completed', completed_at=datetime('now'), completed_by=?
+      WHERE id=?`).run(req.user.id, other.id);
+  }
+  db.prepare(`UPDATE assessment_passes SET status='in_progress', completed_at=NULL, completed_by=NULL WHERE id=?`).run(p.id);
+  logAction(req.user.id, wsId, 'reopen_assessment_pass', 'pass', p.id, { pass_number: p.pass_number });
+  res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`, `Reopened Pass ${p.pass_number}`));
+});
+
+app.post('/workspaces/:wsId/gap-assessment/:passId/rename', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const wsId = req.workspace.id;
+  const p = db.prepare(`SELECT id FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
+  if (!p) return res.status(404).send('Not found');
+  const label = (req.body.label || '').toString().trim() || null;
+  const notes = (req.body.notes || '').toString().trim() || null;
+  db.prepare(`UPDATE assessment_passes SET label=?, notes=? WHERE id=?`).run(label, notes, p.id);
+  res.redirect(`/workspaces/${wsId}/gap-assessment`);
+});
+
+// Diff between two passes — for each control, show the state at the end of
+// each pass and categorise the change. "End of pass N" = last history
+// snapshot with pass_id=N (i.e. the value that was current when the pass
+// was active). For the active pass we use the live control_states row.
+app.get('/workspaces/:wsId/gap-assessment/diff', requireAuth, requireWorkspace, (req, res) => {
+  const wsId = req.workspace.id;
+  const fromId = parseInt(req.query.from, 10);
+  const toId = parseInt(req.query.to, 10);
+  if (!Number.isFinite(fromId) || !Number.isFinite(toId) || fromId === toId) {
+    return res.redirect(`/workspaces/${wsId}/gap-assessment`);
+  }
+  const passes = db.prepare(`SELECT * FROM assessment_passes WHERE workspace_id=? AND id IN (?,?)`).all(wsId, fromId, toId);
+  if (passes.length !== 2) return res.redirect(`/workspaces/${wsId}/gap-assessment`);
+  const passFrom = passes.find(p => p.id === fromId);
+  const passTo = passes.find(p => p.id === toId);
+
+  // Helper: end-of-pass state per item. Snapshots are written AFTER the
+  // wizard UPDATE, so each row captures the new state at that save. For
+  // any pass N, the "end of pass N" state for an item is the latest
+  // snapshot whose pass_number is <= N (i.e. the most recent value the
+  // item held by the time pass N concluded). If no snapshot exists up to
+  // that point, the item was never assessed and is reported as such.
+  function endOfPassState(passId) {
+    const passRow = db.prepare(`SELECT pass_number FROM assessment_passes WHERE id=?`).get(passId);
+    if (!passRow) return [];
+    const passNumber = passRow.pass_number;
+    const items = db.prepare(`SELECT id FROM iso_items WHERE type IN ('clause','control')`).all();
+    const out = [];
+    const stmt = db.prepare(`
+      SELECT h.status, h.maturity, h.applicability, h.notes
+      FROM control_state_history h
+      INNER JOIN assessment_passes p ON p.id = h.pass_id
+      WHERE h.workspace_id=? AND h.iso_item_id=? AND p.pass_number <= ?
+      ORDER BY p.pass_number DESC, h.snapshot_at DESC, h.id DESC
+      LIMIT 1
+    `);
+    for (const it of items) {
+      const row = stmt.get(wsId, it.id, passNumber);
+      if (row) out.push({ iso_item_id: it.id, ...row });
+      else out.push({ iso_item_id: it.id, status: 'Not Assessed', maturity: null, applicability: 'undecided', notes: null });
+    }
+    return out;
+  }
+
+  const fromState = endOfPassState(fromId);
+  const toState = endOfPassState(toId);
+  const fromMap = {}; fromState.forEach(s => fromMap[s.iso_item_id] = s);
+  const toMap = {};   toState.forEach(s => toMap[s.iso_item_id] = s);
+
+  const items = db.prepare(`SELECT id, type, title FROM iso_items
+    WHERE type IN ('clause','control') ORDER BY sort_order`).all();
+
+  const STATUS_RANK = {
+    'Not Assessed': 0, 'Not Implemented': 1, 'Work In Progress': 2,
+    'Partially Implemented': 3, 'Implemented': 4, 'Not Applicable': 4
+  };
+  const rows = items.map(it => {
+    const a = fromMap[it.id] || {};
+    const b = toMap[it.id] || {};
+    const sa = a.status || 'Not Assessed', sb = b.status || 'Not Assessed';
+    const ma = a.maturity == null ? null : a.maturity;
+    const mb = b.maturity == null ? null : b.maturity;
+    let change = 'unchanged';
+    if (sa !== sb) {
+      change = (STATUS_RANK[sb] || 0) > (STATUS_RANK[sa] || 0) ? 'improved'
+             : (STATUS_RANK[sb] || 0) < (STATUS_RANK[sa] || 0) ? 'regressed' : 'changed';
+    } else if (ma !== mb) {
+      change = (mb || 0) > (ma || 0) ? 'improved' : (mb || 0) < (ma || 0) ? 'regressed' : 'unchanged';
+    }
+    return { id: it.id, type: it.type, title: it.title, from: a, to: b, change };
+  });
+
+  const summary = {
+    improved: rows.filter(r => r.change === 'improved').length,
+    regressed: rows.filter(r => r.change === 'regressed').length,
+    unchanged: rows.filter(r => r.change === 'unchanged').length,
+    changed: rows.filter(r => r.change === 'changed').length
+  };
+
+  res.render('gap_assessment_diff', {
+    user: req.user, ws: req.workspace,
+    title: `Diff Pass ${passFrom.pass_number} → Pass ${passTo.pass_number}`,
+    active: 'gap-assessment',
+    passFrom, passTo, rows, summary
+  });
 });
 
 // Append-only history of every wizard save for one item — what the auditor asks for.
@@ -1185,7 +1532,7 @@ app.get('/workspaces/:wsId/controls/:isoId', requireAuth, requireWorkspace, (req
 // ==================== COMMENTS ====================
 app.post('/workspaces/:wsId/comments', requireAuth, requireWorkspace, requirePermission('comment.create'), (req, res) => {
   const { parent_type, parent_id, body, internal_only } = req.body;
-  if (!body || !parent_type || !parent_id) return res.redirect('back');
+  if (!body || !parent_type || !parent_id) return redirectBack(req, res);
   const internal = (internal_only === '1' && isFirmUser(req.user)) ? 1 : 0;
   db.prepare(`INSERT INTO comments (workspace_id, parent_type, parent_id, user_id, body, internal_only)
               VALUES (?, ?, ?, ?, ?, ?)`)
@@ -1198,41 +1545,338 @@ app.post('/workspaces/:wsId/comments', requireAuth, requireWorkspace, requirePer
 });
 
 // ==================== EVIDENCE ====================
+// Workspace-wide evidence library — every uploaded file with its links, owner,
+// validity, and add/remove-link actions. Use this when a single artefact (e.g.
+// a network diagram) evidences several controls and you don't want to walk into
+// each control's wizard to attach.
+app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) => {
+  const q = (req.query.q || '').toString().trim();
+  const filter = (req.query.filter || 'all').toString();
+  const tag = (req.query.tag || '').toString().trim().toLowerCase();
+  const today = new Date().toISOString().slice(0, 10);
+  const expSoon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+
+  // Active (non-superseded) evidence only on the live view. Superseded rows
+  // are still visible from the version-chain expander on each row.
+  const allEvidence = db.prepare(`
+    SELECT e.*,
+           u.name AS uploader,
+           (SELECT COUNT(*) FROM evidence_controls ec WHERE ec.evidence_id = e.id) AS link_count,
+           sup.filename AS superseded_filename
+    FROM evidence e
+    LEFT JOIN users u ON u.id = e.uploaded_by
+    LEFT JOIN evidence sup ON sup.id = e.supersedes_id
+    WHERE e.workspace_id = ? AND e.superseded_at IS NULL
+    ORDER BY e.uploaded_at DESC
+  `).all(req.workspace.id);
+
+  let evidenceList = allEvidence;
+  if (filter === 'expired') {
+    evidenceList = evidenceList.filter(e => e.valid_until && e.valid_until < today);
+  } else if (filter === 'expiring') {
+    evidenceList = evidenceList.filter(e => e.valid_until && e.valid_until >= today && e.valid_until < expSoon);
+  } else if (filter === 'unlinked') {
+    evidenceList = evidenceList.filter(e => (e.link_count || 0) === 0);
+  }
+  if (tag) {
+    evidenceList = evidenceList.filter(e => (e.tags || '').toLowerCase().split(',').map(t => t.trim()).includes(tag));
+  }
+  if (q) {
+    const lq = q.toLowerCase();
+    evidenceList = evidenceList.filter(e =>
+      (e.filename || '').toLowerCase().includes(lq) ||
+      (e.description || '').toLowerCase().includes(lq) ||
+      (e.period_label || '').toLowerCase().includes(lq) ||
+      (e.uploader || '').toLowerCase().includes(lq) ||
+      (e.tags || '').toLowerCase().includes(lq)
+    );
+  }
+
+  // Linked controls for the visible rows.
+  const linksByEvidence = {};
+  if (evidenceList.length) {
+    const ids = evidenceList.map(e => e.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const links = db.prepare(`
+      SELECT ec.id AS link_id, ec.evidence_id, ec.iso_item_id, ec.section_ref,
+             i.title AS iso_title, i.type AS iso_type
+      FROM evidence_controls ec
+      INNER JOIN iso_items i ON i.id = ec.iso_item_id
+      WHERE ec.evidence_id IN (${placeholders})
+      ORDER BY i.sort_order ASC
+    `).all(...ids);
+    for (const l of links) {
+      if (!linksByEvidence[l.evidence_id]) linksByEvidence[l.evidence_id] = [];
+      linksByEvidence[l.evidence_id].push(l);
+    }
+  }
+
+  // Aggregate counters across all *active* evidence (the filter pills).
+  const counters = {
+    total: allEvidence.length,
+    expired: allEvidence.filter(e => e.valid_until && e.valid_until < today).length,
+    expiring: allEvidence.filter(e => e.valid_until && e.valid_until >= today && e.valid_until < expSoon).length,
+    unlinked: allEvidence.filter(e => (e.link_count || 0) === 0).length,
+    superseded: db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=? AND superseded_at IS NOT NULL`).get(req.workspace.id).c
+  };
+
+  // Tag cloud — every distinct tag used in this workspace, with counts.
+  const tagCounts = {};
+  for (const e of allEvidence) {
+    if (!e.tags) continue;
+    for (const t of e.tags.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)) {
+      tagCounts[t] = (tagCounts[t] || 0) + 1;
+    }
+  }
+  const tagList = Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+  const allIsoItems = db.prepare(`SELECT id, type, title FROM iso_items ORDER BY sort_order ASC`).all();
+
+  res.render('evidence_library', {
+    user: req.user, ws: req.workspace,
+    title: 'Evidence library',
+    active: 'evidence',
+    evidenceList, linksByEvidence, counters,
+    allIsoItems,
+    q, filter, tag, today, expSoon,
+    tagList
+  });
+});
+
+// Helper: normalise comma-separated tags to lowercase, trimmed, deduped.
+function normaliseTags(raw) {
+  if (!raw) return '';
+  return raw.split(',')
+    .map(t => t.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((t, i, a) => a.indexOf(t) === i)
+    .join(', ');
+}
+
 app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
-  if (!req.file) return res.redirect('back');
-  const { iso_item_id, description, valid_from, valid_until, period_label, clause_section } = req.body;
+  if (!req.file) return redirectBack(req, res, 'Pick a file to upload', 'error');
+  // Accept either a single iso_item_id (legacy: control wizard upload) OR
+  // multiple iso_item_id values (new: evidence library multi-link upload).
+  const isoIds = parseFormArray(req.body.iso_item_id);
+  const primaryId = isoIds[0] || null;
+  const { description, valid_from, valid_until, period_label, clause_section } = req.body;
+  const tags = normaliseTags(req.body.tags);
   const buf = fs.readFileSync(req.file.path);
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
+
+  // Dedupe by SHA-256 within this workspace. If we've seen this exact bytes
+  // before (and it isn't superseded), don't create a duplicate row — link the
+  // existing file to the new control IDs and discard the new upload.
+  const existing = db.prepare(`SELECT id, filename FROM evidence
+    WHERE workspace_id=? AND sha256=? AND superseded_at IS NULL
+    ORDER BY id DESC LIMIT 1`).get(req.workspace.id, sha);
+  if (existing) {
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+    if (isoIds.length) {
+      const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+      const tx = db.transaction(() => { for (const id of isoIds) ins.run(existing.id, id, clause_section || null); });
+      try { tx(); } catch (_) {}
+    }
+    logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, { sha, link_count: isoIds.length });
+    const back = req.headers.referer || '/workspaces/' + req.workspace.id + '/evidence';
+    return res.redirect(withToast(back, `Same file already exists (${existing.filename}) — linked instead of duplicated`));
+  }
+
   const evId = db.prepare(`INSERT INTO evidence
     (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description,
-     valid_from, valid_until, period_label, clause_section)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(req.workspace.id, iso_item_id || null, req.file.originalname, req.file.filename,
+     valid_from, valid_until, period_label, clause_section, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, primaryId, req.file.originalname, req.file.filename,
          sha, req.file.size, req.user.id, description || null,
-         valid_from || null, valid_until || null, period_label || null, clause_section || null).lastInsertRowid;
-  // Mirror the primary link into the join so the new many-to-many path is
-  // consistent with the legacy column.
-  if (iso_item_id) {
-    try { db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`).run(evId, iso_item_id, clause_section || null); } catch (_) {}
+         valid_from || null, valid_until || null, period_label || null, clause_section || null,
+         tags || null).lastInsertRowid;
+  if (isoIds.length) {
+    const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+    const tx = db.transaction(() => { for (const id of isoIds) ins.run(evId, id, clause_section || null); });
+    try { tx(); } catch (_) {}
   }
-  logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', iso_item_id, { filename: req.file.originalname });
+  logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', primaryId, { filename: req.file.originalname, link_count: isoIds.length });
   const back = req.headers.referer || '/workspaces/' + req.workspace.id;
   res.redirect(back);
 });
 
-// Tier A.1 — Add/remove additional control links on an evidence file
+// Bulk upload — multiple files at once with shared metadata. Each file becomes
+// an independent evidence row; all share the same period / valid_from / valid_until
+// and link to the same set of selected controls.
+app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, upload.array('files', 50), (req, res) => {
+  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+  if (!req.files || !req.files.length) return redirectBack(req, res, 'Pick at least one file', 'error');
+  const isoIds = parseFormArray(req.body.iso_item_id);
+  const primaryId = isoIds[0] || null;
+  const { description, valid_from, valid_until, period_label } = req.body;
+  const tags = normaliseTags(req.body.tags);
+  let created = 0, deduped = 0;
+  for (const f of req.files) {
+    const buf = fs.readFileSync(f.path);
+    const sha = crypto.createHash('sha256').update(buf).digest('hex');
+    const existing = db.prepare(`SELECT id FROM evidence
+      WHERE workspace_id=? AND sha256=? AND superseded_at IS NULL ORDER BY id DESC LIMIT 1`).get(req.workspace.id, sha);
+    if (existing) {
+      try { fs.unlinkSync(f.path); } catch (_) {}
+      if (isoIds.length) {
+        const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+        const tx = db.transaction(() => { for (const id of isoIds) ins.run(existing.id, id, null); });
+        try { tx(); } catch (_) {}
+      }
+      deduped++;
+      continue;
+    }
+    const evId = db.prepare(`INSERT INTO evidence
+      (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description,
+       valid_from, valid_until, period_label, tags)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(req.workspace.id, primaryId, f.originalname, f.filename, sha, f.size, req.user.id,
+           description || null, valid_from || null, valid_until || null, period_label || null,
+           tags || null).lastInsertRowid;
+    if (isoIds.length) {
+      const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+      const tx = db.transaction(() => { for (const id of isoIds) ins.run(evId, id, null); });
+      try { tx(); } catch (_) {}
+    }
+    created++;
+  }
+  logAction(req.user.id, req.workspace.id, 'bulk_upload_evidence', 'workspace', req.workspace.id, { created, deduped, link_count: isoIds.length });
+  const msg = `Uploaded ${created} file${created === 1 ? '' : 's'}` + (deduped ? ` · ${deduped} re-linked (already existed)` : '');
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, msg));
+});
+
+// Supersede an existing evidence file with a new version. Old row is kept
+// for audit trail (superseded_at + superseded_by_id), all links are copied
+// to the new row, and the new row records its predecessor in supersedes_id.
+app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
+  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+  const old = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!old) return res.status(404).send('Not found');
+  if (!req.file) return redirectBack(req, res, 'Pick the new version of the file', 'error');
+  const buf = fs.readFileSync(req.file.path);
+  const sha = crypto.createHash('sha256').update(buf).digest('hex');
+  if (sha === old.sha256) {
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+    return res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, 'New file is identical to the existing version — nothing to supersede', 'info'));
+  }
+  const { description, valid_from, valid_until, period_label } = req.body;
+  const tags = normaliseTags(req.body.tags) || old.tags || null;
+  const newId = db.prepare(`INSERT INTO evidence
+    (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description,
+     valid_from, valid_until, period_label, clause_section, supersedes_id, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, old.iso_item_id, req.file.originalname, req.file.filename, sha, req.file.size,
+         req.user.id, description || old.description || null,
+         valid_from || null, valid_until || null, period_label || null, old.clause_section || null,
+         old.id, tags).lastInsertRowid;
+  // Copy links from old to new.
+  const oldLinks = db.prepare(`SELECT iso_item_id, section_ref FROM evidence_controls WHERE evidence_id=?`).all(old.id);
+  if (oldLinks.length) {
+    const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+    const tx = db.transaction(() => { for (const l of oldLinks) ins.run(newId, l.iso_item_id, l.section_ref); });
+    try { tx(); } catch (_) {}
+  }
+  // Mark old as superseded — kept for audit trail but hidden from active view.
+  db.prepare(`UPDATE evidence SET superseded_at=datetime('now'), superseded_by_id=? WHERE id=?`).run(newId, old.id);
+  logAction(req.user.id, req.workspace.id, 'supersede_evidence', 'evidence', old.id, { new_id: newId, filename: req.file.originalname });
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, `Superseded ${old.filename} → ${req.file.originalname}`));
+});
+
+// Auditor evidence-pack export — single ZIP of every active (non-superseded)
+// evidence file in the workspace, plus a manifest CSV describing each one.
+app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace, (req, res) => {
+  const dateFrom = (req.query.from || '').toString();
+  const dateTo = (req.query.to || '').toString();
+  let where = 'e.workspace_id = ? AND e.superseded_at IS NULL';
+  const params = [req.workspace.id];
+  if (dateFrom) { where += ' AND date(e.uploaded_at) >= date(?)'; params.push(dateFrom); }
+  if (dateTo)   { where += ' AND date(e.uploaded_at) <= date(?)'; params.push(dateTo); }
+  const items = db.prepare(`SELECT e.*, u.name AS uploader,
+    (SELECT GROUP_CONCAT(iso_item_id, '; ') FROM evidence_controls WHERE evidence_id=e.id) AS linked_controls
+    FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
+    WHERE ${where} ORDER BY e.uploaded_at ASC`).all(...params);
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="evidence-pack-${req.workspace.id}-${new Date().toISOString().slice(0,10)}.zip"`);
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', err => { try { res.status(500).send(String(err)); } catch (_) {} });
+  archive.pipe(res);
+
+  // Manifest CSV
+  const csvLines = [
+    'evidence_id,filename,sha256,size_bytes,uploader,uploaded_at,period,valid_from,valid_until,linked_controls,tags,description'
+  ];
+  function csvEsc(v) {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  for (const e of items) {
+    csvLines.push([
+      e.id, csvEsc(e.filename), e.sha256, e.size_bytes, csvEsc(e.uploader),
+      e.uploaded_at ? e.uploaded_at.slice(0, 19) : '',
+      csvEsc(e.period_label), e.valid_from || '', e.valid_until || '',
+      csvEsc(e.linked_controls), csvEsc(e.tags), csvEsc(e.description)
+    ].join(','));
+  }
+  archive.append(csvLines.join('\n'), { name: 'MANIFEST.csv' });
+
+  // README
+  archive.append(
+`Evidence pack — workspace ${req.workspace.client_name || req.workspace.id}
+Generated: ${new Date().toISOString()}
+Files: ${items.length}
+Date range: ${dateFrom || 'all'} → ${dateTo || 'all'}
+
+MANIFEST.csv lists every file in this pack with its SHA-256, linked controls,
+period, validity, and uploader. The /files/ directory contains the actual
+artefacts. SHA-256 lets you verify nothing was tampered with after export.
+`,
+    { name: 'README.txt' }
+  );
+
+  // Files — resolve via the partitioned-or-legacy resolver shared with /download.
+  for (const e of items) {
+    const found = resolveUploadPath(e.stored_path, req.workspace.firm_id);
+    if (found && fs.existsSync(found) && fs.statSync(found).isFile()) {
+      archive.file(found, { name: `files/${e.id}-${e.filename}` });
+    }
+  }
+  archive.finalize();
+});
+
+// Tier A.1 — Add/remove additional control links on an evidence file.
+// section_ref may be either a single shared value (form: section_ref=...) or
+// per-link via a parallel array section_ref_for_<isoId>=... — the latter wins.
 app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const ids = parseFormArray(req.body.iso_item_id);
-  if (!ids.length) return res.redirect('back');
-  const sectionRef = req.body.section_ref || null;
+  if (!ids.length) return redirectBack(req, res);
+  const sharedSectionRef = req.body.section_ref || null;
   const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-  const tx = db.transaction(() => { for (const id of ids) ins.run(ev.id, id, sectionRef); });
+  const tx = db.transaction(() => {
+    for (const id of ids) {
+      const perLinkKey = 'section_ref_for_' + id.replace(/[^a-z0-9.-]/gi, '_');
+      const ref = (req.body[perLinkKey] || sharedSectionRef || null);
+      ins.run(ev.id, id, ref);
+    }
+  });
   try { tx(); } catch (_) {}
   logAction(req.user.id, req.workspace.id, 'link_evidence_control', 'evidence', ev.id, { ids, count: ids.length }, auditCtx(req));
-  res.redirect('back');
+  redirectBack(req, res);
+});
+
+// Update the section_ref on an existing link (per-link, distinct from the
+// per-file clause_section). Posted from the chip on the library row.
+app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  const newRef = (req.body.section_ref || '').toString().trim() || null;
+  db.prepare(`UPDATE evidence_controls SET section_ref=? WHERE id=? AND evidence_id=?`)
+    .run(newRef, req.params.linkId, ev.id);
+  redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
@@ -1247,7 +1891,7 @@ app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, 
       db.prepare(`UPDATE evidence SET iso_item_id=NULL WHERE id=?`).run(ev.id);
     }
   }
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace, (req, res) => {
@@ -1269,7 +1913,7 @@ app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace,
     db.prepare('DELETE FROM evidence WHERE id = ?').run(ev.id);
     logAction(req.user.id, req.workspace.id, 'delete_evidence', 'evidence', ev.id, null);
   }
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // ==================== ASSETS ====================
@@ -1285,7 +1929,7 @@ app.get('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermis
 app.post('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
   const { name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
           business_criticality, rto_hours, rpo_hours, bia_notes } = req.body;
-  if (!name) return res.redirect('back');
+  if (!name) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO assets
     (workspace_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
      business_criticality, rto_hours, rpo_hours, bia_notes)
@@ -1323,7 +1967,7 @@ app.get('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermiss
 
 app.post('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
   const { title, description, asset_id, threat, vulnerability, likelihood, impact, treatment, owner_name, entity_id } = req.body;
-  if (!title) return res.redirect('back');
+  if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO risks (workspace_id, entity_id, title, description, asset_id, threat, vulnerability,
                          likelihood, impact, treatment, owner_name)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -1350,7 +1994,7 @@ app.get('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requir
 
 app.post('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
   const picked = parseFormArray(req.body.pick);
-  if (!picked.length) return res.redirect('back');
+  if (!picked.length) return redirectBack(req, res);
   const ins = db.prepare(`INSERT INTO risks (workspace_id, entity_id, title, description, threat, vulnerability,
                          likelihood, impact, treatment, status)
                          VALUES (?, ?, ?, ?, ?, ?, 3, 3, 'modify', 'open')`);
@@ -1397,7 +2041,7 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
 // Tier 1.1 — Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
 app.post('/workspaces/:wsId/risks/:id/actions', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
   const { title, description, owner_name, due_date } = req.body;
-  if (!title || !title.trim()) return res.redirect('back');
+  if (!title || !title.trim()) return redirectBack(req, res);
   db.prepare(`INSERT INTO risk_treatment_actions
     (workspace_id, risk_id, title, description, owner_name, due_date, status, created_by)
     VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)`).run(
@@ -1472,7 +2116,7 @@ app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res
 
 app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
   const { event_type, planned_date, certification_body, notes } = req.body;
-  if (!event_type || !CERT_EVENT_TYPES.find(t => t.key === event_type)) return res.redirect('back');
+  if (!event_type || !CERT_EVENT_TYPES.find(t => t.key === event_type)) return redirectBack(req, res);
   db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date, certification_body, notes)
               VALUES (?, ?, ?, ?, ?)`).run(
     req.workspace.id, event_type, planned_date || null, certification_body || null, notes || null
@@ -1713,12 +2357,26 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   const risksByControl = {};
   riskLinks.forEach(l => { (risksByControl[l.iso_item_id] = risksByControl[l.iso_item_id] || []).push(l); });
 
-  res.render('soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl });
+  // Custom (non-Annex-A) controls live alongside the 93 Annex A entries.
+  const customControls = db.prepare(`SELECT * FROM soa_custom_controls
+    WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
+
+  // SoA metadata — version / owner / approver / approved-on, taken from the
+  // latest snapshot. If no snapshot exists, the form lets the user kick one
+  // off; saving via /soa/metadata captures one automatically.
+  const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, created_at
+    FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1`).get(req.workspace.id);
+
+  res.render('soa', {
+    user: req.user, ws: req.workspace, rows, docsByControl, risksByControl,
+    customControls, soaMeta: latestSnap || {}
+  });
 });
 
 app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
-  // Reserved literal sub-routes (snapshot, auto-justify, bulk) must fall through.
-  if (['snapshot','auto-justify','snapshots','bulk'].includes(req.params.isoId)) return nextMw();
+  // Reserved literal sub-routes (snapshot, auto-justify, bulk, custom-controls, metadata)
+  // must fall through to their own handlers.
+  if (['snapshot','auto-justify','snapshots','bulk','custom-controls','metadata'].includes(req.params.isoId)) return nextMw();
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   getOrCreateState(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
@@ -1794,7 +2452,7 @@ app.get('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => 
 app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { title, description, iso_item_id, assignee_id, due_date } = req.body;
-  if (!title) return res.redirect('back');
+  if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, assignee_id, due_date, created_by)
                          VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, title.trim(), description || null, iso_item_id || null,
@@ -1817,7 +2475,7 @@ app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, (req, res
     db.prepare(`UPDATE tasks SET ${sets.join(',')} WHERE id = ? AND workspace_id = ?`).run(...vals);
     logAction(req.user.id, req.workspace.id, 'update_task', 'task', req.params.id, null);
   }
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, (req, res) => {
@@ -1979,7 +2637,7 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
 app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
   const { template_id, document_owner, approval_authority, review_period } = req.body;
   const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ?').get(template_id);
-  if (!tpl) return res.redirect('back');
+  if (!tpl) return redirectBack(req, res);
   const today = new Date().toISOString().split('T')[0];
   const firm = db.prepare('SELECT name FROM firms WHERE id = ?').get(req.workspace.firm_id);
   const vars = {
@@ -2005,7 +2663,7 @@ app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorksp
 
 app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
   const { name, category } = req.body;
-  if (!name) return res.redirect('back');
+  if (!name) return redirectBack(req, res);
   const initial = '# ' + name + '\n\n';
   const id = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, name, category, content, created_by)
                          VALUES (?, ?, ?, ?, ?, ?)`)
@@ -2020,7 +2678,7 @@ app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, req
 // Upload an existing client policy/procedure (DOCX, PDF, MD, TXT). Converts to editable markdown
 // and preserves the original file as the approved source-of-truth attachment.
 app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, requirePermission('document.create'), upload.single('file'), async (req, res) => {
-  if (!req.file) return res.redirect('back');
+  if (!req.file) return redirectBack(req, res);
   const { name, category } = req.body;
   const ext = path.extname(req.file.originalname).toLowerCase();
   const allowed = ['.docx', '.pdf', '.md', '.markdown', '.txt'];
@@ -2152,7 +2810,7 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
   // multi-pick form). The section_ref applies to the bulk batch when used —
   // typically left blank for bulk operations and set per link on single ones.
   const ids = parseFormArray(req.body.iso_item_id);
-  if (!ids.length) return res.redirect('back');
+  if (!ids.length) return redirectBack(req, res);
   const sectionRef = req.body.section_ref || null;
   const ins = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
   let added = 0;
@@ -2185,10 +2843,10 @@ app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWork
   const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('ISO item not found');
   const { document_id, section_ref } = req.body;
-  if (!document_id) return res.redirect('back');
+  if (!document_id) return redirectBack(req, res);
   // Defend against linking a doc from a different workspace.
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(document_id, req.workspace.id);
-  if (!doc) return res.redirect('back');
+  if (!doc) return redirectBack(req, res);
   try {
     db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
       .run(doc.id, item.id, section_ref || null);
@@ -2211,7 +2869,7 @@ app.post('/workspaces/:wsId/controls/:isoId/documents/:linkId/delete', requireAu
 
 app.post('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const before = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!before) return res.redirect('back');
+  if (!before) return redirectBack(req, res);
   if (before.locked) return res.status(400).render('error', { user: req.user, message: 'Document is locked. Open a new version to edit.' });
 
   const { name, content, status } = req.body;
@@ -2276,7 +2934,7 @@ app.get('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) =>
 app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { title, scope, audit_date, auditor_name } = req.body;
-  if (!title) return res.redirect('back');
+  if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO audits (workspace_id, title, scope, audit_date, auditor_name, created_by)
                          VALUES (?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, title, scope || null, audit_date || null, auditor_name || null, req.user.id).lastInsertRowid;
@@ -2323,7 +2981,7 @@ app.get('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, r
 
 app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, res) => {
   const { title, description, source, source_ref, owner_name, due_date } = req.body;
-  if (!title || !title.trim()) return res.redirect('back');
+  if (!title || !title.trim()) return redirectBack(req, res);
   db.prepare(`INSERT INTO improvements (workspace_id, title, description, source, source_ref, owner_name, due_date, created_by)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, title.trim(), description || null,
@@ -2384,7 +3042,7 @@ app.post('/workspaces/:wsId/audits/:id/sampling', requireAuth, requireWorkspace,
 
 app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { iso_item_id, description, sample_taken_at, population_size, sample_size, finding } = req.body;
-  if (!description) return res.redirect('back');
+  if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_samples
     (audit_id, iso_item_id, description, sample_taken_at, population_size, sample_size, finding)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
@@ -2408,7 +3066,7 @@ app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requir
 app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { stage } = req.body;
   const allowed = ['planned','fieldwork','findings_review','report','follow_up','closed'];
-  if (!allowed.includes(stage)) return res.redirect('back');
+  if (!allowed.includes(stage)) return redirectBack(req, res);
   const sets = ['lifecycle_stage=?'];
   const vals = [stage];
   if (stage === 'fieldwork') { sets.push('fieldwork_started_at=COALESCE(fieldwork_started_at, CURRENT_TIMESTAMP)'); }
@@ -2423,7 +3081,7 @@ app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace
 app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { iso_item_id, finding_type, description, severity } = req.body;
-  if (!description) return res.redirect('back');
+  if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_findings (audit_id, iso_item_id, finding_type, description, severity)
               VALUES (?, ?, ?, ?, ?)`)
     .run(req.params.id, iso_item_id || null, finding_type || 'observation',
@@ -2435,7 +3093,7 @@ app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requ
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const f = db.prepare('SELECT * FROM audit_findings WHERE id = ? AND audit_id = ?')
     .get(req.params.fId, req.params.id);
-  if (!f) return res.redirect('back');
+  if (!f) return redirectBack(req, res);
   if (f.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + f.nonconformity_id);
   const sev = f.finding_type === 'major_nc' ? 'major' : 'minor';
   const ncId = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, source_ref, description, severity, iso_item_id)
@@ -2598,7 +3256,7 @@ app.get('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req
 app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { title, source, description, severity, iso_item_id } = req.body;
-  if (!title) return res.redirect('back');
+  if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, description, severity, iso_item_id)
                          VALUES (?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, title, source || 'other', description || null,
@@ -2688,7 +3346,7 @@ app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, (req,
     }
   }
   logAction(req.user.id, req.workspace.id, 'bulk_update_controls', 'control', null, { count, status, applicability });
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // ==================== AUTOSAVE (control fields) ====================
@@ -2779,6 +3437,140 @@ const MANDATORY_RECORDS = [
   { key: 'cryptography_policy', tier: 'expected', clause: 'A.8.24', name: 'Cryptography topic-specific policy (if A.8.24 included)',
     detect: (ws, db) => !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND lower(name) LIKE '%crypto%' LIMIT 1`).get(ws.id) }
 ];
+
+// Implementation roadmap — PDCA-aligned, mapped to ISO 27001:2022 clauses.
+// Each step is "complete" when a sensible signal exists; otherwise "pending".
+// Shared between the Overview dashboard and the dedicated /roadmap page so
+// they always reflect the same source of truth. Caller passes the scalars
+// already prepared in the workspace overview route to avoid duplicate
+// queries; the /roadmap route prepares them itself.
+function computeRoadmap(ws, scalars) {
+  const { stateRows, assetCount, riskCount, ncOpen } = scalars;
+  const annexAssessed = stateRows.filter(r => r.type === 'control' && r.status !== 'Not Assessed').length;
+  const annexTotal = stateRows.filter(r => r.type === 'control').length;
+  const clausesAssessed = stateRows.filter(r => r.type === 'clause' && r.status !== 'Not Assessed').length;
+  const clausesTotal = stateRows.filter(r => r.type === 'clause').length;
+  const allAssessed = annexAssessed + clausesAssessed;
+  const allTotal = annexTotal + clausesTotal;
+  const soaDecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(ws.id).c;
+  const approvedDocs = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(ws.id).c;
+  const auditsScheduled = db.prepare(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL`).get(ws.id).c;
+  const mrmsHeld = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete'`).get(ws.id).c;
+  const supplierCount = db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=?`).get(ws.id).c;
+
+  const docSignal = (patterns) => {
+    const ors = patterns.map(() => `name LIKE ?`).join(' OR ');
+    return db.prepare(`SELECT COUNT(*) c FROM generated_docs
+      WHERE workspace_id=? AND status IN ('approved','published') AND (${ors})`).get(ws.id, ...patterns).c;
+  };
+
+  const ispApproved = docSignal(['Information Security Policy%']);
+  const contextApproved = docSignal(['ISMS Governance Manual%', 'ISMS Manual%', 'Context%', 'Interested Parties%']);
+  const rolesApproved = docSignal(['ISMS Role —%', 'ISMS Steering%', 'Roles and Responsibilities%', 'RACI%']);
+  const objectivesApproved = docSignal(['Information Security Objectives%']);
+  const awarenessApproved = docSignal(['Awareness and Training%', 'Awareness%', 'Communication Plan%']);
+  const monitoringApproved = docSignal(['Logging and Monitoring%', 'Monitoring%', 'Measurement%', 'KPI%']);
+
+  const methodologyActive = db.prepare(`SELECT COUNT(*) c FROM risk_methodologies
+    WHERE workspace_id=? AND is_active=1`).get(ws.id).c;
+  const includedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).get(ws.id).c;
+  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
+      AND cs.status='Implemented'`).get(ws.id).c;
+
+  return [
+    { phase: 'plan', key: 'scope', label: 'Define ISMS scope', clause: 'Clause 4.3',
+      done: !!(ws.scope && ws.scope.length > 10),
+      detail: ws.scope ? 'Scope statement set' : 'Set the scope on workspace settings or in an ISMS Scope document',
+      link: `/workspaces/${ws.id}#workspace-settings`, link_label: 'Edit scope' },
+    { phase: 'plan', key: 'context', label: 'Document context — internal/external issues + interested parties', clause: 'Clauses 4.1 & 4.2',
+      done: contextApproved >= 1,
+      detail: contextApproved >= 1
+        ? 'Context register / ISMS Governance Manual approved'
+        : 'Document internal & external issues and interested-party requirements (incl. climate-related per Amendment 1:2024)',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'isp', label: 'Approve Information Security Policy', clause: 'Clause 5.2',
+      done: ispApproved >= 1,
+      detail: ispApproved >= 1 ? 'ISP approved' : 'Approved ISP is the foundation document — generate from template and approve',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'roles', label: 'Define ISMS roles & responsibilities', clause: 'Clause 5.3',
+      done: rolesApproved >= 1,
+      detail: rolesApproved >= 1
+        ? 'Roles & responsibilities documented'
+        : 'Assign CISO, asset owners, risk owners, internal auditor; document responsibilities and authority',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'objectives', label: 'Set information security objectives', clause: 'Clause 6.2',
+      done: objectivesApproved >= 1,
+      detail: objectivesApproved >= 1
+        ? 'Information Security Objectives approved'
+        : 'Set measurable, time-bound objectives consistent with the policy (3–7 typically)',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'methodology', label: 'Document risk-assessment methodology', clause: 'Clause 6.1.2',
+      done: methodologyActive >= 1,
+      detail: methodologyActive >= 1 ? 'Active methodology defined (scales, criteria)' : 'Likelihood/impact scales and risk-acceptance criteria must be set before scoring risks',
+      link: `/workspaces/${ws.id}/risk-methodology`, link_label: 'Methodology' },
+    { phase: 'plan', key: 'assets', label: 'Build asset register', clause: 'A.5.9 (input to 6.1.2)',
+      done: assetCount >= 5, partial: assetCount > 0 && assetCount < 5,
+      detail: `${assetCount} asset${assetCount === 1 ? '' : 's'} registered${assetCount > 0 && assetCount < 5 ? ' — most ISMS scopes need at least 5–10' : ''}`,
+      link: `/workspaces/${ws.id}/assets`, link_label: 'Assets' },
+    { phase: 'plan', key: 'gap', label: 'Gap-assess clauses & Annex A', clause: 'Project activity (covers 4–10, A.5–A.8)',
+      done: allAssessed === allTotal && allTotal > 0, partial: allAssessed > 0 && allAssessed < allTotal,
+      detail: `${clausesAssessed} / ${clausesTotal} clauses · ${annexAssessed} / ${annexTotal} controls assessed`,
+      link: `/workspaces/${ws.id}/gap-assessment`, link_label: 'Run gap assessment' },
+    { phase: 'plan', key: 'risks', label: 'Identify, score, and treat risks', clause: 'Clauses 6.1.2 & 6.1.3',
+      done: riskCount >= 5, partial: riskCount > 0 && riskCount < 5,
+      detail: `${riskCount} risk${riskCount === 1 ? '' : 's'} in register${riskCount === 0 ? ' — start from the library if unsure' : ''}`,
+      link: `/workspaces/${ws.id}/risks`, link_label: 'Risks' },
+    { phase: 'plan', key: 'soa', label: 'Finalize Statement of Applicability', clause: 'Clause 6.1.3 d',
+      done: soaDecided === annexTotal && annexTotal > 0, partial: soaDecided > 0 && soaDecided < annexTotal,
+      detail: `${soaDecided} / ${annexTotal} controls have inclusion/exclusion decision with justification`,
+      link: `/workspaces/${ws.id}/soa`, link_label: 'SoA' },
+    { phase: 'plan', key: 'awareness', label: 'Establish competence, awareness & communication', clause: 'Clauses 7.2, 7.3, 7.4',
+      done: awarenessApproved >= 1,
+      detail: awarenessApproved >= 1
+        ? 'Awareness & Training Plan approved'
+        : 'Plan competence requirements, awareness programme (induction + annual refresh), and communication channels',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'plan', key: 'docs', label: 'Approve mandatory documented information', clause: 'Clause 7.5',
+      done: approvedDocs >= 8, partial: approvedDocs > 0 && approvedDocs < 8,
+      detail: `${approvedDocs} document${approvedDocs === 1 ? '' : 's'} approved (target: at least the 8 mandatory artefacts)`,
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'do', key: 'controls', label: 'Implement applicable Annex A controls', clause: 'Clause 8.3 + A.5–A.8',
+      done: includedControls > 0 && implementedControls === includedControls,
+      partial: implementedControls > 0 && implementedControls < includedControls,
+      detail: includedControls === 0
+        ? 'Decide applicability in the SoA first, then implement included controls'
+        : `${implementedControls} / ${includedControls} included controls marked Implemented`,
+      link: `/workspaces/${ws.id}/controls`, link_label: 'Controls' },
+    { phase: 'do', key: 'suppliers', label: 'Manage supplier security operationally', clause: 'Clause 8.1 + A.5.19–A.5.22',
+      done: supplierCount >= 1,
+      detail: supplierCount === 0 ? 'Identify in-scope suppliers; assess and review per supplier risk tier' : `${supplierCount} supplier${supplierCount === 1 ? '' : 's'} registered`,
+      link: `/workspaces/${ws.id}/vendors`, link_label: 'Suppliers' },
+    { phase: 'check', key: 'monitoring', label: 'Define monitoring, measurement & evaluation', clause: 'Clause 9.1',
+      done: monitoringApproved >= 1,
+      detail: monitoringApproved >= 1
+        ? 'Monitoring approach documented'
+        : 'Determine what to monitor, methods, frequency, who analyses — KPIs aligned with objectives (6.2)',
+      link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
+    { phase: 'check', key: 'audit', label: 'Run an internal audit', clause: 'Clause 9.2',
+      done: auditsScheduled >= 1,
+      detail: auditsScheduled === 0 ? 'Plan the audit programme; first audit must precede Stage 1 cert audit' : `${auditsScheduled} audit${auditsScheduled === 1 ? '' : 's'} scheduled or run`,
+      link: `/workspaces/${ws.id}/audits`, link_label: 'Internal audits' },
+    { phase: 'check', key: 'mrm', label: 'Hold a management review', clause: 'Clause 9.3',
+      done: mrmsHeld >= 1,
+      detail: mrmsHeld === 0 ? 'Top management must review the ISMS at planned intervals; cover all 9.3.2 inputs' : `${mrmsHeld} MRM${mrmsHeld === 1 ? '' : 's'} completed`,
+      link: `/workspaces/${ws.id}/mrms`, link_label: 'Management review' },
+    { phase: 'act', key: 'ncs', label: 'Track nonconformities to closure with root-cause', clause: 'Clause 10.2',
+      done: ncOpen === 0,
+      detail: ncOpen === 0 ? 'No open NCs' : `${ncOpen} open NC${ncOpen === 1 ? '' : 's'} — RCA + corrective action + effectiveness review per NC`,
+      link: `/workspaces/${ws.id}/nonconformities`, link_label: 'Nonconformities' }
+  ];
+}
 
 function computeReadiness(ws) {
   const checks = MANDATORY_RECORDS.map(m => ({
@@ -3110,7 +3902,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
       severity: 'high',
       title: `${notAssessed} item${notAssessed === 1 ? '' : 's'} still "Not Assessed" (${notAssessedRow.clauses || 0} clause${(notAssessedRow.clauses||0) === 1 ? '' : 's'} · ${notAssessedRow.controls || 0} control${(notAssessedRow.controls||0) === 1 ? '' : 's'})`,
       detail: 'Every main-body clause AND every Annex A control needs a status — even Not Applicable. Clauses 4–10 are the "shall" requirements; Annex A entries also need an applicability decision. Run the gap assessment wizard to clear this in one pass.',
-      items: [{ label: '→ Run gap assessment', link: `/workspaces/${wsId}/controls/assess` }]
+      items: [{ label: '→ Run gap assessment', link: `/workspaces/${wsId}/gap-assessment` }]
     });
   }
 
@@ -3171,23 +3963,69 @@ app.get('/api/search', requireAuth, (req, res) => {
       const ncs = db.prepare(`SELECT id, title FROM nonconformities WHERE workspace_id = ? AND lower(title) LIKE ? LIMIT 5`).all(wsId, like);
       ncs.forEach(n => results.push({ type: 'NC', label: n.title, sublabel: 'NC-' + String(n.id).padStart(3,'0'), href: '/workspaces/' + wsId + '/nonconformities/' + n.id }));
 
-      // Nav shortcuts in current workspace
+      // Nav shortcuts in current workspace. Each entry: [label, path-suffix,
+      // optional aliases for matching]. Keep in sync with views/partials/header.ejs.
       const nav = [
-        ['Overview', ''], ['Readiness', '/readiness'], ['Controls', '/controls'],
-        ['Assets', '/assets'], ['Risks', '/risks'], ['Statement of Applicability', '/soa'],
-        ['Documents', '/documents'], ['Internal audits', '/audits'], ['Management review', '/mrms'],
-        ['Nonconformities', '/nonconformities'], ['Tasks', '/tasks'],
-        ['Members', '/members'], ['Activity log', '/activity']
+        ['Overview', '', 'dashboard home'],
+        ['Readiness', '/readiness', 'stage 1 stage 2 cert ready'],
+        ['Gap assessment', '/gap-assessment', 'pass passes re-assessment reassess diff'],
+        ['Roadmap', '/roadmap', 'pdca implementation plan needs attention'],
+        ['Controls', '/controls', 'annex a clauses wizard'],
+        ['Assets', '/assets', 'inventory asset register'],
+        ['Risks', '/risks', 'risk register'],
+        ['Interested parties', '/interested-parties', 'clause 4.2 stakeholders parties'],
+        ['Objectives', '/objectives', 'clause 6.2 information security objectives kpi'],
+        ['Risk methodology', '/risk-methodology', 'risk criteria scales'],
+        ['Risk acceptances', '/risk-acceptances', 'accepted risks'],
+        ['Statement of Applicability', '/soa', 'soa annex a inclusion exclusion'],
+        ['SoA snapshots', '/soa/snapshots', 'soa version history'],
+        ['Documents', '/documents', 'policies procedures'],
+        ['Evidence library', '/evidence', 'audit evidence files'],
+        ['Internal audits', '/audits', 'audit'],
+        ['Audit programme', '/audit-programme', 'audit schedule annual'],
+        ['Management review', '/mrms', 'mrm top management review'],
+        ['Cert cycle', '/cert-cycle', 'certification stage 1 stage 2 surveillance recert'],
+        ['Nonconformities', '/nonconformities', 'nc finding'],
+        ['Incidents', '/incidents', 'security incident'],
+        ['Improvements', '/improvements', 'continual improvement opportunity'],
+        ['Suppliers', '/vendors', 'vendor third party tprm'],
+        ['Tasks', '/tasks', 'task remediation'],
+        ['Task templates', '/task-templates', 'task template'],
+        ['Compliance calendar', '/calendar', 'calendar dates schedule'],
+        ['Reports', '/reports', 'report export'],
+        ['Members', '/members', 'team users'],
+        ['Access & permissions', '/access', 'permissions rbac'],
+        ['Activity log', '/activity-log', 'audit trail history']
       ];
-      nav.filter(([n]) => n.toLowerCase().includes(q)).slice(0, 5).forEach(([n, p]) => {
-        results.push({ type: 'Page', label: n, sublabel: ws.client_name, href: '/workspaces/' + wsId + p });
-      });
+      nav.filter(([n, , aliases]) => n.toLowerCase().includes(q) || (aliases && aliases.toLowerCase().includes(q)))
+        .slice(0, 8)
+        .forEach(([n, p]) => {
+          results.push({ type: 'Page', label: n, sublabel: ws.client_name, href: '/workspaces/' + wsId + p });
+        });
     }
   } else {
     if ('clients'.includes(q) || 'dashboard'.includes(q) || 'home'.includes(q)) {
       results.push({ type: 'Page', label: 'Clients', sublabel: 'All workspaces', href: '/dashboard' });
     }
   }
+
+  // Workspace-agnostic resources — searchable from anywhere.
+  if ('glossary'.includes(q) || 'terms'.includes(q) || 'dictionary'.includes(q) || 'definitions'.includes(q)) {
+    results.push({ type: 'Reference', label: 'Glossary', sublabel: 'ISO 27001 & GRC terms', href: '/glossary' });
+  }
+  // Direct hits on individual glossary entries — searches term, aliases, plain.
+  try {
+    const GLOSSARY = require('./data/glossary');
+    const matches = GLOSSARY.searchEntries(q, 'all', 'all').slice(0, 5);
+    for (const m of matches) {
+      results.push({
+        type: 'Glossary',
+        label: m.term,
+        sublabel: m.plain ? (m.plain.length > 70 ? m.plain.slice(0, 70) + '…' : m.plain) : '',
+        href: '/glossary/' + m.slug
+      });
+    }
+  } catch (_) { /* glossary data not loadable, skip */ }
 
   res.json(results.slice(0, 30));
 });
@@ -3448,7 +4286,7 @@ app.get('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res)
 app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { title, category, severity, detected_at, reported_by, description } = req.body;
-  if (!title) return res.redirect('back');
+  if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO incidents (workspace_id, title, category, severity, detected_at, reported_by, description)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.workspace.id, title, category || 'other', severity || 'medium',
     detected_at || null, reported_by || null, description || null).lastInsertRowid;
@@ -3487,7 +4325,7 @@ app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req,
 app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const inc = db.prepare(`SELECT * FROM incidents WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
-  if (!inc) return res.redirect('back');
+  if (!inc) return redirectBack(req, res);
   if (inc.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + inc.nonconformity_id);
   const sev = inc.severity === 'critical' || inc.severity === 'high' ? 'major' : 'minor';
   const ncId = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, source_ref, description, severity)
@@ -3621,7 +4459,7 @@ app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermi
 app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure } = req.body;
-  if (!name) return res.redirect('back');
+  if (!name) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO suppliers (workspace_id, name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure, lifecycle_stage)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'prospect')`).run(
     req.workspace.id, name, service_provided || null,
@@ -3705,7 +4543,7 @@ app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, 
 app.post('/workspaces/:wsId/vendors/:id/documents', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { doc_type, name, effective_date, expiry_date, notes } = req.body;
-  if (!name) return res.redirect('back');
+  if (!name) return redirectBack(req, res);
   let storedPath = null, sha = null, size = null, filename = null;
   if (req.file) {
     const buf = fs.readFileSync(req.file.path);
@@ -3745,7 +4583,7 @@ app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, r
 app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { name, service_provided, data_access, location, approved } = req.body;
-  if (!name) return res.redirect('back');
+  if (!name) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_subprocessors (workspace_id, supplier_id, name, service_provided, data_access, location, approved, approved_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, name, service_provided || null,
@@ -3780,7 +4618,7 @@ app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace,
 // Notes
 app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, (req, res) => {
   const { body, internal_only } = req.body;
-  if (!body) return res.redirect('back');
+  if (!body) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_notes (workspace_id, supplier_id, user_name, body, internal_only)
     VALUES (?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, req.user.name,
@@ -3812,7 +4650,7 @@ app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace
   const v = db.prepare('SELECT id FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!v) return res.status(404).send('Not found');
   const { iso_item_id, notes } = req.body;
-  if (!iso_item_id) return res.redirect('back');
+  if (!iso_item_id) return redirectBack(req, res);
   try {
     db.prepare(`INSERT OR IGNORE INTO supplier_controls (supplier_id, iso_item_id, notes) VALUES (?, ?, ?)`)
       .run(v.id, iso_item_id, notes || null);
@@ -3838,7 +4676,7 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWor
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { template_id } = req.body;
   const tpl = db.prepare(`SELECT * FROM questionnaire_templates WHERE id=?`).get(template_id);
-  if (!tpl) return res.redirect('back');
+  if (!tpl) return redirectBack(req, res);
   const qCount = db.prepare(`SELECT COUNT(*) c FROM questionnaire_questions WHERE template_id=?`).get(template_id).c;
   const qid = db.prepare(`INSERT INTO supplier_questionnaires (workspace_id, supplier_id, template_id, template_name, status, sent_at, total_questions)
     VALUES (?, ?, ?, ?, 'sent', CURRENT_TIMESTAMP, ?)`).run(
@@ -3953,7 +4791,7 @@ app.get('/workspaces/:wsId/access', requireAuth, requireWorkspace, requirePermis
 
 app.post('/workspaces/:wsId/access/role', requireAuth, requireWorkspace, requirePermission('members.assign_role'), (req, res) => {
   const { user_id, role } = req.body;
-  if (!user_id || !rbac.ROLE_PERMS[role]) return res.redirect('back');
+  if (!user_id || !rbac.ROLE_PERMS[role]) return redirectBack(req, res);
   const before = db.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').get(req.workspace.id, user_id);
   if (before) {
     db.prepare(`UPDATE workspace_members SET role=? WHERE workspace_id=? AND user_id=?`).run(role, req.workspace.id, user_id);
@@ -3967,7 +4805,7 @@ app.post('/workspaces/:wsId/access/role', requireAuth, requireWorkspace, require
 
 app.post('/workspaces/:wsId/access/override', requireAuth, requireWorkspace, requirePermission('members.override_perms'), (req, res) => {
   const { user_id, permission, granted, reason } = req.body;
-  if (!user_id || !permission || !rbac.PERMISSIONS[permission]) return res.redirect('back');
+  if (!user_id || !permission || !rbac.PERMISSIONS[permission]) return redirectBack(req, res);
   const g = granted === '1' || granted === 'on' ? 1 : 0;
   db.prepare(`INSERT INTO workspace_role_overrides (workspace_id, user_id, permission, granted, granted_by, reason)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -4140,7 +4978,7 @@ function simpleLineDiff(a, b) {
 // Submit current draft for review — snapshots a new version, sets approver chain.
 app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!doc) return res.redirect('back');
+  if (!doc) return redirectBack(req, res);
   if (doc.locked) return res.status(400).render('error', { user: req.user, message: 'Document is locked. Create a new version first.' });
   const approverIds = (req.body.approver_ids || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
   const summary = req.body.change_summary || null;
@@ -4163,9 +5001,9 @@ app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWo
 // Approver makes a decision (approve / reject) on the current version.
 app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace, requirePermission('document.review'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!doc || !doc.current_version_id) return res.redirect('back');
+  if (!doc || !doc.current_version_id) return redirectBack(req, res);
   const { decision, reason } = req.body;
-  if (!['approve','reject'].includes(decision)) return res.redirect('back');
+  if (!['approve','reject'].includes(decision)) return redirectBack(req, res);
 
   // Find this user's pending slot for the current version (must respect sequence).
   const pending = db.prepare(`SELECT a.*, (SELECT MIN(sequence) FROM doc_approvers WHERE version_id=? AND decision IS NULL) AS next_seq
@@ -4203,11 +5041,11 @@ app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace
 // E-signature endpoint. Captures user's identity, hashes content, generates HMAC, stores ip/UA.
 app.post('/workspaces/:wsId/documents/:id/sign', requireAuth, requireWorkspace, requirePermission('document.sign'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!doc || !doc.current_version_id) return res.redirect('back');
+  if (!doc || !doc.current_version_id) return redirectBack(req, res);
   const { intent, signature_role, attestation } = req.body;
   if (!intent || !attestation) return res.status(400).render('error', { user: req.user, message: 'Sign-off requires an intent and explicit attestation.' });
   const v = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(doc.current_version_id);
-  if (!v) return res.redirect('back');
+  if (!v) return redirectBack(req, res);
   const ts = new Date().toISOString();
   const payload = `${doc.id}|${v.id}|${req.user.id}|${v.content_hash}|${intent}|${ts}`;
   const sig = enc.signHmac(payload, req.workspace.id);
@@ -4225,7 +5063,7 @@ app.post('/workspaces/:wsId/documents/:id/sign', requireAuth, requireWorkspace, 
 // Publish an approved document.
 app.post('/workspaces/:wsId/documents/:id/publish', requireAuth, requireWorkspace, requirePermission('document.publish'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!doc) return res.redirect('back');
+  if (!doc) return redirectBack(req, res);
   if (doc.status !== 'approved') return res.status(400).render('error', { user: req.user, message: 'Only approved documents can be published.' });
   db.prepare(`UPDATE generated_docs SET status='published', published_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
   if (doc.current_version_id) db.prepare(`UPDATE doc_versions SET status='published', published_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.current_version_id);
@@ -4236,7 +5074,7 @@ app.post('/workspaces/:wsId/documents/:id/publish', requireAuth, requireWorkspac
 // Retire a published document.
 app.post('/workspaces/:wsId/documents/:id/retire', requireAuth, requireWorkspace, requirePermission('document.retire'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!doc) return res.redirect('back');
+  if (!doc) return redirectBack(req, res);
   db.prepare(`UPDATE generated_docs SET status='retired', retired_at=CURRENT_TIMESTAMP, locked=1 WHERE id=?`).run(doc.id);
   if (doc.current_version_id) db.prepare(`UPDATE doc_versions SET status='retired', retired_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.current_version_id);
   logAction(req.user.id, req.workspace.id, 'retire_document', 'document', doc.id, { reason: req.body.reason || null }, auditCtx(req));
@@ -4246,7 +5084,7 @@ app.post('/workspaces/:wsId/documents/:id/retire', requireAuth, requireWorkspace
 // Reopen for editing — creates a new draft version branched off current.
 app.post('/workspaces/:wsId/documents/:id/new-version', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!doc) return res.redirect('back');
+  if (!doc) return redirectBack(req, res);
   db.prepare(`UPDATE generated_docs SET status='draft', locked=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
   logAction(req.user.id, req.workspace.id, 'new_version', 'document', doc.id,
     { previous_version_id: doc.current_version_id }, auditCtx(req));
@@ -4340,6 +5178,44 @@ function computeNeedsAttention(wsId) {
     WHERE workspace_id=? AND status NOT IN ('closed') AND planned_date IS NOT NULL AND planned_date >= ? AND planned_date < ?`)
     .all(wsId, today, expSoon).forEach(e => push('medium', 'cert', `Upcoming: ${e.event_type.replace('_',' ')}`, `/workspaces/${wsId}/cert-cycle`, `Planned ${e.planned_date}`));
 
+  // Stale-control signals — controls included in SoA whose last_verified_at
+  // is > 12 months ago (or never verified). Drives the re-engagement scope.
+  const stale = db.prepare(`SELECT cs.iso_item_id, cs.last_verified_at, i.title
+    FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
+      AND cs.status NOT IN ('Not Assessed','Not Applicable')
+      AND (cs.last_verified_at IS NULL OR cs.last_verified_at < datetime('now','-365 days'))
+    ORDER BY cs.last_verified_at IS NULL DESC, cs.last_verified_at ASC
+    LIMIT 6`).all(wsId);
+  for (const s of stale) {
+    const code = s.iso_item_id.replace('annex-','').toUpperCase();
+    const detail = s.last_verified_at
+      ? `Last verified ${s.last_verified_at.slice(0,10)} — re-assess`
+      : 'Never verified — re-assess in this engagement';
+    push(s.last_verified_at ? 'medium' : 'high', 'stale', `${code} stale: ${s.title.replace(/^A\.[0-9.]+ /,'')}`,
+         `/workspaces/${wsId}/controls/assess/${s.iso_item_id}`, detail);
+  }
+
+  // Overdue interested-party reviews + objective due dates.
+  db.prepare(`SELECT id, party, next_review FROM interested_parties
+    WHERE workspace_id=? AND next_review IS NOT NULL AND next_review < ?`)
+    .all(wsId, today).forEach(p => push('medium', 'party',
+      `Interested party review overdue: ${p.party}`,
+      `/workspaces/${wsId}/interested-parties`,
+      `Review was due ${p.next_review}`));
+  db.prepare(`SELECT id, title, due_date, status FROM security_objectives
+    WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < ? AND status NOT IN ('achieved','paused')`)
+    .all(wsId, today).forEach(o => push('high', 'objective',
+      `Objective overdue: ${o.title}`,
+      `/workspaces/${wsId}/objectives`,
+      `Due ${o.due_date}`));
+  db.prepare(`SELECT id, title, status FROM security_objectives
+    WHERE workspace_id=? AND status='off_track'`)
+    .all(wsId).forEach(o => push('high', 'objective',
+      `Objective off-track: ${o.title}`,
+      `/workspaces/${wsId}/objectives`, ''));
+
   // ISMS-stale signals — last MRM / audit older than 12 months
   const lastMrm = db.prepare(`SELECT meeting_date FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
   if (!lastMrm) push('medium', 'mrm', 'No completed management review on record', `/workspaces/${wsId}/mrms`, '');
@@ -4371,15 +5247,15 @@ app.get('/workspaces/:wsId/notifications', requireAuth, requireWorkspace, (req, 
 
 app.post('/workspaces/:wsId/notifications/:id/read', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 app.post('/workspaces/:wsId/notifications/:id/dismiss', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`UPDATE notifications SET dismissed_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 app.post('/workspaces/:wsId/notifications/mark-all-read', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND read_at IS NULL`).run(req.workspace.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // Tier B.8 — Calendar view aggregating every due-dated item across the workspace.
@@ -4472,7 +5348,7 @@ app.get('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace,
 
 app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
   const { title, description, owner_name, due_date, status, cost_estimate, expected_residual_l, expected_residual_i, iso_item_id } = req.body;
-  if (!title) return res.redirect('back');
+  if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO risk_treatments (workspace_id, risk_id, title, description, owner_name, due_date, status, cost_estimate, expected_residual_l, expected_residual_i, iso_item_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, title, description || null, owner_name || null,
@@ -4508,7 +5384,7 @@ const METHODOLOGY_PRESETS = require('./data/methodology-presets');
 
 app.post('/workspaces/:wsId/risk-methodology/preset/:key', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
   const preset = METHODOLOGY_PRESETS[req.params.key];
-  if (!preset) return res.redirect('back');
+  if (!preset) return redirectBack(req, res);
   db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
   db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
@@ -4611,6 +5487,440 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `Auto-justified ${updated} controls`));
 });
 
+// ==================== INTERESTED PARTIES (clause 4.2) ====================
+app.get('/workspaces/:wsId/interested-parties', requireAuth, requireWorkspace, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM interested_parties WHERE workspace_id=? ORDER BY party_type, party`)
+    .all(req.workspace.id);
+  res.render('interested_parties', {
+    user: req.user, ws: req.workspace, title: 'Interested parties', active: 'interested-parties', rows
+  });
+});
+
+app.post('/workspaces/:wsId/interested-parties', requireAuth, requireWorkspace, (req, res) => {
+  const b = req.body;
+  if (!b.party || !b.party.trim()) return redirectBack(req, res, 'Party name is required', 'error');
+  db.prepare(`INSERT INTO interested_parties
+    (workspace_id, party, party_type, needs, how_addressed, owner, review_cadence, last_reviewed, next_review, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, b.party.trim(), b.party_type || null,
+         b.needs || null, b.how_addressed || null, b.owner || null,
+         b.review_cadence || null, b.last_reviewed || null, b.next_review || null, b.notes || null);
+  logAction(req.user.id, req.workspace.id, 'create_interested_party', 'interested_party', null, { party: b.party });
+  res.redirect(`/workspaces/${req.workspace.id}/interested-parties`);
+});
+
+app.post('/workspaces/:wsId/interested-parties/:id', requireAuth, requireWorkspace, (req, res) => {
+  const b = req.body;
+  db.prepare(`UPDATE interested_parties SET
+    party=?, party_type=?, needs=?, how_addressed=?, owner=?, review_cadence=?, last_reviewed=?, next_review=?, notes=?,
+    updated_at=datetime('now')
+    WHERE id=? AND workspace_id=?`)
+    .run(b.party, b.party_type || null, b.needs || null, b.how_addressed || null, b.owner || null,
+         b.review_cadence || null, b.last_reviewed || null, b.next_review || null, b.notes || null,
+         req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/interested-parties`);
+});
+
+app.post('/workspaces/:wsId/interested-parties/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+  db.prepare('DELETE FROM interested_parties WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/interested-parties`);
+});
+
+// ==================== INFORMATION SECURITY OBJECTIVES (clause 6.2) ====================
+app.get('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM security_objectives WHERE workspace_id=? ORDER BY due_date IS NULL, due_date, id`)
+    .all(req.workspace.id);
+  res.render('objectives', {
+    user: req.user, ws: req.workspace, title: 'Security objectives', active: 'objectives', rows
+  });
+});
+
+app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
+  const b = req.body;
+  if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Objective title is required', 'error');
+  db.prepare(`INSERT INTO security_objectives
+    (workspace_id, title, description, measurement, target_value, current_value, owner, due_date, status, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, b.title.trim(), b.description || null, b.measurement || null,
+         b.target_value || null, b.current_value || null, b.owner || null,
+         b.due_date || null, b.status || 'on_track', b.notes || null);
+  logAction(req.user.id, req.workspace.id, 'create_objective', 'objective', null, { title: b.title });
+  res.redirect(`/workspaces/${req.workspace.id}/objectives`);
+});
+
+app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, (req, res) => {
+  const b = req.body;
+  db.prepare(`UPDATE security_objectives SET
+    title=?, description=?, measurement=?, target_value=?, current_value=?, owner=?, due_date=?, status=?, notes=?,
+    updated_at=datetime('now')
+    WHERE id=? AND workspace_id=?`)
+    .run(b.title, b.description || null, b.measurement || null,
+         b.target_value || null, b.current_value || null, b.owner || null,
+         b.due_date || null, b.status || 'on_track', b.notes || null,
+         req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/objectives`);
+});
+
+app.post('/workspaces/:wsId/objectives/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+  db.prepare('DELETE FROM security_objectives WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/objectives`);
+});
+
+// ==================== CUSTOM (NON-ANNEX-A) CONTROLS ====================
+// 27001:2022 explicitly allows controls outside Annex A. They sit alongside
+// the 93 Annex A controls in the SoA.
+app.post('/workspaces/:wsId/soa/custom-controls', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const b = req.body;
+  if (!b.code || !b.title) return redirectBack(req, res, 'Both code and title are required', 'error');
+  db.prepare(`INSERT INTO soa_custom_controls
+    (workspace_id, code, title, description, source_framework, applicability, inclusion_justification, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, b.code.trim(), b.title.trim(),
+         b.description || null, b.source_framework || null,
+         b.applicability || 'included', b.inclusion_justification || null,
+         b.status || 'Not Assessed');
+  logAction(req.user.id, req.workspace.id, 'create_custom_control', 'custom_control', null, { code: b.code });
+  res.redirect(`/workspaces/${req.workspace.id}/soa`);
+});
+
+app.post('/workspaces/:wsId/soa/custom-controls/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const b = req.body;
+  db.prepare(`UPDATE soa_custom_controls SET
+    code=?, title=?, description=?, source_framework=?, applicability=?, inclusion_justification=?, exclusion_justification=?, status=?, notes=?,
+    updated_at=datetime('now')
+    WHERE id=? AND workspace_id=?`)
+    .run(b.code, b.title, b.description || null, b.source_framework || null,
+         b.applicability || 'included', b.inclusion_justification || null, b.exclusion_justification || null,
+         b.status || 'Not Assessed', b.notes || null,
+         req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/soa`);
+});
+
+app.post('/workspaces/:wsId/soa/custom-controls/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare('DELETE FROM soa_custom_controls WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/soa`);
+});
+
+// ==================== SOA METADATA HEADER ====================
+// Update the latest snapshot's metadata (version / owner / approver / approved_at).
+// If no snapshot exists, capture one first.
+app.post('/workspaces/:wsId/soa/metadata', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const b = req.body;
+  let latest = db.prepare(`SELECT id FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1`)
+    .get(req.workspace.id);
+  if (!latest) {
+    const snap = captureSoASnapshot(req.workspace.id, req.user.id, null, 'Initial', 'Metadata-driven snapshot');
+    latest = { id: snap.id };
+  }
+  db.prepare(`UPDATE soa_snapshots SET version=?, owner=?, approved_by=?, approved_at=? WHERE id=?`)
+    .run(b.version || null, b.owner || null, b.approved_by || null, b.approved_at || null, latest.id);
+  logAction(req.user.id, req.workspace.id, 'update_soa_metadata', 'soa_snapshot', latest.id, b);
+  res.redirect(`/workspaces/${req.workspace.id}/soa`);
+});
+
+// ==================== ENGAGEMENT DELIVERABLES ====================
+// PDF/DOCX/ZIP exports the consultant produces at end-of-pass to hand to the
+// client and to bring to the certification audit.
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function deliverableHtmlShell(title, ws, bodyHtml) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
+    <style>
+      body{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.45;color:#0F0F12;}
+      h1{font-size:22pt;color:#0F0F12;margin:0 0 4pt;letter-spacing:-0.01em;}
+      h2{font-size:14pt;color:#3730A3;margin:18pt 0 6pt;border-bottom:1pt solid #ECECEF;padding-bottom:3pt;}
+      h3{font-size:12pt;color:#0F0F12;margin:12pt 0 4pt;}
+      .meta{color:#71717A;font-size:9.5pt;}
+      table{border-collapse:collapse;width:100%;margin:6pt 0;font-size:9.5pt;}
+      th,td{border:1pt solid #D6D6DB;padding:4pt 6pt;text-align:left;vertical-align:top;}
+      th{background:#F4F4F5;color:#0F0F12;font-weight:600;}
+      .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:600;}
+      .tag-impl{background:#dcfce7;color:#15803d;}
+      .tag-partial{background:#fef3c7;color:#a16207;}
+      .tag-wip{background:#dbeafe;color:#1d4ed8;}
+      .tag-noimpl{background:#fee2e2;color:#b91c1c;}
+      .tag-na{background:#e5e7eb;color:#71717A;}
+      .footer{color:#9C9CA5;font-size:8.5pt;text-align:center;margin-top:24pt;border-top:1pt solid #ECECEF;padding-top:6pt;}
+    </style></head><body>
+    <h1>${escHtml(title)}</h1>
+    <p class="meta">${escHtml(ws.client_name || '')}${ws.industry ? ' · ' + escHtml(ws.industry) : ''} · Generated ${new Date().toISOString().slice(0,10)}</p>
+    ${bodyHtml}
+    <p class="footer">Generated by ISMS tool on ${new Date().toISOString()}</p>
+    </body></html>`;
+}
+function statusTag(s) {
+  if (!s) return '<span class="tag tag-na">—</span>';
+  const cls = s === 'Implemented' ? 'tag-impl'
+    : s === 'Partially Implemented' ? 'tag-partial'
+    : s === 'Work In Progress' ? 'tag-wip'
+    : s === 'Not Implemented' ? 'tag-noimpl'
+    : 'tag-na';
+  return `<span class="tag ${cls}">${escHtml(s)}</span>`;
+}
+
+// Risk Treatment Plan (clause 6.1.3.e) — formal document export pulling from
+// the live risk register.
+app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, async (req, res) => {
+  const ws = req.workspace;
+  const risks = db.prepare(`SELECT r.* FROM risks r
+    WHERE r.workspace_id=? ORDER BY (r.likelihood * r.impact) DESC, r.id`).all(ws.id);
+  const actionsByRisk = {};
+  if (risks.length) {
+    const rids = risks.map(r => r.id);
+    const ph = rids.map(() => '?').join(',');
+    db.prepare(`SELECT * FROM risk_treatment_actions WHERE risk_id IN (${ph}) ORDER BY due_date IS NULL, due_date`)
+      .all(...rids).forEach(a => { (actionsByRisk[a.risk_id] = actionsByRisk[a.risk_id] || []).push(a); });
+  }
+  const ctrlByRisk = {};
+  if (risks.length) {
+    const rids = risks.map(r => r.id);
+    const ph = rids.map(() => '?').join(',');
+    db.prepare(`SELECT rc.risk_id, rc.iso_item_id, i.title FROM risk_controls rc
+      INNER JOIN iso_items i ON i.id = rc.iso_item_id WHERE rc.risk_id IN (${ph})`)
+      .all(...rids).forEach(c => { (ctrlByRisk[c.risk_id] = ctrlByRisk[c.risk_id] || []).push(c); });
+  }
+
+  let body = '<h2>Methodology</h2><p>This Risk Treatment Plan documents, for every risk in the register, the chosen treatment option, the controls applied, the responsible owner, and the implementation timeframe — as required by ISO/IEC 27001:2022 clause 6.1.3.e.</p>';
+  body += `<p>Risks: <strong>${risks.length}</strong></p>`;
+  body += '<h2>Treatment plan by risk</h2>';
+  if (risks.length === 0) {
+    body += '<p><em>No risks recorded yet.</em></p>';
+  } else {
+    body += '<table><thead><tr><th width="8%">ID</th><th>Risk</th><th width="10%">L×I</th><th width="10%">Treatment</th><th width="14%">Owner</th><th>Controls applied</th><th>Actions</th></tr></thead><tbody>';
+    for (const r of risks) {
+      const ctrls = (ctrlByRisk[r.id] || []).map(c => escHtml(c.iso_item_id.replace('annex-','').toUpperCase()) + ' ' + escHtml(c.title.replace(/^A\.[0-9.]+ /,''))).join('<br>') || '<em class="meta">—</em>';
+      const acts = (actionsByRisk[r.id] || []).map(a => `<strong>${escHtml(a.title)}</strong><br><span class="meta">${escHtml(a.assignee_role || '')}${a.due_date ? ' · due ' + escHtml(a.due_date) : ''} · ${escHtml(a.status || '')}</span>`).join('<br><br>') || '<em class="meta">—</em>';
+      body += `<tr><td>R-${r.id}</td><td><strong>${escHtml(r.title)}</strong>${r.description ? '<br><span class="meta">' + escHtml(r.description) + '</span>' : ''}</td><td>${r.likelihood || '—'}×${r.impact || '—'}</td><td>${escHtml(r.treatment || '—')}</td><td>${escHtml(r.owner_name || '—')}</td><td>${ctrls}</td><td>${acts}</td></tr>`;
+    }
+    body += '</tbody></table>';
+  }
+  const html = deliverableHtmlShell('Risk Treatment Plan', ws, body);
+  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="risk-treatment-plan-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
+  res.send(buf);
+});
+
+// Gap Assessment Report — produced at end-of-pass for handoff.
+app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspace, async (req, res) => {
+  const ws = req.workspace;
+  const passId = req.query.pass ? parseInt(req.query.pass, 10) : null;
+  let pass = null;
+  if (passId) {
+    pass = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(passId, ws.id);
+  }
+  if (!pass) {
+    pass = db.prepare(`SELECT * FROM assessment_passes WHERE workspace_id=?
+      ORDER BY (status='in_progress') DESC, pass_number DESC LIMIT 1`).get(ws.id);
+  }
+
+  // For each control: end-of-pass status (using the same logic as the diff route).
+  const items = db.prepare(`SELECT i.id, i.type, i.title, i.sort_order
+    FROM iso_items i WHERE i.type IN ('clause','control') ORDER BY i.sort_order`).all();
+  const stmt = db.prepare(`SELECT h.status, h.maturity, h.applicability, h.notes
+    FROM control_state_history h
+    INNER JOIN assessment_passes p ON p.id = h.pass_id
+    WHERE h.workspace_id=? AND h.iso_item_id=? AND p.pass_number <= ?
+    ORDER BY p.pass_number DESC, h.snapshot_at DESC, h.id DESC LIMIT 1`);
+  const rows = pass ? items.map(it => {
+    const r = stmt.get(ws.id, it.id, pass.pass_number) || { status:'Not Assessed', maturity:null, applicability:'undecided', notes:null };
+    return { ...it, ...r, code: it.id.replace(/^annex-/,'').replace(/^clause-/,'').toUpperCase() };
+  }) : [];
+
+  // Group by category for the executive summary.
+  const counts = { 'Implemented':0, 'Partially Implemented':0, 'Work In Progress':0, 'Not Implemented':0, 'Not Assessed':0, 'Not Applicable':0 };
+  rows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  const total = rows.length;
+  const gaps = rows.filter(r => ['Not Implemented','Partially Implemented','Work In Progress'].includes(r.status));
+  const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(ws.id).c;
+
+  let body = '<h2>Executive summary</h2>';
+  body += `<p>This report summarises the gap-assessment findings produced during <strong>Pass ${pass ? pass.pass_number : '—'}${pass && pass.label ? ' · ' + escHtml(pass.label) : ''}</strong>${pass && pass.completed_at ? ' (completed ' + pass.completed_at.slice(0,10) + ')' : pass && pass.status === 'in_progress' ? ' (in progress)' : ''}. The findings are based on documented evidence reviewed and consultant interviews.</p>`;
+  body += '<table style="width:auto"><thead><tr><th>Status</th><th>Count</th><th>%</th></tr></thead><tbody>';
+  for (const [s, c] of Object.entries(counts)) {
+    body += `<tr><td>${statusTag(s)}</td><td>${c}</td><td>${total ? Math.round(c/total*100) : 0}%</td></tr>`;
+  }
+  body += `<tr><td><strong>Total</strong></td><td><strong>${total}</strong></td><td>100%</td></tr>`;
+  body += '</tbody></table>';
+  body += `<p>Open nonconformities at time of report: <strong>${ncOpen}</strong></p>`;
+
+  body += '<h2>Identified gaps</h2>';
+  if (gaps.length === 0) {
+    body += '<p><em>No gaps identified at this pass.</em></p>';
+  } else {
+    body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th>Notes</th></tr></thead><tbody>';
+    for (const g of gaps) {
+      const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+      body += `<tr><td>${escHtml(g.code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(g.status)}</td><td>${escHtml(g.notes || '')}</td></tr>`;
+    }
+    body += '</tbody></table>';
+  }
+
+  body += '<h2>Full assessment results</h2>';
+  body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th width="8%">Maturity</th></tr></thead><tbody>';
+  for (const r of rows) {
+    const cleanTitle = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+    body += `<tr><td>${escHtml(r.code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(r.status)}</td><td>${r.maturity == null ? '—' : r.maturity}</td></tr>`;
+  }
+  body += '</tbody></table>';
+
+  const title = `Gap Assessment Report — Pass ${pass ? pass.pass_number : ''}`;
+  const html = deliverableHtmlShell(title, ws, body);
+  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="gap-assessment-report-${ws.id}-pass${pass ? pass.pass_number : 'X'}-${new Date().toISOString().slice(0,10)}.docx"`);
+  res.send(buf);
+});
+
+// Recommendations memo — ranked, actionable handoff.
+app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWorkspace, async (req, res) => {
+  const ws = req.workspace;
+  // Pull rows where status is Not Implemented / Partially / WIP — ordered by severity.
+  const items = db.prepare(`SELECT i.id, i.type, i.title, COALESCE(cs.status,'Not Assessed') AS status,
+      cs.maturity, cs.notes
+    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    WHERE i.type IN ('clause','control') AND COALESCE(cs.status,'Not Assessed') IN ('Not Implemented','Partially Implemented','Work In Progress')
+    ORDER BY (CASE COALESCE(cs.status,'Not Assessed')
+      WHEN 'Not Implemented' THEN 0
+      WHEN 'Partially Implemented' THEN 1
+      WHEN 'Work In Progress' THEN 2 ELSE 3 END), i.sort_order`).all(ws.id);
+
+  let body = '<h2>How to read this memo</h2><p>This memo lists recommended remediation activity from the most recent gap assessment, ranked by current implementation status. Each row identifies the clause / control, the current status, and the consultant\'s notes from the assessment. Implementation is the client\'s responsibility; the consultant will return to verify each item once the client signals it is complete.</p>';
+  body += `<p>Items requiring action: <strong>${items.length}</strong></p>`;
+  body += '<h2>Recommendations</h2>';
+  if (items.length === 0) {
+    body += '<p><em>No outstanding recommendations — every assessed item is at "Implemented".</em></p>';
+  } else {
+    body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th>Recommendation / consultant notes</th></tr></thead><tbody>';
+    for (const r of items) {
+      const code = r.id.replace(/^annex-/,'').replace(/^clause-/,'').toUpperCase();
+      const cleanTitle = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+      body += `<tr><td>${escHtml(code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(r.status)}</td><td>${escHtml(r.notes || '')}</td></tr>`;
+    }
+    body += '</tbody></table>';
+  }
+
+  const html = deliverableHtmlShell('Recommendations Memo', ws, body);
+  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="recommendations-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
+  res.send(buf);
+});
+
+// Stage 1/2 readiness pack — single ZIP with the management-system docs +
+// linked evidence + manifest.
+app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorkspace, async (req, res) => {
+  const ws = req.workspace;
+  const stage = (req.query.stage === '2') ? 2 : 1;
+  const dateLabel = new Date().toISOString().slice(0,10);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="readiness-pack-stage${stage}-${ws.id}-${dateLabel}.zip"`);
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', err => { try { res.status(500).send(String(err)); } catch (_) {} });
+  archive.pipe(res);
+
+  // 1. SoA CSV (reuse the existing CSV format)
+  const soaRows = db.prepare(`SELECT i.id, i.title, COALESCE(cs.status,'Not Assessed') AS status,
+      COALESCE(cs.applicability,'undecided') AS applicability,
+      cs.inclusion_justification, cs.exclusion_justification
+    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    WHERE i.type='control' ORDER BY i.sort_order`).all(ws.id);
+  const customRows = db.prepare(`SELECT * FROM soa_custom_controls WHERE workspace_id=? ORDER BY code`).all(ws.id);
+  const csvLines = ['id,title,applicability,status,justification'];
+  function csvEsc(v) { if (v == null) return ''; const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; }
+  for (const r of soaRows) {
+    csvLines.push([r.id.replace('annex-','').toUpperCase(), csvEsc(r.title.replace(/^A\.[0-9.]+ /,'')), r.applicability, r.status, csvEsc(r.applicability === 'excluded' ? r.exclusion_justification : r.inclusion_justification)].join(','));
+  }
+  for (const c of customRows) {
+    csvLines.push([csvEsc(c.code), csvEsc(c.title), c.applicability, c.status, csvEsc(c.applicability === 'excluded' ? c.exclusion_justification : c.inclusion_justification)].join(','));
+  }
+  archive.append(csvLines.join('\n'), { name: '01_soa.csv' });
+
+  // 2. Risk Treatment Plan DOCX (call the same generator inline by re-rendering)
+  const risks = db.prepare(`SELECT r.* FROM risks r
+    WHERE r.workspace_id=? ORDER BY (r.likelihood*r.impact) DESC, r.id`).all(ws.id);
+  let rtpBody = `<p>Risks: ${risks.length}</p><table><thead><tr><th>ID</th><th>Risk</th><th>L×I</th><th>Treatment</th><th>Owner</th></tr></thead><tbody>`;
+  for (const r of risks) {
+    rtpBody += `<tr><td>R-${r.id}</td><td>${escHtml(r.title)}</td><td>${r.likelihood || ''}×${r.impact || ''}</td><td>${escHtml(r.treatment || '')}</td><td>${escHtml(r.owner_name || '')}</td></tr>`;
+  }
+  rtpBody += '</tbody></table>';
+  const rtpDocx = await htmlToDocx(deliverableHtmlShell('Risk Treatment Plan', ws, rtpBody), null, { table: { row: { cantSplit: true } } });
+  archive.append(rtpDocx, { name: '02_risk_treatment_plan.docx' });
+
+  // 3. Internal audit summary CSV
+  const audits = db.prepare(`SELECT * FROM audits WHERE workspace_id=? ORDER BY audit_date DESC`).all(ws.id);
+  const auditCsv = ['id,title,scope,audit_date,auditor,status,summary'];
+  for (const a of audits) {
+    auditCsv.push([a.id, csvEsc(a.title || ''), csvEsc(a.scope || ''), a.audit_date || '', csvEsc(a.auditor_name || ''), a.status || '', csvEsc(a.summary || '')].join(','));
+  }
+  archive.append(auditCsv.join('\n'), { name: '03_internal_audits.csv' });
+
+  // 4. MRMs CSV
+  const mrms = db.prepare(`SELECT * FROM mrms WHERE workspace_id=? ORDER BY meeting_date DESC`).all(ws.id);
+  const mrmCsv = ['id,meeting_date,status,attendees'];
+  for (const m of mrms) {
+    mrmCsv.push([m.id, m.meeting_date || '', m.status || '', csvEsc(m.attendees || '')].join(','));
+  }
+  archive.append(mrmCsv.join('\n'), { name: '04_management_reviews.csv' });
+
+  // 5. Interested parties CSV
+  const ip = db.prepare(`SELECT * FROM interested_parties WHERE workspace_id=? ORDER BY party`).all(ws.id);
+  const ipCsv = ['party,party_type,needs,how_addressed,owner,review_cadence,last_reviewed,next_review'];
+  for (const r of ip) {
+    ipCsv.push([csvEsc(r.party), csvEsc(r.party_type), csvEsc(r.needs), csvEsc(r.how_addressed), csvEsc(r.owner), csvEsc(r.review_cadence), r.last_reviewed || '', r.next_review || ''].join(','));
+  }
+  archive.append(ipCsv.join('\n'), { name: '05_interested_parties.csv' });
+
+  // 6. Objectives CSV
+  const objs = db.prepare(`SELECT * FROM security_objectives WHERE workspace_id=? ORDER BY due_date IS NULL, due_date`).all(ws.id);
+  const objCsv = ['title,measurement,target_value,current_value,owner,due_date,status'];
+  for (const o of objs) {
+    objCsv.push([csvEsc(o.title), csvEsc(o.measurement), csvEsc(o.target_value), csvEsc(o.current_value), csvEsc(o.owner), o.due_date || '', o.status || ''].join(','));
+  }
+  archive.append(objCsv.join('\n'), { name: '06_objectives.csv' });
+
+  // 7. Evidence files (active only) + manifest CSV
+  const evidence = db.prepare(`SELECT e.*, u.name AS uploader,
+    (SELECT GROUP_CONCAT(iso_item_id, '; ') FROM evidence_controls WHERE evidence_id=e.id) AS linked_controls
+    FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
+    WHERE e.workspace_id=? AND e.superseded_at IS NULL ORDER BY e.uploaded_at`).all(ws.id);
+  const evCsv = ['id,filename,sha256,uploader,uploaded_at,period,valid_from,valid_until,linked_controls,description'];
+  for (const e of evidence) {
+    evCsv.push([e.id, csvEsc(e.filename), e.sha256 || '', csvEsc(e.uploader), e.uploaded_at ? e.uploaded_at.slice(0,19) : '', csvEsc(e.period_label), e.valid_from || '', e.valid_until || '', csvEsc(e.linked_controls), csvEsc(e.description)].join(','));
+  }
+  archive.append(evCsv.join('\n'), { name: '07_evidence_manifest.csv' });
+  for (const e of evidence) {
+    const found = resolveUploadPath(e.stored_path, ws.firm_id);
+    if (found && fs.existsSync(found) && fs.statSync(found).isFile()) {
+      archive.file(found, { name: `evidence/${e.id}-${e.filename}` });
+    }
+  }
+
+  // README
+  archive.append(
+`Stage ${stage} readiness pack — ${ws.client_name || 'Workspace ' + ws.id}
+Generated ${new Date().toISOString()}
+
+Contents:
+  01_soa.csv                — Statement of Applicability (Annex A + custom controls)
+  02_risk_treatment_plan.docx — Formal RTP (clause 6.1.3.e)
+  03_internal_audits.csv    — Internal audit programme history
+  04_management_reviews.csv — MRM history
+  05_interested_parties.csv — Clause 4.2 register
+  06_objectives.csv         — Clause 6.2 register
+  07_evidence_manifest.csv  — Index of every evidence file with SHA-256 + linked controls
+  evidence/                 — Actual evidence artefacts (filename: <id>-<name>)
+
+This is the artefact set a Stage ${stage} certification audit will request.
+SHA-256 in the manifest lets the auditor verify nothing was altered after export.
+`, { name: 'README.txt' });
+
+  archive.finalize();
+});
+
 // ==================== DOCUMENT HIERARCHY ====================
 app.get('/workspaces/:wsId/documents/tree', requireAuth, requireWorkspace, requirePermission('document.view'), (req, res) => {
   const docs = db.prepare(`SELECT id, name, category, status, parent_doc_id, doc_kind, reference_code, version
@@ -4621,7 +5931,7 @@ app.get('/workspaces/:wsId/documents/tree', requireAuth, requireWorkspace, requi
 app.post('/workspaces/:wsId/documents/:id/parent', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const pid = req.body.parent_doc_id ? parseInt(req.body.parent_doc_id, 10) : null;
   // Prevent self-loop
-  if (pid && pid == req.params.id) return res.redirect('back');
+  if (pid && pid == req.params.id) return redirectBack(req, res);
   db.prepare('UPDATE generated_docs SET parent_doc_id=?, doc_kind=?, reference_code=? WHERE id=? AND workspace_id=?')
     .run(pid, req.body.doc_kind || null, req.body.reference_code || null, req.params.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'reparent_document', 'document', req.params.id, { parent_doc_id: pid }, auditCtx(req));
@@ -4652,7 +5962,7 @@ app.post('/workspaces/:wsId/audit-programme/:id', requireAuth, requireWorkspace,
     db.prepare(`UPDATE audit_programmes SET ${sets.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
   }
   logAction(req.user.id, req.workspace.id, 'update_programme', 'programme', req.params.id, null, auditCtx(req));
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // Sampling helper API: given population N, return suggested sample size at 95% confidence / 5% margin.
@@ -4676,7 +5986,7 @@ app.get('/api/sample-size', (req, res) => {
 // ==================== INCIDENT TIMELINE + RUNBOOK ====================
 app.post('/workspaces/:wsId/incidents/:id/events', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const { phase, event_at, description, actor } = req.body;
-  if (!phase || !description) return res.redirect('back');
+  if (!phase || !description) return redirectBack(req, res);
   db.prepare(`INSERT INTO incident_events (workspace_id, incident_id, phase, event_at, description, actor)
     VALUES (?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, phase,
@@ -4695,32 +6005,32 @@ app.post('/workspaces/:wsId/incidents/:id/runbook', requireAuth, requireWorkspac
   const rid = req.body.runbook_id ? parseInt(req.body.runbook_id, 10) : null;
   db.prepare('UPDATE incidents SET runbook_id=? WHERE id=? AND workspace_id=?').run(rid, req.params.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'attach_runbook', 'incident', req.params.id, { runbook_id: rid }, auditCtx(req));
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/incidents/:id/regulator-clock', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const { detected_at, regulator, hours } = req.body;
-  if (!detected_at || !hours) return res.redirect('back');
+  if (!detected_at || !hours) return redirectBack(req, res);
   const due = new Date(new Date(detected_at).getTime() + parseFloat(hours) * 3600 * 1000).toISOString();
   db.prepare('UPDATE incidents SET notification_required_by=? WHERE id=? AND workspace_id=?').run(due, req.params.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'set_regulator_clock', 'incident', req.params.id, { regulator, due }, auditCtx(req));
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/incidents/:id/notify-sent', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   db.prepare('UPDATE incidents SET notification_sent_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/incidents/:id/pir', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   db.prepare('UPDATE incidents SET pir_completed=1, pir_summary=? WHERE id=? AND workspace_id=?').run(req.body.pir_summary || null, req.params.id, req.workspace.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // ==================== SUPPLIER MONITORING + TERMINATION + CONCENTRATION ====================
 app.post('/workspaces/:wsId/vendors/:id/monitoring', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { source, score, grade, recorded_at, notes } = req.body;
-  if (!source) return res.redirect('back');
+  if (!source) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_monitoring (workspace_id, supplier_id, source, score, grade, recorded_at, notes, recorded_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, source,
@@ -4820,7 +6130,7 @@ app.get('/workspaces/:wsId/task-templates', requireAuth, requireWorkspace, requi
 
 app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const tpl = db.prepare('SELECT * FROM task_templates WHERE id=?').get(req.params.tplId);
-  if (!tpl) return res.redirect('back');
+  if (!tpl) return redirectBack(req, res);
   const steps = JSON.parse(tpl.steps || '[]');
   const baseDate = req.body.base_date ? new Date(req.body.base_date) : new Date();
   for (const s of steps) {
@@ -4838,7 +6148,7 @@ app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWor
 // ==================== ASSET RELATIONSHIPS + BULK IMPORT ====================
 app.post('/workspaces/:wsId/assets/:id/relationships', requireAuth, requireWorkspace, requirePermission('asset.update'), (req, res) => {
   const { child_asset_id, relation, notes } = req.body;
-  if (!child_asset_id || !relation) return res.redirect('back');
+  if (!child_asset_id || !relation) return redirectBack(req, res);
   try {
     db.prepare(`INSERT INTO asset_relationships (workspace_id, parent_asset_id, child_asset_id, relation, notes)
       VALUES (?, ?, ?, ?, ?)`).run(req.workspace.id, req.params.id, child_asset_id, relation, notes || null);
@@ -4848,7 +6158,7 @@ app.post('/workspaces/:wsId/assets/:id/relationships', requireAuth, requireWorks
 
 app.post('/workspaces/:wsId/assets/relationships/:id/delete', requireAuth, requireWorkspace, requirePermission('asset.update'), (req, res) => {
   db.prepare('DELETE FROM asset_relationships WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 app.get('/workspaces/:wsId/assets/:id', requireAuth, requireWorkspace, requirePermission('asset.view'), (req, res) => {
@@ -4877,7 +6187,7 @@ app.get('/workspaces/:wsId/assets/:id', requireAuth, requireWorkspace, requirePe
 app.post('/workspaces/:wsId/assets/import', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
   const csv = req.body.csv || '';
   const lines = csv.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return res.redirect('back');
+  if (!lines.length) return redirectBack(req, res);
   const header = lines.shift().split(',').map(s => s.trim().toLowerCase());
   const ix = (k) => header.indexOf(k);
   const ins = db.prepare(`INSERT INTO assets (workspace_id, entity_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -5004,9 +6314,9 @@ app.get('/workspaces/:wsId/access/who-has/:perm', requireAuth, requireWorkspace,
 
 app.post('/workspaces/:wsId/access/apply-template', requireAuth, requireWorkspace, requirePermission('members.override_perms'), (req, res) => {
   const tpl = db.prepare('SELECT * FROM permission_templates WHERE id=? AND (firm_id IS NULL OR firm_id=?)').get(req.body.template_id, req.workspace.firm_id);
-  if (!tpl) return res.redirect('back');
+  if (!tpl) return redirectBack(req, res);
   const userId = parseInt(req.body.user_id, 10);
-  if (!userId) return res.redirect('back');
+  if (!userId) return redirectBack(req, res);
   const expires = req.body.expires_at || null;
   const perms = JSON.parse(tpl.permissions);
   const ins = db.prepare(`INSERT INTO workspace_role_overrides (workspace_id, user_id, permission, granted, granted_by, reason, expires_at)
@@ -5101,7 +6411,7 @@ app.get('/workspaces/:wsId/controls/export.csv', requireAuth, requireWorkspace, 
 app.post('/workspaces/:wsId/controls/import', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const csv = req.body.csv || '';
   const lines = csv.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return res.redirect('back');
+  if (!lines.length) return redirectBack(req, res);
   const header = lines.shift().split(',').map(s => s.trim().toLowerCase());
   const ix = (k) => header.indexOf(k);
   let updated = 0;
@@ -5157,7 +6467,7 @@ app.post('/workspaces/:wsId/risk-appetite', requireAuth, requireWorkspace, requi
 
 app.post('/workspaces/:wsId/risks/:id/accept', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
   const risk = db.prepare('SELECT * FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!risk) return res.redirect('back');
+  if (!risk) return redirectBack(req, res);
   const { accepter_name, accepter_role, rationale, expires_at, attestation } = req.body;
   if (attestation !== '1' || !accepter_name || !rationale) {
     return res.status(400).render('error', { user: req.user, message: 'Acceptance requires accepter name, rationale, and attestation tickbox.' });
@@ -5303,7 +6613,7 @@ app.post('/workspaces/:wsId/bulk/:type', requireAuth, requireWorkspace, (req, re
   if (!cfg) return res.status(400).send('unknown type');
   if (!rbac.hasPermission(permissionsFor(req.user, req.workspace), cfg.perm)) return res.status(403).render('error', { user: req.user, message: 'forbidden' });
   const ids = (Array.isArray(req.body.ids) ? req.body.ids : (req.body.ids ? [req.body.ids] : [])).map(Number).filter(Boolean);
-  if (!ids.length) return res.redirect('back');
+  if (!ids.length) return redirectBack(req, res);
   const op = req.body.op;
   const tableMap = { risks: 'risks', assets: 'assets', tasks: 'tasks', suppliers: 'suppliers', ncs: 'nonconformities', incidents: 'incidents' };
   const table = tableMap[req.params.type];
@@ -5323,7 +6633,7 @@ app.post('/workspaces/:wsId/bulk/:type', requireAuth, requireWorkspace, (req, re
     tx();
   }
   logAction(req.user.id, req.workspace.id, 'bulk_' + op, req.params.type, null, { count: ids.length }, auditCtx(req));
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // ==================== REPORT BUILDER ====================
@@ -5356,7 +6666,7 @@ app.get('/workspaces/:wsId/reports/:id/docx', requireAuth, requireWorkspace, req
 
 app.post('/workspaces/:wsId/reports', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
   const { name, description, body } = req.body;
-  if (!name || !body) return res.redirect('back');
+  if (!name || !body) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO report_templates (workspace_id, firm_id, name, description, body, is_system) VALUES (?, NULL, ?, ?, ?, 0)`)
     .run(req.workspace.id, name, description || null, body).lastInsertRowid;
   logAction(req.user.id, req.workspace.id, 'create_report_template', 'report', id, { name }, auditCtx(req));
@@ -5372,7 +6682,7 @@ app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace
   if (!audit) return res.status(404).send('Not found');
   const category = req.body.category;
   const validCats = ['org','people','physical','tech','clauses'];
-  if (!validCats.includes(category)) return res.redirect('back');
+  if (!validCats.includes(category)) return redirectBack(req, res);
   const controls = category === 'clauses'
     ? db.prepare(`SELECT id, title FROM iso_items WHERE type='clause' ORDER BY sort_order`).all()
     : db.prepare(`SELECT id, title FROM iso_items WHERE type='control' AND category=? ORDER BY sort_order`).all(category);
@@ -5391,7 +6701,7 @@ app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace
 
 app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { iso_item_id, description, recommendation } = req.body;
-  if (!description) return res.redirect('back');
+  if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, recommendation) VALUES (?, ?, ?, ?)`)
     .run(req.params.id, iso_item_id || null, description, recommendation || null);
   res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
@@ -5399,7 +6709,7 @@ app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorksp
 
 app.post('/workspaces/:wsId/audits/observations/:obsId/close', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=?`).run(req.params.obsId);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // ==================== KEY ROTATION + BACKUP UI ====================
@@ -5454,10 +6764,10 @@ function extractMentions(body) {
 // comments; add a small route that handles mentions parse separately.
 app.post('/workspaces/:wsId/comments/:id/mentions', requireAuth, requireWorkspace, (req, res) => {
   const c = db.prepare('SELECT * FROM comments WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!c) return res.redirect('back');
+  if (!c) return redirectBack(req, res);
   const decBody = enc.decryptIfNeeded(c.body, req.workspace.id);
   const handles = extractMentions(decBody);
-  if (!handles.length) return res.redirect('back');
+  if (!handles.length) return redirectBack(req, res);
   const users = db.prepare(`SELECT id, name FROM users WHERE active=1`).all();
   const ins = db.prepare(`INSERT OR IGNORE INTO comment_mentions (comment_id, mentioned_user_id) VALUES (?, ?)`);
   let mentioned = 0;
@@ -5467,7 +6777,7 @@ app.post('/workspaces/:wsId/comments/:id/mentions', requireAuth, requireWorkspac
       jobs.notify(req.workspace.id, u.id, 'mention', 'info', `@${h} you were mentioned`, decBody.slice(0,140), `/workspaces/${req.workspace.id}`); }
   }
   if (mentioned > 0) db.prepare('UPDATE comments SET has_mentions=1 WHERE id=?').run(c.id);
-  res.redirect('back');
+  redirectBack(req, res);
 });
 
 // ==================== ERROR HANDLERS ====================

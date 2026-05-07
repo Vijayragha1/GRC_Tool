@@ -1,0 +1,285 @@
+<%- include('partials/header', { title: 'Gap assessment', user, ws, active: 'gap-assessment' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Gap assessment</h1>
+    <div class="page-subtitle">Each "pass" is one round of consultant assessment. Pass 1 = initial assessment; Pass 2+ = re-assessments after the client has implemented some of your recommendations. Every wizard save during an in-progress pass is tagged to that pass so you can diff state between any two of them.</div>
+  </div>
+</div>
+
+<% if (typeof orientation !== 'undefined' && orientation) { /* Re-engagement orientation panel — what's changed since the prior pass closed */ %>
+  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(79,70,229,0.25);">
+    <div class="panel-pad">
+      <div class="sec-label" style="color:var(--accent-deep);">Re-engagement orientation</div>
+      <div style="font-size:12.5px;color:var(--text);margin-top:4px;line-height:1.5;">
+        Since <strong>Pass <%= orientation.priorPass.pass_number %><% if (orientation.priorPass.label) { %> · <%= orientation.priorPass.label %><% } %></strong> closed on <%= orientation.since.slice(0,10) %>:
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;">
+        <% function chip(label, n, link) { %>
+          <a href="<%= link %>" class="panel" style="padding:8px 10px;text-align:center;text-decoration:none;color:var(--text);background:var(--bg);">
+            <div class="num" style="font-size:18px;font-weight:600;line-height:1.1;color:var(--accent-deep);"><%= n %></div>
+            <div class="meta" style="font-size:10.5px;line-height:1.3;margin-top:2px;"><%= label %></div>
+          </a>
+        <% } %>
+        <% chip('new evidence',  orientation.newEvidence,    '/workspaces/' + ws.id + '/evidence') %>
+        <% chip('new NCs',       orientation.newNCs,         '/workspaces/' + ws.id + '/nonconformities') %>
+        <% chip('new incidents', orientation.newIncidents,   '/workspaces/' + ws.id + '/incidents') %>
+        <% chip('controls touched', orientation.controlsTouched, '#') %>
+        <% chip('evidence superseded', orientation.docsSuperseded, '/workspaces/' + ws.id + '/evidence') %>
+        <% chip('docs approved', orientation.docsApproved,   '/workspaces/' + ws.id + '/documents') %>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<!-- Active pass card -->
+<% if (activePass) { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);">
+    <div class="panel-pad">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+        <div style="flex:1;min-width:0;">
+          <div class="meta" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px;">Active pass · in progress</div>
+          <div style="font-size:20px;font-weight:600;letter-spacing:-0.01em;color:var(--ink);">Pass <%= activePass.pass_number %><% if (activePass.label) { %> · <%= activePass.label %><% } %></div>
+          <div class="meta" style="font-size:12.5px;margin-top:4px;line-height:1.5;">
+            Started <%= activePass.started_at ? activePass.started_at.slice(0,10) : '—' %>
+            <% if (activePass.started_by_name) { %> by <%= activePass.started_by_name %><% } %>
+            · <%= activePass.items_touched %> of <%= totalItems %> item<%= totalItems === 1 ? '' : 's' %> touched in this pass
+            · <%= activePass.save_count %> save<%= activePass.save_count === 1 ? '' : 's' %>
+          </div>
+          <% if (activePass.notes) { %>
+            <div style="font-size:13px;margin-top:6px;color:var(--text);"><%= activePass.notes %></div>
+          <% } %>
+          <%
+            const pct = totalItems ? Math.round((assessedNow / totalItems) * 100) : 0;
+          %>
+          <div style="margin-top:10px;">
+            <div class="meta" style="font-size:11.5px;display:flex;justify-content:space-between;margin-bottom:3px;">
+              <span>Workspace progress</span><span><%= assessedNow %> / <%= totalItems %> · <%= pct %>%</span>
+            </div>
+            <div style="height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:<%= pct %>%;background:var(--accent);"></div>
+            </div>
+            <div class="meta" style="font-size:10.5px;margin-top:4px;font-style:italic;">Reflects every item with a status other than "Not Assessed". Items touched specifically during this pass: <%= activePass.items_touched %>.</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <% if (nextItem) { %>
+            <a href="/workspaces/<%= ws.id %>/controls/assess/<%= nextItem.id %>" class="btn btn-primary btn-xs">Continue assessing →</a>
+          <% } else { %>
+            <a href="/workspaces/<%= ws.id %>/controls/assess?done=1" class="btn btn-primary btn-xs">View summary →</a>
+          <% } %>
+          <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Worklist (handoff)</a>
+          <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs">Gap Report ↓</a>
+          <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-xs">Recommendations memo ↓</a>
+          <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete" onsubmit="return confirm('Mark Pass <%= activePass.pass_number %> as completed? You can reopen it later.')">
+            <button class="btn btn-secondary btn-xs">Mark complete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<!-- Start a new pass -->
+<details class="panel" style="margin-bottom:14px;" <%= !activePass ? 'open' : '' %>>
+  <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <% if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">— this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">— typically a re-assessment after the client has implemented changes</span><% } %>
+  </summary>
+  <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/start" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr;gap:10px;">
+    <div>
+      <label class="label">Label <span class="meta">optional — defaults to "Initial gap assessment" or "Re-assessment N"</span></label>
+      <input type="text" name="label" class="input" placeholder="e.g., Pre-Stage 1 readiness, Post-remediation Q1 2026">
+    </div>
+    <div>
+      <label class="label">Notes <span class="meta">optional — context for this pass</span></label>
+      <textarea name="notes" rows="2" class="textarea" placeholder="e.g., Client says they've implemented the access-review automation, JML procedure, and patch SLAs from Pass 1's worklist. Verifying A.5.15–18, A.8.8 this round."></textarea>
+    </div>
+    <div>
+      <button class="btn btn-primary"><%= passes.length === 0 ? 'Start Pass 1' : 'Start Pass ' + (passes[0].pass_number + 1) %></button>
+    </div>
+  </form>
+</details>
+
+<!-- Pass history -->
+<div class="panel">
+  <div class="panel-head">
+    <h3>Pass history (<%= passes.length %>)</h3>
+    <% if (passes.length >= 2) { %>
+      <form method="GET" action="/workspaces/<%= ws.id %>/gap-assessment/diff" style="display:flex;gap:6px;align-items:center;">
+        <span class="meta" style="font-size:11.5px;">Diff:</span>
+        <select name="from" class="select" style="font-size:12px;padding:3px 22px 3px 8px;">
+          <% passes.forEach(p => { %><option value="<%= p.id %>">Pass <%= p.pass_number %><%= p.label ? ' · ' + p.label : '' %></option><% }) %>
+        </select>
+        <span class="meta">→</span>
+        <select name="to" class="select" style="font-size:12px;padding:3px 22px 3px 8px;">
+          <% passes.forEach((p, i) => { %><option value="<%= p.id %>" <%= i === 0 ? 'selected' : '' %>>Pass <%= p.pass_number %><%= p.label ? ' · ' + p.label : '' %></option><% }) %>
+        </select>
+        <button class="btn btn-secondary btn-xs">Compare</button>
+      </form>
+    <% } %>
+  </div>
+  <% if (passes.length === 0) { %>
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <div class="empty-title">No passes yet</div>
+      <div class="empty-sub">Start your first gap assessment using the form above. The wizard walks every clause and Annex A control; saves are tagged to the active pass automatically.</div>
+    </div>
+  <% } else { %>
+    <div class="divide-row">
+      <% passes.forEach(p => { %>
+        <div style="padding:14px 18px;<%= p.status === 'in_progress' ? 'background:var(--accent-soft);' : '' %>">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:14px;font-weight:600;color:var(--ink);">Pass <%= p.pass_number %></span>
+                <% if (p.label) { %><span style="font-size:13px;color:var(--text);"><%= p.label %></span><% } %>
+                <% if (p.status === 'in_progress') { %>
+                  <span class="tag tag-accent" style="font-size:10px;">IN PROGRESS</span>
+                <% } else { %>
+                  <span class="tag tag-success" style="font-size:10px;">COMPLETED</span>
+                <% } %>
+              </div>
+              <div class="meta" style="font-size:11.5px;margin-top:3px;">
+                Started <%= p.started_at ? p.started_at.slice(0,10) : '—' %><% if (p.started_by_name) { %> by <%= p.started_by_name %><% } %>
+                <% if (p.completed_at) { %> · completed <%= p.completed_at.slice(0,10) %><% if (p.completed_by_name) { %> by <%= p.completed_by_name %><% } %><% } %>
+                · <%= p.items_touched %> item<%= p.items_touched === 1 ? '' : 's' %> touched · <%= p.save_count %> save<%= p.save_count === 1 ? '' : 's' %>
+              </div>
+              <% if (p.notes) { %>
+                <div style="font-size:12.5px;margin-top:5px;color:var(--text);line-height:1.5;"><%= p.notes %></div>
+              <% } %>
+            </div>
+            <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+              <details style="position:relative;">
+                <summary class="btn btn-ghost btn-xs" style="font-size:11px;list-style:none;cursor:pointer;">Edit</summary>
+                <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/rename"
+                      style="position:absolute;right:0;top:100%;width:300px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);margin-top:4px;">
+                  <input type="text" name="label" value="<%= p.label || '' %>" class="input" placeholder="Label" style="font-size:12px;margin-bottom:6px;">
+                  <textarea name="notes" rows="2" class="textarea" placeholder="Notes" style="font-size:12px;margin-bottom:6px;"><%= p.notes || '' %></textarea>
+                  <button class="btn btn-primary btn-xs" style="width:100%;">Save</button>
+                </form>
+              </details>
+              <% if (p.status === 'in_progress') { %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/complete" onsubmit="return confirm('Mark Pass <%= p.pass_number %> as completed?')">
+                  <button class="btn btn-ghost btn-xs" style="font-size:11px;">Complete</button>
+                </form>
+              <% } else { %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/reopen"
+                      onsubmit="return confirm('<%= activePass ? 'This will complete the currently-active Pass ' + activePass.pass_number + ' and reopen Pass ' + p.pass_number + '. Continue?' : 'Reopen Pass ' + p.pass_number + '?' %>')">
+                  <button class="btn btn-ghost btn-xs" style="font-size:11px;">Reopen</button>
+                </form>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<!-- Trend across passes — average maturity per Annex A theme -->
+<% if (typeof trend !== 'undefined' && trend && trend.length > 0) {
+     const themeKeys = ['5','6','7','8'];
+     const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
+%>
+  <div class="panel" style="margin-top:18px;">
+    <div class="panel-head"><h3>Trend across passes <span class="meta" style="font-weight:400;font-size:12px;">— average maturity (0–4) per Annex A theme</span></h3></div>
+    <div class="panel-pad">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+        <% themeKeys.forEach(k => {
+             const themeName = themeNames[k];
+             const points = trend.map(t => ({ pass: t.pass, val: t.themes[k].avg, count: t.themes[k].count }));
+             const hasData = points.some(p => p.val !== null);
+             const max = 4;
+        %>
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> — <%= themeName %></span>
+              <% if (hasData && points[points.length-1].val !== null) { %>
+                <span class="num meta" style="font-size:11.5px;">latest <%= points[points.length-1].val.toFixed(2) %></span>
+              <% } %>
+            </div>
+            <% if (!hasData) { %>
+              <div class="meta" style="font-size:11px;font-style:italic;">No maturity recorded yet for this theme.</div>
+            <% } else { %>
+              <% const cw = 100 / Math.max(1, points.length); %>
+              <svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:60px;background:var(--bg-subtle);border-radius:4px;">
+                <% // Bars
+                   points.forEach((p, i) => {
+                     if (p.val === null) return;
+                     const h = (p.val / max) * 26;
+                     const x = i * cw + cw * 0.15;
+                     const w = cw * 0.7;
+                %>
+                  <rect x="<%= x %>" y="<%= 28 - h %>" width="<%= w %>" height="<%= h %>" fill="<%= themeColors[k] %>" opacity="0.85"/>
+                <% }) %>
+              </svg>
+              <div style="display:grid;grid-template-columns:repeat(<%= points.length %>,1fr);gap:1px;font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:3px;">
+                <% points.forEach(p => { %>
+                  <div title="Pass <%= p.pass.pass_number %> · <%= p.count %> controls">P<%= p.pass.pass_number %></div>
+                <% }) %>
+              </div>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<!-- Annex A heatmap — current coverage per theme -->
+<% if (typeof heatmap !== 'undefined' && heatmap) {
+     const themeKeys = ['5','6','7','8'];
+     const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
+     function statusFill(r) {
+       if (r.applicability === 'excluded' || r.status === 'Not Applicable') return '#cbd5e1';
+       if (r.status === 'Implemented') return '#16a34a';
+       if (r.status === 'Partially Implemented') return '#a16207';
+       if (r.status === 'Work In Progress') return '#0891b2';
+       if (r.status === 'Not Implemented') return '#b91c1c';
+       return '#e5e7eb'; // Not Assessed
+     }
+%>
+  <div class="panel" style="margin-top:18px;">
+    <div class="panel-head"><h3>Annex A heatmap <span class="meta" style="font-weight:400;font-size:12px;">— current coverage by theme</span></h3></div>
+    <div class="panel-pad">
+      <% themeKeys.forEach(k => {
+           const items = heatmap[k] || [];
+           if (!items.length) return;
+           const total = items.length;
+           const impl = items.filter(r => r.status === 'Implemented').length;
+           const pct = Math.round(impl / total * 100);
+      %>
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> — <%= themeNames[k] %></span>
+            <span class="num meta" style="font-size:11.5px;"><%= impl %> / <%= total %> implemented · <%= pct %>%</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(22px, 1fr));gap:2px;">
+            <% items.forEach(r => {
+                 const code = r.id.replace('annex-','').toUpperCase();
+                 const num = r.id.split('.').slice(-1)[0];
+            %>
+              <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>"
+                 title="<%= code %> · <%= r.status %><%= r.applicability === 'excluded' ? ' (excluded)' : '' %>"
+                 style="display:block;height:22px;background:<%= statusFill(r) %>;border-radius:2px;text-decoration:none;font-size:9px;color:white;text-align:center;line-height:22px;font-family:ui-monospace,monospace;font-weight:600;<%= r.status === 'Not Assessed' ? 'color:var(--text-tertiary);' : '' %>"><%= num %></a>
+            <% }) %>
+          </div>
+        </div>
+      <% }) %>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:10.5px;color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
+        <span>Legend:</span>
+        <span><span style="display:inline-block;width:12px;height:10px;background:#16a34a;border-radius:2px;vertical-align:middle;"></span> Implemented</span>
+        <span><span style="display:inline-block;width:12px;height:10px;background:#a16207;border-radius:2px;vertical-align:middle;"></span> Partial</span>
+        <span><span style="display:inline-block;width:12px;height:10px;background:#0891b2;border-radius:2px;vertical-align:middle;"></span> WIP</span>
+        <span><span style="display:inline-block;width:12px;height:10px;background:#b91c1c;border-radius:2px;vertical-align:middle;"></span> Not impl.</span>
+        <span><span style="display:inline-block;width:12px;height:10px;background:#cbd5e1;border-radius:2px;vertical-align:middle;"></span> Excluded / N/A</span>
+        <span><span style="display:inline-block;width:12px;height:10px;background:#e5e7eb;border-radius:2px;vertical-align:middle;"></span> Not assessed</span>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

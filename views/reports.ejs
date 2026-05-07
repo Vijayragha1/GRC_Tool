@@ -2,8 +2,54 @@
 
 <div class="page-head">
   <div><h1 class="page-title">Reports</h1>
-    <div class="page-subtitle">Choose a built-in template or define a custom markdown body with <code>{{placeholders}}</code>.</div></div>
+    <div class="page-subtitle">Engagement deliverables (DOCX/ZIP) and reusable markdown templates with <code>{{placeholders}}</code>.</div></div>
 </div>
+
+<!-- Engagement deliverables — the four artefacts the consultant produces and hands off. -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head">
+    <h2>Engagement deliverables <span class="meta" style="font-weight:400;font-size:13px;">— client-facing handoff artefacts</span></h2>
+  </div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(2, 1fr);gap:10px;">
+    <a href="/workspaces/<%= ws.id %>/export/gap-report.docx" class="panel" style="padding:14px;text-decoration:none;color:var(--text);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <strong style="font-size:14px;">Gap Assessment Report</strong>
+        <span class="tag tag-info" style="margin-left:auto;font-size:10px;">.docx</span>
+      </div>
+      <div class="meta" style="font-size:11.5px;margin-top:6px;line-height:1.45;">Per-pass deliverable: executive summary, gaps identified, full assessment results. The end-of-pass artefact for the client.</div>
+    </a>
+    <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="panel" style="padding:14px;text-decoration:none;color:var(--text);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <strong style="font-size:14px;">Recommendations memo</strong>
+        <span class="tag tag-info" style="margin-left:auto;font-size:10px;">.docx</span>
+      </div>
+      <div class="meta" style="font-size:11.5px;margin-top:6px;line-height:1.45;">Ranked remediation list with consultant notes for each item — the worklist you hand to the client.</div>
+    </a>
+    <a href="/workspaces/<%= ws.id %>/export/rtp.docx" class="panel" style="padding:14px;text-decoration:none;color:var(--text);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <strong style="font-size:14px;">Risk Treatment Plan</strong>
+        <span class="tag tag-info" style="margin-left:auto;font-size:10px;">.docx</span>
+      </div>
+      <div class="meta" style="font-size:11.5px;margin-top:6px;line-height:1.45;">Clause 6.1.3.e RTP — every risk with treatment, owner, controls, actions. Audit-grade.</div>
+    </a>
+    <a href="/workspaces/<%= ws.id %>/export/readiness-pack.zip?stage=1" class="panel" style="padding:14px;text-decoration:none;color:var(--text);background:var(--accent-soft);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <strong style="font-size:14px;color:var(--accent-deep);">Stage 1 / 2 readiness pack</strong>
+        <span class="tag tag-accent" style="margin-left:auto;font-size:10px;">.zip</span>
+      </div>
+      <div class="meta" style="font-size:11.5px;margin-top:6px;line-height:1.45;color:var(--accent-deep);">Single ZIP with SoA · RTP · audits · MRMs · interested parties · objectives · evidence manifest + every active evidence file. The auditor's package.</div>
+    </a>
+  </div>
+  <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);font-size:11.5px;color:var(--text-secondary);">
+    Tip: the <strong>readiness pack</strong> is the single artefact to hand the certification body. The other three deliverables are for the client during the engagement.
+  </div>
+</div>
+
+<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin:24px 0 8px;">Markdown report templates</div>
 
 <div class="panel" style="margin-bottom:14px">
   <div class="panel-head"><h2>Add custom report template</h2></div>

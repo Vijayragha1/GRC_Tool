@@ -1439,6 +1439,104 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_csh_ws_item ON control_state_history(workspace_id, iso_item_id, snapshot_at DESC);`);
 
+  // SoA metadata fields — version (semantic), approval/owner stamps so the
+  // SoA carries the documented-information attributes auditors expect on
+  // arrival (clause 7.5.3).
+  addColumnIfMissing('soa_snapshots', 'version', 'TEXT');
+  addColumnIfMissing('soa_snapshots', 'owner', 'TEXT');
+  addColumnIfMissing('soa_snapshots', 'approved_by', 'TEXT');
+  addColumnIfMissing('soa_snapshots', 'approved_at', 'TEXT');
+  // Track when each control was last verified (re-assessed during a pass) so
+  // the staleness flagger can surface "verified > N months ago".
+  addColumnIfMissing('control_states', 'last_verified_at', 'TEXT');
+
+  // Clause 4.2 — Interested parties register. Structured table: party,
+  // their needs/expectations, how the ISMS addresses them, review cadence.
+  db.exec(`CREATE TABLE IF NOT EXISTS interested_parties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    party TEXT NOT NULL,
+    party_type TEXT,
+    needs TEXT,
+    how_addressed TEXT,
+    owner TEXT,
+    review_cadence TEXT,
+    last_reviewed TEXT,
+    next_review TEXT,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_ip_ws ON interested_parties(workspace_id);`);
+
+  // Clause 6.2 — Information security objectives register. Measurable,
+  // time-bound, traceable to the policy.
+  db.exec(`CREATE TABLE IF NOT EXISTS security_objectives (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    measurement TEXT,
+    target_value TEXT,
+    current_value TEXT,
+    owner TEXT,
+    due_date TEXT,
+    status TEXT DEFAULT 'on_track',
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_so_ws ON security_objectives(workspace_id);`);
+
+  // Custom (non-Annex-A) controls — 27001:2022 explicitly contemplates
+  // additional controls outside Annex A. Lives alongside the Annex A
+  // controls in the SoA.
+  db.exec(`CREATE TABLE IF NOT EXISTS soa_custom_controls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    source_framework TEXT,
+    applicability TEXT DEFAULT 'included',
+    inclusion_justification TEXT,
+    exclusion_justification TEXT,
+    status TEXT DEFAULT 'Not Assessed',
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_scc_ws ON soa_custom_controls(workspace_id);`);
+
+  // Gap-assessment passes — a "pass" is one round of consultant assessment.
+  // Pass 1 = initial gap assessment; Pass 2+ = re-assessments after the
+  // client has implemented some of the recommendations from the prior pass.
+  // Each wizard save during an in-progress pass tags its history snapshot
+  // with that pass_id so we can diff state between any two passes.
+  db.exec(`CREATE TABLE IF NOT EXISTS assessment_passes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    pass_number INTEGER NOT NULL,
+    label TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'in_progress',
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    started_by INTEGER,
+    completed_by INTEGER,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (started_by) REFERENCES users(id),
+    FOREIGN KEY (completed_by) REFERENCES users(id)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_passes_ws_num ON assessment_passes(workspace_id, pass_number);
+  CREATE INDEX IF NOT EXISTS idx_passes_ws_status ON assessment_passes(workspace_id, status);`);
+
+  addColumnIfMissing('control_state_history', 'pass_id',
+    'INTEGER REFERENCES assessment_passes(id) ON DELETE SET NULL');
+
   // Risks — KRI link convenience
   addColumnIfMissing('risks', 'is_systemic', 'INTEGER DEFAULT 0');
 
@@ -1499,6 +1597,14 @@ function init() {
   // Tier 3.9 — Section/sub-clause that this evidence specifically addresses
   // (e.g., A.5.18.b for the leaver-revocation aspect of access rights).
   addColumnIfMissing('evidence', 'clause_section', 'TEXT');
+  // Version chain: a new file can supersede an older one. Both rows are kept;
+  // the older becomes hidden from the active view but its links and history
+  // remain queryable for audit trail.
+  addColumnIfMissing('evidence', 'supersedes_id', 'INTEGER REFERENCES evidence(id) ON DELETE SET NULL');
+  addColumnIfMissing('evidence', 'superseded_at', 'TEXT');
+  addColumnIfMissing('evidence', 'superseded_by_id', 'INTEGER REFERENCES evidence(id) ON DELETE SET NULL');
+  // Tags (comma-separated, lowercased): "stage-2 audit pack, q1-2026, phishing-campaign-apr-2026"
+  addColumnIfMissing('evidence', 'tags', 'TEXT');
 
   // Tier 1.3 — Certification cycle calendar. Stage 1 → Stage 2 →
   // surveillance year 1 → surveillance year 2 → recertification.

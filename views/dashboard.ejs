@@ -20,6 +20,82 @@
 </div>
 <% } %>
 
+<!-- At-risk engagements — one row per workspace flagged across multiple signals -->
+<% if (typeof atRisk !== 'undefined' && atRisk.length > 0) { %>
+  <div class="panel" style="margin-bottom:24px;border-left:3px solid <%= atRisk.some(r => r.severity === 'high') ? '#b91c1c' : '#a16207' %>;">
+    <div class="panel-head">
+      <h2>At-risk engagements <span class="meta" style="font-weight:400;font-size:13px;">— overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
+      <span class="meta">
+        <% const high = atRisk.filter(r => r.severity === 'high').length; const med = atRisk.filter(r => r.severity === 'medium').length; %>
+        <% if (high) { %><strong style="color:#b91c1c;"><%= high %></strong> high · <% } %>
+        <% if (med) { %><strong style="color:#a16207;"><%= med %></strong> medium<% } %>
+      </span>
+    </div>
+    <table class="t">
+      <thead><tr>
+        <th>Client</th>
+        <th style="width:130px;">Last pass</th>
+        <th style="width:120px;">Stage 1</th>
+        <th style="width:140px;">Cert target</th>
+        <th>Why flagged</th>
+        <th style="width:80px;"></th>
+      </tr></thead>
+      <tbody>
+        <% atRisk.forEach(r => {
+             const sevColor = r.severity === 'high' ? '#b91c1c' : '#a16207';
+        %>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="width:8px;height:8px;border-radius:50%;background:<%= sevColor %>;flex-shrink:0;"></span>
+                <strong style="font-size:13px;"><%= r.client_name %></strong>
+                <% if (r.industry) { %><span class="meta" style="font-size:11px;"><%= r.industry %></span><% } %>
+              </div>
+            </td>
+            <td style="font-size:11.5px;">
+              <% if (r.lastPass) { %>
+                Pass <%= r.lastPass.pass_number %><br>
+                <span class="meta" style="font-size:10.5px;">
+                  <%= r.lastPass.status === 'in_progress' ? 'in progress' : ('done ' + (r.lastPass.completed_at || '').slice(0,10)) %>
+                </span>
+              <% } else { %>
+                <span class="meta">none</span>
+              <% } %>
+            </td>
+            <td><span class="num" style="font-weight:500;color:<%= r.readiness.stage1 >= 80 ? '#15803d' : r.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>;"><%= r.readiness.stage1 %>%</span></td>
+            <td style="font-size:11.5px;">
+              <% if (r.target_cert_date) { %>
+                <%= r.target_cert_date %><br>
+                <span class="meta" style="font-size:10.5px;<%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'color:#b91c1c;font-weight:600;' : '' %>">
+                  <% if (r.readiness.daysToTarget !== null) { %><%= r.readiness.daysToTarget %> days<% } else { %>—<% } %>
+                </span>
+              <% } else { %><span class="meta">no target</span><% } %>
+            </td>
+            <td style="font-size:11.5px;line-height:1.5;">
+              <%
+                // Each reason chip links to the most relevant sub-page so a
+                // consultant can drill straight in instead of bouncing through
+                // the workspace overview.
+                function reasonLink(reason, wsId) {
+                  if (/NC/i.test(reason)) return `/workspaces/${wsId}/nonconformities`;
+                  if (/cert target/i.test(reason)) return `/workspaces/${wsId}/cert-cycle`;
+                  if (/objective/i.test(reason)) return `/workspaces/${wsId}/objectives`;
+                  if (/stale controls/i.test(reason)) return `/workspaces/${wsId}/notifications?filter=unread`;
+                  if (/party review/i.test(reason)) return `/workspaces/${wsId}/interested-parties`;
+                  if (/pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
+                  return `/workspaces/${wsId}`;
+                }
+              %>
+              <% r.reasons.forEach(reason => { %><a href="<%= reasonLink(reason, r.id) %>" class="tag tag-neutral" style="font-size:10.5px;margin:1px 2px 1px 0;text-decoration:none;cursor:pointer;"><%= reason %></a><% }) %>
+            </td>
+            <td><a href="/workspaces/<%= r.id %>" class="btn btn-secondary btn-xs">Open</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
 <% if (user.user_type === 'firm') { %>
 <div id="newWs" class="panel hidden" style="margin-bottom:24px">
   <div class="panel-head"><h2>New client engagement</h2></div>

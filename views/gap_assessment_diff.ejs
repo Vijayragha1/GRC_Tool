@@ -1,0 +1,100 @@
+<%- include('partials/header', { title: title, user, ws, active: 'gap-assessment' }) %>
+
+<div class="page-head">
+  <div>
+    <div class="meta" style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:4px;">
+      <a href="/workspaces/<%= ws.id %>/gap-assessment" class="link-muted">Gap assessment</a> &nbsp;›&nbsp; Diff
+    </div>
+    <h1 class="page-title">Pass <%= passFrom.pass_number %> → Pass <%= passTo.pass_number %></h1>
+    <div class="page-subtitle">
+      <strong>From:</strong> <%= passFrom.label || ('Pass ' + passFrom.pass_number) %>
+      <% if (passFrom.completed_at) { %> (completed <%= passFrom.completed_at.slice(0,10) %>)<% } %>
+      &nbsp;·&nbsp;
+      <strong>To:</strong> <%= passTo.label || ('Pass ' + passTo.pass_number) %>
+      <% if (passTo.status === 'in_progress') { %> (in progress)<% } else if (passTo.completed_at) { %> (completed <%= passTo.completed_at.slice(0,10) %>)<% } %>
+    </div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-secondary btn-xs">← Back</a>
+</div>
+
+<!-- Summary chips -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-pad" style="display:flex;gap:8px;flex-wrap:wrap;">
+    <span class="tag tag-success" style="font-size:11.5px;padding:3px 9px;">Improved <span class="num">·  <%= summary.improved %></span></span>
+    <span class="tag tag-danger" style="font-size:11.5px;padding:3px 9px;">Regressed <span class="num">·  <%= summary.regressed %></span></span>
+    <% if (summary.changed) { %><span class="tag tag-warn" style="font-size:11.5px;padding:3px 9px;">Changed (other) <span class="num">·  <%= summary.changed %></span></span><% } %>
+    <span class="tag tag-neutral" style="font-size:11.5px;padding:3px 9px;">Unchanged <span class="num">·  <%= summary.unchanged %></span></span>
+    <div style="flex:1;"></div>
+    <span class="meta" style="font-size:11.5px;align-self:center;"><%= rows.length %> total items compared</span>
+  </div>
+</div>
+
+<!-- Filter chips -->
+<div class="panel" style="margin-bottom:10px;">
+  <div class="panel-pad" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+    <span class="meta" style="font-size:11px;margin-right:4px;">Show:</span>
+    <button type="button" class="diff-filter-btn tag tag-accent" data-filter="all" onclick="setDiffFilter('all', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">All</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="improved" onclick="setDiffFilter('improved', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Improved</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="regressed" onclick="setDiffFilter('regressed', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Regressed</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="changed" onclick="setDiffFilter('changed', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Changed (other)</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="unchanged" onclick="setDiffFilter('unchanged', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Unchanged</button>
+  </div>
+</div>
+
+<!-- Per-item diff table -->
+<div class="panel" style="overflow:hidden;">
+  <table class="t">
+    <thead><tr>
+      <th style="width:80px;">ID</th>
+      <th>Item</th>
+      <th style="width:160px;">Pass <%= passFrom.pass_number %> status</th>
+      <th style="width:160px;">Pass <%= passTo.pass_number %> status</th>
+      <th style="width:80px;">Maturity</th>
+      <th style="width:100px;">Change</th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(r => {
+           const code = r.id.replace(/^annex-/,'').replace(/^clause-/,'').toUpperCase();
+           const cleanTitle = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+           const fa = r.from.status || 'Not Assessed';
+           const tb = r.to.status   || 'Not Assessed';
+           const fmm = r.from.maturity == null ? '—' : r.from.maturity;
+           const tmm = r.to.maturity   == null ? '—' : r.to.maturity;
+           const changeColor = r.change === 'improved' ? '#16a34a'
+                              : r.change === 'regressed' ? '#b91c1c'
+                              : r.change === 'changed' ? '#a16207'
+                              : 'var(--text-tertiary)';
+           const changeLabel = r.change === 'improved' ? '↑ improved'
+                              : r.change === 'regressed' ? '↓ regressed'
+                              : r.change === 'changed' ? '⤳ changed'
+                              : '— same';
+      %>
+        <tr class="diff-row" data-change="<%= r.change %>">
+          <td class="mono meta"><%= code %></td>
+          <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a></td>
+          <td><span class="status s-<%= fa.toLowerCase().replace(/\s+/g,'-') %>" style="font-size:12px;"><%= fa %></span></td>
+          <td><span class="status s-<%= tb.toLowerCase().replace(/\s+/g,'-') %>" style="font-size:12px;"><%= tb %></span></td>
+          <td class="num meta" style="font-size:12px;"><%= fmm %> → <%= tmm %></td>
+          <td><span style="font-size:12px;font-weight:500;color:<%= changeColor %>;"><%= changeLabel %></span></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  function setDiffFilter(f, btn) {
+    document.querySelectorAll('.diff-filter-btn').forEach(b => {
+      b.className = (b.getAttribute('data-filter') === f) ? 'diff-filter-btn tag tag-accent' : 'diff-filter-btn tag tag-neutral';
+      b.style.fontSize = '11px';
+      b.style.padding = '3px 9px';
+      b.style.cursor = 'pointer';
+      b.style.border = '0';
+    });
+    document.querySelectorAll('.diff-row').forEach(r => {
+      r.style.display = (f === 'all' || r.getAttribute('data-change') === f) ? '' : 'none';
+    });
+  }
+</script>
+
+<%- include('partials/footer') %>

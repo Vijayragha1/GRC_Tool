@@ -350,6 +350,14 @@
         </a>
 
         <div class="nav-group-label">Implementation</div>
+        <a href="/workspaces/<%= ws.id %>/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span class="nav-item-text">Gap assessment</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/roadmap" class="nav-item <%= (typeof active !== 'undefined' && active === 'roadmap') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 9 12 3 18"/><polyline points="13 6 21 12 13 18"/></svg>
+          <span class="nav-item-text">Roadmap</span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/controls" data-shortcut="g c" class="nav-item <%= (typeof active !== 'undefined' && active === 'controls') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
           <span class="nav-item-text">Controls</span>
@@ -362,6 +370,14 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <span class="nav-item-text">Risks</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/interested-parties" class="nav-item <%= (typeof active !== 'undefined' && active === 'interested-parties') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="nav-item-text">Interested parties</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/objectives" class="nav-item <%= (typeof active !== 'undefined' && active === 'objectives') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          <span class="nav-item-text">Objectives</span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/soa" data-shortcut="g s" class="nav-item <%= (typeof active !== 'undefined' && active === 'soa') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span class="nav-item-text">Statement of Applicability</span>
@@ -369,6 +385,10 @@
         <a href="/workspaces/<%= ws.id %>/documents" data-shortcut="g d" class="nav-item <%= (typeof active !== 'undefined' && active === 'documents') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="nav-item-text">Documents</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/evidence" class="nav-item <%= (typeof active !== 'undefined' && active === 'evidence') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span class="nav-item-text">Evidence library</span>
         </a>
 
         <div class="nav-group-label">Operations</div>
@@ -426,6 +446,10 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="nav-item-text">Reports</span>
         </a>
+        <a href="/glossary" class="nav-item <%= (typeof active !== 'undefined' && active === 'glossary') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span class="nav-item-text">Glossary</span>
+        </a>
         <% if (user.firm_role === 'owner') { %>
         <a href="/workspaces/<%= ws.id %>/system" class="nav-item">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -446,9 +470,14 @@
         </a>
       <% } else { %>
         <div class="nav-group-label">Firm</div>
-        <a href="/dashboard" class="nav-item active">
+        <a href="/dashboard" class="nav-item <%= (typeof active === 'undefined' || active !== 'glossary') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="nav-item-text">Clients</span>
+        </a>
+        <div class="nav-group-label">Reference</div>
+        <a href="/glossary" class="nav-item <%= (typeof active !== 'undefined' && active === 'glossary') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span class="nav-item-text">Glossary</span>
         </a>
       <% } %>
     </nav>

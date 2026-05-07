@@ -1,0 +1,106 @@
+<%- include('partials/header', { title: entry.term, user, ws, active: 'glossary' }) %>
+
+<div class="page-head">
+  <div>
+    <div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:4px;">
+      <a href="/glossary" class="link-muted">Glossary</a> &nbsp;›&nbsp; <%= categoryLabel %>
+    </div>
+    <h1 class="page-title"><%= entry.term %></h1>
+    <% if (entry.aliases && entry.aliases.length) { %>
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        <span class="meta" style="font-size:11.5px;">Also known as:</span>
+        <% entry.aliases.forEach(a => { %>
+          <span class="tag tag-neutral" style="font-size:11px;font-family:ui-monospace,monospace;"><%= a %></span>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+  <a href="/glossary" class="btn btn-secondary btn-xs">← All terms</a>
+</div>
+
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;">
+  <!-- Main content column -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <!-- Plain-English -->
+    <% if (entry.plain) { %>
+      <div class="callout">
+        <div class="callout-title">In plain English</div>
+        <div><%= entry.plain %></div>
+      </div>
+    <% } %>
+
+    <!-- Formal definition -->
+    <div class="panel">
+      <div class="panel-head"><h3>Definition</h3></div>
+      <div class="panel-pad" style="font-size:13.5px;line-height:1.55;color:var(--text);">
+        <%= entry.definition %>
+      </div>
+    </div>
+
+    <!-- Example -->
+    <% if (entry.example) { %>
+      <div class="panel">
+        <div class="panel-head"><h3>Example</h3></div>
+        <div class="panel-pad" style="font-size:13.5px;line-height:1.55;color:var(--text);background:var(--bg-subtle);">
+          <%= entry.example %>
+        </div>
+      </div>
+    <% } %>
+
+    <!-- Not to be confused with -->
+    <% if (entry.notToConfuseWith && entry.notToConfuseWith.length) { %>
+      <div class="panel">
+        <div class="panel-head"><h3>Not to be confused with</h3></div>
+        <div class="divide-row">
+          <% entry.notToConfuseWith.forEach(c => { %>
+            <div style="padding:14px 18px;">
+              <div style="font-weight:600;font-size:13px;color:var(--ink);margin-bottom:4px;"><%= c.term %></div>
+              <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;"><%= c.why %></div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Right rail -->
+  <aside style="display:flex;flex-direction:column;gap:14px;">
+
+    <!-- Metadata card -->
+    <div class="panel">
+      <div class="panel-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div class="sec-label">Category</div>
+          <a href="/glossary?category=<%= entry.category %>" class="tag tag-info" style="text-decoration:none;font-size:11.5px;"><%= categoryLabel %></a>
+        </div>
+        <% if (entry.clauseRef) { %>
+          <div>
+            <div class="sec-label">ISO 27001 reference</div>
+            <div style="font-size:12px;font-family:ui-monospace,monospace;color:var(--text);background:var(--bg-muted);padding:4px 8px;border-radius:4px;display:inline-block;"><% if (typeof renderClauseRef === 'function') { %><%- renderClauseRef(entry.clauseRef) %><% } else { %><%= entry.clauseRef %><% } %></div>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Related terms -->
+    <% if (related && related.length) { %>
+      <div class="panel">
+        <div class="panel-head"><h3>Related terms</h3></div>
+        <div class="divide-row">
+          <% related.forEach(r => { %>
+            <a href="/glossary/<%= r.slug %>" style="display:block;padding:10px 16px;text-decoration:none;color:var(--text);">
+              <div style="font-size:13px;font-weight:500;color:var(--text);"><%= r.term %></div>
+              <% if (r.plain) { %>
+                <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:2px;line-height:1.4;"><%= r.plain.length > 90 ? r.plain.slice(0, 90) + '…' : r.plain %></div>
+              <% } %>
+            </a>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+
+  </aside>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,5 +1,16 @@
 <%- include('partials/header', { title: 'Gap assessment', user, ws, active: 'controls' }) %>
 
+<style>
+  /* Diagnostic-question pills — visual state driven by :has(input:checked)
+     so the radio state is the single source of truth (no JS style mutation). */
+  .diag-pill { cursor:pointer; display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border:1px solid var(--border); border-radius:14px; font-size:11.5px; background:var(--bg); color:var(--text-secondary); font-weight:500; transition:all 0.12s; user-select:none; }
+  .diag-pill:hover { border-color:var(--text-tertiary); }
+  .diag-pill input[type="radio"] { position:absolute; opacity:0; pointer-events:none; }
+  .diag-pill-yes:has(input:checked)     { background:#16a34a; color:#fff; border-color:#16a34a; font-weight:600; }
+  .diag-pill-partial:has(input:checked) { background:#a16207; color:#fff; border-color:#a16207; font-weight:600; }
+  .diag-pill-no:has(input:checked)      { background:#b91c1c; color:#fff; border-color:#b91c1c; font-weight:600; }
+</style>
+
 <%
   const isClause = item.type === 'clause';
   const isExcluded = state.applicability === 'excluded';
@@ -113,8 +124,29 @@
     <% } %>
 
     <% if (item.evidence_to_look_for && item.evidence_to_look_for.length) { %>
+      <%
+        // Coverage summary — compare what the auditor will ask for against what
+        // the user has actually attached (active, non-superseded files).
+        const expectedCount = item.evidence_to_look_for.length;
+        const attachedCount = (evidenceList || []).filter(ev => !ev.superseded_at).length;
+        const today = (new Date()).toISOString().slice(0,10);
+        const expSoon = (new Date(Date.now() + 30*86400000)).toISOString().slice(0,10);
+        const expiringCount = (evidenceList || []).filter(ev => ev.valid_until && ev.valid_until >= today && ev.valid_until < expSoon).length;
+        const expiredCount = (evidenceList || []).filter(ev => ev.valid_until && ev.valid_until < today).length;
+        let covBg, covLabel, covColor;
+        if (attachedCount === 0) { covBg = 'rgba(185,28,28,0.08)'; covColor = '#b91c1c'; covLabel = 'No evidence attached'; }
+        else if (expiredCount > 0) { covBg = 'rgba(185,28,28,0.08)'; covColor = '#b91c1c'; covLabel = `${attachedCount} attached · ${expiredCount} expired`; }
+        else if (expiringCount > 0) { covBg = 'rgba(202,138,4,0.10)'; covColor = '#a16207'; covLabel = `${attachedCount} attached · ${expiringCount} expiring soon`; }
+        else { covBg = 'rgba(22,163,74,0.08)'; covColor = '#15803d'; covLabel = `${attachedCount} attached`; }
+      %>
       <div class="panel-pad" style="border-bottom:1px solid var(--border);">
-        <%- hLabel('Evidence the auditor will ask for') %>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+          <%- hLabel('Evidence the auditor will ask for') %>
+          <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:14px;background:<%= covBg %>;color:<%= covColor %>;font-size:11.5px;font-weight:600;border:1px solid <%= covColor %>;">
+            <span style="font-family:ui-monospace,monospace;"><%= attachedCount %>/<%= expectedCount %></span>
+            <span><%= covLabel %></span>
+          </div>
+        </div>
         <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
           <% item.evidence_to_look_for.forEach((e, i) => { %>
             <tr style="<%= i < item.evidence_to_look_for.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>">
@@ -123,6 +155,11 @@
             </tr>
           <% }) %>
         </table>
+        <div class="meta" style="font-size:11.5px;margin-top:6px;line-height:1.4;">
+          <%= attachedCount === 0
+              ? 'No evidence attached yet for this item — scroll to the Evidence files panel below to upload.'
+              : 'Match the list above to your attached files in the Evidence files panel below. The bot can\'t auto-match the descriptions to filenames; that judgement is yours.' %>
+        </div>
       </div>
     <% } %>
 
@@ -215,10 +252,9 @@
               <div style="display:flex;gap:4px;justify-content:flex-end;">
                 <% ['yes','partial','no'].forEach(opt => {
                      const isOn = savedAnswers[String(i)] === opt;
-                     const color = opt === 'yes' ? '#16a34a' : opt === 'partial' ? '#a16207' : '#b91c1c';
                 %>
-                  <label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border:1px solid <%= isOn ? color : 'var(--border)' %>;border-radius:14px;font-size:11.5px;background:<%= isOn ? color : 'var(--bg)' %>;color:<%= isOn ? 'white' : 'var(--text-secondary)' %>;font-weight:<%= isOn ? '600' : '500' %>;transition:all 0.12s;">
-                    <input type="radio" name="q_<%= i %>" value="<%= opt %>" <%= isOn ? 'checked' : '' %> style="display:none;" onchange="recomputeSuggested()">
+                  <label class="diag-pill diag-pill-<%= opt %>">
+                    <input type="radio" name="q_<%= i %>" value="<%= opt %>" <%= isOn ? 'checked' : '' %> onchange="recomputeSuggested()">
                     <%= opt === 'yes' ? 'Yes' : opt === 'partial' ? 'Partial' : 'No' %>
                   </label>
                 <% }) %>
@@ -269,15 +305,6 @@
       </div>
     </div>
 
-    <div style="margin-bottom:14px;">
-      <label class="label">Scope of implementation <span class="meta">% of in-scope systems / processes / sites where this control actually operates</span></label>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <input type="range" name="scope_pct" min="0" max="100" step="5" value="<%= state.scope_pct != null ? state.scope_pct : 100 %>" oninput="document.getElementById('scopePctReadout').textContent = this.value + '%'" style="flex:1;">
-        <span id="scopePctReadout" class="mono" style="font-size:13px;font-weight:600;width:50px;text-align:right;"><%= (state.scope_pct != null ? state.scope_pct : 100) %>%</span>
-      </div>
-      <div class="meta" style="font-size:11px;margin-top:3px;line-height:1.4;">A control marked "Implemented" at 60% scope means it's working on 60% of in-scope assets. Auditors will sample what's *not* covered.</div>
-    </div>
-
     <% if (!isClause) { %>
       <div id="inclusionBlock" style="margin-bottom:14px;<%= isExcluded ? 'display:none;' : '' %>">
         <label class="label">Inclusion justification <span class="meta">audit-defensible — why this control is in scope</span></label>
@@ -290,9 +317,47 @@
       </div>
     <% } %>
 
+    <!-- Prior-pass notes (read-only context) — anchors the consultant to what
+         was found in earlier passes without letting them overwrite it. The
+         editable textarea below is scoped to the current pass only. -->
+    <% if (priorPassNotes && priorPassNotes.length) { %>
+      <div style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);">
+        <div class="panel-pad" style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Notes from prior passes <span class="meta" style="font-weight:400;">— read-only context for re-assessment</span>
+        </div>
+        <% priorPassNotes.forEach((p, i) => {
+             const isCollapsed = i > 0; // expand only the most recent prior pass by default
+        %>
+          <details <%= isCollapsed ? '' : 'open' %> style="border-bottom:<%= i < priorPassNotes.length - 1 ? '1px dashed var(--border)' : 'none' %>;">
+            <summary style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px;">
+              <span style="font-weight:600;color:var(--ink);">Pass <%= p.pass_number %></span>
+              <% if (p.label) { %><span style="color:var(--text);"><%= p.label %></span><% } %>
+              <% if (p.pass_status === 'completed' && p.completed_at) { %>
+                <span class="meta" style="font-size:10.5px;">completed <%= p.completed_at.slice(0,10) %></span>
+              <% } else if (p.pass_status === 'in_progress') { %>
+                <span class="tag tag-accent" style="font-size:9.5px;">IN PROGRESS</span>
+              <% } %>
+              <% if (p.item_status) { %>
+                <span class="status s-<%= p.item_status.toLowerCase().replace(/\s+/g,'-') %>" style="font-size:11px;margin-left:auto;"><%= p.item_status %></span>
+              <% } %>
+            </summary>
+            <div style="padding:0 14px 10px;font-size:12.5px;line-height:1.55;color:var(--text);white-space:pre-wrap;"><%= p.notes %></div>
+          </details>
+        <% }) %>
+      </div>
+    <% } %>
+
     <div style="margin-bottom:14px;">
-      <label class="label">Notes — current state, gaps, planned actions</label>
-      <textarea class="textarea" name="notes" rows="3" placeholder="Describe what's in place today, what's missing, and what you'll do about it."><%= state.notes || '' %></textarea>
+      <label class="label">
+        Notes
+        <% if (activePass) { %>
+          <span class="meta" style="font-weight:400;">— for <strong style="color:var(--accent);">Pass <%= activePass.pass_number %><% if (activePass.label) { %> · <%= activePass.label %><% } %></strong> only. Prior pass notes preserved above.</span>
+        <% } else { %>
+          <span class="meta">current state, gaps, planned actions</span>
+        <% } %>
+      </label>
+      <textarea class="textarea" name="notes" rows="3" placeholder="<%= priorPassNotes && priorPassNotes.length ? 'For this pass: verify what was implemented, what\'s still outstanding, what evidence you saw.' : 'Describe what\'s in place today, what\'s missing, and what you\'ll do about it.' %>"><%= currentPassNotes %></textarea>
     </div>
 
     <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
@@ -384,14 +449,15 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
-  <!-- Linked risks -->
+<div style="display:grid;grid-template-columns:<%= isClause ? '1fr' : '1fr 1fr' %>;gap:14px;margin-bottom:16px;">
+  <% if (!isClause) { %>
+  <!-- Linked risks (controls only — clauses are mandatory and don't "treat" risks) -->
   <div class="panel">
     <div class="panel-head">
-      <h2 style="font-size:14px;">Risks treated by this <%= isClause ? 'clause' : 'control' %> (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2>
+      <h2 style="font-size:14px;">Risks treated by this control (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2>
     </div>
     <% if (!linkedRisks || linkedRisks.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No risks linked. <% if (!isClause) { %><a href="/workspaces/<%= ws.id %>/risks" style="color:var(--accent);">Link from the risk register →</a><% } %></div>
+      <div class="panel-pad meta" style="font-size:12px;">No risks linked. <a href="/workspaces/<%= ws.id %>/risks" style="color:var(--accent);">Link from the risk register →</a></div>
     <% } else { %>
       <div style="max-height:240px;overflow-y:auto;">
         <% linkedRisks.forEach(r => { %>
@@ -403,6 +469,7 @@
       </div>
     <% } %>
   </div>
+  <% } %>
 
   <!-- Linked documents (bidirectional tagging — add / remove from this side too) -->
   <div class="panel">
@@ -493,21 +560,10 @@ function toggleExclusion() {
   if (excBlock) excBlock.style.display = (f.value === 'excluded') ? 'block' : 'none';
 }
 
-// Live-update suggested status as the user answers
+// Live-update suggested status as the user answers.
+// (Pill visual state is now driven by CSS :has(input:checked), no JS needed.)
 const QUESTION_COUNT = <%= questions ? questions.length : 0 %>;
 function recomputeSuggested() {
-  // Update the visual pill state on the just-clicked label
-  document.querySelectorAll('label[style*="border-radius:14px"]').forEach(lbl => {
-    const radio = lbl.querySelector('input[type="radio"]');
-    if (!radio) return;
-    const isOn = radio.checked;
-    const opt = radio.value;
-    const color = opt === 'yes' ? '#16a34a' : opt === 'partial' ? '#a16207' : '#b91c1c';
-    lbl.style.borderColor = isOn ? color : 'var(--border)';
-    lbl.style.background = isOn ? color : 'var(--bg)';
-    lbl.style.color = isOn ? 'white' : 'var(--text-secondary)';
-    lbl.style.fontWeight = isOn ? '600' : '500';
-  });
   if (QUESTION_COUNT === 0) return;
   // Compute suggested status from current radio state
   const score = { yes: 1, partial: 0.5, no: 0 };
