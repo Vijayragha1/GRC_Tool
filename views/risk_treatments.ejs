@@ -51,7 +51,7 @@
           <td class="meta"><%= t.cost_estimate || '—' %></td>
           <td class="meta num"><%= t.expected_residual_l && t.expected_residual_i ? t.expected_residual_l + ' × ' + t.expected_residual_i : '—' %></td>
           <td>
-            <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments/<%= t.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+            <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments/<%= t.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
               <button class="btn btn-danger btn-xs">×</button>
             </form>
           </td>

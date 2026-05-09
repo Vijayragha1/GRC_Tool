@@ -75,7 +75,7 @@
 
   <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;">
     <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Required inputs · 9.3.2</div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs" style="display:inline;" onsubmit="return confirm('Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current workspace data? This overwrites the auto-filled fields below — your free-text additions to those fields will be lost.')">
+    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs" style="display:inline;" onsubmit="return appConfirmForm(event, 'Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current workspace data? This overwrites the auto-filled fields below — your free-text additions to those fields will be lost.')">
       <button class="btn btn-secondary btn-xs" title="Re-pull live data into the auto-filled fields below">↻ Refresh inputs from live data</button>
     </form>
   </div>
@@ -98,7 +98,7 @@
 
   <div class="panel-pad" style="border-top:1px solid var(--border);display:flex;gap:6px;">
     <button class="btn btn-primary">Save</button>
-    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
       <button class="btn btn-danger">Delete</button>
     </form>
   </div>

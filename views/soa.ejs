@@ -7,7 +7,7 @@
   </div>
   <div style="display:flex;gap:6px;">
     <a href="/workspaces/<%= ws.id %>/soa/snapshots" class="btn btn-secondary btn-xs">Snapshots</a>
-    <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return confirm('Auto-include and justify every control linked to a risk?')"><button class="btn btn-secondary btn-xs">Auto-justify from risks</button></form>
+    <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'Auto-include and justify every control linked to a risk?')"><button class="btn btn-secondary btn-xs">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs">Capture snapshot</button></form>
     <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
     <a href="/workspaces/<%= ws.id %>/export/rtp.docx" class="btn btn-secondary btn-xs">RTP ↓</a>
@@ -47,8 +47,8 @@
       <label class="label">Justification (optional, applied to every affected row)</label>
       <input class="input" name="justification" placeholder="e.g., Required by linked risks per workspace risk register">
     </div>
-    <button name="action" value="include_all" class="btn btn-secondary btn-xs" onclick="return confirm('Mark every Annex A control as included?')">Include all (93)</button>
-    <button name="action" value="include_undecided" class="btn btn-secondary btn-xs" onclick="return confirm('Mark every undecided Annex A control as included?')">Include undecided</button>
+    <button name="action" value="include_all" class="btn btn-secondary btn-xs" onclick="return appConfirmClick(event, 'Mark every Annex A control as included?')">Include all (93)</button>
+    <button name="action" value="include_undecided" class="btn btn-secondary btn-xs" onclick="return appConfirmClick(event, 'Mark every undecided Annex A control as included?')">Include undecided</button>
     <span class="meta" style="font-size:11.5px;">For per-row decisions, use the dropdowns below.</span>
   </form>
 </details>
@@ -158,7 +158,7 @@
                 <button class="btn btn-ghost btn-xs" style="margin-top:4px;font-size:11px;">Save</button>
               </td>
               <td>
-                <button formaction="/workspaces/<%= ws.id %>/soa/custom-controls/<%= c.id %>/delete" formmethod="POST" class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;" onclick="return confirm('Delete custom control <%= c.code %>?')">×</button>
+                <button formaction="/workspaces/<%= ws.id %>/soa/custom-controls/<%= c.id %>/delete" formmethod="POST" class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;" onclick="return appConfirmClick(event, 'Delete custom control <%= c.code %>?')">×</button>
               </td>
             </tr>
           </form>

@@ -199,6 +199,22 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       </div>
       <div style="grid-column:1/-1"><button class="btn btn-primary">Save</button></div>
     </form>
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--danger,#b91c1c);">Delete this client engagement</summary>
+        <div style="margin-top:10px;padding:12px;border:1px solid var(--danger,#b91c1c);border-radius:6px;background:rgba(185,28,28,0.04);">
+          <div class="meta" style="font-size:12px;line-height:1.5;margin-bottom:10px;">
+            Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (on disk and in DB), audits, MRMs, NCs, incidents, suppliers, documents, registers. Cannot be undone.
+          </div>
+          <form method="POST" action="/workspaces/<%= ws.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete &quot;<%= ws.client_name %>&quot; and everything under it?');">
+            <label class="label" style="font-size:12px;">Type <strong><%= ws.client_name %></strong> to confirm</label>
+            <input class="input" name="confirm_name" required autocomplete="off" style="max-width:320px;margin-bottom:10px;">
+            <div><button class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete client engagement</button></div>
+          </form>
+        </div>
+      </details>
+    </div>
   </div>
 </details>
 

@@ -33,7 +33,7 @@
       <div class="callout-title" style="color:#a16207;">Heavy operation</div>
       Rotates the master encryption key. Re-encrypts every encrypted column under the new key inside one transaction. Old key fingerprint is logged. Backups taken before rotation will not decrypt under the new key — back up first if you need recoverability across the rotation.
     </div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/system/rotate-key" onsubmit="return confirm('Rotate master key now? This re-encrypts all data.')">
+    <form method="POST" action="/workspaces/<%= ws.id %>/system/rotate-key" onsubmit="return appConfirmForm(event, 'Rotate master key now? This re-encrypts all data.')">
       <input type="hidden" name="confirm" value="rotate">
       <button class="btn btn-danger btn-xs">Rotate master key</button>
     </form>

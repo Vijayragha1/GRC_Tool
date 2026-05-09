@@ -64,7 +64,7 @@
             </form>
           </td>
           <td style="text-align:right">
-            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>/delete" onsubmit="return confirm('Delete?')">
+            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
               <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
             </form>
           </td>

@@ -82,7 +82,7 @@
                   <button class="btn btn-primary btn-xs" style="grid-column:1/-1;">Save</button>
                 </form>
               </details>
-              <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= r.id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this objective?')">
+              <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this objective?')">
                 <button class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;">×</button>
               </form>
             </td>

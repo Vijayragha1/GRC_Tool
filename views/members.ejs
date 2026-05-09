@@ -19,7 +19,7 @@
           <td><span class="tag <%= m.user_type === 'firm' ? 'tag-info' : 'tag-success' %>"><%= m.user_type %></span></td>
           <td><span class="tag tag-neutral"><%= m.role.replace(/_/g, ' ') %></span></td>
           <td style="text-align:right">
-            <form method="POST" action="/workspaces/<%= ws.id %>/members/<%= m.id %>/remove" onsubmit="return confirm('Remove?')">
+            <form method="POST" action="/workspaces/<%= ws.id %>/members/<%= m.id %>/remove" onsubmit="return appConfirmForm(event, 'Remove?')">
               <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Remove</button>
             </form>
           </td>

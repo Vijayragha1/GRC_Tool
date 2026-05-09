@@ -52,6 +52,21 @@
 <!-- Toast stack -->
 <div class="toast-stack" id="toastStack"></div>
 
+<!-- Global confirm/alert modal — replaces native window.confirm/alert across the app -->
+<div id="appConfirmModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
+    <div id="appConfirmHead" style="padding:14px 18px;border-bottom:1px solid var(--border);">
+      <div id="appConfirmKind" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);">Confirm</div>
+      <div id="appConfirmTitle" style="font-size:15px;font-weight:600;margin-top:4px;display:none;"></div>
+    </div>
+    <div id="appConfirmBody" style="padding:16px 18px;font-size:13px;line-height:1.55;color:var(--text);"></div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:flex-end;gap:8px;">
+      <button type="button" id="appConfirmCancel" class="btn btn-ghost btn-xs">Cancel</button>
+      <button type="button" id="appConfirmOk" class="btn btn-primary btn-xs">OK</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ----- Theme -----
 (function() {
@@ -85,6 +100,98 @@ function toggleSidebarCollapse() {
   app.classList.toggle('sidebar-collapsed');
   localStorage.setItem('isms-sidebar', app.classList.contains('sidebar-collapsed') ? 'collapsed' : 'open');
 }
+
+// ----- Global modal API: replaces native window.confirm / window.alert -----
+// appConfirm(message, opts?) -> Promise<boolean>
+// appAlert(message, opts?)   -> Promise<void>
+// appConfirmForm(event, message, opts?)  -> for onsubmit="return appConfirmForm(event, '…')"
+// appConfirmClick(event, message, opts?) -> for onclick="return appConfirmClick(event, '…')"
+(function () {
+  const modal = document.getElementById('appConfirmModal');
+  if (!modal) return;
+  const head = document.getElementById('appConfirmHead');
+  const kindEl = document.getElementById('appConfirmKind');
+  const titleEl = document.getElementById('appConfirmTitle');
+  const bodyEl = document.getElementById('appConfirmBody');
+  const okBtn = document.getElementById('appConfirmOk');
+  const cancelBtn = document.getElementById('appConfirmCancel');
+  let resolver = null;
+  let isAlert = false;
+
+  function close(result) {
+    modal.style.display = 'none';
+    const r = resolver; resolver = null;
+    if (r) r(result);
+  }
+  function show(message, opts) {
+    opts = opts || {};
+    const danger = !!opts.danger;
+    isAlert = !!opts.alert;
+    kindEl.textContent = (opts.kind || (isAlert ? 'Notice' : (danger ? 'Confirm delete' : 'Confirm'))).toUpperCase();
+    kindEl.style.color = danger ? 'var(--danger,#b91c1c)' : 'var(--text-tertiary)';
+    head.style.background = danger ? 'rgba(185,28,28,0.06)' : '';
+    if (opts.title) { titleEl.textContent = opts.title; titleEl.style.display = ''; }
+    else { titleEl.style.display = 'none'; }
+    bodyEl.textContent = message || '';
+    okBtn.textContent = opts.okLabel || (isAlert ? 'OK' : (danger ? 'Delete' : 'Confirm'));
+    okBtn.className = 'btn btn-xs ' + (danger ? '' : 'btn-primary');
+    if (danger) {
+      okBtn.style.background = 'var(--danger,#b91c1c)';
+      okBtn.style.color = '#fff';
+      okBtn.style.borderColor = 'var(--danger,#b91c1c)';
+    } else {
+      okBtn.style.background = ''; okBtn.style.color = ''; okBtn.style.borderColor = '';
+    }
+    cancelBtn.style.display = isAlert ? 'none' : '';
+    modal.style.display = 'flex';
+    setTimeout(() => okBtn.focus(), 30);
+    return new Promise(res => { resolver = res; });
+  }
+
+  okBtn.addEventListener('click', () => close(true));
+  cancelBtn.addEventListener('click', () => close(false));
+  modal.addEventListener('click', e => { if (e.target === modal) close(false); });
+  document.addEventListener('keydown', e => {
+    if (modal.style.display !== 'flex') return;
+    if (e.key === 'Escape') { e.preventDefault(); close(false); }
+    else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+  });
+
+  window.appConfirm = (message, opts) => show(message, opts || {});
+  window.appAlert = (message, opts) => show(message, Object.assign({ alert: true }, opts || {}));
+
+  // Helper: drop-in replacement for `onsubmit="return appConfirmForm(event, '…')"`. Cancels the
+  // form submit, opens our modal; if the user confirms, re-submits the form
+  // with a flag so we don't loop.
+  window.appConfirmForm = function (event, message, opts) {
+    const form = event.currentTarget || event.target;
+    if (form && form._appConfirmed) return true;
+    if (event.preventDefault) event.preventDefault();
+    show(message, Object.assign({ danger: true }, opts || {})).then(ok => {
+      if (ok && form) {
+        form._appConfirmed = true;
+        // Use HTMLFormElement.prototype.submit so we bypass any onsubmit handler.
+        HTMLFormElement.prototype.submit.call(form);
+      }
+    });
+    return false;
+  };
+
+  // Helper: drop-in replacement for `onclick="return appConfirmClick(event, '…')"` on a submit
+  // button inside a form. Same pattern as appConfirmForm but click-driven.
+  window.appConfirmClick = function (event, message, opts) {
+    const btn = event.currentTarget || event.target;
+    if (btn && btn._appConfirmed) return true;
+    if (event.preventDefault) event.preventDefault();
+    show(message, Object.assign({ danger: true }, opts || {})).then(ok => {
+      if (ok && btn) {
+        btn._appConfirmed = true;
+        btn.click();
+      }
+    });
+    return false;
+  };
+})();
 
 // ----- Toasts -----
 function toast(msg, kind) {

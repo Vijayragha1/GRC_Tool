@@ -75,7 +75,7 @@
     <div style="grid-column:1/-1;display:flex;gap:6px;">
       <button class="btn btn-primary">Save</button>
       <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="btn btn-secondary">Treatment plan →</a>
-      <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/delete" onsubmit="return confirm('Delete this risk?')" style="display:inline">
+      <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this risk?')" style="display:inline">
         <button class="btn btn-danger">Delete</button>
       </form>
     </div>
@@ -235,7 +235,7 @@
       <div class="meta" style="font-size:11px;margin-top:6px;font-family:monospace;">Residual score at acceptance: <%= acc.residual_score %> · Signature: <%= acc.signature.slice(0,20) %>…</div>
       <div style="margin-top:10px;display:flex;gap:6px;">
         <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances" class="btn btn-secondary btn-xs">View acceptance history →</a>
-        <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= acc.id %>/revoke" onsubmit="return confirm('Revoke this acceptance? Risk will return to open.')" style="display:inline;">
+        <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= acc.id %>/revoke" onsubmit="return appConfirmForm(event, 'Revoke this acceptance? Risk will return to open.')" style="display:inline;">
           <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Revoke</button>
         </form>
       </div>

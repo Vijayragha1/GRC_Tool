@@ -236,7 +236,7 @@
                 </form>
               </details>
               <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete"
-                    onsubmit="return confirm('Delete this evidence file? This removes it from every control it\\'s linked to. Use Replace instead if you have a newer version.')">
+                    onsubmit="return appConfirmForm(event, 'Delete this evidence file? This removes it from every control it\\'s linked to. Use Replace instead if you have a newer version.')">
                 <button class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;">Delete</button>
               </form>
             </div>

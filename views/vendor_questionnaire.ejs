@@ -74,7 +74,7 @@
     <button name="action" value="submit" class="btn btn-primary">Submit responses</button>
     <button name="action" value="review" class="btn btn-accent">Mark reviewed</button>
     <div style="flex:1;"></div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/delete" onsubmit="return confirm('Delete this questionnaire and responses?')" style="display:inline">
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this questionnaire and responses?')" style="display:inline">
       <button class="btn btn-danger">Delete</button>
     </form>
   </div>

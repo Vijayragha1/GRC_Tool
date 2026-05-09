@@ -71,7 +71,7 @@
           <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Worklist (handoff)</a>
           <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs">Gap Report ↓</a>
           <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-xs">Recommendations memo ↓</a>
-          <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete" onsubmit="return confirm('Mark Pass <%= activePass.pass_number %> as completed? You can reopen it later.')">
+          <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete" onsubmit="return appConfirmForm(event, 'Mark Pass <%= activePass.pass_number %> as completed? You can reopen it later.')">
             <button class="btn btn-secondary btn-xs">Mark complete</button>
           </form>
         </div>
@@ -162,12 +162,12 @@
                 </form>
               </details>
               <% if (p.status === 'in_progress') { %>
-                <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/complete" onsubmit="return confirm('Mark Pass <%= p.pass_number %> as completed?')">
+                <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/complete" onsubmit="return appConfirmForm(event, 'Mark Pass <%= p.pass_number %> as completed?')">
                   <button class="btn btn-ghost btn-xs" style="font-size:11px;">Complete</button>
                 </form>
               <% } else { %>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/reopen"
-                      onsubmit="return confirm('<%= activePass ? 'This will complete the currently-active Pass ' + activePass.pass_number + ' and reopen Pass ' + p.pass_number + '. Continue?' : 'Reopen Pass ' + p.pass_number + '?' %>')">
+                      onsubmit="return appConfirmForm(event, '<%= activePass ? 'This will complete the currently-active Pass ' + activePass.pass_number + ' and reopen Pass ' + p.pass_number + '. Continue?' : 'Reopen Pass ' + p.pass_number + '?' %>')">
                   <button class="btn btn-ghost btn-xs" style="font-size:11px;">Reopen</button>
                 </form>
               <% } %>

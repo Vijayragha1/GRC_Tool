@@ -31,7 +31,7 @@
               <td class="meta"><%= lc.section_ref || '—' %></td>
               <td style="text-align:right;">
                 <% if (can('document.edit')) { %>
-                  <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls/<%= lc.link_id %>/delete" style="display:inline;" onsubmit="return confirm('Remove this control link?')">
+                  <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls/<%= lc.link_id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Remove this control link?')">
                     <button class="btn btn-danger btn-xs">×</button>
                   </form>
                 <% } %>
@@ -231,7 +231,7 @@
         <% } %>
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/print" target="_blank" class="btn btn-secondary btn-xs">Print</a>
         <% if (can('document.delete')) { %>
-          <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/delete" onsubmit="return confirm('Delete?')">
+          <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
             <button class="btn btn-danger btn-xs">Delete</button>
           </form>
         <% } %>
@@ -267,7 +267,7 @@
       <% } %>
     <% } else if (doc.status === 'published') { %>
       <% if (can('document.retire')) { %>
-        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/retire" onsubmit="return confirm('Retire this published document?')" style="display:inline">
+        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/retire" onsubmit="return appConfirmForm(event, 'Retire this published document?')" style="display:inline">
           <button class="btn btn-danger btn-xs">Retire</button>
         </form>
       <% } %>
@@ -309,7 +309,7 @@
         <div style="margin-bottom:10px;"><label class="label">Reason / comment</label><textarea class="textarea" name="reason" rows="2"></textarea></div>
         <div style="display:flex;gap:6px;">
           <button name="decision" value="approve" class="btn btn-primary btn-xs">Approve</button>
-          <button name="decision" value="reject" class="btn btn-danger btn-xs" onclick="return confirm('Reject and send back to draft?')">Reject</button>
+          <button name="decision" value="reject" class="btn btn-danger btn-xs" onclick="return appConfirmClick(event, 'Reject and send back to draft?')">Reject</button>
         </div>
       </form>
     </div>
@@ -428,7 +428,7 @@ function serializeApprovers() {
     const r = row.querySelector('.approver-role').value;
     if (u) { ids.push(u); roles[u] = r; }
   });
-  if (ids.length === 0) { alert('Add at least one approver.'); return false; }
+  if (ids.length === 0) { appAlert('Add at least one approver.'); return false; }
   document.getElementById('approverIdsField').value = ids.join(',');
   // Inject role hidden fields too
   const form = document.getElementById('submitReviewForm');

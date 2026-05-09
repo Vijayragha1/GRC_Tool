@@ -116,6 +116,7 @@
       <th>Client</th><th style="width:140px">Stage</th>
       <th style="width:90px">Stage 1</th><th style="width:90px">Days</th>
       <th style="width:80px">NCs</th><th style="width:200px">Progress</th>
+      <% if (user.user_type === 'firm') { %><th style="width:40px"></th><% } %>
     </tr></thead>
     <tbody>
       <% workspaces.forEach(w => { %>
@@ -138,6 +139,15 @@
               <span class="num" style="font-size:11px;color:var(--text-tertiary);min-width:42px;"><%= w.progress.assessed %>/<%= w.progress.total %></span>
             </div>
           </td>
+          <% if (user.user_type === 'firm') { %>
+          <td onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
+            <button type="button"
+                    onclick="deleteClient(<%= w.id %>, '<%= w.client_name.replace(/'/g, "\\'") %>')"
+                    title="Delete this client engagement"
+                    class="btn btn-ghost btn-xs"
+                    style="color:var(--danger,#b91c1c);padding:4px 8px;">×</button>
+          </td>
+          <% } %>
         </tr>
       <% }) %>
       <% if (workspaces.length === 0) { %>
@@ -183,7 +193,7 @@
           <td><span class="tag tag-neutral"><%= u.firm_role %></span></td>
           <td style="text-align:right">
             <% if (u.id !== user.id) { %>
-              <form method="POST" action="/firm/users/<%= u.id %>/deactivate" onsubmit="return confirm('Deactivate this user?')">
+              <form method="POST" action="/firm/users/<%= u.id %>/deactivate" onsubmit="return appConfirmForm(event, 'Deactivate this user?')">
                 <button class="btn btn-ghost btn-xs" style="color:#b91c1c">Deactivate</button>
               </form>
             <% } %>
@@ -194,5 +204,65 @@
   </table>
 </div>
 <% } %>
+
+<div id="deleteClientModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(185,28,28,0.06);">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client engagement</div>
+      <div id="dcmTitle" style="font-size:15px;font-weight:600;margin-top:4px;"></div>
+    </div>
+    <form id="deleteClientForm" method="POST" action="">
+      <div style="padding:18px;">
+        <div class="meta" style="font-size:12.5px;line-height:1.5;margin-bottom:14px;">
+          Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (DB and disk), audits, MRMs, NCs, incidents, suppliers, documents, registers. <strong>Cannot be undone.</strong>
+        </div>
+        <label class="label" style="font-size:12px;">Type <strong id="dcmExpected"></strong> to confirm</label>
+        <input id="dcmInput" class="input" name="confirm_name" autocomplete="off" required>
+        <div id="dcmError" style="font-size:11.5px;color:var(--danger,#b91c1c);margin-top:6px;display:none;">Name did not match.</div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" id="dcmCancel" class="btn btn-ghost btn-xs">Cancel</button>
+        <button type="submit" id="dcmConfirm" class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete client</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const modal = document.getElementById('deleteClientModal');
+    const form = document.getElementById('deleteClientForm');
+    const title = document.getElementById('dcmTitle');
+    const expected = document.getElementById('dcmExpected');
+    const input = document.getElementById('dcmInput');
+    const error = document.getElementById('dcmError');
+    let currentName = '';
+
+    function open(wsId, clientName) {
+      currentName = clientName;
+      title.textContent = clientName;
+      expected.textContent = clientName;
+      input.value = '';
+      error.style.display = 'none';
+      form.action = '/workspaces/' + wsId + '/delete';
+      modal.style.display = 'flex';
+      setTimeout(() => input.focus(), 50);
+    }
+    function close() { modal.style.display = 'none'; }
+
+    document.getElementById('dcmCancel').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.style.display === 'flex') close(); });
+    form.addEventListener('submit', (e) => {
+      if (input.value.trim() !== currentName) {
+        e.preventDefault();
+        error.style.display = 'block';
+        input.focus();
+      }
+    });
+
+    window.deleteClient = open;
+  })();
+</script>
 
 <%- include('partials/footer') %>

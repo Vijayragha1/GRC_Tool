@@ -43,6 +43,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/tinymce', express.static(path.join(__dirname, 'node_modules/tinymce')));
+// Quiet the favicon 404 — no icon yet, just respond with No Content.
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'change-me-in-production-' + crypto.randomBytes(8).toString('hex'),
@@ -461,6 +463,76 @@ app.post('/tenants/:id/rename', requireAuth, (req, res) => {
   res.redirect('/tenants');
 });
 
+// Destructive: delete a tenant and everything under it (workspaces, evidence,
+// users tied only to this firm, firm-scoped templates, uploads dir). Requires
+// the operator to type the tenant name to confirm. Refuses if it would leave
+// zero tenants — there must always be at least one.
+app.post('/tenants/:id/delete', requireAuth, (req, res) => {
+  const fid = parseInt(req.params.id, 10);
+  const firm = db.prepare('SELECT id, name FROM firms WHERE id=?').get(fid);
+  if (!firm) return res.redirect(withToast('/tenants', 'Tenant not found', 'error'));
+
+  const confirm = (req.body.confirm_name || '').trim();
+  if (confirm !== firm.name) {
+    return res.redirect(withToast('/tenants', 'Confirmation name did not match — nothing deleted', 'error'));
+  }
+
+  const totalFirms = db.prepare('SELECT COUNT(*) c FROM firms').get().c;
+  if (totalFirms <= 1) {
+    return res.redirect(withToast('/tenants', 'Cannot delete the only remaining tenant', 'error'));
+  }
+
+  // Schema-evolution-safe cleanup: enumerate every table that has a workspace_id
+  // or firm_id column and delete matching rows. FKs are turned off so we don't
+  // have to worry about delete order. Wrapped in a transaction so a failure
+  // mid-way leaves the DB intact.
+  const wsIds = db.prepare('SELECT id FROM workspaces WHERE firm_id=?').all(fid).map(r => r.id);
+  db.pragma('foreign_keys = OFF');
+  try {
+    const tx = db.transaction(() => {
+      if (wsIds.length) {
+        const wsTables = db.prepare(`
+          SELECT m.name FROM sqlite_master m
+          WHERE m.type='table'
+          AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name='workspace_id')
+        `).all().map(r => r.name);
+        const placeholders = wsIds.map(() => '?').join(',');
+        for (const t of wsTables) {
+          db.prepare(`DELETE FROM ${t} WHERE workspace_id IN (${placeholders})`).run(...wsIds);
+        }
+        db.prepare(`DELETE FROM workspaces WHERE firm_id=?`).run(fid);
+      }
+      const firmTables = db.prepare(`
+        SELECT m.name FROM sqlite_master m
+        WHERE m.type='table'
+        AND m.name != 'firms'
+        AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name='firm_id')
+      `).all().map(r => r.name);
+      for (const t of firmTables) {
+        db.prepare(`DELETE FROM ${t} WHERE firm_id=?`).run(fid);
+      }
+      db.prepare('DELETE FROM firms WHERE id=?').run(fid);
+    });
+    tx();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+
+  // Wipe the per-tenant uploads directory off disk.
+  try {
+    const tenantDir = path.join(__dirname, 'uploads', `firm_${fid}`);
+    if (fs.existsSync(tenantDir)) fs.rmSync(tenantDir, { recursive: true, force: true });
+  } catch (_) {}
+
+  // If the deleted tenant was active, switch to whichever firm remains.
+  if (req.session.active_firm_id === fid) {
+    const fallback = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
+    req.session.active_firm_id = fallback ? fallback.id : null;
+  }
+
+  res.redirect(withToast('/tenants', `Tenant "${firm.name}" deleted`, 'success'));
+});
+
 // ==================== DASHBOARD ====================
 app.get('/dashboard', requireAuth, (req, res) => {
   const workspaces = listWorkspaces(req.user);
@@ -784,6 +856,57 @@ app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) =
          stage || 'gap_assessment', lead_consultant_id || null, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, null);
   res.redirect('/workspaces/' + req.workspace.id);
+});
+
+// Destructive: delete a workspace (= one client engagement) and everything
+// inside it — controls, risks, evidence rows + files on disk, audits, MRMs,
+// gap passes, registers. Requires typing the client name to confirm.
+app.post('/workspaces/:wsId/delete', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  const ws = req.workspace;
+  const confirm = (req.body.confirm_name || '').trim();
+  if (confirm !== ws.client_name) {
+    return res.redirect(withToast('/workspaces/' + ws.id + '#workspace-settings',
+      'Confirmation name did not match — nothing deleted', 'error'));
+  }
+
+  // Collect evidence file paths so we can wipe them off disk after the row delete.
+  const evidenceFiles = db.prepare(`SELECT stored_path FROM evidence WHERE workspace_id=? AND stored_path IS NOT NULL`).all(ws.id);
+
+  // Most workspace-scoped tables have ON DELETE CASCADE, but the schema has
+  // grown over time and a few tables don't. Use the same dynamic-cleanup
+  // pattern as tenant deletion so this stays correct as the schema evolves.
+  db.pragma('foreign_keys = OFF');
+  try {
+    const tx = db.transaction(() => {
+      const wsTables = db.prepare(`
+        SELECT m.name FROM sqlite_master m
+        WHERE m.type='table'
+        AND m.name != 'workspaces'
+        AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name='workspace_id')
+      `).all().map(r => r.name);
+      for (const t of wsTables) {
+        db.prepare(`DELETE FROM ${t} WHERE workspace_id=?`).run(ws.id);
+      }
+      db.prepare('DELETE FROM workspaces WHERE id=?').run(ws.id);
+    });
+    tx();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+
+  // Best-effort filesystem cleanup. Files live in uploads/firm_{id}/ shared
+  // across workspaces, so we have to delete by exact path rather than wiping
+  // a directory.
+  for (const e of evidenceFiles) {
+    try {
+      const abs = resolveUploadPath(e.stored_path, ws.firm_id);
+      if (abs && fs.existsSync(abs)) fs.unlinkSync(abs);
+    } catch (_) {}
+  }
+
+  logAction(req.user.id, null, 'delete_workspace', 'workspace', ws.id, ws.client_name);
+  res.redirect(withToast('/dashboard', `Client "${ws.client_name}" deleted`, 'success'));
 });
 
 // ==================== WORKSPACE MEMBERS ====================

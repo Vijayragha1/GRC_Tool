@@ -60,7 +60,7 @@
 
     <div style="grid-column:1/-1;display:flex;gap:6px;">
       <button class="btn btn-primary">Save</button>
-      <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/delete" onsubmit="return confirm('Delete?')" style="display:inline">
+      <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
         <button class="btn btn-danger">Delete</button>
       </form>
     </div>

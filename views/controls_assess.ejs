@@ -416,7 +416,7 @@
               </div>
               <div class="meta" style="font-size:11px;"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
             </div>
-            <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return confirm('Delete this evidence file?')"><button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);">×</button></form>
+            <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this evidence file?')"><button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);">×</button></form>
           </div>
         <% }) %>
       </div>
@@ -486,7 +486,7 @@
               <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= d.name %></div>
               <div class="meta" style="font-size:11px;"><%= d.category || '—' %> · <%= d.status || '—' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
             </a>
-            <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents/<%= d.link_id %>/delete" onsubmit="return confirm('Remove this document link?')" style="margin:0;">
+            <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents/<%= d.link_id %>/delete" onsubmit="return appConfirmForm(event, 'Remove this document link?')" style="margin:0;">
               <button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);" title="Remove link">×</button>
             </form>
           </div>
@@ -544,7 +544,7 @@ function prefillNotesFromGaps(e) {
     else if (sel.value === 'partial') lines.push('- [Partial] ' + QUESTION_TEXTS[i]);
   }
   if (lines.length === 1) {
-    alert('No gaps to pre-fill — answer questions with No or Partial first.');
+    appAlert('No gaps to pre-fill — answer questions with No or Partial first.');
     return;
   }
   ta.value = (ta.value && ta.value.trim() ? ta.value.trim() + '\n\n' : '') + lines.join('\n');

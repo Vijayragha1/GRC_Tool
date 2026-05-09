@@ -90,7 +90,7 @@
           <td style="font-size:11.5px;font-weight:600;color:<%= biaColor %>;text-transform:uppercase;"><%= a.business_criticality || '—' %></td>
           <td class="num meta" style="font-size:11.5px;"><%= a.rto_hours != null ? a.rto_hours + 'h' : '—' %> / <%= a.rpo_hours != null ? a.rpo_hours + 'h' : '—' %></td>
           <td style="text-align:right">
-            <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return confirm('Delete?')">
+            <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
               <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
             </form>
           </td>

@@ -3,7 +3,7 @@
 <div class="page-head">
   <div><h1 class="page-title">Search</h1>
     <div class="page-subtitle">Full-text search across risks, assets, controls, documents, suppliers, NCs, incidents.</div></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/search/rebuild" onsubmit="return confirm('Rebuild the entire search index for this workspace?')"><button class="btn btn-secondary btn-xs">Rebuild index</button></form>
+  <form method="POST" action="/workspaces/<%= ws.id %>/search/rebuild" onsubmit="return appConfirmForm(event, 'Rebuild the entire search index for this workspace?')"><button class="btn btn-secondary btn-xs">Rebuild index</button></form>
 </div>
 
 <div class="panel" style="margin-bottom:14px">
