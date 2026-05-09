@@ -53,6 +53,18 @@ app.use(session({
   cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
 }));
 
+// CSRF protection on every state-changing request. Token is exposed via
+// res.locals.csrfToken — partials/header.ejs renders it in a <meta> tag,
+// and partials/footer.ejs has a load-time form walker that injects a hidden
+// _csrf input into every form. Tests can disable via DISABLE_CSRF=1.
+const { csrfMiddleware } = require('./lib/csrf');
+if (process.env.DISABLE_CSRF !== '1') {
+  app.use(csrfMiddleware);
+} else {
+  // Still expose an empty token so EJS templates don't error.
+  app.use((_req, res, next) => { res.locals.csrfToken = ''; next(); });
+}
+
 // Per-tenant upload partitioning: each firm gets its own subdirectory under
 // uploads/. The destination function inspects req.workspace (set by
 // requireWorkspace) or, for routes that operate without a workspace context,
@@ -337,201 +349,22 @@ app.get('/register', (req, res) => res.redirect('/dashboard'));
 app.post('/register', (req, res) => res.redirect('/dashboard'));
 app.post('/logout', (req, res) => res.redirect('/dashboard'));
 
-// ==================== TENANTS ====================
-// Tenants are firms. The active tenant lives in the session; switching swaps
-// which firm-owner currentUser() returns, which transitively scopes every
-// firm_id-filtered query to the active tenant. New tenants get their own
-// firm-owner user, their own workspaces, their own evidence directory.
-app.get('/tenants', requireAuth, (req, res) => {
-  const firms = listAllFirms();
-  const activeFirmId = getActiveFirmId(req);
-  res.render('tenants', { user: req.user, firms, activeFirmId });
+// ==================== TENANTS + ONBOARDING ====================
+// Extracted to routes/tenants.js — first slice of server.js modularization.
+// The pattern: each domain module exports register(app, deps), receives all
+// dependencies explicitly, knows nothing about other domains.
+require('./routes/tenants').register(app, {
+  db, bcrypt,
+  requireAuth,
+  getActiveFirmId,
+  listAllFirms,
+  withToast,
+  projectRoot: __dirname,
 });
 
-app.post('/tenants', requireAuth, (req, res) => {
-  const name = (req.body.name || '').trim();
-  if (!name) return res.redirect('/tenants');
-  const fid = db.prepare('INSERT INTO firms (name) VALUES (?)').run(name).lastInsertRowid;
-  const placeholderEmail = `owner+firm${fid}@local`;
-  const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
-  db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
-              VALUES (?, ?, ?, 'firm', ?, 'owner', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, fid);
-  const tenantDir = path.join(__dirname, 'uploads', `firm_${fid}`);
-  try { fs.mkdirSync(tenantDir, { recursive: true }); } catch (_) {}
-  // Tier 3.10 — Track onboarding state for the new tenant so the wizard can
-  // resume where left off.
-  db.prepare(`INSERT INTO tenant_onboarding (firm_id, current_step) VALUES (?, 1)`).run(fid);
-  req.session.active_firm_id = fid;
-  res.redirect('/onboarding');
-});
-
-// ==================== TIER 3.10 — TENANT ONBOARDING WIZARD ====================
-const ONBOARDING_STEPS = [
-  { num: 1, title: 'Create your first workspace',
-    desc: 'A workspace is one client engagement. You\'ll do most of your work inside one.',
-    cta: 'Create workspace',
-    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=?`).get(firmId).c > 0,
-    href: '/workspaces/new'
-  },
-  { num: 2, title: 'Define ISMS scope',
-    desc: 'What products, locations, and systems are in scope of the ISMS? This decision drives everything else (clause 4.3).',
-    cta: 'Set scope',
-    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=? AND scope IS NOT NULL AND length(scope) > 10`).get(firmId).c > 0,
-    href: 'first-ws'
-  },
-  { num: 3, title: 'Build the asset register',
-    desc: 'Identify the information and supporting assets in scope. Five to ten entries is enough to start.',
-    cta: 'Add assets',
-    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM assets a INNER JOIN workspaces w ON w.id=a.workspace_id WHERE w.firm_id=?`).get(firmId).c >= 3,
-    href: 'first-ws-assets'
-  },
-  { num: 4, title: 'Document the risk-assessment methodology',
-    desc: 'Define your likelihood and impact scales, and your risk-acceptance criteria. Required by clause 6.1.2.',
-    cta: 'Configure methodology',
-    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM risk_methodologies m INNER JOIN workspaces w ON w.id=m.workspace_id WHERE w.firm_id=? AND m.is_active=1`).get(firmId).c > 0,
-    href: 'first-ws-methodology'
-  },
-  { num: 5, title: 'Run the gap assessment',
-    desc: 'Walk every clause and Annex A control, scoring current state. The wizard takes you through all 118 items.',
-    cta: 'Open wizard',
-    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM control_states cs INNER JOIN workspaces w ON w.id=cs.workspace_id WHERE w.firm_id=? AND cs.status != 'Not Assessed'`).get(firmId).c >= 20,
-    href: 'first-ws-assess'
-  },
-  { num: 6, title: 'Plan the certification cycle',
-    desc: 'Lay out Stage 1 → Stage 2 → annual surveillance → recertification dates so you\'re working backwards from a real target.',
-    cta: 'Plan cycle',
-    isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM cert_cycle_events e INNER JOIN workspaces w ON w.id=e.workspace_id WHERE w.firm_id=?`).get(firmId).c > 0,
-    href: 'first-ws-cert-cycle'
-  }
-];
-
-function resolveOnboardingHref(href, firmId) {
-  if (!href.startsWith('first-ws')) return href;
-  const ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1`).get(firmId);
-  if (!ws) return '/dashboard';
-  const subpath = href.replace('first-ws', '').replace(/^-/, '/');
-  if (!subpath || subpath === '') return `/workspaces/${ws.id}#workspace-settings`;
-  return `/workspaces/${ws.id}/${subpath.replace(/^\//, '')}`.replace(/\/$/, '');
-}
-
-app.get('/onboarding', requireAuth, (req, res) => {
-  const firmId = getActiveFirmId(req);
-  if (!firmId) return res.redirect('/tenants');
-  let onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
-  if (!onb) {
-    db.prepare(`INSERT INTO tenant_onboarding (firm_id) VALUES (?)`).run(firmId);
-    onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
-  }
-  const stepStates = ONBOARDING_STEPS.map(s => ({
-    ...s,
-    done: !!s.isDone(firmId),
-    href: resolveOnboardingHref(s.href, firmId)
-  }));
-  const completedCount = stepStates.filter(s => s.done).length;
-  res.render('onboarding', {
-    user: req.user, ws: null, steps: stepStates, completedCount,
-    totalSteps: ONBOARDING_STEPS.length, onb
-  });
-});
-
-app.post('/onboarding/skip', requireAuth, (req, res) => {
-  const firmId = getActiveFirmId(req);
-  if (firmId) db.prepare(`UPDATE tenant_onboarding SET skipped=1, completed_at=CURRENT_TIMESTAMP WHERE firm_id=?`).run(firmId);
-  res.redirect('/dashboard');
-});
-
-app.post('/onboarding/complete', requireAuth, (req, res) => {
-  const firmId = getActiveFirmId(req);
-  if (firmId) db.prepare(`UPDATE tenant_onboarding SET completed_at=CURRENT_TIMESTAMP WHERE firm_id=?`).run(firmId);
-  res.redirect('/dashboard');
-});
-
-app.post('/tenants/:id/switch', requireAuth, (req, res) => {
-  const fid = parseInt(req.params.id, 10);
-  const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(fid);
-  if (exists) req.session.active_firm_id = fid;
-  // The previously-active workspace likely belongs to the previous tenant —
-  // bounce to the dashboard rather than a now-403 workspace URL.
-  res.redirect('/dashboard');
-});
-
-app.post('/tenants/:id/rename', requireAuth, (req, res) => {
-  const fid = parseInt(req.params.id, 10);
-  const name = (req.body.name || '').trim();
-  if (!name) return res.redirect('/tenants');
-  db.prepare('UPDATE firms SET name=? WHERE id=?').run(name, fid);
-  res.redirect('/tenants');
-});
-
-// Destructive: delete a tenant and everything under it (workspaces, evidence,
-// users tied only to this firm, firm-scoped templates, uploads dir). Requires
-// the operator to type the tenant name to confirm. Refuses if it would leave
-// zero tenants — there must always be at least one.
-app.post('/tenants/:id/delete', requireAuth, (req, res) => {
-  const fid = parseInt(req.params.id, 10);
-  const firm = db.prepare('SELECT id, name FROM firms WHERE id=?').get(fid);
-  if (!firm) return res.redirect(withToast('/tenants', 'Tenant not found', 'error'));
-
-  const confirm = (req.body.confirm_name || '').trim();
-  if (confirm !== firm.name) {
-    return res.redirect(withToast('/tenants', 'Confirmation name did not match — nothing deleted', 'error'));
-  }
-
-  const totalFirms = db.prepare('SELECT COUNT(*) c FROM firms').get().c;
-  if (totalFirms <= 1) {
-    return res.redirect(withToast('/tenants', 'Cannot delete the only remaining tenant', 'error'));
-  }
-
-  // Schema-evolution-safe cleanup: enumerate every table that has a workspace_id
-  // or firm_id column and delete matching rows. FKs are turned off so we don't
-  // have to worry about delete order. Wrapped in a transaction so a failure
-  // mid-way leaves the DB intact.
-  const wsIds = db.prepare('SELECT id FROM workspaces WHERE firm_id=?').all(fid).map(r => r.id);
-  db.pragma('foreign_keys = OFF');
-  try {
-    const tx = db.transaction(() => {
-      if (wsIds.length) {
-        const wsTables = db.prepare(`
-          SELECT m.name FROM sqlite_master m
-          WHERE m.type='table'
-          AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name='workspace_id')
-        `).all().map(r => r.name);
-        const placeholders = wsIds.map(() => '?').join(',');
-        for (const t of wsTables) {
-          db.prepare(`DELETE FROM ${t} WHERE workspace_id IN (${placeholders})`).run(...wsIds);
-        }
-        db.prepare(`DELETE FROM workspaces WHERE firm_id=?`).run(fid);
-      }
-      const firmTables = db.prepare(`
-        SELECT m.name FROM sqlite_master m
-        WHERE m.type='table'
-        AND m.name != 'firms'
-        AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name='firm_id')
-      `).all().map(r => r.name);
-      for (const t of firmTables) {
-        db.prepare(`DELETE FROM ${t} WHERE firm_id=?`).run(fid);
-      }
-      db.prepare('DELETE FROM firms WHERE id=?').run(fid);
-    });
-    tx();
-  } finally {
-    db.pragma('foreign_keys = ON');
-  }
-
-  // Wipe the per-tenant uploads directory off disk.
-  try {
-    const tenantDir = path.join(__dirname, 'uploads', `firm_${fid}`);
-    if (fs.existsSync(tenantDir)) fs.rmSync(tenantDir, { recursive: true, force: true });
-  } catch (_) {}
-
-  // If the deleted tenant was active, switch to whichever firm remains.
-  if (req.session.active_firm_id === fid) {
-    const fallback = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
-    req.session.active_firm_id = fallback ? fallback.id : null;
-  }
-
-  res.redirect(withToast('/tenants', `Tenant "${firm.name}" deleted`, 'success'));
-});
+// (tenant + onboarding routes live in routes/tenants.js — see the require
+// above. Anything that needs to call them goes through HTTP, not internal
+// references.)
 
 // ==================== DASHBOARD ====================
 app.get('/dashboard', requireAuth, (req, res) => {
@@ -6913,8 +6746,14 @@ app.use((err, req, res, next) => {
   res.status(500).render('error', { user: currentUser(req), message: 'Server error: ' + err.message });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`\nISO 27001 Tool running at http://localhost:${PORT}`);
-  console.log(`First time? Visit /register to create your firm account.\n`);
-});
+// Export the configured app so tests can mount it without calling listen().
+// When run directly (node server.js), bind a port and start serving.
+module.exports = { app, db };
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`\nISO 27001 Tool running at http://localhost:${PORT}`);
+    console.log(`First time? Visit /register to create your firm account.\n`);
+  });
+}
