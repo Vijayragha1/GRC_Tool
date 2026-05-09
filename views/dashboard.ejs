@@ -11,12 +11,54 @@
 </div>
 
 <% if (workspaces.length > 0) { %>
+<%
+  // Health bands for the KPI rail color
+  const stage1Cls = totals.avgStage1 >= 80 ? 'kpi-good' : totals.avgStage1 >= 50 ? 'kpi-warn' : 'kpi-bad';
+  const nearCertCls = totals.nearCert > 0 ? 'kpi-warn' : '';
+  const redFlagsCls = totals.redFlags > 0 ? 'kpi-bad' : 'kpi-good';
+  const ncCls = totals.totalOpenNCs > 0 ? 'kpi-bad' : 'kpi-good';
+%>
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;">
-  <div class="panel kpi"><div class="kpi-num num"><%= totals.total %></div><div class="kpi-label">Active engagements</div></div>
-  <div class="panel kpi kpi-accent"><div class="kpi-num num"><%= totals.avgStage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div><div class="kpi-label">Avg stage 1 readiness</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:<%= totals.nearCert > 0 ? '#a16207' : 'var(--text)' %>"><%= totals.nearCert %></div><div class="kpi-label">Near cert (&lt; 90 days)</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:<%= totals.redFlags > 0 ? '#b91c1c' : 'var(--text)' %>"><%= totals.redFlags %></div><div class="kpi-label">Engagements needing attention</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:<%= totals.totalOpenNCs > 0 ? '#b91c1c' : 'var(--text)' %>"><%= totals.totalOpenNCs %></div><div class="kpi-label">Open / overdue NCs</div></div>
+  <div class="panel kpi kpi-accent">
+    <div class="kpi-head">
+      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <div class="kpi-label">Engagements</div>
+    </div>
+    <div class="kpi-num num"><%= totals.total %></div>
+    <div class="kpi-meta">active across the firm</div>
+  </div>
+  <div class="panel kpi <%= stage1Cls %>">
+    <div class="kpi-head">
+      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <div class="kpi-label">Avg Stage 1</div>
+    </div>
+    <div class="kpi-num num"><%= totals.avgStage1 %><span style="font-size:15px;color:var(--text-tertiary);font-weight:400;margin-left:1px;">%</span></div>
+    <div class="kpi-meta">readiness across portfolio</div>
+  </div>
+  <div class="panel kpi <%= nearCertCls %>">
+    <div class="kpi-head">
+      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <div class="kpi-label">Near cert</div>
+    </div>
+    <div class="kpi-num num"><%= totals.nearCert %></div>
+    <div class="kpi-meta">&lt; 90 days to target</div>
+  </div>
+  <div class="panel kpi <%= redFlagsCls %>">
+    <div class="kpi-head">
+      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div class="kpi-label">Needs attention</div>
+    </div>
+    <div class="kpi-num num"><%= totals.redFlags %></div>
+    <div class="kpi-meta">engagements flagged</div>
+  </div>
+  <div class="panel kpi <%= ncCls %>">
+    <div class="kpi-head">
+      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div class="kpi-label">Open NCs</div>
+    </div>
+    <div class="kpi-num num"><%= totals.totalOpenNCs %></div>
+    <div class="kpi-meta">open / overdue total</div>
+  </div>
 </div>
 <% } %>
 
