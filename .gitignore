@@ -8,6 +8,9 @@ data/master.key
 *.db
 *.db-shm
 *.db-wal
+*.db.bak
+*.db.*.bak
+*.bak
 
 # Backups & user uploads
 data/backups/
