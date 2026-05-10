@@ -652,7 +652,12 @@ app.post('/workspaces', requireAuth, (req, res) => {
     .run(req.user.firm_id, client_name.trim(), industry || null,
          scope || null, target_cert_date || null, req.user.id).lastInsertRowid;
   logAction(req.user.id, id, 'create_workspace', 'workspace', id, { client_name });
-  res.redirect(withToast('/workspaces/' + id, 'Workspace created'));
+  // Redirect into the intake page rather than the workspace overview. The
+  // overview is meaningful only once the engagement has real context;
+  // intake is the obvious next step (scope sign-off, stakeholders, crown
+  // jewels) and the page already shows progress + an "Apply to workspace"
+  // button that backfills the scope statement and seeds interested parties.
+  res.redirect(withToast('/workspaces/' + id + '/intake', 'Workspace created — start with the engagement intake'));
 });
 
 app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
