@@ -106,9 +106,17 @@
     const newCsrf = newDoc.querySelector('meta[name="csrf-token"]');
     const curCsrf = document.querySelector('meta[name="csrf-token"]');
     if (newCsrf && curCsrf) curCsrf.setAttribute('content', newCsrf.getAttribute('content'));
+    // Capture sidebar scroll BEFORE swap so we can restore it after. Without
+    // this the user clicks an item near the bottom of a long sidebar, the
+    // sidebar redraws, and the scroll snaps back to the top — feels broken.
+    const oldSideNav = oldApp.querySelector('.sidebar-nav');
+    const sidebarScroll = oldSideNav ? oldSideNav.scrollTop : 0;
     // Replace the entire .app — sidebar may have changed (workspace ↔ firm),
     // active states need updating, and the topbar tenant dropdown may differ.
     oldApp.replaceWith(newApp);
+    // Restore sidebar scroll on the new sidebar nav.
+    const newSideNav = newApp.querySelector('.sidebar-nav');
+    if (newSideNav) newSideNav.scrollTop = sidebarScroll;
     // Re-run any inline scripts in the new content.
     newApp.querySelectorAll('script').forEach(old => {
       const s = document.createElement('script');
