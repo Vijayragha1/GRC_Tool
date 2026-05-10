@@ -62,6 +62,79 @@
 </div>
 <% } %>
 
+<!-- This week across the portfolio — what to touch today, this week, what's late.
+     The MSSP consultant's morning standup view: aggregates tasks, NCs, audits,
+     and MRMs across every engagement in the active firm. -->
+<% if (typeof thisWeek !== 'undefined' && thisWeek.totalActionable > 0) { %>
+  <div class="panel" style="margin-bottom:24px;">
+    <div class="panel-head">
+      <h2>This week <span class="meta" style="font-weight:400;font-size:13px;">— what's due across all engagements</span></h2>
+      <span class="meta">
+        <% if (thisWeek.overdue.length) { %><strong style="color:#b91c1c;"><%= thisWeek.overdue.length %></strong> overdue · <% } %>
+        <% if (thisWeek.dueThisWeek.length) { %><strong style="color:#a16207;"><%= thisWeek.dueThisWeek.length %></strong> due this week<% } %>
+      </span>
+    </div>
+
+    <% if (thisWeek.overdue.length) { %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(220,38,38,0.03);">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#b91c1c;margin-bottom:8px;">Overdue (<%= thisWeek.overdue.length %>)</div>
+        <div style="display:grid;gap:6px;">
+          <% thisWeek.overdue.slice(0, 10).forEach(it => { %>
+            <a href="<%= it.href %>" class="link-muted" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;font-size:12.5px;align-items:center;">
+              <span class="tag tag-danger" style="font-size:10px;justify-self:start;"><%= it.kind %></span>
+              <span class="meta" style="font-size:11px;font-weight:500;color:#b91c1c;"><%= it.due_date %></span>
+              <span><%= it.title %></span>
+              <span class="meta" style="font-size:11px;text-align:right;"><%= it.client %></span>
+            </a>
+          <% }) %>
+          <% if (thisWeek.overdue.length > 10) { %>
+            <div class="meta" style="font-size:11px;padding:4px 8px;">+ <%= thisWeek.overdue.length - 10 %> more</div>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (thisWeek.dueThisWeek.length) { %>
+      <div class="panel-pad">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#a16207;margin-bottom:8px;">Due this week (<%= thisWeek.dueThisWeek.length %>)</div>
+        <div style="display:grid;gap:6px;">
+          <% thisWeek.dueThisWeek.slice(0, 10).forEach(it => { %>
+            <a href="<%= it.href %>" class="link-muted" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;font-size:12.5px;align-items:center;">
+              <span class="tag tag-warn" style="font-size:10px;justify-self:start;"><%= it.kind %></span>
+              <span class="meta num" style="font-size:11px;"><%= it.due_date %></span>
+              <span><%= it.title %></span>
+              <span class="meta" style="font-size:11px;text-align:right;"><%= it.client %></span>
+            </a>
+          <% }) %>
+          <% if (thisWeek.dueThisWeek.length > 10) { %>
+            <div class="meta" style="font-size:11px;padding:4px 8px;">+ <%= thisWeek.dueThisWeek.length - 10 %> more</div>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+
+    <%
+      const byClient = Object.values(thisWeek.byClient || {}).sort((a,b) => (b.overdue - a.overdue) || (b.thisWeek - a.thisWeek));
+    %>
+    <% if (byClient.length > 1) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:8px;">By client</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
+          <% byClient.forEach(c => { %>
+            <a href="/workspaces/<%= c.ws_id %>" class="link-muted" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-size:12px;">
+              <span style="font-weight:500;"><%= c.name %></span>
+              <span style="display:flex;gap:4px;">
+                <% if (c.overdue) { %><span class="tag tag-danger" style="font-size:10px;"><%= c.overdue %> late</span><% } %>
+                <% if (c.thisWeek) { %><span class="tag tag-warn" style="font-size:10px;"><%= c.thisWeek %> wk</span><% } %>
+              </span>
+            </a>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+<% } %>
+
 <!-- At-risk engagements — one row per workspace flagged across multiple signals -->
 <% if (typeof atRisk !== 'undefined' && atRisk.length > 0) { %>
   <div class="panel" style="margin-bottom:24px;border-left:3px solid <%= atRisk.some(r => r.severity === 'high') ? '#b91c1c' : '#a16207' %>;">

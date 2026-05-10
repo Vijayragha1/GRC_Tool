@@ -30,6 +30,27 @@
   </div>
 </div>
 
+<!-- Sector overlay banner — when the workspace has a sector with a pack
+     (Healthcare, etc.), surface a one-line cue plus the pack's notes so the
+     consultant remembers there's sector-specific content driving the engagement. -->
+<% if (typeof sectorOverlay !== 'undefined' && sectorOverlay) { %>
+  <details class="panel" style="margin-bottom:18px;border-left:3px solid var(--accent);background:var(--accent-soft);">
+    <summary style="cursor:pointer;list-style:none;padding:12px 18px;display:flex;align-items:center;gap:10px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2.2"><path d="M12 2 4 7v10l8 5 8-5V7z"/></svg>
+      <span style="font-size:13px;font-weight:600;color:var(--accent-deep);"><%= sectorOverlay.sector %> overlay active</span>
+      <span class="meta" style="font-size:11.5px;flex:1;"><%= sectorOverlay.extraRisks.length %> extra risks · <%= Object.keys(sectorOverlay.controlEmphasis).length %> emphasised controls · <%= sectorOverlay.extraMandatoryDocs.length %> extra docs</span>
+      <span class="meta" style="font-size:11px;color:var(--accent-deep);">▾ details</span>
+    </summary>
+    <div style="padding:0 18px 14px 18px;font-size:12.5px;line-height:1.55;color:var(--text);"><%= sectorOverlay.notes %></div>
+    <div style="padding:0 18px 14px 18px;font-size:11.5px;line-height:1.55;color:var(--text-secondary);">
+      <strong style="color:var(--accent-deep);">Emphasised Annex A controls:</strong>
+      <% Object.keys(sectorOverlay.controlEmphasis).forEach(k => { %>
+        <a href="/workspaces/<%= ws.id %>/controls/assess/<%= k %>" class="tag tag-info" style="text-decoration:none;font-size:10.5px;margin:2px 2px 2px 0;display:inline-block;"><%= k.toUpperCase() %></a>
+      <% }) %>
+    </div>
+  </details>
+<% } %>
+
 <!-- Headline KPIs -->
 <%
   const s1Cls = readiness.stage1 >= 80 ? 'kpi-good' : readiness.stage1 >= 50 ? 'kpi-warn' : 'kpi-bad';

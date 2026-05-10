@@ -426,7 +426,68 @@ app.get('/dashboard', requireAuth, (req, res) => {
   const atRisk = portfolioRisk.filter(r => r.severity !== 'ok')
     .sort((a, b) => (a.severity === 'high' && b.severity !== 'high' ? -1 : a.severity !== 'high' && b.severity === 'high' ? 1 : 0));
 
-  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk });
+  // ---- "This week" cross-engagement view ----
+  // The MSSP consultant's morning standup question is "what do I need to
+  // touch this week, across all my clients?" Aggregate due-this-week and
+  // overdue items across all workspaces with the client name attached.
+  const today = new Date().toISOString().slice(0, 10);
+  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const wsIds = workspacesWithProgress.map(w => w.id);
+  const wsNameById = {};
+  for (const w of workspacesWithProgress) wsNameById[w.id] = w.brand_display_name || w.client_name;
+
+  const thisWeek = { overdue: [], dueThisWeek: [], byClient: {} };
+  if (wsIds.length) {
+    const placeholders = wsIds.map(() => '?').join(',');
+    // Tasks
+    const tasks = db.prepare(`SELECT id, workspace_id, title, due_date, priority, status FROM tasks
+      WHERE workspace_id IN (${placeholders}) AND status NOT IN ('done','closed','cancelled')
+      AND due_date IS NOT NULL`).all(...wsIds);
+    // NCs
+    const ncs = db.prepare(`SELECT id, workspace_id, title, due_date, severity, status FROM nonconformities
+      WHERE workspace_id IN (${placeholders}) AND status NOT IN ('closed','verified')
+      AND due_date IS NOT NULL`).all(...wsIds);
+    // Audits — table has audit_date and title (not planned_date / name).
+    const audits = db.prepare(`SELECT id, workspace_id, title, audit_date AS due_date, status FROM audits
+      WHERE workspace_id IN (${placeholders}) AND status NOT IN ('completed','cancelled')
+      AND audit_date IS NOT NULL`).all(...wsIds);
+    // MRMs — schema has meeting_date and no title column; synthesise one.
+    const mrms = db.prepare(`SELECT id, workspace_id, ('MRM ' || meeting_date) AS title, meeting_date AS due_date, status FROM mrms
+      WHERE workspace_id IN (${placeholders}) AND status NOT IN ('completed','cancelled')
+      AND meeting_date IS NOT NULL`).all(...wsIds);
+
+    const enrich = (items, kind) => items.map(it => ({
+      kind, id: it.id, workspace_id: it.workspace_id, client: wsNameById[it.workspace_id] || '?',
+      title: it.title, due_date: it.due_date, severity: it.severity || it.priority || null,
+      bucket: it.due_date < today ? 'overdue' : it.due_date <= weekFromNow ? 'thisWeek' : 'later',
+      href: kind === 'task' ? `/workspaces/${it.workspace_id}/tasks` :
+            kind === 'nc' ? `/workspaces/${it.workspace_id}/nonconformities/${it.id}` :
+            kind === 'audit' ? `/workspaces/${it.workspace_id}/audits/${it.id}` :
+            kind === 'mrm' ? `/workspaces/${it.workspace_id}/mrms/${it.id}` :
+            `/workspaces/${it.workspace_id}`,
+    }));
+
+    const all = [
+      ...enrich(tasks, 'task'),
+      ...enrich(ncs, 'nc'),
+      ...enrich(audits, 'audit'),
+      ...enrich(mrms, 'mrm'),
+    ];
+    thisWeek.overdue = all.filter(i => i.bucket === 'overdue').sort((a, b) => a.due_date.localeCompare(b.due_date));
+    thisWeek.dueThisWeek = all.filter(i => i.bucket === 'thisWeek').sort((a, b) => a.due_date.localeCompare(b.due_date));
+    thisWeek.totalActionable = thisWeek.overdue.length + thisWeek.dueThisWeek.length;
+
+    // Per-client roll-up
+    for (const item of all) {
+      if (item.bucket === 'later') continue;
+      const k = item.workspace_id;
+      thisWeek.byClient[k] = thisWeek.byClient[k] || { name: item.client, ws_id: k, overdue: 0, thisWeek: 0 };
+      if (item.bucket === 'overdue') thisWeek.byClient[k].overdue++;
+      else thisWeek.byClient[k].thisWeek++;
+    }
+  }
+
+  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek });
 });
 
 // ==================== FIRM TEAM MANAGEMENT ====================
@@ -461,6 +522,10 @@ app.post('/firm/users/:id/deactivate', requireAuth, (req, res) => {
 // ==================== GLOSSARY ====================
 // Workspace-agnostic learning resource. Static content, no DB.
 const GLOSSARY = require('./data/glossary');
+// Industry overlay packs — applied at workspace risk-clone time, surfaced as
+// banner/notes on the workspace overview, and consumed by the SoA emphasis
+// hint. See data/sector-overlays/ for the pattern.
+const SECTOR_OVERLAYS = require('./data/sector-overlays');
 
 // Set of valid iso_items.id values, computed once at boot. Used to decide
 // whether a clause/Annex-A reference in glossary text resolves to a real
@@ -650,11 +715,15 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
   // Tier B.6 — top "needs your attention" items for the overview
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
+  // Industry overlay pack (if the workspace's sector has one). Surfaces a
+  // banner with the overlay's notes; control-emphasis is consumed by the SoA
+  // page directly via the same registry.
+  const sectorOverlay = SECTOR_OVERLAYS.getOverlay(ws.sector);
   res.render('workspace', {
     user: req.user, ws, progress, breakdown, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
-    roadmap, needsAttention
+    roadmap, needsAttention, sectorOverlay,
   });
 });
 
@@ -5575,9 +5644,38 @@ app.post('/firm/library/risks/reseed', requireAuth, (req, res) => {
 });
 
 // Clone the firm library into a workspace's risk register. Existing risks with
-// the same title are not duplicated.
+// the same title are not duplicated. If the workspace has a sector set, the
+// matching overlay's risks are merged into the firm library *first* so the
+// clone picks them up — this is the "industry overlay pack" effect.
+function applySectorOverlayToFirmLibrary(firmId, sector) {
+  if (!sector) return 0;
+  const overlay = SECTOR_OVERLAYS.getOverlay(sector);
+  if (!overlay) return 0;
+  const have = new Set(db.prepare('SELECT title FROM firm_risk_library WHERE firm_id=?').all(firmId).map(r => r.title));
+  const ins = db.prepare(`INSERT INTO firm_risk_library
+    (firm_id, title, description, threat, vulnerability, suggested_likelihood, suggested_impact,
+     suggested_treatment, suggested_controls, domain, sector, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  let added = 0;
+  const tx = db.transaction(() => {
+    for (const r of overlay.extraRisks) {
+      if (have.has(r.title)) continue;
+      ins.run(firmId, r.title, r.description || null, r.threat || null, r.vulnerability || null,
+        r.suggested_likelihood || null, r.suggested_impact || null,
+        r.suggested_treatment || null, r.suggested_controls || null,
+        r.domain || null, r.sector || null, r.tags || null);
+      added++;
+    }
+  });
+  tx();
+  return added;
+}
+
 app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
   const firmId = req.workspace.firm_id;
+  // Make sure the firm library is up-to-date with the workspace's sector
+  // overlay before cloning. Idempotent.
+  const overlayAdded = applySectorOverlayToFirmLibrary(firmId, req.workspace.sector);
   const lib = db.prepare(`SELECT * FROM firm_risk_library WHERE firm_id=? ORDER BY domain, title`).all(firmId);
   const have = new Set(db.prepare(`SELECT title FROM risks WHERE workspace_id=?`).all(req.workspace.id).map(r => r.title));
   const ins = db.prepare(`INSERT INTO risks
@@ -5593,8 +5691,196 @@ app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorks
     }
   });
   tx();
-  logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, `Cloned ${added} risks from firm library`));
+  logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added, overlay_added: overlayAdded }, auditCtx(req));
+  const msg = overlayAdded > 0
+    ? `Cloned ${added} risks from firm library (incl. ${overlayAdded} from ${req.workspace.sector} overlay)`
+    : `Cloned ${added} risks from firm library`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, msg));
+});
+
+// ==================== EXEC BRIEF (one-page CISO/board readout) ====================
+// Single-page health summary that renders as one screen, prints to one A4
+// page. Built for the sponsor's monthly skim, not for the consultant's
+// detail work. Includes: readiness now, velocity (gap closure trend),
+// residual-risk monetary estimate, top-5 risks, top-5 NCs.
+
+app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res) => {
+  const ws = req.workspace;
+  const readiness = computeReadiness(ws);
+
+  // Velocity = controls moved to Implemented in last 30 days vs the prior 30.
+  const velNow = db.prepare(`SELECT COUNT(*) c FROM control_state_history
+    WHERE workspace_id=? AND status='Implemented'
+    AND snapshot_at >= datetime('now','-30 days')`).get(ws.id).c;
+  const velPrior = db.prepare(`SELECT COUNT(*) c FROM control_state_history
+    WHERE workspace_id=? AND status='Implemented'
+    AND snapshot_at >= datetime('now','-60 days')
+    AND snapshot_at < datetime('now','-30 days')`).get(ws.id).c;
+  const velocityDelta = velNow - velPrior;
+
+  // Residual-risk financial estimate. ISO doesn't mandate $ — but a board
+  // wants one. Use Annual Loss Expectancy: SLE × ARO heuristic.
+  // For each open risk, treat (likelihood / 5) as ARO and (impact * tier) as
+  // SLE. Tier defaults to $50k * impact (1=$50k, 5=$250k) — configurable
+  // via workspace setting later.
+  const tierBase = 50000;
+  const openRisks = db.prepare(`SELECT id, title, likelihood, impact, owner_name FROM risks
+    WHERE workspace_id=? AND status NOT IN ('closed','accepted')`).all(ws.id);
+  let aleSum = 0;
+  for (const r of openRisks) {
+    const aro = (r.likelihood || 3) / 5;
+    const sle = (r.impact || 3) * tierBase;
+    aleSum += aro * sle;
+  }
+  const residualAle = Math.round(aleSum);
+
+  // Top 5 by inherent score
+  const topRisks = openRisks
+    .map(r => ({ ...r, score: (r.likelihood || 0) * (r.impact || 0) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  // Top open NCs by severity then due date
+  const topNCs = db.prepare(`SELECT id, title, severity, due_date, status FROM nonconformities
+    WHERE workspace_id=? AND status NOT IN ('closed','verified')
+    ORDER BY CASE severity WHEN 'major' THEN 1 WHEN 'minor' THEN 2 ELSE 3 END, due_date
+    LIMIT 5`).all(ws.id);
+
+  // Total open NC counts for the headline
+  const ncTotals = db.prepare(`SELECT
+    SUM(CASE WHEN severity='major' AND status NOT IN ('closed','verified') THEN 1 ELSE 0 END) AS major,
+    SUM(CASE WHEN severity='minor' AND status NOT IN ('closed','verified') THEN 1 ELSE 0 END) AS minor,
+    SUM(CASE WHEN due_date < date('now') AND status NOT IN ('closed','verified') THEN 1 ELSE 0 END) AS overdue
+    FROM nonconformities WHERE workspace_id=?`).get(ws.id);
+
+  // Engagement plan progress (if used)
+  const planTotal = require('./data/engagement-plan').flatten().length;
+  const planDone = db.prepare(`SELECT COUNT(*) c FROM engagement_plan_progress
+    WHERE workspace_id=? AND completed_at IS NOT NULL`).get(ws.id).c;
+
+  res.render('exec_brief', {
+    user: req.user, ws,
+    readiness,
+    velocityNow: velNow, velocityPrior: velPrior, velocityDelta,
+    residualAle, openRiskCount: openRisks.length,
+    topRisks, topNCs, ncTotals,
+    planTotal, planDone, planPct: planTotal ? Math.round(planDone / planTotal * 100) : 0,
+  });
+});
+
+// ==================== PRIORITIZED ACTIONS (readiness-lift scoring) ====================
+// "If you fix these 5 in this order, readiness goes from X% to Y%."
+// Pulls fixable items from across the workspace (NCs, missing docs, not-
+// implemented controls, key flags), assigns each a readiness-lift estimate
+// (derived from the same Stage 1 formula computeReadiness uses) and an
+// effort tag (S/M/L), sorts by lift/effort. The top of the list is the
+// consultant's recommended fix order for the next sprint.
+
+app.get('/workspaces/:wsId/prioritized-actions', requireAuth, requireWorkspace, (req, res) => {
+  const ws = req.workspace;
+  const readiness = computeReadiness(ws);
+
+  // Stage 1 weights (must match computeReadiness)
+  const W = { records: 0.30, controls: 0.35, flags: 0.15, mrm: 0.10, audit: 0.10 };
+  const totalItems = db.prepare('SELECT COUNT(*) c FROM iso_items').get().c;
+  const recordsTotal = readiness.records.total || 1;
+
+  const liftPerControl = W.controls * (1 / totalItems) * 100; // ~0.30% per control
+  const liftPerDoc = W.records * (1 / recordsTotal) * 100;
+  const liftPerHighFlag = W.flags * 0.20 * 100; // ~3% per high-severity flag closed (1/5 cap)
+  const liftPerMrm = W.mrm * 100;               // 10% if no MRM yet
+  const liftPerAudit = W.audit * 100;           // 10% if no audit yet
+
+  const actions = [];
+
+  // Open NCs — each closure removes an audit finding and is high-priority.
+  const openNCs = db.prepare(`SELECT id, title, severity, due_date, iso_item_id FROM nonconformities
+    WHERE workspace_id=? AND status NOT IN ('closed','verified')`).all(ws.id);
+  for (const nc of openNCs) {
+    const sev = nc.severity || 'minor';
+    actions.push({
+      kind: 'nc', id: nc.id, title: nc.title,
+      lift: sev === 'major' ? liftPerHighFlag : liftPerHighFlag * 0.5,
+      effort: sev === 'major' ? 3 : 2,
+      effortLabel: sev === 'major' ? 'L' : 'M',
+      reason: `Close ${sev} NC (closure removes a high-impact flag from readiness)`,
+      href: `/workspaces/${ws.id}/nonconformities/${nc.id}`,
+    });
+  }
+
+  // Not-Implemented + Partially-Implemented controls flagged as in-scope.
+  // Sort by maturity asc — "0" maturity controls are the cheapest single-step
+  // wins, "Partial" -> "Implemented" usually means closing one specific gap.
+  const gapControls = db.prepare(`SELECT cs.iso_item_id, cs.status, cs.maturity, i.title
+    FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    WHERE cs.workspace_id=? AND cs.applicability='included'
+      AND i.type='control'
+      AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')`).all(ws.id);
+  for (const c of gapControls) {
+    // Partial closures don't move ctrlScore (still not Implemented), but they
+    // signal momentum. Score them lower so Not-Implemented sorts above.
+    const lift = c.status === 'Not Implemented' ? liftPerControl : liftPerControl * 0.4;
+    const effort = c.status === 'Partially Implemented' ? 1 : 2;
+    actions.push({
+      kind: 'control', id: c.iso_item_id, title: c.title,
+      lift, effort,
+      effortLabel: effort === 1 ? 'S' : 'M',
+      reason: `${c.iso_item_id.toUpperCase()} → Implemented (status now: ${c.status})`,
+      href: `/workspaces/${ws.id}/controls/assess/${c.iso_item_id}`,
+    });
+  }
+
+  // Missing mandatory documents — each found-row is a recordsScore step.
+  // readiness.records.checks has { id, label, found } per check.
+  const missingChecks = (readiness.records.checks || []).filter(c => !c.found);
+  for (const m of missingChecks) {
+    actions.push({
+      kind: 'doc', id: m.id, title: `Document: ${m.label}`,
+      lift: liftPerDoc,
+      effort: 1,
+      effortLabel: 'S',
+      reason: 'Mandatory documented information missing — write, approve, publish',
+      href: `/workspaces/${ws.id}/documents`,
+    });
+  }
+
+  // First MRM and first audit — large one-shot lifts.
+  if (!db.prepare(`SELECT 1 FROM mrms WHERE workspace_id=? AND status='complete' LIMIT 1`).get(ws.id)) {
+    actions.push({
+      kind: 'mrm', id: 'first-mrm', title: 'Run first management review',
+      lift: liftPerMrm, effort: 2, effortLabel: 'M',
+      reason: 'Stage 1 readiness scores 0/10 here until at least one MRM is complete',
+      href: `/workspaces/${ws.id}/mrms`,
+    });
+  }
+  if (!db.prepare(`SELECT 1 FROM audits WHERE workspace_id=? AND status='complete' LIMIT 1`).get(ws.id)) {
+    actions.push({
+      kind: 'audit', id: 'first-audit', title: 'Conduct first internal audit',
+      lift: liftPerAudit, effort: 3, effortLabel: 'L',
+      reason: 'Stage 1 readiness scores 0/10 here until at least one internal audit is complete',
+      href: `/workspaces/${ws.id}/audits`,
+    });
+  }
+
+  // Score each action by lift / effort. Tied scores break by lift desc.
+  for (const a of actions) a.score = a.lift / a.effort;
+  actions.sort((a, b) => b.score - a.score || b.lift - a.lift);
+
+  // Cumulative-lift preview for the first N items
+  const top = actions.slice(0, 10);
+  let running = readiness.stage1;
+  for (const a of top) { running += a.lift; a.runningStage1 = Math.round(Math.min(100, running)); }
+  const projected5 = top.slice(0, 5).reduce((s, a) => s + a.lift, 0);
+  const projected10 = top.reduce((s, a) => s + a.lift, 0);
+
+  res.render('prioritized_actions', {
+    user: req.user, ws,
+    actions: top, allCount: actions.length,
+    currentStage1: readiness.stage1,
+    projected5: Math.min(100, Math.round(readiness.stage1 + projected5)),
+    projected10: Math.min(100, Math.round(readiness.stage1 + projected10)),
+  });
 });
 
 // ==================== CONSULTANT PLAYBOOKS ====================

@@ -1,0 +1,68 @@
+<%- include('partials/header', { title: 'Prioritized actions', user, ws, active: 'prioritized-actions' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Prioritized actions</h1>
+    <div class="page-subtitle">Score-driven sequencing — fix these in this order to lift Stage 1 readiness fastest. Score = readiness lift &divide; effort.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/recommendations" class="btn btn-secondary btn-xs">Open ranked memo</a>
+</div>
+
+<% if (actions.length === 0) { %>
+  <div class="panel"><div class="t-empty" style="padding:60px 20px;">No prioritized actions remaining. Check the gap-assessment summary for finer-grained lift opportunities.</div></div>
+<% } else { %>
+  <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:20px;">
+    <div class="panel kpi"><div class="kpi-head"><div class="kpi-label">Today</div></div><div class="kpi-num num"><%= currentStage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div><div class="kpi-meta">current Stage 1 readiness</div></div>
+    <div class="panel kpi kpi-good"><div class="kpi-head"><div class="kpi-label">Top 5 fixed</div></div><div class="kpi-num num" style="color:#15803d;"><%= projected5 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div><div class="kpi-meta">+<%= projected5 - currentStage1 %> points</div></div>
+    <div class="panel kpi kpi-good"><div class="kpi-head"><div class="kpi-label">Top 10 fixed</div></div><div class="kpi-num num" style="color:#15803d;"><%= projected10 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div><div class="kpi-meta">+<%= projected10 - currentStage1 %> points</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2 style="margin:0;">Top <%= actions.length %> of <%= allCount %> open actions</h2>
+      <span class="meta">Order matters — work top-to-bottom for maximum readiness gain per hour spent</span>
+    </div>
+    <table class="t">
+      <thead><tr>
+        <th style="width:50px;">#</th>
+        <th style="width:80px;">Type</th>
+        <th>Action</th>
+        <th style="width:90px;text-align:right;">Lift</th>
+        <th style="width:70px;text-align:center;">Effort</th>
+        <th style="width:110px;text-align:right;">Cum. Stage 1</th>
+        <th style="width:100px;text-align:right;"></th>
+      </tr></thead>
+      <tbody>
+        <% actions.forEach((a, i) => { %>
+          <tr>
+            <td class="num meta" style="font-weight:600;font-size:13px;"><%= i + 1 %></td>
+            <td>
+              <% if (a.kind === 'nc') { %><span class="tag tag-danger" style="font-size:10px;">NC</span>
+              <% } else if (a.kind === 'control') { %><span class="tag tag-info" style="font-size:10px;">control</span>
+              <% } else if (a.kind === 'doc') { %><span class="tag tag-warn" style="font-size:10px;">doc</span>
+              <% } else if (a.kind === 'mrm') { %><span class="tag tag-accent" style="font-size:10px;">MRM</span>
+              <% } else if (a.kind === 'audit') { %><span class="tag tag-accent" style="font-size:10px;">audit</span>
+              <% } %>
+            </td>
+            <td>
+              <div style="font-weight:500;font-size:13px;line-height:1.35;"><%= a.title %></div>
+              <div class="meta" style="font-size:11px;line-height:1.45;margin-top:3px;"><%= a.reason %></div>
+            </td>
+            <td class="num" style="text-align:right;color:#15803d;font-weight:600;font-size:13px;">+<%= a.lift.toFixed(1) %>%</td>
+            <td style="text-align:center;">
+              <% const ec = a.effortLabel === 'S' ? '#15803d' : a.effortLabel === 'M' ? '#a16207' : '#b91c1c'; %>
+              <span style="display:inline-block;width:22px;height:22px;border-radius:6px;background:<%= ec %>;color:#fff;font-size:11px;font-weight:600;line-height:22px;text-align:center;"><%= a.effortLabel %></span>
+            </td>
+            <td class="num" style="text-align:right;font-size:13px;color:var(--text-secondary);"><%= a.runningStage1 %>%</td>
+            <td style="text-align:right;"><a href="<%= a.href %>" class="btn btn-secondary btn-xs">Open</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);font-size:11.5px;color:var(--text-secondary);">
+      <strong>How lift is calculated:</strong> readiness uses 30% mandatory docs, 35% Annex A controls implemented, 15% no high-severity flags, 10% MRM complete, 10% audit complete. Each action's lift is the marginal contribution of moving its component up one notch. Effort is a heuristic (S = small/under a day, M = ~3 days, L = a week+).
+    </div>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>
