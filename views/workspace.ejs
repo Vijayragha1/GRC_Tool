@@ -30,6 +30,23 @@
   </div>
 </div>
 
+<!-- Next-best-action banner. Reads engagement state and points at the single
+     highest-leverage next step. Replaces the "where do I go from here?" gap
+     a new consultant lands on the workspace overview with. -->
+<% if (typeof nextStep !== 'undefined' && nextStep) { %>
+  <div class="panel" style="margin-bottom:18px;border-left:4px solid var(--accent);background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:18px 22px;">
+    <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+    <div style="min-width:0;">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
+      <div style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--ink);margin-bottom:4px;"><%= nextStep.title %></div>
+      <div class="meta" style="font-size:12.5px;line-height:1.5;color:var(--text);"><%= nextStep.why %></div>
+    </div>
+    <a href="<%= nextStep.href %>" class="btn btn-primary" style="white-space:nowrap;"><%= nextStep.cta %> →</a>
+  </div>
+<% } %>
+
 <!-- Headline KPIs -->
 <%
   const s1Cls = readiness.stage1 >= 80 ? 'kpi-good' : readiness.stage1 >= 50 ? 'kpi-warn' : 'kpi-bad';

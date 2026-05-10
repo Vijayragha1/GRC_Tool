@@ -134,7 +134,7 @@ function listAllFirms() {
 
 function requireAuth(req, res, next) {
   req.user = currentUser(req);
-  if (!req.user) return res.status(500).render('error', { user: null, message: 'No default user found. Delete iso27001.db and restart.' });
+  if (!req.user) return res.status(500).render('error', { user: null, message: 'The active firm has no users. This usually means the database was created without seeding — restart the server (npm start) to re-run seeding, or delete data/iso27001.db to start completely fresh. Your evidence files in uploads/ are preserved.' });
   next();
 }
 
@@ -152,7 +152,7 @@ function getWorkspace(workspaceId, user) {
 
 function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
-  if (!ws) return res.status(403).render('error', { user: req.user, message: 'No access to this workspace.' });
+  if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
   req.workspace = ws;
   // Remember the workspace they were last in, so firm-level pages (Glossary,
   // Playbooks, Firm library, Tenants) can offer a "← Back to {client}"
@@ -275,7 +275,7 @@ function requirePermission(perm) {
     if (!rbac.hasPermission(perms, perm)) {
       logAction(req.user.id, req.workspace.id, 'permission_denied', 'permission', perm,
                 { route: req.method + ' ' + req.path }, auditCtx(req));
-      return res.status(403).render('error', { user: req.user, message: `Forbidden — missing permission: ${perm}` });
+      return res.status(403).render('error', { user: req.user, message: `You don't have permission to do this (missing: ${perm}). A workspace owner can grant individual permissions in workspace settings → Access & permissions, or assign you a role that includes it.` });
     }
     req.userPerms = perms;
     next();
@@ -642,7 +642,7 @@ app.get('/glossary', requireAuth, (req, res) => {
 app.get('/glossary/:slug', requireAuth, (req, res) => {
   const idx = GLOSSARY.indexBySlug();
   const entry = idx[req.params.slug];
-  if (!entry) return res.status(404).render('error', { user: req.user, message: 'Glossary entry not found.' });
+  if (!entry) return res.status(404).render('error', { user: req.user, message: 'No glossary entry with that slug. The 168 terms shipped with the tool are listed at /glossary — try searching there.' });
   const related = (entry.related || []).map(s => idx[s]).filter(Boolean);
   const categoryLabel = (GLOSSARY.CATEGORIES.find(c => c.key === entry.category) || {}).label || entry.category;
   const linkWsId = firstWorkspaceIdFor(req.user);
@@ -742,11 +742,12 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
   // Tier B.6 — top "needs your attention" items for the overview
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
+  const nextStep = computeNextStep(ws);
   res.render('workspace', {
     user: req.user, ws, progress, breakdown, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
-    roadmap, needsAttention,
+    roadmap, needsAttention, nextStep,
   });
 });
 
@@ -5180,6 +5181,121 @@ app.get('/workspaces/:wsId/activity-log', requireAuth, requireWorkspace, require
 // Tier B.5/B.6 — Surface actionable items derived from current workspace state.
 // Used by /notifications (the inbox) and on the overview's "Needs attention"
 // panel. Computed on-demand from live data — no cron required.
+// "What should I do next?" engine. Reads engagement state and returns the
+// single highest-leverage action — the one a junior consultant should
+// click on the workspace overview right now. The order below is the order a
+// real engagement should run; the first applicable item wins.
+//
+// Returns { title, why, cta, href, kind } or null if nothing to suggest.
+function computeNextStep(ws) {
+  const wsId = ws.id;
+  const cnt = (sql, ...p) => db.prepare(sql).get(wsId, ...p).c;
+
+  // 1. No intake answered yet → start there. Anchors clause 4.3.
+  const intakeCount = cnt(`SELECT COUNT(*) c FROM engagement_intake WHERE workspace_id=? AND answer IS NOT NULL AND length(trim(answer)) > 0`);
+  if (intakeCount === 0) {
+    return {
+      kind: 'intake', title: 'Start the engagement intake',
+      why: 'A 25-question scoping questionnaire that auto-drafts the clause 4.3 scope statement and seeds the interested-parties register. Send it to the client 3 days before kickoff.',
+      cta: 'Open intake', href: `/workspaces/${wsId}/intake`,
+    };
+  }
+  if (intakeCount < 8) {
+    return {
+      kind: 'intake-partial', title: `Finish the intake (${intakeCount}/25 answered)`,
+      why: 'Get to at least the business-context + scope sections before the kickoff workshop.',
+      cta: 'Continue intake', href: `/workspaces/${wsId}/intake`,
+    };
+  }
+
+  // 2. Intake answered but scope not pushed to workspace yet.
+  if (intakeCount >= 8 && (!ws.scope || ws.scope.length < 20)) {
+    return {
+      kind: 'apply-intake', title: 'Apply the intake to the workspace',
+      why: 'Pushes the auto-drafted scope statement into clause 4.3 and seeds the interested-parties register from your customer / regulator / supplier answers.',
+      cta: 'Open intake → Apply', href: `/workspaces/${wsId}/intake`,
+    };
+  }
+
+  // 3. Asset register too thin to do a meaningful risk assessment on.
+  const assets = cnt(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`);
+  if (assets < 5) {
+    return {
+      kind: 'assets', title: 'Build the asset register',
+      why: 'You need 30-50 entries to support the risk assessment. Run the scoping workshop playbook for a structured 90-min session.',
+      cta: 'Add assets', href: `/workspaces/${wsId}/assets`,
+    };
+  }
+
+  // 4. Risk register thin — risk workshop hasn't happened.
+  const risks = cnt(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted')`);
+  if (risks < 10) {
+    return {
+      kind: 'risks', title: 'Populate the risk register',
+      why: 'Use "+ Firm library" to clone your firm\'s curated risks, or run the 90-min risk workshop playbook with the client.',
+      cta: 'Open risks', href: `/workspaces/${wsId}/risks`,
+    };
+  }
+
+  // 5. No active gap-assessment pass.
+  const activePass = db.prepare(`SELECT id, pass_number FROM assessment_passes WHERE workspace_id=? AND status='in_progress' ORDER BY pass_number DESC LIMIT 1`).get(wsId);
+  const lastPass = db.prepare(`SELECT id FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(wsId);
+  if (!lastPass) {
+    return {
+      kind: 'pass-1', title: 'Start Pass 1 — initial gap assessment',
+      why: 'Walks every clause and Annex A control. Each item gets diagnostic Y/P/N questions, a status, and a maturity score. Assessment saves are tagged to this pass so you can diff against later passes.',
+      cta: 'Start gap assessment', href: `/workspaces/${wsId}/gap-assessment`,
+    };
+  }
+
+  // 6. SoA has many Undecided controls — auditor blocker.
+  const undecided = cnt(`SELECT COUNT(*) c FROM control_states cs INNER JOIN iso_items i ON i.id=cs.iso_item_id WHERE cs.workspace_id=? AND i.id LIKE 'annex-a.%' AND (cs.applicability IS NULL OR cs.applicability='undecided')`);
+  if (undecided > 30) {
+    return {
+      kind: 'soa-bulk', title: `Decide SoA applicability for ${undecided} controls`,
+      why: 'Clause 6.1.3.d requires applicability + justification per Annex A control. Use "+ Bulk decide applicability" on the SoA page to set most in one go.',
+      cta: 'Open SoA', href: `/workspaces/${wsId}/soa`,
+    };
+  }
+
+  // 7. No first management review yet.
+  const mrmsDone = cnt(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete'`);
+  if (mrmsDone === 0) {
+    return {
+      kind: 'mrm', title: 'Run the first management review',
+      why: 'Stage 1 readiness scores 0/10 on the MRM dimension until at least one is complete. Inputs auto-pull from current workspace data per clause 9.3.2.',
+      cta: 'Open management reviews', href: `/workspaces/${wsId}/mrms`,
+    };
+  }
+
+  // 8. No first internal audit complete.
+  const auditsDone = cnt(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND status='complete'`);
+  if (auditsDone === 0) {
+    return {
+      kind: 'audit', title: 'Conduct the first internal audit',
+      why: 'Stage 1 readiness needs at least one completed internal audit. Document the programme first (clause 9.2.2), then conduct the audit.',
+      cta: 'Open internal audit', href: `/workspaces/${wsId}/audits`,
+    };
+  }
+
+  // 9. Pass 1 not closed — once intake / scope / risks / SoA / MRM / audit are
+  //    all in, prompt to close the pass and start the readiness pack flow.
+  if (activePass) {
+    return {
+      kind: 'close-pass', title: `Mark Pass ${activePass.pass_number} as complete`,
+      why: 'You\'ve covered intake, risks, SoA decisions, first MRM, first internal audit. Close the pass to lock the snapshot and start the Stage 1 readiness pack.',
+      cta: 'Open gap assessment', href: `/workspaces/${wsId}/gap-assessment`,
+    };
+  }
+
+  // 10. Everything's in — point at the readiness pack.
+  return {
+    kind: 'pack', title: 'Generate the Stage 1 readiness pack',
+    why: 'The single artefact you hand the certification body — SoA, RTP, audits, MRMs, parties, objectives, evidence manifest, every active evidence file in one ZIP.',
+    cta: 'Open audit pack', href: `/workspaces/${wsId}/audit-pack`,
+  };
+}
+
 function computeNeedsAttention(wsId) {
   const today = new Date().toISOString().slice(0,10);
   const expSoon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);

@@ -6,19 +6,38 @@
     <div class="page-subtitle">Customize the likelihood scale, impact scale, and risk matrix used across the risk register. Saving a new methodology activates it for all subsequent scoring; existing risk scores are kept as-is until re-assessed.</div>
   </div>
   <div style="display:flex;gap:6px;align-items:center;">
-    <% const presets = [['iso_27005', 'ISO 27005'], ['nist_800_30', 'NIST 800-30'], ['fair_lite', 'FAIR-lite'], ['three_by_three', '3×3 lightweight']]; %>
+    <%
+      // Each preset gets a one-line "what is this and when do you pick it"
+      // hint so a junior consultant doesn't have to Google four standards
+      // before clicking. Same as the rest of the tool: opinionated defaults,
+      // explained inline.
+      const presets = [
+        { key: 'iso_27005', label: 'ISO 27005',
+          desc: 'The standard\'s own risk-management companion. 5×5 likelihood × impact, qualitative scales. Pick this if your auditor expects "scored to ISO 27005."' },
+        { key: 'nist_800_30', label: 'NIST 800-30',
+          desc: 'US-government-flavoured. 5-tier qualitative scale with semi-quantitative anchors. Common at fintech / federal-adjacent clients.' },
+        { key: 'fair_lite', label: 'FAIR-lite',
+          desc: 'Loss-event focused, with monetary impact. Heavier — pick this only if the client wants $ figures on every risk and someone owns the calibration.' },
+        { key: 'three_by_three', label: '3×3 lightweight',
+          desc: 'Three values each side. Fastest to populate at kickoff; coarse enough to obscure risk differentiation. OK for small clients, replace before Stage 1.' },
+      ];
+    %>
     <details style="position:relative;">
       <summary class="btn btn-secondary btn-xs">Apply preset</summary>
-      <div style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;z-index:5;box-shadow:var(--shadow-lg);min-width:220px;">
-        <% presets.forEach(([k, l]) => { %>
-          <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= k %>" style="margin-bottom:4px;">
-            <button class="btn btn-ghost btn-xs" style="width:100%;text-align:left;justify-content:flex-start;"><%= l %></button>
+      <div style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:5;box-shadow:var(--shadow-lg);min-width:340px;max-width:380px;">
+        <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-secondary);line-height:1.45;">Replaces the current methodology with one of four standard templates. <strong>Existing risk scores are kept as-is until re-assessed.</strong></div>
+        <% presets.forEach(p => { %>
+          <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= p.key %>" style="margin:0;" onsubmit="return appConfirmForm(event, 'Apply the <%= p.label %> preset? This replaces likelihood / impact scales and the matrix bands; existing risk scores are not recalculated.');">
+            <button class="btn btn-ghost btn-xs" style="width:100%;text-align:left;justify-content:flex-start;align-items:flex-start;flex-direction:column;padding:10px 12px;line-height:1.4;height:auto;">
+              <span style="font-weight:600;font-size:12.5px;"><%= p.label %></span>
+              <span style="font-size:11px;color:var(--text-secondary);font-weight:400;margin-top:3px;white-space:normal;"><%= p.desc %></span>
+            </button>
           </form>
         <% }) %>
       </div>
     </details>
     <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/reset" onsubmit="return appConfirmForm(event, 'Reset to the default 5×5 methodology?')">
-      <button class="btn btn-secondary btn-xs">Reset</button>
+      <button class="btn btn-secondary btn-xs" title="Restore the default 5×5 methodology that ships with the tool">Reset</button>
     </form>
   </div>
 </div>
