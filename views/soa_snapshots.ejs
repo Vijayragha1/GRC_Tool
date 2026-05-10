@@ -1,16 +1,16 @@
 <%- include('partials/header', { title: 'SoA snapshots', user, ws, active: 'soa' }) %>
 
-<a href="/workspaces/<%= ws.id %>/soa" class="link-muted" style="font-size:12px;">← Back to SoA</a>
-
-<div class="page-head" style="margin-top:8px">
-  <div><h1 class="page-title">SoA snapshots</h1>
-    <div class="page-subtitle">Immutable, hashed snapshots of the Statement of Applicability. Auditors will ask "what changed since last cert?" — capture before each MRM and before each audit.</div></div>
+<div class="page-head">
+  <div><h1 class="page-title">Statement of Applicability</h1>
+    <div class="page-subtitle">Immutable, hashed snapshots of the SoA. Auditors will ask "what changed since last cert?" — capture before each MRM and before each audit.</div></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:flex;gap:6px;align-items:center;">
     <input class="input" name="label" placeholder="Snapshot label">
     <input class="input" name="reason" placeholder="Reason">
     <button class="btn btn-primary btn-xs">Capture now</button>
   </form>
 </div>
+
+<%- include('partials/soa_tabs', { ws, tab: 'snapshots' }) %>
 
 <% if (snapshots.length >= 2) { %>
 <div class="panel" style="margin-bottom:14px">

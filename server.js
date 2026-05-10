@@ -3057,18 +3057,11 @@ app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorksp
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
 
-// ==================== TIER C.11 — ASSET RELATIONSHIPS GRAPH ====================
-// SVG graph of how assets depend on each other. Useful for blast-radius
-// reasoning: "if this database is compromised / unavailable, what else is
-// affected?". The asset_relationships table already exists and is populated
-// from the asset detail page.
-app.get('/workspaces/:wsId/assets/graph', requireAuth, requireWorkspace, requirePermission('asset.view'), (req, res) => {
-  const assets = db.prepare(`SELECT id, name, type, classification, business_criticality
-    FROM assets WHERE workspace_id=? ORDER BY name`).all(req.workspace.id);
-  const rels = db.prepare(`SELECT parent_asset_id, child_asset_id, relation
-    FROM asset_relationships WHERE workspace_id=?`).all(req.workspace.id);
-  res.render('assets_graph', { user: req.user, ws: req.workspace, assets, rels });
-});
+// (Asset relationships graph removed in IA cleanup — daily-use rare. The
+// underlying asset_relationships table is still populated from the asset
+// detail page; if blast-radius visualisation is needed again, restore from
+// git history at sha 5c9ee08. See views/assets.ejs for the table view that
+// answers every real question.)
 
 // Tier C.9 — Per-audit sampling justification + per-control sample log.
 // Clause 9.2 expects sampling decisions to be defensible. The audit detail

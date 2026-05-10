@@ -6,7 +6,6 @@
     <div class="page-subtitle">Mandatory ISO 27001 document (clause 6.1.3.d). Applicability and justification for all 93 Annex A controls, plus any non-Annex-A controls you've added.</div>
   </div>
   <div style="display:flex;gap:6px;">
-    <a href="/workspaces/<%= ws.id %>/soa/snapshots" class="btn btn-secondary btn-xs">Snapshots</a>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'Auto-include and justify every control linked to a risk?')"><button class="btn btn-secondary btn-xs">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs">Capture snapshot</button></form>
     <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
@@ -14,6 +13,8 @@
     <a href="/workspaces/<%= ws.id %>/export/readiness-pack.zip?stage=1" class="btn btn-primary btn-xs">Readiness pack ↓</a>
   </div>
 </div>
+
+<%- include('partials/soa_tabs', { ws, tab: 'current' }) %>
 
 <!-- SoA metadata header — version / owner / approver / approved-on (clause 7.5.3) -->
 <details class="panel" style="margin-bottom:10px;<%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'border-left:3px solid #a16207;' : 'border-left:3px solid #16a34a;' %>" <%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'open' : '' %>>

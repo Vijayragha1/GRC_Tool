@@ -1,13 +1,14 @@
 <%- include('partials/header', { title: 'SoA snapshot — ' + (snapshot.label || snapshot.created_at), user, ws, active: 'soa' }) %>
 
-<a href="/workspaces/<%= ws.id %>/soa/snapshots" class="link-muted" style="font-size:12px;">← Snapshots</a>
-
-<div class="page-head" style="margin-top:8px">
+<div class="page-head">
   <div>
-    <h1 class="page-title"><%= snapshot.label || 'Snapshot' %></h1>
-    <div class="page-subtitle"><%= snapshot.created_at %> · SHA-256 <span class="mono"><%= snapshot.payload_hash %></span></div>
+    <h1 class="page-title">Statement of Applicability</h1>
+    <div class="page-subtitle">Snapshot · <strong><%= snapshot.label || snapshot.created_at %></strong> · SHA-256 <span class="mono"><%= snapshot.payload_hash %></span></div>
   </div>
+  <a href="/workspaces/<%= ws.id %>/soa/snapshots" class="btn btn-ghost btn-xs">← All snapshots</a>
 </div>
+
+<%- include('partials/soa_tabs', { ws, tab: 'snapshots' }) %>
 
 <div class="panel"><table class="t">
   <thead><tr><th>Control</th><th>Title</th><th>Applicability</th><th>Status</th><th>Inclusion / exclusion</th></tr></thead>
