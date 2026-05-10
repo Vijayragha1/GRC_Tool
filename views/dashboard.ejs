@@ -62,6 +62,29 @@
 </div>
 <% } %>
 
+<!-- Onboarding nudge — surface unfinished setup even if the user skipped the
+     wizard once. Reviewer feedback: the wizard disappeared after skip with
+     no way back. Now persistent until all 6 steps are done. -->
+<% if (typeof onboarding !== 'undefined' && onboarding && onboarding.done < onboarding.total) { %>
+  <div class="panel" style="margin-bottom:24px;border-left:4px solid var(--accent);background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:16px 20px;">
+    <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div style="min-width:0;">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">
+        Setup <%= onboarding.done %> / <%= onboarding.total %><% if (onboarding.skipped) { %> · resumed after skip<% } %>
+      </div>
+      <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--ink);margin-bottom:4px;">
+        <% if (onboarding.nextStep) { %>Next: <%= onboarding.nextStep.title %><% } else { %>Setup almost complete<% } %>
+      </div>
+      <div style="height:5px;background:var(--bg-muted);border-radius:3px;overflow:hidden;max-width:380px;">
+        <div style="height:100%;background:var(--accent);width:<%= onboarding.pct %>%;transition:width 0.2s;"></div>
+      </div>
+    </div>
+    <a href="/onboarding" class="btn btn-primary">Resume setup →</a>
+  </div>
+<% } %>
+
 <!-- This week across the portfolio — what to touch today, this week, what's late.
      The MSSP consultant's morning standup view: aggregates tasks, NCs, audits,
      and MRMs across every engagement in the active firm. -->

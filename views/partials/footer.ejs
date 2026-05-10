@@ -175,28 +175,121 @@
     return true;
   }
 
+  // Prefetch cache. mouseover on a link kicks off a fetch; click reuses it
+  // for an instant swap. Cache entries expire after 30s so stale-data risk
+  // is bounded. Capped at 12 entries to keep memory honest.
+  const prefetchCache = new Map();
+  const PREFETCH_TTL_MS = 30000;
+  const PREFETCH_MAX = 12;
+
+  function prefetchKey(href) { return href; }
+  function getPrefetched(href) {
+    const k = prefetchKey(href);
+    const e = prefetchCache.get(k);
+    if (!e) return null;
+    if (Date.now() - e.t > PREFETCH_TTL_MS) { prefetchCache.delete(k); return null; }
+    return e.p;
+  }
+  function prefetch(href) {
+    const k = prefetchKey(href);
+    if (prefetchCache.has(k)) return;
+    if (prefetchCache.size >= PREFETCH_MAX) {
+      // Drop the oldest entry. Map preserves insertion order so first key is oldest.
+      const first = prefetchCache.keys().next().value;
+      if (first) prefetchCache.delete(first);
+    }
+    const p = fetch(href, { headers: { 'X-Spa-Nav': '1', 'X-Spa-Prefetch': '1' }, credentials: 'same-origin' })
+      .then(r => (r.ok && r.headers.get('content-type')?.includes('html')) ? r.text() : null)
+      .catch(() => null);
+    prefetchCache.set(k, { p, t: Date.now() });
+  }
+
   let inflight = null;
   async function navigate(href, push) {
     if (inflight) inflight.abort();
     const ctl = new AbortController();
     inflight = ctl;
+    progress.start();
     try {
-      const res = await fetch(href, { signal: ctl.signal, headers: { 'X-Spa-Nav': '1' }, credentials: 'same-origin' });
-      if (!res.ok || !res.headers.get('content-type')?.includes('html')) {
-        window.location.href = href; return;
+      // Prefer the prefetched response if we have one.
+      const cached = getPrefetched(href);
+      let text = cached ? await cached : null;
+      if (!text) {
+        const res = await fetch(href, { signal: ctl.signal, headers: { 'X-Spa-Nav': '1' }, credentials: 'same-origin' });
+        if (!res.ok || !res.headers.get('content-type')?.includes('html')) {
+          window.location.href = href; return;
+        }
+        text = await res.text();
       }
-      const text = await res.text();
       // pushState first so location.pathname reflects the new URL inside swap.
       if (push) window.history.pushState({}, '', href);
       const ok = swapApp(text, href);
       if (!ok) { window.location.href = href; return; }
+      // Drop the consumed entry so a later visit re-fetches fresh.
+      prefetchCache.delete(prefetchKey(href));
     } catch (e) {
       if (e.name === 'AbortError') return;
       window.location.href = href;
     } finally {
       if (inflight === ctl) inflight = null;
+      progress.done();
     }
   }
+
+  // Top progress bar — the navigation has acknowledgement even before content
+  // swaps in. Keeps the click feeling responsive on slow connections.
+  const progress = (function () {
+    const bar = document.createElement('div');
+    bar.id = '__spa_progress';
+    bar.style.cssText = 'position:fixed;top:0;left:0;height:2px;width:0;background:var(--accent);z-index:9999;transition:width 0.2s ease, opacity 0.25s ease;pointer-events:none;opacity:0;';
+    if (document.body) document.body.appendChild(bar);
+    else document.addEventListener('DOMContentLoaded', () => document.body.appendChild(bar));
+    let timer = null;
+    return {
+      start() {
+        bar.style.opacity = '1';
+        bar.style.width = '12%';
+        clearTimeout(timer);
+        // Ease toward 80% while the request is in flight.
+        let w = 12;
+        timer = setInterval(() => { w = Math.min(80, w + (90 - w) * 0.10); bar.style.width = w + '%'; }, 220);
+      },
+      done() {
+        clearTimeout(timer); timer = null;
+        bar.style.width = '100%';
+        setTimeout(() => { bar.style.opacity = '0'; bar.style.width = '0'; }, 180);
+      },
+    };
+  })();
+
+  // Hover prefetch — kicks off the fetch as soon as the user signals intent.
+  // The 80–150ms before the click is usually enough to make the swap appear
+  // instant. Skipped for links the SPA wouldn't intercept anyway.
+  function attachHoverPrefetch() {
+    document.querySelectorAll('a[href^="/"]').forEach(link => {
+      if (link.dataset.prefetchBound) return;
+      link.dataset.prefetchBound = '1';
+      const onHover = () => {
+        // Re-use the same shouldIntercept rules so we never prefetch URLs we'd
+        // navigate to via full reload anyway.
+        const fakeEvt = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+        if (!shouldIntercept(link, fakeEvt)) return;
+        const href = link.getAttribute('href');
+        if (href === location.pathname + location.search) return;
+        prefetch(href);
+      };
+      link.addEventListener('mouseenter', onHover, { passive: true });
+      link.addEventListener('focus', onHover, { passive: true });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', attachHoverPrefetch);
+  // Re-bind after every SPA swap so newly-rendered links get the same hook.
+  const originalSwap = swapApp;
+  // (swapApp is a closure-local name; we monkey-patch via re-assignment isn't
+  //  possible across closure boundaries. Use a MutationObserver instead.)
+  const linkObserver = new MutationObserver(() => attachHoverPrefetch());
+  if (document.body) linkObserver.observe(document.body, { childList: true, subtree: true });
+  else document.addEventListener('DOMContentLoaded', () => linkObserver.observe(document.body, { childList: true, subtree: true }));
 
   document.addEventListener('click', (e) => {
     const link = e.target.closest && e.target.closest('a');

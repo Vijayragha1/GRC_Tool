@@ -509,7 +509,19 @@ app.get('/dashboard', requireAuth, (req, res) => {
     }
   }
 
-  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek });
+  // Onboarding nudge — show "Resume setup" on the dashboard when not all
+  // steps are complete, even if the user previously skipped the wizard.
+  // Reviewer feedback: "the onboarding wizard exists but disappears once
+  // skipped" — this puts it back without being intrusive.
+  let onboarding = null;
+  try {
+    const tenantsModule = require('./routes/tenants');
+    onboarding = tenantsModule.getOnboardingProgress(db, req.user.firm_id);
+    // Hide the nudge entirely once everything's done; otherwise always show.
+    if (onboarding && onboarding.done >= onboarding.total) onboarding = null;
+  } catch (_) {}
+
+  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek, onboarding });
 });
 
 // ==================== FIRM TEAM MANAGEMENT ====================

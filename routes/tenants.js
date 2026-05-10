@@ -208,4 +208,24 @@ function register(app, deps) {
   });
 }
 
-module.exports = { register };
+// Lightweight onboarding-progress reader for places outside this module
+// (currently the dashboard) that want to surface "resume setup" cues
+// without re-implementing the step definitions. Returns null when there's
+// nothing useful to show.
+function getOnboardingProgress(db, firmId) {
+  if (!firmId) return null;
+  const onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
+  const steps = buildOnboardingSteps(db);
+  const stepStates = steps.map(s => ({ num: s.num, title: s.title, done: !!s.isDone(firmId) }));
+  const done = stepStates.filter(s => s.done).length;
+  const total = stepStates.length;
+  return {
+    done, total,
+    pct: total ? Math.round(done / total * 100) : 0,
+    skipped: !!(onb && onb.skipped),
+    completed: !!(onb && onb.completed_at && done === total),
+    nextStep: stepStates.find(s => !s.done) || null,
+  };
+}
+
+module.exports = { register, getOnboardingProgress };
