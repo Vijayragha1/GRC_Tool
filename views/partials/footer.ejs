@@ -93,7 +93,32 @@
     return true;
   }
 
-  function swapApp(html) {
+  // Update active state on sidebar nav items based on the new URL. We can
+  // do this without touching the sidebar element itself, so its scroll
+  // position is preserved by the browser automatically.
+  function updateSidebarActive(href) {
+    const path = href.split('?')[0].split('#')[0];
+    document.querySelectorAll('.sidebar a.nav-item').forEach(a => {
+      const aHref = (a.getAttribute('href') || '').split('?')[0].split('#')[0];
+      // Active if the current URL exactly matches OR is a sub-path of the link
+      // (e.g., /workspaces/X/audits matches /workspaces/X/audits/123).
+      const isActive = path === aHref || (aHref !== '/' && path.startsWith(aHref + '/'));
+      a.classList.toggle('active', isActive);
+    });
+  }
+
+  // Detect whether the sidebar structure itself differs between old and new.
+  // Workspace ↔ firm transitions render different sidebar items; everything
+  // within the same context renders the same sidebar with only an active-class
+  // change. Using the sidebar's first nav-item href as a fingerprint is a
+  // cheap, reliable signal.
+  function sidebarStructureKey(sidebar) {
+    if (!sidebar) return '';
+    const first = sidebar.querySelector('.nav-item');
+    return first ? first.getAttribute('href') || '' : '';
+  }
+
+  function swapApp(html, targetHref) {
     const parser = new DOMParser();
     const newDoc = parser.parseFromString(html, 'text/html');
     const newApp = newDoc.querySelector(APP_SELECTOR);
@@ -106,33 +131,47 @@
     const newCsrf = newDoc.querySelector('meta[name="csrf-token"]');
     const curCsrf = document.querySelector('meta[name="csrf-token"]');
     if (newCsrf && curCsrf) curCsrf.setAttribute('content', newCsrf.getAttribute('content'));
-    // Capture sidebar scroll BEFORE swap so we can restore it after. Without
-    // this the user clicks an item near the bottom of a long sidebar, the
-    // sidebar redraws, and the scroll snaps back to the top — feels broken.
-    const oldSideNav = oldApp.querySelector('.sidebar-nav');
-    const sidebarScroll = oldSideNav ? oldSideNav.scrollTop : 0;
-    // Replace the entire .app — sidebar may have changed (workspace ↔ firm),
-    // active states need updating, and the topbar tenant dropdown may differ.
-    oldApp.replaceWith(newApp);
-    // Restore sidebar scroll on the new sidebar nav.
-    const newSideNav = newApp.querySelector('.sidebar-nav');
-    if (newSideNav) newSideNav.scrollTop = sidebarScroll;
-    // Re-run any inline scripts in the new content.
-    newApp.querySelectorAll('script').forEach(old => {
+
+    // Decide whether to swap the sidebar too. If the sidebar structure is the
+    // same (same context), keep the live sidebar element in place — its
+    // scroll position is then preserved by the browser without any work.
+    const oldSidebar = oldApp.querySelector('.sidebar');
+    const newSidebar = newApp.querySelector('.sidebar');
+    const sidebarChanged = sidebarStructureKey(oldSidebar) !== sidebarStructureKey(newSidebar);
+
+    if (sidebarChanged) {
+      // Workspace ↔ firm transition. Replace the whole .app since the sidebar
+      // structure genuinely needs to change.
+      oldApp.replaceWith(newApp);
+    } else {
+      // Same sidebar structure. Swap only the .main pane so the sidebar
+      // element is never touched — no scroll loss possible.
+      const oldMain = oldApp.querySelector('.main');
+      const newMain = newApp.querySelector('.main');
+      if (oldMain && newMain) {
+        oldMain.replaceWith(newMain);
+      } else {
+        // Fallback: full app swap
+        oldApp.replaceWith(newApp);
+      }
+    }
+
+    // Re-run any inline scripts that arrived in the swapped subtree.
+    document.querySelectorAll('.main script').forEach(old => {
       const s = document.createElement('script');
       for (const a of old.attributes) s.setAttribute(a.name, a.value);
       s.text = old.text;
       old.replaceWith(s);
     });
-    // Re-stamp CSRF on every form in the new content.
+    // Re-stamp CSRF on every form (existing forms in sidebar, new forms in main).
     if (typeof window._csrfStamp === 'function') {
       document.querySelectorAll('form').forEach(window._csrfStamp);
     }
-    // Land at the top of the new main pane. The body no longer scrolls
-    // (locked to viewport height) — only .main scrolls. Resetting the new
-    // .main's scrollTop is what gives "you're at the top of the new page".
-    const newMain = document.querySelector('.main');
-    if (newMain) newMain.scrollTop = 0;
+    // Update active state on the live sidebar (no element swap needed).
+    updateSidebarActive(targetHref || location.pathname);
+    // Land at the top of the new main pane.
+    const liveMain = document.querySelector('.main');
+    if (liveMain) liveMain.scrollTop = 0;
     return true;
   }
 
@@ -147,9 +186,10 @@
         window.location.href = href; return;
       }
       const text = await res.text();
-      const ok = swapApp(text);
-      if (!ok) { window.location.href = href; return; }
+      // pushState first so location.pathname reflects the new URL inside swap.
       if (push) window.history.pushState({}, '', href);
+      const ok = swapApp(text, href);
+      if (!ok) { window.location.href = href; return; }
     } catch (e) {
       if (e.name === 'AbortError') return;
       window.location.href = href;
