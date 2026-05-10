@@ -70,7 +70,12 @@
   .num { font-variant-numeric: tabular-nums; }
 
   /* Layout */
-  .app { display: flex; min-height: 100vh; }
+  /* Lock body scroll. Main content scrolls in its own viewport so the sidebar
+     genuinely never moves and a sidebar click doesn't feel like the whole
+     page jumps. The body becomes a fixed-size flex container; vertical
+     scrolling lives entirely on .main. */
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  .app { display: flex; height: 100vh; height: 100dvh; }
   .sidebar {
     width: 248px; flex-shrink: 0;
     background: linear-gradient(180deg, #0f0f12 0%, #18181b 100%);
@@ -119,7 +124,7 @@
     .menu-toggle { display: inline-flex; }
   }
 
-  .main { flex: 1; min-width: 0; background: var(--bg-deep); }
+  .main { flex: 1; min-width: 0; background: var(--bg-deep); height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
   .main-inner { max-width: 1280px; margin: 0 auto; padding: 28px 36px 96px; }
   @media (max-width: 600px) { .main-inner { padding: 20px 16px 60px; } }
 

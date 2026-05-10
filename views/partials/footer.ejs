@@ -120,9 +120,11 @@
     if (typeof window._csrfStamp === 'function') {
       document.querySelectorAll('form').forEach(window._csrfStamp);
     }
-    // Land at the top of the new content. instant — the SPA swap itself is the
-    // visible feedback, no need for an extra animation.
-    window.scrollTo(0, 0);
+    // Land at the top of the new main pane. The body no longer scrolls
+    // (locked to viewport height) — only .main scrolls. Resetting the new
+    // .main's scrollTop is what gives "you're at the top of the new page".
+    const newMain = document.querySelector('.main');
+    if (newMain) newMain.scrollTop = 0;
     return true;
   }
 
