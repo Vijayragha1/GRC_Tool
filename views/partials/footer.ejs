@@ -68,6 +68,98 @@
 </div>
 
 <script>
+// ----- SPA-lite content swap -----
+// Multi-page apps reload on every link click, which resets scroll and feels
+// like a full-page jolt. This intercepts same-origin GET nav (sidebar items,
+// table-row clicks) and swaps just the main content area via fetch + DOM
+// replace. The sidebar, topbar, and modals stay put. Falls back to normal
+// navigation on file downloads, external URLs, modifier-key clicks, or any
+// fetch failure.
+(function () {
+  if (!window.fetch || !window.history || !window.history.pushState) return;
+  const APP_SELECTOR = '.app';
+
+  function shouldIntercept(link, e) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
+    if (link.target && link.target !== '' && link.target !== '_self') return false;
+    if (link.hasAttribute('download')) return false;
+    if (link.dataset.noSpa === '1') return false;
+    const href = link.getAttribute('href');
+    if (!href || !href.startsWith('/')) return false;
+    if (href === location.pathname + location.search) return false;
+    // Skip exports / file downloads / API endpoints — these need real navigation.
+    if (/\.(csv|docx|zip|pdf|xlsx|png|jpg|svg|ico)(\?|#|$)/i.test(href)) return false;
+    if (href.startsWith('/api/') || href.startsWith('/vendor/')) return false;
+    return true;
+  }
+
+  function swapApp(html) {
+    const parser = new DOMParser();
+    const newDoc = parser.parseFromString(html, 'text/html');
+    const newApp = newDoc.querySelector(APP_SELECTOR);
+    const oldApp = document.querySelector(APP_SELECTOR);
+    if (!newApp || !oldApp) return false;
+    // Title
+    const newTitle = newDoc.querySelector('title');
+    if (newTitle) document.title = newTitle.textContent;
+    // CSRF token (rotation is rare but possible)
+    const newCsrf = newDoc.querySelector('meta[name="csrf-token"]');
+    const curCsrf = document.querySelector('meta[name="csrf-token"]');
+    if (newCsrf && curCsrf) curCsrf.setAttribute('content', newCsrf.getAttribute('content'));
+    // Replace the entire .app — sidebar may have changed (workspace ↔ firm),
+    // active states need updating, and the topbar tenant dropdown may differ.
+    oldApp.replaceWith(newApp);
+    // Re-run any inline scripts in the new content.
+    newApp.querySelectorAll('script').forEach(old => {
+      const s = document.createElement('script');
+      for (const a of old.attributes) s.setAttribute(a.name, a.value);
+      s.text = old.text;
+      old.replaceWith(s);
+    });
+    // Re-stamp CSRF on every form in the new content.
+    if (typeof window._csrfStamp === 'function') {
+      document.querySelectorAll('form').forEach(window._csrfStamp);
+    }
+    // Land at the top of the new content. instant — the SPA swap itself is the
+    // visible feedback, no need for an extra animation.
+    window.scrollTo(0, 0);
+    return true;
+  }
+
+  let inflight = null;
+  async function navigate(href, push) {
+    if (inflight) inflight.abort();
+    const ctl = new AbortController();
+    inflight = ctl;
+    try {
+      const res = await fetch(href, { signal: ctl.signal, headers: { 'X-Spa-Nav': '1' }, credentials: 'same-origin' });
+      if (!res.ok || !res.headers.get('content-type')?.includes('html')) {
+        window.location.href = href; return;
+      }
+      const text = await res.text();
+      const ok = swapApp(text);
+      if (!ok) { window.location.href = href; return; }
+      if (push) window.history.pushState({}, '', href);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      window.location.href = href;
+    } finally {
+      if (inflight === ctl) inflight = null;
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest && e.target.closest('a');
+    if (!link || !shouldIntercept(link, e)) return;
+    e.preventDefault();
+    navigate(link.getAttribute('href'), true);
+  });
+
+  window.addEventListener('popstate', () => {
+    navigate(location.pathname + location.search, false);
+  });
+})();
+
 // ----- Theme -----
 (function() {
   const saved = localStorage.getItem('isms-theme');

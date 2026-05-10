@@ -521,6 +521,16 @@
           <span class="nav-item-text">Activity log</span>
         </a>
       <% } else { %>
+        <% // If the user just came from a workspace, give them a one-click way
+           // back. Without this, Glossary / Playbooks / Firm library / Tenants
+           // feel like "exiting the workspace" — the sidebar redraws and there's
+           // no breadcrumb home. %>
+        <% if (typeof lastWs !== 'undefined' && lastWs) { %>
+          <a href="/workspaces/<%= lastWs.id %>" class="nav-item" style="background:rgba(255,255,255,0.04);border-left:2px solid var(--accent);">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            <span class="nav-item-text" style="font-weight:500;">Back to <%= lastWs.client_name %></span>
+          </a>
+        <% } %>
         <div class="nav-group-label">Firm</div>
         <a href="/dashboard" class="nav-item <%= (typeof active === 'undefined' || active !== 'glossary') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>

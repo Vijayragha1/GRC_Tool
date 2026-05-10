@@ -154,6 +154,11 @@ function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'No access to this workspace.' });
   req.workspace = ws;
+  // Remember the workspace they were last in, so firm-level pages (Glossary,
+  // Playbooks, Firm library, Tenants) can offer a "← Back to {client}"
+  // breadcrumb instead of dumping them into a different sidebar with no
+  // way home.
+  if (req.session) req.session.last_ws_id = ws.id;
   // Multi-entity scoping was removed — keep the locals as empty stubs so views that
   // still reference them degrade gracefully without re-rendering work.
   res.locals.entitySelectorWs = ws;
@@ -330,6 +335,17 @@ app.use((req, res, next) => {
     res.locals.activeFirm = null;
     res.locals.allFirms = [];
   }
+  // Expose the last-visited workspace so firm-level pages can show a
+  // "← Back to {client}" breadcrumb. Only set when the workspace still
+  // exists and the user can still access it.
+  res.locals.lastWs = null;
+  try {
+    const lastId = req.session && req.session.last_ws_id;
+    if (lastId) {
+      const ws = getWorkspace(lastId, req.user);
+      if (ws) res.locals.lastWs = { id: ws.id, client_name: ws.brand_display_name || ws.client_name };
+    }
+  } catch (_) {}
   next();
 });
 
