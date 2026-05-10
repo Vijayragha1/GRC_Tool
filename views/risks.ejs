@@ -12,7 +12,10 @@
     <div class="page-subtitle">Risk register, methodology, and appetite — Clauses 6.1.2, 6.1.3, 8.2, 8.3.</div>
   </div>
   <div style="display:flex;gap:6px;">
-    <a href="/workspaces/<%= ws.id %>/risks/library" class="btn btn-secondary">+ From library</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/risks/clone-firm-library" style="display:inline;" onsubmit="return appConfirmForm(event, 'Clone the firm risk library into this workspace? Risks already in the register (matched by title) will not be duplicated.');">
+      <button class="btn btn-secondary" title="Clone every entry from your firm's curated library">+ Firm library</button>
+    </form>
+    <a href="/workspaces/<%= ws.id %>/risks/library" class="btn btn-secondary">+ Starter library</a>
     <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
   </div>
 </div>

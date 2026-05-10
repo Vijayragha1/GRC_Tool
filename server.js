@@ -5459,114 +5459,165 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `Auto-justified ${updated} controls`));
 });
 
-// ==================== ENGAGEMENT PLAN (12-week project plan) ====================
-// Pre-loaded 12-week roadmap (data/engagement-plan.js). Per-workspace progress
-// in engagement_plan_progress. Marking a milestone complete toggles a single
-// completed_at timestamp; a target date can be set when the engagement starts.
-const ENG_PLAN = require('./data/engagement-plan');
+// ==================== FIRM CONTENT LIBRARY ====================
+// The firm's own curated content — risks today, policy templates and control
+// narratives later. Clone into a workspace with one click so junior consultants
+// don't reinvent the wheel each engagement.
 
-app.get('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, (req, res) => {
-  const progress = db.prepare(`SELECT milestone_id, completed_at, target_date, notes FROM engagement_plan_progress WHERE workspace_id=?`)
-    .all(req.workspace.id);
-  const byId = {};
-  for (const r of progress) byId[r.milestone_id] = r;
-  const phases = ENG_PLAN.PHASES.map(ph => ({
-    ...ph,
-    milestones: ph.milestones.map(m => ({ ...m, ...(byId[m.id] || {}) })),
-  }));
-  const total = ENG_PLAN.flatten().length;
-  const done = progress.filter(p => p.completed_at).length;
-  res.render('engagement_plan', {
-    user: req.user, ws: req.workspace, phases, total, done,
-  });
-});
-
-app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, (req, res) => {
-  const mid = req.params.milestoneId;
-  // Validate the milestone exists in the template — guards against arbitrary string upserts.
-  const known = ENG_PLAN.flatten().some(m => m.id === mid);
-  if (!known) return res.status(400).send('Unknown milestone');
-  const existing = db.prepare(`SELECT completed_at FROM engagement_plan_progress WHERE workspace_id=? AND milestone_id=?`)
-    .get(req.workspace.id, mid);
-  if (existing && existing.completed_at) {
-    db.prepare(`UPDATE engagement_plan_progress SET completed_at=NULL WHERE workspace_id=? AND milestone_id=?`)
-      .run(req.workspace.id, mid);
-  } else {
-    db.prepare(`INSERT INTO engagement_plan_progress (workspace_id, milestone_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(workspace_id, milestone_id) DO UPDATE SET completed_at=CURRENT_TIMESTAMP`)
-      .run(req.workspace.id, mid);
-  }
-  res.redirect(`/workspaces/${req.workspace.id}/engagement-plan`);
-});
-
-// ==================== ENGAGEMENT INTAKE (kickoff scoping questionnaire) ====================
-// 25-question intake that runs at engagement start. Auto-drafts a clause 4.3
-// scope statement from the answers and seeds the interested-parties register
-// from the "key customers / regulators / suppliers" answers.
-const INTAKE = require('./data/intake-questions');
-
-app.get('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
-  const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`)
-    .all(req.workspace.id);
-  const answers = {};
-  for (const r of rows) answers[r.question_id] = r.answer || '';
-  const flat = INTAKE.flatten();
-  const total = flat.length;
-  const answered = flat.filter(q => (answers[q.id] || '').trim().length > 0).length;
-  const draftScope = INTAKE.draftScopeStatement(answers);
-  res.render('intake', {
-    user: req.user, ws: req.workspace,
-    sections: INTAKE.SECTIONS, answers, total, answered, draftScope,
-  });
-});
-
-app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
-  const flat = INTAKE.flatten();
-  const insert = db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(workspace_id, question_id) DO UPDATE SET
-      answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`);
+function seedFirmRiskLibraryIfEmpty(firmId) {
+  const c = db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c;
+  if (c > 0) return 0;
+  const SHIPPED = require('./data/risk-library');
+  const ins = db.prepare(`INSERT INTO firm_risk_library
+    (firm_id, title, description, threat, vulnerability, suggested_likelihood, suggested_impact, suggested_controls, domain)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const tx = db.transaction(() => {
-    for (const q of flat) {
-      const v = (req.body[q.id] || '').trim();
-      insert.run(req.workspace.id, q.id, v, req.user.id);
+    for (const r of SHIPPED) {
+      ins.run(firmId, r.title, r.description || null, r.threat || null, r.vulnerability || null,
+        3, 3, (r.suggested_controls || []).join(','), r.domain || null);
     }
   });
   tx();
-  logAction(req.user.id, req.workspace.id, 'intake_save', 'intake', null, null, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Intake saved'));
+  return SHIPPED.length;
+}
+
+app.get('/firm/library', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  seedFirmRiskLibraryIfEmpty(firmId);
+  const counts = {
+    risks: db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c,
+  };
+  res.render('firm_library', { user: req.user, ws: null, counts });
 });
 
-// Apply: copy the auto-drafted scope into workspaces.scope and seed interested
-// parties from the customer / regulator / supplier answers. Idempotent — only
-// adds rows that don't already exist.
-app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, (req, res) => {
-  const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`)
-    .all(req.workspace.id);
-  const answers = {};
-  for (const r of rows) answers[r.question_id] = r.answer || '';
-  const scope = INTAKE.draftScopeStatement(answers);
-  db.prepare('UPDATE workspaces SET scope=? WHERE id=?').run(scope, req.workspace.id);
+app.get('/firm/library/risks', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  seedFirmRiskLibraryIfEmpty(firmId);
+  const filterSector = (req.query.sector || '').trim();
+  const filterDomain = (req.query.domain || '').trim();
+  const search = (req.query.q || '').trim().toLowerCase();
+  let rows = db.prepare(`SELECT * FROM firm_risk_library WHERE firm_id=? ORDER BY domain, title`).all(firmId);
+  if (filterSector) rows = rows.filter(r => (r.sector || '').toLowerCase() === filterSector.toLowerCase());
+  if (filterDomain) rows = rows.filter(r => (r.domain || '').toLowerCase() === filterDomain.toLowerCase());
+  if (search) rows = rows.filter(r =>
+    (r.title || '').toLowerCase().includes(search) ||
+    (r.description || '').toLowerCase().includes(search) ||
+    (r.tags || '').toLowerCase().includes(search));
+  // Distinct values for the filter dropdowns.
+  const sectors = [...new Set(db.prepare('SELECT DISTINCT sector FROM firm_risk_library WHERE firm_id=? AND sector IS NOT NULL').all(firmId).map(r => r.sector))];
+  const domains = [...new Set(db.prepare('SELECT DISTINCT domain FROM firm_risk_library WHERE firm_id=? AND domain IS NOT NULL').all(firmId).map(r => r.domain))];
+  res.render('firm_library_risks', { user: req.user, ws: null, rows, sectors, domains, filterSector, filterDomain, search });
+});
 
-  let parties = 0;
-  const seedParty = (text, type) => {
-    if (!text || !text.trim()) return;
-    // Each line of the textarea becomes one row.
-    for (const line of text.split('\n').map(s => s.trim()).filter(Boolean)) {
-      const exists = db.prepare(`SELECT 1 FROM interested_parties WHERE workspace_id=? AND party=?`).get(req.workspace.id, line);
-      if (exists) continue;
-      db.prepare(`INSERT INTO interested_parties (workspace_id, party, party_type, needs, how_addressed)
-        VALUES (?, ?, ?, '', '')`).run(req.workspace.id, line, type);
-      parties++;
+app.post('/firm/library/risks', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const { title, description, threat, vulnerability, domain, sector, tags,
+    suggested_likelihood, suggested_impact, suggested_treatment, suggested_controls, notes } = req.body;
+  if (!(title || '').trim()) return redirectBack(req, res, 'Title is required', 'error');
+  db.prepare(`INSERT INTO firm_risk_library
+    (firm_id, title, description, threat, vulnerability, domain, sector, tags,
+     suggested_likelihood, suggested_impact, suggested_treatment, suggested_controls, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(firmId, title.trim(), description || null, threat || null, vulnerability || null,
+      domain || null, sector || null, tags || null,
+      parseInt(suggested_likelihood, 10) || null, parseInt(suggested_impact, 10) || null,
+      suggested_treatment || null, suggested_controls || null, notes || null);
+  res.redirect('/firm/library/risks');
+});
+
+app.post('/firm/library/risks/:id/update', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const id = parseInt(req.params.id, 10);
+  const { title, description, threat, vulnerability, domain, sector, tags,
+    suggested_likelihood, suggested_impact, suggested_treatment, suggested_controls, notes } = req.body;
+  db.prepare(`UPDATE firm_risk_library SET title=?, description=?, threat=?, vulnerability=?,
+    domain=?, sector=?, tags=?, suggested_likelihood=?, suggested_impact=?,
+    suggested_treatment=?, suggested_controls=?, notes=?, updated_at=CURRENT_TIMESTAMP
+    WHERE id=? AND firm_id=?`)
+    .run(title || '', description || null, threat || null, vulnerability || null,
+      domain || null, sector || null, tags || null,
+      parseInt(suggested_likelihood, 10) || null, parseInt(suggested_impact, 10) || null,
+      suggested_treatment || null, suggested_controls || null, notes || null, id, firmId);
+  res.redirect('/firm/library/risks');
+});
+
+app.post('/firm/library/risks/:id/delete', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const id = parseInt(req.params.id, 10);
+  db.prepare('DELETE FROM firm_risk_library WHERE id=? AND firm_id=?').run(id, firmId);
+  res.redirect('/firm/library/risks');
+});
+
+// Re-seed the shipped starter library on top of the existing firm content.
+// Skips entries the firm already has by title (idempotent for the starter set).
+app.post('/firm/library/risks/reseed', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const SHIPPED = require('./data/risk-library');
+  const have = new Set(db.prepare('SELECT title FROM firm_risk_library WHERE firm_id=?').all(firmId).map(r => r.title));
+  const ins = db.prepare(`INSERT INTO firm_risk_library
+    (firm_id, title, description, threat, vulnerability, suggested_likelihood, suggested_impact, suggested_controls, domain)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  let added = 0;
+  const tx = db.transaction(() => {
+    for (const r of SHIPPED) {
+      if (have.has(r.title)) continue;
+      ins.run(firmId, r.title, r.description || null, r.threat || null, r.vulnerability || null,
+        3, 3, (r.suggested_controls || []).join(','), r.domain || null);
+      added++;
     }
-  };
-  seedParty(answers['key-customers'], 'customer');
-  seedParty(answers['key-regulators'], 'regulator');
-  seedParty(answers['key-suppliers'], 'supplier');
+  });
+  tx();
+  res.redirect(withToast('/firm/library/risks', `Added ${added} starter risks`));
+});
 
-  logAction(req.user.id, req.workspace.id, 'intake_apply', 'intake', null, { parties_seeded: parties }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`,
-    `Scope applied; ${parties} interested part${parties === 1 ? 'y' : 'ies'} seeded`));
+// Clone the firm library into a workspace's risk register. Existing risks with
+// the same title are not duplicated.
+app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  const firmId = req.workspace.firm_id;
+  const lib = db.prepare(`SELECT * FROM firm_risk_library WHERE firm_id=? ORDER BY domain, title`).all(firmId);
+  const have = new Set(db.prepare(`SELECT title FROM risks WHERE workspace_id=?`).all(req.workspace.id).map(r => r.title));
+  const ins = db.prepare(`INSERT INTO risks
+    (workspace_id, title, description, threat, vulnerability, likelihood, impact, owner_name, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')`);
+  let added = 0;
+  const tx = db.transaction(() => {
+    for (const r of lib) {
+      if (have.has(r.title)) continue;
+      ins.run(req.workspace.id, r.title, r.description, r.threat, r.vulnerability,
+        r.suggested_likelihood || 3, r.suggested_impact || 3, '');
+      added++;
+    }
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, `Cloned ${added} risks from firm library`));
+});
+
+// ==================== CONSULTANT PLAYBOOKS ====================
+// Firm-level reference material — kickoff agenda, scoping workshop, risk
+// workshop facilitator script. Read-only. Lives at /playbooks (no workspace
+// context required) so a junior consultant can open it during any client call.
+const PLAYBOOKS = require('./data/playbooks');
+
+app.get('/playbooks', requireAuth, (req, res) => {
+  res.render('playbooks_index', { user: req.user, ws: null, playbooks: PLAYBOOKS.PLAYBOOK_INDEX });
+});
+
+app.get('/playbooks/:id', requireAuth, (req, res) => {
+  const pb = PLAYBOOKS.PLAYBOOKS[req.params.id];
+  if (!pb) return res.status(404).render('error', { user: req.user, message: 'Playbook not found' });
+  res.render('playbook_detail', { user: req.user, ws: null, playbook: pb });
+});
+
+// ==================== ENGAGEMENT INTAKE + 12-WEEK PLAN ====================
+// Extracted to routes/engagement.js. Same dependency-injection pattern as
+// routes/tenants.js — engagement routes get db + middleware via deps.
+require('./routes/engagement').register(app, {
+  db, requireAuth, requireWorkspace, withToast, logAction, auditCtx,
 });
 
 // ==================== INTERESTED PARTIES (clause 4.2) ====================

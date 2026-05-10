@@ -1677,6 +1677,33 @@ function init() {
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
   );`);
 
+  // Firm content library — the consultant firm's *own* hardened risk library,
+  // separate from the shipped starter library in data/risk-library.js. Each
+  // engagement can clone the firm's curated entries into its workspace risk
+  // register with one click. New firms get the shipped library copied in as
+  // a starting point; the firm can then customise (add their own scenarios,
+  // tweak descriptions, mark sector relevance) without touching the codebase.
+  db.exec(`CREATE TABLE IF NOT EXISTS firm_risk_library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    firm_id INTEGER NOT NULL,
+    code TEXT,
+    title TEXT NOT NULL,
+    description TEXT,
+    threat TEXT,
+    vulnerability TEXT,
+    suggested_likelihood INTEGER,
+    suggested_impact INTEGER,
+    suggested_treatment TEXT,
+    suggested_controls TEXT,  -- comma-separated iso_item ids
+    domain TEXT,
+    sector TEXT,              -- optional: "SaaS", "Healthcare", etc.
+    tags TEXT,                -- comma-separated free-form tags
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE CASCADE
+  );`);
+
   // Per-client branding so consultants can customise per engagement without a
   // code change. Defaults are NULL — the workspace overview falls back to the
   // global accent + the client_name string.

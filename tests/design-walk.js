@@ -18,7 +18,6 @@ const BASE = `http://localhost:${PORT}`;
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const liveDb = path.join(ROOT, 'iso27001.db');
-fs.copyFileSync(liveDb, TMP_DB);
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 function log(...a) { console.log('[design-walk]', ...a); }
@@ -42,8 +41,15 @@ async function startServer() {
 }
 
 (async () => {
-  const server = await startServer();
+  // Use SQLite's online-backup API to snapshot the live DB. fs.copyFileSync
+  // only copies the .db file and misses uncommitted writes still in the WAL —
+  // that produced stale screenshots before this fix.
   const Database = require('better-sqlite3');
+  const _src = new Database(liveDb);
+  await _src.backup(TMP_DB);
+  _src.close();
+
+  const server = await startServer();
   const db = new Database(TMP_DB, { readonly: true });
   const firm = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
   let ws = db.prepare('SELECT id, firm_id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1').get(firm.id);

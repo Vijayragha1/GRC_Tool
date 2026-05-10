@@ -1,29 +1,50 @@
-<%- include('partials/header', { title: 'Tenants', user, ws: null, active: 'tenants' }) %>
+<%- include('partials/header', { title: 'Firms (tenants)', user, ws: null, active: 'tenants' }) %>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">Tenants</h1>
-    <div class="page-subtitle">Each tenant has its own workspaces, users, evidence storage, and audit log. Switching tenants in the header sets the active context for everything you do.</div>
+    <h1 class="page-title">Firms (tenants)</h1>
+    <div class="page-subtitle">A firm is a fully isolated environment — its own users, workspaces, evidence directory, and audit log. Most consulting practices need exactly one firm.</div>
   </div>
 </div>
 
-<div class="panel" style="margin-bottom:18px;">
-  <div class="panel-head"><h2>Create new tenant</h2></div>
-  <form method="POST" action="/tenants" class="panel-pad" style="display:flex;gap:8px;align-items:flex-end;">
-    <div style="flex:1;">
-      <label class="label">Tenant name</label>
-      <input class="input" name="name" required placeholder="e.g., Acme Consulting" autofocus>
+<!-- Big don't-trip-here banner. The dropdown-vs-clients confusion almost always
+     comes from new users mistaking "Tenant" for "Client." Spell it out before
+     they fill in the form. -->
+<div class="panel" style="margin-bottom:18px;border-left:3px solid #ca8a04;background:rgba(202,138,4,0.04);">
+  <div class="panel-pad" style="display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:start;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div>
+      <div style="font-size:13.5px;font-weight:600;color:#b45309;margin-bottom:6px;">Looking to add a new client engagement?</div>
+      <div class="meta" style="font-size:12.5px;line-height:1.55;color:var(--text);">
+        <strong>Don't create a firm here.</strong> A firm is a separate, walled-off environment — different users, different evidence directory, different encryption keys. Almost no one needs more than one. Each <em>client engagement</em> is a <strong>workspace</strong> inside a firm. To add a client, go to the <a href="/dashboard" style="color:var(--accent);font-weight:500;">Clients dashboard → New client</a>.
+      </div>
+      <div class="meta" style="font-size:11.5px;line-height:1.55;color:var(--text-secondary);margin-top:8px;">
+        Create a firm here only if you actually run a second consulting practice (or you want a clean sandbox), and you want its data invisible to the current firm.
+      </div>
     </div>
-    <button class="btn btn-primary">Create + switch</button>
-  </form>
-  <div class="meta panel-pad" style="border-top:1px solid var(--border);font-size:12px;padding-top:8px;">
-    A new tenant gets a fresh firm-owner user, a clean uploads directory at <code>uploads/firm_{id}/</code>, and zero workspaces. You'll switch into it after creation.
   </div>
 </div>
+
+<details style="margin-bottom:18px;">
+  <summary class="btn btn-secondary btn-xs" style="cursor:pointer;list-style:none;">+ Create a separate firm</summary>
+  <div class="panel" style="margin-top:8px;">
+    <div class="panel-head"><h2>Create new firm</h2></div>
+    <form method="POST" action="/tenants" class="panel-pad" style="display:flex;gap:8px;align-items:flex-end;">
+      <div style="flex:1;">
+        <label class="label">Firm name</label>
+        <input class="input" name="name" required placeholder="e.g., Smith Consulting Sandbox">
+      </div>
+      <button class="btn btn-primary" onclick="return appConfirmClick(event, 'A firm is a fully isolated environment with its own users and evidence. Almost no consulting practice needs more than one. Most likely you want to add a client engagement instead — that lives on the Clients dashboard. Continue creating a new firm?');">Create + switch</button>
+    </form>
+    <div class="meta panel-pad" style="border-top:1px solid var(--border);font-size:11.5px;padding-top:8px;">
+      A new firm gets a fresh firm-owner user, a clean uploads directory at <code>uploads/firm_{id}/</code>, and zero workspaces. You'll switch into it after creation.
+    </div>
+  </div>
+</details>
 
 <div class="panel">
   <div class="panel-head">
-    <h2>All tenants (<%= firms.length %>)</h2>
+    <h2>All firms (<%= firms.length %>)</h2>
   </div>
   <table class="t">
     <thead><tr>
