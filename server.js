@@ -335,15 +335,18 @@ app.use((req, res, next) => {
     res.locals.activeFirm = null;
     res.locals.allFirms = [];
   }
-  // Expose the last-visited workspace so firm-level pages can show a
-  // "← Back to {client}" breadcrumb. Only set when the workspace still
-  // exists and the user can still access it.
+  // Expose the last-visited workspace so firm-level reference pages
+  // (Glossary, Playbooks, Firm library) can render with the workspace
+  // sidebar still in place. The user feels like they never left the
+  // engagement; reference pages are just another view inside it.
   res.locals.lastWs = null;
   try {
     const lastId = req.session && req.session.last_ws_id;
     if (lastId) {
       const ws = getWorkspace(lastId, req.user);
-      if (ws) res.locals.lastWs = { id: ws.id, client_name: ws.brand_display_name || ws.client_name };
+      // Pass the full workspace record so the workspace sidebar can render
+      // brand colour, sector chip, display name etc.
+      if (ws) res.locals.lastWs = ws;
     }
   } catch (_) {}
   next();
@@ -617,9 +620,13 @@ app.get('/glossary', requireAuth, (req, res) => {
     .map(slug => GLOSSARY.ENTRIES.find(e => e.slug === slug))
     .filter(Boolean);
   const linkWsId = firstWorkspaceIdFor(req.user);
+  // If the user just came from a workspace, render glossary with the
+  // workspace sidebar still in place — they're not "exiting" the engagement,
+  // they're viewing reference material inside it. Falls back to firm-level
+  // sidebar if there's no recent workspace.
   res.render('glossary', {
     user: req.user,
-    ws: null,
+    ws: res.locals.lastWs || null,
     title: 'Glossary',
     active: 'glossary',
     q, category, letter,
@@ -642,7 +649,7 @@ app.get('/glossary/:slug', requireAuth, (req, res) => {
   const linkWsId = firstWorkspaceIdFor(req.user);
   res.render('glossary_detail', {
     user: req.user,
-    ws: null,
+    ws: res.locals.lastWs || null,
     title: entry.term,
     active: 'glossary',
     entry,
@@ -5571,7 +5578,7 @@ app.get('/firm/library', requireAuth, (req, res) => {
   const counts = {
     risks: db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c,
   };
-  res.render('firm_library', { user: req.user, ws: null, counts });
+  res.render('firm_library', { user: req.user, ws: res.locals.lastWs || null, counts });
 });
 
 app.get('/firm/library/risks', requireAuth, (req, res) => {
@@ -5591,7 +5598,7 @@ app.get('/firm/library/risks', requireAuth, (req, res) => {
   // Distinct values for the filter dropdowns.
   const sectors = [...new Set(db.prepare('SELECT DISTINCT sector FROM firm_risk_library WHERE firm_id=? AND sector IS NOT NULL').all(firmId).map(r => r.sector))];
   const domains = [...new Set(db.prepare('SELECT DISTINCT domain FROM firm_risk_library WHERE firm_id=? AND domain IS NOT NULL').all(firmId).map(r => r.domain))];
-  res.render('firm_library_risks', { user: req.user, ws: null, rows, sectors, domains, filterSector, filterDomain, search });
+  res.render('firm_library_risks', { user: req.user, ws: res.locals.lastWs || null, rows, sectors, domains, filterSector, filterDomain, search });
 });
 
 app.post('/firm/library/risks', requireAuth, (req, res) => {
@@ -5904,13 +5911,13 @@ app.get('/workspaces/:wsId/prioritized-actions', requireAuth, requireWorkspace, 
 const PLAYBOOKS = require('./data/playbooks');
 
 app.get('/playbooks', requireAuth, (req, res) => {
-  res.render('playbooks_index', { user: req.user, ws: null, playbooks: PLAYBOOKS.PLAYBOOK_INDEX });
+  res.render('playbooks_index', { user: req.user, ws: res.locals.lastWs || null, playbooks: PLAYBOOKS.PLAYBOOK_INDEX });
 });
 
 app.get('/playbooks/:id', requireAuth, (req, res) => {
   const pb = PLAYBOOKS.PLAYBOOKS[req.params.id];
   if (!pb) return res.status(404).render('error', { user: req.user, message: 'Playbook not found' });
-  res.render('playbook_detail', { user: req.user, ws: null, playbook: pb });
+  res.render('playbook_detail', { user: req.user, ws: res.locals.lastWs || null, playbook: pb });
 });
 
 // ==================== ENGAGEMENT INTAKE + 12-WEEK PLAN ====================
