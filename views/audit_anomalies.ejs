@@ -1,11 +1,11 @@
 <%- include('partials/header', { title: 'Anomaly detection', user, ws, active: 'activity' }) %>
 
-<a href="/workspaces/<%= ws.id %>/activity-log" class="link-muted" style="font-size:12px;">← Activity log</a>
-
-<div class="page-head" style="margin-top:8px">
-  <div><h1 class="page-title">Anomaly detection</h1>
-    <div class="page-subtitle">Heuristic flags on the activity log: after-hours actions, action bursts, IP changes mid-session, permission denials.</div></div>
+<div class="page-head">
+  <div><h1 class="page-title">Activity log</h1>
+    <div class="page-subtitle">Anomalies — heuristic flags on the activity log: after-hours actions, action bursts, IP changes mid-session, permission denials.</div></div>
 </div>
+
+<%- include('partials/activity_tabs', { ws, tab: 'anomalies' }) %>
 
 <% if (!flags.length) { %>
   <div class="callout" style="background:rgba(22,163,74,0.08);border-color:#16a34a;color:#15803d;">No anomalies detected.</div>

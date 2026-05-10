@@ -1,0 +1,18 @@
+<%
+  // Shared tab strip across the activity-log + log-integrity pages.
+  //   tab: 'log' | 'timeline' | 'anomalies' | 'verify'
+  const _tab = (typeof tab !== 'undefined' && tab) ? tab : 'log';
+  const _tabs = [
+    { id: 'log',       label: 'Log',       href: `/workspaces/${ws.id}/activity-log` },
+    { id: 'timeline',  label: 'Timeline',  href: `/workspaces/${ws.id}/activity-log/timeline` },
+    { id: 'anomalies', label: 'Anomalies', href: `/workspaces/${ws.id}/activity-log/anomalies` },
+    { id: 'verify',    label: 'Verify',    href: `/workspaces/${ws.id}/activity-log/verify` },
+  ];
+%>
+<div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:18px;">
+  <% _tabs.forEach(t => { %>
+    <a href="<%= t.href %>" style="padding:9px 18px;font-size:13px;font-weight:500;text-decoration:none;color:<%= t.id === _tab ? 'var(--accent)' : 'var(--text-secondary)' %>;border-bottom:2px solid <%= t.id === _tab ? 'var(--accent)' : 'transparent' %>;margin-bottom:-1px;transition:color 0.12s;">
+      <%= t.label %>
+    </a>
+  <% }) %>
+</div>

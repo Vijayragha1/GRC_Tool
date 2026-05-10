@@ -1,11 +1,11 @@
 <%- include('partials/header', { title: 'Audit log integrity', user, ws, active: 'activity' }) %>
 
-<a href="/workspaces/<%= ws.id %>/activity-log" class="link-muted" style="font-size:12px;">← Activity log</a>
-
-<div class="page-head" style="margin-top:8px">
-  <div><h1 class="page-title">Audit log integrity</h1>
-    <div class="page-subtitle">Each entry is hashed with the previous entry's hash. Any insertion, mutation or deletion breaks the chain. Re-run any time.</div></div>
+<div class="page-head">
+  <div><h1 class="page-title">Activity log</h1>
+    <div class="page-subtitle">Verify — each entry is hashed with the previous entry's hash. Any insertion, mutation, or deletion breaks the chain. Re-run any time.</div></div>
 </div>
+
+<%- include('partials/activity_tabs', { ws, tab: 'verify' }) %>
 
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">

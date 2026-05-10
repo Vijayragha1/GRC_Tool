@@ -1,0 +1,18 @@
+<%
+  // Shared tab strip across the internal-audit pages.
+  //   tab: 'audits' | 'programme'
+  // Audits list / one audit detail render the 'audits' tab; the 3-year
+  // sampling plan renders the 'programme' tab.
+  const _tab = (typeof tab !== 'undefined' && tab) ? tab : 'audits';
+  const _tabs = [
+    { id: 'audits',    label: 'Audits',    href: `/workspaces/${ws.id}/audits` },
+    { id: 'programme', label: 'Programme', href: `/workspaces/${ws.id}/audit-programme` },
+  ];
+%>
+<div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:18px;">
+  <% _tabs.forEach(t => { %>
+    <a href="<%= t.href %>" style="padding:9px 18px;font-size:13px;font-weight:500;text-decoration:none;color:<%= t.id === _tab ? 'var(--accent)' : 'var(--text-secondary)' %>;border-bottom:2px solid <%= t.id === _tab ? 'var(--accent)' : 'transparent' %>;margin-bottom:-1px;transition:color 0.12s;">
+      <%= t.label %>
+    </a>
+  <% }) %>
+</div>

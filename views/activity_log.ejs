@@ -8,6 +8,8 @@
   <a href="/workspaces/<%= ws.id %>/activity-log.csv?<%= new URLSearchParams(filters).toString() %>" class="btn btn-secondary btn-xs">Export CSV</a>
 </div>
 
+<%- include('partials/activity_tabs', { ws, tab: 'log' }) %>
+
 <div class="panel" style="margin-bottom:14px">
   <form method="GET" action="/workspaces/<%= ws.id %>/activity-log" class="panel-pad" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;">
     <div>

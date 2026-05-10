@@ -1,5 +1,7 @@
 <%- include('partials/header', { title: audit.title, user, ws, active: 'audits' }) %>
 
+<%- include('partials/audit_tabs', { ws, tab: 'audits' }) %>
+
 <a href="/workspaces/<%= ws.id %>/audits" class="link-muted" style="font-size:12px;">← All audits</a>
 
 <%

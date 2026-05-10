@@ -1,12 +1,14 @@
-<%- include('partials/header', { title: 'Internal audits', user, ws, active: 'audits' }) %>
+<%- include('partials/header', { title: 'Internal audit', user, ws, active: 'audits' }) %>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">Internal audits</h1>
+    <h1 class="page-title">Internal audit</h1>
     <div class="page-subtitle">Plan and conduct internal audits per Clause 9.2. Promote findings to nonconformities.</div>
   </div>
   <button onclick="document.getElementById('newAudit').classList.toggle('hidden')" class="btn btn-primary">New audit</button>
 </div>
+
+<%- include('partials/audit_tabs', { ws, tab: 'audits' }) %>
 
 <div id="newAudit" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New audit</h2></div>
