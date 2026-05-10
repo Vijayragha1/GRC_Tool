@@ -13,8 +13,11 @@ Most of what's here exists because I needed it on a real engagement and it wasn'
 ## The engagement flow it supports
 
 ```
-new engagement
-  → set scope, interested parties, objectives
+kickoff workshop          ← /playbooks/kickoff (60-min facilitator script)
+  → engagement intake     ← 25 Qs, auto-drafts clause 4.3 scope
+  → scoping workshop      ← /playbooks/scoping (90-min facilitator script)
+  → 12-week plan started  ← /workspaces/:id/engagement-plan
+  → risk workshop         ← /playbooks/risk-workshop (90-min script)
   → Pass 1 gap assessment (every clause + Annex A control)
   → upload evidence as it comes in
   → generate Gap Assessment Report + Recommendations memo
@@ -28,6 +31,18 @@ new engagement
 A "pass" is one round of consultant assessment. Pass 1 = initial gap. Pass 2+ = re-assessments. Saves are tagged to the active pass so you can diff any two passes and see what improved, regressed, or stayed the same per control. Notes are scoped per pass — write gap-finding text in Pass 1 and verification text in Pass 2 without overwriting either.
 
 ## What's in it
+
+### Engagement scaffolding
+
+A senior consultant runs a kickoff from muscle memory. A junior reinvents it each time. The scaffolding bakes the senior's playbook into the tool so the junior can pick up an engagement on day one.
+
+- **Engagement intake** — 25-question scoping questionnaire across 6 sections (business context, scope, organisation, interested parties, crown jewels, existing posture). Each question tagged with the clause it feeds. Auto-drafts the clause 4.3 scope statement and seeds the interested-parties register from the answers in one click.
+- **12-week engagement plan** — pre-loaded roadmap (kickoff → Stage 2 readiness). Each phase has timed milestones with deliverables and clause tags. Click-to-toggle completion, per-phase progress bars.
+- **Three facilitator playbooks** at `/playbooks` — *Kickoff workshop* (60 min), *Scoping workshop* (90 min), *Risk-assessment workshop* (90 min). Each is timed, scripted, segment-by-segment, with prompts, decisions to leave with, and watch-outs. Print-friendly so you can run from paper if the meeting screen is shared.
+
+### Firm content library
+
+Lives at `/firm/library`. The firm's own curated content, separate from the shipped defaults, that gets cloned into each new engagement. Today: a **firm risk library** (search/filter by domain or sector, add/edit/delete, re-seed from starter set). New firms auto-get the 40-risk starter library copied in as a seed; the firm then customises (sector tweaks, internal additions) without touching code. The "+ Firm library" button on a workspace's risk register clones every entry in (idempotent — duplicates skipped). Stubs for policy templates and control narratives are visible on the hub.
 
 ### Gap assessment
 
@@ -56,17 +71,24 @@ Interested parties: party, type, needs, how addressed, owner, review cadence, ne
 
 The readiness pack is the artefact you hand the certification body. The other three are for the client during the engagement.
 
+### Portfolio & analytics
+
+- **Portfolio "this week"** on the dashboard — across all engagements in the active firm, every overdue item and every item due this week (tasks, NCs, audits, MRMs), with a per-client roll-up. The MSSP consultant's morning-standup view.
+- **Prioritized actions** at `/workspaces/:id/prioritized-actions` — score-driven sequencing using the actual Stage 1 readiness formula. Each fixable item (open NCs, not-implemented controls, missing mandatory docs, first MRM, first audit) gets a lift estimate ÷ effort tag. KPI band shows current readiness → top-5 fixed → top-10 fixed, with the cumulative running total per row.
+- **Executive brief** at `/workspaces/:id/exec-brief` — one-page, A4-printable health summary for the sponsor. Stage 1 / Stage 2 readiness, velocity (controls implemented in last 30d vs prior 30d), residual ALE estimate, top-5 risks, top-5 NCs. Print stylesheet hides chrome.
+- **Per-client branding** — workspace settings carry brand display name, primary color (#RRGGBB validated server-side), logo URL, and sector. The brand color renders as the sidebar accent rail per workspace; the dashboard Clients table shows brand dot + sector chip per row. Customising for a new client is now config in workspace settings, not a code edit.
+
 ### Audit-grade content for every clause and control
 
 All 118 items written up in [data/iso-content.js](data/iso-content.js): purpose, what good looks like, where it usually goes wrong, evidence to gather, scoping notes, maturity ladder. Edits go in the file and sync into the database on boot.
 
 ### Other modules
 
-Asset register · risk register with starter library of 40 ISO 27001 risks · risk methodology (configurable scales / criteria) · document management with WYSIWYG editor + DOCX export and ~70 policy templates · internal audit programme · management review with auto-pulled 9.3.2 inputs · nonconformities + corrective actions · incidents · suppliers with risk tiering · tasks · compliance calendar · 168-term glossary with cross-links and clickable clause references · cross-client at-risk dashboard.
+Asset register · risk register with starter library of 40 ISO 27001 risks · risk methodology (configurable scales / criteria) · document management with WYSIWYG editor + DOCX export and ~70 policy templates · internal audit (programme + audits + findings, on one tabbed page) · management review with auto-pulled 9.3.2 inputs · nonconformities + corrective actions · incidents · suppliers with risk tiering · tasks · compliance calendar · 168-term glossary (with inline-expand on the index plus deep-link detail pages) · cross-client at-risk dashboard. Activity log has tabs for Log / Timeline / Anomalies / Verify (hash-chain integrity).
 
 ### Multitenancy + security
 
-Each tenant has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`).
+Each tenant (firm) has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar shows up only when more than one firm exists; almost no consulting practice needs more than one. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`). CSRF protection on every state-changing request — token rotated per session, validated against body / X-CSRF-Token header / query string, auto-stamped into every form by client-side JS (including dynamic forms and multipart uploads).
 
 ## Install
 
@@ -180,10 +202,15 @@ Online SQLite backup (no downtime), tar of `uploads/`, master.key, manifest. Sch
 ## Tests
 
 ```bash
-npm test
+npm test                # smoke + security + rbac
+npm run test:security   # node:test — CSRF, XSS, auth gating, rbac matrix
+npm run test:browser    # puppeteer crawler — every sidebar route, every button
 ```
 
-21 bare-node smoke assertions. Boots a fresh tmp DB so the live one isn't touched. Covers the wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering.
+- **Smoke** (21 assertions, bare-node): boots a fresh tmp DB, walks the wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering. Discovers workspace IDs at runtime + auto-stamps CSRF tokens, so it survives schema changes.
+- **Security** (10 tests, `node:test`): CSRF reject without token, accept with valid token + cookie, token stability across requests, distinct tokens per session, XSS escape on tenant name + attribute injection, default-user fallback contract.
+- **Rbac** (13 tests, `node:test`): pins the role permission matrix. Catches accidental privilege grants and unreferenced permissions.
+- **Browser crawler** (`tests/browser-ui.js`): puppeteer-core driving headless Chrome through every sidebar route. Counts buttons, clicks every non-submit, validates modals, captures screenshots, asserts no console / network / page errors. 40 pages, ~450 buttons.
 
 ## What's not in it (and why)
 
@@ -199,29 +226,48 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 
 ## What's still open
 
-- Real auth. Not blocking single-user local use; required for anything multi-user.
+- Real auth. Not blocking single-user local use; required for anything multi-user. CSRF is wired and tested; routes know how to enforce permissions but the auth gate is currently disabled.
 - Read-only client view so the client can see deliverables without editing consultant assessments.
-- Calendar integration (iCal export of audits / MRMs / reviews).
-- Email / Slack digest of overdue items.
+- Cloud evidence integrations (AWS Config / GCP Asset Inventory / Azure Resource Graph). Today every piece of evidence is hand-uploaded.
+- Continuous compliance flow — quarterly evidence re-attestation cadence with auto-spawned tasks.
+- Industry overlay packs (pharma, fintech, legal, manufacturing). Pattern was prototyped and removed; concept is documented and trivial to restore.
+- More route extraction. `routes/tenants.js` and `routes/engagement.js` proved the pattern (`register(app, deps)`); the rest of `server.js` can follow incrementally.
 
 ## Stack
 
-Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (wired but disabled). No frontend build step.
+Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired but disabled). Tests use node:test plus puppeteer-core (drives the system Chrome — no bundled Chromium download). No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav — sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
 
 ## Folder structure
 
 ```
 .
-├── server.js                       # Express app — all routes
+├── server.js                       # Express app — most routes (extraction in progress)
 ├── db.js                           # Schema, migrations, content sync, seeding
 ├── data/                           # Content + templates (edit here, syncs on boot)
+│   ├── iso-content.js              # Per-clause / control writeups (118 items)
+│   ├── assessment-questions.js     # Diagnostic Y/P/N questions per item
+│   ├── glossary.js                 # 168 GRC / ISO terms
+│   ├── intake-questions.js         # 25-question scoping questionnaire
+│   ├── engagement-plan.js          # 12-week project plan template
+│   ├── playbooks.js                # Kickoff / scoping / risk workshop scripts
+│   ├── risk-library.js             # 40 starter risks
+│   └── policy-templates*.js        # ~70 document templates
+├── routes/                         # Extracted route modules (register(app, deps))
+│   ├── tenants.js                  # Firm CRUD + onboarding wizard
+│   └── engagement.js               # Intake + 12-week plan
 ├── lib/
 │   ├── encryption.js               # AES-256-GCM + HKDF
+│   ├── csrf.js                     # Per-session token + validate middleware
 │   ├── rbac.js                     # Permissions model (ready for auth-on)
 │   └── ...
 ├── views/                          # EJS templates
 ├── scripts/backup.js               # Online backup
-├── tests/smoke.test.js             # Smoke suite
+├── tests/
+│   ├── smoke.test.js               # Smoke suite (21 bare-node assertions)
+│   ├── security.test.js            # CSRF + XSS + auth (node:test)
+│   ├── rbac.test.js                # Role permission matrix (node:test)
+│   ├── helpers.js                  # In-process app boot, cookie + CSRF jar
+│   └── browser-ui.js               # Puppeteer crawler (40 pages, ~450 buttons)
 ├── public/                         # Static assets, TinyMCE bundle
 ├── uploads/firm_{id}/              # Evidence files (per-tenant partitioned)
 └── data/master.key                 # Encryption master key (auto-generated, 0600)
