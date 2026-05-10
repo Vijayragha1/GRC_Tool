@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'Engagement plan', user, ws, active: 'engagement-plan' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">12-week engagement plan</h1>
+    <div class="page-subtitle">Pre-loaded roadmap from kickoff to Stage 2 readiness. Tick milestones as you complete them; the dashboard reads the progress percentage.</div>
+  </div>
+  <div style="display:flex;gap:14px;align-items:center;">
+    <% const pct = total ? Math.round(done / total * 100) : 0; %>
+    <span class="meta" style="font-size:12.5px;"><strong><%= done %></strong> / <%= total %> done · <strong><%= pct %>%</strong></span>
+    <div style="width:140px;height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
+      <div style="height:100%;background:var(--accent);width:<%= pct %>%;transition:width 0.2s;"></div>
+    </div>
+  </div>
+</div>
+
+<% phases.forEach(ph => {
+  const phDone = ph.milestones.filter(m => m.completed_at).length;
+  const phTotal = ph.milestones.length;
+  const phPct = phTotal ? Math.round(phDone / phTotal * 100) : 0;
+%>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-head" style="display:flex;align-items:center;gap:14px;">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);min-width:60px;">Week <%= ph.week %></div>
+      <h2 style="margin:0;flex:1;"><%= ph.phase %></h2>
+      <span class="meta" style="font-size:11.5px;"><%= phDone %>/<%= phTotal %></span>
+      <div style="width:80px;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;background:<%= phPct === 100 ? '#16a34a' : 'var(--accent)' %>;width:<%= phPct %>%;"></div>
+      </div>
+    </div>
+    <div style="display:grid;">
+      <% ph.milestones.forEach(m => { %>
+        <div style="display:grid;grid-template-columns:36px 1fr auto;gap:14px;align-items:flex-start;padding:14px 18px;border-top:1px solid var(--border);">
+          <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/<%= m.id %>/toggle" style="margin:0;">
+            <button type="submit" title="<%= m.completed_at ? 'Mark not done' : 'Mark done' %>" style="background:transparent;border:0;cursor:pointer;padding:4px;">
+              <% if (m.completed_at) { %>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#16a34a" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10" stroke="#fff" fill="none"/></svg>
+              <% } else { %>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><circle cx="12" cy="12" r="9.5"/></svg>
+              <% } %>
+            </button>
+          </form>
+          <div>
+            <div style="font-size:13.5px;font-weight:500;color:<%= m.completed_at ? 'var(--text-tertiary)' : 'var(--text)' %>;<%= m.completed_at ? 'text-decoration:line-through;' : '' %>"><%= m.title %></div>
+            <div class="meta" style="font-size:11.5px;margin-top:4px;"><%= m.deliverables %></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+            <% (m.clauses || []).forEach(c => { %>
+              <span class="tag tag-neutral" style="font-size:10px;"><%= c %></span>
+            <% }) %>
+            <% if (m.completed_at) { %>
+              <span class="meta" style="font-size:10px;">done <%= (m.completed_at || '').slice(0, 10) %></span>
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

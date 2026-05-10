@@ -349,10 +349,18 @@
     </div>
 
     <% if (typeof ws !== 'undefined' && ws) { %>
-    <div class="sidebar-section ws-context">
+    <%
+      // Per-client brand color powers the left-rail accent on the sidebar
+      // workspace context block. Falls back to the global accent.
+      const brandColor = (ws.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(ws.brand_primary_color)) ? ws.brand_primary_color : null;
+    %>
+    <div class="sidebar-section ws-context" style="<%= brandColor ? 'border-left:3px solid ' + brandColor + ';padding-left:11px;' : '' %>">
       <a href="/dashboard" style="font-size:11px;color:rgba(255,255,255,0.5);text-decoration:none;">← All clients</a>
-      <div style="margin-top:10px;font-size:13px;font-weight:600;letter-spacing:-0.005em;line-height:1.3;color:#fff;"><%= ws.client_name %></div>
-      <div style="margin-top:3px;font-size:11px;color:rgba(255,255,255,0.45);"><%= ws.industry || ws.stage.replace(/_/g,' ') %></div>
+      <div style="margin-top:10px;font-size:13px;font-weight:600;letter-spacing:-0.005em;line-height:1.3;color:#fff;"><%= ws.brand_display_name || ws.client_name %></div>
+      <div style="margin-top:3px;font-size:11px;color:rgba(255,255,255,0.45);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <% if (ws.sector) { %><span style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:999px;font-size:10px;font-weight:500;"><%= ws.sector %></span><% } %>
+        <span><%= ws.industry || ws.stage.replace(/_/g,' ') %></span>
+      </div>
     </div>
     <% } %>
 
@@ -369,6 +377,14 @@
         </a>
 
         <div class="nav-group-label">Implementation</div>
+        <a href="/workspaces/<%= ws.id %>/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'intake') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H3v10h6V11zM21 3h-6v18h6V3zM15 7H9v14h6V7z"/></svg>
+          <span class="nav-item-text">Intake</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'engagement-plan') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="11" cy="12" r="1.5" fill="currentColor"/><circle cx="17" cy="18" r="1.5" fill="currentColor"/></svg>
+          <span class="nav-item-text">Engagement plan</span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span class="nav-item-text">Gap assessment</span>

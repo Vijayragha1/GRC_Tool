@@ -1650,6 +1650,41 @@ function init() {
     FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE CASCADE
   );`);
 
+  // Engagement intake — the 25-question scoping questionnaire that runs at
+  // kickoff. Schema is intentionally generic (key/value per workspace) so the
+  // question bank can evolve in data/intake-questions.js without migrations.
+  db.exec(`CREATE TABLE IF NOT EXISTS engagement_intake (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    question_id TEXT NOT NULL,
+    answer TEXT,
+    answered_by INTEGER,
+    answered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workspace_id, question_id),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  );`);
+
+  // 12-week engagement plan progress. Template lives in data/engagement-plan.js;
+  // this table stores per-workspace completion + notes per milestone.
+  db.exec(`CREATE TABLE IF NOT EXISTS engagement_plan_progress (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    milestone_id TEXT NOT NULL,
+    completed_at DATETIME,
+    target_date DATE,
+    notes TEXT,
+    UNIQUE(workspace_id, milestone_id),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  );`);
+
+  // Per-client branding so consultants can customise per engagement without a
+  // code change. Defaults are NULL — the workspace overview falls back to the
+  // global accent + the client_name string.
+  addColumnIfMissing('workspaces', 'brand_display_name', 'TEXT');
+  addColumnIfMissing('workspaces', 'brand_primary_color', 'TEXT');
+  addColumnIfMissing('workspaces', 'brand_logo_path', 'TEXT');
+  addColumnIfMissing('workspaces', 'sector', 'TEXT');
+
   // ========================================================================
   // Final-pass expansion (12 features across Tiers A/B/C).
   // ========================================================================

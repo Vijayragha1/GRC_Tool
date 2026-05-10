@@ -1,0 +1,66 @@
+<%- include('partials/header', { title: 'Engagement intake', user, ws, active: 'intake' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Engagement intake</h1>
+    <div class="page-subtitle">25 questions you'd ask at a kickoff workshop. Auto-drafts the clause 4.3 scope statement and seeds the interested-parties register from your answers.</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="meta" style="font-size:12px;"><strong><%= answered %></strong> / <%= total %> answered</span>
+    <form method="POST" action="/workspaces/<%= ws.id %>/intake/apply" onsubmit="return appConfirmForm(event, 'Apply scope statement to workspace settings and seed interested parties from the answers above? Existing parties are not duplicated.');">
+      <button class="btn btn-accent btn-xs" <%= answered === 0 ? 'disabled' : '' %>>Apply to workspace</button>
+    </form>
+  </div>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/intake" id="intakeForm" style="display:flex;flex-direction:column;gap:18px;">
+  <% sections.forEach(sec => { %>
+    <div class="panel">
+      <div class="panel-head" style="border-bottom:1px solid var(--border);">
+        <div>
+          <h2 style="margin:0;"><%= sec.title %></h2>
+          <div class="meta" style="font-size:12px;margin-top:4px;"><%= sec.blurb %></div>
+        </div>
+      </div>
+      <div class="panel-pad" style="display:grid;gap:16px;">
+        <% sec.questions.forEach(q => { %>
+          <div>
+            <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
+              <span><%= q.text %><%= q.required ? ' *' : '' %></span>
+              <span class="tag tag-neutral" style="font-size:10px;">clause <%= q.clause %></span>
+            </label>
+            <% if (q.hint) { %>
+              <div class="meta" style="font-size:11.5px;margin-bottom:6px;color:var(--text-tertiary);"><%= q.hint %></div>
+            <% } %>
+            <% if (q.type === 'textarea') { %>
+              <textarea class="textarea" id="q-<%= q.id %>" name="<%= q.id %>" rows="3" <%= q.required ? 'required' : '' %>><%= answers[q.id] || '' %></textarea>
+            <% } else if (q.type === 'date') { %>
+              <input class="input" type="date" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+            <% } else if (q.type === 'number') { %>
+              <input class="input" type="number" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+            <% } else { %>
+              <input class="input" type="text" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  <% }) %>
+
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button type="submit" class="btn btn-primary">Save intake</button>
+    <span class="meta" style="font-size:11.5px;">Saving doesn't apply yet — review the draft scope below, then click <strong>Apply to workspace</strong> at the top.</span>
+  </div>
+</form>
+
+<div class="panel" style="margin-top:22px;">
+  <div class="panel-head">
+    <h2 style="margin:0;">Draft scope statement (clause 4.3)</h2>
+    <span class="meta" style="font-size:11.5px;">Generated from your answers. Re-renders on save.</span>
+  </div>
+  <div class="panel-pad">
+    <pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.55;color:var(--text);margin:0;"><%= draftScope %></pre>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

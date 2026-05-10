@@ -682,11 +682,27 @@ app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) =
   if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') {
     return res.status(403).send('Forbidden');
   }
-  const { client_name, industry, scope, target_cert_date, stage, lead_consultant_id } = req.body;
-  db.prepare(`UPDATE workspaces SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?
+  const {
+    client_name, industry, scope, target_cert_date, stage, lead_consultant_id,
+    brand_display_name, brand_primary_color, brand_logo_path, sector,
+  } = req.body;
+  // Validate brand color is a hex literal — anything else gets stored as null so
+  // a malformed value can't break the page CSS.
+  const safeColor = (typeof brand_primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(brand_primary_color.trim()))
+    ? brand_primary_color.trim() : null;
+  db.prepare(`UPDATE workspaces
+              SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?,
+                  brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?
               WHERE id=?`)
-    .run(client_name, industry || null, scope || null, target_cert_date || null,
-         stage || 'gap_assessment', lead_consultant_id || null, req.workspace.id);
+    .run(
+      client_name, industry || null, scope || null, target_cert_date || null,
+      stage || 'gap_assessment', lead_consultant_id || null,
+      (brand_display_name || '').trim() || null,
+      safeColor,
+      (brand_logo_path || '').trim() || null,
+      (sector || '').trim() || null,
+      req.workspace.id
+    );
   logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, null);
   res.redirect('/workspaces/' + req.workspace.id);
 });
@@ -5441,6 +5457,116 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
   }
   logAction(req.user.id, req.workspace.id, 'soa_auto_justify', 'soa', null, { updated }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `Auto-justified ${updated} controls`));
+});
+
+// ==================== ENGAGEMENT PLAN (12-week project plan) ====================
+// Pre-loaded 12-week roadmap (data/engagement-plan.js). Per-workspace progress
+// in engagement_plan_progress. Marking a milestone complete toggles a single
+// completed_at timestamp; a target date can be set when the engagement starts.
+const ENG_PLAN = require('./data/engagement-plan');
+
+app.get('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, (req, res) => {
+  const progress = db.prepare(`SELECT milestone_id, completed_at, target_date, notes FROM engagement_plan_progress WHERE workspace_id=?`)
+    .all(req.workspace.id);
+  const byId = {};
+  for (const r of progress) byId[r.milestone_id] = r;
+  const phases = ENG_PLAN.PHASES.map(ph => ({
+    ...ph,
+    milestones: ph.milestones.map(m => ({ ...m, ...(byId[m.id] || {}) })),
+  }));
+  const total = ENG_PLAN.flatten().length;
+  const done = progress.filter(p => p.completed_at).length;
+  res.render('engagement_plan', {
+    user: req.user, ws: req.workspace, phases, total, done,
+  });
+});
+
+app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, (req, res) => {
+  const mid = req.params.milestoneId;
+  // Validate the milestone exists in the template — guards against arbitrary string upserts.
+  const known = ENG_PLAN.flatten().some(m => m.id === mid);
+  if (!known) return res.status(400).send('Unknown milestone');
+  const existing = db.prepare(`SELECT completed_at FROM engagement_plan_progress WHERE workspace_id=? AND milestone_id=?`)
+    .get(req.workspace.id, mid);
+  if (existing && existing.completed_at) {
+    db.prepare(`UPDATE engagement_plan_progress SET completed_at=NULL WHERE workspace_id=? AND milestone_id=?`)
+      .run(req.workspace.id, mid);
+  } else {
+    db.prepare(`INSERT INTO engagement_plan_progress (workspace_id, milestone_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(workspace_id, milestone_id) DO UPDATE SET completed_at=CURRENT_TIMESTAMP`)
+      .run(req.workspace.id, mid);
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/engagement-plan`);
+});
+
+// ==================== ENGAGEMENT INTAKE (kickoff scoping questionnaire) ====================
+// 25-question intake that runs at engagement start. Auto-drafts a clause 4.3
+// scope statement from the answers and seeds the interested-parties register
+// from the "key customers / regulators / suppliers" answers.
+const INTAKE = require('./data/intake-questions');
+
+app.get('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
+  const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`)
+    .all(req.workspace.id);
+  const answers = {};
+  for (const r of rows) answers[r.question_id] = r.answer || '';
+  const flat = INTAKE.flatten();
+  const total = flat.length;
+  const answered = flat.filter(q => (answers[q.id] || '').trim().length > 0).length;
+  const draftScope = INTAKE.draftScopeStatement(answers);
+  res.render('intake', {
+    user: req.user, ws: req.workspace,
+    sections: INTAKE.SECTIONS, answers, total, answered, draftScope,
+  });
+});
+
+app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
+  const flat = INTAKE.flatten();
+  const insert = db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(workspace_id, question_id) DO UPDATE SET
+      answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`);
+  const tx = db.transaction(() => {
+    for (const q of flat) {
+      const v = (req.body[q.id] || '').trim();
+      insert.run(req.workspace.id, q.id, v, req.user.id);
+    }
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'intake_save', 'intake', null, null, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Intake saved'));
+});
+
+// Apply: copy the auto-drafted scope into workspaces.scope and seed interested
+// parties from the customer / regulator / supplier answers. Idempotent — only
+// adds rows that don't already exist.
+app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, (req, res) => {
+  const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`)
+    .all(req.workspace.id);
+  const answers = {};
+  for (const r of rows) answers[r.question_id] = r.answer || '';
+  const scope = INTAKE.draftScopeStatement(answers);
+  db.prepare('UPDATE workspaces SET scope=? WHERE id=?').run(scope, req.workspace.id);
+
+  let parties = 0;
+  const seedParty = (text, type) => {
+    if (!text || !text.trim()) return;
+    // Each line of the textarea becomes one row.
+    for (const line of text.split('\n').map(s => s.trim()).filter(Boolean)) {
+      const exists = db.prepare(`SELECT 1 FROM interested_parties WHERE workspace_id=? AND party=?`).get(req.workspace.id, line);
+      if (exists) continue;
+      db.prepare(`INSERT INTO interested_parties (workspace_id, party, party_type, needs, how_addressed)
+        VALUES (?, ?, ?, '', '')`).run(req.workspace.id, line, type);
+      parties++;
+    }
+  };
+  seedParty(answers['key-customers'], 'customer');
+  seedParty(answers['key-regulators'], 'regulator');
+  seedParty(answers['key-suppliers'], 'supplier');
+
+  logAction(req.user.id, req.workspace.id, 'intake_apply', 'intake', null, { parties_seeded: parties }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`,
+    `Scope applied; ${parties} interested part${parties === 1 ? 'y' : 'ies'} seeded`));
 });
 
 // ==================== INTERESTED PARTIES (clause 4.2) ====================

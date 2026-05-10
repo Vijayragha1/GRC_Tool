@@ -229,6 +229,29 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
           <% }) %>
         </select>
       </div>
+
+      <div style="grid-column:1/-1;margin-top:6px;padding-top:14px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:6px;">Branding & sector</div>
+        <div class="meta" style="font-size:11.5px;margin-bottom:10px;">Customise per-client without a code change. Used in the sidebar workspace block, the dashboard chip, and DOCX cover pages (when set).</div>
+      </div>
+      <div><label class="label">Display name (overrides client_name on cover pages)</label><input class="input" name="brand_display_name" value="<%= ws.brand_display_name || '' %>" placeholder="e.g., Acme Health Tech Inc."></div>
+      <div><label class="label">Sector</label>
+        <select class="select" name="sector">
+          <% const sectors = ['','SaaS','Fintech','Healthcare','Manufacturing','Public sector','MSP','Retail','Education','Other']; sectors.forEach(s => { %>
+            <option value="<%= s %>" <%= (ws.sector || '') === s ? 'selected' : '' %>><%= s || '— none —' %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div><label class="label">Primary color (#RRGGBB)</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="input" name="brand_primary_color" value="<%= ws.brand_primary_color || '' %>" placeholder="#0ea5e9" pattern="^#[0-9a-fA-F]{6}$" style="flex:1;font-family:monospace;">
+          <% if (ws.brand_primary_color) { %>
+            <span style="display:inline-block;width:32px;height:32px;border-radius:6px;background:<%= ws.brand_primary_color %>;border:1px solid var(--border);"></span>
+          <% } %>
+        </div>
+      </div>
+      <div><label class="label">Logo URL (path or full URL)</label><input class="input" name="brand_logo_path" value="<%= ws.brand_logo_path || '' %>" placeholder="https://…/logo.png"></div>
+
       <div style="grid-column:1/-1"><button class="btn btn-primary">Save</button></div>
     </form>
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">

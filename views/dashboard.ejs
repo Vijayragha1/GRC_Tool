@@ -164,7 +164,13 @@
       <% workspaces.forEach(w => { %>
         <tr style="cursor:pointer" onclick="location='/workspaces/<%= w.id %>'">
           <td>
-            <div style="font-weight:500"><%= w.client_name %></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <% if (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) { %>
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<%= w.brand_primary_color %>;flex-shrink:0;"></span>
+              <% } %>
+              <span style="font-weight:500"><%= w.brand_display_name || w.client_name %></span>
+              <% if (w.sector) { %><span class="tag tag-info" style="font-size:10px;"><%= w.sector %></span><% } %>
+            </div>
             <% if (w.industry) { %><div class="meta" style="margin-top:2px"><%= w.industry %></div><% } %>
           </td>
           <td><span class="status s-<%= w.stage === 'certified' ? 'done' : 'in_progress' %>"><%= w.stage.replace(/_/g,' ') %></span></td>
