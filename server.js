@@ -544,10 +544,6 @@ app.post('/firm/users/:id/deactivate', requireAuth, (req, res) => {
 // ==================== GLOSSARY ====================
 // Workspace-agnostic learning resource. Static content, no DB.
 const GLOSSARY = require('./data/glossary');
-// Industry overlay packs — applied at workspace risk-clone time, surfaced as
-// banner/notes on the workspace overview, and consumed by the SoA emphasis
-// hint. See data/sector-overlays/ for the pattern.
-const SECTOR_OVERLAYS = require('./data/sector-overlays');
 
 // Set of valid iso_items.id values, computed once at boot. Used to decide
 // whether a clause/Annex-A reference in glossary text resolves to a real
@@ -746,15 +742,11 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
   // Tier B.6 — top "needs your attention" items for the overview
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
-  // Industry overlay pack (if the workspace's sector has one). Surfaces a
-  // banner with the overlay's notes; control-emphasis is consumed by the SoA
-  // page directly via the same registry.
-  const sectorOverlay = SECTOR_OVERLAYS.getOverlay(ws.sector);
   res.render('workspace', {
     user: req.user, ws, progress, breakdown, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
-    roadmap, needsAttention, sectorOverlay,
+    roadmap, needsAttention,
   });
 });
 
@@ -5667,39 +5659,10 @@ app.post('/firm/library/risks/reseed', requireAuth, (req, res) => {
   res.redirect(withToast('/firm/library/risks', `Added ${added} starter risks`));
 });
 
-// Clone the firm library into a workspace's risk register. Existing risks with
-// the same title are not duplicated. If the workspace has a sector set, the
-// matching overlay's risks are merged into the firm library *first* so the
-// clone picks them up — this is the "industry overlay pack" effect.
-function applySectorOverlayToFirmLibrary(firmId, sector) {
-  if (!sector) return 0;
-  const overlay = SECTOR_OVERLAYS.getOverlay(sector);
-  if (!overlay) return 0;
-  const have = new Set(db.prepare('SELECT title FROM firm_risk_library WHERE firm_id=?').all(firmId).map(r => r.title));
-  const ins = db.prepare(`INSERT INTO firm_risk_library
-    (firm_id, title, description, threat, vulnerability, suggested_likelihood, suggested_impact,
-     suggested_treatment, suggested_controls, domain, sector, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  let added = 0;
-  const tx = db.transaction(() => {
-    for (const r of overlay.extraRisks) {
-      if (have.has(r.title)) continue;
-      ins.run(firmId, r.title, r.description || null, r.threat || null, r.vulnerability || null,
-        r.suggested_likelihood || null, r.suggested_impact || null,
-        r.suggested_treatment || null, r.suggested_controls || null,
-        r.domain || null, r.sector || null, r.tags || null);
-      added++;
-    }
-  });
-  tx();
-  return added;
-}
-
+// Clone the firm library into a workspace's risk register. Existing risks
+// with the same title are not duplicated.
 app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
   const firmId = req.workspace.firm_id;
-  // Make sure the firm library is up-to-date with the workspace's sector
-  // overlay before cloning. Idempotent.
-  const overlayAdded = applySectorOverlayToFirmLibrary(firmId, req.workspace.sector);
   const lib = db.prepare(`SELECT * FROM firm_risk_library WHERE firm_id=? ORDER BY domain, title`).all(firmId);
   const have = new Set(db.prepare(`SELECT title FROM risks WHERE workspace_id=?`).all(req.workspace.id).map(r => r.title));
   const ins = db.prepare(`INSERT INTO risks
@@ -5715,11 +5678,8 @@ app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorks
     }
   });
   tx();
-  logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added, overlay_added: overlayAdded }, auditCtx(req));
-  const msg = overlayAdded > 0
-    ? `Cloned ${added} risks from firm library (incl. ${overlayAdded} from ${req.workspace.sector} overlay)`
-    : `Cloned ${added} risks from firm library`;
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, msg));
+  logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, `Cloned ${added} risks from firm library`));
 });
 
 // ==================== EXEC BRIEF (one-page CISO/board readout) ====================
