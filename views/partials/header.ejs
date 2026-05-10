@@ -4,11 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+<%# Cross-document View Transitions — modern browsers (Chrome/Edge/Safari) %>
+<%# cross-fade between same-origin navigations so clicking a sidebar item %>
+<%# stops feeling like an abrupt scroll-to-top jump. Firefox ignores this %>
+<%# and falls back to the default behaviour gracefully. %>
+<meta name="view-transition" content="same-origin">
 <title><%= typeof title !== 'undefined' ? title : 'ISO 27001' %> · ISMS</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://rsms.me/">
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 <style>
+  /* Cross-document view transitions on same-origin navigations. The browser
+     animates a soft cross-fade between the old and new page so clicking a
+     sidebar item no longer feels like a scroll-to-top jolt. Speed kept tight
+     so the transition is felt but never delayed. */
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation-duration: 180ms; }
+
   :root {
     --bg: #ffffff;
     --bg-subtle: #fafafa;
