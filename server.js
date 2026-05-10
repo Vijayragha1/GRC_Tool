@@ -337,16 +337,19 @@ app.use((req, res, next) => {
   }
   // Expose the last-visited workspace so firm-level reference pages
   // (Glossary, Playbooks, Firm library) can render with the workspace
-  // sidebar still in place. The user feels like they never left the
-  // engagement; reference pages are just another view inside it.
+  // sidebar still in place. requireAuth hasn't run yet at this middleware
+  // tier, so resolve the current user inline before the access check.
   res.locals.lastWs = null;
   try {
     const lastId = req.session && req.session.last_ws_id;
     if (lastId) {
-      const ws = getWorkspace(lastId, req.user);
-      // Pass the full workspace record so the workspace sidebar can render
-      // brand colour, sector chip, display name etc.
-      if (ws) res.locals.lastWs = ws;
+      const u = currentUser(req);
+      if (u) {
+        const ws = getWorkspace(lastId, u);
+        // Pass the full workspace record so the workspace sidebar can render
+        // brand colour, sector chip, display name etc.
+        if (ws) res.locals.lastWs = ws;
+      }
     }
   } catch (_) {}
   next();
