@@ -5613,13 +5613,10 @@ app.get('/workspaces/:wsId/soa/snapshots', requireAuth, requireWorkspace, requir
   res.render('soa_snapshots', { user: req.user, ws: req.workspace, snapshots: list });
 });
 
-app.get('/workspaces/:wsId/soa/snapshots/:id', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-  const s = db.prepare('SELECT * FROM soa_snapshots WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-  if (!s) return res.status(404).send('Not found');
-  const rows = JSON.parse(enc.decryptIfNeeded(s.payload, req.workspace.id));
-  res.render('soa_snapshot_detail', { user: req.user, ws: req.workspace, snapshot: s, rows });
-});
-
+// /snapshots/diff MUST be registered BEFORE /snapshots/:id — Express matches
+// in registration order, and a `:id` placeholder will happily capture "diff"
+// otherwise. The :id route also constrains to digits via the regex pattern
+// so similar collisions can't recur if more sibling routes are added.
 app.get('/workspaces/:wsId/soa/snapshots/diff', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   const a = parseInt(req.query.a || 0, 10);
   const b = parseInt(req.query.b || 0, 10);
@@ -5649,6 +5646,15 @@ app.get('/workspaces/:wsId/soa/snapshots/diff', requireAuth, requireWorkspace, r
   }
   const all = db.prepare('SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC').all(req.workspace.id);
   res.render('soa_snapshot_diff', { user: req.user, ws: req.workspace, sa, sb, diff, all });
+});
+
+// Snapshot detail. :id constrained to digits so this can't capture string
+// sibling routes like /diff (which is registered just above).
+app.get('/workspaces/:wsId/soa/snapshots/:id(\\d+)', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const s = db.prepare('SELECT * FROM soa_snapshots WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!s) return res.status(404).render('error', { user: req.user, message: 'Snapshot not found. It may have been deleted, or the URL is wrong. Use the Snapshots tab to pick a current one.' });
+  const rows = JSON.parse(enc.decryptIfNeeded(s.payload, req.workspace.id));
+  res.render('soa_snapshot_detail', { user: req.user, ws: req.workspace, snapshot: s, rows });
 });
 
 // One-click SoA: every control linked to a risk → included with auto-justification.
