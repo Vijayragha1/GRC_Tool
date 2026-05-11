@@ -2244,6 +2244,616 @@ const ENTRIES = [
     related: ['accreditation', 'certification-body'],
     notToConfuseWith: [],
     clauseRef: null
+  },
+
+  // ============================================================
+  // MODERN SECURITY ARCHITECTURE
+  // ============================================================
+  {
+    slug: 'zero-trust',
+    term: 'Zero Trust',
+    aliases: ['ZTA', 'Zero Trust Architecture'],
+    category: 'technical',
+    plain: 'Never trust the network. Verify every request.',
+    definition: 'A security model that assumes no implicit trust based on network location. Every request to a resource is authenticated, authorised, and continuously validated against policy regardless of whether it originates inside or outside the corporate network.',
+    example: 'Acme moves off VPN. Instead, every engineer authenticates to each internal app via SSO with device-posture checks, and access is revoked instantly when an endpoint falls out of compliance.',
+    related: ['ztna', 'defense-in-depth', 'least-privilege', 'mfa'],
+    notToConfuseWith: [
+      { term: 'VPN', why: 'A VPN puts you inside the trusted network. Zero Trust assumes no network is trusted - every request still needs to prove itself.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'ztna',
+    term: 'Zero Trust Network Access',
+    aliases: ['ZTNA'],
+    category: 'technical',
+    plain: 'A modern replacement for VPN that gates access app-by-app, not network-by-network.',
+    definition: 'A category of products that enforces per-application, identity- and context-based access. Users get a connection only to the specific applications they are authorised to use - never to the underlying network.',
+    example: 'A contractor needs the bug tracker. ZTNA grants them a session to that one app, evaluates device posture every few minutes, and never exposes the office subnet.',
+    related: ['zero-trust', 'vpn', 'sase', 'sso'],
+    notToConfuseWith: [
+      { term: 'VPN', why: 'A VPN extends the network. ZTNA extends individual apps. Different blast radius if credentials leak.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'defense-in-depth',
+    term: 'Defense in Depth',
+    aliases: ['Layered Security'],
+    category: 'controls',
+    plain: 'Stack multiple independent controls so one failure does not cause a breach.',
+    definition: 'A design principle that no single control should be load-bearing. Preventive, detective, and corrective controls are layered so that an attacker has to defeat several before reaching the asset. Often summarised as "people, process, technology" or as concentric rings around the asset.',
+    example: 'A SaaS app pairs WAF + authentication + RBAC + audit logging + database encryption + nightly backup. If RBAC has a bug, the WAF and logging still catch the abuse.',
+    related: ['preventive-control', 'detective-control', 'corrective-control', 'compensating-control'],
+    notToConfuseWith: [
+      { term: 'Redundancy', why: 'Redundancy duplicates the same control. Defense in depth stacks different control types so the failure modes do not correlate.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'shared-responsibility',
+    term: 'Shared Responsibility Model',
+    aliases: [],
+    category: 'operations',
+    plain: 'Who is responsible for what when you use a cloud provider.',
+    definition: 'A model published by every major cloud provider that divides security responsibilities between the provider and the customer. The provider secures the underlying infrastructure ("security of the cloud"); the customer secures their data, identities, and configurations ("security in the cloud"). The split shifts as you move from IaaS to PaaS to SaaS.',
+    example: 'On AWS S3, AWS is responsible for the storage hardware and SLAs. You are responsible for the bucket being non-public and for who has IAM access to read the objects.',
+    related: ['third-party-risk', 'tprm', 'iso-27017'],
+    notToConfuseWith: [
+      { term: 'Outsourcing', why: 'You can outsource execution but you cannot outsource accountability. The model clarifies execution; the customer always owns the risk to their data.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'sase',
+    term: 'Secure Access Service Edge',
+    aliases: ['SASE'],
+    category: 'technical',
+    plain: 'Network + security delivered as a single cloud service.',
+    definition: 'An architecture (and a vendor category) that bundles SD-WAN, ZTNA, secure web gateway, CASB, and firewall-as-a-service into a single cloud-delivered offering. Targets remote-first companies that no longer have a meaningful corporate network perimeter.',
+    example: 'Acme retires its MPLS + on-prem firewall stack. Every laptop tunnels to the nearest SASE PoP; ZTNA, content filtering, and DLP run at that PoP instead of at HQ.',
+    related: ['ztna', 'casb', 'zero-trust'],
+    notToConfuseWith: [
+      { term: 'CASB', why: 'CASB is one component of SASE. SASE bundles CASB with network access and other security functions.' }
+    ],
+    clauseRef: null
+  },
+
+  // ============================================================
+  // IDENTITY & ACCESS
+  // ============================================================
+  {
+    slug: 'sso',
+    term: 'Single Sign-On',
+    aliases: ['SSO'],
+    category: 'technical',
+    plain: 'One login that gets you into many apps.',
+    definition: 'An authentication scheme where a user authenticates once to an identity provider (IdP) and is then automatically authenticated to multiple connected applications via SAML, OIDC, or similar. Reduces password reuse and simplifies offboarding (revoke at the IdP, lose every app).',
+    example: 'An engineer logs into Okta in the morning. Slack, GitHub, AWS console, Notion, and Jira all let them in without separate passwords.',
+    related: ['mfa', 'iam', 'authentication', 'rbac'],
+    notToConfuseWith: [
+      { term: 'Password manager', why: 'A password manager stores many passwords. SSO replaces them with a single trusted identity.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'iam',
+    term: 'Identity and Access Management',
+    aliases: ['IAM'],
+    category: 'technical',
+    plain: 'The system that controls who can access what.',
+    definition: 'The discipline (and the tooling) for creating, managing, authenticating, authorising, and removing digital identities and their permissions across systems. Encompasses user lifecycle (joiner / mover / leaver), authentication (SSO, MFA), authorisation (RBAC, ABAC), and audit.',
+    example: 'When an engineer changes teams, the IAM system updates their group membership; group membership drives access in Okta, AWS, and GitHub.',
+    related: ['sso', 'mfa', 'rbac', 'iga', 'least-privilege'],
+    notToConfuseWith: [
+      { term: 'IGA', why: 'IGA is the governance layer on top of IAM - certifications, segregation of duties, lifecycle workflows. IAM is the runtime.' }
+    ],
+    clauseRef: 'A.5.15 / A.5.16 / A.5.17 / A.5.18'
+  },
+  {
+    slug: 'iga',
+    term: 'Identity Governance and Administration',
+    aliases: ['IGA'],
+    category: 'governance',
+    plain: 'The policy + audit layer on top of identity management.',
+    definition: 'The processes and tooling that govern *how* identities and access are managed: access requests, approvals, periodic access reviews / recertifications, segregation-of-duties enforcement, and audit reporting. IAM enforces decisions; IGA decides who decides.',
+    example: 'Quarterly access review: managers receive a list of every privileged role their reports hold and must confirm or revoke each one. IGA software drives the workflow and stores evidence for the auditor.',
+    related: ['iam', 'access-control', 'segregation-of-duties', 'privileged-access'],
+    notToConfuseWith: [
+      { term: 'IAM', why: 'IAM is "can this user log in and access this resource right now?" IGA is "should they?"' }
+    ],
+    clauseRef: 'A.5.18'
+  },
+  {
+    slug: 'jit-access',
+    term: 'Just-in-Time Access',
+    aliases: ['JIT'],
+    category: 'technical',
+    plain: 'Temporary, on-demand elevated access that expires automatically.',
+    definition: 'A pattern where privileged access is granted only when needed, only for the duration needed, and only after approval - rather than being held standing. Combined with break-glass procedures, JIT removes the "every engineer is an admin" problem.',
+    example: 'A backend engineer needs to debug a prod bug. They request JIT admin access via the PAM tool; their manager approves; access is granted for 2 hours and auto-revoked. Every session is recorded.',
+    related: ['pam', 'least-privilege', 'privileged-access', 'iga'],
+    notToConfuseWith: [
+      { term: 'Standing privilege', why: 'JIT is the opposite - the goal is to eliminate standing privileged access for human accounts.' }
+    ],
+    clauseRef: 'A.5.15 / A.8.2'
+  },
+  {
+    slug: 'pam',
+    term: 'Privileged Access Management',
+    aliases: ['PAM'],
+    category: 'technical',
+    plain: 'The tooling and discipline for managing admin accounts safely.',
+    definition: 'A category of products and processes for vaulting privileged credentials, brokering admin sessions, enforcing just-in-time elevation, recording sessions, and rotating shared secrets. PAM treats every privileged action as auditable and time-bound.',
+    example: 'Acme uses CyberArk: ops engineers never see the root password for prod databases. They request a session; PAM brokers a connection with the password injected; the session is recorded; the password rotates afterwards.',
+    related: ['privileged-access', 'jit-access', 'segregation-of-duties', 'iam'],
+    notToConfuseWith: [
+      { term: 'Password manager', why: 'A password manager is a personal vault. PAM governs *shared* and *privileged* credentials with workflows, approvals, and session recording.' }
+    ],
+    clauseRef: 'A.5.15 / A.8.2'
+  },
+
+  // ============================================================
+  // PEOPLE & CULTURE
+  // ============================================================
+  {
+    slug: 'phishing',
+    term: 'Phishing',
+    aliases: [],
+    category: 'people',
+    plain: 'A fraudulent message that tricks someone into giving up credentials or data.',
+    definition: 'Social engineering attacks delivered by email (phishing), SMS (smishing), voice (vishing), or chat - typically impersonating a trusted party to harvest credentials, install malware, or redirect a payment. Targeted variants ("spear phishing", "whaling") research the victim first.',
+    example: 'An employee gets an email "from the CEO" asking them to wire $20k urgently. The address is one character off. A phishing-aware culture pauses and verifies via a second channel before acting.',
+    related: ['social-engineering', 'awareness', 'incident', 'breach'],
+    notToConfuseWith: [
+      { term: 'Spam', why: 'Spam is unsolicited bulk email. Phishing is deliberately deceptive with malicious intent.' }
+    ],
+    clauseRef: 'A.6.3'
+  },
+  {
+    slug: 'social-engineering',
+    term: 'Social Engineering',
+    aliases: [],
+    category: 'people',
+    plain: 'Manipulating people - not systems - to bypass security.',
+    definition: 'The use of psychological manipulation (urgency, authority, reciprocity, fear) to trick people into divulging information, granting access, or performing actions that compromise security. Phishing is the most common form; pretexting, baiting, and tailgating are others.',
+    example: 'An attacker calls the help desk claiming to be a senior exec stuck in an airport with a deadline, asking for an MFA reset. Without strong verification, the help desk resets it.',
+    related: ['phishing', 'awareness', 'security-culture', 'insider-threat'],
+    notToConfuseWith: [
+      { term: 'Hacking', why: 'Hacking exploits technical weaknesses. Social engineering exploits human ones. Most real breaches combine both.' }
+    ],
+    clauseRef: 'A.6.3'
+  },
+  {
+    slug: 'insider-threat',
+    term: 'Insider Threat',
+    aliases: [],
+    category: 'people',
+    plain: 'Risk from people who already have legitimate access.',
+    definition: 'Risk arising from current or former employees, contractors, or partners who misuse their authorised access - intentionally (malicious) or unintentionally (negligent). Often harder to detect than external attacks because the activity blends with normal work.',
+    example: 'A departing engineer downloads the customer list before their last day. Detective controls (DLP alerts on bulk exports, exit-interview offboarding checklist) catch and contain it.',
+    related: ['need-to-know', 'least-privilege', 'background-verification', 'awareness', 'dlp'],
+    notToConfuseWith: [
+      { term: 'External attack', why: 'External attackers must first gain access. Insiders already have it - the threat model focuses on detection and limitation, not perimeter defence.' }
+    ],
+    clauseRef: 'A.6.1 / A.6.5'
+  },
+  {
+    slug: 'security-culture',
+    term: 'Security Culture',
+    aliases: [],
+    category: 'people',
+    plain: 'How people actually behave when no one is watching.',
+    definition: 'The shared attitudes, beliefs, and behaviours around information security across an organisation. Strong culture means people report mistakes early, push back on bypass requests, and treat security as part of their job rather than someone else\'s. Weak culture means policies exist on paper only.',
+    example: 'An engineer notices a colleague accidentally pushed an API key to a public repo. In a strong culture they tell the security team within minutes; in a weak one they say nothing for fear of getting their colleague in trouble.',
+    related: ['awareness', 'security-champion', 'top-management', 'leadership'],
+    notToConfuseWith: [
+      { term: 'Security training', why: 'Training is a tactic. Culture is the outcome. You can have lots of training and a weak culture, or vice versa.' }
+    ],
+    clauseRef: 'A.6.3 / Clause 5.1'
+  },
+  {
+    slug: 'security-champion',
+    term: 'Security Champion',
+    aliases: [],
+    category: 'people',
+    plain: 'A non-security person in each team who is the go-to for security questions.',
+    definition: 'A volunteer or nominated person embedded in an engineering or business team who acts as the first line of security knowledge - reviewing PRs for security issues, escalating to the security team, and translating policy into the team\'s context. Scales a small security team by leveraging local expertise.',
+    example: 'Each product squad has a security champion. They join a monthly forum with the central security team and feed back what their squad is shipping next quarter.',
+    related: ['security-culture', 'awareness', 'roles-responsibilities'],
+    notToConfuseWith: [
+      { term: 'Security engineer', why: 'A champion is part-time and embedded in another function. A security engineer is full-time on security work.' }
+    ],
+    clauseRef: 'Clause 7.2 / 7.3'
+  },
+
+  // ============================================================
+  // ISO FAMILY (companions to 27001 / 27002)
+  // ============================================================
+  {
+    slug: 'iso-27003',
+    term: 'ISO/IEC 27003',
+    aliases: ['ISO 27003'],
+    category: 'governance',
+    plain: 'Implementation guidance for ISO 27001 - "how" rather than "what".',
+    definition: 'A guidance standard explaining how to implement each clause of ISO 27001. Not certifiable. Useful as a reference when interpreting a "shall" in 27001 and asking "what is the auditor actually going to want to see?"',
+    example: 'When scoping the ISMS for the first time, the team reads 27003\'s guidance on clause 4.3 to understand how to define boundaries clearly.',
+    related: ['iso-27001', 'iso-27002', 'iso-27005'],
+    notToConfuseWith: [
+      { term: 'ISO 27002', why: '27002 explains the Annex A controls. 27003 explains the main-body clauses (4-10).' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'iso-27005',
+    term: 'ISO/IEC 27005',
+    aliases: ['ISO 27005'],
+    category: 'risk',
+    plain: 'The standard for doing information-security risk management.',
+    definition: 'Guidance for establishing an information-security risk management process aligned with ISO 27001 clauses 6.1.2 / 6.1.3 and ISO 31000. Covers context establishment, risk identification, analysis, evaluation, treatment, and ongoing monitoring. Not certifiable but heavily cited.',
+    example: 'A consultant building a client\'s first risk methodology references 27005 to defend the chosen likelihood / impact scales to the auditor.',
+    related: ['risk-assessment', 'risk-methodology', 'risk-treatment', 'iso-27001'],
+    notToConfuseWith: [
+      { term: 'ISO 31000', why: '31000 is generic enterprise risk management. 27005 is the information-security flavour - more specific guidance, same shape.' }
+    ],
+    clauseRef: 'Clause 6.1.2 / 6.1.3'
+  },
+  {
+    slug: 'iso-27017',
+    term: 'ISO/IEC 27017',
+    aliases: ['ISO 27017'],
+    category: 'compliance',
+    plain: 'Cloud-specific extensions to ISO 27002.',
+    definition: 'A code of practice adding cloud-specific implementation guidance and additional controls on top of ISO 27002. Targets both cloud service providers and cloud service customers. Common attestation request for SaaS vendors selling into regulated markets.',
+    example: 'A SaaS company sells into enterprise. Their RFPs ask for an ISO 27017 attestation in addition to 27001. They scope it as an extension to their existing 27001 audit.',
+    related: ['iso-27002', 'iso-27018', 'shared-responsibility'],
+    notToConfuseWith: [
+      { term: 'ISO 27018', why: '27017 covers cloud security broadly. 27018 is specifically about protecting personal data (PII) processed in the cloud.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'iso-27018',
+    term: 'ISO/IEC 27018',
+    aliases: ['ISO 27018'],
+    category: 'compliance',
+    plain: 'Protection of personal data (PII) in public clouds.',
+    definition: 'A code of practice for protecting personally identifiable information (PII) processed in public cloud services acting as PII processors. Provides controls and guidance that complement 27001 / 27002 / 27017 for cloud providers that handle PII on behalf of customers.',
+    example: 'A cloud provider lists 27018 alongside 27001 on their trust page to reassure EU customers that their PII processing is consistent with GDPR principles.',
+    related: ['iso-27017', 'iso-27701', 'gdpr', 'personal-data', 'processor'],
+    notToConfuseWith: [
+      { term: 'GDPR', why: '27018 is a security standard you certify against. GDPR is a law. 27018 helps you demonstrate parts of GDPR compliance but is not a substitute.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'iso-27701',
+    term: 'ISO/IEC 27701',
+    aliases: ['ISO 27701', 'PIMS'],
+    category: 'compliance',
+    plain: 'A privacy extension to ISO 27001 - the "Privacy Information Management System".',
+    definition: 'Extends ISO 27001 / 27002 with requirements and guidance for a Privacy Information Management System (PIMS). Covers responsibilities of PII controllers and processors and maps to GDPR articles. Certifiable as an extension to an existing 27001 certificate.',
+    example: 'A company already certified to 27001 adds 27701 to demonstrate GDPR-aligned privacy practices to customers. The audit extends the existing 27001 scope rather than running separately.',
+    related: ['iso-27001', 'gdpr', 'dpia', 'controller', 'processor', 'personal-data'],
+    notToConfuseWith: [
+      { term: 'GDPR', why: 'You comply with GDPR (a law). You certify against 27701 (a standard). 27701 is a credible way to show you take privacy seriously.' }
+    ],
+    clauseRef: null
+  },
+
+  // ============================================================
+  // CLOUD / NETWORK
+  // ============================================================
+  {
+    slug: 'casb',
+    term: 'Cloud Access Security Broker',
+    aliases: ['CASB'],
+    category: 'technical',
+    plain: 'A control point between users and cloud apps that enforces policy.',
+    definition: 'A security product that sits between users and cloud services to provide visibility (which SaaS apps are being used), compliance (does this app meet policy?), data security (DLP for cloud traffic), and threat protection. Deployed in-line or via API integrations with the cloud providers.',
+    example: 'A CASB discovers that 14 unsanctioned AI tools have been used in the past 30 days. Security sets a policy to block uploads to those tools and approve two for general use.',
+    related: ['dlp', 'sase', 'third-party-risk'],
+    notToConfuseWith: [
+      { term: 'Web proxy', why: 'A traditional web proxy filters URLs. A CASB understands SaaS APIs, user identities, and data-level actions (e.g., uploading a sensitive doc to a personal Drive).' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'firewall',
+    term: 'Firewall',
+    aliases: [],
+    category: 'technical',
+    plain: 'A control that allows or blocks network traffic by rule.',
+    definition: 'A network security device or software that inspects packets and decides whether to permit or block them based on rules (source / destination / port / protocol, application identity, content). Modern "next-generation" firewalls (NGFW) combine packet filtering with intrusion prevention, app awareness, and TLS inspection.',
+    example: 'The prod VPC firewall denies all inbound traffic to the database tier; only the app tier in the same VPC can reach it on port 5432.',
+    related: ['network-segmentation', 'ids-ips', 'waf', 'defense-in-depth'],
+    notToConfuseWith: [
+      { term: 'WAF', why: 'A WAF inspects HTTP / HTTPS application traffic. A network firewall operates at lower layers (IP, port, protocol).' }
+    ],
+    clauseRef: 'A.8.20 / A.8.21'
+  },
+  {
+    slug: 'ids-ips',
+    term: 'IDS / IPS',
+    aliases: ['IDS', 'IPS', 'Intrusion Detection', 'Intrusion Prevention'],
+    category: 'technical',
+    plain: 'Detects (IDS) or blocks (IPS) malicious traffic patterns.',
+    definition: 'IDS (Intrusion Detection System) passively inspects traffic against signatures and behavioural baselines and alerts on suspicious activity. IPS (Intrusion Prevention System) does the same but actively blocks. Often integrated into NGFWs or deployed as part of a SIEM-fed analytics stack.',
+    example: 'The IPS blocks a request matching a known SQL injection signature against the public API and forwards the alert to the SIEM.',
+    related: ['firewall', 'siem', 'monitoring', 'detective-control', 'preventive-control'],
+    notToConfuseWith: [
+      { term: 'Antivirus', why: 'Antivirus inspects files on endpoints. IDS / IPS inspects network traffic in transit.' }
+    ],
+    clauseRef: 'A.8.16 / A.8.20'
+  },
+  {
+    slug: 'waf',
+    term: 'Web Application Firewall',
+    aliases: ['WAF'],
+    category: 'technical',
+    plain: 'A firewall that understands HTTP and blocks application-layer attacks.',
+    definition: 'A security control that inspects HTTP / HTTPS requests and responses to a web application and blocks those matching known attack patterns (SQL injection, XSS, path traversal) or anomalous behaviour. Deployed in front of the app as a reverse proxy or as a cloud-managed service.',
+    example: 'The WAF blocks a stream of requests trying to inject `\' OR 1=1` into a login form and rate-limits the source IP.',
+    related: ['firewall', 'penetration-testing', 'vulnerability-management', 'preventive-control'],
+    notToConfuseWith: [
+      { term: 'Network firewall', why: 'A network firewall does not understand HTTP. A WAF does, and can block attacks invisible to a network firewall.' }
+    ],
+    clauseRef: 'A.8.25 / A.8.26'
+  },
+  {
+    slug: 'vpn',
+    term: 'VPN',
+    aliases: ['Virtual Private Network'],
+    category: 'technical',
+    plain: 'An encrypted tunnel that puts a remote user inside the corporate network.',
+    definition: 'A technology that creates an encrypted point-to-point tunnel between a remote endpoint and a network, allowing the endpoint to act as if directly attached to that network. Historically the default for remote access; now often replaced by Zero Trust / ZTNA because once on the VPN the user reaches everything on that network.',
+    example: 'A remote engineer connects to the corporate VPN to access an internal admin tool that is not exposed on the public internet.',
+    related: ['ztna', 'zero-trust', 'encryption-in-transit', 'sase'],
+    notToConfuseWith: [
+      { term: 'ZTNA', why: 'A VPN grants network access. ZTNA grants per-application access. Smaller blast radius, less standing trust.' }
+    ],
+    clauseRef: 'A.6.7 / A.8.20'
+  },
+
+  // ============================================================
+  // MODERN COMPLIANCE
+  // ============================================================
+  {
+    slug: 'sbom',
+    term: 'Software Bill of Materials',
+    aliases: ['SBOM'],
+    category: 'compliance',
+    plain: 'A machine-readable list of every component inside a piece of software.',
+    definition: 'A formal, machine-readable inventory of the software components, libraries, and dependencies that make up an application - including versions and licences. Used to answer "are we exposed?" within minutes of a new CVE landing, and increasingly required by procurement (US Executive Order 14028, EU Cyber Resilience Act).',
+    example: 'When Log4Shell was disclosed, teams with an SBOM searched for `log4j-core@<2.17` across every product in 10 minutes. Teams without had to grep build files for days.',
+    related: ['vulnerability-management', 'patch-management', 'devsecops', 'tprm'],
+    notToConfuseWith: [
+      { term: 'Dependency list', why: 'A dependency list is for developers. An SBOM is a formal artifact (SPDX or CycloneDX format) intended to be shipped, signed, and consumed by downstream parties.' }
+    ],
+    clauseRef: 'A.8.8 / A.8.9'
+  },
+  {
+    slug: 'tprm',
+    term: 'Third-Party Risk Management',
+    aliases: ['TPRM', 'Vendor Risk Management', 'VRM'],
+    category: 'risk',
+    plain: 'The discipline of vetting and monitoring the risk that suppliers pose to you.',
+    definition: 'The end-to-end process of identifying, assessing, mitigating, and continuously monitoring risks introduced by third parties (suppliers, contractors, cloud providers, processors). Spans pre-contract due diligence, contractual controls, ongoing monitoring, and offboarding.',
+    example: 'Before signing a new SaaS HR vendor, the TPRM team reviews their SOC 2, runs a security questionnaire, and adds the vendor to the annual review cycle.',
+    related: ['third-party-risk', 'vendor', 'shared-responsibility'],
+    notToConfuseWith: [
+      { term: 'Procurement', why: 'Procurement negotiates the deal. TPRM owns the risk view across the relationship\'s lifetime.' }
+    ],
+    clauseRef: 'A.5.19 / A.5.20 / A.5.21 / A.5.22'
+  },
+  {
+    slug: 'devsecops',
+    term: 'DevSecOps',
+    aliases: [],
+    category: 'operations',
+    plain: 'Building security into the way software is built and shipped, not bolted on later.',
+    definition: 'The practice of integrating security activities (threat modelling, SAST / DAST, dependency scanning, secret detection, IaC scanning) into the software development and deployment pipeline so that issues are caught and fixed continuously rather than during a pre-release audit.',
+    example: 'Every PR runs SAST + dependency scanning + IaC linting. Secrets in commits block the merge. Image vulnerabilities above a threshold block the deploy.',
+    related: ['vulnerability-management', 'sbom', 'penetration-testing', 'change-management'],
+    notToConfuseWith: [
+      { term: 'Security testing', why: 'Security testing is one activity. DevSecOps is the practice of integrating many security activities into the SDLC continuously.' }
+    ],
+    clauseRef: 'A.8.25 / A.8.28 / A.8.29'
+  },
+  {
+    slug: 'grc',
+    term: 'Governance, Risk, and Compliance',
+    aliases: ['GRC'],
+    category: 'governance',
+    plain: 'The combined discipline of running, risk-managing, and proving compliance for an organisation.',
+    definition: 'An umbrella term for the integrated approach to (a) governance - how an organisation is directed and held accountable; (b) risk management - how it identifies and treats risks; (c) compliance - how it meets external obligations. ISO 27001 is one slice of GRC focused on information security.',
+    example: 'A GRC platform stores risks, controls, evidence, and policy approvals so that ISO 27001, SOC 2, and GDPR programmes can share the same underlying data.',
+    related: ['isms', 'risk', 'compliance-as-code', 'iso-27001'],
+    notToConfuseWith: [
+      { term: 'ISMS', why: 'An ISMS is GRC scoped to information security. GRC is the broader programme including financial, operational, and regulatory risk.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'compliance-as-code',
+    term: 'Compliance as Code',
+    aliases: [],
+    category: 'compliance',
+    plain: 'Expressing compliance controls in code so they are continuously enforced and audited.',
+    definition: 'The practice of encoding compliance requirements (e.g., "S3 buckets must not be public", "all production access must be MFA-protected") as automated tests, policies, or infrastructure-as-code rules. Drift is detected immediately; evidence is generated by the pipeline; audits move from interview-based to data-based.',
+    example: 'OPA policies enforce that no Terraform module can provision a public-facing database. The CI failure log doubles as the audit evidence for the relevant control.',
+    related: ['devsecops', 'monitoring', 'evidence', 'detective-control'],
+    notToConfuseWith: [
+      { term: 'Policy documents', why: 'A policy document is what people read. Compliance-as-code is what machines enforce. Both are usually needed.' }
+    ],
+    clauseRef: null
+  },
+
+  // ============================================================
+  // CRYPTOGRAPHY (extends existing entries)
+  // ============================================================
+  {
+    slug: 'pki',
+    term: 'Public Key Infrastructure',
+    aliases: ['PKI'],
+    category: 'technical',
+    plain: 'The system that issues, manages, and revokes digital certificates.',
+    definition: 'The combination of hardware, software, policies, and procedures used to create, distribute, store, and revoke digital certificates. PKI underpins TLS, code signing, document signing, and S/MIME. Includes one or more certificate authorities (CAs), registration authorities, and certificate revocation mechanisms.',
+    example: 'When a browser shows the padlock for `acme.com`, it has validated a certificate that chains back to a CA in the browser\'s trust store via the PKI.',
+    related: ['certificate-authority', 'digital-signature', 'encryption-in-transit', 'key-management'],
+    notToConfuseWith: [
+      { term: 'TLS', why: 'TLS is one protocol that uses PKI. PKI also underpins code signing, document signing, and email security.' }
+    ],
+    clauseRef: 'A.8.24'
+  },
+  {
+    slug: 'certificate-authority',
+    term: 'Certificate Authority',
+    aliases: ['CA'],
+    category: 'technical',
+    plain: 'A trusted party that issues and signs digital certificates.',
+    definition: 'An entity that issues digital certificates binding public keys to identities. Public CAs (e.g., Let\'s Encrypt, DigiCert) are trusted by default in operating systems and browsers. Private / internal CAs issue certificates for internal services and are trusted only within an organisation.',
+    example: 'A company runs an internal CA to issue certificates for service-to-service mTLS. Compromise of that CA would let an attacker impersonate any internal service.',
+    related: ['pki', 'digital-signature', 'encryption-in-transit'],
+    notToConfuseWith: [
+      { term: 'Certificate', why: 'A certificate is the artifact. A CA is the issuer. Trust flows from the CA - a certificate is only as trustworthy as the CA that signed it.' }
+    ],
+    clauseRef: 'A.8.24'
+  },
+  {
+    slug: 'digital-signature',
+    term: 'Digital Signature',
+    aliases: [],
+    category: 'technical',
+    plain: 'Cryptographic proof that a specific party authored a specific message.',
+    definition: 'A cryptographic mechanism using asymmetric cryptography to prove the authenticity and integrity of data. The signer uses their private key to produce a signature over a hash of the data; anyone with the corresponding public key (typically via PKI) can verify it. Non-repudiation is a property: the signer cannot later deny having signed.',
+    example: 'A signed firmware image: the device only boots images signed by the vendor\'s private key, blocking installation of tampered firmware.',
+    related: ['hashing', 'pki', 'certificate-authority', 'integrity'],
+    notToConfuseWith: [
+      { term: 'Electronic signature', why: 'An e-signature is a legal concept (typing your name, clicking "I agree"). A digital signature is a cryptographic mechanism. The two are often combined but are not the same.' }
+    ],
+    clauseRef: 'A.8.24'
+  },
+  {
+    slug: 'key-rotation',
+    term: 'Key Rotation',
+    aliases: [],
+    category: 'technical',
+    plain: 'Periodically replacing a cryptographic key with a new one.',
+    definition: 'The practice of replacing a cryptographic key on a regular schedule (or in response to events) to limit the data that would be exposed if the key were ever compromised, and to recover from undetected compromise. Requires key-management infrastructure that can re-encrypt or re-wrap data smoothly.',
+    example: 'A KMS rotates the data-encryption key for an S3 bucket annually. Existing objects remain encrypted with prior key versions; new objects use the current one; nothing has to be re-encrypted en masse.',
+    related: ['key-management', 'cryptography', 'encryption-at-rest'],
+    notToConfuseWith: [
+      { term: 'Password rotation', why: 'Password rotation has fallen out of favour (NIST 800-63B advises against routine rotation). Cryptographic key rotation has not - the rationale is different.' }
+    ],
+    clauseRef: 'A.8.24'
+  },
+
+  // ============================================================
+  // AUDIT SPECIFICS
+  // ============================================================
+  {
+    slug: 'witness-audit',
+    term: 'Witness Audit',
+    aliases: [],
+    category: 'audit',
+    plain: 'An audit of the auditor - the accreditation body watching them work.',
+    definition: 'An audit performed by an accreditation body (UKAS, ANAB) in which an accreditation assessor observes a certification body conducting a real audit at a client site. Used to keep the certification body honest. As the audited organisation, you may have an extra person in the room; it is not extra scrutiny of you.',
+    example: 'During Acme\'s Stage 2, a UKAS assessor sits in to witness the lead auditor\'s technique. Acme is not under additional review - their auditor is.',
+    related: ['accreditation', 'certification-body', 'ukas-anab', 'external-audit'],
+    notToConfuseWith: [
+      { term: 'External audit', why: 'The external audit is on you. A witness audit is on the auditor; you are just the venue.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'materiality',
+    term: 'Materiality',
+    aliases: [],
+    category: 'audit',
+    plain: 'Whether a finding matters enough to be reported.',
+    definition: 'The threshold above which an audit finding is significant enough to influence the conclusion or decisions of users of the audit report. Lower-materiality findings may be noted but do not affect certification status; high-materiality findings drive nonconformities.',
+    example: 'A single missing date on one access-review record may be observation-level. A pattern of 12 missing dates across multiple reviews is material - the control is not operating effectively.',
+    related: ['finding', 'observation', 'nonconformity', 'sampling', 'major-nc', 'minor-nc'],
+    notToConfuseWith: [
+      { term: 'Severity', why: 'Severity refers to the impact of an individual finding. Materiality is about whether it crosses the reporting threshold at all.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'soc2',
+    term: 'SOC 2 Type I vs Type II',
+    aliases: ['Type I', 'Type II', 'SOC 2 Type I', 'SOC 2 Type II'],
+    category: 'audit',
+    plain: 'Type I = design at a point in time. Type II = operating effectiveness over a period.',
+    definition: 'Two flavours of SOC 2 attestation. A Type I report describes whether controls are *designed* appropriately as of a single date. A Type II report covers a period (typically 6-12 months) and tests whether those controls *operated effectively* throughout. Customers almost always ask for Type II for ongoing trust.',
+    example: 'A startup issues a Type I after 3 months of operating their controls. After 12 months they issue Type II covering that period. Customers asking for "SOC 2" mean Type II.',
+    related: ['external-audit', 'evidence', 'control-effectiveness', 'sampling'],
+    notToConfuseWith: [
+      { term: 'ISO 27001 certification', why: 'SOC 2 is an attestation under AICPA SSAE 18 (US). ISO 27001 is a certification under an ISO/IEC standard. Different frameworks, overlapping content.' }
+    ],
+    clauseRef: null
+  },
+  {
+    slug: 'scope-creep',
+    term: 'Scope Creep',
+    aliases: [],
+    category: 'audit',
+    plain: 'An audit (or ISMS scope) gradually expanding beyond its original boundary.',
+    definition: 'The unintentional drift of an audit\'s declared scope - or an ISMS\'s scope statement - beyond what was originally defined and agreed. In audit, leads to bloated reports and over-running engagements. In ISMS scope, leads to controls existing on paper but never resourced.',
+    example: 'The ISMS scope statement says "the cloud production environment". A year later the team is also running an on-prem analytics cluster that no one\'s applied 27001 controls to. Either the scope statement needs updating, or the cluster needs the controls applied.',
+    related: ['scope', 'audit-scope', 'audit-plan'],
+    notToConfuseWith: [
+      { term: 'Mature scope expansion', why: 'Deliberate scope expansion (documented and resourced) is healthy. Scope creep is undocumented and unresourced - the dangerous version.' }
+    ],
+    clauseRef: 'Clause 4.3'
+  },
+
+  // ============================================================
+  // INCIDENT RESPONSE
+  // ============================================================
+  {
+    slug: 'forensics',
+    term: 'Digital Forensics',
+    aliases: ['Forensics'],
+    category: 'operations',
+    plain: 'Investigating an incident in a way that preserves evidence.',
+    definition: 'The disciplined collection, preservation, and analysis of digital evidence from systems involved in an incident, conducted in a manner that the evidence remains admissible in legal or regulatory proceedings. Requires chain of custody, write-blocking, hashing of acquired data, and contemporaneous notes.',
+    example: 'On detecting unauthorised access to a server, the IR team images the disk before any remediation, hashes the image, and stores it with documented chain of custody before analysts begin work on a copy.',
+    related: ['incident-response', 'chain-of-custody', 'evidence', 'breach'],
+    notToConfuseWith: [
+      { term: 'Incident triage', why: 'Triage is "what just happened, can we stop it?". Forensics is "exactly what happened, in a way that can stand up later if there is a lawsuit or prosecution."' }
+    ],
+    clauseRef: 'A.5.28'
+  },
+  {
+    slug: 'chain-of-custody',
+    term: 'Chain of Custody',
+    aliases: [],
+    category: 'operations',
+    plain: 'An unbroken, documented record of who handled evidence and when.',
+    definition: 'A formal record showing every person who has had custody of a piece of evidence (digital or physical) from collection to presentation, including dates, times, signatures, and any transfer details. A break in the chain typically renders the evidence inadmissible.',
+    example: 'A disk image captured at 14:02 is sealed in a tamper-evident bag, signed by the analyst, transferred to the legal team at 17:30 with both parties signing the log, then to external counsel the next morning.',
+    related: ['forensics', 'incident-response', 'evidence'],
+    notToConfuseWith: [
+      { term: 'Audit trail', why: 'An audit trail logs system activity. Chain of custody logs the handling of physical or logical evidence by people.' }
+    ],
+    clauseRef: 'A.5.28'
+  },
+  {
+    slug: 'breach-notification',
+    term: 'Breach Notification',
+    aliases: [],
+    category: 'compliance',
+    plain: 'The legal duty to tell regulators and affected people when their data is breached.',
+    definition: 'Regulatory obligations (e.g., GDPR Article 33 / 34, HIPAA, state breach laws) to notify a supervisory authority and / or affected individuals within a defined window after discovering a personal-data breach. GDPR\'s clock is 72 hours to the regulator. Failure to notify on time is itself a finable offence.',
+    example: 'On confirming an exfiltration of customer email addresses, the DPO files a GDPR Article 33 notification with the ICO within 72 hours and notifies affected customers within a week.',
+    related: ['breach', 'incident-response', 'gdpr', 'personal-data'],
+    notToConfuseWith: [
+      { term: 'Incident disclosure', why: 'Breach notification is the regulated, time-bound subset triggered by personal-data breaches. Voluntary disclosure of an incident is broader and less time-pressured.' }
+    ],
+    clauseRef: 'A.5.34 / A.6.4'
   }
 ];
 
