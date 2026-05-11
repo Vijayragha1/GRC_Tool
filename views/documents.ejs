@@ -109,6 +109,39 @@
   </div>
 <% } %>
 
+<% if (typeof registers !== 'undefined' && registers.length) { %>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-head"><h2>Registers</h2><span class="meta">Structured registers required by ISO 27001 - reviewed on the same cadence as policies</span></div>
+    <table class="t">
+      <thead><tr>
+        <th>Name</th>
+        <th style="width:90px">Clause</th>
+        <th style="width:110px;text-align:right;">Entries</th>
+        <th style="width:140px">Last reviewed</th>
+        <th style="width:140px">Next review</th>
+        <th style="width:110px">Status</th>
+      </tr></thead>
+      <tbody>
+        <% registers.forEach(r => { %>
+          <tr style="cursor:pointer" onclick="location='<%= r.href %>'">
+            <td><strong><%= r.name %></strong><% if (r.overdue_count > 0) { %><div class="meta" style="color:#b91c1c;font-size:11px;margin-top:2px;"><%= r.overdue_count %> entr<%= r.overdue_count === 1 ? 'y' : 'ies' %> overdue for review</div><% } %></td>
+            <td class="mono meta">Cl. <%= r.clause %></td>
+            <td class="num"><%= r.total %></td>
+            <td class="meta"><%= r.last_reviewed || '-' %></td>
+            <td class="meta"><%= r.next_review || '-' %></td>
+            <td>
+              <% if (r.review_status === 'overdue') { %><span class="tag tag-danger">overdue</span>
+              <% } else if (r.review_status === 'due_soon') { %><span class="tag tag-warn">due soon</span>
+              <% } else if (r.review_status === 'current') { %><span class="tag" style="background:rgba(21,128,61,0.08);color:#15803d;">current</span>
+              <% } else { %><span class="meta">-</span><% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
 <div class="panel" style="overflow:hidden">
   <table class="t">
     <thead><tr>

@@ -2721,9 +2721,34 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   const templates = db.prepare(`SELECT * FROM doc_templates
     WHERE is_system = 1 OR firm_id = ? ORDER BY category, name`).all(req.workspace.firm_id);
 
+  // Registers — structured datasets that count as ISO documents but live in
+  // their own tables (interested parties register today; more will follow).
+  // Surfaced here so the documents page is the single home for "what needs
+  // annual review", and so the side nav doesn't need a separate entry.
+  const ipStats = db.prepare(`SELECT COUNT(*) AS total,
+      MAX(last_reviewed) AS last_reviewed,
+      MIN(next_review)   AS next_review,
+      SUM(CASE WHEN next_review IS NOT NULL AND next_review < date('now') THEN 1 ELSE 0 END) AS overdue
+    FROM interested_parties WHERE workspace_id=?`).get(req.workspace.id);
+  const soonCutoff = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
+  const registers = [{
+    key: 'interested-parties',
+    name: 'Interested parties register',
+    clause: '4.2',
+    href: `/workspaces/${req.workspace.id}/interested-parties`,
+    total: ipStats.total || 0,
+    last_reviewed: ipStats.last_reviewed,
+    next_review: ipStats.next_review,
+    overdue_count: ipStats.overdue || 0,
+    review_status:
+      ipStats.overdue > 0 ? 'overdue'
+      : (ipStats.next_review && ipStats.next_review < soonCutoff) ? 'due_soon'
+      : (ipStats.next_review ? 'current' : null),
+  }];
+
   res.render('documents', {
     user: req.user, ws: req.workspace, docs, templates,
-    tagsByDoc, taggedItems, tagFilter
+    tagsByDoc, taggedItems, tagFilter, registers
   });
 });
 
