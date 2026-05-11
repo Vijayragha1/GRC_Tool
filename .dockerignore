@@ -1,7 +1,9 @@
 node_modules
 iso27001.db*
 uploads
-data
+data/iso27001.db*
+data/master.key
+data/backups
 .git
 *.log
 .DS_Store
