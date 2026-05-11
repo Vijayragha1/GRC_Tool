@@ -6,6 +6,7 @@
     <div class="page-subtitle">Mandatory ISO 27001 document (clause 6.1.3.d). Applicability and justification for all 93 Annex A controls, plus any non-Annex-A controls you've added.</div>
   </div>
   <div style="display:flex;gap:6px;">
+    <span id="soaAutosaveStatus" style="font-size:11px;line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing or change a dropdown.">All changes saved</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'For every Annex A control that any open risk has selected as a treatment, mark it Included and pre-fill an inclusion justification of the form &quot;Treats {risk titles}&quot;. Existing justifications are not overwritten. This is the fastest way to a defensible first-pass SoA. You can edit each justification afterwards. Continue?')"><button class="btn btn-secondary btn-xs" title="For every control linked to a risk: mark Included + write justification of the form 'Treats X, Y, Z'. Existing justifications kept. Idempotent.">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs" title="Capture an immutable, hashed copy of the current SoA state. Auditors compare snapshots over time — capture before each MRM and before each audit.">Capture snapshot</button></form>
     <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
@@ -110,7 +111,6 @@
             </td>
             <td>
               <textarea name="<%= r.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea" style="font-size:12px;padding:4px 8px;" placeholder="<%= r.applicability === 'excluded' ? 'Why excluded' : 'Why included' %>"><%= r.applicability === 'excluded' ? (r.exclusion_justification || '') : (r.inclusion_justification || '') %></textarea>
-              <button class="btn btn-ghost btn-xs" style="margin-top:4px;font-size:11px;">Save</button>
             </td>
           </tr>
         </form>
@@ -158,7 +158,6 @@
               </td>
               <td>
                 <textarea name="<%= c.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea" style="font-size:12px;padding:4px 8px;"><%= c.applicability === 'excluded' ? (c.exclusion_justification || '') : (c.inclusion_justification || '') %></textarea>
-                <button class="btn btn-ghost btn-xs" style="margin-top:4px;font-size:11px;">Save</button>
               </td>
               <td>
                 <button formaction="/workspaces/<%= ws.id %>/soa/custom-controls/<%= c.id %>/delete" formmethod="POST" class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;" onclick="return appConfirmClick(event, 'Delete custom control <%= c.code %>?')">×</button>
@@ -186,5 +185,93 @@
     </form>
   </details>
 </div>
+
+<script>
+// SoA autosave. Each row is a <form class="contents"> wrapping its inputs; we
+// listen for change/input on those inputs, debounce per-row, and POST the row's
+// current values to the form's action with ?ajax=1 so the server returns 204
+// instead of a redirect we'd discard. Status pill at top reflects in-flight /
+// idle / error state across all rows.
+//
+// Body is sent as application/x-www-form-urlencoded (not FormData → multipart)
+// because the global body parser only decodes urlencoded — multipart leaves
+// req.body empty and CSRF rejects the request.
+(function () {
+  const status = document.getElementById('soaAutosaveStatus');
+  if (!status) return;
+
+  const DEBOUNCE_MS = 500;
+  const timers = new WeakMap();
+  let inFlight = 0;
+  let lastError = null;
+
+  function setStatus() {
+    if (lastError) {
+      status.textContent = 'Couldn’t save — retrying on next edit';
+      status.style.background = 'rgba(185,28,28,0.08)';
+      status.style.borderColor = 'rgba(185,28,28,0.3)';
+      status.style.color = '#b91c1c';
+      status.dataset.state = 'error';
+    } else if (inFlight > 0) {
+      status.textContent = inFlight === 1 ? 'Saving…' : `Saving ${inFlight}…`;
+      status.style.background = 'rgba(37,99,235,0.08)';
+      status.style.borderColor = 'rgba(37,99,235,0.3)';
+      status.style.color = '#1d4ed8';
+      status.dataset.state = 'saving';
+    } else {
+      status.textContent = 'All changes saved';
+      status.style.background = '';
+      status.style.borderColor = '';
+      status.style.color = '';
+      status.dataset.state = 'idle';
+    }
+  }
+
+  async function submitRow(form) {
+    if (typeof window._csrfStamp === 'function') window._csrfStamp(form);
+    const params = new URLSearchParams();
+    new FormData(form).forEach((v, k) => params.append(k, v));
+    const url = form.action + (form.action.includes('?') ? '&' : '?') + 'ajax=1';
+    inFlight++;
+    setStatus();
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params,
+        credentials: 'same-origin',
+        redirect: 'manual'
+      });
+      const ok = res.ok || res.status === 204 || res.status === 0 || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400);
+      lastError = ok ? null : `HTTP ${res.status}`;
+    } catch (e) {
+      lastError = String(e);
+    } finally {
+      inFlight--;
+      setStatus();
+    }
+  }
+
+  function schedule(form) {
+    clearTimeout(timers.get(form));
+    timers.set(form, setTimeout(() => submitRow(form), DEBOUNCE_MS));
+  }
+
+  // <form> wrapping a <tr> inside <tbody> gets reparented by the HTML parser —
+  // the form element ends up empty in the DOM and the inputs are no longer
+  // descendants. addEventListener on the form never fires for input/change
+  // bubbling. But each input still resolves its owning form via .form (HTML's
+  // "form pointer"). So we listen at document level and route by .form.action.
+  function handle(e) {
+    const form = e.target && e.target.form;
+    if (!form) return;
+    const action = form.action || '';
+    if (!/\/soa\//.test(action)) return;
+    schedule(form);
+  }
+  document.addEventListener('input', handle);
+  document.addEventListener('change', handle);
+})();
+</script>
 
 <%- include('partials/footer') %>

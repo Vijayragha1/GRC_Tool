@@ -53,6 +53,20 @@ app.use(session({
   cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
 }));
 
+// HTML responses must not be cached by the browser. Without this, CSRF tokens
+// and dynamic content get served stale from disk cache after a server restart
+// or after the user re-opens a tab — leading to silent 403s and "save isn't
+// working" reports. Doesn't affect /public static assets (those don't go
+// through res.render and Express sets its own ETag for them).
+app.use((_req, res, next) => {
+  const origRender = res.render.bind(res);
+  res.render = function (...args) {
+    res.set('Cache-Control', 'no-store, must-revalidate');
+    return origRender(...args);
+  };
+  next();
+});
+
 // CSRF protection on every state-changing request. Token is exposed via
 // res.locals.csrfToken — partials/header.ejs renders it in a <meta> tag,
 // and partials/footer.ejs has a load-time form walker that injects a hidden
@@ -2464,6 +2478,8 @@ app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, re
          inclusion_justification || null, exclusion_justification || null,
          status || null, req.workspace.id, req.params.isoId);
   logAction(req.user.id, req.workspace.id, 'update_soa', 'control', req.params.isoId, null);
+  // Autosave fetches use ?ajax=1 so they don't follow a redirect they don't need.
+  if (req.query.ajax === '1') return res.status(204).end();
   res.redirect('/workspaces/' + req.workspace.id + '/soa');
 });
 
@@ -6130,6 +6146,7 @@ app.post('/workspaces/:wsId/soa/custom-controls/:id', requireAuth, requireWorksp
          b.applicability || 'included', b.inclusion_justification || null, b.exclusion_justification || null,
          b.status || 'Not Assessed', b.notes || null,
          req.params.id, req.workspace.id);
+  if (req.query.ajax === '1') return res.status(204).end();
   res.redirect(`/workspaces/${req.workspace.id}/soa`);
 });
 
@@ -6139,19 +6156,17 @@ app.post('/workspaces/:wsId/soa/custom-controls/:id/delete', requireAuth, requir
 });
 
 // ==================== SOA METADATA HEADER ====================
-// Update the latest snapshot's metadata (version / owner / approver / approved_at).
-// If no snapshot exists, capture one first.
+// Save SoA document-control metadata (version / owner / approver / approved_at).
+// Each Save captures a NEW snapshot stamped with the metadata, so audit history
+// preserves every revision — bumping v1.0 → v2.0 leaves v1.0's signoff intact
+// instead of overwriting it. Label defaults to "v{version}" if version is set.
 app.post('/workspaces/:wsId/soa/metadata', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const b = req.body;
-  let latest = db.prepare(`SELECT id FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1`)
-    .get(req.workspace.id);
-  if (!latest) {
-    const snap = captureSoASnapshot(req.workspace.id, req.user.id, null, 'Initial', 'Metadata-driven snapshot');
-    latest = { id: snap.id };
-  }
+  const label = b.version ? `v${b.version}` : 'Metadata revision';
+  const snap = captureSoASnapshot(req.workspace.id, req.user.id, null, label, 'Metadata saved');
   db.prepare(`UPDATE soa_snapshots SET version=?, owner=?, approved_by=?, approved_at=? WHERE id=?`)
-    .run(b.version || null, b.owner || null, b.approved_by || null, b.approved_at || null, latest.id);
-  logAction(req.user.id, req.workspace.id, 'update_soa_metadata', 'soa_snapshot', latest.id, b);
+    .run(b.version || null, b.owner || null, b.approved_by || null, b.approved_at || null, snap.id);
+  logAction(req.user.id, req.workspace.id, 'update_soa_metadata', 'soa_snapshot', snap.id, b);
   res.redirect(`/workspaces/${req.workspace.id}/soa`);
 });
 
