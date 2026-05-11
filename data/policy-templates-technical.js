@@ -1,4 +1,4 @@
-// ISO 27001:2022 starter templates — Technological controls (A.8.x).
+// ISO 27001:2022 starter templates - Technological controls (A.8.x).
 
 const STARTER = `> **Starting point.** Aligned with ISO 27001:2022 and ISO 27002:2022 implementation guidance. Replace bracketed placeholders, adjust to {{client_name}}'s practices, and have the document owner confirm intervals/thresholds before approval.\n\n---\n`;
 const HEADER = (kind) => `${STARTER}
@@ -193,7 +193,7 @@ Where passwords are still used:
 - Each service account has a documented owner and use case.
 - Credentials are stored in the central secrets manager.
 - Rotation: every [90 days] for static secrets; transient where possible.
-- Service accounts are not interactive — interactive login is blocked.
+- Service accounts are not interactive - interactive login is blocked.
 
 ## 7. Federated and external identity
 - Federation with customer / partner IdPs is permitted only after security review and is recorded in the Integration Register.
@@ -289,7 +289,7 @@ All endpoints, servers, and email / web gateways processing or transmitting {{cl
 - A {{client_name}}-approved EDR product is installed on every endpoint and server.
 - Definitions / engine are kept current automatically.
 - Real-time protection is enabled.
-- Tamper protection is enabled — users cannot disable EDR.
+- Tamper protection is enabled - users cannot disable EDR.
 - The EDR reports health and detections to the central console.
 
 ### 3.2 Email
@@ -372,7 +372,7 @@ Vulnerabilities are prioritised by:
 1. Exploitability (active exploitation? proof-of-concept? KEV catalog?).
 2. Reachability (internet-facing? auth-required?).
 3. Impact (asset criticality + classification).
-4. CVSS score (as a tie-breaker only — not as the sole ranking).
+4. CVSS score (as a tie-breaker only - not as the sole ranking).
 
 ## 7. Remediation SLA
 
@@ -553,10 +553,10 @@ Any system or process that stores, processes, or transfers personal data, financ
 
 | Use case | Technique |
 |----------|-----------|
-| Production data in test / dev environments | Mask or synthesise — never copy raw production |
+| Production data in test / dev environments | Mask or synthesise - never copy raw production |
 | Logs and analytics | Pseudonymise identifiers; never log secrets, tokens, full card numbers, or full health data |
 | Support tools displaying customer data | Dynamic masking by default; reveal under role + auditable click |
-| Data sharing with researchers / suppliers | Anonymise where possible, pseudonymise otherwise — DPA required either way |
+| Data sharing with researchers / suppliers | Anonymise where possible, pseudonymise otherwise - DPA required either way |
 | Demos and training materials | Use synthetic or anonymised data |
 
 ## 5. Techniques (illustrative)
@@ -606,15 +606,15 @@ All channels through which information may leave the {{client_name}} environment
 
 ## 3. Detection mechanisms
 {{client_name}} operates DLP detection on:
-- Outbound email — content + attachment inspection at the gateway.
-- Web traffic — secure web gateway with content rules.
-- Cloud SaaS — CASB or native DLP within sanctioned platforms.
-- Endpoints — file-fingerprinting and removable-media controls.
-- Source code repositories — secret scanning + classification rules.
-- Printers — secure print release with reporting.
+- Outbound email - content + attachment inspection at the gateway.
+- Web traffic - secure web gateway with content rules.
+- Cloud SaaS - CASB or native DLP within sanctioned platforms.
+- Endpoints - file-fingerprinting and removable-media controls.
+- Source code repositories - secret scanning + classification rules.
+- Printers - secure print release with reporting.
 
 ## 4. Detection rules
-Rules are tuned for the data {{client_name}} actually holds — generic templates produce noise. Examples:
+Rules are tuned for the data {{client_name}} actually holds - generic templates produce noise. Examples:
 - Customer record bulk download (> [N] records).
 - Health-data identifiers in unsanctioned destinations (where applicable).
 - Credentials / tokens in code commits or messages.
@@ -795,7 +795,7 @@ ${HEADER('A.8.25, A.8.26, A.8.27, A.8.30')}
 To embed information security into every phase of {{client_name}}'s software development, from requirements through to retirement.
 
 ## 2. Scope
-All software developed by or for {{client_name}}, whether for internal use, customer-facing services, or back-office tooling — including outsourced development (A.8.30).
+All software developed by or for {{client_name}}, whether for internal use, customer-facing services, or back-office tooling - including outsourced development (A.8.30).
 
 ## 3. Phases and security activities
 
@@ -816,7 +816,7 @@ All software developed by or for {{client_name}}, whether for internal use, cust
 
 ### 3.3 Build and deploy (A.8.31)
 - Build pipelines are reproducible and produce signed artefacts.
-- Secrets are injected at build / deploy time from the central secrets manager — never committed.
+- Secrets are injected at build / deploy time from the central secrets manager - never committed.
 - Production deploys go through a release approval that records who, what, and when.
 - Separation of duties: developer ≠ approver ≠ deployer for production releases of Restricted services.
 
@@ -880,7 +880,7 @@ All in-house developed software within the ISMS scope.
 - Logout invalidates the server-side session, not just the cookie.
 
 ### 3.3 Authorisation
-- Authorisation is enforced server-side on every request — never relied on the client.
+- Authorisation is enforced server-side on every request - never relied on the client.
 - The principle of least privilege governs API permissions; deny by default.
 - IDOR (insecure direct object references) is prevented by checking object ownership / membership before any read or mutation.
 
@@ -921,7 +921,7 @@ The OWASP Top 10 (current edition) and OWASP API Security Top 10 are required re
 Deviations from this standard require an entry in the Exception Register, with a sunset date, owner, and compensating control.
 
 ## 6. Records
-SAST / DAST findings, exceptions, pen-test reports — retained per the Secure Development Life Cycle Policy.
+SAST / DAST findings, exceptions, pen-test reports - retained per the Secure Development Life Cycle Policy.
 
 ## 7. Related documents
 - Secure Development Life Cycle Policy (A.8.25)
@@ -1007,7 +1007,7 @@ All environments hosting in-scope services or processing in-scope information.
 
 ### 3.2 Identity and access
 - Production uses a separate set of IAM principals from non-production.
-- Developers may have read access to production logs (for debugging) but no write access by default — write access is privileged and time-bounded per the Privileged Access Management Procedure.
+- Developers may have read access to production logs (for debugging) but no write access by default - write access is privileged and time-bounded per the Privileged Access Management Procedure.
 - Service accounts in non-production cannot authenticate to production and vice versa.
 
 ### 3.3 Data

@@ -34,7 +34,7 @@
   <div class="panel-head"><h2>Add firm consultant</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/members/firm" class="panel-pad" style="display:flex;gap:8px;">
     <select name="user_id" class="select" required>
-      <option value="">— pick a consultant —</option>
+      <option value="">- pick a consultant -</option>
       <% firmConsultants.forEach(c => { %><option value="<%= c.id %>"><%= c.name %> (<%= c.email %>)</option><% }) %>
     </select>
     <select name="role" class="select" style="width:200px">

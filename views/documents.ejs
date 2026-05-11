@@ -13,7 +13,7 @@
 </div>
 
 <div id="newFromTpl" class="hidden panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>Generate from template</h2><span class="meta">Mandatory templates are starred — start with those</span></div>
+  <div class="panel-head"><h2>Generate from template</h2><span class="meta">Mandatory templates are starred - start with those</span></div>
   <% const tierLabel = { mandatory: '★ Mandatory (ISO requires)', expected: '◆ Expected (auditors look for)', recommended: '· Recommended' };
      const tierOrder = ['mandatory','expected','recommended'];
      const tieredCounts = { mandatory: 0, expected: 0, recommended: 0 };
@@ -28,7 +28,7 @@
     <div style="grid-column:1/-1">
       <label class="label">Template</label>
       <select class="select" name="template_id" required>
-        <option value="">— pick a template (mandatory ones first) —</option>
+        <option value="">- pick a template (mandatory ones first) -</option>
         <% tierOrder.forEach(tier => {
              const tplsInTier = templates.filter(t => (t.tier || 'recommended') === tier);
              if (!tplsInTier.length) return; %>
@@ -56,7 +56,7 @@
       <input class="input" type="file" name="file" accept=".docx,.pdf,.md,.markdown,.txt" required>
       <div class="meta" style="margin-top:4px;">Accepts .docx, .pdf, .md, .txt. The file is converted to editable markdown; the original is preserved as the approved source-of-truth.</div>
     </div>
-    <div><label class="label">Name <span class="meta">(optional — defaults to filename)</span></label><input class="input" name="name" placeholder="e.g. Information Security Policy"></div>
+    <div><label class="label">Name <span class="meta">(optional - defaults to filename)</span></label><input class="input" name="name" placeholder="e.g. Information Security Policy"></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">
         <option value="policy">Policy</option><option value="procedure">Procedure</option>
@@ -92,12 +92,12 @@
           <option value="">All documents (<%= docs.length %><%= tagFilter ? '+' : '' %>)</option>
           <optgroup label="Main body clauses">
             <% taggedItems.filter(i => i.type === 'clause').forEach(i => { %>
-              <option value="<%= i.id %>" <%= tagFilter === i.id ? 'selected' : '' %>><%= i.id.replace('clause-','').toUpperCase() %> — <%= i.title %></option>
+              <option value="<%= i.id %>" <%= tagFilter === i.id ? 'selected' : '' %>><%= i.id.replace('clause-','').toUpperCase() %> - <%= i.title %></option>
             <% }) %>
           </optgroup>
           <optgroup label="Annex A controls">
             <% taggedItems.filter(i => i.type === 'control').forEach(i => { %>
-              <option value="<%= i.id %>" <%= tagFilter === i.id ? 'selected' : '' %>><%= i.id.replace('annex-','').toUpperCase() %> — <%= i.title.replace(/^A\.[0-9.]+ /, '') %></option>
+              <option value="<%= i.id %>" <%= tagFilter === i.id ? 'selected' : '' %>><%= i.id.replace('annex-','').toUpperCase() %> - <%= i.title.replace(/^A\.[0-9.]+ /, '') %></option>
             <% }) %>
           </optgroup>
         </select>
@@ -129,12 +129,12 @@
       %>
         <tr>
           <td><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= d.name %></a></td>
-          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= d.category || '—' %></td>
+          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= d.category || '-' %></td>
           <td><span class="status s-<%= d.status === 'approved' || d.status === 'published' ? 'done' : d.status %>"><%= d.status %></span></td>
           <td class="num meta">v<%= d.version %></td>
           <td>
             <% if (tags.length === 0) { %>
-              <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="font-size:11.5px;color:#a16207;text-decoration:none;font-style:italic;" title="No tags — auditors use these to trace coverage">+ tag</a>
+              <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="font-size:11.5px;color:#a16207;text-decoration:none;font-style:italic;" title="No tags - auditors use these to trace coverage">+ tag</a>
             <% } else { %>
               <div style="display:flex;flex-wrap:wrap;gap:3px;">
                 <% visibleTags.forEach(t => {
@@ -151,7 +151,7 @@
           </td>
           <td>
             <% if (!d.next_review_date) { %>
-              <span class="meta" style="font-size:11.5px;">—</span>
+              <span class="meta" style="font-size:11.5px;">-</span>
             <% } else {
                  const rsColor = d.review_status === 'overdue' ? '#b91c1c' : d.review_status === 'due_soon' ? '#a16207' : 'var(--text-secondary)';
             %>

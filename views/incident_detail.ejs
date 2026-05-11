@@ -73,7 +73,7 @@
 %>
 <div class="callout" style="margin:14px 0;background:<%= remainingHrs < 0 ? 'rgba(220,38,38,0.08)' : remainingHrs < 12 ? 'rgba(202,138,4,0.08)' : 'var(--accent-soft)' %>;border-color:<%= remainingHrs < 0 ? '#dc2626' : remainingHrs < 12 ? '#ca8a04' : 'var(--accent)' %>;">
   <div class="callout-title" style="color:<%= remainingHrs < 0 ? '#b91c1c' : remainingHrs < 12 ? '#a16207' : 'var(--accent-deep)' %>;">
-    Regulator notification clock — <%= remainingHrs < 0 ? 'OVERDUE' : remainingHrs + ' hours remaining' %>
+    Regulator notification clock - <%= remainingHrs < 0 ? 'OVERDUE' : remainingHrs + ' hours remaining' %>
   </div>
   Required by: <span class="mono"><%= inc.notification_required_by %></span>
   <% if (inc.notification_sent_at) { %><br>Notified at: <span class="mono"><%= inc.notification_sent_at %></span><% } else { %>
@@ -97,7 +97,7 @@
   <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/runbook" class="panel-pad" style="display:flex;gap:6px;align-items:end;">
     <div style="flex:1;"><label class="label">Attach a runbook</label>
       <select class="select" name="runbook_id">
-        <option value="">— none —</option>
+        <option value="">- none -</option>
         <% runbooks.forEach(rb => { %><option value="<%= rb.id %>" <%= inc.runbook_id === rb.id ? 'selected' : '' %>><%= rb.name %> (<%= rb.category %>)</option><% }) %>
       </select>
     </div>

@@ -58,8 +58,8 @@
            const cleanTitle = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
            const fa = r.from.status || 'Not Assessed';
            const tb = r.to.status   || 'Not Assessed';
-           const fmm = r.from.maturity == null ? '—' : r.from.maturity;
-           const tmm = r.to.maturity   == null ? '—' : r.to.maturity;
+           const fmm = r.from.maturity == null ? '-' : r.from.maturity;
+           const tmm = r.to.maturity   == null ? '-' : r.to.maturity;
            const changeColor = r.change === 'improved' ? '#16a34a'
                               : r.change === 'regressed' ? '#b91c1c'
                               : r.change === 'changed' ? '#a16207'
@@ -67,7 +67,7 @@
            const changeLabel = r.change === 'improved' ? '↑ improved'
                               : r.change === 'regressed' ? '↓ regressed'
                               : r.change === 'changed' ? '⤳ changed'
-                              : '— same';
+                              : '- same';
       %>
         <tr class="diff-row" data-change="<%= r.change %>">
           <td class="mono meta"><%= code %></td>

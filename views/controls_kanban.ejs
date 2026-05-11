@@ -1,9 +1,9 @@
-<%- include('partials/header', { title: 'Controls — Kanban', user, ws, active: 'controls' }) %>
+<%- include('partials/header', { title: 'Controls - Kanban', user, ws, active: 'controls' }) %>
 
 <a href="/workspaces/<%= ws.id %>/controls" class="link-muted" style="font-size:12px;">← Table view</a>
 
 <div class="page-head" style="margin-top:8px">
-  <div><h1 class="page-title">Controls — Kanban</h1>
+  <div><h1 class="page-title">Controls - Kanban</h1>
     <div class="page-subtitle">Drag-friendly view across status columns. Click any card to open the control.</div></div>
   <div style="display:flex;gap:6px;">
     <a href="/workspaces/<%= ws.id %>/controls/export.csv" class="btn btn-secondary btn-xs">Export CSV</a>

@@ -52,17 +52,17 @@ const PHASES = [
     week: 4,
     phase: 'Risk treatment & SoA',
     milestones: [
-      { id: 'w4-treatment', title: 'Risk treatment plan — owner, action, due date per risk',
+      { id: 'w4-treatment', title: 'Risk treatment plan - owner, action, due date per risk',
         deliverables: 'RTP document (clause 6.1.3.e)',
         clauses: ['6.1.3', '8.3'] },
-      { id: 'w4-soa', title: 'Statement of Applicability — applicability + justification per Annex A control',
+      { id: 'w4-soa', title: 'Statement of Applicability - applicability + justification per Annex A control',
         deliverables: 'SoA with metadata header (version, owner, approver, date)',
         clauses: ['6.1.3.d'] },
     ],
   },
   {
     week: 5,
-    phase: 'Policies — leadership & planning',
+    phase: 'Policies - leadership & planning',
     milestones: [
       { id: 'w5-policies-a', title: 'Draft top-management policies (information security policy, ISMS scope, objectives)',
         deliverables: 'Policies in document module, status: draft',
@@ -74,7 +74,7 @@ const PHASES = [
   },
   {
     week: 6,
-    phase: 'Policies — operations',
+    phase: 'Policies - operations',
     milestones: [
       { id: 'w6-policies-b', title: 'Draft operational policies (access control, supplier security, incident response)',
         deliverables: 'Policies in document module, status: in review',
@@ -83,7 +83,7 @@ const PHASES = [
   },
   {
     week: 7,
-    phase: 'Policies — sign-off + awareness',
+    phase: 'Policies - sign-off + awareness',
     milestones: [
       { id: 'w7-policies-publish', title: 'Approve and publish all mandatory documents',
         deliverables: 'All ~14 mandatory documents published, version 1.0',
@@ -149,7 +149,7 @@ const PHASES = [
     phase: 'Stage 2 readiness',
     milestones: [
       { id: 'w12-evidence', title: 'Confirm 3 months of operational evidence per critical control',
-        deliverables: 'Evidence library coverage report — green on critical controls',
+        deliverables: 'Evidence library coverage report - green on critical controls',
         clauses: ['7.5', '9.1'] },
       { id: 'w12-handoff', title: 'Hand engagement to client for Stage 2 audit',
         deliverables: 'Handover pack: residual risks, year-1 surveillance plan',

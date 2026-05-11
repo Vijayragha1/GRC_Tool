@@ -61,8 +61,8 @@
             <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></a></td>
             <td><span class="status s-<%= r.status.toLowerCase().replace(/ /g,'-') %>"><%= r.status %></span></td>
             <td class="num" style="color:var(--text-secondary);"><%= r.maturity || 0 %>/5</td>
-            <td style="color:var(--text-secondary);font-size:12px;"><%= r.owner_name || '—' %></td>
-            <td class="num meta"><%= r.due_date || '—' %></td>
+            <td style="color:var(--text-secondary);font-size:12px;"><%= r.owner_name || '-' %></td>
+            <td class="num meta"><%= r.due_date || '-' %></td>
           </tr>
         <% }) %>
         <% if (rows.length === 0) { %>

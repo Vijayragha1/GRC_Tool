@@ -22,7 +22,7 @@
         <td><strong><%= r.name %></strong></td>
         <td class="meta"><%= r.email %></td>
         <td><span class="tag <%= r.user_type === 'firm' ? 'tag-info' : 'tag-neutral' %>"><%= r.user_type %></span><% if (r.firm_role === 'owner') { %> <span class="tag tag-accent">owner</span><% } %></td>
-        <td class="meta"><%= r.member_role || r.firm_role || '—' %></td>
+        <td class="meta"><%= r.member_role || r.firm_role || '-' %></td>
         <td><span class="tag <%= r.has ? 'tag-success' : 'tag-neutral' %>"><%= r.has ? 'YES' : 'no' %></span></td>
       </tr>
     <% }) %>

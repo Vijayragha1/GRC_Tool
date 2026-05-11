@@ -1,8 +1,8 @@
-// Tenant + onboarding routes. First slice of the server.js modularization —
+// Tenant + onboarding routes. First slice of the server.js modularization -
 // proves a pattern the rest of server.js can follow:
 //
 //   1. The route module exports a single register(app, deps) function.
-//   2. `deps` is the explicit dependency contract — no module-level closures
+//   2. `deps` is the explicit dependency contract - no module-level closures
 //      reaching back into server.js, no globals.
 //   3. The module knows nothing about other route groups; if anything here
 //      needs cross-domain state it goes through deps.
@@ -119,7 +119,7 @@ function register(app, deps) {
 
     const confirm = (req.body.confirm_name || '').trim();
     if (confirm !== firm.name) {
-      return res.redirect(withToast('/tenants', 'Confirmation name did not match — nothing deleted', 'error'));
+      return res.redirect(withToast('/tenants', 'Confirmation name did not match - nothing deleted', 'error'));
     }
 
     const totalFirms = db.prepare('SELECT COUNT(*) c FROM firms').get().c;

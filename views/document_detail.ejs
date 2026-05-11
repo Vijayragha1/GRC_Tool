@@ -9,16 +9,16 @@
   const isMyTurn = pendingApprover && pendingApprover.sequence === nextSeq;
 %>
 
-<!-- Linked clauses / controls — placed above the policy body so the writer
+<!-- Linked clauses / controls - placed above the policy body so the writer
      sees the coverage scope before editing the content -->
 <div class="panel" style="margin-top:12px;margin-bottom:16px;">
   <div class="panel-head">
     <h2>Linked ISO 27001 controls / clauses</h2>
-    <span class="meta">What this document operationalizes — drives the SoA "covered by" view</span>
+    <span class="meta">What this document operationalizes - drives the SoA "covered by" view</span>
   </div>
   <div class="panel-pad">
     <% if (!linkedControls || linkedControls.length === 0) { %>
-      <div class="meta" style="margin-bottom:12px;">No links yet. Tag the Annex A controls or main-body clauses this document covers — auditors use this to trace coverage.</div>
+      <div class="meta" style="margin-bottom:12px;">No links yet. Tag the Annex A controls or main-body clauses this document covers - auditors use this to trace coverage.</div>
     <% } else { %>
       <table class="t" style="margin-bottom:12px;">
         <thead><tr><th style="width:140px;">Reference</th><th>Title</th><th style="width:140px;">Type</th><th style="width:160px;">Section ref</th><th style="width:60px;"></th></tr></thead>
@@ -28,7 +28,7 @@
               <td><code style="font-size:11.5px;"><%= lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code></td>
               <td><%= (lc.title || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '') %></td>
               <td class="meta" style="text-transform:capitalize;"><%= lc.type %><% if (lc.category) { %> · <%= lc.category %><% } %></td>
-              <td class="meta"><%= lc.section_ref || '—' %></td>
+              <td class="meta"><%= lc.section_ref || '-' %></td>
               <td style="text-align:right;">
                 <% if (can('document.edit')) { %>
                   <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls/<%= lc.link_id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Remove this control link?')">
@@ -45,7 +45,7 @@
          const grp = {}; allControls.forEach(c => { (grp[c.type] = grp[c.type] || []).push(c); });
          const linkedIds = new Set((linkedControls || []).map(lc => lc.iso_item_id));
          // Strip the leading code prefix from the canonical title so the option
-         // renders as "A.5.15 — Access control" instead of "A.5.15 — A.5.15 Access control".
+         // renders as "A.5.15 - Access control" instead of "A.5.15 - A.5.15 Access control".
          const cleanTitle = (t) => (t || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '');
     %>
       <!-- Single-pick combobox: input + searchable dropdown panel.
@@ -56,7 +56,7 @@
           <label class="label">Link a single control / clause</label>
           <div class="combo" data-combo style="position:relative;">
             <input type="hidden" name="iso_item_id" data-combo-value required>
-            <input type="text" data-combo-input class="input" placeholder="Click or type to search — e.g. access control, A.5.15, monitoring…" autocomplete="off" style="font-size:12.5px;">
+            <input type="text" data-combo-input class="input" placeholder="Click or type to search - e.g. access control, A.5.15, monitoring…" autocomplete="off" style="font-size:12.5px;">
             <div data-combo-panel style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow-lg);max-height:280px;overflow-y:auto;">
               <% Object.keys(grp).forEach(t => {
                    const available = grp[t].filter(c => !linkedIds.has(c.id));
@@ -68,7 +68,7 @@
                 <% available.forEach(c => {
                      const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
                      const ctitle = cleanTitle(c.title);
-                     const label = code + ' — ' + ctitle;
+                     const label = code + ' - ' + ctitle;
                 %>
                   <div data-combo-option data-value="<%= c.id %>" data-label="<%= label %>" data-search="<%= (code + ' ' + ctitle).toLowerCase() %>" style="padding:6px 10px;font-size:12.5px;cursor:pointer;display:flex;gap:8px;align-items:baseline;">
                     <span class="mono meta" style="font-size:11px;width:80px;flex-shrink:0;"><%= code %></span>
@@ -156,9 +156,9 @@
         })();
       </script>
 
-      <!-- Bulk multi-pick (collapsible — most docs cover 5–10 items) -->
+      <!-- Bulk multi-pick (collapsible - most docs cover 5–10 items) -->
       <details style="margin-top:12px;">
-        <summary class="link-muted" style="font-size:12.5px;cursor:pointer;">+ Link many at once <span class="meta" style="font-weight:400;">— useful for umbrella policies that cover several controls</span></summary>
+        <summary class="link-muted" style="font-size:12.5px;cursor:pointer;">+ Link many at once <span class="meta" style="font-weight:400;">- useful for umbrella policies that cover several controls</span></summary>
         <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/controls" style="margin-top:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);">
           <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:12px;">
             <button type="button" onclick="document.querySelectorAll('.bulk-pick').forEach(c => c.checked = true); updateBulkCount()" class="btn btn-secondary btn-xs">Select all</button>
@@ -255,7 +255,7 @@
         <button class="btn btn-primary btn-xs" onclick="document.getElementById('reviewPanel').classList.toggle('hidden')">Submit for review</button>
       <% } %>
     <% } else if (doc.status === 'in_review') { %>
-      <span class="meta">Awaiting approval — <%= approvers.filter(a => !a.decision).length %> remaining</span>
+      <span class="meta">Awaiting approval - <%= approvers.filter(a => !a.decision).length %> remaining</span>
       <% if (isMyTurn && can('document.review')) { %>
         <button class="btn btn-accent btn-xs" onclick="document.getElementById('decidePanel').classList.toggle('hidden')">Decide (your turn)</button>
       <% } %>

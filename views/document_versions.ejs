@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: doc.name + ' — versions', user, ws, active: 'documents' }) %>
+<%- include('partials/header', { title: doc.name + ' - versions', user, ws, active: 'documents' }) %>
 
 <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" class="link-muted" style="font-size:12px;">← Back to <%= doc.name %></a>
 
@@ -40,9 +40,9 @@
               <tr>
                 <td class="num"><%= a.sequence %></td>
                 <td><%= a.user_name %><div class="meta"><%= a.user_email %></div></td>
-                <td class="meta"><%= a.role_label || '—' %></td>
+                <td class="meta"><%= a.role_label || '-' %></td>
                 <td><span class="tag <%= a.decision === 'approved' ? 'tag-success' : a.decision === 'rejected' ? 'tag-danger' : 'tag-neutral' %>"><%= a.decision || 'pending' %></span></td>
-                <td class="meta"><%= a.decided_at || '—' %></td>
+                <td class="meta"><%= a.decided_at || '-' %></td>
                 <td class="meta"><%= a.decision_reason || '' %></td>
               </tr>
             <% }) %>
@@ -70,10 +70,10 @@
             <% v.signatures.forEach(s => { %>
               <tr>
                 <td><%= s.user_name %></td>
-                <td class="meta"><%= s.signature_role || '—' %></td>
+                <td class="meta"><%= s.signature_role || '-' %></td>
                 <td class="meta"><%= s.intent %></td>
                 <td class="meta"><%= s.signed_at %></td>
-                <td class="meta mono"><%= s.ip_address || '—' %></td>
+                <td class="meta mono"><%= s.ip_address || '-' %></td>
                 <td class="meta mono" style="font-size:10.5px;"><%= s.signature.slice(0,16) %>…</td>
               </tr>
             <% }) %>

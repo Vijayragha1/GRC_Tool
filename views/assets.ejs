@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Asset inventory</h1>
-    <div class="page-subtitle">Information, hardware, software, services, people — the assets your ISMS protects.</div>
+    <div class="page-subtitle">Information, hardware, software, services, people - the assets your ISMS protects.</div>
   </div>
   <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
 </div>
@@ -42,7 +42,7 @@
     </div>
     <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
 
-    <%# Tier 3.8 — Business impact analysis (BIA): how critical is this asset
+    <%# Tier 3.8 - Business impact analysis (BIA): how critical is this asset
         to operations, and how fast must it recover? Drives A.5.30, A.8.13,
         A.8.14 design and risk decisions. %>
     <div style="grid-column:1/-1;border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;">
@@ -50,11 +50,11 @@
     </div>
     <div><label class="label">Business criticality</label>
       <select class="select" name="business_criticality">
-        <option value="">— not assessed —</option>
-        <option value="low">Low — minor inconvenience</option>
-        <option value="medium">Medium — degraded operation</option>
-        <option value="high">High — significant impact</option>
-        <option value="critical">Critical — business-stopping</option>
+        <option value="">- not assessed -</option>
+        <option value="low">Low - minor inconvenience</option>
+        <option value="medium">Medium - degraded operation</option>
+        <option value="high">High - significant impact</option>
+        <option value="critical">Critical - business-stopping</option>
       </select>
     </div>
     <div><label class="label">RTO (hours) <span class="meta">recovery time</span></label><input class="input" type="number" min="0" name="rto_hours" placeholder="e.g., 4"></div>
@@ -83,12 +83,12 @@
       %>
         <tr>
           <td style="font-weight:500"><%= a.name %></td>
-          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= a.type || '—' %></td>
-          <td><span class="tag <%= a.classification === 'restricted' ? 'tag-danger' : a.classification === 'confidential' ? 'tag-warn' : a.classification === 'internal' ? 'tag-info' : 'tag-neutral' %>"><%= a.classification || '—' %></span></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= a.owner_name || '—' %></td>
+          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= a.type || '-' %></td>
+          <td><span class="tag <%= a.classification === 'restricted' ? 'tag-danger' : a.classification === 'confidential' ? 'tag-warn' : a.classification === 'internal' ? 'tag-info' : 'tag-neutral' %>"><%= a.classification || '-' %></span></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= a.owner_name || '-' %></td>
           <td class="num meta"><%= a.cia_c %>·<%= a.cia_i %>·<%= a.cia_a %></td>
-          <td style="font-size:11.5px;font-weight:600;color:<%= biaColor %>;text-transform:uppercase;"><%= a.business_criticality || '—' %></td>
-          <td class="num meta" style="font-size:11.5px;"><%= a.rto_hours != null ? a.rto_hours + 'h' : '—' %> / <%= a.rpo_hours != null ? a.rpo_hours + 'h' : '—' %></td>
+          <td style="font-size:11.5px;font-weight:600;color:<%= biaColor %>;text-transform:uppercase;"><%= a.business_criticality || '-' %></td>
+          <td class="num meta" style="font-size:11.5px;"><%= a.rto_hours != null ? a.rto_hours + 'h' : '-' %> / <%= a.rpo_hours != null ? a.rpo_hours + 'h' : '-' %></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
               <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>

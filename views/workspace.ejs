@@ -88,7 +88,7 @@
       <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <div class="kpi-label">Days to target</div>
     </div>
-    <div class="kpi-num num"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '—' %></div>
+    <div class="kpi-num num"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %></div>
     <div class="kpi-meta"><%= ws.target_cert_date || 'no target set' %></div>
   </div>
 </div>
@@ -255,7 +255,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       <div><label class="label">Sector</label>
         <select class="select" name="sector">
           <% const sectors = ['','SaaS','Fintech','Healthcare','Manufacturing','Public sector','MSP','Retail','Education','Other']; sectors.forEach(s => { %>
-            <option value="<%= s %>" <%= (ws.sector || '') === s ? 'selected' : '' %>><%= s || '— none —' %></option>
+            <option value="<%= s %>" <%= (ws.sector || '') === s ? 'selected' : '' %>><%= s || '- none -' %></option>
           <% }) %>
         </select>
       </div>

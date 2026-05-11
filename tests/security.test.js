@@ -3,14 +3,14 @@
 // Run: node --test tests/security.test.js
 //
 // These boot the real server in-process (no spawn) against a tmp DB so each
-// test owns isolated state. Auth is currently disabled — the auth tests
+// test owns isolated state. Auth is currently disabled - the auth tests
 // exercise the route shape so they keep working when auth is turned on.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { bootClient } = require('./helpers');
 
-test('CSRF — POST without token is rejected with 403', async (t) => {
+test('CSRF - POST without token is rejected with 403', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -20,7 +20,7 @@ test('CSRF — POST without token is rejected with 403', async (t) => {
   assert.match(r.text, /CSRF token missing or invalid/);
 });
 
-test('CSRF — POST with wrong token is rejected with 403', async (t) => {
+test('CSRF - POST with wrong token is rejected with 403', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -28,7 +28,7 @@ test('CSRF — POST with wrong token is rejected with 403', async (t) => {
   assert.equal(r.status, 403);
 });
 
-test('CSRF — POST with correct token + cookie is accepted', async (t) => {
+test('CSRF - POST with correct token + cookie is accepted', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -38,7 +38,7 @@ test('CSRF — POST with correct token + cookie is accepted', async (t) => {
   assert.match(r.location, /\/onboarding/);
 });
 
-test('CSRF — GET requests do not require a token (safe method)', async (t) => {
+test('CSRF - GET requests do not require a token (safe method)', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -48,7 +48,7 @@ test('CSRF — GET requests do not require a token (safe method)', async (t) => 
   }
 });
 
-test('CSRF — token is exposed in <meta name="csrf-token">', async (t) => {
+test('CSRF - token is exposed in <meta name="csrf-token">', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -58,7 +58,7 @@ test('CSRF — token is exposed in <meta name="csrf-token">', async (t) => {
   assert.equal(m[1].length, 64, 'token should be 64 hex chars');
 });
 
-test('CSRF — token is stable across the same session', async (t) => {
+test('CSRF - token is stable across the same session', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -69,7 +69,7 @@ test('CSRF — token is stable across the same session', async (t) => {
   assert.equal(ta, tb, 'token must persist for the lifetime of the session');
 });
 
-test('CSRF — different sessions get different tokens', async (t) => {
+test('CSRF - different sessions get different tokens', async (t) => {
   const { client: c1 } = await bootClient();
   const { client: c2 } = await bootClient();
   t.after(async () => { await c1.close(); await c2.close(); });
@@ -79,7 +79,7 @@ test('CSRF — different sessions get different tokens', async (t) => {
   assert.notEqual(t1, t2, 'sessions must not share tokens');
 });
 
-test('XSS — script tag in tenant name is escaped on render', async (t) => {
+test('XSS - script tag in tenant name is escaped on render', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -88,14 +88,14 @@ test('XSS — script tag in tenant name is escaped on render', async (t) => {
   assert.equal(post.status, 302);
 
   // The new tenant page lists tenants in an HTML table. The script tag must
-  // be escaped — appear as &lt; not <.
+  // be escaped - appear as &lt; not <.
   const list = await client.get('/tenants');
   assert.equal(list.status, 200);
   assert.ok(!list.text.includes(payload), 'raw script tag must not render');
   assert.ok(list.text.includes('&lt;script&gt;'), 'angle brackets must be escaped');
 });
 
-test('XSS — event-handler attribute payload is escaped', async (t) => {
+test('XSS - event-handler attribute payload is escaped', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -108,7 +108,7 @@ test('XSS — event-handler attribute payload is escaped', async (t) => {
   assert.ok(!/value="X"\s+onclick=/.test(list.text), 'attribute injection must be neutralised');
 });
 
-test('Auth — default user lookup never returns null on bare-DB fallback', async (t) => {
+test('Auth - default user lookup never returns null on bare-DB fallback', async (t) => {
   // Auth is disabled per README; the fallback in currentUser must always
   // resolve a user so requireAuth doesn't 500. This test pins that contract.
   const { client } = await bootClient();

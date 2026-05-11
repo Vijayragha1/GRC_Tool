@@ -18,11 +18,11 @@
     <% reviews.forEach(r => { %>
       <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/access-reviews/<%= r.id %>'">
         <td class="meta num"><%= r.period_start %> → <%= r.period_end %></td>
-        <td><%= r.reviewer || '—' %></td>
+        <td><%= r.reviewer || '-' %></td>
         <td class="num"><%= r.total %></td>
         <td class="num"><%= r.decided %> / <%= r.total %></td>
         <td><span class="tag <%= r.status === 'closed' ? 'tag-success' : 'tag-info' %>"><%= r.status %></span></td>
-        <td class="meta"><%= r.closed_at || '—' %></td>
+        <td class="meta"><%= r.closed_at || '-' %></td>
       </tr>
     <% }) %>
   </tbody>

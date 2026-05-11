@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Interested parties</h1>
-    <div class="page-subtitle">Clause 4.2 — the people and organisations whose needs and expectations affect the ISMS. Identify, document needs, link how the ISMS addresses them, and review on cadence.</div>
+    <div class="page-subtitle">Clause 4.2 - the people and organisations whose needs and expectations affect the ISMS. Identify, document needs, link how the ISMS addresses them, and review on cadence.</div>
   </div>
 </div>
 
@@ -13,16 +13,16 @@
     <div><label class="label">Party <span class="meta">required</span></label><input class="input" name="party" required placeholder="e.g., Customers, Regulator (ICO), Employees, Investors"></div>
     <div><label class="label">Type</label>
       <select class="select" name="party_type">
-        <option value="">—</option>
+        <option value="">-</option>
         <% ['Customer','Regulator','Employee','Supplier','Investor','Partner','Auditor','Public','Other'].forEach(t => { %><option value="<%= t %>"><%= t %></option><% }) %>
       </select>
     </div>
-    <div style="grid-column:1/-1;"><label class="label">Needs / expectations</label><textarea class="textarea" name="needs" rows="2" placeholder="What this party needs from the ISMS — confidentiality of personal data, contractual security clauses, regulatory compliance, etc."></textarea></div>
-    <div style="grid-column:1/-1;"><label class="label">How addressed</label><textarea class="textarea" name="how_addressed" rows="2" placeholder="Reference the controls, policies, or processes that meet the need — e.g., 'Encryption at rest A.8.24, Privacy Notice v1.2, contractual DPAs'."></textarea></div>
+    <div style="grid-column:1/-1;"><label class="label">Needs / expectations</label><textarea class="textarea" name="needs" rows="2" placeholder="What this party needs from the ISMS - confidentiality of personal data, contractual security clauses, regulatory compliance, etc."></textarea></div>
+    <div style="grid-column:1/-1;"><label class="label">How addressed</label><textarea class="textarea" name="how_addressed" rows="2" placeholder="Reference the controls, policies, or processes that meet the need - e.g., 'Encryption at rest A.8.24, Privacy Notice v1.2, contractual DPAs'."></textarea></div>
     <div><label class="label">Owner</label><input class="input" name="owner" placeholder="e.g., DPO, Legal, CISO"></div>
     <div><label class="label">Review cadence</label>
       <select class="select" name="review_cadence">
-        <option value="">—</option>
+        <option value="">-</option>
         <% ['monthly','quarterly','semi-annual','annual','biennial'].forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
       </select>
     </div>
@@ -36,7 +36,7 @@
   <% if (rows.length === 0) { %>
     <div class="empty-state">
       <div class="empty-title">No interested parties yet</div>
-      <div class="empty-sub">Required by clause 4.2. Use the form above to start with the obvious ones — customers, regulator, employees.</div>
+      <div class="empty-sub">Required by clause 4.2. Use the form above to start with the obvious ones - customers, regulator, employees.</div>
     </div>
   <% } else { %>
     <table class="t">
@@ -63,7 +63,7 @@
             <td style="font-size:11.5px;">
               <% if (r.next_review) { %>
                 <span class="<%= overdue ? '' : '' %>" style="<%= overdue ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= r.next_review %><% if (overdue) { %> · overdue<% } %></span>
-              <% } else { %><span class="meta">—</span><% } %>
+              <% } else { %><span class="meta">-</span><% } %>
             </td>
             <td>
               <details>
@@ -71,7 +71,7 @@
                 <form method="POST" action="/workspaces/<%= ws.id %>/interested-parties/<%= r.id %>" style="position:absolute;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);width:380px;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">
                   <input type="text" name="party" value="<%= r.party %>" class="input" style="font-size:12px;grid-column:1/-1;">
                   <select class="select" name="party_type" style="font-size:12px;">
-                    <option value="">—</option>
+                    <option value="">-</option>
                     <% ['Customer','Regulator','Employee','Supplier','Investor','Partner','Auditor','Public','Other'].forEach(t => { %><option value="<%= t %>" <%= r.party_type === t ? 'selected' : '' %>><%= t %></option><% }) %>
                   </select>
                   <input type="text" name="owner" value="<%= r.owner || '' %>" placeholder="Owner" class="input" style="font-size:12px;">

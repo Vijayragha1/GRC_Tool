@@ -7,7 +7,7 @@
 
 <div class="page-head">
   <div>
-    <h1 class="page-title"><%= refCode %> — assessment history</h1>
+    <h1 class="page-title"><%= refCode %> - assessment history</h1>
     <div class="page-subtitle"><%= cleanTitle %> · <%= rows.length %> snapshot<%= rows.length === 1 ? '' : 's' %> · append-only audit trail</div>
   </div>
   <div style="display:flex;gap:6px;">
@@ -16,7 +16,7 @@
 </div>
 
 <% if (rows.length === 0) { %>
-  <div class="panel"><div class="panel-pad meta">No history yet — every save in the wizard records a snapshot here.</div></div>
+  <div class="panel"><div class="panel-pad meta">No history yet - every save in the wizard records a snapshot here.</div></div>
 <% } else { %>
   <div class="panel" style="overflow:hidden;">
     <table class="t">
@@ -33,11 +33,11 @@
         <% rows.forEach(r => { %>
           <tr>
             <td class="mono meta" style="font-size:11.5px;"><%= r.snapshot_at %></td>
-            <td class="meta" style="font-size:12px;"><%= r.changed_by_name || '—' %></td>
-            <td><span class="status s-<%= (r.status || '').replace(/\s+/g,'_') %>" style="font-size:11px;"><%= r.status || '—' %></span></td>
-            <td class="num meta"><%= r.maturity != null ? r.maturity : '—' %></td>
-            <td class="num meta"><%= r.scope_pct != null ? r.scope_pct + '%' : '—' %></td>
-            <td class="meta" style="font-size:12px;"><%= r.applicability || '—' %></td>
+            <td class="meta" style="font-size:12px;"><%= r.changed_by_name || '-' %></td>
+            <td><span class="status s-<%= (r.status || '').replace(/\s+/g,'_') %>" style="font-size:11px;"><%= r.status || '-' %></span></td>
+            <td class="num meta"><%= r.maturity != null ? r.maturity : '-' %></td>
+            <td class="num meta"><%= r.scope_pct != null ? r.scope_pct + '%' : '-' %></td>
+            <td class="meta" style="font-size:12px;"><%= r.applicability || '-' %></td>
             <td style="font-size:12px;line-height:1.4;max-width:520px;"><%= (r.notes || '').slice(0, 240) %><%= (r.notes && r.notes.length > 240) ? '…' : '' %></td>
           </tr>
         <% }) %>

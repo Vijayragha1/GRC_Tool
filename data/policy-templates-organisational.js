@@ -1,4 +1,4 @@
-// ISO 27001:2022 starter templates — Organisational controls (A.5.x) and
+// ISO 27001:2022 starter templates - Organisational controls (A.5.x) and
 // supporting records for clauses 6.2 and 10.2.
 
 const STARTER = `> **Starting point.** Aligned with ISO 27001:2022 and ISO 27002:2022 implementation guidance. Replace bracketed placeholders, adjust to {{client_name}}'s practices, and have the document owner confirm intervals/thresholds before approval.\n\n---\n`;
@@ -54,7 +54,7 @@ Threat information from external feeds, peer organisations, vendors, the securit
 For each piece of intelligence, the analyst records:
 - Source and confidence (HML).
 - Relevance to {{client_name}} (sector / technology / customer base).
-- Indicators (IOCs) — IPs, domains, file hashes, TTPs.
+- Indicators (IOCs) - IPs, domains, file hashes, TTPs.
 - Recommended actions and SLA.
 
 ## 6. Action
@@ -126,7 +126,7 @@ All projects within {{client_name}} that introduce or significantly change servi
 - Lessons learned captured.
 
 ## 4. Project risk register
-Every project maintains a security section in its risk register linked to the ISMS risk register. Risks scoring above the appetite threshold cannot be accepted at the project level — they go through the workspace risk acceptance flow.
+Every project maintains a security section in its risk register linked to the ISMS risk register. Risks scoring above the appetite threshold cannot be accepted at the project level - they go through the workspace risk acceptance flow.
 
 ## 5. Approval gates
 - A pre-build / pre-launch security checkpoint is mandatory for projects:
@@ -246,7 +246,7 @@ External transfer of Confidential or Restricted information requires:
 Verbal disclosure of Confidential / Restricted information:
 - Avoid public spaces and shared workplaces.
 - Verify the recipient's identity for unusual / unprompted requests.
-- Match the topic to the channel — do not discuss Restricted matters on speakerphone in shared rooms.
+- Match the topic to the channel - do not discuss Restricted matters on speakerphone in shared rooms.
 
 ## 7. Physical transfer
 - Use locked cases or sealed envelopes for Confidential / Restricted hardcopy.
@@ -276,7 +276,7 @@ Significant transfers (above the thresholds in §8 or as flagged by DLP) are rec
 ${HEADER('A.5.33')}
 
 ## 1. Purpose
-To define how {{client_name}} creates, captures, retains, protects, and disposes of records — distinct from documents (which set future intent, while records evidence past activity).
+To define how {{client_name}} creates, captures, retains, protects, and disposes of records - distinct from documents (which set future intent, while records evidence past activity).
 
 ## 2. Scope
 All records that demonstrate the operation of the ISMS or compliance with applicable law and contracts. Documents are governed by the Documented Information Control Procedure.
@@ -347,13 +347,13 @@ All processing of personal data carried out by or on behalf of {{client_name}}, 
 
 ## 3. Principles
 {{client_name}} processes personal data only when the following principles are satisfied:
-- **Lawfulness, fairness, transparency** — there is a documented lawful basis and individuals are informed.
-- **Purpose limitation** — data is collected for specified, explicit, legitimate purposes.
-- **Data minimisation** — only data necessary for the purpose is collected.
-- **Accuracy** — data is kept accurate and up to date; corrections are made on request.
-- **Storage limitation** — data is retained only as long as necessary.
-- **Integrity and confidentiality** — appropriate security controls are applied (see ISMS).
-- **Accountability** — {{client_name}} can demonstrate compliance.
+- **Lawfulness, fairness, transparency** - there is a documented lawful basis and individuals are informed.
+- **Purpose limitation** - data is collected for specified, explicit, legitimate purposes.
+- **Data minimisation** - only data necessary for the purpose is collected.
+- **Accuracy** - data is kept accurate and up to date; corrections are made on request.
+- **Storage limitation** - data is retained only as long as necessary.
+- **Integrity and confidentiality** - appropriate security controls are applied (see ISMS).
+- **Accountability** - {{client_name}} can demonstrate compliance.
 
 ## 4. Roles and accountability
 - **Data Protection Officer (DPO)** [or equivalent role]: oversight, advice, point of contact for individuals and supervisory authorities.
@@ -405,7 +405,7 @@ Personal-data breaches follow the Information Security Incident Management Proce
 Staff receive privacy training as part of A.6.3 awareness; role-specific training is provided to staff handling significant volumes of personal data.
 
 ## 15. Records
-ROPA, DPIAs, data subject request log, breach register, transfer register — retained per the Records Retention Schedule.
+ROPA, DPIAs, data subject request log, breach register, transfer register - retained per the Records Retention Schedule.
 
 ## 16. Related documents
 - Information Classification and Labelling Policy (A.5.12)
@@ -418,7 +418,7 @@ ROPA, DPIAs, data subject request log, breach register, transfer register — re
     name: 'Documented Operating Procedure (SOP) Template',
     category: 'procedure',
     description: 'Reusable shape for any standard operating procedure (A.5.37).',
-    content: `# Standard Operating Procedure — [TITLE]
+    content: `# Standard Operating Procedure - [TITLE]
 
 ${HEADER('A.5.37')}
 
@@ -441,15 +441,15 @@ What is needed before this procedure starts:
 
 ## 5. Procedure
 
-### Step 1 — [name]
+### Step 1 - [name]
 [Clear, atomic action. Include who performs it.]
 - Tooling: [TOOL].
 - Acceptance criterion: [observable result].
 
-### Step 2 — [name]
+### Step 2 - [name]
 […]
 
-### Step 3 — [name]
+### Step 3 - [name]
 […]
 
 (Add or remove steps as required.)
@@ -485,7 +485,7 @@ How {{client_name}} confirms this procedure is followed:
 `
   },
 
-// =============== Clause 6.2 — Objectives ===============
+// =============== Clause 6.2 - Objectives ===============
   {
     name: 'Information Security Objectives',
     category: 'record',
@@ -506,7 +506,7 @@ Objectives are:
 - Communicated.
 - Updated as appropriate.
 
-## 3. Objectives — current period
+## 3. Objectives - current period
 
 > The following are starter objectives. Adjust to {{client_name}}'s context, risk treatment plan, and management priorities. Each should have a baseline, target, owner, and measurement cadence.
 
@@ -549,7 +549,7 @@ Approved by **{{approval_authority}}** on **{{date}}**.
 `
   },
 
-// =============== Clause 10.2 — NC and corrective action ===============
+// =============== Clause 10.2 - NC and corrective action ===============
   {
     name: 'Nonconformity and Corrective Action Procedure',
     category: 'procedure',
@@ -559,7 +559,7 @@ Approved by **{{approval_authority}}** on **{{date}}**.
 ${HEADER('Clause 10.2')}
 
 ## 1. Purpose
-To define how {{client_name}} reacts to nonconformities (NCs) — events where the ISMS or its requirements have not been met — and how recurrence is prevented through systematic corrective action.
+To define how {{client_name}} reacts to nonconformities (NCs) - events where the ISMS or its requirements have not been met - and how recurrence is prevented through systematic corrective action.
 
 ## 2. Scope
 NCs identified through any of the following:
@@ -611,7 +611,7 @@ The owner determines and implements actions to eliminate causes:
 For each action: owner, target date, expected outcome.
 
 ### 4.6 Effectiveness verification
-After implementation, the ISMS Manager verifies effectiveness — typically [60–180] days later — by sampling, evidence review, or repeat testing. The verification result is recorded.
+After implementation, the ISMS Manager verifies effectiveness - typically [60–180] days later - by sampling, evidence review, or repeat testing. The verification result is recorded.
 
 ### 4.7 Closure
 The NC is closed only when:
@@ -621,7 +621,7 @@ The NC is closed only when:
 
 For Major NCs, closure requires sign-off by the {{approval_authority}} or delegate.
 
-## 5. SLAs (default — adjust per workspace)
+## 5. SLAs (default - adjust per workspace)
 
 | Severity | Correction | Corrective action | Effectiveness verification |
 |----------|-----------|-------------------|---------------------------|

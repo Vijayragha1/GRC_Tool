@@ -2,7 +2,7 @@
 
 <div class="page-head">
   <div><h1 class="page-title">Statement of Applicability</h1>
-    <div class="page-subtitle">Immutable, hashed snapshots of the SoA. Auditors will ask "what changed since last cert?" — capture before each MRM and before each audit.</div></div>
+    <div class="page-subtitle">Immutable, hashed snapshots of the SoA. Auditors will ask "what changed since last cert?" - capture before each MRM and before each audit.</div></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:flex;gap:6px;align-items:center;">
     <input class="input" name="label" placeholder="Snapshot label">
     <input class="input" name="reason" placeholder="Reason">
@@ -28,7 +28,7 @@
   <table class="t">
     <thead><tr><th>Label</th><th>When</th><th>Author</th><th class="num">Controls</th><th class="num">Inc.</th><th class="num">Exc.</th><th>Hash</th></tr></thead>
     <tbody>
-      <% if (!snapshots.length) { %><tr><td colspan="7" class="t-empty">No snapshots yet — capture one before your first audit.</td></tr><% } %>
+      <% if (!snapshots.length) { %><tr><td colspan="7" class="t-empty">No snapshots yet - capture one before your first audit.</td></tr><% } %>
       <% snapshots.forEach(s => { %>
         <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/soa/snapshots/<%= s.id %>'">
           <td><strong><%= s.label || '(unlabelled)' %></strong><% if (s.reason) { %><div class="meta"><%= s.reason %></div><% } %></td>

@@ -6,7 +6,7 @@
 //   documentation_needed → Audit evidence (records and artefacts an auditor would examine)
 // Specifics (frequencies, thresholds, percentages) are deliberately omitted unless mandated by the standard.
 // Where the organization needs to define a value (review frequency, retention, RTO/RPO),
-// content uses "as defined by the organization" — to be customized per ISMS context.
+// content uses "as defined by the organization" - to be customized per ISMS context.
 
 function ctrl(code, category, sort, title, summary, applicability, considerations, evidence) {
   return {
@@ -32,7 +32,7 @@ module.exports = [
   { id: 'clause-4.2', type: 'clause', category: 'context', sort_order: 2,
     title: '4.2 Understanding the needs and expectations of interested parties',
     summary: "Determine interested parties relevant to the ISMS and their requirements (including legal, regulatory, contractual) that the ISMS will address. Relevant requirements may include those related to climate change (Amendment 1:2024).",
-    questions: ["Who are the interested parties relevant to the ISMS (customers, employees, regulators, suppliers, shareholders)?","What are their requirements relevant to information security?","Do any interested parties have requirements related to climate change (Amendment 1:2024) — e.g., disclosure regimes, sustainability reporting, contractual climate clauses — that intersect with the ISMS?","Which of these requirements will be addressed by the ISMS?"],
+    questions: ["Who are the interested parties relevant to the ISMS (customers, employees, regulators, suppliers, shareholders)?","What are their requirements relevant to information security?","Do any interested parties have requirements related to climate change (Amendment 1:2024) - e.g., disclosure regimes, sustainability reporting, contractual climate clauses - that intersect with the ISMS?","Which of these requirements will be addressed by the ISMS?"],
     evidence_needed: ["List of interested parties and their requirements.","Register of legal, regulatory, and contractual obligations, including climate-related obligations where relevant.","Linkage from requirements to controls or risks."],
     documentation_needed: ["Documented information determined as necessary by the organization (typically a stakeholder register and a legal/regulatory register)."]
   },
@@ -72,7 +72,7 @@ module.exports = [
     documentation_needed: ["Documented information defining roles and responsibilities (form determined by the organization)."]
   },
   { id: 'clause-6.1.1', type: 'clause', category: 'planning', sort_order: 8,
-    title: '6.1.1 Actions to address risks and opportunities — General',
+    title: '6.1.1 Actions to address risks and opportunities - General',
     summary: "When planning the ISMS, the organization shall consider the issues (4.1) and requirements (4.2) and determine the risks and opportunities to be addressed to give assurance the ISMS can achieve its outcomes, prevent or reduce undesired effects, and achieve continual improvement.",
     questions: ["How are risks and opportunities to the ISMS determined?","How does the organization plan actions to address them, integrate them into the ISMS, and evaluate their effectiveness?"],
     evidence_needed: ["A defined approach for identifying risks and opportunities.","Linkage from identified risks/opportunities to plans, controls, or objectives."],
@@ -198,7 +198,7 @@ module.exports = [
     documentation_needed: ["Records of the nature of NCs, any actions taken, and the results of corrective action (mandatory)."]
   },
 
-  // ==================== ANNEX A.5 — Organizational (37) ====================
+  // ==================== ANNEX A.5 - Organizational (37) ====================
   ctrl('A.5.1', 'org', 100, 'Policies for information security',
     "Information security policy and topic-specific policies shall be defined, approved by management, published, communicated to and acknowledged by relevant personnel and interested parties, and reviewed at planned intervals or if significant changes occur.",
     ["Applies to all organizations within the ISMS scope. The Information Security Policy is mandatory; topic-specific policies are determined by the organization based on its needs."],
@@ -261,7 +261,7 @@ module.exports = [
     ["Classification scheme documentation.","Examples of classified assets in the inventory.","Communication and training on classification."]),
   ctrl('A.5.13', 'org', 112, 'Labelling of information',
     "An appropriate set of procedures for information labelling shall be developed and implemented in accordance with the information classification scheme.",
-    ["Applies where labelling supports correct handling — typically for higher classifications."],
+    ["Applies where labelling supports correct handling - typically for higher classifications."],
     ["Define labelling procedures for the formats in use (documents, emails, removable media, system records).","Use automated labelling where the toolset supports it."],
     ["Labelling procedures.","Examples of labels applied across formats.","System configurations supporting automated labelling, where used."]),
   ctrl('A.5.14', 'org', 113, 'Information transfer',
@@ -385,7 +385,7 @@ module.exports = [
     ["Document procedures for routine operations and security-relevant tasks.","Keep procedures current and available."],
     ["Documented runbooks/procedures.","Evidence of accessibility and usage by relevant personnel."]),
 
-  // ==================== ANNEX A.6 — People (8) ====================
+  // ==================== ANNEX A.6 - People (8) ====================
   ctrl('A.6.1', 'people', 200, 'Screening',
     "Background verification checks on candidates to become personnel shall be carried out prior to joining the organization and on an ongoing basis taking into consideration applicable laws, regulations, and ethics, and shall be proportional to the business requirements, the classification of the information to be accessed, and the perceived risks.",
     ["Applies to candidates and personnel who will access information whose protection warrants verification, subject to applicable law."],
@@ -427,7 +427,7 @@ module.exports = [
     ["Provide a clear reporting channel and educate personnel on its use.","Acknowledge and act on reports."],
     ["Reporting procedure.","Awareness training covering reporting.","Records of reported events and outcomes."]),
 
-  // ==================== ANNEX A.7 — Physical (14) ====================
+  // ==================== ANNEX A.7 - Physical (14) ====================
   ctrl('A.7.1', 'physical', 300, 'Physical security perimeters',
     "Security perimeters shall be defined and used to protect areas that contain information and other associated assets.",
     ["Applies to organizations with on-premises facilities holding in-scope information processing or assets."],
@@ -499,7 +499,7 @@ module.exports = [
     ["Sanitize or destroy storage prior to disposal/reuse.","Track using a documented procedure."],
     ["Disposal/reuse records.","Vendor certificates of destruction where used."]),
 
-  // ==================== ANNEX A.8 — Technological (34) ====================
+  // ==================== ANNEX A.8 - Technological (34) ====================
   ctrl('A.8.1', 'tech', 400, 'User endpoint devices',
     "Information stored on, processed by, or accessible via user endpoint devices shall be protected.",
     ["Applies to all organizations with managed endpoints."],

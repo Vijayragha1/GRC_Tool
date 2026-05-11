@@ -1,4 +1,4 @@
-// ISO 27001:2022 starter templates — People (A.6.x) and Physical (A.7.x).
+// ISO 27001:2022 starter templates - People (A.6.x) and Physical (A.7.x).
 // Each is a STARTER. Review and tailor to the client's practices / risk appetite.
 
 const STARTER = `> **Starting point.** Aligned with ISO 27001:2022 and ISO 27002:2022 implementation guidance. Replace bracketed placeholders, adjust to {{client_name}}'s practices, and have the document owner confirm intervals/thresholds before approval.\n\n---\n`;
@@ -13,7 +13,7 @@ const HEADER = (kind) => `${STARTER}
 `;
 
 module.exports = [
-// =============== A.6 — People ===============
+// =============== A.6 - People ===============
   {
     name: 'Confidentiality and Non-Disclosure Agreement',
     category: 'form',
@@ -192,7 +192,7 @@ Mailbox and personal drive content is preserved, transferred to the line manager
 HR provides a written reminder of ongoing confidentiality, IP assignment, and non-solicitation obligations.
 
 ### 6.2 Verification
-The ISMS Manager verifies — within [5] business days — that all access has been removed by sampling logs and querying directory and SaaS membership exports.
+The ISMS Manager verifies - within [5] business days - that all access has been removed by sampling logs and querying directory and SaaS membership exports.
 
 ### 6.3 Audit trail
 Records of access revocation, asset return, and confidentiality reminder are retained for [statutory minimum + 3] years.
@@ -259,13 +259,13 @@ Personal device use must be specifically authorised. When permitted, the device 
 
 ## 6. Data handling
 - Information classification rules (A.5.12) apply equally remotely.
-- "Restricted" information is processed only on {{client_name}}-issued devices, and printed only when essential — printed material is shredded same day.
+- "Restricted" information is processed only on {{client_name}}-issued devices, and printed only when essential - printed material is shredded same day.
 - Removable media handling follows the Removable Media Procedure (A.7.10).
 
 ## 7. Loss or theft
 If a device or data is lost or believed compromised, the user reports it within [4 hours] via the Reporting Information Security Events Procedure (A.6.8). The ISMS Manager will arrange remote wipe and credential reset.
 
-## 8. Travel — high-risk locations
+## 8. Travel - high-risk locations
 For travel to [LIST_OF_HIGH_RISK_JURISDICTIONS], the ISMS Manager may require:
 - Use of clean / loaner devices that are wiped on return.
 - Reduced access scope while abroad.
@@ -301,7 +301,7 @@ Report any of the following without delay:
 - Account behaving unexpectedly (unfamiliar sign-in alerts, missing data, unauthorised changes).
 - Information disclosed to the wrong person or made public unintentionally.
 - Physical break-in, tailgating, or unidentified visitor in a secure area.
-- A near-miss — even if no harm occurred — so we can learn.
+- A near-miss - even if no harm occurred - so we can learn.
 - Any policy violation observed.
 
 When in doubt, report. Better to over-report than miss something.
@@ -341,15 +341,15 @@ Reports are triaged within [24] hours and either:
 This procedure is included in onboarding and refreshed at least annually as part of A.6.3 awareness training. Posters with the channels above are displayed in [LOCATIONS].
 
 ## 8. Records
-All reports — closed and promoted — are logged in the ISMS for [3] years to enable trend analysis at the Management Review.
+All reports - closed and promoted - are logged in the ISMS for [3] years to enable trend analysis at the Management Review.
 `
   },
 
   {
-    name: 'Terms of Employment — Security Clauses',
+    name: 'Terms of Employment - Security Clauses',
     category: 'form',
     description: 'Boilerplate security clauses for employment / engagement contracts (A.6.2).',
-    content: `# Terms of Employment — Security Clauses
+    content: `# Terms of Employment - Security Clauses
 
 ${HEADER('A.6.2')}
 
@@ -393,7 +393,7 @@ Name and role: _______________________________
 `
   },
 
-// =============== A.7 — Physical ===============
+// =============== A.7 - Physical ===============
   {
     name: 'Physical Security Perimeter and Entry Control Policy',
     category: 'policy',
@@ -490,7 +490,7 @@ All workspaces used by {{client_name}} personnel, including offices, hot desks, 
 
 When stepping away from a workspace, personnel:
 - Lock paper documents containing Internal, Confidential, or Restricted information in a locked drawer, cabinet, or pedestal.
-- Remove documents from printers, scanners, fax machines, and copiers — secure print release is required for all printers in zones above General.
+- Remove documents from printers, scanners, fax machines, and copiers - secure print release is required for all printers in zones above General.
 - Place sensitive sticky notes, whiteboards, and flip charts inside their workspace and erase or remove them at the end of day.
 - Leave only public information visibly on the desk.
 
@@ -503,7 +503,7 @@ End of day expectations:
 ## 4. Clear screen
 
 When leaving a workstation unattended for any period:
-- Lock the screen — manually (Win+L / Ctrl+Cmd+Q) or by automated idle lock.
+- Lock the screen - manually (Win+L / Ctrl+Cmd+Q) or by automated idle lock.
 - Idle screen lock is enforced after [10] minutes by central policy.
 - Public displays (showing dashboards, schedules) must not show information classified above Internal.
 
@@ -514,7 +514,7 @@ When leaving a workstation unattended for any period:
 
 ## 6. Confidentiality in shared spaces
 - In hot-desking, co-working, customer, or hotel environments, privacy filters are recommended on screens.
-- Sensitive conversations are conducted in private rooms or by phone — not in open areas.
+- Sensitive conversations are conducted in private rooms or by phone - not in open areas.
 
 ## 7. Compliance
 Spot-check audits are conducted by [ROLE] on a [quarterly] basis. Findings are recorded and addressed via the line manager. Repeated violations follow the Disciplinary Process Procedure.

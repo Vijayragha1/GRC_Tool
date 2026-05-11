@@ -49,7 +49,7 @@
           <td><%= l.user_name %></td>
           <td class="mono" style="font-size:12px;"><%= l.action %></td>
           <td class="meta">
-            <% if (l.entity_type) { %><%= l.entity_type %><% if (l.entity_id) { %> #<%= l.entity_id %><% } %><% } else { %>—<% } %>
+            <% if (l.entity_type) { %><%= l.entity_type %><% if (l.entity_id) { %> #<%= l.entity_id %><% } %><% } else { %>-<% } %>
           </td>
           <td class="meta" style="max-width:520px">
             <% if (l.before_state || l.after_state) { %>
@@ -63,10 +63,10 @@
             <% } else if (l.details) { %>
               <span style="font-family:ui-monospace,monospace;font-size:11.5px;"><%= l.details.length > 80 ? l.details.slice(0,80) + '…' : l.details %></span>
             <% } else { %>
-              —
+              -
             <% } %>
           </td>
-          <td class="meta mono" style="font-size:11px;"><%= l.ip_address || '—' %></td>
+          <td class="meta mono" style="font-size:11px;"><%= l.ip_address || '-' %></td>
         </tr>
       <% }) %>
       <% if (log.length === 0) { %>

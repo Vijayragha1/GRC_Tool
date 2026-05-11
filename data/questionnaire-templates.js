@@ -57,7 +57,7 @@ module.exports = [
 
   {
     name: 'Privacy & Data Protection Assessment',
-    description: 'Privacy-focused questionnaire for vendors processing personal data — aligned with GDPR Article 28 / DPDP / equivalent regimes.',
+    description: 'Privacy-focused questionnaire for vendors processing personal data - aligned with GDPR Article 28 / DPDP / equivalent regimes.',
     category: 'privacy',
     questions: [
       { section: 'Lawful Basis & Roles', q: 'Will you act exclusively as a processor (or sub-processor) for the personal data we share with you, processing only on documented instructions?', expected: 'yes', iso: 'A.5.34' },

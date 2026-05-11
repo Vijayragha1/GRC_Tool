@@ -1,6 +1,6 @@
 module.exports = [
   {
-    name: 'New joiner — IT onboarding',
+    name: 'New joiner - IT onboarding',
     category: 'onboarding',
     description: 'Day-1 access, equipment, training assignments for a new employee.',
     steps: [
@@ -16,7 +16,7 @@ module.exports = [
     ]
   },
   {
-    name: 'Leaver — IT offboarding',
+    name: 'Leaver - IT offboarding',
     category: 'offboarding',
     description: 'Same-day access revocation + asset return + data preservation.',
     steps: [
@@ -26,7 +26,7 @@ module.exports = [
       { title: 'Disable VPN / API keys',            days_offset: 0 },
       { title: 'Mailbox / drive transfer to manager', days_offset: 1 },
       { title: 'Remove from all access groups',     days_offset: 1 },
-      { title: 'HR exit interview — security topics', days_offset: 0 },
+      { title: 'HR exit interview - security topics', days_offset: 0 },
       { title: 'Final attestation of returned assets / NDA reminder', days_offset: 1 }
     ]
   },

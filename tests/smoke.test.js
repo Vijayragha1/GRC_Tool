@@ -9,7 +9,7 @@
 // What this catches: schema migrations don't crash on a clean DB, the
 // load-bearing GETs return 200, the wizard POST persists state + writes a
 // history snapshot, the SoA renders linked risks, the bulk-spawn route
-// derives priority. It does NOT cover auth, CSRF, or XSS — those require a
+// derives priority. It does NOT cover auth, CSRF, or XSS - those require a
 // real test framework with cookie + session handling.
 
 const fs = require('fs');
@@ -98,7 +98,7 @@ async function waitFor(predicate, timeoutMs = 8000, intervalMs = 150) {
 }
 
 async function startServer() {
-  // Copy a freshly-seeded DB from the live one — gives us an Acme workspace + iso_items.
+  // Copy a freshly-seeded DB from the live one - gives us an Acme workspace + iso_items.
   // db.js honours DB_PATH so the server writes its migrations to the tmp copy.
   const seedDb = path.join(ROOT, 'iso27001.db');
   if (fs.existsSync(seedDb)) fs.copyFileSync(seedDb, TMP_DB);
@@ -128,7 +128,7 @@ function stopServer() {
 
     // Discover the active workspace ID from the seeded DB so the test isn't
     // pinned to a specific id (which the user's live DB no longer matches).
-    // Pick the first workspace whose firm_id matches the lowest-id firm —
+    // Pick the first workspace whose firm_id matches the lowest-id firm -
     // that matches the server's getActiveFirmId fallback.
     const Database = require('better-sqlite3');
     const dbDiscover = new Database(TMP_DB, { readonly: true });

@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Continual improvement register</h1>
-    <div class="page-subtitle">Improvement actions driven by data (audit findings, MRM outputs, monitoring trends, lessons learned). Distinct from corrective actions on NCs — these are the "we noticed something we should be doing better" items required by clause 10.1.</div>
+    <div class="page-subtitle">Improvement actions driven by data (audit findings, MRM outputs, monitoring trends, lessons learned). Distinct from corrective actions on NCs - these are the "we noticed something we should be doing better" items required by clause 10.1.</div>
   </div>
   <div style="display:flex;gap:6px;">
     <a href="?filter=open" class="btn <%= filter === 'open' ? 'btn-primary' : 'btn-secondary' %> btn-xs">Open</a>
@@ -18,7 +18,7 @@
     <div>
       <label class="label">Source</label>
       <select class="select" name="source">
-        <option value="">—</option>
+        <option value="">-</option>
         <option value="audit">Audit finding</option>
         <option value="mrm">MRM output</option>
         <option value="monitoring">Monitoring data</option>
@@ -39,7 +39,7 @@
   </div>
   <% if (items.length === 0) { %>
     <div class="panel-pad meta" style="font-size:12.5px;">
-      No improvements logged yet. ISO 27001 clause 10.1 requires the ISMS to be continually improved — track every "we should do this better" item here so the register tells the story.
+      No improvements logged yet. ISO 27001 clause 10.1 requires the ISMS to be continually improved - track every "we should do this better" item here so the register tells the story.
     </div>
   <% } else { %>
     <table class="t">
@@ -63,7 +63,7 @@
               <td>
                 <select name="source" class="select" style="font-size:12px;">
                   <% ['','audit','mrm','monitoring','incident','ad-hoc'].forEach(s => { %>
-                    <option value="<%= s %>" <%= i.source === s ? 'selected' : '' %>><%= s || '—' %></option>
+                    <option value="<%= s %>" <%= i.source === s ? 'selected' : '' %>><%= s || '-' %></option>
                   <% }) %>
                 </select>
               </td>

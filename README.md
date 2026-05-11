@@ -1,6 +1,6 @@
 # ISO 27001 tool
 
-Self-hosted web app for running ISO 27001:2022 engagements. Built around the way I actually work — assess gaps, write up recommendations, hand off to the client, return to re-assess, produce the deliverables a certification audit asks for.
+Self-hosted web app for running ISO 27001:2022 engagements. Built around the way I actually work - assess gaps, write up recommendations, hand off to the client, return to re-assess, produce the deliverables a certification audit asks for.
 
 Stack: Node + SQLite + EJS. No cloud, no build step, single binary worth of moving parts.
 
@@ -28,7 +28,7 @@ kickoff workshop          ← /playbooks/kickoff (60-min facilitator script)
   → cert audit
 ```
 
-A "pass" is one round of consultant assessment. Pass 1 = initial gap. Pass 2+ = re-assessments. Saves are tagged to the active pass so you can diff any two passes and see what improved, regressed, or stayed the same per control. Notes are scoped per pass — write gap-finding text in Pass 1 and verification text in Pass 2 without overwriting either.
+A "pass" is one round of consultant assessment. Pass 1 = initial gap. Pass 2+ = re-assessments. Saves are tagged to the active pass so you can diff any two passes and see what improved, regressed, or stayed the same per control. Notes are scoped per pass - write gap-finding text in Pass 1 and verification text in Pass 2 without overwriting either.
 
 ## What's in it
 
@@ -36,13 +36,13 @@ A "pass" is one round of consultant assessment. Pass 1 = initial gap. Pass 2+ = 
 
 A senior consultant runs a kickoff from muscle memory. A junior reinvents it each time. The scaffolding bakes the senior's playbook into the tool so the junior can pick up an engagement on day one.
 
-- **Engagement intake** — 25-question scoping questionnaire across 6 sections (business context, scope, organisation, interested parties, crown jewels, existing posture). Each question tagged with the clause it feeds. Auto-drafts the clause 4.3 scope statement and seeds the interested-parties register from the answers in one click.
-- **12-week engagement plan** — pre-loaded roadmap (kickoff → Stage 2 readiness). Each phase has timed milestones with deliverables and clause tags. Click-to-toggle completion, per-phase progress bars.
-- **Three facilitator playbooks** at `/playbooks` — *Kickoff workshop* (60 min), *Scoping workshop* (90 min), *Risk-assessment workshop* (90 min). Each is timed, scripted, segment-by-segment, with prompts, decisions to leave with, and watch-outs. Print-friendly so you can run from paper if the meeting screen is shared.
+- **Engagement intake** - 25-question scoping questionnaire across 6 sections (business context, scope, organisation, interested parties, crown jewels, existing posture). Each question tagged with the clause it feeds. Auto-drafts the clause 4.3 scope statement and seeds the interested-parties register from the answers in one click.
+- **12-week engagement plan** - pre-loaded roadmap (kickoff → Stage 2 readiness). Each phase has timed milestones with deliverables and clause tags. Click-to-toggle completion, per-phase progress bars.
+- **Three facilitator playbooks** at `/playbooks` - *Kickoff workshop* (60 min), *Scoping workshop* (90 min), *Risk-assessment workshop* (90 min). Each is timed, scripted, segment-by-segment, with prompts, decisions to leave with, and watch-outs. Print-friendly so you can run from paper if the meeting screen is shared.
 
 ### Firm content library
 
-Lives at `/firm/library`. The firm's own curated content, separate from the shipped defaults, that gets cloned into each new engagement. Today: a **firm risk library** (search/filter by domain or sector, add/edit/delete, re-seed from starter set). New firms auto-get the 40-risk starter library copied in as a seed; the firm then customises (sector tweaks, internal additions) without touching code. The "+ Firm library" button on a workspace's risk register clones every entry in (idempotent — duplicates skipped). Stubs for policy templates and control narratives are visible on the hub.
+Lives at `/firm/library`. The firm's own curated content, separate from the shipped defaults, that gets cloned into each new engagement. Today: a **firm risk library** (search/filter by domain or sector, add/edit/delete, re-seed from starter set). New firms auto-get the 40-risk starter library copied in as a seed; the firm then customises (sector tweaks, internal additions) without touching code. The "+ Firm library" button on a workspace's risk register clones every entry in (idempotent - duplicates skipped). Stubs for policy templates and control narratives are visible on the hub.
 
 ### Gap assessment
 
@@ -54,7 +54,7 @@ All 93 Annex A controls. Inclusion / exclusion + justification. The risks treati
 
 ### Evidence library
 
-Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede — the old version stays in the audit trail. Bulk upload of multiple files with shared metadata. Per-link sub-clause references. Tags. Expiry tracking.
+Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - the old version stays in the audit trail. Bulk upload of multiple files with shared metadata. Per-link sub-clause references. Tags. Expiry tracking.
 
 ### Registers (clauses 4.2, 6.2)
 
@@ -66,17 +66,17 @@ Interested parties: party, type, needs, how addressed, owner, review cadence, ne
 |---|---|
 | Gap Assessment Report (DOCX) | Per-pass: exec summary, gaps identified, full results |
 | Recommendations memo (DOCX) | Ranked remediation list with consultant notes |
-| Risk Treatment Plan (DOCX) | Clause 6.1.3.e document — risks with treatment, owner, controls, actions |
+| Risk Treatment Plan (DOCX) | Clause 6.1.3.e document - risks with treatment, owner, controls, actions |
 | Stage 1 / 2 readiness pack (ZIP) | Single ZIP: SoA + RTP + audits + MRMs + parties + objectives + evidence manifest + every active evidence file |
 
 The readiness pack is the artefact you hand the certification body. The other three are for the client during the engagement.
 
 ### Portfolio & analytics
 
-- **Portfolio "this week"** on the dashboard — across all engagements in the active firm, every overdue item and every item due this week (tasks, NCs, audits, MRMs), with a per-client roll-up. The MSSP consultant's morning-standup view.
-- **Prioritized actions** at `/workspaces/:id/prioritized-actions` — score-driven sequencing using the actual Stage 1 readiness formula. Each fixable item (open NCs, not-implemented controls, missing mandatory docs, first MRM, first audit) gets a lift estimate ÷ effort tag. KPI band shows current readiness → top-5 fixed → top-10 fixed, with the cumulative running total per row.
-- **Executive brief** at `/workspaces/:id/exec-brief` — one-page, A4-printable health summary for the sponsor. Stage 1 / Stage 2 readiness, velocity (controls implemented in last 30d vs prior 30d), residual ALE estimate, top-5 risks, top-5 NCs. Print stylesheet hides chrome.
-- **Per-client branding** — workspace settings carry brand display name, primary color (#RRGGBB validated server-side), logo URL, and sector. The brand color renders as the sidebar accent rail per workspace; the dashboard Clients table shows brand dot + sector chip per row. Customising for a new client is now config in workspace settings, not a code edit.
+- **Portfolio "this week"** on the dashboard - across all engagements in the active firm, every overdue item and every item due this week (tasks, NCs, audits, MRMs), with a per-client roll-up. The MSSP consultant's morning-standup view.
+- **Prioritized actions** at `/workspaces/:id/prioritized-actions` - score-driven sequencing using the actual Stage 1 readiness formula. Each fixable item (open NCs, not-implemented controls, missing mandatory docs, first MRM, first audit) gets a lift estimate ÷ effort tag. KPI band shows current readiness → top-5 fixed → top-10 fixed, with the cumulative running total per row.
+- **Executive brief** at `/workspaces/:id/exec-brief` - one-page, A4-printable health summary for the sponsor. Stage 1 / Stage 2 readiness, velocity (controls implemented in last 30d vs prior 30d), residual ALE estimate, top-5 risks, top-5 NCs. Print stylesheet hides chrome.
+- **Per-client branding** - workspace settings carry brand display name, primary color (#RRGGBB validated server-side), logo URL, and sector. The brand color renders as the sidebar accent rail per workspace; the dashboard Clients table shows brand dot + sector chip per row. Customising for a new client is now config in workspace settings, not a code edit.
 
 ### Audit-grade content for every clause and control
 
@@ -88,15 +88,15 @@ Asset register · risk register with starter library of 40 ISO 27001 risks · ri
 
 ### Multitenancy + security
 
-Each tenant (firm) has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar shows up only when more than one firm exists; almost no consulting practice needs more than one. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`). CSRF protection on every state-changing request — token rotated per session, validated against body / X-CSRF-Token header / query string, auto-stamped into every form by client-side JS (including dynamic forms and multipart uploads).
+Each tenant (firm) has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar shows up only when more than one firm exists; almost no consulting practice needs more than one. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`). CSRF protection on every state-changing request - token rotated per session, validated against body / X-CSRF-Token header / query string, auto-stamped into every form by client-side JS (including dynamic forms and multipart uploads).
 
 ## Install
 
-You need Node.js 20 or newer and Git. `better-sqlite3` is a native module so the install step compiles C++ on first run — that needs the platform's build tools.
+You need Node.js 20 or newer and Git. `better-sqlite3` is a native module so the install step compiles C++ on first run - that needs the platform's build tools.
 
 ### Windows
 
-1. Install **Node.js LTS** from https://nodejs.org/. In the installer, **tick "Tools for Native Modules"** — it pulls in Python and Visual Studio Build Tools, which `better-sqlite3` needs. Reboot after.
+1. Install **Node.js LTS** from https://nodejs.org/. In the installer, **tick "Tools for Native Modules"** - it pulls in Python and Visual Studio Build Tools, which `better-sqlite3` needs. Reboot after.
 2. Install **Git for Windows** from https://git-scm.com/download/win.
 3. Open PowerShell or Git Bash and run:
 
@@ -109,7 +109,7 @@ npm start
 
 If `npm install` fails on `better-sqlite3`, the build tools didn't install. Either re-run the Node installer with "Tools for Native Modules" ticked, or install Visual Studio Build Tools directly from https://visualstudio.microsoft.com/visual-cpp-build-tools/ (pick the "Desktop development with C++" workload), then retry.
 
-Don't put the project inside OneDrive — SQLite + sync conflicts are bad. Use a short path like `C:\dev\GRC_Tool`.
+Don't put the project inside OneDrive - SQLite + sync conflicts are bad. Use a short path like `C:\dev\GRC_Tool`.
 
 ### macOS
 
@@ -188,7 +188,7 @@ $env:PORT=3001; npm start      # PowerShell
 | [data/risk-library.js](data/risk-library.js) | Starter risks |
 | [data/policy-templates*.js](data/) | Document templates |
 
-Edits go in the file. Restart the server — the content sync runs at boot.
+Edits go in the file. Restart the server - the content sync runs at boot.
 
 ## Backup
 
@@ -203,8 +203,8 @@ Online SQLite backup (no downtime), tar of `uploads/`, master.key, manifest. Sch
 
 ```bash
 npm test                # smoke + security + rbac
-npm run test:security   # node:test — CSRF, XSS, auth gating, rbac matrix
-npm run test:browser    # puppeteer crawler — every sidebar route, every button
+npm run test:security   # node:test - CSRF, XSS, auth gating, rbac matrix
+npm run test:browser    # puppeteer crawler - every sidebar route, every button
 ```
 
 - **Smoke** (21 assertions, bare-node): boots a fresh tmp DB, walks the wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering. Discovers workspace IDs at runtime + auto-stamps CSRF tokens, so it survives schema changes.
@@ -216,9 +216,9 @@ npm run test:browser    # puppeteer crawler — every sidebar route, every butto
 
 Deliberately out of scope. The tool is consultant-side; anything client-ops belongs in the client's own systems.
 
-- Training records — auditors look at the awareness programme and a sample of staff, not your LMS
-- Phishing-sim tracking — not part of any cert audit
-- Document acknowledgement campaigns — paper exercise
+- Training records - auditors look at the awareness programme and a sample of staff, not your LMS
+- Phishing-sim tracking - not part of any cert audit
+- Document acknowledgement campaigns - paper exercise
 - AI-assisted assessment / auto-classification
 - Real-time integrations with Microsoft 365 / Google Workspace / cloud providers
 - Multi-framework crosswalks (SOC 2 / NIST CSF / GDPR)
@@ -229,19 +229,19 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 - Real auth. Not blocking single-user local use; required for anything multi-user. CSRF is wired and tested; routes know how to enforce permissions but the auth gate is currently disabled.
 - Read-only client view so the client can see deliverables without editing consultant assessments.
 - Cloud evidence integrations (AWS Config / GCP Asset Inventory / Azure Resource Graph). Today every piece of evidence is hand-uploaded.
-- Continuous compliance flow — quarterly evidence re-attestation cadence with auto-spawned tasks.
+- Continuous compliance flow - quarterly evidence re-attestation cadence with auto-spawned tasks.
 - Industry overlay packs (pharma, fintech, legal, manufacturing). Pattern was prototyped and removed; concept is documented and trivial to restore.
 - More route extraction. `routes/tenants.js` and `routes/engagement.js` proved the pattern (`register(app, deps)`); the rest of `server.js` can follow incrementally.
 
 ## Stack
 
-Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired but disabled). Tests use node:test plus puppeteer-core (drives the system Chrome — no bundled Chromium download). No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav — sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
+Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired but disabled). Tests use node:test plus puppeteer-core (drives the system Chrome - no bundled Chromium download). No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
 
 ## Folder structure
 
 ```
 .
-├── server.js                       # Express app — most routes (extraction in progress)
+├── server.js                       # Express app - most routes (extraction in progress)
 ├── db.js                           # Schema, migrations, content sync, seeding
 ├── data/                           # Content + templates (edit here, syncs on boot)
 │   ├── iso-content.js              # Per-clause / control writeups (118 items)

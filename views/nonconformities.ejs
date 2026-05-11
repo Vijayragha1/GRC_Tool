@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Nonconformities & corrective actions</h1>
-    <div class="page-subtitle">Per Clause 10.2 — track NCs from audits, incidents, monitoring; root cause; corrective action; effectiveness check.</div>
+    <div class="page-subtitle">Per Clause 10.2 - track NCs from audits, incidents, monitoring; root cause; corrective action; effectiveness check.</div>
   </div>
   <div style="display:flex;gap:6px;">
     <select onchange="window.location='?filter='+this.value" class="select" style="width:120px">
@@ -49,7 +49,7 @@
           </td>
           <td style="color:var(--text-secondary);font-size:12px;"><%= n.source %></td>
           <td><span class="tag <%= n.severity === 'major' ? 'tag-danger' : n.severity === 'minor' ? 'tag-warn' : 'tag-neutral' %>"><%= n.severity %></span></td>
-          <td class="num meta"><%= n.due_date || '—' %></td>
+          <td class="num meta"><%= n.due_date || '-' %></td>
           <td><span class="status s-<%= n.status === 'verified' || n.status === 'closed' ? 'done' : n.status %>"><%= n.status %></span></td>
         </tr>
       <% }) %>

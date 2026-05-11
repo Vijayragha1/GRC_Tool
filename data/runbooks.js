@@ -10,7 +10,7 @@ module.exports = [
       { phase: 'contain',    title: 'Capture volatile evidence',             desc: 'Memory dump if feasible, suspicious processes, network connections.' },
       { phase: 'contain',    title: 'Preserve immutable backups',            desc: 'Verify last-known-good backup is offline / immutable. DO NOT power-cycle if possible.' },
       { phase: 'eradicate',  title: 'Identify entry vector',                 desc: 'Phishing email, exposed RDP, supply-chain, vulnerability exploit.' },
-      { phase: 'eradicate',  title: 'Reimage affected hosts',                desc: 'Do not decrypt — restore from clean backup after verifying backup integrity.' },
+      { phase: 'eradicate',  title: 'Reimage affected hosts',                desc: 'Do not decrypt - restore from clean backup after verifying backup integrity.' },
       { phase: 'eradicate',  title: 'Rotate all credentials in scope',       desc: 'Service accounts, admin creds, API keys, certs that may have been exposed.' },
       { phase: 'recover',    title: 'Restore from verified clean backup',    desc: 'Stage in isolated network first, then promote.' },
       { phase: 'recover',    title: 'Monitor for re-infection',              desc: 'Heightened EDR alerting for 30 days minimum.' },
@@ -20,7 +20,7 @@ module.exports = [
     ]
   },
   {
-    name: 'Phishing — credentials compromised',
+    name: 'Phishing - credentials compromised',
     category: 'phishing',
     trigger_severity: 'high',
     trigger_category: 'phishing',
@@ -35,7 +35,7 @@ module.exports = [
     ]
   },
   {
-    name: 'Data breach — confidentiality',
+    name: 'Data breach - confidentiality',
     category: 'breach',
     trigger_severity: 'high',
     trigger_category: 'data_breach',
@@ -43,7 +43,7 @@ module.exports = [
       { phase: 'detect',     title: 'Verify scope of data exposed',       desc: 'Categories, subjects affected, time window, attacker capability.' },
       { phase: 'contain',    title: 'Block exfil channel',                desc: 'Revoke API keys, close S3 bucket, restrict tokens, rotate certs.' },
       { phase: 'contain',    title: 'Preserve forensic evidence',         desc: 'Snapshot logs, capture file hashes, freeze affected accounts.' },
-      { phase: 'eradicate',  title: 'Patch root cause',                   desc: 'Misconfiguration / vuln / insider threat — correct before re-opening service.' },
+      { phase: 'eradicate',  title: 'Patch root cause',                   desc: 'Misconfiguration / vuln / insider threat - correct before re-opening service.' },
       { phase: 'communicate',title: 'GDPR Art. 33 supervisory notice',    desc: 'Within 72 hours of becoming aware. Document delay justification if missed.' },
       { phase: 'communicate',title: 'GDPR Art. 34 data-subject notice',   desc: 'Without undue delay if high risk to rights/freedoms.' },
       { phase: 'communicate',title: 'Customer notice + DPA partners',     desc: 'Per contractual obligations.' },
@@ -66,7 +66,7 @@ module.exports = [
     ]
   },
   {
-    name: 'Insider threat — suspected',
+    name: 'Insider threat - suspected',
     category: 'insider',
     trigger_severity: 'high',
     trigger_category: 'insider',

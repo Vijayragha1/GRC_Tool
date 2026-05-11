@@ -2,7 +2,7 @@
 
 <div class="page-head">
   <div><h1 class="page-title">Activity log</h1>
-    <div class="page-subtitle">Timeline — every action by the selected user on the selected day, in order.</div></div>
+    <div class="page-subtitle">Timeline - every action by the selected user on the selected day, in order.</div></div>
   <form method="GET" style="display:flex;gap:6px;">
     <select name="user_id" class="select"><% users.forEach(u => { %><option value="<%= u.id %>" <%= u.id === userId ? 'selected' : '' %>><%= u.name %></option><% }) %></select>
     <input class="input" type="date" name="day" value="<%= day %>">

@@ -30,7 +30,7 @@ const ENTRIES = [
     aliases: ['ISMS'],
     category: 'governance',
     plain: 'A structured way of managing how an organisation protects its information.',
-    definition: 'A documented framework of policies, procedures, processes, and controls used to systematically manage and continually improve information-security risks. The ISMS is what ISO 27001 certifies — not the company, not the product.',
+    definition: 'A documented framework of policies, procedures, processes, and controls used to systematically manage and continually improve information-security risks. The ISMS is what ISO 27001 certifies - not the company, not the product.',
     example: 'Acme HealthTech\'s ISMS covers their patient portal, dev pipeline, and HQ office. It includes an information-security policy, an annual risk assessment, a Statement of Applicability, an internal audit programme, and a documented management review.',
     related: ['scope', 'soa', 'risk-assessment', 'management-review', 'iso-27001'],
     notToConfuseWith: [
@@ -62,7 +62,7 @@ const ENTRIES = [
     example: 'When deciding how to implement A.5.15 Access Control, your team reads the corresponding ISO 27002 section for accepted practice.',
     related: ['annex-a', 'iso-27001'],
     notToConfuseWith: [
-      { term: 'ISO 27001', why: 'You certify against 27001. 27002 is supporting guidance — auditors don\'t mark you against 27002.' }
+      { term: 'ISO 27001', why: 'You certify against 27001. 27002 is supporting guidance - auditors don\'t mark you against 27002.' }
     ],
     clauseRef: null
   },
@@ -76,7 +76,7 @@ const ENTRIES = [
     example: 'A.8.24 Use of cryptography is one of the 93 Annex A controls. If you exclude it, you must justify why in the SoA.',
     related: ['soa', 'control', 'iso-27002'],
     notToConfuseWith: [
-      { term: 'Mandatory clauses (4–10)', why: 'Clauses 4–10 are absolute requirements. Annex A controls are reference — you must consider them, but you can exclude with justification.' }
+      { term: 'Mandatory clauses (4–10)', why: 'Clauses 4–10 are absolute requirements. Annex A controls are reference - you must consider them, but you can exclude with justification.' }
     ],
     clauseRef: 'Annex A'
   },
@@ -98,7 +98,7 @@ const ENTRIES = [
     aliases: ['InfoSec'],
     category: 'governance',
     plain: 'Protecting information from being read, changed, or lost without permission.',
-    definition: 'The preservation of confidentiality, integrity, and availability of information. Covers people, process, and technology — not just IT.',
+    definition: 'The preservation of confidentiality, integrity, and availability of information. Covers people, process, and technology - not just IT.',
     example: 'Locking a filing cabinet of HR records is information security, just as encrypting a database is.',
     related: ['cia-triad', 'confidentiality', 'integrity', 'availability'],
     notToConfuseWith: [
@@ -167,7 +167,7 @@ const ENTRIES = [
     term: 'Scope (of the ISMS)',
     aliases: ['ISMS scope', 'scope statement'],
     category: 'governance',
-    plain: 'The boundary of what your ISMS covers — what\'s in, what\'s out, why.',
+    plain: 'The boundary of what your ISMS covers - what\'s in, what\'s out, why.',
     definition: 'A documented statement defining the organisational, technological, geographic, and product/service boundaries of the ISMS. Required by clause 4.3. Must consider context (4.1) and interested parties (4.2). Must explicitly address interfaces with anything excluded.',
     example: '"The ISMS covers the SaaS HR-tech platform, the engineering organisation, and the London HQ. The Tokyo office and the consulting subsidiary are excluded; their interfaces are managed via the supplier register."',
     related: ['context', 'interested-parties', 'soa', 'isms'],
@@ -181,7 +181,7 @@ const ENTRIES = [
     term: 'Context of the Organization',
     aliases: ['organisational context', 'internal/external issues'],
     category: 'governance',
-    plain: 'The big-picture factors — what the org does, the market it operates in, regulations, threats.',
+    plain: 'The big-picture factors - what the org does, the market it operates in, regulations, threats.',
     definition: 'The internal and external issues relevant to the organisation\'s purpose that affect its ability to achieve the intended outcomes of the ISMS. Required by clause 4.1.',
     example: 'External issues: GDPR, NIS2, threat landscape, competitor breaches. Internal issues: rapid headcount growth, distributed engineering, legacy on-prem dependency.',
     related: ['scope', 'interested-parties'],
@@ -205,12 +205,12 @@ const ENTRIES = [
     term: 'Top Management',
     aliases: ['executive management', 'leadership'],
     category: 'governance',
-    plain: 'The people who can commit the organisation — usually C-suite or equivalent.',
+    plain: 'The people who can commit the organisation - usually C-suite or equivalent.',
     definition: 'The person or group who directs and controls the organisation at the highest level within the ISMS scope. They have specific obligations under clause 5: leadership, policy approval, resourcing, communication.',
     example: 'For an SME this might be the CEO and CFO. For a multinational it might be a regional executive committee for the in-scope entity.',
     related: ['leadership', 'information-security-policy', 'management-review'],
     notToConfuseWith: [
-      { term: 'CISO / Security team', why: 'The CISO leads security operationally. Top management owns the ISMS strategically — auditors will want evidence the CEO/board, not just the CISO, is committed.' }
+      { term: 'CISO / Security team', why: 'The CISO leads security operationally. Top management owns the ISMS strategically - auditors will want evidence the CEO/board, not just the CISO, is committed.' }
     ],
     clauseRef: 'Clause 5.1'
   },
@@ -220,7 +220,7 @@ const ENTRIES = [
     aliases: [],
     category: 'governance',
     plain: 'Visible, documented backing of the ISMS by top management.',
-    definition: 'The set of obligations clause 5.1 places on top management — ensuring the policy and objectives are established, integrating ISMS requirements into business processes, providing resources, communicating importance, and supporting continual improvement.',
+    definition: 'The set of obligations clause 5.1 places on top management - ensuring the policy and objectives are established, integrating ISMS requirements into business processes, providing resources, communicating importance, and supporting continual improvement.',
     example: 'Evidence: signed ISMS policy, board minutes referencing security, allocation of budget for the security function, CEO communications about security culture.',
     related: ['top-management', 'information-security-policy'],
     notToConfuseWith: [],
@@ -250,7 +250,7 @@ const ENTRIES = [
     example: '"All laptops issued by the company must have full-disk encryption enabled."',
     related: ['standard', 'procedure', 'guideline'],
     notToConfuseWith: [
-      { term: 'Procedure', why: 'A policy says "what" and "why". A procedure says "how" — the step-by-step.' }
+      { term: 'Procedure', why: 'A policy says "what" and "why". A procedure says "how" - the step-by-step.' }
     ],
     clauseRef: null
   },
@@ -315,7 +315,7 @@ const ENTRIES = [
     category: 'governance',
     plain: 'A grid showing who is Responsible, Accountable, Consulted, and Informed for each task.',
     definition: 'Responsibility-assignment matrix where each task has exactly one Accountable owner, one or more Responsible doers, plus people Consulted (two-way) and Informed (one-way).',
-    example: 'Quarterly access review — Accountable: CISO. Responsible: IT Operations. Consulted: HR, Engineering managers. Informed: Internal Audit.',
+    example: 'Quarterly access review - Accountable: CISO. Responsible: IT Operations. Consulted: HR, Engineering managers. Informed: Internal Audit.',
     related: ['roles-responsibilities'],
     notToConfuseWith: [],
     clauseRef: null
@@ -351,9 +351,9 @@ const ENTRIES = [
     term: 'Statement of Applicability',
     aliases: ['SoA'],
     category: 'governance',
-    plain: 'A list of all 93 Annex A controls saying which apply, why, and which are skipped — and why.',
+    plain: 'A list of all 93 Annex A controls saying which apply, why, and which are skipped - and why.',
     definition: 'A mandatory documented record of all Annex A controls, declaring inclusion or exclusion, the justification, the implementation status, and reference to risks treated. Required by clause 6.1.3.d.',
-    example: 'A.8.24 Use of cryptography — Included; justification: protects confidentiality of customer PII (treats risk R-12, R-15); status: Implemented.',
+    example: 'A.8.24 Use of cryptography - Included; justification: protects confidentiality of customer PII (treats risk R-12, R-15); status: Implemented.',
     related: ['annex-a', 'risk-treatment', 'inclusion-justification', 'exclusion-justification'],
     notToConfuseWith: [
       { term: 'Risk Treatment Plan', why: 'The SoA says "which controls apply". The RTP says "what we will do, by when, owned by whom". Different deliverables but linked.' }
@@ -370,7 +370,7 @@ const ENTRIES = [
     aliases: [],
     category: 'risk',
     plain: 'The chance that something bad happens to your information.',
-    definition: 'The effect of uncertainty on objectives — in security terms, the potential for a threat to exploit a vulnerability and cause harm to an asset, expressed as the combination of likelihood and impact.',
+    definition: 'The effect of uncertainty on objectives - in security terms, the potential for a threat to exploit a vulnerability and cause harm to an asset, expressed as the combination of likelihood and impact.',
     example: '"A phishing attack succeeds against the finance team and results in a fraudulent wire transfer." Likelihood: medium; Impact: high.',
     related: ['threat', 'vulnerability', 'asset', 'likelihood', 'impact'],
     notToConfuseWith: [
@@ -384,7 +384,7 @@ const ENTRIES = [
     term: 'Threat',
     aliases: [],
     category: 'risk',
-    plain: 'Anything that could cause harm — a hacker, a flood, a careless employee.',
+    plain: 'Anything that could cause harm - a hacker, a flood, a careless employee.',
     definition: 'The potential cause of an unwanted incident that may result in harm to a system or organisation. Threats can be natural, accidental, or deliberate.',
     example: 'Threat actors: ransomware groups, insiders, nation-states. Threat events: phishing, DDoS, fire, disk failure.',
     related: ['vulnerability', 'risk', 'threat-actor'],
@@ -492,7 +492,7 @@ const ENTRIES = [
     term: 'Risk Identification',
     aliases: [],
     category: 'risk',
-    plain: 'Finding risks — what could go wrong?',
+    plain: 'Finding risks - what could go wrong?',
     definition: 'The process of finding, recognising, and describing risks: identifying sources, events, causes, and potential consequences.',
     example: 'Workshop output: 47 candidate risks across "supplier failure", "phishing", "insider misuse", "DDoS", "cloud config drift", etc.',
     related: ['risk-assessment', 'risk-analysis'],
@@ -505,7 +505,7 @@ const ENTRIES = [
     aliases: [],
     category: 'risk',
     plain: 'Working out how likely a risk is and how bad it would be.',
-    definition: 'The process of comprehending the nature of risk and determining its level — typically by estimating likelihood and consequence (impact) and combining them into a risk score.',
+    definition: 'The process of comprehending the nature of risk and determining its level - typically by estimating likelihood and consequence (impact) and combining them into a risk score.',
     example: 'Ransomware risk: likelihood 3/5 (industry baseline), impact 5/5 (would halt revenue for days). Score 15.',
     related: ['likelihood', 'impact', 'risk-score'],
     notToConfuseWith: [
@@ -556,7 +556,7 @@ const ENTRIES = [
     category: 'risk',
     plain: 'The risk owner consciously decides to live with the risk.',
     definition: 'A risk-treatment option in which the organisation knowingly chooses to retain a risk because the cost of treatment exceeds the benefit, the risk is below appetite, or no practical treatment exists. Must be documented and approved by the risk owner.',
-    example: '"We accept the residual risk of a same-day zero-day for our reverse proxy because mitigation is impractical and impact is bounded." — approved by VP Engineering on 2026-04-12, review 2026-10-12.',
+    example: '"We accept the residual risk of a same-day zero-day for our reverse proxy because mitigation is impractical and impact is bounded." - approved by VP Engineering on 2026-04-12, review 2026-10-12.',
     related: ['risk-treatment', 'residual-risk', 'risk-appetite'],
     notToConfuseWith: [
       { term: 'Risk avoidance', why: 'Acceptance means you keep doing the activity and live with the risk. Avoidance means you stop the activity to remove the risk entirely.' }
@@ -596,7 +596,7 @@ const ENTRIES = [
     category: 'risk',
     plain: 'How risky something is before any controls.',
     definition: 'The level of risk that exists in the absence of any controls or mitigation.',
-    example: 'Inherent risk of "engineer accesses production database directly" — likelihood high, impact high.',
+    example: 'Inherent risk of "engineer accesses production database directly" - likelihood high, impact high.',
     related: ['residual-risk', 'risk-analysis'],
     notToConfuseWith: [
       { term: 'Residual risk', why: 'Inherent risk is before controls. Residual risk is what\'s left after controls.' }
@@ -610,7 +610,7 @@ const ENTRIES = [
     category: 'risk',
     plain: 'How risky something still is after applying your controls.',
     definition: 'The risk that remains after risk treatment. ISO 27001 requires the risk owner to approve residual risks (clause 6.1.3.f).',
-    example: 'After deploying MFA, audit logging, and PIM, residual risk of "engineer accesses production database directly" — likelihood low, impact medium.',
+    example: 'After deploying MFA, audit logging, and PIM, residual risk of "engineer accesses production database directly" - likelihood low, impact medium.',
     related: ['inherent-risk', 'risk-acceptance', 'risk-owner'],
     notToConfuseWith: [],
     clauseRef: 'Clause 6.1.3.f'
@@ -647,7 +647,7 @@ const ENTRIES = [
     aliases: [],
     category: 'risk',
     plain: 'The rules used to evaluate the significance of a risk.',
-    definition: 'The terms of reference against which the significance of a risk is evaluated — likelihood scales, impact scales, and acceptance thresholds. Required by clause 6.1.2.a.',
+    definition: 'The terms of reference against which the significance of a risk is evaluated - likelihood scales, impact scales, and acceptance thresholds. Required by clause 6.1.2.a.',
     example: 'Likelihood 1–5 (rare to almost certain), Impact 1–5 (negligible to catastrophic). Acceptance threshold: score ≤ 8.',
     related: ['risk-appetite', 'risk-tolerance', 'risk-methodology'],
     notToConfuseWith: [],
@@ -723,7 +723,7 @@ const ENTRIES = [
     aliases: ['risk-management methodology'],
     category: 'risk',
     plain: 'The documented method you use to assess risk consistently.',
-    definition: 'The documented approach the organisation uses to identify, analyse, evaluate, treat, monitor, and review risk — including criteria, scales, and roles. Required by clause 6.1.2.',
+    definition: 'The documented approach the organisation uses to identify, analyse, evaluate, treat, monitor, and review risk - including criteria, scales, and roles. Required by clause 6.1.2.',
     example: 'Method: workshop-based identification, qualitative likelihood/impact 1–5 scoring, treatment per ISO 27001 options, quarterly review.',
     related: ['risk-criteria', 'risk-assessment'],
     notToConfuseWith: [],
@@ -738,9 +738,9 @@ const ENTRIES = [
     term: 'Control',
     aliases: ['safeguard', 'countermeasure'],
     category: 'controls',
-    plain: 'Something you do to manage a risk — a policy, process, or technical measure.',
+    plain: 'Something you do to manage a risk - a policy, process, or technical measure.',
     definition: 'A measure that modifies risk. Includes any process, policy, device, practice, or other action that maintains or modifies risk. May be administrative (policies), physical (locks), or technical (firewalls, encryption).',
-    example: 'Annex A 8.5 (Secure Authentication) — implemented as MFA on all SSO logins.',
+    example: 'Annex A 8.5 (Secure Authentication) - implemented as MFA on all SSO logins.',
     related: ['preventive-control', 'detective-control', 'corrective-control', 'annex-a'],
     notToConfuseWith: [],
     clauseRef: null
@@ -814,7 +814,7 @@ const ENTRIES = [
     category: 'controls',
     plain: 'Whether a specific Annex A control applies to your organisation.',
     definition: 'A determination, recorded in the SoA, of whether each Annex A control is included or excluded from the ISMS, with documented justification for each decision.',
-    example: 'A.7.10 (Storage media) — Included; we issue laptops with USB-encrypted storage. A.5.13 (Labelling) — Excluded; we do not handle classified third-party material.',
+    example: 'A.7.10 (Storage media) - Included; we issue laptops with USB-encrypted storage. A.5.13 (Labelling) - Excluded; we do not handle classified third-party material.',
     related: ['soa', 'inclusion-justification', 'exclusion-justification'],
     notToConfuseWith: [],
     clauseRef: 'Clause 6.1.3.d'
@@ -824,9 +824,9 @@ const ENTRIES = [
     term: 'Inclusion Justification',
     aliases: [],
     category: 'controls',
-    plain: 'Why an Annex A control is included in your SoA — usually a risk it treats.',
-    definition: 'The documented reason a control is applicable to the ISMS. Per ISO 27001 6.1.3.d.1, every included control must be justified — typically by reference to the risk(s) it treats or the legal/contractual requirement it satisfies.',
-    example: '"A.5.7 Threat intelligence — included; treats risks R-08 (phishing) and R-15 (zero-day exposure)."',
+    plain: 'Why an Annex A control is included in your SoA - usually a risk it treats.',
+    definition: 'The documented reason a control is applicable to the ISMS. Per ISO 27001 6.1.3.d.1, every included control must be justified - typically by reference to the risk(s) it treats or the legal/contractual requirement it satisfies.',
+    example: '"A.5.7 Threat intelligence - included; treats risks R-08 (phishing) and R-15 (zero-day exposure)."',
     related: ['soa', 'applicability', 'exclusion-justification'],
     notToConfuseWith: [
       { term: 'Exclusion justification', why: 'Inclusion = why this control applies. Exclusion = why this control doesn\'t. Both must be in the SoA.' }
@@ -839,8 +839,8 @@ const ENTRIES = [
     aliases: [],
     category: 'controls',
     plain: 'Why an Annex A control is excluded from your SoA.',
-    definition: 'The documented reason a control is not applicable to the ISMS — typically because the activity it addresses isn\'t performed, or no relevant risk exists in scope.',
-    example: '"A.7.11 Supporting utilities — excluded; we operate fully in cloud, with no organisation-controlled facilities to which utilities are supplied."',
+    definition: 'The documented reason a control is not applicable to the ISMS - typically because the activity it addresses isn\'t performed, or no relevant risk exists in scope.',
+    example: '"A.7.11 Supporting utilities - excluded; we operate fully in cloud, with no organisation-controlled facilities to which utilities are supplied."',
     related: ['soa', 'inclusion-justification'],
     notToConfuseWith: [
       { term: 'Risk acceptance', why: 'Excluding a control means it doesn\'t apply at all. Accepting risk means the activity exists but you\'re consciously not treating the risk further.' }
@@ -853,8 +853,8 @@ const ENTRIES = [
     aliases: [],
     category: 'controls',
     plain: 'Whether a control actually does what it\'s meant to.',
-    definition: 'The extent to which a control achieves its intended outcome. Different from "is it implemented?" — a control may be live but ineffective.',
-    example: 'MFA is implemented (status: yes). Effectiveness: 95% of admin sessions used MFA last quarter; 5% bypassed it via legacy SSH key — partial effectiveness.',
+    definition: 'The extent to which a control achieves its intended outcome. Different from "is it implemented?" - a control may be live but ineffective.',
+    example: 'MFA is implemented (status: yes). Effectiveness: 95% of admin sessions used MFA last quarter; 5% bypassed it via legacy SSH key - partial effectiveness.',
     related: ['control', 'measurement', 'kpi'],
     notToConfuseWith: [],
     clauseRef: null
@@ -866,7 +866,7 @@ const ENTRIES = [
     category: 'controls',
     plain: 'How well-developed and consistent a control is.',
     definition: 'A measure of how reliably and repeatably a control operates. Common scale: ad-hoc → repeatable → defined → managed → optimised.',
-    example: 'Patch management at "defined" — documented procedure followed by ops, monthly metrics, but not yet quantitatively managed against SLAs.',
+    example: 'Patch management at "defined" - documented procedure followed by ops, monthly metrics, but not yet quantitatively managed against SLAs.',
     related: ['control', 'control-effectiveness'],
     notToConfuseWith: [],
     clauseRef: null
@@ -945,7 +945,7 @@ const ENTRIES = [
     aliases: [],
     category: 'documents',
     plain: 'The person responsible for keeping a document accurate and up-to-date.',
-    definition: 'The named role accountable for maintaining a document — drafting, reviewing on schedule, recording changes, and triggering approval.',
+    definition: 'The named role accountable for maintaining a document - drafting, reviewing on schedule, recording changes, and triggering approval.',
     example: 'Document owner of the Access Control Policy: Head of IT. Approver: CISO.',
     related: ['document-control', 'roles-responsibilities'],
     notToConfuseWith: [
@@ -958,7 +958,7 @@ const ENTRIES = [
     term: 'Evidence',
     aliases: [],
     category: 'documents',
-    plain: 'Proof that something happened — used by auditors.',
+    plain: 'Proof that something happened - used by auditors.',
     definition: 'Records, statements of fact, or other information that is relevant to audit criteria and verifiable. The artefact an auditor asks for to confirm a control operates.',
     example: 'Evidence for "MFA is enforced": the Okta admin export showing MFA enrollment percentage, dated and screenshotted on audit day.',
     related: ['record', 'audit-evidence'],
@@ -988,7 +988,7 @@ const ENTRIES = [
     category: 'audit',
     plain: 'A systematic check that something complies with stated requirements.',
     definition: 'A systematic, independent, and documented process for obtaining audit evidence and evaluating it objectively against audit criteria.',
-    example: 'Internal audit of the Access Control process — sample of 25 leavers checked against the documented procedure.',
+    example: 'Internal audit of the Access Control process - sample of 25 leavers checked against the documented procedure.',
     related: ['internal-audit', 'external-audit', 'audit-evidence', 'audit-criteria'],
     notToConfuseWith: [
       { term: 'Inspection / review', why: 'Audits are systematic, independent, and produce a report against criteria. Reviews and inspections may be informal.' }
@@ -1015,7 +1015,7 @@ const ENTRIES = [
     aliases: ['third-party audit'],
     category: 'audit',
     plain: 'An auditor from outside the organisation checks the ISMS.',
-    definition: 'An audit conducted by an independent external party — typically the certification body (Stage 1, Stage 2, surveillance, recertification) or a customer\'s representative.',
+    definition: 'An audit conducted by an independent external party - typically the certification body (Stage 1, Stage 2, surveillance, recertification) or a customer\'s representative.',
     example: 'BSI conducts the Stage 2 certification audit, sampling 30 controls and 4 processes over 5 days.',
     related: ['certification-body', 'stage-1', 'stage-2', 'surveillance-audit'],
     notToConfuseWith: [
@@ -1053,7 +1053,7 @@ const ENTRIES = [
     aliases: [],
     category: 'audit',
     plain: 'The senior auditor in charge of the audit.',
-    definition: 'The auditor with overall responsibility for an audit — planning, conducting, reporting, and follow-up. For ISO 27001 certification, the lead auditor must hold an accredited qualification.',
+    definition: 'The auditor with overall responsibility for an audit - planning, conducting, reporting, and follow-up. For ISO 27001 certification, the lead auditor must hold an accredited qualification.',
     example: 'The certification body assigns a Lead Auditor (CB-qualified) and one supporting auditor to your Stage 2.',
     related: ['auditor', 'audit-programme'],
     notToConfuseWith: [],
@@ -1065,7 +1065,7 @@ const ENTRIES = [
     aliases: ['audit plan (annual)'],
     category: 'audit',
     plain: 'The schedule of audits across the year.',
-    definition: 'A set of audits planned for a defined timeframe, directed toward a specific purpose. Required by clause 9.2.2 — must consider importance of processes and prior audit results.',
+    definition: 'A set of audits planned for a defined timeframe, directed toward a specific purpose. Required by clause 9.2.2 - must consider importance of processes and prior audit results.',
     example: 'Annual programme: Q1 Risk Management, Q2 Access Control, Q3 Operations, Q4 Suppliers. Plus ad-hoc audits triggered by incidents.',
     related: ['internal-audit', 'audit-plan'],
     notToConfuseWith: [
@@ -1078,7 +1078,7 @@ const ENTRIES = [
     term: 'Audit Plan',
     aliases: [],
     category: 'audit',
-    plain: 'The document for a single audit — scope, criteria, schedule, team.',
+    plain: 'The document for a single audit - scope, criteria, schedule, team.',
     definition: 'A document that describes the activities and arrangements for an individual audit: objectives, scope, criteria, audit team, sites, schedule.',
     example: 'Q2 Access Control Audit Plan: scope = joiner/mover/leaver process across all in-scope systems; criteria = ISO 27001 A.5.15–A.5.18, internal procedures; lead auditor: J. Smith; dates: 5–6 May.',
     related: ['audit-programme', 'audit-scope', 'audit-criteria'],
@@ -1091,7 +1091,7 @@ const ENTRIES = [
     aliases: [],
     category: 'audit',
     plain: 'What\'s in and out of a particular audit.',
-    definition: 'The extent and boundaries of an audit — sites, organisational units, activities, and processes covered, and the period.',
+    definition: 'The extent and boundaries of an audit - sites, organisational units, activities, and processes covered, and the period.',
     example: 'Scope: the access-control process for production systems in the EMEA region, calendar year 2026.',
     related: ['audit-plan', 'audit-criteria'],
     notToConfuseWith: [
@@ -1153,7 +1153,7 @@ const ENTRIES = [
     aliases: ['compliance'],
     category: 'audit',
     plain: 'Meeting the requirements.',
-    definition: 'Fulfilment of a requirement — the audited activity matches the criteria.',
+    definition: 'Fulfilment of a requirement - the audited activity matches the criteria.',
     example: 'All 25 sampled access reviews were completed on time and signed off by the appropriate manager.',
     related: ['nonconformity', 'finding'],
     notToConfuseWith: [],
@@ -1165,8 +1165,8 @@ const ENTRIES = [
     aliases: ['NC', 'nonconformance'],
     category: 'audit',
     plain: 'A failure to meet a requirement.',
-    definition: 'A deviation from a requirement — a control, procedure, policy, or standard isn\'t being followed or doesn\'t exist where it should.',
-    example: '"The Access Control Policy mandates quarterly access reviews; only 2 of the last 4 quarters have evidence of completion." — NC against A.5.18.',
+    definition: 'A deviation from a requirement - a control, procedure, policy, or standard isn\'t being followed or doesn\'t exist where it should.',
+    example: '"The Access Control Policy mandates quarterly access reviews; only 2 of the last 4 quarters have evidence of completion." - NC against A.5.18.',
     related: ['major-nc', 'minor-nc', 'corrective-action', 'finding'],
     notToConfuseWith: [
       { term: 'Observation', why: 'A nonconformity is a failure against a requirement. An observation is something noticed but not a failure (often suggesting improvement).' }
@@ -1179,7 +1179,7 @@ const ENTRIES = [
     aliases: ['major NC'],
     category: 'audit',
     plain: 'A serious failure that puts certification at risk.',
-    definition: 'A nonconformity that affects the capability of the ISMS to achieve its intended results — typically the absence or total breakdown of a required element. Will block or jeopardise certification.',
+    definition: 'A nonconformity that affects the capability of the ISMS to achieve its intended results - typically the absence or total breakdown of a required element. Will block or jeopardise certification.',
     example: '"No documented risk assessment process exists, and no risk register has been produced in the past 12 months."',
     related: ['nonconformity', 'minor-nc'],
     notToConfuseWith: [
@@ -1194,7 +1194,7 @@ const ENTRIES = [
     category: 'audit',
     plain: 'An isolated, small failure.',
     definition: 'An isolated lapse in implementation that does not affect the overall capability of the ISMS. Requires corrective action but does not block certification.',
-    example: '"Access review for Q1 missed the 30-day completion target by 4 days." — minor NC.',
+    example: '"Access review for Q1 missed the 30-day completion target by 4 days." - minor NC.',
     related: ['nonconformity', 'major-nc'],
     notToConfuseWith: [],
     clauseRef: null
@@ -1204,9 +1204,9 @@ const ENTRIES = [
     term: 'Observation',
     aliases: ['OFI', 'opportunity for improvement'],
     category: 'audit',
-    plain: 'A "could-be-better" comment from an auditor — not a failure.',
+    plain: 'A "could-be-better" comment from an auditor - not a failure.',
     definition: 'A finding that does not constitute a nonconformity but identifies a potential weakness or improvement opportunity.',
-    example: '"The risk register format is sound but would benefit from explicit mapping to Annex A controls for SoA traceability." — observation.',
+    example: '"The risk register format is sound but would benefit from explicit mapping to Annex A controls for SoA traceability." - observation.',
     related: ['finding', 'nonconformity'],
     notToConfuseWith: [
       { term: 'Nonconformity', why: 'An observation is advisory. A nonconformity is a finding you must address.' }
@@ -1288,7 +1288,7 @@ const ENTRIES = [
     category: 'improvement',
     plain: 'Working out why something really went wrong, not just the surface symptom.',
     definition: 'A structured method for identifying the underlying cause(s) of a problem so corrective action addresses the source, not the symptom. Common techniques: 5 Whys, Fishbone, Fault Tree.',
-    example: '5 Whys for late access reviews: Why late? — Reviewer forgot. Why? — No reminder. Why? — No calendar entry. Why? — Process not automated. Why? — Initially manual; volume grew.',
+    example: '5 Whys for late access reviews: Why late? - Reviewer forgot. Why? - No reminder. Why? - No calendar entry. Why? - Process not automated. Why? - Initially manual; volume grew.',
     related: ['corrective-action', 'five-whys'],
     notToConfuseWith: [],
     clauseRef: null
@@ -1367,7 +1367,7 @@ const ENTRIES = [
     aliases: [],
     category: 'people',
     plain: 'Telling the right people the right things about security at the right time.',
-    definition: 'The clause-7.4 requirement that the organisation determine what, when, with whom, how, and by whom it communicates about the ISMS — internal and external.',
+    definition: 'The clause-7.4 requirement that the organisation determine what, when, with whom, how, and by whom it communicates about the ISMS - internal and external.',
     example: 'Internal: monthly security newsletter; incident notifications to affected teams. External: customer breach-notification process; regulator engagement runbook.',
     related: ['awareness', 'incident-response'],
     notToConfuseWith: [],
@@ -1432,7 +1432,7 @@ const ENTRIES = [
     term: 'Data Breach',
     aliases: ['personal data breach'],
     category: 'operations',
-    plain: 'A confirmed unauthorised disclosure, loss, or access to data — often legally defined.',
+    plain: 'A confirmed unauthorised disclosure, loss, or access to data - often legally defined.',
     definition: 'Under GDPR, a breach of security leading to the accidental or unlawful destruction, loss, alteration, unauthorised disclosure of, or access to, personal data. Triggers regulator and data-subject notification obligations.',
     example: 'A misconfigured S3 bucket exposes 50,000 customer records publicly for 6 hours.',
     related: ['incident', 'gdpr', 'personal-data'],
@@ -1451,7 +1451,7 @@ const ENTRIES = [
     example: 'IR runbook for ransomware: isolate affected hosts, preserve evidence, notify CISO and Legal, restore from immutable backups, post-incident review within 14 days.',
     related: ['incident', 'corrective-action', 'business-continuity'],
     notToConfuseWith: [
-      { term: 'Disaster recovery', why: 'IR handles security incidents (often malicious). DR handles restoring service after major disruption (often non-malicious — outage, hardware failure).' }
+      { term: 'Disaster recovery', why: 'IR handles security incidents (often malicious). DR handles restoring service after major disruption (often non-malicious - outage, hardware failure).' }
     ],
     clauseRef: 'A.5.24–A.5.28'
   },
@@ -1643,7 +1643,7 @@ const ENTRIES = [
     aliases: ['supplier risk', 'TPRM'],
     category: 'operations',
     plain: 'The risk that a supplier\'s failure causes harm to your organisation.',
-    definition: 'Risk arising from reliance on external parties — including their security posture, viability, compliance, and concentration. Managed via due diligence, contracts, monitoring, and exit strategies.',
+    definition: 'Risk arising from reliance on external parties - including their security posture, viability, compliance, and concentration. Managed via due diligence, contracts, monitoring, and exit strategies.',
     example: 'Concentration risk: a single cloud provider hosts 90% of services. Mitigation: documented exit plan, multi-region, contractual SLAs.',
     related: ['vendor', 'sla', 'dpa', 'risk'],
     notToConfuseWith: [],
@@ -1654,12 +1654,12 @@ const ENTRIES = [
     term: 'Service Level Agreement',
     aliases: ['SLA'],
     category: 'operations',
-    plain: 'A contract clause defining service levels — uptime, response times, etc.',
+    plain: 'A contract clause defining service levels - uptime, response times, etc.',
     definition: 'A formally documented agreement between provider and customer specifying measurable service levels (availability, performance, response, resolution) and consequences for breach.',
     example: '99.9% monthly uptime; P1 incidents acknowledged within 15 minutes; service credits below threshold.',
     related: ['vendor', 'third-party-risk'],
     notToConfuseWith: [
-      { term: 'OLA (Operational Level Agreement)', why: 'SLAs are between an organisation and its supplier. OLAs are internal — between teams within the same organisation.' }
+      { term: 'OLA (Operational Level Agreement)', why: 'SLAs are between an organisation and its supplier. OLAs are internal - between teams within the same organisation.' }
     ],
     clauseRef: null
   },
@@ -1703,7 +1703,7 @@ const ENTRIES = [
     example: 'AES-256 for symmetric encryption; RSA / ECDSA for digital signatures; SHA-256 for hashing.',
     related: ['encryption-at-rest', 'encryption-in-transit', 'hashing', 'key-management'],
     notToConfuseWith: [
-      { term: 'Encoding (e.g., Base64)', why: 'Encoding transforms data for transmission/storage but isn\'t secret — anyone can reverse it. Encryption is secret-keyed.' }
+      { term: 'Encoding (e.g., Base64)', why: 'Encoding transforms data for transmission/storage but isn\'t secret - anyone can reverse it. Encryption is secret-keyed.' }
     ],
     clauseRef: 'A.8.24'
   },
@@ -1737,7 +1737,7 @@ const ENTRIES = [
     aliases: ['KMS'],
     category: 'technical',
     plain: 'Generating, storing, rotating, and destroying cryptographic keys safely.',
-    definition: 'The lifecycle handling of cryptographic keys — generation, distribution, storage, rotation, revocation, destruction. Annex A 8.24 mandates documented practice.',
+    definition: 'The lifecycle handling of cryptographic keys - generation, distribution, storage, rotation, revocation, destruction. Annex A 8.24 mandates documented practice.',
     example: 'Managed KMS (AWS KMS, GCP KMS) with separation of duties on key administration; annual rotation; audit logging on all key uses.',
     related: ['cryptography', 'encryption-at-rest', 'segregation-of-duties'],
     notToConfuseWith: [],
@@ -1748,12 +1748,12 @@ const ENTRIES = [
     term: 'Hashing',
     aliases: [],
     category: 'technical',
-    plain: 'A one-way mathematical function — turns input into a fixed-size fingerprint.',
+    plain: 'A one-way mathematical function - turns input into a fixed-size fingerprint.',
     definition: 'A cryptographic function that maps data of arbitrary size to a fixed-size output, where it is computationally infeasible to derive the input or find collisions.',
     example: 'SHA-256(\'password\') always produces the same 256-bit hash. Used for storing password verifiers (with salt and KDF), checksums, and integrity verification.',
     related: ['cryptography', 'integrity'],
     notToConfuseWith: [
-      { term: 'Encryption', why: 'Encryption is reversible (with the key). Hashing is one-way — there\'s no decryption.' }
+      { term: 'Encryption', why: 'Encryption is reversible (with the key). Hashing is one-way - there\'s no decryption.' }
     ],
     clauseRef: null
   },
@@ -1788,7 +1788,7 @@ const ENTRIES = [
     term: 'Multi-Factor Authentication',
     aliases: ['MFA', '2FA', 'two-factor'],
     category: 'technical',
-    plain: 'Logging in with more than one type of proof — e.g., password plus phone code.',
+    plain: 'Logging in with more than one type of proof - e.g., password plus phone code.',
     definition: 'Authentication using two or more factors from different categories (something you know, something you have, something you are).',
     example: 'Password + TOTP code from authenticator app. Or password + hardware security key.',
     related: ['authentication', 'access-control'],
@@ -1854,8 +1854,8 @@ const ENTRIES = [
     term: 'Privileged Access',
     aliases: ['PAM'],
     category: 'technical',
-    plain: 'High-power accounts (admin, root) — the keys-to-the-kingdom kind.',
-    definition: 'Access rights beyond those of a standard user, usually with administrative or system-level capability. Requires extra controls — separate credentials, MFA, session monitoring, just-in-time grant, recording.',
+    plain: 'High-power accounts (admin, root) - the keys-to-the-kingdom kind.',
+    definition: 'Access rights beyond those of a standard user, usually with administrative or system-level capability. Requires extra controls - separate credentials, MFA, session monitoring, just-in-time grant, recording.',
     example: 'Production root SSH is brokered through a PAM tool requiring approved request, MFA, session recording.',
     related: ['least-privilege', 'access-control', 'mfa'],
     notToConfuseWith: [],
@@ -1911,7 +1911,7 @@ const ENTRIES = [
     example: 'Daily database snapshots retained 30 days, plus weekly off-region immutable copies retained 1 year. Restore tested quarterly.',
     related: ['rpo', 'business-continuity', 'disaster-recovery'],
     notToConfuseWith: [
-      { term: 'Replication', why: 'Replication keeps a real-time copy for availability. Backups are point-in-time copies for recovery from corruption / deletion. Replication alone is not a backup — corruption replicates.' }
+      { term: 'Replication', why: 'Replication keeps a real-time copy for availability. Backups are point-in-time copies for recovery from corruption / deletion. Replication alone is not a backup - corruption replicates.' }
     ],
     clauseRef: 'A.8.13'
   },
@@ -1983,7 +1983,7 @@ const ENTRIES = [
     aliases: ['DLP'],
     category: 'technical',
     plain: 'Tools that stop sensitive data from leaving the organisation.',
-    definition: 'Technologies and processes that detect and prevent unauthorised transmission, sharing, or storage of sensitive data — at rest, in motion, or in use.',
+    definition: 'Technologies and processes that detect and prevent unauthorised transmission, sharing, or storage of sensitive data - at rest, in motion, or in use.',
     example: 'Email DLP blocks outgoing messages with credit-card patterns. Endpoint DLP blocks copy of classified files to USB.',
     related: ['data-classification', 'access-control'],
     notToConfuseWith: [],
@@ -2051,11 +2051,11 @@ const ENTRIES = [
     aliases: ['PII', 'personal information'],
     category: 'compliance',
     plain: 'Information that can identify a person.',
-    definition: 'Any information relating to an identified or identifiable natural person. Names, emails, IP addresses, device IDs, health data — all can be personal data depending on context.',
+    definition: 'Any information relating to an identified or identifiable natural person. Names, emails, IP addresses, device IDs, health data - all can be personal data depending on context.',
     example: 'Customer email + order history is personal data. Aggregate "5,000 customers from London bought X" usually is not.',
     related: ['gdpr', 'data-subject', 'data-classification'],
     notToConfuseWith: [
-      { term: 'PII (US sense)', why: 'In US contexts PII is often narrower (Social Security number, etc.). GDPR\'s "personal data" is much broader — including any identifier like an IP address.' }
+      { term: 'PII (US sense)', why: 'In US contexts PII is often narrower (Social Security number, etc.). GDPR\'s "personal data" is much broader - including any identifier like an IP address.' }
     ],
     clauseRef: null
   },
@@ -2107,7 +2107,7 @@ const ENTRIES = [
     example: 'A US SaaS company gets a SOC 2 Type II covering security and availability, audited annually, shared with prospects under NDA.',
     related: ['iso-27001'],
     notToConfuseWith: [
-      { term: 'ISO 27001', why: '27001 is a global standard with certification. SOC 2 is a US-originating attestation report. Many companies do both — they overlap heavily on security controls.' }
+      { term: 'ISO 27001', why: '27001 is a global standard with certification. SOC 2 is a US-originating attestation report. Many companies do both - they overlap heavily on security controls.' }
     ],
     clauseRef: null
   },
@@ -2132,7 +2132,7 @@ const ENTRIES = [
     category: 'compliance',
     plain: 'The card-payment industry security standard.',
     definition: 'The Payment Card Industry Data Security Standard, mandated by the major card brands for any organisation that stores, processes, or transmits cardholder data.',
-    example: 'A merchant accepting cards must comply with PCI DSS — quarterly scans, annual assessment, reduced scope where possible by tokenisation.',
+    example: 'A merchant accepting cards must comply with PCI DSS - quarterly scans, annual assessment, reduced scope where possible by tokenisation.',
     related: ['iso-27001'],
     notToConfuseWith: [],
     clauseRef: null
@@ -2158,7 +2158,7 @@ const ENTRIES = [
     term: 'Stage 1 Audit',
     aliases: ['stage 1'],
     category: 'certification',
-    plain: 'The first part of a certification audit — a documentation and readiness review.',
+    plain: 'The first part of a certification audit - a documentation and readiness review.',
     definition: 'The first stage of an ISO 27001 certification audit, conducted by the certification body. Reviews ISMS documentation, scope, and overall readiness; identifies gaps that would block Stage 2.',
     example: 'Stage 1 (1–2 days): auditor reviews policies, SoA, risk register, internal audit reports, MRM minutes. Issues findings to address before Stage 2.',
     related: ['stage-2', 'certification-body', 'external-audit'],
@@ -2172,7 +2172,7 @@ const ENTRIES = [
     term: 'Stage 2 Audit',
     aliases: ['stage 2'],
     category: 'certification',
-    plain: 'The full certification audit — auditors check that the ISMS actually operates.',
+    plain: 'The full certification audit - auditors check that the ISMS actually operates.',
     definition: 'The second stage of an ISO 27001 certification audit. Operational evaluation of whether the ISMS is implemented and effective, through interviews, observation, and sampling. Outcome: certification recommendation.',
     example: 'Stage 2 (3–5 days for SME): auditor samples access reviews, interviews engineers and managers, observes incident-response capability, walks the office.',
     related: ['stage-1', 'certification-body', 'external-audit'],

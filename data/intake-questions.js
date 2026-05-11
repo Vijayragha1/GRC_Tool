@@ -1,7 +1,7 @@
 // Client intake / scoping questionnaire. The 25-question structure mirrors
 // what Schellman, Tego, and the Advisera intake templates ask before Stage 1.
 // Auditors expect the answers in clause 4.3 (scope), 4.1 (context), and 4.2
-// (interested parties) — which is why each question is tagged with the clause
+// (interested parties) - which is why each question is tagged with the clause
 // it feeds.
 //
 // Sections are ordered the way you'd run a kickoff workshop: business
@@ -16,7 +16,7 @@ const SECTIONS = [
     blurb: 'Who you are, what you do, why ISO 27001 matters now. Anchors clauses 4.1 and 4.2.',
     questions: [
       { id: 'org-name', text: 'Legal entity name (the certificate will read this exactly)', clause: '4.3', type: 'text', required: true },
-      { id: 'trading-name', text: 'Trading or product name(s) — different from legal entity?', clause: '4.3', type: 'text' },
+      { id: 'trading-name', text: 'Trading or product name(s) - different from legal entity?', clause: '4.3', type: 'text' },
       { id: 'business-summary', text: 'In two sentences, what does your organisation do?', clause: '4.1', type: 'textarea', required: true },
       { id: 'cert-driver', text: 'What\'s driving certification? (customer contract, tender, regulator, internal mandate)', clause: '4.1', type: 'textarea', required: true,
         hint: 'Auditors ask this to gauge management commitment. "A customer required it by Q4" is a real answer.' },
@@ -31,7 +31,7 @@ const SECTIONS = [
       { id: 'products-in-scope', text: 'Which products / services are in scope?', clause: '4.3', type: 'textarea', required: true,
         hint: 'List by product name. Auditors will trace evidence back to these.' },
       { id: 'products-excluded', text: 'Anything explicitly NOT in scope (and why)?', clause: '4.3', type: 'textarea',
-        hint: 'Exclusions need justification — "internal HR systems, no customer data" is fine, "we just don\'t want to" is not.' },
+        hint: 'Exclusions need justification - "internal HR systems, no customer data" is fine, "we just don\'t want to" is not.' },
       { id: 'physical-locations', text: 'Physical locations in scope (offices, data centres, manufacturing)', clause: '4.3', type: 'textarea',
         hint: 'Include addresses if known.' },
       { id: 'remote-workers', text: 'How many employees work remotely / hybrid?', clause: '4.3', type: 'text',
@@ -39,7 +39,7 @@ const SECTIONS = [
       { id: 'cloud-providers', text: 'Cloud providers and services in scope (AWS, Azure, GCP, M365, Google Workspace, etc.)', clause: '4.3', type: 'textarea', required: true },
       { id: 'data-types', text: 'What types of data are processed? (PII, PCI, PHI, IP, internal, public)', clause: '4.3', type: 'textarea', required: true },
       { id: 'customer-geography', text: 'Where are your customers based? (UK, EU, US, APAC...)', clause: '4.3', type: 'textarea',
-        hint: 'Drives applicable regulations — UK GDPR, GDPR, CCPA, PIPEDA, etc.' },
+        hint: 'Drives applicable regulations - UK GDPR, GDPR, CCPA, PIPEDA, etc.' },
     ]
   },
   {
@@ -73,7 +73,7 @@ const SECTIONS = [
     title: 'Crown jewels',
     blurb: 'The 3-5 information assets that, if compromised, end the business. Drives the asset register and risk treatment.',
     questions: [
-      { id: 'crown-jewel-1', text: 'Crown jewel #1 — the single most-sensitive information asset', clause: 'A.5.9', type: 'textarea', required: true },
+      { id: 'crown-jewel-1', text: 'Crown jewel #1 - the single most-sensitive information asset', clause: 'A.5.9', type: 'textarea', required: true },
       { id: 'crown-jewel-2', text: 'Crown jewel #2', clause: 'A.5.9', type: 'textarea' },
       { id: 'crown-jewel-3', text: 'Crown jewel #3', clause: 'A.5.9', type: 'textarea' },
     ]
@@ -84,10 +84,10 @@ const SECTIONS = [
     blurb: 'What\'s already in place. Saves time identifying real gaps vs paper gaps.',
     questions: [
       { id: 'existing-frameworks', text: 'Other frameworks or certifications you already hold or are pursuing (SOC 2, NIST CSF, Cyber Essentials Plus, HIPAA, PCI...)', clause: '4.1', type: 'textarea',
-        hint: 'Existing controls map across — saves remediation effort.' },
+        hint: 'Existing controls map across - saves remediation effort.' },
       { id: 'existing-policies', text: 'Approximately how many security / privacy policies are already documented and signed off?', clause: '7.5', type: 'text' },
       { id: 'recent-incidents', text: 'Any security incidents or near-misses in the last 24 months we should know about?', clause: 'A.5.24', type: 'textarea',
-        hint: 'Withholding hurts you — auditors find them anyway via the breach register.' },
+        hint: 'Withholding hurts you - auditors find them anyway via the breach register.' },
     ]
   },
 ];
@@ -109,7 +109,7 @@ function flatten() {
 // the consultant can see what's missing.
 function draftScopeStatement(answers) {
   const a = (id) => (answers[id] || '').trim();
-  const placeholder = (id) => a(id) || `[${id} — not answered]`;
+  const placeholder = (id) => a(id) || `[${id} - not answered]`;
   const lines = [];
   lines.push(`The information security management system covers the operations of ${placeholder('org-name')}.`);
   lines.push('');

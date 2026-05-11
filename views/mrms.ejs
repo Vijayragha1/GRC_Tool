@@ -24,7 +24,7 @@
       <% mrms.forEach(m => { %>
         <tr>
           <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= m.meeting_date || 'unscheduled' %></a></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= m.attendees || '—' %></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= m.attendees || '-' %></td>
           <td><span class="status s-<%= m.status === 'complete' ? 'done' : 'todo' %>"><%= m.status %></span></td>
         </tr>
       <% }) %>

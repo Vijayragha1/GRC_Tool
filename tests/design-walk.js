@@ -42,7 +42,7 @@ async function startServer() {
 
 (async () => {
   // Use SQLite's online-backup API to snapshot the live DB. fs.copyFileSync
-  // only copies the .db file and misses uncommitted writes still in the WAL —
+  // only copies the .db file and misses uncommitted writes still in the WAL -
   // that produced stale screenshots before this fix.
   const Database = require('better-sqlite3');
   const _src = new Database(liveDb);

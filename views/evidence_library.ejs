@@ -30,7 +30,7 @@
 <details class="panel" style="margin-bottom:14px;" <%= (counters && counters.total === 0) ? 'open' : '' %>>
   <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Upload evidence <span class="meta" style="font-weight:400;">— single or bulk; tick every control each file evidences.</span>
+    Upload evidence <span class="meta" style="font-weight:400;">- single or bulk; tick every control each file evidences.</span>
   </summary>
 
   <div style="border-top:1px solid var(--border);background:var(--bg-subtle);">
@@ -80,15 +80,15 @@
           <% (tagList || []).forEach(([t]) => { %><option value="<%= t %>"><% }) %>
         </datalist>
       </div>
-      <div style="grid-column:1/-1;"><label class="label">Description (optional)</label><input type="text" name="description" class="input" placeholder="What does this evidence — e.g., 'Production network topology, signed by Head of Platform'"></div>
+      <div style="grid-column:1/-1;"><label class="label">Description (optional)</label><input type="text" name="description" class="input" placeholder="What does this evidence - e.g., 'Production network topology, signed by Head of Platform'"></div>
       <div style="grid-column:1/-1;"><button class="btn btn-primary">Upload evidence</button></div>
     </form>
 
-    <!-- Bulk upload — hidden by default -->
+    <!-- Bulk upload - hidden by default -->
     <form id="bulkUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence/bulk" enctype="multipart/form-data"
           class="panel-pad" style="display:none;grid-template-columns:1fr 1fr;gap:12px;">
       <div style="grid-column:1/-1;">
-        <label class="label">Files (up to 50) <span class="meta">required — every selected file gets the same metadata and links</span></label>
+        <label class="label">Files (up to 50) <span class="meta">required - every selected file gets the same metadata and links</span></label>
         <input type="file" name="files" multiple required style="font-size:13px;width:100%;">
         <div class="meta" style="font-size:11px;margin-top:3px;">Tip: select multiple files in your file picker (Cmd-click / Ctrl-click). Hash-based dedupe is applied per file.</div>
       </div>
@@ -176,7 +176,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       </div>
       <div class="empty-title"><%= counters.total === 0 ? 'No evidence yet' : 'No matches' %></div>
-      <div class="empty-sub"><%= counters.total === 0 ? 'Use the upload form above. A single artefact can evidence many controls — tick all that apply at upload time.' : 'Try a different filter or reset.' %></div>
+      <div class="empty-sub"><%= counters.total === 0 ? 'Use the upload form above. A single artefact can evidence many controls - tick all that apply at upload time.' : 'Try a different filter or reset.' %></div>
     </div>
   <% } else { %>
     <div class="divide-row">

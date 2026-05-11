@@ -1,10 +1,10 @@
 // Per-item current-state diagnostic questions for the gap-assessment wizard.
 //
 // Two layers:
-//   1) BESPOKE — hand-written diagnostic questions for items where mechanical
+//   1) BESPOKE - hand-written diagnostic questions for items where mechanical
 //      transformation produces awkward English or misses nuance (e.g., abstract
 //      management-system clauses, controls with subtle scope).
-//   2) MECHANICAL FALLBACK — for any iso_item_id without a bespoke entry, we
+//   2) MECHANICAL FALLBACK - for any iso_item_id without a bespoke entry, we
 //      derive questions from the existing iso_items.evidence_needed array using
 //      verb-transform rules: "Establish X" → "Has X been established?", etc.
 //
@@ -13,7 +13,7 @@
 // to the mechanical generator unless explicitly overridden.
 
 const BESPOKE = {
-  // ===== Clause 4 — Context of the organization =====
+  // ===== Clause 4 - Context of the organization =====
   'clause-4.1': [
     'Has the organization documented its external context (regulatory, technological, market, cultural, climate-related)?',
     'Has it documented its internal context (culture, structure, capabilities, resources)?',
@@ -37,7 +37,7 @@ const BESPOKE = {
     'Is there evidence the ISMS is operating (records of risk assessments, audits, reviews)?',
     'Are interactions between processes shown (e.g., how a finding becomes an NC, then a corrective action)?'
   ],
-  // ===== Clause 5 — Leadership =====
+  // ===== Clause 5 - Leadership =====
   'clause-5.1': [
     'Has top management demonstrated commitment via documented decisions (MR minutes, signed policy, budget approvals)?',
     'Has top management communicated the importance of the ISMS to staff?',
@@ -56,7 +56,7 @@ const BESPOKE = {
     'Are these communicated to the people holding the roles?',
     'Are conflicts of duty (segregation) considered in the role design?'
   ],
-  // ===== Clause 6 — Planning =====
+  // ===== Clause 6 - Planning =====
   'clause-6.1.1': [
     'Has the organization considered which risks and opportunities its ISMS must address?',
     'Are these documented and used to plan ISMS actions?',
@@ -87,7 +87,7 @@ const BESPOKE = {
     'Does the organization plan changes to the ISMS in advance (rather than reacting after the fact)?',
     'Are change records or planning documents available?'
   ],
-  // ===== Clause 7 — Support =====
+  // ===== Clause 7 - Support =====
   'clause-7.1': [
     'Are resources required for the ISMS identified and provided (budget, people, tools, time)?',
     'Is resource adequacy reviewed (e.g., in MR)?'
@@ -116,7 +116,7 @@ const BESPOKE = {
     'Are documents reviewed and approved before issue and after changes?',
     'Are obsolete documents prevented from unintended use?'
   ],
-  // ===== Clause 8 — Operation =====
+  // ===== Clause 8 - Operation =====
   'clause-8.1': [
     'Are ISMS processes planned, implemented, and controlled to meet requirements?',
     'Are outsourced processes determined and controlled (e.g., supplier-managed services in scope)?',
@@ -132,7 +132,7 @@ const BESPOKE = {
     'Are the implemented treatments effective (verified, not just deployed)?',
     'Are records of implementation kept?'
   ],
-  // ===== Clause 9 — Performance evaluation =====
+  // ===== Clause 9 - Performance evaluation =====
   'clause-9.1': [
     'Has the organization determined what needs to be monitored and measured?',
     'Have monitoring methods, frequency, analysis, and evaluation criteria been defined?',
@@ -155,7 +155,7 @@ const BESPOKE = {
     'Are decisions from MR (continual improvement, ISMS changes) documented?',
     'Are MR records retained as documented information?'
   ],
-  // ===== Clause 10 — Improvement =====
+  // ===== Clause 10 - Improvement =====
   'clause-10.1': [
     'Does the organization continually improve the ISMS (suitability, adequacy, effectiveness)?',
     'Is improvement evidence-based (driven by data, not just intent)?'
@@ -168,7 +168,7 @@ const BESPOKE = {
     'Are NC and corrective-action records retained?'
   ],
 
-  // ===== Selected Annex A controls (high-impact) — bespoke =====
+  // ===== Selected Annex A controls (high-impact) - bespoke =====
   'annex-a.5.1': [
     'Is there a top-management-approved Information Security Policy?',
     'Are topic-specific policies in place where needed (access control, cryptography, supplier, BCP, etc.)?',
@@ -424,7 +424,7 @@ const BESPOKE = {
     'Are procedures reviewed when systems or processes change?'
   ],
 
-  // ===== Annex A.6 — People controls =====
+  // ===== Annex A.6 - People controls =====
   'annex-a.6.1': [
     'Are background screening requirements defined per role sensitivity?',
     'Is screening completed before access is granted?',
@@ -451,7 +451,7 @@ const BESPOKE = {
     'Are reports acknowledged and acted on within defined timeframes?'
   ],
 
-  // ===== Annex A.7 — Physical controls =====
+  // ===== Annex A.7 - Physical controls =====
   'annex-a.7.1': [
     'Are physical security perimeters defined for areas containing information assets?',
     'Are perimeter controls (walls, doors, locks, fences) maintained and inspected?',
@@ -518,7 +518,7 @@ const BESPOKE = {
     'Are records of disposal retained?'
   ],
 
-  // ===== Annex A.8 — Technological controls =====
+  // ===== Annex A.8 - Technological controls =====
   'annex-a.8.1': [
     'Are endpoint security requirements defined (configuration baseline, anti-malware, encryption, screen lock)?',
     'Are endpoints managed (centrally configured, patched, monitored)?',
@@ -652,7 +652,7 @@ const BESPOKE = {
   ]
 };
 
-// Verb-transform rules for the mechanical fallback. Order matters — first match wins.
+// Verb-transform rules for the mechanical fallback. Order matters - first match wins.
 const VERB_RULES = [
   { re: /^Establish\s+(.+?)([.;]|$)/i,    fn: m => `Has ${lc(m[1])} been established?` },
   { re: /^Define\s+(.+?)([.;]|$)/i,        fn: m => `Has ${lc(m[1])} been defined?` },

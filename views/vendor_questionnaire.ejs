@@ -19,11 +19,11 @@
   <div><div class="kpi-num num"><%= q.total_questions %></div><div class="kpi-label">Total questions</div></div>
   <div><div class="kpi-num num"><%= q.answered_questions %></div><div class="kpi-label">Answered</div></div>
   <div>
-    <div class="kpi-num num" style="color:<%= q.score === null ? 'var(--text-tertiary)' : q.score >= 80 ? '#15803d' : q.score >= 60 ? '#a16207' : '#b91c1c' %>"><%= q.score === null ? '—' : q.score + '%' %></div>
+    <div class="kpi-num num" style="color:<%= q.score === null ? 'var(--text-tertiary)' : q.score >= 80 ? '#15803d' : q.score >= 60 ? '#a16207' : '#b91c1c' %>"><%= q.score === null ? '-' : q.score + '%' %></div>
     <div class="kpi-label">Score</div>
   </div>
   <div>
-    <div class="kpi-num num"><%= q.risk_rating ? q.risk_rating : '—' %></div>
+    <div class="kpi-num num"><%= q.risk_rating ? q.risk_rating : '-' %></div>
     <div class="kpi-label">Risk rating</div>
   </div>
 </div>

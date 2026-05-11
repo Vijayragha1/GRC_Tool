@@ -1,9 +1,9 @@
-// Crisis communication templates — content distinct from technical runbooks.
+// Crisis communication templates - content distinct from technical runbooks.
 // These are message bodies you send to specific audiences during an incident.
 
 module.exports = [
   {
-    name: 'Customer notice — confirmed data breach',
+    name: 'Customer notice - confirmed data breach',
     audience: 'customers',
     channel: 'email',
     body: `Subject: Important security notice regarding your account
@@ -39,17 +39,17 @@ Chief Information Security Officer
 {{company_name}}`
   },
   {
-    name: 'Internal staff alert — phishing campaign in progress',
+    name: 'Internal staff alert - phishing campaign in progress',
     audience: 'internal',
     channel: 'slack',
-    body: `:warning: *Active phishing campaign — please read*
+    body: `:warning: *Active phishing campaign - please read*
 
 We have detected a coordinated phishing campaign targeting employees today.
 
 *What it looks like*: {{lure_description}}
 
 *If you have clicked or entered credentials*:
-1. Do NOT close the tab — screenshot if you can
+1. Do NOT close the tab - screenshot if you can
 2. Disconnect the device from network
 3. Contact #security-incidents immediately
 
@@ -63,10 +63,10 @@ We have detected a coordinated phishing campaign targeting employees today.
 Updates will be posted in this thread.`
   },
   {
-    name: 'Regulator notification — GDPR Art. 33',
+    name: 'Regulator notification - GDPR Art. 33',
     audience: 'regulator',
     channel: 'email',
-    body: `Subject: Personal data breach notification — {{company_name}}, {{detected_at}}
+    body: `Subject: Personal data breach notification - {{company_name}}, {{detected_at}}
 
 To: {{dpa_address}}
 
@@ -88,7 +88,7 @@ Pursuant to Article 33 GDPR, we hereby notify you of a personal data breach.
 {{measures}}
 
 6. Contact point
-Data Protection Officer: {{dpo_name}} — {{dpo_email}} — {{dpo_phone}}
+Data Protection Officer: {{dpo_name}} - {{dpo_email}} - {{dpo_phone}}
 
 We will provide further information as soon as it becomes available.
 
@@ -97,10 +97,10 @@ Sincerely,
 DPO, {{company_name}}`
   },
   {
-    name: 'Status page — service degradation',
+    name: 'Status page - service degradation',
     audience: 'public',
     channel: 'status_page',
-    body: `# Investigating — {{service_name}} degradation
+    body: `# Investigating - {{service_name}} degradation
 
 *Posted {{posted_at}}*
 
@@ -110,19 +110,19 @@ We will post the next update within 30 minutes.
 
 ---
 
-*Updated {{updated_at}}* — Identified
+*Updated {{updated_at}}* - Identified
 We have identified the cause as {{root_cause_summary}}. A fix is being deployed; estimated time to resolution: {{eta}}.
 
 ---
 
-*Updated {{resolved_at}}* — Resolved
+*Updated {{resolved_at}}* - Resolved
 The incident is resolved as of {{resolved_at}}. Total duration: {{duration}}. We will publish a post-incident review within 5 business days at {{pir_url}}.`
   },
   {
-    name: 'Executive escalation — critical incident summary',
+    name: 'Executive escalation - critical incident summary',
     audience: 'executives',
     channel: 'email',
-    body: `Subject: [CONFIDENTIAL] {{severity}} security incident — exec briefing
+    body: `Subject: [CONFIDENTIAL] {{severity}} security incident - exec briefing
 
 To: CEO, CFO, GC, Board liaison
 
@@ -149,6 +149,6 @@ To: CEO, CFO, GC, Board liaison
 ## Next update
 {{next_update_time}} via {{next_update_channel}}
 
-— {{ciso_name}}, CISO`
+- {{ciso_name}}, CISO`
   }
 ];

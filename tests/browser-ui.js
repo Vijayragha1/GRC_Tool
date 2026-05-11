@@ -3,7 +3,7 @@
 // visit every sidebar route, capture console errors / network failures, and
 // exercise every clickable element it can do safely (links, dropdowns, modal
 // openers, filter chips, details/summary expanders). Destructive actions are
-// detected via the global confirm modal — we open them, verify the modal
+// detected via the global confirm modal - we open them, verify the modal
 // renders, then cancel.
 //
 // Run: node tests/browser-ui.js
@@ -280,7 +280,7 @@ async function visit(page, urlPath, opts = {}) {
     page.off('response', onResponse);
   }
   findings.pages.push(result);
-  log(`  ${result.status || 'ERR'} ${urlPath} — ${result.consoleErrors.length}ce ${result.networkFails.length}nf ${result.pageErrors.length}pe`);
+  log(`  ${result.status || 'ERR'} ${urlPath} - ${result.consoleErrors.length}ce ${result.networkFails.length}nf ${result.pageErrors.length}pe`);
   return result;
 }
 
@@ -297,10 +297,10 @@ async function visit(page, urlPath, opts = {}) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
 
-  // Suppress native dialogs at the puppeteer level — if any leak through, we
+  // Suppress native dialogs at the puppeteer level - if any leak through, we
   // dismiss them and record it as a finding.
   page.on('dialog', async dialog => {
-    findings.consoleErrors.push({ url: page.url(), text: 'native dialog leaked: ' + dialog.type() + ' — ' + dialog.message() });
+    findings.consoleErrors.push({ url: page.url(), text: 'native dialog leaked: ' + dialog.type() + ' - ' + dialog.message() });
     await dialog.dismiss();
   });
 
@@ -363,7 +363,7 @@ async function visit(page, urlPath, opts = {}) {
   for (const r of topRoutes) await visit(page, r, { testDeleteModal: r === '/dashboard' });
   for (const r of wsRoutes) await visit(page, r, { testDeleteModal: r.endsWith(`/workspaces/${wsId}`) });
 
-  // Glossary detail — pick a random entry
+  // Glossary detail - pick a random entry
   try {
     await page.goto(BASE + '/glossary', { waitUntil: 'domcontentloaded' });
     const slug = await page.$$eval('a[href^="/glossary/"]', as => {
@@ -373,7 +373,7 @@ async function visit(page, urlPath, opts = {}) {
     if (slug) await visit(page, slug);
   } catch (_) {}
 
-  // Risks detail — pick first risk
+  // Risks detail - pick first risk
   if (wsId) {
     try {
       await page.goto(BASE + `/workspaces/${wsId}/risks`, { waitUntil: 'domcontentloaded' });

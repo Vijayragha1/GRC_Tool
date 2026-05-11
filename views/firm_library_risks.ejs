@@ -70,7 +70,7 @@
       <tbody>
         <% rows.forEach(r => { %>
           <tr>
-            <td class="meta" style="font-size:11.5px;"><%= r.domain || '—' %></td>
+            <td class="meta" style="font-size:11.5px;"><%= r.domain || '-' %></td>
             <td>
               <details>
                 <summary style="cursor:pointer;font-weight:500;font-size:13px;"><%= r.title %></summary>
@@ -84,9 +84,9 @@
                 </div>
               </details>
             </td>
-            <td><% if (r.sector) { %><span class="tag tag-info" style="font-size:10px;"><%= r.sector %></span><% } else { %><span class="meta">—</span><% } %></td>
-            <td class="num meta"><%= r.suggested_likelihood || '—' %></td>
-            <td class="num meta"><%= r.suggested_impact || '—' %></td>
+            <td><% if (r.sector) { %><span class="tag tag-info" style="font-size:10px;"><%= r.sector %></span><% } else { %><span class="meta">-</span><% } %></td>
+            <td class="num meta"><%= r.suggested_likelihood || '-' %></td>
+            <td class="num meta"><%= r.suggested_impact || '-' %></td>
             <td>
               <form method="POST" action="/firm/library/risks/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this firm-library risk?');">
                 <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:11px;">Delete</button>

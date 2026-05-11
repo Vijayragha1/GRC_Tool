@@ -3,14 +3,14 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Information security objectives</h1>
-    <div class="page-subtitle">Clause 6.2 — measurable, time-bound goals consistent with the policy. Each must be monitored, communicated, updated as appropriate, and have a documented plan (target, measurement, owner, due date).</div>
+    <div class="page-subtitle">Clause 6.2 - measurable, time-bound goals consistent with the policy. Each must be monitored, communicated, updated as appropriate, and have a documented plan (target, measurement, owner, due date).</div>
   </div>
 </div>
 
 <details class="panel" style="margin-bottom:14px;" <%= rows.length === 0 ? 'open' : '' %>>
   <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;">+ Add objective</summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/objectives" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-    <div style="grid-column:1/-1;"><label class="label">Title <span class="meta">required — concrete, measurable</span></label><input class="input" name="title" required placeholder="e.g., Reduce mean time to patch critical vulnerabilities from 14 to 7 days"></div>
+    <div style="grid-column:1/-1;"><label class="label">Title <span class="meta">required - concrete, measurable</span></label><input class="input" name="title" required placeholder="e.g., Reduce mean time to patch critical vulnerabilities from 14 to 7 days"></div>
     <div style="grid-column:1/-1;"><label class="label">Description</label><textarea class="textarea" name="description" rows="2" placeholder="Why this objective exists; how it ties to policy / risk / customer commitment."></textarea></div>
     <div><label class="label">Measurement <span class="meta">how progress is gauged</span></label><input class="input" name="measurement" placeholder="e.g., Monthly patching report, % within SLA"></div>
     <div><label class="label">Owner</label><input class="input" name="owner" placeholder="e.g., VP Engineering"></div>
@@ -59,11 +59,11 @@
               <strong style="font-size:13px;"><%= r.title %></strong>
               <% if (r.description) { %><div class="meta" style="font-size:11.5px;margin-top:2px;line-height:1.4;"><%= r.description %></div><% } %>
             </td>
-            <td style="font-size:12px;"><%= r.measurement || '—' %></td>
-            <td class="num" style="font-size:12px;font-weight:500;"><%= r.target_value || '—' %></td>
-            <td class="num" style="font-size:12px;"><%= r.current_value || '—' %></td>
-            <td style="font-size:12px;"><%= r.owner || '—' %></td>
-            <td style="font-size:11.5px;<%= overdue ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= r.due_date || '—' %><% if (overdue) { %> · overdue<% } %></td>
+            <td style="font-size:12px;"><%= r.measurement || '-' %></td>
+            <td class="num" style="font-size:12px;font-weight:500;"><%= r.target_value || '-' %></td>
+            <td class="num" style="font-size:12px;"><%= r.current_value || '-' %></td>
+            <td style="font-size:12px;"><%= r.owner || '-' %></td>
+            <td style="font-size:11.5px;<%= overdue ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= r.due_date || '-' %><% if (overdue) { %> · overdue<% } %></td>
             <td><span class="tag" style="font-size:10.5px;background:<%= statusColor[r.status] || '#71717a' %>;color:white;border:0;"><%= (r.status || 'on_track').replace('_',' ') %></span></td>
             <td>
               <details>

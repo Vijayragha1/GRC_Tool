@@ -31,7 +31,7 @@ const masterKeyPath = path.join(ROOT, 'data', 'master.key');
 
 (async () => {
   if (!fs.existsSync(dbPath)) {
-    console.error(`[backup] No database at ${dbPath} — nothing to back up.`);
+    console.error(`[backup] No database at ${dbPath} - nothing to back up.`);
     process.exit(1);
   }
 

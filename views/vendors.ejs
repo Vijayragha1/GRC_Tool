@@ -72,7 +72,7 @@
         <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= r.id %>'">
           <td><strong><%= r.name %></strong></td>
           <td class="num meta"><%= r.contract_end %></td>
-          <td class="meta"><%= r.renewal_notice_days || '—' %></td>
+          <td class="meta"><%= r.renewal_notice_days || '-' %></td>
           <td><span class="tag <%= r.auto_renew ? 'tag-warn' : 'tag-neutral' %>"><%= r.auto_renew ? 'auto-renew' : 'manual' %></span></td>
         </tr>
       <% }) %>
@@ -128,15 +128,15 @@
             <% if (v.service_provided) { %><div class="meta"><%= v.service_provided %></div><% } %>
           </td>
           <td><span class="tag <%= v.tier === 'tier_1' ? 'tag-danger' : v.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (v.tier || 'tier_2').replace('_',' ') %></span></td>
-          <td><span class="tag <%= (v.inherent_risk_score||0) >= 18 ? 'tag-danger' : (v.inherent_risk_score||0) >= 10 ? 'tag-warn' : 'tag-success' %> num"><%= v.inherent_risk_score || '—' %></span></td>
-          <td><span class="tag <%= (v.residual_risk_score||0) >= 18 ? 'tag-danger' : (v.residual_risk_score||0) >= 10 ? 'tag-warn' : 'tag-success' %> num"><%= v.residual_risk_score || '—' %></span></td>
+          <td><span class="tag <%= (v.inherent_risk_score||0) >= 18 ? 'tag-danger' : (v.inherent_risk_score||0) >= 10 ? 'tag-warn' : 'tag-success' %> num"><%= v.inherent_risk_score || '-' %></span></td>
+          <td><span class="tag <%= (v.residual_risk_score||0) >= 18 ? 'tag-danger' : (v.residual_risk_score||0) >= 10 ? 'tag-warn' : 'tag-success' %> num"><%= v.residual_risk_score || '-' %></span></td>
           <td><span class="status s-<%= v.lifecycle_stage === 'terminated' ? 'closed' : v.lifecycle_stage === 'approved' || v.lifecycle_stage === 'active' ? 'in_progress' : 'todo' %>"><%= (v.lifecycle_stage || 'active').replace(/_/g,' ') %></span></td>
           <td class="meta">
             <%= v.doc_count %>
             <% if (v.expired_docs > 0) { %><span style="color:#b91c1c;font-weight:500;"> · <%= v.expired_docs %> exp</span><% } else if (v.expiring_docs > 0) { %><span style="color:#a16207;font-weight:500;"> · <%= v.expiring_docs %> ⏱</span><% } %>
           </td>
           <td class="meta"><%= v.q_count %><% if (v.best_q_score !== null) { %> · <span style="color:<%= v.best_q_score >= 80 ? '#15803d' : v.best_q_score >= 60 ? '#a16207' : '#b91c1c' %>;font-weight:500;"><%= v.best_q_score %>%</span><% } %></td>
-          <td class="num meta" style="color:<%= v.next_review_date && v.next_review_date < new Date().toISOString().split('T')[0] ? '#b91c1c' : '' %>"><%= v.next_review_date || '—' %></td>
+          <td class="num meta" style="color:<%= v.next_review_date && v.next_review_date < new Date().toISOString().split('T')[0] ? '#b91c1c' : '' %>"><%= v.next_review_date || '-' %></td>
         </tr>
       <% }) %>
       <% if (vendors.length === 0) { %>

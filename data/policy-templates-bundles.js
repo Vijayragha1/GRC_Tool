@@ -1,4 +1,4 @@
-// ISO 27001:2022 starter templates — bundled controls. Each template covers
+// ISO 27001:2022 starter templates - bundled controls. Each template covers
 // multiple Annex A controls and/or main-body clauses to reduce document count
 // without sacrificing audit traceability. SoA entries should reference the
 // specific section within these documents.
@@ -78,7 +78,7 @@ Secure areas at {{client_name}} include: [data centre / server rooms / executive
 
 ### 6.2 Rules for secure areas
 - Access on a need-to-be-there basis; logged and reviewed [quarterly].
-- No unsupervised work — minimum two persons in data-centre during maintenance.
+- No unsupervised work - minimum two persons in data-centre during maintenance.
 - Photographic, video, or audio recording prohibited unless authorised in writing.
 - Personal mobile devices restricted; corporate devices logged in/out at the door.
 - Vacant secure areas are physically locked and inspected [weekly].
@@ -173,7 +173,7 @@ Reviewed [annually] by ISMS Manager and Facilities Manager, and after any signif
 ${HEADER('A.8.16, A.8.17, A.8.18, A.8.23')}
 
 ## 1. Purpose
-To define how IT Operations at {{client_name}} monitor systems for anomalies, maintain accurate time across the estate, control powerful utility programs, and filter web access — all foundational technical controls for detecting and preventing security incidents.
+To define how IT Operations at {{client_name}} monitor systems for anomalies, maintain accurate time across the estate, control powerful utility programs, and filter web access - all foundational technical controls for detecting and preventing security incidents.
 
 ## 2. Scope
 All {{client_name}}-managed networks, servers, applications, endpoint devices, and the IT operations personnel who run them.
@@ -231,7 +231,7 @@ Tools that can override normal system or application controls: diagnostic and pa
 
 ### 5.2 Restrictions
 - Use limited to the minimum number of trusted, authorised IT Ops or security staff.
-- Each user identifiable (no shared accounts) — ties into Privileged Access Management.
+- Each user identifiable (no shared accounts) - ties into Privileged Access Management.
 - Authorisation required for ad-hoc use; documented in change ticket.
 - Default deny: utilities removed or disabled on systems where not needed.
 - Logically segregated from application software; on networks separate from application traffic where practical.
@@ -239,16 +239,16 @@ Tools that can override normal system or application controls: diagnostic and pa
 - All use logged; logs reviewed [weekly] by security.
 
 ### 5.3 Segregation
-Personnel who use privileged utilities on a system do not also use the applications running on that system in their day job (segregation of duties — A.5.3).
+Personnel who use privileged utilities on a system do not also use the applications running on that system in their day job (segregation of duties - A.5.3).
 
 ## 6. Web filtering (A.8.23)
 
 ### 6.1 Categories blocked
-- Known-malicious domains (phishing, malware C2, exploit kits) — blocked.
-- Illegal-content categories per local law — blocked.
-- Adult, gambling, weapons (per acceptable-use policy) — blocked.
-- File-upload to untrusted destinations — blocked unless business-justified.
-- Sites with invalid/expired TLS certificates — warned, not blocked, with override option.
+- Known-malicious domains (phishing, malware C2, exploit kits) - blocked.
+- Illegal-content categories per local law - blocked.
+- Adult, gambling, weapons (per acceptable-use policy) - blocked.
+- File-upload to untrusted destinations - blocked unless business-justified.
+- Sites with invalid/expired TLS certificates - warned, not blocked, with override option.
 
 ### 6.2 Threat-intel integration
 Block list updated automatically from:
@@ -289,27 +289,27 @@ Reviewed [annually] by Head of IT Operations and ISMS Manager, and after any maj
 ${HEADER('Clauses 4.1, 4.2, 6.3, 7.1; A.5.3')}
 
 ## 1. Purpose
-To document the foundational governance of {{client_name}}'s Information Security Management System (ISMS) — context, stakeholders, change management at the system level, resources committed, and segregation of duties — so that an auditor or new ISMS member can understand "how this ISMS is run" from one document.
+To document the foundational governance of {{client_name}}'s Information Security Management System (ISMS) - context, stakeholders, change management at the system level, resources committed, and segregation of duties - so that an auditor or new ISMS member can understand "how this ISMS is run" from one document.
 
 ## 2. Context of the organisation (Clause 4.1)
 
 ### 2.1 Internal context
 {{client_name}} is a [size / sector] organisation providing [products/services]. Material internal factors that affect the ISMS:
 - **Organisational structure:** [hierarchy summary].
-- **Strategy:** [growth / consolidation / pivot — note relevant security implications].
+- **Strategy:** [growth / consolidation / pivot - note relevant security implications].
 - **Culture:** [risk tolerance, willingness to invest in security].
 - **Capabilities and resources:** in-house expertise, gaps filled by suppliers.
-- **Information assets:** [headline categories — customer data, IP, financial].
+- **Information assets:** [headline categories - customer data, IP, financial].
 - **Operational and information systems:** [headline systems / cloud providers].
 - **Contractual relationships:** [key customer security obligations].
 
 ### 2.2 External context
-- **Regulatory:** [list — e.g., GDPR, HIPAA, sector regulator].
+- **Regulatory:** [list - e.g., GDPR, HIPAA, sector regulator].
 - **Legal:** [contract law, IP, employment].
 - **Market and competitive:** customer security expectations, peer practices.
 - **Threat landscape:** [headline threats relevant to sector].
 - **Technology trends:** [cloud adoption, AI, supply-chain risk].
-- **Geopolitical / macro:** [where relevant — sanctions, data sovereignty].
+- **Geopolitical / macro:** [where relevant - sanctions, data sovereignty].
 
 ## 3. Interested parties (Clause 4.2)
 
@@ -326,7 +326,7 @@ To document the foundational governance of {{client_name}}'s Information Securit
 
 This register is reviewed [annually] and on material changes (new product line, new market, new regulator).
 
-## 4. ISMS scope (informational — full scope statement in separate Scope document)
+## 4. ISMS scope (informational - full scope statement in separate Scope document)
 Summary: [in-scope systems, services, locations, business units]. Out of scope: [exclusions and rationale].
 
 ## 5. Planning of changes to the ISMS (Clause 6.3)
@@ -389,7 +389,7 @@ Policies, procedures, threat intelligence subscriptions, professional membership
 ### 7.1 Principle
 Conflicting duties at {{client_name}} are separated so that no single person can both commit and conceal an error or fraud, and so that information security controls cannot be bypassed by one individual acting alone.
 
-### 7.2 Conflicting duty pairs (illustrative — adjust to {{client_name}}'s reality)
+### 7.2 Conflicting duty pairs (illustrative - adjust to {{client_name}}'s reality)
 
 | Duty A | Duty B (must be separate person) | Where enforced |
 |---|---|---|
@@ -498,7 +498,7 @@ Both: (a) {{client_name}}'s obligations to respect third-party IP, and (b) prote
 
 ### 5.3 Standards, books, articles, recordings
 - No duplication, format conversion, or extraction beyond what copyright law or licence allows.
-- ISO/IEC standards referenced in policies are not republished verbatim — only used per ISO copyright terms.
+- ISO/IEC standards referenced in policies are not republished verbatim - only used per ISO copyright terms.
 
 ### 5.4 {{client_name}}'s own IP
 - Source code, designs, trade secrets protected via:
@@ -538,9 +538,9 @@ Wilful infringement may result in disciplinary action up to dismissal, and recov
 
 ### 6.3 Method
 Owners use checklists or automated reports to verify compliance. Findings classified:
-- **Compliant** — evidence sufficient.
-- **Partial** — gap identified, plan in place.
-- **Non-compliant** — corrective action required (raised as a Nonconformity).
+- **Compliant** - evidence sufficient.
+- **Partial** - gap identified, plan in place.
+- **Non-compliant** - corrective action required (raised as a Nonconformity).
 
 ### 6.4 Corrective action
 For non-compliance:
@@ -557,7 +557,7 @@ Compliance review results feed into:
 - Board / risk committee reporting.
 
 ## 7. Records
-- Legal register (live document — see appendix or linked spreadsheet).
+- Legal register (live document - see appendix or linked spreadsheet).
 - Compliance review checklists and findings.
 - Corrective action log.
 - Software licence inventory.

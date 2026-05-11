@@ -3,12 +3,12 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Glossary</h1>
-    <div class="page-subtitle"><%= total %> ISO 27001, GRC, and information-security terms — definition, plain-English explanation, example, and what each term is <em>not</em> to be confused with.</div>
+    <div class="page-subtitle"><%= total %> ISO 27001, GRC, and information-security terms - definition, plain-English explanation, example, and what each term is <em>not</em> to be confused with.</div>
   </div>
 </div>
 
 <% if (!q && (category === 'all' || !category) && (letter === 'all' || !letter)) { %>
-  <!-- Newcomer pack — only on the unfiltered landing view. -->
+  <!-- Newcomer pack - only on the unfiltered landing view. -->
   <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(79,70,229,0.25);">
     <div class="panel-pad">
       <div class="sec-label" style="color:var(--accent-deep);">New here? Start with these 10 terms</div>
@@ -108,7 +108,7 @@
        });
        const letters = Object.keys(grouped).sort();
     %>
-    <% // The row is a <details> — clicking the term expands inline to show
+    <% // The row is a <details> - clicking the term expands inline to show
        // the full definition, example, "not to be confused with" cards, and
        // related terms. A small "Open page" link in the corner keeps the
        // /glossary/:slug deep-link available for sharing externally. %>
@@ -160,7 +160,7 @@
                     <div class="sec-label">Not to be confused with</div>
                     <% e.notToConfuseWith.forEach(n => { %>
                       <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:4px;line-height:1.5;">
-                        <strong style="color:var(--text);"><%= n.term %></strong> — <%= n.why %>
+                        <strong style="color:var(--text);"><%= n.term %></strong> - <%= n.why %>
                       </div>
                     <% }) %>
                   </div>

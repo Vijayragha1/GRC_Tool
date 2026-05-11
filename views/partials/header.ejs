@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-<%# Cross-document View Transitions — modern browsers (Chrome/Edge/Safari) %>
+<%# Cross-document View Transitions - modern browsers (Chrome/Edge/Safari) %>
 <%# cross-fade between same-origin navigations so clicking a sidebar item %>
 <%# stops feeling like an abrupt scroll-to-top jump. Firefox ignores this %>
 <%# and falls back to the default behaviour gracefully. %>
@@ -219,21 +219,21 @@
   input[type="file"]::file-selector-button { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; margin-right: 10px; transition: all 0.12s; font-family: inherit; }
   input[type="file"]::file-selector-button:hover { background: var(--bg-subtle); border-color: var(--text-tertiary); }
 
-  /* Status — filled chip with semantic background, dot kept for legacy contexts */
+  /* Status - filled chip with semantic background, dot kept for legacy contexts */
   .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; white-space: nowrap; padding: 3px 9px 3px 8px; border-radius: 999px; line-height: 1.5; border: 1px solid transparent; }
   .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: 0.85; }
-  /* GREEN — done/good */
+  /* GREEN - done/good */
   .s-implemented, .s-included, .s-done, .s-closed, .s-verified { color: #15803d; background: rgba(22,163,74,0.10); border-color: rgba(22,163,74,0.22); }
-  /* AMBER — partial/in-review */
+  /* AMBER - partial/in-review */
   .s-partial, .s-partially-implemented, .s-in_review, .s-accepted, .s-minor { color: #b45309; background: rgba(202,138,4,0.10); border-color: rgba(202,138,4,0.25); }
-  /* BLUE — in-progress/treated */
+  /* BLUE - in-progress/treated */
   .s-progress, .s-work-in-progress, .s-in_progress, .s-treated { color: #1d4ed8; background: rgba(37,99,235,0.10); border-color: rgba(37,99,235,0.25); }
-  /* RED — open/blocked/major/excluded/not-implemented */
+  /* RED - open/blocked/major/excluded/not-implemented */
   .s-not-impl, .s-not-implemented, .s-excluded, .s-blocked, .s-open, .s-major { color: #b91c1c; background: rgba(220,38,38,0.10); border-color: rgba(220,38,38,0.25); }
-  /* GREY — neutral/na/undecided/todo */
+  /* GREY - neutral/na/undecided/todo */
   .s-na, .s-not-applicable, .s-not-assessed, .s-undecided, .s-todo, .s-observation { color: #52525b; background: rgba(113,113,122,0.10); border-color: rgba(113,113,122,0.20); }
 
-  /* Tags — filled chip variants used heavily as status pills */
+  /* Tags - filled chip variants used heavily as status pills */
   .tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; letter-spacing: 0.005em; border: 1px solid transparent; }
   .tag-neutral { background: rgba(113,113,122,0.10); color: #52525b; border-color: rgba(113,113,122,0.20); }
   .tag-success { background: rgba(22,163,74,0.10); color: #15803d; border-color: rgba(22,163,74,0.22); }
@@ -257,7 +257,7 @@
   .empty-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
   .empty-sub { font-size: 13px; color: var(--text-secondary); max-width: 380px; margin: 0 auto 16px; line-height: 1.5; }
 
-  /* KPI tile — left health-rail, icon slot, delta line */
+  /* KPI tile - left health-rail, icon slot, delta line */
   .kpi { padding: 16px 18px 16px 20px; position: relative; overflow: hidden; transition: all 0.15s; }
   .kpi::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--border); transition: background 0.15s; }
   a.kpi:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); border-color: var(--text-tertiary); }
@@ -267,7 +267,7 @@
   .kpi-label { font-size: 11.5px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .kpi-num { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
   .kpi-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; font-variant-numeric: tabular-nums; }
-  /* Health-rail variants — call attention to red/amber metrics */
+  /* Health-rail variants - call attention to red/amber metrics */
   .kpi-accent::before { background: var(--accent); width: 3px; }
   .kpi-good::before { background: #16a34a; width: 3px; }
   .kpi-warn::before { background: #ca8a04; width: 3px; }
@@ -275,7 +275,7 @@
   .kpi-good .kpi-num { color: #15803d; }
   .kpi-warn .kpi-num { color: #b45309; }
   .kpi-bad .kpi-num { color: #b91c1c; }
-  /* Delta — a tiny chip showing change since last period */
+  /* Delta - a tiny chip showing change since last period */
   .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 999px; margin-left: auto; }
   .kpi-delta-up { color: #15803d; background: rgba(22,163,74,0.10); }
   .kpi-delta-down { color: #b91c1c; background: rgba(220,38,38,0.10); }
@@ -524,7 +524,7 @@
       <% } else { %>
         <% // If the user just came from a workspace, give them a one-click way
            // back. Without this, Glossary / Playbooks / Firm library / Tenants
-           // feel like "exiting the workspace" — the sidebar redraws and there's
+           // feel like "exiting the workspace" - the sidebar redraws and there's
            // no breadcrumb home. %>
         <% if (typeof lastWs !== 'undefined' && lastWs) { %>
           <a href="/workspaces/<%= lastWs.id %>" class="nav-item" style="background:rgba(255,255,255,0.04);border-left:2px solid var(--accent);">
@@ -579,11 +579,11 @@
           <span>Search or jump to…</span>
           <span class="kbd" id="kbdHint">⌘K</span>
         </button>
-        <% // Tenant switcher — shows the active tenant (firm) and lets you switch.
+        <% // Tenant switcher - shows the active tenant (firm) and lets you switch.
            // Hidden if there's only one tenant and no point in cluttering the header. %>
         <% // Tenant switcher only matters when there is more than one firm. For
            // a solo consultant with a single firm, the workspace dashboard already
-           // shows everything that matters — surfacing tenants here just invites
+           // shows everything that matters - surfacing tenants here just invites
            // confusion between "tenant" (firm) and "workspace" (client engagement). %>
         <% if (typeof allFirms !== 'undefined' && allFirms && allFirms.length > 1) { %>
           <div style="position:relative;" id="tenantSwitcher">

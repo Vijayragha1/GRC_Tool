@@ -1,9 +1,9 @@
-<%- include('partials/header', { title: 'Risk acceptances — ' + risk.title, user, ws, active: 'risks' }) %>
+<%- include('partials/header', { title: 'Risk acceptances - ' + risk.title, user, ws, active: 'risks' }) %>
 
 <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="link-muted" style="font-size:12px;">← Back to risk</a>
 
 <div class="page-head" style="margin-top:8px">
-  <div><h1 class="page-title">Acceptances — <%= risk.title %></h1>
+  <div><h1 class="page-title">Acceptances - <%= risk.title %></h1>
     <div class="page-subtitle">Tamper-evident attestations that this residual risk has been formally accepted.</div></div>
 </div>
 
@@ -31,12 +31,12 @@
     <% list.forEach(a => { %>
       <tr style="<%= a.revoked_at ? 'opacity:0.6;' : '' %>">
         <td><strong><%= a.accepter_name %></strong></td>
-        <td class="meta"><%= a.accepter_role || '—' %></td>
+        <td class="meta"><%= a.accepter_role || '-' %></td>
         <td class="meta" style="max-width:300px"><%= a.rationale %></td>
-        <td class="num"><%= a.residual_score || '—' %></td>
+        <td class="num"><%= a.residual_score || '-' %></td>
         <td class="meta num"><%= a.expires_at || 'no expiry' %></td>
         <td class="meta"><%= a.signed_at %></td>
-        <td class="mono meta"><%= a.ip_address || '—' %></td>
+        <td class="mono meta"><%= a.ip_address || '-' %></td>
         <td class="mono meta" style="font-size:10.5px;"><%= a.signature.slice(0,16) %>…</td>
         <td>
           <% if (a.revoked_at) { %><span class="tag tag-danger">revoked</span>

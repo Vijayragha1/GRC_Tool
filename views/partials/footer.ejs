@@ -52,7 +52,7 @@
 <!-- Toast stack -->
 <div class="toast-stack" id="toastStack"></div>
 
-<!-- Global confirm/alert modal — replaces native window.confirm/alert across the app -->
+<!-- Global confirm/alert modal - replaces native window.confirm/alert across the app -->
 <div id="appConfirmModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div id="appConfirmHead" style="padding:14px 18px;border-bottom:1px solid var(--border);">
@@ -87,7 +87,7 @@
     const href = link.getAttribute('href');
     if (!href || !href.startsWith('/')) return false;
     if (href === location.pathname + location.search) return false;
-    // Skip exports / file downloads / API endpoints — these need real navigation.
+    // Skip exports / file downloads / API endpoints - these need real navigation.
     if (/\.(csv|docx|zip|pdf|xlsx|png|jpg|svg|ico)(\?|#|$)/i.test(href)) return false;
     if (href.startsWith('/api/') || href.startsWith('/vendor/')) return false;
     return true;
@@ -133,7 +133,7 @@
     if (newCsrf && curCsrf) curCsrf.setAttribute('content', newCsrf.getAttribute('content'));
 
     // Decide whether to swap the sidebar too. If the sidebar structure is the
-    // same (same context), keep the live sidebar element in place — its
+    // same (same context), keep the live sidebar element in place - its
     // scroll position is then preserved by the browser without any work.
     const oldSidebar = oldApp.querySelector('.sidebar');
     const newSidebar = newApp.querySelector('.sidebar');
@@ -145,7 +145,7 @@
       oldApp.replaceWith(newApp);
     } else {
       // Same sidebar structure. Swap only the .main pane so the sidebar
-      // element is never touched — no scroll loss possible.
+      // element is never touched - no scroll loss possible.
       const oldMain = oldApp.querySelector('.main');
       const newMain = newApp.querySelector('.main');
       if (oldMain && newMain) {
@@ -236,7 +236,7 @@
     }
   }
 
-  // Top progress bar — the navigation has acknowledgement even before content
+  // Top progress bar - the navigation has acknowledgement even before content
   // swaps in. Keeps the click feeling responsive on slow connections.
   const progress = (function () {
     const bar = document.createElement('div');
@@ -262,7 +262,7 @@
     };
   })();
 
-  // Hover prefetch — kicks off the fetch as soon as the user signals intent.
+  // Hover prefetch - kicks off the fetch as soon as the user signals intent.
   // The 80–150ms before the click is usually enough to make the swap appear
   // instant. Skipped for links the SPA wouldn't intercept anyway.
   function attachHoverPrefetch() {
@@ -339,10 +339,10 @@ function toggleSidebarCollapse() {
 // ----- CSRF token injection -----
 // Read the per-session CSRF token from the <meta> tag once, then ensure every
 // form has a hidden `_csrf` field before it submits. We hook three places:
-//   1. DOMContentLoaded — every form already in the DOM gets a hidden input.
-//   2. submit event — covers forms added dynamically (the dashboard's
+//   1. DOMContentLoaded - every form already in the DOM gets a hidden input.
+//   2. submit event - covers forms added dynamically (the dashboard's
 //      delete-client modal builds its form via JS).
-//   3. appConfirmForm helper (below) — that helper bypasses the submit event
+//   3. appConfirmForm helper (below) - that helper bypasses the submit event
 //      via HTMLFormElement.prototype.submit.call, so it must stamp the token
 //      itself before re-submitting.
 (function () {

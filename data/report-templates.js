@@ -1,12 +1,12 @@
-// Custom report templates — markdown bodies with {{placeholders}} resolved
+// Custom report templates - markdown bodies with {{placeholders}} resolved
 // against report-builder context (workspace, controls, risks, ncs, audits, mrms, suppliers, ...).
 // Available placeholders are documented in lib/reports.js.
 
 module.exports = [
   {
     name: 'Stage 1 readiness report',
-    description: 'Summary of mandatory records, control coverage, open NCs and management cadence — for stage 1 audit submission.',
-    body: `# Stage 1 Readiness Report — {{workspace.client_name}}
+    description: 'Summary of mandatory records, control coverage, open NCs and management cadence - for stage 1 audit submission.',
+    body: `# Stage 1 Readiness Report - {{workspace.client_name}}
 
 Generated: {{today}}
 Scope: {{workspace.scope}}
@@ -41,7 +41,7 @@ The ISMS is {{stage1_verdict}} for stage 1 review.`
   {
     name: 'Risk treatment plan summary',
     description: 'Top risks, treatments, expected residual reduction. For management review input.',
-    body: `# Risk Treatment Plan — {{workspace.client_name}}
+    body: `# Risk Treatment Plan - {{workspace.client_name}}
 
 Generated: {{today}}
 
@@ -56,8 +56,8 @@ Generated: {{today}}
   },
   {
     name: 'Internal audit annual summary',
-    description: 'Roll-up of internal audits performed across the year — for ISO 9.2 evidence.',
-    body: `# Internal Audit Programme — {{workspace.client_name}} {{year}}
+    description: 'Roll-up of internal audits performed across the year - for ISO 9.2 evidence.',
+    body: `# Internal Audit Programme - {{workspace.client_name}} {{year}}
 
 Generated: {{today}}
 
@@ -76,8 +76,8 @@ Generated: {{today}}
   },
   {
     name: 'Supplier risk dashboard',
-    description: 'TPRM snapshot — tier 1 / 2 / 3 counts, expiring attestations, overdue reviews.',
-    body: `# Supplier Risk Dashboard — {{workspace.client_name}}
+    description: 'TPRM snapshot - tier 1 / 2 / 3 counts, expiring attestations, overdue reviews.',
+    body: `# Supplier Risk Dashboard - {{workspace.client_name}}
 
 Generated: {{today}}
 
@@ -97,7 +97,7 @@ Generated: {{today}}
   {
     name: 'Compliance calendar (next 90 days)',
     description: 'All upcoming reviews, expiries, due dates across the ISMS.',
-    body: `# Compliance Calendar — {{workspace.client_name}}
+    body: `# Compliance Calendar - {{workspace.client_name}}
 
 Generated: {{today}}
 

@@ -77,8 +77,8 @@
               <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info" style="font-size:10px;">clause</span><% } %></td>
               <td><span class="tag" style="background:<%= sevColor %>;color:white;font-size:10.5px;"><%= g.status %></span></td>
               <td><span style="font-size:10.5px;font-weight:600;color:<%= prioColor %>;text-transform:uppercase;"><%= prio %></span></td>
-              <td class="meta"><%= g.maturity != null ? g.maturity : '—' %></td>
-              <td><% if (g.has_open_task) { %><span class="tag tag-warn" style="font-size:10px;">open task exists</span><% } else { %><span class="meta">—</span><% } %></td>
+              <td class="meta"><%= g.maturity != null ? g.maturity : '-' %></td>
+              <td><% if (g.has_open_task) { %><span class="tag tag-warn" style="font-size:10px;">open task exists</span><% } else { %><span class="meta">-</span><% } %></td>
             </tr>
           <% }) %>
         </tbody>
@@ -111,7 +111,7 @@
           </tr>
         <% }) %>
         <% if (docGaps.length > 30) { %>
-          <tr><td colspan="4" class="meta" style="text-align:center;padding:8px;">… and <%= docGaps.length - 30 %> more — open the document detail view and link controls one at a time</td></tr>
+          <tr><td colspan="4" class="meta" style="text-align:center;padding:8px;">… and <%= docGaps.length - 30 %> more - open the document detail view and link controls one at a time</td></tr>
         <% } %>
       </tbody>
     </table>
@@ -122,7 +122,7 @@
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-head">
     <h2>3. Evidence asks (<%= evidenceAsks.length %>)</h2>
-    <span class="meta">You marked these as "Implemented" but no evidence file is attached — the auditor's first question</span>
+    <span class="meta">You marked these as "Implemented" but no evidence file is attached - the auditor's first question</span>
   </div>
   <% if (evidenceAsks.length === 0) { %>
     <div class="panel-pad meta">Every "Implemented" item has at least one evidence file attached.</div>
@@ -145,7 +145,7 @@
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-head">
     <h2>4. Risks linked to gap controls (<%= untreatedLinkedRisks.length %>)</h2>
-    <span class="meta">Open risks whose treatment depends on a control still in gap state — re-evaluate residual risk</span>
+    <span class="meta">Open risks whose treatment depends on a control still in gap state - re-evaluate residual risk</span>
   </div>
   <% if (untreatedLinkedRisks.length === 0) { %>
     <div class="panel-pad meta">No open risks are blocked on gap controls.</div>

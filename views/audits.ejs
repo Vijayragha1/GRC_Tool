@@ -31,8 +31,8 @@
       <% audits.forEach(a => { %>
         <tr>
           <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= a.title %></a></td>
-          <td class="num meta"><%= a.audit_date || '—' %></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= a.auditor_name || '—' %></td>
+          <td class="num meta"><%= a.audit_date || '-' %></td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= a.auditor_name || '-' %></td>
           <td><span class="status s-<%= a.status === 'complete' ? 'done' : a.status %>"><%= a.status %></span></td>
           <td class="meta">
             <%= a.finding_count %>

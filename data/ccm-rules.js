@@ -3,10 +3,10 @@
 // and feed into the readiness flag stream.
 //
 // rule_kind values understood by lib/ccm.js:
-//   sql_count        — count rows from a SQL query; assert against threshold
-//   sql_max_age_days — find newest row by date column; assert age in days
-//   sql_min_count    — assert at least N rows match a query
-//   tool_setting     — assert a tool-level setting holds (encryption, audit log integrity, etc.)
+//   sql_count        - count rows from a SQL query; assert against threshold
+//   sql_max_age_days - find newest row by date column; assert age in days
+//   sql_min_count    - assert at least N rows match a query
+//   tool_setting     - assert a tool-level setting holds (encryption, audit log integrity, etc.)
 
 module.exports = [
   {

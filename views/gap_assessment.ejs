@@ -7,7 +7,7 @@
   </div>
 </div>
 
-<% if (typeof orientation !== 'undefined' && orientation) { /* Re-engagement orientation panel — what's changed since the prior pass closed */ %>
+<% if (typeof orientation !== 'undefined' && orientation) { /* Re-engagement orientation panel - what's changed since the prior pass closed */ %>
   <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(79,70,229,0.25);">
     <div class="panel-pad">
       <div class="sec-label" style="color:var(--accent-deep);">Re-engagement orientation</div>
@@ -41,7 +41,7 @@
           <div class="meta" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px;">Active pass · in progress</div>
           <div style="font-size:20px;font-weight:600;letter-spacing:-0.01em;color:var(--ink);">Pass <%= activePass.pass_number %><% if (activePass.label) { %> · <%= activePass.label %><% } %></div>
           <div class="meta" style="font-size:12.5px;margin-top:4px;line-height:1.5;">
-            Started <%= activePass.started_at ? activePass.started_at.slice(0,10) : '—' %>
+            Started <%= activePass.started_at ? activePass.started_at.slice(0,10) : '-' %>
             <% if (activePass.started_by_name) { %> by <%= activePass.started_by_name %><% } %>
             · <%= activePass.items_touched %> of <%= totalItems %> item<%= totalItems === 1 ? '' : 's' %> touched in this pass
             · <%= activePass.save_count %> save<%= activePass.save_count === 1 ? '' : 's' %>
@@ -84,15 +84,15 @@
 <details class="panel" style="margin-bottom:14px;" <%= !activePass ? 'open' : '' %>>
   <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    <% if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">— this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">— typically a re-assessment after the client has implemented changes</span><% } %>
+    <% if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">- this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">- typically a re-assessment after the client has implemented changes</span><% } %>
   </summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/start" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr;gap:10px;">
     <div>
-      <label class="label">Label <span class="meta">optional — defaults to "Initial gap assessment" or "Re-assessment N"</span></label>
+      <label class="label">Label <span class="meta">optional - defaults to "Initial gap assessment" or "Re-assessment N"</span></label>
       <input type="text" name="label" class="input" placeholder="e.g., Pre-Stage 1 readiness, Post-remediation Q1 2026">
     </div>
     <div>
-      <label class="label">Notes <span class="meta">optional — context for this pass</span></label>
+      <label class="label">Notes <span class="meta">optional - context for this pass</span></label>
       <textarea name="notes" rows="2" class="textarea" placeholder="e.g., Client says they've implemented the access-review automation, JML procedure, and patch SLAs from Pass 1's worklist. Verifying A.5.15–18, A.8.8 this round."></textarea>
     </div>
     <div>
@@ -143,7 +143,7 @@
                 <% } %>
               </div>
               <div class="meta" style="font-size:11.5px;margin-top:3px;">
-                Started <%= p.started_at ? p.started_at.slice(0,10) : '—' %><% if (p.started_by_name) { %> by <%= p.started_by_name %><% } %>
+                Started <%= p.started_at ? p.started_at.slice(0,10) : '-' %><% if (p.started_by_name) { %> by <%= p.started_by_name %><% } %>
                 <% if (p.completed_at) { %> · completed <%= p.completed_at.slice(0,10) %><% if (p.completed_by_name) { %> by <%= p.completed_by_name %><% } %><% } %>
                 · <%= p.items_touched %> item<%= p.items_touched === 1 ? '' : 's' %> touched · <%= p.save_count %> save<%= p.save_count === 1 ? '' : 's' %>
               </div>
@@ -179,13 +179,13 @@
   <% } %>
 </div>
 
-<!-- Trend across passes — average maturity per Annex A theme -->
+<!-- Trend across passes - average maturity per Annex A theme -->
 <% if (typeof trend !== 'undefined' && trend && trend.length > 0) {
      const themeKeys = ['5','6','7','8'];
      const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
 %>
   <div class="panel" style="margin-top:18px;">
-    <div class="panel-head"><h3>Trend across passes <span class="meta" style="font-weight:400;font-size:12px;">— average maturity (0–4) per Annex A theme</span></h3></div>
+    <div class="panel-head"><h3>Trend across passes <span class="meta" style="font-weight:400;font-size:12px;">- average maturity (0–4) per Annex A theme</span></h3></div>
     <div class="panel-pad">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
         <% themeKeys.forEach(k => {
@@ -196,7 +196,7 @@
         %>
           <div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-              <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> — <%= themeName %></span>
+              <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> - <%= themeName %></span>
               <% if (hasData && points[points.length-1].val !== null) { %>
                 <span class="num meta" style="font-size:11.5px;">latest <%= points[points.length-1].val.toFixed(2) %></span>
               <% } %>
@@ -229,7 +229,7 @@
   </div>
 <% } %>
 
-<!-- Annex A heatmap — current coverage per theme -->
+<!-- Annex A heatmap - current coverage per theme -->
 <% if (typeof heatmap !== 'undefined' && heatmap) {
      const themeKeys = ['5','6','7','8'];
      const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
@@ -243,7 +243,7 @@
      }
 %>
   <div class="panel" style="margin-top:18px;">
-    <div class="panel-head"><h3>Annex A heatmap <span class="meta" style="font-weight:400;font-size:12px;">— current coverage by theme</span></h3></div>
+    <div class="panel-head"><h3>Annex A heatmap <span class="meta" style="font-weight:400;font-size:12px;">- current coverage by theme</span></h3></div>
     <div class="panel-pad">
       <% themeKeys.forEach(k => {
            const items = heatmap[k] || [];
@@ -254,7 +254,7 @@
       %>
         <div style="margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-            <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> — <%= themeNames[k] %></span>
+            <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> - <%= themeNames[k] %></span>
             <span class="num meta" style="font-size:11.5px;"><%= impl %> / <%= total %> implemented · <%= pct %>%</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(22px, 1fr));gap:2px;">

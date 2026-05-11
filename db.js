@@ -1273,7 +1273,7 @@ function init() {
     addColumnIfMissing('audit_log', name, defParts.join(' '));
   });
 
-  // Migrations: documents — add live version pointer and locking flags.
+  // Migrations: documents - add live version pointer and locking flags.
   ['locked INTEGER DEFAULT 0','retired_at DATETIME',
    'published_at DATETIME','approval_due DATETIME',
    'review_period_months INTEGER DEFAULT 12','next_review_date DATE',
@@ -1286,12 +1286,12 @@ function init() {
   // Migrations: encryption flag on workspaces (per-tenant opt-in)
   addColumnIfMissing('workspaces', 'encryption_enabled', 'INTEGER DEFAULT 1');
 
-  // Documents — hierarchy and watermarking
+  // Documents - hierarchy and watermarking
   ['parent_doc_id INTEGER REFERENCES generated_docs(id) ON DELETE SET NULL',
    'doc_kind TEXT', 'reference_code TEXT', 'controlled_copy INTEGER DEFAULT 0']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('generated_docs', n, d.join(' ')); });
 
-  // Documents — uploaded source (preserves the originally approved file alongside the editable markdown)
+  // Documents - uploaded source (preserves the originally approved file alongside the editable markdown)
   ['source_filename TEXT', 'source_stored_path TEXT', 'source_mime TEXT', 'source_size_bytes INTEGER', 'source_sha256 TEXT']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('generated_docs', n, d.join(' ')); });
 
@@ -1300,7 +1300,7 @@ function init() {
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('generated_docs', n, d.join(' ')); });
   addColumnIfMissing('training_records', 'source_doc_id', 'INTEGER REFERENCES generated_docs(id) ON DELETE SET NULL');
 
-  // Document templates — flag ISO-mandatory vs recommended (so freshers know what's required vs nice-to-have)
+  // Document templates - flag ISO-mandatory vs recommended (so freshers know what's required vs nice-to-have)
   addColumnIfMissing('doc_templates', 'tier', "TEXT DEFAULT 'recommended'");
   // Re-tag every run (idempotent) so newly added templates get the right tier.
   const MANDATORY_PATTERNS = [
@@ -1332,34 +1332,34 @@ function init() {
   EXPECTED_PATTERNS.forEach(p => tagOne.run('expected', `%${p}%`));
   MANDATORY_PATTERNS.forEach(p => tagOne.run('mandatory', `%${p}%`));
 
-  // Audits — programme link, competence, independence
+  // Audits - programme link, competence, independence
   ['programme_id INTEGER REFERENCES audit_programmes(id) ON DELETE SET NULL',
    'auditor_competence TEXT', 'auditor_independence TEXT',
    'sample_size INTEGER', 'population_size INTEGER']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('audits', n, d.join(' ')); });
 
-  // Incidents — regulator clock, post-incident review, tabletop flag, runbook
+  // Incidents - regulator clock, post-incident review, tabletop flag, runbook
   ['notification_required_by DATETIME', 'notification_sent_at DATETIME',
    'pir_completed INTEGER DEFAULT 0', 'pir_summary TEXT',
    'is_tabletop INTEGER DEFAULT 0', 'runbook_id INTEGER',
    'contained_at DATETIME', 'eradicated_at DATETIME', 'recovered_at DATETIME']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('incidents', n, d.join(' ')); });
 
-  // Suppliers — termination workflow flags
+  // Suppliers - termination workflow flags
   ['termination_started_at DATETIME', 'termination_owner TEXT']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('suppliers', n, d.join(' ')); });
 
-  // Supplier questionnaires — tokenized external link
+  // Supplier questionnaires - tokenized external link
   ['external_token TEXT', 'external_email TEXT', 'external_completed_at DATETIME']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('supplier_questionnaires', n, d.join(' ')); });
 
-  // Training records — link to course catalogue + attestation/quiz
+  // Training records - link to course catalogue + attestation/quiz
   ['course_id INTEGER REFERENCES training_courses(id) ON DELETE SET NULL',
    'attestation_signed_at DATETIME', 'attestation_ip TEXT',
    'quiz_score INTEGER', 'expiry_date DATE']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('training_records', n, d.join(' ')); });
 
-  // Tasks — recurring, dependencies, parent, time
+  // Tasks - recurring, dependencies, parent, time
   ['parent_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL',
    'recurrence TEXT', 'recurrence_until DATE',
    'depends_on_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL',
@@ -1371,11 +1371,11 @@ function init() {
   // Phase C: control verification timestamp on closure of NC / audit
   addColumnIfMissing('control_states', 'last_verified_at', 'DATETIME');
 
-  // Tasks — priority for triage of bulk-spawned remediation backlogs.
+  // Tasks - priority for triage of bulk-spawned remediation backlogs.
   addColumnIfMissing('tasks', 'priority', "TEXT DEFAULT 'normal'");
 
   // Audit-grade content for each clause/control. Authored in data/iso-content.js
-  // and synced into iso_items on every boot — change the file, restart, content
+  // and synced into iso_items on every boot - change the file, restart, content
   // updates. Existing summary/questions/evidence_needed columns stay (legacy).
   addColumnIfMissing('iso_items', 'purpose', 'TEXT');
   addColumnIfMissing('iso_items', 'what_good_looks_like', 'TEXT');
@@ -1408,12 +1408,12 @@ function init() {
     if (e.code !== 'MODULE_NOT_FOUND') console.warn('[content] failed to sync:', e.message);
   }
 
-  // Gap-assessment universal questions — JSON-encoded answers per item.
+  // Gap-assessment universal questions - JSON-encoded answers per item.
   addColumnIfMissing('control_states', 'assessment_answers', 'TEXT');
 
   // Scope-of-implementation: 0-100 percentage of in-scope systems/processes where
   // the control is actually operating. A control can be "Implemented" globally yet
-  // applied to only 60% of in-scope systems — auditors care about that gap.
+  // applied to only 60% of in-scope systems - auditors care about that gap.
   addColumnIfMissing('control_states', 'scope_pct', 'INTEGER');
 
   // Append-only version history of every wizard save. Lets you show an auditor
@@ -1439,7 +1439,7 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_csh_ws_item ON control_state_history(workspace_id, iso_item_id, snapshot_at DESC);`);
 
-  // SoA metadata fields — version (semantic), approval/owner stamps so the
+  // SoA metadata fields - version (semantic), approval/owner stamps so the
   // SoA carries the documented-information attributes auditors expect on
   // arrival (clause 7.5.3).
   addColumnIfMissing('soa_snapshots', 'version', 'TEXT');
@@ -1450,7 +1450,7 @@ function init() {
   // the staleness flagger can surface "verified > N months ago".
   addColumnIfMissing('control_states', 'last_verified_at', 'TEXT');
 
-  // Clause 4.2 — Interested parties register. Structured table: party,
+  // Clause 4.2 - Interested parties register. Structured table: party,
   // their needs/expectations, how the ISMS addresses them, review cadence.
   db.exec(`CREATE TABLE IF NOT EXISTS interested_parties (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1470,7 +1470,7 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_ip_ws ON interested_parties(workspace_id);`);
 
-  // Clause 6.2 — Information security objectives register. Measurable,
+  // Clause 6.2 - Information security objectives register. Measurable,
   // time-bound, traceable to the policy.
   db.exec(`CREATE TABLE IF NOT EXISTS security_objectives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1490,7 +1490,7 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_so_ws ON security_objectives(workspace_id);`);
 
-  // Custom (non-Annex-A) controls — 27001:2022 explicitly contemplates
+  // Custom (non-Annex-A) controls - 27001:2022 explicitly contemplates
   // additional controls outside Annex A. Lives alongside the Annex A
   // controls in the SoA.
   db.exec(`CREATE TABLE IF NOT EXISTS soa_custom_controls (
@@ -1511,7 +1511,7 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_scc_ws ON soa_custom_controls(workspace_id);`);
 
-  // Gap-assessment passes — a "pass" is one round of consultant assessment.
+  // Gap-assessment passes - a "pass" is one round of consultant assessment.
   // Pass 1 = initial gap assessment; Pass 2+ = re-assessments after the
   // client has implemented some of the recommendations from the prior pass.
   // Each wizard save during an in-progress pass tags its history snapshot
@@ -1537,32 +1537,32 @@ function init() {
   addColumnIfMissing('control_state_history', 'pass_id',
     'INTEGER REFERENCES assessment_passes(id) ON DELETE SET NULL');
 
-  // Risks — KRI link convenience
+  // Risks - KRI link convenience
   addColumnIfMissing('risks', 'is_systemic', 'INTEGER DEFAULT 0');
 
-  // RBAC overrides — expiry support
+  // RBAC overrides - expiry support
   addColumnIfMissing('workspace_role_overrides', 'expires_at', 'DATETIME');
 
-  // Users — last_active for member profile, locale + IdP linkage
+  // Users - last_active for member profile, locale + IdP linkage
   addColumnIfMissing('users', 'last_active_at', 'DATETIME');
   addColumnIfMissing('users', 'locale', "TEXT DEFAULT 'en'");
   addColumnIfMissing('users', 'idp_subject', 'TEXT');
   addColumnIfMissing('users', 'idp_kind', 'TEXT');
 
-  // Risks — DPIA flag, risk acceptance lifecycle
+  // Risks - DPIA flag, risk acceptance lifecycle
   addColumnIfMissing('risks', 'is_dpia', 'INTEGER DEFAULT 0');
   addColumnIfMissing('risks', 'accepted_until', 'DATE');
   addColumnIfMissing('risks', 'last_acceptance_id', 'INTEGER');
 
-  // Evidence — retention metadata
+  // Evidence - retention metadata
   addColumnIfMissing('evidence', 'retention_until', 'DATE');
   addColumnIfMissing('evidence', 'retention_rule_id', 'INTEGER');
 
   // ========================================================================
-  // Tier-1, Tier-2, Tier-3 expansion — see roadmap in README.
+  // Tier-1, Tier-2, Tier-3 expansion - see roadmap in README.
   // ========================================================================
 
-  // Tier 1.1 — Risk treatment plan as a tracked workflow (clause 6.1.3).
+  // Tier 1.1 - Risk treatment plan as a tracked workflow (clause 6.1.3).
   // Each open risk gets a list of treatment actions with owners, dates,
   // status, and (optionally) a residual L×I re-evaluation when the action
   // closes. This is the artefact auditors sample most for 6.1.3.
@@ -1587,14 +1587,14 @@ function init() {
   CREATE INDEX IF NOT EXISTS idx_rta_risk ON risk_treatment_actions(risk_id);
   CREATE INDEX IF NOT EXISTS idx_rta_workspace ON risk_treatment_actions(workspace_id, status);`);
 
-  // Tier 1.2 — Evidence freshness/expiry. valid_from / valid_until reflect
+  // Tier 1.2 - Evidence freshness/expiry. valid_from / valid_until reflect
   // the period the evidence covers (e.g., a Q1-2026 access review is valid
   // for that period). Distinct from retention_until which is how long we
   // keep the file, not how long the audit will accept it as current.
   addColumnIfMissing('evidence', 'valid_from', 'DATE');
   addColumnIfMissing('evidence', 'valid_until', 'DATE');
   addColumnIfMissing('evidence', 'period_label', 'TEXT'); // e.g. "Q1 2026", "January 2026"
-  // Tier 3.9 — Section/sub-clause that this evidence specifically addresses
+  // Tier 3.9 - Section/sub-clause that this evidence specifically addresses
   // (e.g., A.5.18.b for the leaver-revocation aspect of access rights).
   addColumnIfMissing('evidence', 'clause_section', 'TEXT');
   // Version chain: a new file can supersede an older one. Both rows are kept;
@@ -1606,7 +1606,7 @@ function init() {
   // Tags (comma-separated, lowercased): "stage-2 audit pack, q1-2026, phishing-campaign-apr-2026"
   addColumnIfMissing('evidence', 'tags', 'TEXT');
 
-  // Tier 1.3 — Certification cycle calendar. Stage 1 → Stage 2 →
+  // Tier 1.3 - Certification cycle calendar. Stage 1 → Stage 2 →
   // surveillance year 1 → surveillance year 2 → recertification.
   // One row per planned/actual cert event per workspace.
   db.exec(`CREATE TABLE IF NOT EXISTS cert_cycle_events (
@@ -1623,7 +1623,7 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_ccev_workspace ON cert_cycle_events(workspace_id, planned_date);`);
 
-  // Tier 1.4 — Internal audit lifecycle. The existing 'audits' table is
+  // Tier 1.4 - Internal audit lifecycle. The existing 'audits' table is
   // metadata-only; add columns to track the engagement workflow.
   addColumnIfMissing('audits', 'lifecycle_stage', "TEXT DEFAULT 'planned'");
   // Stages: planned, fieldwork, findings_review, report, follow_up, closed
@@ -1631,7 +1631,7 @@ function init() {
   addColumnIfMissing('audits', 'report_issued_at', 'DATETIME');
   addColumnIfMissing('audits', 'closed_at', 'DATETIME');
 
-  // Tier 3.8 — Asset criticality / BIA modeling. Existing CIA scoring
+  // Tier 3.8 - Asset criticality / BIA modeling. Existing CIA scoring
   // covers confidentiality/integrity/availability; BIA adds business
   // criticality + recovery objectives.
   addColumnIfMissing('assets', 'business_criticality', 'TEXT'); // low / medium / high / critical
@@ -1639,7 +1639,7 @@ function init() {
   addColumnIfMissing('assets', 'rpo_hours', 'INTEGER'); // recovery point objective
   addColumnIfMissing('assets', 'bia_notes', 'TEXT');
 
-  // Tier 3.10 — Onboarding state per tenant (firm). Tracks which onboarding
+  // Tier 3.10 - Onboarding state per tenant (firm). Tracks which onboarding
   // steps the tenant has completed so the wizard can resume where left off.
   db.exec(`CREATE TABLE IF NOT EXISTS tenant_onboarding (
     firm_id INTEGER PRIMARY KEY,
@@ -1650,7 +1650,7 @@ function init() {
     FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE CASCADE
   );`);
 
-  // Engagement intake — the 25-question scoping questionnaire that runs at
+  // Engagement intake - the 25-question scoping questionnaire that runs at
   // kickoff. Schema is intentionally generic (key/value per workspace) so the
   // question bank can evolve in data/intake-questions.js without migrations.
   db.exec(`CREATE TABLE IF NOT EXISTS engagement_intake (
@@ -1677,7 +1677,7 @@ function init() {
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
   );`);
 
-  // Firm content library — the consultant firm's *own* hardened risk library,
+  // Firm content library - the consultant firm's *own* hardened risk library,
   // separate from the shipped starter library in data/risk-library.js. Each
   // engagement can clone the firm's curated entries into its workspace risk
   // register with one click. New firms get the shipped library copied in as
@@ -1705,7 +1705,7 @@ function init() {
   );`);
 
   // Per-client branding so consultants can customise per engagement without a
-  // code change. Defaults are NULL — the workspace overview falls back to the
+  // code change. Defaults are NULL - the workspace overview falls back to the
   // global accent + the client_name string.
   addColumnIfMissing('workspaces', 'brand_display_name', 'TEXT');
   addColumnIfMissing('workspaces', 'brand_primary_color', 'TEXT');
@@ -1716,7 +1716,7 @@ function init() {
   // Final-pass expansion (12 features across Tiers A/B/C).
   // ========================================================================
 
-  // A.1 — Evidence-to-many-controls. The same evidence file often satisfies
+  // A.1 - Evidence-to-many-controls. The same evidence file often satisfies
   // several controls (and clauses). Mirror the document_controls pattern:
   // join table with optional section_ref. Existing evidence.iso_item_id stays
   // as the "primary" link for backwards-compat; views UNION both sources.
@@ -1734,12 +1734,12 @@ function init() {
   CREATE INDEX IF NOT EXISTS idx_ec_iso ON evidence_controls(iso_item_id);`);
 
   // Backfill: every existing evidence row with an iso_item_id seeds a row in
-  // evidence_controls (idempotent — INSERT OR IGNORE).
+  // evidence_controls (idempotent - INSERT OR IGNORE).
   db.exec(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id)
     SELECT id, iso_item_id FROM evidence WHERE iso_item_id IS NOT NULL`);
 
-  // C.10 — Continual improvement register (clause 10.1). Improvements driven
-  // by data — distinct from corrective actions on NCs (10.2).
+  // C.10 - Continual improvement register (clause 10.1). Improvements driven
+  // by data - distinct from corrective actions on NCs (10.2).
   db.exec(`CREATE TABLE IF NOT EXISTS improvements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id INTEGER NOT NULL,
@@ -1759,7 +1759,7 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_imp_ws ON improvements(workspace_id, status);`);
 
-  // C.9 — Per-audit sampling justification + per-control sample records.
+  // C.9 - Per-audit sampling justification + per-control sample records.
   // The audits table already has sample_size/population_size; add a
   // narrative sampling-justification column and a child table for per-
   // control sampled items.
@@ -1779,14 +1779,14 @@ function init() {
   );
   CREATE INDEX IF NOT EXISTS idx_audsamp_audit ON audit_samples(audit_id);`);
 
-  // Workspaces — locale + retention defaults
+  // Workspaces - locale + retention defaults
   addColumnIfMissing('workspaces', 'locale', "TEXT DEFAULT 'en'");
 
-  // Comments — threading, mentions
+  // Comments - threading, mentions
   addColumnIfMissing('comments', 'parent_comment_id', 'INTEGER REFERENCES comments(id) ON DELETE CASCADE');
   addColumnIfMissing('comments', 'has_mentions', 'INTEGER DEFAULT 0');
 
-  // Generated_docs — watermark text
+  // Generated_docs - watermark text
   addColumnIfMissing('generated_docs', 'watermark', 'TEXT');
 
   // Migrations: extend suppliers with TPRM fields
@@ -1832,7 +1832,7 @@ function init() {
     console.log(`[db] Seeded ${catalog.length} ISO items`);
   }
 
-  // Seed system policy templates (idempotent — adds any missing by name)
+  // Seed system policy templates (idempotent - adds any missing by name)
   const tplCount = db.prepare('SELECT COUNT(*) AS c FROM doc_templates WHERE is_system = 1').get().c;
   if (true) {
     const tIns = db.prepare(`INSERT INTO doc_templates (firm_id, name, category, description, content, is_system)
@@ -2007,7 +2007,7 @@ function appendChain(auditLogId) {
 }
 
 // Walk the chain end-to-end, return list of issues (empty = clean).
-// The hash chain is GLOBAL across all workspaces — we walk every row to verify,
+// The hash chain is GLOBAL across all workspaces - we walk every row to verify,
 // then filter the issue list to those whose audit_log row belongs to the
 // requested workspace (so each tenant only sees their own integrity report).
 function verifyAuditChain(workspaceId) {
@@ -2017,7 +2017,7 @@ function verifyAuditChain(workspaceId) {
   const issues = [];
   let prevHash = '0'.repeat(64);
   for (const row of rows) {
-    if (!row.entry_hash) { issues.push({ id: row.id, kind: 'no_chain', desc: 'Missing chain entry — log row was inserted without going through logAction()' }); continue; }
+    if (!row.entry_hash) { issues.push({ id: row.id, kind: 'no_chain', desc: 'Missing chain entry - log row was inserted without going through logAction()' }); continue; }
     const canonical = JSON.stringify({
       i: row.id, w: row.workspace_id, u: row.user_id, a: row.action,
       et: row.entity_type, ei: row.entity_id, d: row.details,
@@ -2027,10 +2027,10 @@ function verifyAuditChain(workspaceId) {
     });
     const expected = crypto.createHash('sha256').update(prevHash + canonical).digest('hex');
     if (expected !== row.entry_hash) {
-      issues.push({ id: row.id, kind: 'mutated', desc: 'Row content does not match recorded chain hash — entry was modified after the fact.' });
+      issues.push({ id: row.id, kind: 'mutated', desc: 'Row content does not match recorded chain hash - entry was modified after the fact.' });
     }
     if (row.prev_hash !== prevHash) {
-      issues.push({ id: row.id, kind: 'broken_link', desc: 'Recorded prev_hash does not match preceding entry — earlier rows may have been removed.' });
+      issues.push({ id: row.id, kind: 'broken_link', desc: 'Recorded prev_hash does not match preceding entry - earlier rows may have been removed.' });
     }
     prevHash = row.entry_hash;
   }

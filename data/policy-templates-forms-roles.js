@@ -1,4 +1,4 @@
-// ISO 27001:2022 starter templates — forms and ISMS role cards.
+// ISO 27001:2022 starter templates - forms and ISMS role cards.
 
 const STARTER = `> **Starting point.** Aligned with ISO 27001:2022. Replace bracketed placeholders, adjust to {{client_name}}'s practices.\n\n---\n`;
 const HEADER = (kind) => `${STARTER}
@@ -61,7 +61,7 @@ I, the undersigned, accept the residual risk described above on behalf of {{clie
 | Approver | |
 |---|---|
 | Name | [Approver name] |
-| Role | [Approver role — must be authorised per the Risk Appetite] |
+| Role | [Approver role - must be authorised per the Risk Appetite] |
 | Signature | __________________________ |
 | Date | {{date}} |
 
@@ -98,14 +98,14 @@ ${HEADER('Clause 7.5 / general')}
 
 | Field | Value |
 |-------|-------|
-| Source policy / control | [Document — section] |
+| Source policy / control | [Document - section] |
 | Annex A reference | [If applicable] |
 
 ## 3. Reason
 [Why is the exception needed? Business driver, technical constraint, transitional state.]
 
 ## 4. Scope
-[What systems / people / data does this exception apply to? Be specific — this is what gets exempted.]
+[What systems / people / data does this exception apply to? Be specific - this is what gets exempted.]
 
 ## 5. Compensating controls
 [What controls are in place that reduce the residual risk while the exception is active? Be specific.]
@@ -122,7 +122,7 @@ ${HEADER('Clause 7.5 / general')}
 | Field | Value |
 |-------|-------|
 | Start | [DATE] |
-| Sunset (mandatory) | [DATE — max 180 days] |
+| Sunset (mandatory) | [DATE - max 180 days] |
 | Extension policy | New request required; no automatic renewal |
 
 ## 8. Approval
@@ -220,7 +220,7 @@ ${HEADER('A.8.32')}
 | Field | Value |
 |-------|-------|
 | What is changing | [What] |
-| Why | [Driver — incident, project, customer, vulnerability remediation] |
+| Why | [Driver - incident, project, customer, vulnerability remediation] |
 | Affected services / assets | [List] |
 | Affected information classification | [Internal / Confidential / Restricted] |
 
@@ -413,10 +413,10 @@ This acknowledgement is valid until [validity_months] months from the completion
 
 // =============== ISMS roles ===============
   {
-    name: 'ISMS Role — CISO / ISMS Manager',
+    name: 'ISMS Role - CISO / ISMS Manager',
     category: 'record',
     description: 'Job description / role definition for the senior ISMS authority (A.5.2).',
-    content: `# ISMS Role — Chief Information Security Officer / ISMS Manager
+    content: `# ISMS Role - Chief Information Security Officer / ISMS Manager
 
 ${HEADER('A.5.2')}
 
@@ -490,10 +490,10 @@ This role description is approved by **{{approval_authority}}** on **{{date}}**.
 `
   },
   {
-    name: 'ISMS Role — Information Security Officer / Risk Owner',
+    name: 'ISMS Role - Information Security Officer / Risk Owner',
     category: 'record',
     description: 'Job description for an ISO / risk owner reporting into the CISO (A.5.2).',
-    content: `# ISMS Role — Information Security Officer / Risk Owner
+    content: `# ISMS Role - Information Security Officer / Risk Owner
 
 ${HEADER('A.5.2')}
 
@@ -549,10 +549,10 @@ Approved by **{{approval_authority}}** on **{{date}}**.
 `
   },
   {
-    name: 'ISMS Role — Internal Auditor',
+    name: 'ISMS Role - Internal Auditor',
     category: 'record',
     description: 'Job description / role definition for the internal auditor (A.5.2 / clause 9.2).',
-    content: `# ISMS Role — Internal Auditor
+    content: `# ISMS Role - Internal Auditor
 
 ${HEADER('A.5.2 / Clause 9.2')}
 
@@ -611,7 +611,7 @@ The internal auditor:
 - Stakeholder feedback.
 
 ## 7. Records retained
-Audit programme, audit plans, working papers, reports, follow-up records — all in the ISMS tool — for at least [3 audit cycles].
+Audit programme, audit plans, working papers, reports, follow-up records - all in the ISMS tool - for at least [3 audit cycles].
 
 ## 8. Approval
 
@@ -619,10 +619,10 @@ Approved by **{{approval_authority}}** on **{{date}}**.
 `
   },
   {
-    name: 'ISMS Role — Asset Owner',
+    name: 'ISMS Role - Asset Owner',
     category: 'record',
     description: 'Definition of an Asset Owner for inventoried information assets (A.5.9 / A.5.2).',
-    content: `# ISMS Role — Asset Owner
+    content: `# ISMS Role - Asset Owner
 
 ${HEADER('A.5.9 / A.5.2')}
 
@@ -701,7 +701,7 @@ The ISMS Steering Committee:
 
 | Member | Role |
 |--------|------|
-| Chair | [CEO / CTO / equivalent — top management representative] |
+| Chair | [CEO / CTO / equivalent - top management representative] |
 | Information security lead | CISO / ISMS Manager |
 | Engineering / IT | [VP Engineering / Head of IT] |
 | People / HR | [Head of People] |

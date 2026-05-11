@@ -31,7 +31,7 @@ const keyrotation = require('./lib/keyrotation');
 init();
 // Force master key generation eagerly so first request doesn't block.
 enc.masterKey();
-// Start scheduled job runner — every 60 minutes by default.
+// Start scheduled job runner - every 60 minutes by default.
 jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
 // Start daily backup runner.
 backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
@@ -43,7 +43,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/tinymce', express.static(path.join(__dirname, 'node_modules/tinymce')));
-// Quiet the favicon 404 — no icon yet, just respond with No Content.
+// Quiet the favicon 404 - no icon yet, just respond with No Content.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 app.use(session({
@@ -55,7 +55,7 @@ app.use(session({
 
 // HTML responses must not be cached by the browser. Without this, CSRF tokens
 // and dynamic content get served stale from disk cache after a server restart
-// or after the user re-opens a tab — leading to silent 403s and "save isn't
+// or after the user re-opens a tab - leading to silent 403s and "save isn't
 // working" reports. Doesn't affect /public static assets (those don't go
 // through res.render and Express sets its own ETag for them).
 app.use((_req, res, next) => {
@@ -68,7 +68,7 @@ app.use((_req, res, next) => {
 });
 
 // CSRF protection on every state-changing request. Token is exposed via
-// res.locals.csrfToken — partials/header.ejs renders it in a <meta> tag,
+// res.locals.csrfToken - partials/header.ejs renders it in a <meta> tag,
 // and partials/footer.ejs has a load-time form walker that injects a hidden
 // _csrf input into every form. Tests can disable via DISABLE_CSRF=1.
 const { csrfMiddleware } = require('./lib/csrf');
@@ -83,7 +83,7 @@ if (process.env.DISABLE_CSRF !== '1') {
 // uploads/. The destination function inspects req.workspace (set by
 // requireWorkspace) or, for routes that operate without a workspace context,
 // falls back to req.user.firm_id. The stored_path written to the DB is just
-// the basename — resolveUploadPath() rebuilds the absolute path on read,
+// the basename - resolveUploadPath() rebuilds the absolute path on read,
 // trying the per-firm location first and falling back to legacy uploads/ for
 // files written before partitioning existed.
 const upload = multer({
@@ -116,7 +116,7 @@ function resolveUploadPath(storedPath, firmId) {
 }
 
 // ==================== HELPERS ====================
-// Auth is disabled — single-user-per-tenant local mode. The "active tenant" is
+// Auth is disabled - single-user-per-tenant local mode. The "active tenant" is
 // stored in the session; currentUser returns the firm-owner of that tenant so
 // every existing firm_id-based query naturally scopes to the active tenant.
 function getActiveFirmId(req) {
@@ -148,7 +148,7 @@ function listAllFirms() {
 
 function requireAuth(req, res, next) {
   req.user = currentUser(req);
-  if (!req.user) return res.status(500).render('error', { user: null, message: 'The active firm has no users. This usually means the database was created without seeding — restart the server (npm start) to re-run seeding, or delete data/iso27001.db to start completely fresh. Your evidence files in uploads/ are preserved.' });
+  if (!req.user) return res.status(500).render('error', { user: null, message: 'The active firm has no users. This usually means the database was created without seeding - restart the server (npm start) to re-run seeding, or delete data/iso27001.db to start completely fresh. Your evidence files in uploads/ are preserved.' });
   next();
 }
 
@@ -173,7 +173,7 @@ function requireWorkspace(req, res, next) {
   // breadcrumb instead of dumping them into a different sidebar with no
   // way home.
   if (req.session) req.session.last_ws_id = ws.id;
-  // Multi-entity scoping was removed — keep the locals as empty stubs so views that
+  // Multi-entity scoping was removed - keep the locals as empty stubs so views that
   // still reference them degrade gracefully without re-rendering work.
   res.locals.entitySelectorWs = ws;
   res.locals.workspaceEntities = [];
@@ -296,7 +296,7 @@ function requirePermission(perm) {
   };
 }
 
-// Build the audit context from a request — IP, UA, request id, current entity scope.
+// Build the audit context from a request - IP, UA, request id, current entity scope.
 function auditCtx(req) {
   return {
     ip: (req.headers['x-forwarded-for'] || req.connection?.remoteAddress || '').toString().split(',')[0].trim(),
@@ -377,7 +377,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Auth disabled — all auth routes redirect to /dashboard.
+// Auth disabled - all auth routes redirect to /dashboard.
 app.get('/', (req, res) => res.redirect('/dashboard'));
 app.get('/login', (req, res) => res.redirect('/dashboard'));
 app.post('/login', (req, res) => res.redirect('/dashboard'));
@@ -386,7 +386,7 @@ app.post('/register', (req, res) => res.redirect('/dashboard'));
 app.post('/logout', (req, res) => res.redirect('/dashboard'));
 
 // ==================== TENANTS + ONBOARDING ====================
-// Extracted to routes/tenants.js — first slice of server.js modularization.
+// Extracted to routes/tenants.js - first slice of server.js modularization.
 // The pattern: each domain module exports register(app, deps), receives all
 // dependencies explicitly, knows nothing about other domains.
 require('./routes/tenants').register(app, {
@@ -398,7 +398,7 @@ require('./routes/tenants').register(app, {
   projectRoot: __dirname,
 });
 
-// (tenant + onboarding routes live in routes/tenants.js — see the require
+// (tenant + onboarding routes live in routes/tenants.js - see the require
 // above. Anything that needs to call them goes through HTTP, not internal
 // references.)
 
@@ -428,7 +428,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
       WHERE firm_id = ? AND user_type = 'firm' AND active = 1 ORDER BY name`).all(req.user.firm_id);
   }
 
-  // At-risk engagements — workspaces with active passes and meaningful warning
+  // At-risk engagements - workspaces with active passes and meaningful warning
   // signals: stale controls, overdue NCs, missed targets, no recent pass.
   const portfolioRisk = workspacesWithProgress.map(w => {
     const lastPass = db.prepare(`SELECT pass_number, status, started_at, completed_at
@@ -483,11 +483,11 @@ app.get('/dashboard', requireAuth, (req, res) => {
     const ncs = db.prepare(`SELECT id, workspace_id, title, due_date, severity, status FROM nonconformities
       WHERE workspace_id IN (${placeholders}) AND status NOT IN ('closed','verified')
       AND due_date IS NOT NULL`).all(...wsIds);
-    // Audits — table has audit_date and title (not planned_date / name).
+    // Audits - table has audit_date and title (not planned_date / name).
     const audits = db.prepare(`SELECT id, workspace_id, title, audit_date AS due_date, status FROM audits
       WHERE workspace_id IN (${placeholders}) AND status NOT IN ('completed','cancelled')
       AND audit_date IS NOT NULL`).all(...wsIds);
-    // MRMs — schema has meeting_date and no title column; synthesise one.
+    // MRMs - schema has meeting_date and no title column; synthesise one.
     const mrms = db.prepare(`SELECT id, workspace_id, ('MRM ' || meeting_date) AS title, meeting_date AS due_date, status FROM mrms
       WHERE workspace_id IN (${placeholders}) AND status NOT IN ('completed','cancelled')
       AND meeting_date IS NOT NULL`).all(...wsIds);
@@ -523,10 +523,10 @@ app.get('/dashboard', requireAuth, (req, res) => {
     }
   }
 
-  // Onboarding nudge — show "Resume setup" on the dashboard when not all
+  // Onboarding nudge - show "Resume setup" on the dashboard when not all
   // steps are complete, even if the user previously skipped the wizard.
   // Reviewer feedback: "the onboarding wizard exists but disappears once
-  // skipped" — this puts it back without being intrusive.
+  // skipped" - this puts it back without being intrusive.
   let onboarding = null;
   try {
     const tenantsModule = require('./routes/tenants');
@@ -573,7 +573,7 @@ const GLOSSARY = require('./data/glossary');
 
 // Set of valid iso_items.id values, computed once at boot. Used to decide
 // whether a clause/Annex-A reference in glossary text resolves to a real
-// page in the tool — only resolvable refs become clickable.
+// page in the tool - only resolvable refs become clickable.
 const ISO_ITEM_IDS = new Set(db.prepare('SELECT id FROM iso_items').all().map(r => r.id));
 
 function escapeHtml(s) {
@@ -584,12 +584,12 @@ function escapeHtml(s) {
 
 // Render a clauseRef string with recognised refs as <a> links. Caller passes
 // the workspace ID to use as the link target. If wsId is missing, returns
-// plain escaped text — refs are not clickable without a workspace.
+// plain escaped text - refs are not clickable without a workspace.
 function renderClauseRefHtml(text, wsId) {
   const escaped = escapeHtml(text);
   if (!text || !wsId) return escaped;
   let html = escaped;
-  // Annex A — match A.X or A.X.Y. Longer match attempted first.
+  // Annex A - match A.X or A.X.Y. Longer match attempted first.
   html = html.replace(/A\.\d+(?:\.\d+)?/g, (m) => {
     const slug = 'annex-' + m.toLowerCase();
     if (ISO_ITEM_IDS.has(slug)) {
@@ -597,7 +597,7 @@ function renderClauseRefHtml(text, wsId) {
     }
     return m;
   });
-  // Clause refs — match "Clause(s) N[, N, …]" where each N is a dotted number
+  // Clause refs - match "Clause(s) N[, N, …]" where each N is a dotted number
   // optionally followed by a sub-section letter. Resolves each number to the
   // longest existing clause-id prefix and wraps it in a link.
   function linkClauseToken(token) {
@@ -632,13 +632,13 @@ app.get('/glossary', requireAuth, (req, res) => {
   const results = GLOSSARY.searchEntries(q, category, letter)
     .slice()
     .sort((a, b) => a.term.localeCompare(b.term));
-  // Letter buckets — only show letters that have entries (post-filter, so the bar reflects what's available).
+  // Letter buckets - only show letters that have entries (post-filter, so the bar reflects what's available).
   const letterCounts = {};
   for (const e of GLOSSARY.ENTRIES) {
     const first = /[A-Z]/.test(e.term[0]) ? e.term[0].toUpperCase() : '#';
     letterCounts[first] = (letterCounts[first] || 0) + 1;
   }
-  // Category counts (across full corpus, ignoring search filter — so users see what's available).
+  // Category counts (across full corpus, ignoring search filter - so users see what's available).
   const categoryCounts = {};
   for (const e of GLOSSARY.ENTRIES) categoryCounts[e.category] = (categoryCounts[e.category] || 0) + 1;
   const starter = GLOSSARY.STARTER_TERMS
@@ -646,7 +646,7 @@ app.get('/glossary', requireAuth, (req, res) => {
     .filter(Boolean);
   const linkWsId = firstWorkspaceIdFor(req.user);
   // If the user just came from a workspace, render glossary with the
-  // workspace sidebar still in place — they're not "exiting" the engagement,
+  // workspace sidebar still in place - they're not "exiting" the engagement,
   // they're viewing reference material inside it. Falls back to firm-level
   // sidebar if there's no recent workspace.
   res.render('glossary', {
@@ -668,7 +668,7 @@ app.get('/glossary', requireAuth, (req, res) => {
 app.get('/glossary/:slug', requireAuth, (req, res) => {
   const idx = GLOSSARY.indexBySlug();
   const entry = idx[req.params.slug];
-  if (!entry) return res.status(404).render('error', { user: req.user, message: 'No glossary entry with that slug. The 168 terms shipped with the tool are listed at /glossary — try searching there.' });
+  if (!entry) return res.status(404).render('error', { user: req.user, message: 'No glossary entry with that slug. The 168 terms shipped with the tool are listed at /glossary - try searching there.' });
   const related = (entry.related || []).map(s => idx[s]).filter(Boolean);
   const categoryLabel = (GLOSSARY.CATEGORIES.find(c => c.key === entry.category) || {}).label || entry.category;
   const linkWsId = firstWorkspaceIdFor(req.user);
@@ -705,7 +705,7 @@ app.post('/workspaces', requireAuth, (req, res) => {
   // intake is the obvious next step (scope sign-off, stakeholders, crown
   // jewels) and the page already shows progress + an "Apply to workspace"
   // button that backfills the scope statement and seeds interested parties.
-  res.redirect(withToast('/workspaces/' + id + '/intake', 'Workspace created — start with the engagement intake'));
+  res.redirect(withToast('/workspaces/' + id + '/intake', 'Workspace created - start with the engagement intake'));
 });
 
 app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
@@ -763,10 +763,10 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     sparkline.push({ d: key, c: sparkMap[key] || 0 });
   }
 
-  // Implementation roadmap — extracted to a helper so the new /roadmap page
+  // Implementation roadmap - extracted to a helper so the new /roadmap page
   // can share the same source of truth as the Overview dashboard.
   const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
-  // Tier B.6 — top "needs your attention" items for the overview
+  // Tier B.6 - top "needs your attention" items for the overview
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
   const nextStep = computeNextStep(ws);
   res.render('workspace', {
@@ -777,7 +777,7 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   });
 });
 
-// Implementation roadmap + needs-attention — moved out of the Overview page
+// Implementation roadmap + needs-attention - moved out of the Overview page
 // (which is now a pure dashboard). Same data, dedicated home.
 app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) => {
   const ws = req.workspace;
@@ -805,7 +805,7 @@ app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) =
     client_name, industry, scope, target_cert_date, stage, lead_consultant_id,
     brand_display_name, brand_primary_color, brand_logo_path, sector,
   } = req.body;
-  // Validate brand color is a hex literal — anything else gets stored as null so
+  // Validate brand color is a hex literal - anything else gets stored as null so
   // a malformed value can't break the page CSS.
   const safeColor = (typeof brand_primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(brand_primary_color.trim()))
     ? brand_primary_color.trim() : null;
@@ -827,7 +827,7 @@ app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) =
 });
 
 // Destructive: delete a workspace (= one client engagement) and everything
-// inside it — controls, risks, evidence rows + files on disk, audits, MRMs,
+// inside it - controls, risks, evidence rows + files on disk, audits, MRMs,
 // gap passes, registers. Requires typing the client name to confirm.
 app.post('/workspaces/:wsId/delete', requireAuth, requireWorkspace, (req, res) => {
   if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
@@ -835,7 +835,7 @@ app.post('/workspaces/:wsId/delete', requireAuth, requireWorkspace, (req, res) =
   const confirm = (req.body.confirm_name || '').trim();
   if (confirm !== ws.client_name) {
     return res.redirect(withToast('/workspaces/' + ws.id + '#workspace-settings',
-      'Confirmation name did not match — nothing deleted', 'error'));
+      'Confirmation name did not match - nothing deleted', 'error'));
   }
 
   // Collect evidence file paths so we can wipe them off disk after the row delete.
@@ -958,7 +958,7 @@ app.get('/workspaces/:wsId/controls', requireAuth, requireWorkspace, (req, res) 
 // surfacing the existing iso_items prompts so a fresher has a structured path through
 // all 118 items instead of staring at a table.
 
-// Per-item diagnostic questions — bespoke for the 25 main-body clauses and high-impact
+// Per-item diagnostic questions - bespoke for the 25 main-body clauses and high-impact
 // controls; mechanical transformation of evidence_needed for the rest. See
 // data/assessment-questions.js. Answers drive the suggested-status hint.
 const { getQuestions: getAssessmentQuestions } = require('./data/assessment-questions');
@@ -986,14 +986,14 @@ function nextUnassessedItem(wsId, afterSortOrder) {
     ORDER BY i.sort_order LIMIT 1`).get(wsId, afterSortOrder || 0);
 }
 
-// Post-assessment summary — converts a completed gap walkthrough into a worklist:
+// Post-assessment summary - converts a completed gap walkthrough into a worklist:
 // remediation tasks, missing documents, evidence asks, untreated linked risks.
 app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const wsId = req.workspace.id;
 
   // Gaps = anything Not Implemented / Partially Implemented / Work In Progress
   // (clauses + controls). Excludes Not Applicable and Not Assessed (those are different problems).
-  // max_risk_score is the worst L*I across linked risks — used to bump priority for
+  // max_risk_score is the worst L*I across linked risks - used to bump priority for
   // Not-Implemented controls protecting high-impact risks.
   const gaps = db.prepare(`
     SELECT i.id, i.type, i.title, i.category, cs.status, cs.maturity, cs.notes,
@@ -1022,7 +1022,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
                       WHERE dc.iso_item_id=i.id AND d.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
 
-  // Items marked Implemented but with NO evidence files attached — auditor will press on these
+  // Items marked Implemented but with NO evidence files attached - auditor will press on these
   const evidenceAsks = db.prepare(`
     SELECT i.id, i.type, i.title FROM iso_items i
     INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
@@ -1079,7 +1079,7 @@ app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, r
         WHERE i.id=?`).get(req.workspace.id, req.workspace.id, id);
       if (!item) continue;
       const cleanTitle = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
-      const taskTitle = `Remediate ${item.id.replace('annex-','').replace('clause-','').toUpperCase()} — ${cleanTitle}`;
+      const taskTitle = `Remediate ${item.id.replace('annex-','').replace('clause-','').toUpperCase()} - ${cleanTitle}`;
       let priority = 'normal';
       if (item.status === 'Not Implemented') {
         if (item.type === 'clause') priority = 'critical';
@@ -1114,7 +1114,7 @@ app.get('/workspaces/:wsId/controls/assess', requireAuth, requireWorkspace, requ
 });
 
 app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
-  // Reserved literal sub-routes — let them fall through to their own handlers
+  // Reserved literal sub-routes - let them fall through to their own handlers
   // registered later in the file.
   if (['summary.docx'].includes(req.params.isoId)) return nextMw();
   const item = db.prepare(`SELECT * FROM iso_items WHERE id=? AND type IN ('clause','control')`).get(req.params.isoId);
@@ -1163,7 +1163,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     relatedRows = db.prepare(`SELECT id, type, title FROM iso_items WHERE id IN (${placeholders})`).all(...item.related_items);
   }
 
-  // Evidence files attached to this control — displayed in a panel on the wizard
+  // Evidence files attached to this control - displayed in a panel on the wizard
   // since the standalone control detail page was removed and there's no other home.
   // Evidence linked to this control via either the legacy primary
   // (evidence.iso_item_id) OR the new evidence_controls join. UNION + DISTINCT
@@ -1182,7 +1182,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     )
     ORDER BY e.uploaded_at DESC`).all(req.workspace.id, req.workspace.id, item.id, item.id);
 
-  // Linked risks, documents, and open NCs — read-only summary panels.
+  // Linked risks, documents, and open NCs - read-only summary panels.
   const linkedRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.status
     FROM risks r INNER JOIN risk_controls rc ON rc.risk_id=r.id
     WHERE rc.iso_item_id=? AND r.workspace_id=?
@@ -1191,7 +1191,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status, dc.section_ref, dc.id AS link_id
     FROM document_controls dc INNER JOIN generated_docs d ON d.id=dc.document_id
     WHERE dc.iso_item_id=? AND d.workspace_id=? ORDER BY d.name`).all(item.id, req.workspace.id);
-  // Workspace's documents that aren't already linked — the add-link dropdown.
+  // Workspace's documents that aren't already linked - the add-link dropdown.
   const linkableDocs = db.prepare(`SELECT id, name, category, status FROM generated_docs
     WHERE workspace_id=? AND id NOT IN (SELECT document_id FROM document_controls WHERE iso_item_id=?)
     ORDER BY name`).all(req.workspace.id, item.id);
@@ -1200,7 +1200,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
     ORDER BY (CASE severity WHEN 'major' THEN 0 WHEN 'minor' THEN 1 ELSE 2 END), due_date IS NULL, due_date`).all(item.id, req.workspace.id);
 
-  // Per-pass notes — derived from history. The current pass's textarea shows
+  // Per-pass notes - derived from history. The current pass's textarea shows
   // ONLY notes saved within the active pass; prior-pass notes appear above as
   // read-only context blocks so the consultant can verify against earlier
   // commentary without overwriting it. This is the per-pass-notes contract:
@@ -1246,7 +1246,7 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
 
   const { applicability, status, maturity, inclusion_justification, exclusion_justification, notes, scope_pct } = req.body;
   const sets = [], vals = [];
-  // Clauses are not subject to SoA applicability — every certified ISMS must satisfy them.
+  // Clauses are not subject to SoA applicability - every certified ISMS must satisfy them.
   if (item.type === 'control' && applicability !== undefined) { sets.push('applicability=?'); vals.push(applicability); }
   if (item.type === 'clause') { sets.push('applicability=?'); vals.push('included'); }
   if (status !== undefined) { sets.push('status=?'); vals.push(status); }
@@ -1259,7 +1259,7 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
     sets.push('scope_pct=?'); vals.push(Number.isFinite(n) && n >= 0 && n <= 100 ? n : null);
   }
 
-  // Diagnostic answers — persist as JSON keyed by question index (questions vary per item).
+  // Diagnostic answers - persist as JSON keyed by question index (questions vary per item).
   const answers = {};
   Object.keys(req.body).forEach(k => {
     const m = k.match(/^q_(\d+)$/);
@@ -1277,7 +1277,7 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   vals.push(req.workspace.id, item.id);
   db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
 
-  // Append-only history snapshot — written after the UPDATE so it captures the new
+  // Append-only history snapshot - written after the UPDATE so it captures the new
   // values exactly. An auditor can later request the timeline for any control.
   const cur = db.prepare(`SELECT status, applicability, maturity, scope_pct,
     inclusion_justification, exclusion_justification, notes, assessment_answers
@@ -1364,7 +1364,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
   // Find the next un-assessed item (continue button target).
   const nextItem = nextUnassessedItem(wsId, -1);
 
-  // Re-engagement orientation — when a new pass is starting (or active),
+  // Re-engagement orientation - when a new pass is starting (or active),
   // surface what's changed since the prior pass closed: new evidence, new
   // NCs, controls touched, documents superseded, time elapsed.
   let orientation = null;
@@ -1385,7 +1385,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
     };
   }
 
-  // Trend across passes — average maturity per Annex A theme per pass.
+  // Trend across passes - average maturity per Annex A theme per pass.
   // Theme = first segment of A.X.Y (X = 5/6/7/8 → Organizational/People/Physical/Technological).
   // For each pass, take the LATEST snapshot per item up to and including that
   // pass; group by theme; average maturity. Pass 0 = baseline (Not Assessed).
@@ -1425,7 +1425,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
     });
   }
 
-  // Annex A heatmap — current coverage by theme.
+  // Annex A heatmap - current coverage by theme.
   const themeRows = db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.maturity
@@ -1450,7 +1450,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
 
 app.post('/workspaces/:wsId/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const wsId = req.workspace.id;
-  // If an active pass exists, complete it before starting a new one — only
+  // If an active pass exists, complete it before starting a new one - only
   // one pass can be in_progress at a time.
   const active = getActivePass(wsId);
   if (active) {
@@ -1488,7 +1488,7 @@ app.post('/workspaces/:wsId/gap-assessment/:passId/reopen', requireAuth, require
   const wsId = req.workspace.id;
   const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
   if (!p) return res.status(404).send('Not found');
-  // Only one pass can be in_progress — close any other before reopening.
+  // Only one pass can be in_progress - close any other before reopening.
   const other = getActivePass(wsId);
   if (other && other.id !== p.id) {
     db.prepare(`UPDATE assessment_passes
@@ -1510,7 +1510,7 @@ app.post('/workspaces/:wsId/gap-assessment/:passId/rename', requireAuth, require
   res.redirect(`/workspaces/${wsId}/gap-assessment`);
 });
 
-// Diff between two passes — for each control, show the state at the end of
+// Diff between two passes - for each control, show the state at the end of
 // each pass and categorise the change. "End of pass N" = last history
 // snapshot with pass_id=N (i.e. the value that was current when the pass
 // was active). For the active pass we use the live control_states row.
@@ -1597,7 +1597,7 @@ app.get('/workspaces/:wsId/gap-assessment/diff', requireAuth, requireWorkspace, 
   });
 });
 
-// Append-only history of every wizard save for one item — what the auditor asks for.
+// Append-only history of every wizard save for one item - what the auditor asks for.
 app.get('/workspaces/:wsId/controls/:isoId/history', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   const item = db.prepare(`SELECT id, type, title FROM iso_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
@@ -1608,12 +1608,12 @@ app.get('/workspaces/:wsId/controls/:isoId/history', requireAuth, requireWorkspa
   res.render('control_history', { user: req.user, ws: req.workspace, item, rows });
 });
 
-// The standalone control detail page was removed — the wizard now hosts
+// The standalone control detail page was removed - the wizard now hosts
 // evidence, linked risks, linked documents, NCs, and history alongside
 // the audit-grade reference content and assessment form. Existing inbound
 // links from SoA, risks, NCs, etc. continue to work via this redirect.
 app.get('/workspaces/:wsId/controls/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
-  // Reserved literal sub-routes — let them fall through.
+  // Reserved literal sub-routes - let them fall through.
   if (['kanban','export.csv','import','assess'].includes(req.params.isoId)) return nextMw();
   const item = db.prepare('SELECT id FROM iso_items WHERE id = ?').get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
@@ -1636,7 +1636,7 @@ app.post('/workspaces/:wsId/comments', requireAuth, requireWorkspace, requirePer
 });
 
 // ==================== EVIDENCE ====================
-// Workspace-wide evidence library — every uploaded file with its links, owner,
+// Workspace-wide evidence library - every uploaded file with its links, owner,
 // validity, and add/remove-link actions. Use this when a single artefact (e.g.
 // a network diagram) evidences several controls and you don't want to walk into
 // each control's wizard to attach.
@@ -1711,7 +1711,7 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
     superseded: db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=? AND superseded_at IS NOT NULL`).get(req.workspace.id).c
   };
 
-  // Tag cloud — every distinct tag used in this workspace, with counts.
+  // Tag cloud - every distinct tag used in this workspace, with counts.
   const tagCounts = {};
   for (const e of allEvidence) {
     if (!e.tags) continue;
@@ -1757,7 +1757,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
 
   // Dedupe by SHA-256 within this workspace. If we've seen this exact bytes
-  // before (and it isn't superseded), don't create a duplicate row — link the
+  // before (and it isn't superseded), don't create a duplicate row - link the
   // existing file to the new control IDs and discard the new upload.
   const existing = db.prepare(`SELECT id, filename FROM evidence
     WHERE workspace_id=? AND sha256=? AND superseded_at IS NULL
@@ -1771,7 +1771,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
     }
     logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, { sha, link_count: isoIds.length });
     const back = req.headers.referer || '/workspaces/' + req.workspace.id + '/evidence';
-    return res.redirect(withToast(back, `Same file already exists (${existing.filename}) — linked instead of duplicated`));
+    return res.redirect(withToast(back, `Same file already exists (${existing.filename}) - linked instead of duplicated`));
   }
 
   const evId = db.prepare(`INSERT INTO evidence
@@ -1792,7 +1792,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
   res.redirect(back);
 });
 
-// Bulk upload — multiple files at once with shared metadata. Each file becomes
+// Bulk upload - multiple files at once with shared metadata. Each file becomes
 // an independent evidence row; all share the same period / valid_from / valid_until
 // and link to the same set of selected controls.
 app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, upload.array('files', 50), (req, res) => {
@@ -1849,7 +1849,7 @@ app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspa
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
   if (sha === old.sha256) {
     try { fs.unlinkSync(req.file.path); } catch (_) {}
-    return res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, 'New file is identical to the existing version — nothing to supersede', 'info'));
+    return res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, 'New file is identical to the existing version - nothing to supersede', 'info'));
   }
   const { description, valid_from, valid_until, period_label } = req.body;
   const tags = normaliseTags(req.body.tags) || old.tags || null;
@@ -1868,13 +1868,13 @@ app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspa
     const tx = db.transaction(() => { for (const l of oldLinks) ins.run(newId, l.iso_item_id, l.section_ref); });
     try { tx(); } catch (_) {}
   }
-  // Mark old as superseded — kept for audit trail but hidden from active view.
+  // Mark old as superseded - kept for audit trail but hidden from active view.
   db.prepare(`UPDATE evidence SET superseded_at=datetime('now'), superseded_by_id=? WHERE id=?`).run(newId, old.id);
   logAction(req.user.id, req.workspace.id, 'supersede_evidence', 'evidence', old.id, { new_id: newId, filename: req.file.originalname });
   res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, `Superseded ${old.filename} → ${req.file.originalname}`));
 });
 
-// Auditor evidence-pack export — single ZIP of every active (non-superseded)
+// Auditor evidence-pack export - single ZIP of every active (non-superseded)
 // evidence file in the workspace, plus a manifest CSV describing each one.
 app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace, (req, res) => {
   const dateFrom = (req.query.from || '').toString();
@@ -1915,7 +1915,7 @@ app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace, (r
 
   // README
   archive.append(
-`Evidence pack — workspace ${req.workspace.client_name || req.workspace.id}
+`Evidence pack - workspace ${req.workspace.client_name || req.workspace.id}
 Generated: ${new Date().toISOString()}
 Files: ${items.length}
 Date range: ${dateFrom || 'all'} → ${dateTo || 'all'}
@@ -1927,7 +1927,7 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
     { name: 'README.txt' }
   );
 
-  // Files — resolve via the partitioned-or-legacy resolver shared with /download.
+  // Files - resolve via the partitioned-or-legacy resolver shared with /download.
   for (const e of items) {
     const found = resolveUploadPath(e.stored_path, req.workspace.firm_id);
     if (found && fs.existsSync(found) && fs.statSync(found).isFile()) {
@@ -1937,9 +1937,9 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
   archive.finalize();
 });
 
-// Tier A.1 — Add/remove additional control links on an evidence file.
+// Tier A.1 - Add/remove additional control links on an evidence file.
 // section_ref may be either a single shared value (form: section_ref=...) or
-// per-link via a parallel array section_ref_for_<isoId>=... — the latter wins.
+// per-link via a parallel array section_ref_for_<isoId>=... - the latter wins.
 app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
@@ -2102,7 +2102,7 @@ app.post('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requi
   });
   tx();
   logAction(req.user.id, req.workspace.id, 'add_risks_from_library', 'risk', null, { count: added }, auditCtx(req));
-  res.redirect(withToast('/workspaces/' + req.workspace.id + '/risks', `Added ${added} risk${added === 1 ? '' : 's'} from library — review and adjust scoring`));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/risks', `Added ${added} risk${added === 1 ? '' : 's'} from library - review and adjust scoring`));
 });
 
 app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
@@ -2119,17 +2119,17 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
   const methodology = getActiveMethodology(req.workspace.id);
   const inherentBand = methodologyBand(methodology, risk.likelihood, risk.impact);
   const residualBand = (risk.residual_likelihood && risk.residual_impact) ? methodologyBand(methodology, risk.residual_likelihood, risk.residual_impact) : null;
-  // Tier 1.1 — treatment plan actions for this risk
+  // Tier 1.1 - treatment plan actions for this risk
   const actions = db.prepare(`SELECT * FROM risk_treatment_actions
     WHERE risk_id=? AND workspace_id=?
     ORDER BY (CASE status WHEN 'planned' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 ELSE 3 END), due_date IS NULL, due_date`).all(risk.id, req.workspace.id);
-  // Tier A.2 — risk acceptance state
+  // Tier A.2 - risk acceptance state
   const activeAcceptance = db.prepare(`SELECT * FROM risk_acceptances
     WHERE risk_id=? AND revoked_at IS NULL ORDER BY signed_at DESC LIMIT 1`).get(risk.id);
   res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, methodology, inherentBand, residualBand, actions, activeAcceptance });
 });
 
-// Tier 1.1 — Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
+// Tier 1.1 - Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
 app.post('/workspaces/:wsId/risks/:id/actions', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
   const { title, description, owner_name, due_date } = req.body;
   if (!title || !title.trim()) return redirectBack(req, res);
@@ -2171,7 +2171,7 @@ app.post('/workspaces/:wsId/risks/:id/actions/:aid/delete', requireAuth, require
   res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
 });
 
-// ==================== TIER 1.3 — CERT CYCLE CALENDAR ====================
+// ==================== TIER 1.3 - CERT CYCLE CALENDAR ====================
 // Stage 1 → Stage 2 → annual surveillance → 3-year recertification.
 // Most consultants miss the post-cert lifecycle; this surfaces it.
 const CERT_EVENT_TYPES = [
@@ -2185,7 +2185,7 @@ const CERT_EVENT_TYPES = [
 app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
   const events = db.prepare(`SELECT * FROM cert_cycle_events
     WHERE workspace_id=? ORDER BY planned_date IS NULL, planned_date`).all(req.workspace.id);
-  // Auto-suggest a default cycle if no events exist yet — Stage 1 in 60 days,
+  // Auto-suggest a default cycle if no events exist yet - Stage 1 in 60 days,
   // Stage 2 30 days after, surveillance year 1 = 12 months from Stage 2, etc.
   const today = new Date();
   const suggestions = events.length ? [] : (() => {
@@ -2254,7 +2254,7 @@ app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspac
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-// ==================== TIER 2.7 — GAP ASSESSMENT REPORT (DOCX) ====================
+// ==================== TIER 2.7 - GAP ASSESSMENT REPORT (DOCX) ====================
 // Renders the post-assessment summary as a downloadable DOCX. Replaces the
 // 2–4 hours of manual report-writing per gap assessment.
 app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
@@ -2318,7 +2318,7 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
     html += `<table><tr><th>ID</th><th>Title</th><th>Status</th><th>Maturity</th><th>Scope %</th><th>Notes</th></tr>`;
     gaps.forEach(g => {
       const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
-      html += `<tr><td>${esc(refCode(g.id))}</td><td>${esc(cleanTitle)}</td><td><span class="tag" style="background:${sevColor(g.status)}">${esc(g.status)}</span></td><td>${g.maturity != null ? g.maturity : '—'}</td><td>${g.scope_pct != null ? g.scope_pct + '%' : '—'}</td><td>${esc(g.notes || '')}</td></tr>`;
+      html += `<tr><td>${esc(refCode(g.id))}</td><td>${esc(cleanTitle)}</td><td><span class="tag" style="background:${sevColor(g.status)}">${esc(g.status)}</span></td><td>${g.maturity != null ? g.maturity : '-'}</td><td>${g.scope_pct != null ? g.scope_pct + '%' : '-'}</td><td>${esc(g.notes || '')}</td></tr>`;
     });
     html += `</table>`;
   }
@@ -2452,7 +2452,7 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   const customControls = db.prepare(`SELECT * FROM soa_custom_controls
     WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
 
-  // SoA metadata — version / owner / approver / approved-on, taken from the
+  // SoA metadata - version / owner / approver / approved-on, taken from the
   // latest snapshot. If no snapshot exists, the form lets the user kick one
   // off; saving via /soa/metadata captures one automatically.
   const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, created_at
@@ -2579,7 +2579,7 @@ app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, (r
 
 // ==================== ACTIVITY / AUDIT LOG ====================
 app.get('/workspaces/:wsId/activity', requireAuth, requireWorkspace, (req, res) => {
-  // Tier 2.6 — Audit-log drill-down with filters: user, action, entity_type,
+  // Tier 2.6 - Audit-log drill-down with filters: user, action, entity_type,
   // free-text search, date range. Pagination by 100. The audit_log table is
   // appended to throughout the app; this is the read interface.
   const { user_id, action, entity_type, q, since, until } = req.query;
@@ -2676,7 +2676,7 @@ function substitutePlaceholders(content, vars) {
 }
 
 app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res) => {
-  // Optional tag filter — `?tag=annex-a.5.15` shows only docs linked to that
+  // Optional tag filter - `?tag=annex-a.5.15` shows only docs linked to that
   // clause/control. Drives the auditor-side question "which documents cover
   // A.5.15?" without leaving the documents list.
   const tagFilter = req.query.tag || '';
@@ -2699,7 +2699,7 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
     WHERE d.workspace_id = ? ${docFilterClause}
     ORDER BY d.updated_at DESC`).all(...params);
 
-  // Pull the tag chips for each doc — keep the per-doc list small (top 4 +
+  // Pull the tag chips for each doc - keep the per-doc list small (top 4 +
   // "and N more" overflow) so the table stays compact even on heavily-tagged
   // documents.
   const tagsByDoc = {};
@@ -2711,7 +2711,7 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
     tagRows.forEach(r => { (tagsByDoc[r.document_id] = tagsByDoc[r.document_id] || []).push(r); });
   }
 
-  // Distinct tagged iso_items in this workspace — for the filter dropdown.
+  // Distinct tagged iso_items in this workspace - for the filter dropdown.
   const taggedItems = db.prepare(`SELECT DISTINCT i.id, i.type, i.title
     FROM document_controls dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
@@ -2777,7 +2777,7 @@ app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, re
   const allowed = ['.docx', '.pdf', '.md', '.markdown', '.txt'];
   if (!allowed.includes(ext)) {
     fs.unlinkSync(req.file.path);
-    return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents', 'Unsupported file type — use .docx, .pdf, .md, or .txt'));
+    return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents', 'Unsupported file type - use .docx, .pdf, .md, or .txt'));
   }
   const buf = fs.readFileSync(req.file.path);
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
@@ -2789,7 +2789,7 @@ app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, re
       const result = await mammoth.convertToHtml({ path: req.file.path });
       bodyHtml = result.value || '';
       if (result.messages && result.messages.length) {
-        conversionNote = `<p><em>Conversion notes: ${result.messages.length} formatting hints from import — review and edit as needed.</em></p>`;
+        conversionNote = `<p><em>Conversion notes: ${result.messages.length} formatting hints from import - review and edit as needed.</em></p>`;
       }
     } else if (ext === '.pdf') {
       const parser = new PDFParse({ data: buf });
@@ -2802,9 +2802,9 @@ app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, re
       }
       const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       bodyHtml = pdfText.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('\n');
-      conversionNote = `<p><em>Imported from PDF — formatting (tables, headings, lists) may need to be re-applied. The original PDF is attached as the approved source.</em></p>`;
+      conversionNote = `<p><em>Imported from PDF - formatting (tables, headings, lists) may need to be re-applied. The original PDF is attached as the approved source.</em></p>`;
     } else {
-      // .md / .markdown / .txt — run through markdown-it (treats plain text reasonably)
+      // .md / .markdown / .txt - run through markdown-it (treats plain text reasonably)
       const MarkdownIt = require('markdown-it');
       const md = new MarkdownIt({ html: false, linkify: true, typographer: true });
       bodyHtml = md.render(buf.toString('utf8'));
@@ -2829,7 +2829,7 @@ app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, re
 
   snapshotDocVersion(id, req.workspace.id, 'draft', req.user.id, `Imported from ${req.file.originalname}`);
   logAction(req.user.id, req.workspace.id, 'upload_document', 'document', id, { filename: req.file.originalname, size: req.file.size, sha256: sha }, auditCtx(req));
-  res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + id, 'Document imported — review and edit'));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + id, 'Document imported - review and edit'));
 });
 
 // Download the original uploaded source file for a document (preserves the as-approved binary)
@@ -2900,7 +2900,7 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return res.status(404).send('Not found');
   // iso_item_id can be a single value (single-pick form) or an array (bulk
-  // multi-pick form). The section_ref applies to the bulk batch when used —
+  // multi-pick form). The section_ref applies to the bulk batch when used -
   // typically left blank for bulk operations and set per link on single ones.
   const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return redirectBack(req, res);
@@ -2929,7 +2929,7 @@ app.post('/workspaces/:wsId/documents/:id/controls/:linkId/delete', requireAuth,
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
 
-// Bidirectional document tagging — mirror routes from the control side. The
+// Bidirectional document tagging - mirror routes from the control side. The
 // document-side routes above redirect back to the document; these redirect
 // back to the wizard so the user stays in the assessment flow.
 app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
@@ -3043,7 +3043,7 @@ app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res
     LEFT JOIN iso_items i ON i.id = f.iso_item_id
     WHERE f.audit_id = ? ORDER BY f.created_at`).all(audit.id);
   const allItems = db.prepare(`SELECT id, title FROM iso_items ORDER BY sort_order`).all();
-  // Tier C.9 — per-control samples taken during the audit
+  // Tier C.9 - per-control samples taken during the audit
   const samples = db.prepare(`SELECT s.*, i.title AS iso_title FROM audit_samples s
     LEFT JOIN iso_items i ON i.id=s.iso_item_id
     WHERE s.audit_id=? ORDER BY s.sample_taken_at IS NULL, s.sample_taken_at DESC`).all(audit.id);
@@ -3060,7 +3060,7 @@ app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, re
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
 });
 
-// ==================== TIER C.10 — CONTINUAL IMPROVEMENT REGISTER ====================
+// ==================== TIER C.10 - CONTINUAL IMPROVEMENT REGISTER ====================
 // Improvements driven by data (audit findings, MRM outputs, monitoring),
 // distinct from corrective actions on NCs (10.2). Required by clause 10.1.
 app.get('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, res) => {
@@ -3104,13 +3104,13 @@ app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorksp
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
 
-// (Asset relationships graph removed in IA cleanup — daily-use rare. The
+// (Asset relationships graph removed in IA cleanup - daily-use rare. The
 // underlying asset_relationships table is still populated from the asset
 // detail page; if blast-radius visualisation is needed again, restore from
 // git history at sha 5c9ee08. See views/assets.ejs for the table view that
 // answers every real question.)
 
-// Tier C.9 — Per-audit sampling justification + per-control sample log.
+// Tier C.9 - Per-audit sampling justification + per-control sample log.
 // Clause 9.2 expects sampling decisions to be defensible. The audit detail
 // gets two new bits: (1) a sampling-justification narrative, and (2) a
 // table of per-control samples taken with population/sample sizes and findings.
@@ -3146,7 +3146,7 @@ app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requir
   res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
 });
 
-// Tier 1.4 — Audit lifecycle stage transitions (planned → fieldwork →
+// Tier 1.4 - Audit lifecycle stage transitions (planned → fieldwork →
 // findings_review → report → follow_up → closed). Transitions auto-timestamp
 // the milestone columns so the engagement timeline is reconstructable.
 app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
@@ -3203,7 +3203,7 @@ app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
   res.render('mrms', { user: req.user, ws: req.workspace, mrms });
 });
 
-// Helper — compute the auto-fillable 9.3.2 input fields from current data.
+// Helper - compute the auto-fillable 9.3.2 input fields from current data.
 // Used both by MRM creation (Tier 2.5) and by the on-demand refresh action
 // (Tier A.4) so the saved values can be brought back in line with reality.
 function compute932InputPack(wsId) {
@@ -3243,7 +3243,7 @@ app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => 
   res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + id);
 });
 
-// Tier A.4 — Refresh the auto-fillable inputs against current workspace data.
+// Tier A.4 - Refresh the auto-fillable inputs against current workspace data.
 // Useful when a saved MRM has gone stale (e.g., NCs closed since the meeting
 // was scheduled, new audit findings recorded). Re-saves the three auto-pack
 // fields from a fresh compute.
@@ -3272,7 +3272,7 @@ app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) 
                                   WHERE workspace_id = ? GROUP BY status`).all(req.workspace.id);
   const progress = workspaceProgress(req.workspace.id);
 
-  // Phase D — extended 9.3.2 inputs
+  // Phase D - extended 9.3.2 inputs
   const incidentSummary = (() => {
     try {
       return db.prepare(`SELECT
@@ -3377,7 +3377,7 @@ app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace,
     db.prepare(`UPDATE nonconformities SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
     logAction(req.user.id, req.workspace.id, 'update_nc', 'nonconformity', req.params.id, null);
 
-    // Phase C: closing an NC bumps the linked control's last_verified_at — feeds SoA freshness view
+    // Phase C: closing an NC bumps the linked control's last_verified_at - feeds SoA freshness view
     if (closing) {
       const ncRow = db.prepare('SELECT iso_item_id FROM nonconformities WHERE id=?').get(req.params.id);
       if (ncRow && ncRow.iso_item_id) {
@@ -3466,7 +3466,7 @@ app.get('/api/mappings/:isoId', requireAuth, (req, res) => {
 // `tier: 'mandatory'` → explicitly required by a clause of ISO 27001:2022.
 // `tier: 'expected'`  → not explicitly required but commonly produced and expected by certification auditors,
 //                       or required only if the related Annex A control is included in the SoA.
-// Detection is heuristic — confirms presence of an artefact in this tool; verify completeness manually.
+// Detection is heuristic - confirms presence of an artefact in this tool; verify completeness manually.
 const MANDATORY_RECORDS = [
   // ----- Explicitly mandatory per ISO 27001:2022 -----
   { key: 'isms_scope', tier: 'mandatory', clause: '4.3', name: 'ISMS scope',
@@ -3524,7 +3524,7 @@ const MANDATORY_RECORDS = [
     detect: (ws, db) => !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND lower(name) LIKE '%crypto%' LIMIT 1`).get(ws.id) }
 ];
 
-// Implementation roadmap — PDCA-aligned, mapped to ISO 27001:2022 clauses.
+// Implementation roadmap - PDCA-aligned, mapped to ISO 27001:2022 clauses.
 // Each step is "complete" when a sensible signal exists; otherwise "pending".
 // Shared between the Overview dashboard and the dedicated /roadmap page so
 // they always reflect the same source of truth. Caller passes the scalars
@@ -3554,7 +3554,7 @@ function computeRoadmap(ws, scalars) {
 
   const ispApproved = docSignal(['Information Security Policy%']);
   const contextApproved = docSignal(['ISMS Governance Manual%', 'ISMS Manual%', 'Context%', 'Interested Parties%']);
-  const rolesApproved = docSignal(['ISMS Role —%', 'ISMS Steering%', 'Roles and Responsibilities%', 'RACI%']);
+  const rolesApproved = docSignal(['ISMS Role -%', 'ISMS Steering%', 'Roles and Responsibilities%', 'RACI%']);
   const objectivesApproved = docSignal(['Information Security Objectives%']);
   const awarenessApproved = docSignal(['Awareness and Training%', 'Awareness%', 'Communication Plan%']);
   const monitoringApproved = docSignal(['Logging and Monitoring%', 'Monitoring%', 'Measurement%', 'KPI%']);
@@ -3574,7 +3574,7 @@ function computeRoadmap(ws, scalars) {
       done: !!(ws.scope && ws.scope.length > 10),
       detail: ws.scope ? 'Scope statement set' : 'Set the scope on workspace settings or in an ISMS Scope document',
       link: `/workspaces/${ws.id}#workspace-settings`, link_label: 'Edit scope' },
-    { phase: 'plan', key: 'context', label: 'Document context — internal/external issues + interested parties', clause: 'Clauses 4.1 & 4.2',
+    { phase: 'plan', key: 'context', label: 'Document context - internal/external issues + interested parties', clause: 'Clauses 4.1 & 4.2',
       done: contextApproved >= 1,
       detail: contextApproved >= 1
         ? 'Context register / ISMS Governance Manual approved'
@@ -3582,7 +3582,7 @@ function computeRoadmap(ws, scalars) {
       link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
     { phase: 'plan', key: 'isp', label: 'Approve Information Security Policy', clause: 'Clause 5.2',
       done: ispApproved >= 1,
-      detail: ispApproved >= 1 ? 'ISP approved' : 'Approved ISP is the foundation document — generate from template and approve',
+      detail: ispApproved >= 1 ? 'ISP approved' : 'Approved ISP is the foundation document - generate from template and approve',
       link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
     { phase: 'plan', key: 'roles', label: 'Define ISMS roles & responsibilities', clause: 'Clause 5.3',
       done: rolesApproved >= 1,
@@ -3602,7 +3602,7 @@ function computeRoadmap(ws, scalars) {
       link: `/workspaces/${ws.id}/risk-methodology`, link_label: 'Methodology' },
     { phase: 'plan', key: 'assets', label: 'Build asset register', clause: 'A.5.9 (input to 6.1.2)',
       done: assetCount >= 5, partial: assetCount > 0 && assetCount < 5,
-      detail: `${assetCount} asset${assetCount === 1 ? '' : 's'} registered${assetCount > 0 && assetCount < 5 ? ' — most ISMS scopes need at least 5–10' : ''}`,
+      detail: `${assetCount} asset${assetCount === 1 ? '' : 's'} registered${assetCount > 0 && assetCount < 5 ? ' - most ISMS scopes need at least 5–10' : ''}`,
       link: `/workspaces/${ws.id}/assets`, link_label: 'Assets' },
     { phase: 'plan', key: 'gap', label: 'Gap-assess clauses & Annex A', clause: 'Project activity (covers 4–10, A.5–A.8)',
       done: allAssessed === allTotal && allTotal > 0, partial: allAssessed > 0 && allAssessed < allTotal,
@@ -3610,7 +3610,7 @@ function computeRoadmap(ws, scalars) {
       link: `/workspaces/${ws.id}/gap-assessment`, link_label: 'Run gap assessment' },
     { phase: 'plan', key: 'risks', label: 'Identify, score, and treat risks', clause: 'Clauses 6.1.2 & 6.1.3',
       done: riskCount >= 5, partial: riskCount > 0 && riskCount < 5,
-      detail: `${riskCount} risk${riskCount === 1 ? '' : 's'} in register${riskCount === 0 ? ' — start from the library if unsure' : ''}`,
+      detail: `${riskCount} risk${riskCount === 1 ? '' : 's'} in register${riskCount === 0 ? ' - start from the library if unsure' : ''}`,
       link: `/workspaces/${ws.id}/risks`, link_label: 'Risks' },
     { phase: 'plan', key: 'soa', label: 'Finalize Statement of Applicability', clause: 'Clause 6.1.3 d',
       done: soaDecided === annexTotal && annexTotal > 0, partial: soaDecided > 0 && soaDecided < annexTotal,
@@ -3641,7 +3641,7 @@ function computeRoadmap(ws, scalars) {
       done: monitoringApproved >= 1,
       detail: monitoringApproved >= 1
         ? 'Monitoring approach documented'
-        : 'Determine what to monitor, methods, frequency, who analyses — KPIs aligned with objectives (6.2)',
+        : 'Determine what to monitor, methods, frequency, who analyses - KPIs aligned with objectives (6.2)',
       link: `/workspaces/${ws.id}/documents`, link_label: 'Documents' },
     { phase: 'check', key: 'audit', label: 'Run an internal audit', clause: 'Clause 9.2',
       done: auditsScheduled >= 1,
@@ -3653,7 +3653,7 @@ function computeRoadmap(ws, scalars) {
       link: `/workspaces/${ws.id}/mrms`, link_label: 'Management review' },
     { phase: 'act', key: 'ncs', label: 'Track nonconformities to closure with root-cause', clause: 'Clause 10.2',
       done: ncOpen === 0,
-      detail: ncOpen === 0 ? 'No open NCs' : `${ncOpen} open NC${ncOpen === 1 ? '' : 's'} — RCA + corrective action + effectiveness review per NC`,
+      detail: ncOpen === 0 ? 'No open NCs' : `${ncOpen} open NC${ncOpen === 1 ? '' : 's'} - RCA + corrective action + effectiveness review per NC`,
       link: `/workspaces/${ws.id}/nonconformities`, link_label: 'Nonconformities' }
   ];
 }
@@ -3672,7 +3672,7 @@ function computeReadiness(ws) {
   const recordsFound = mandFound;
   const recordsTotal = mandTotal;
 
-  // Validation flags — actionable issues, not tutorials
+  // Validation flags - actionable issues, not tutorials
   const flags = [];
 
   const implNoEvidence = db.prepare(`
@@ -3760,7 +3760,7 @@ function computeReadiness(ws) {
     WHERE s.workspace_id=? AND d.expiry_date < date('now')`).all(ws.id);
   if (expiredSupplierDocs.length) flags.push({ kind: 'expired_supplier_docs', severity: 'high',
     label: `${expiredSupplierDocs.length} supplier attestations / contracts expired`,
-    items: expiredSupplierDocs.map(d => ({ id: d.id, title: `${d.title} — ${d.doc}` })).slice(0, 10) });
+    items: expiredSupplierDocs.map(d => ({ id: d.id, title: `${d.title} - ${d.doc}` })).slice(0, 10) });
 
   const overdueSupplierReviews = db.prepare(`
     SELECT id, name AS title FROM suppliers
@@ -3839,7 +3839,7 @@ function computeReadiness(ws) {
       wip: totals.wip || 0,
       notImpl: totals.not_impl || 0,
       na: totals.na || 0,
-      avgMaturity: totals.avg_maturity ? Number(totals.avg_maturity).toFixed(1) : '—',
+      avgMaturity: totals.avg_maturity ? Number(totals.avg_maturity).toFixed(1) : '-',
       evidenceCount
     }
   };
@@ -3854,7 +3854,7 @@ app.get('/api/workspaces/:wsId/readiness', requireAuth, requireWorkspace, (req, 
   res.json(computeReadiness(req.workspace));
 });
 
-// Audit-readiness blockers — concrete things the auditor will catch if you ignore them.
+// Audit-readiness blockers - concrete things the auditor will catch if you ignore them.
 // Distinct from /readiness which is a high-level percentage view.
 app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
@@ -3872,7 +3872,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
       severity: 'high',
       title: `${implNoEvidence.length} control${implNoEvidence.length === 1 ? '' : 's'} marked "Implemented" but no evidence attached`,
       detail: 'Auditors will ask for evidence before accepting any "Implemented" claim. Either attach evidence or downgrade the status.',
-      items: implNoEvidence.slice(0, 20).map(c => ({ label: c.id.replace('annex-','').toUpperCase() + ' — ' + c.title.replace(/^A\.[0-9.]+ /, ''), link: `/workspaces/${wsId}/controls/${c.id}` }))
+      items: implNoEvidence.slice(0, 20).map(c => ({ label: c.id.replace('annex-','').toUpperCase() + ' - ' + c.title.replace(/^A\.[0-9.]+ /, ''), link: `/workspaces/${wsId}/controls/${c.id}` }))
     });
   }
 
@@ -3891,7 +3891,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
       severity: 'high',
       title: `${soaUnjustified.length} SoA entr${soaUnjustified.length === 1 ? 'y' : 'ies'} without applicability decision or justification`,
       detail: 'Clause 6.1.3 d requires the SoA to state inclusion/exclusion AND justify each. Empty justifications fail at Stage 1.',
-      items: soaUnjustified.slice(0, 20).map(c => ({ label: c.id.replace('annex-','').toUpperCase() + ' — ' + c.title.replace(/^A\.[0-9.]+ /, '') + ' (' + c.applicability + ')', link: `/workspaces/${wsId}/soa` }))
+      items: soaUnjustified.slice(0, 20).map(c => ({ label: c.id.replace('annex-','').toUpperCase() + ' - ' + c.title.replace(/^A\.[0-9.]+ /, '') + ' (' + c.applicability + ')', link: `/workspaces/${wsId}/soa` }))
     });
   }
 
@@ -3987,7 +3987,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
     blockers.push({
       severity: 'high',
       title: `${notAssessed} item${notAssessed === 1 ? '' : 's'} still "Not Assessed" (${notAssessedRow.clauses || 0} clause${(notAssessedRow.clauses||0) === 1 ? '' : 's'} · ${notAssessedRow.controls || 0} control${(notAssessedRow.controls||0) === 1 ? '' : 's'})`,
-      detail: 'Every main-body clause AND every Annex A control needs a status — even Not Applicable. Clauses 4–10 are the "shall" requirements; Annex A entries also need an applicability decision. Run the gap assessment wizard to clear this in one pass.',
+      detail: 'Every main-body clause AND every Annex A control needs a status - even Not Applicable. Clauses 4–10 are the "shall" requirements; Annex A entries also need an applicability decision. Run the gap assessment wizard to clear this in one pass.',
       items: [{ label: '→ Run gap assessment', link: `/workspaces/${wsId}/gap-assessment` }]
     });
   }
@@ -4026,7 +4026,7 @@ app.get('/api/search', requireAuth, (req, res) => {
   if (wsId) {
     const ws = getWorkspace(wsId, req.user);
     if (ws) {
-      // ISO items (clauses + controls) — search across all
+      // ISO items (clauses + controls) - search across all
       const items = db.prepare(`SELECT id, title, type FROM iso_items
                                  WHERE lower(title) LIKE ? OR lower(id) LIKE ?
                                  ORDER BY sort_order LIMIT 8`).all(like, like);
@@ -4095,11 +4095,11 @@ app.get('/api/search', requireAuth, (req, res) => {
     }
   }
 
-  // Workspace-agnostic resources — searchable from anywhere.
+  // Workspace-agnostic resources - searchable from anywhere.
   if ('glossary'.includes(q) || 'terms'.includes(q) || 'dictionary'.includes(q) || 'definitions'.includes(q)) {
     results.push({ type: 'Reference', label: 'Glossary', sublabel: 'ISO 27001 & GRC terms', href: '/glossary' });
   }
-  // Direct hits on individual glossary entries — searches term, aliases, plain.
+  // Direct hits on individual glossary entries - searches term, aliases, plain.
   try {
     const GLOSSARY = require('./data/glossary');
     const matches = GLOSSARY.searchEntries(q, 'all', 'all').slice(0, 5);
@@ -4194,7 +4194,7 @@ function markdownToDocxParagraphs(md) {
 
 async function generateDocxBuffer(doc, ws) {
   const watermarkText = doc.watermark
-    || (doc.status === 'draft' ? 'DRAFT — NOT FOR DISTRIBUTION'
+    || (doc.status === 'draft' ? 'DRAFT - NOT FOR DISTRIBUTION'
        : doc.status === 'in_review' ? 'IN REVIEW'
        : doc.status === 'retired' ? 'RETIRED'
        : doc.controlled_copy ? 'CONTROLLED COPY' : null);
@@ -4296,7 +4296,7 @@ app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace, async (re
         const v = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(d.current_version_id);
         const sigs = listSignatures(d.id, d.current_version_id);
         if (v && sigs.length) {
-          let sigTxt = `SIGNATURES — ${d.name}\n${'='.repeat(40)}\n\nVersion: ${v.version}\nContent SHA-256: ${v.content_hash}\n\n`;
+          let sigTxt = `SIGNATURES - ${d.name}\n${'='.repeat(40)}\n\nVersion: ${v.version}\nContent SHA-256: ${v.content_hash}\n\n`;
           sigs.forEach(s => {
             const ok = enc.verifyHmac(`${s.document_id}|${s.version_id}|${s.user_id}|${s.content_hash}|${s.intent}|${s.signed_at}`, ws.id, s.signature);
             sigTxt += `Signer: ${s.user_name} (${s.signature_role || 'unspecified'})\nIntent: ${s.intent}\nSigned: ${s.signed_at}\nIP: ${s.ip_address || '-'}\nUA: ${(s.user_agent || '').slice(0, 80)}\nHMAC: ${s.signature}\nVerification: ${ok ? 'OK' : 'FAILED'}\n\n`;
@@ -4425,7 +4425,7 @@ app.post('/workspaces/:wsId/incidents/:id/delete', requireAuth, requireWorkspace
   res.redirect('/workspaces/' + req.workspace.id + '/incidents');
 });
 
-// ==================== VENDORS / SUPPLIERS — TPRM ====================
+// ==================== VENDORS / SUPPLIERS - TPRM ====================
 const STANDARD_CLAUSES = [
   ['confidentiality', 'Confidentiality / non-disclosure'],
   ['data_handling', 'Data handling and classification'],
@@ -4999,12 +4999,12 @@ function verifyVersionSignatures(version, sigs, wsId) {
   const issues = [];
   for (const s of sigs) {
     if (s.content_hash !== version.content_hash) {
-      issues.push(`Signature ${s.id} (${s.user_name}): content hash mismatch — version may have been altered after signing.`);
+      issues.push(`Signature ${s.id} (${s.user_name}): content hash mismatch - version may have been altered after signing.`);
       continue;
     }
     const payload = `${s.document_id}|${s.version_id}|${s.user_id}|${s.content_hash}|${s.intent}|${s.signed_at}`;
     if (!enc.verifyHmac(payload, wsId, s.signature)) {
-      issues.push(`Signature ${s.id} (${s.user_name}): HMAC verification failed — signature is not authentic.`);
+      issues.push(`Signature ${s.id} (${s.user_name}): HMAC verification failed - signature is not authentic.`);
     }
   }
   return issues;
@@ -5061,7 +5061,7 @@ function simpleLineDiff(a, b) {
   return out;
 }
 
-// Submit current draft for review — snapshots a new version, sets approver chain.
+// Submit current draft for review - snapshots a new version, sets approver chain.
 app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return redirectBack(req, res);
@@ -5167,7 +5167,7 @@ app.post('/workspaces/:wsId/documents/:id/retire', requireAuth, requireWorkspace
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
 
-// Reopen for editing — creates a new draft version branched off current.
+// Reopen for editing - creates a new draft version branched off current.
 app.post('/workspaces/:wsId/documents/:id/new-version', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return redirectBack(req, res);
@@ -5206,11 +5206,11 @@ app.get('/workspaces/:wsId/activity-log', requireAuth, requireWorkspace, require
 });
 
 // ==================== NOTIFICATIONS ====================
-// Tier B.5/B.6 — Surface actionable items derived from current workspace state.
+// Tier B.5/B.6 - Surface actionable items derived from current workspace state.
 // Used by /notifications (the inbox) and on the overview's "Needs attention"
-// panel. Computed on-demand from live data — no cron required.
+// panel. Computed on-demand from live data - no cron required.
 // "What should I do next?" engine. Reads engagement state and returns the
-// single highest-leverage action — the one a junior consultant should
+// single highest-leverage action - the one a junior consultant should
 // click on the workspace overview right now. The order below is the order a
 // real engagement should run; the first applicable item wins.
 //
@@ -5255,7 +5255,7 @@ function computeNextStep(ws) {
     };
   }
 
-  // 4. Risk register thin — risk workshop hasn't happened.
+  // 4. Risk register thin - risk workshop hasn't happened.
   const risks = cnt(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted')`);
   if (risks < 10) {
     return {
@@ -5270,13 +5270,13 @@ function computeNextStep(ws) {
   const lastPass = db.prepare(`SELECT id FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(wsId);
   if (!lastPass) {
     return {
-      kind: 'pass-1', title: 'Start Pass 1 — initial gap assessment',
+      kind: 'pass-1', title: 'Start Pass 1 - initial gap assessment',
       why: 'Walks every clause and Annex A control. Each item gets diagnostic Y/P/N questions, a status, and a maturity score. Assessment saves are tagged to this pass so you can diff against later passes.',
       cta: 'Start gap assessment', href: `/workspaces/${wsId}/gap-assessment`,
     };
   }
 
-  // 6. SoA has many Undecided controls — auditor blocker.
+  // 6. SoA has many Undecided controls - auditor blocker.
   const undecided = cnt(`SELECT COUNT(*) c FROM control_states cs INNER JOIN iso_items i ON i.id=cs.iso_item_id WHERE cs.workspace_id=? AND i.id LIKE 'annex-a.%' AND (cs.applicability IS NULL OR cs.applicability='undecided')`);
   if (undecided > 30) {
     return {
@@ -5306,7 +5306,7 @@ function computeNextStep(ws) {
     };
   }
 
-  // 9. Pass 1 not closed — once intake / scope / risks / SoA / MRM / audit are
+  // 9. Pass 1 not closed - once intake / scope / risks / SoA / MRM / audit are
   //    all in, prompt to close the pass and start the readiness pack flow.
   if (activePass) {
     return {
@@ -5316,10 +5316,10 @@ function computeNextStep(ws) {
     };
   }
 
-  // 10. Everything's in — point at the readiness pack.
+  // 10. Everything's in - point at the readiness pack.
   return {
     kind: 'pack', title: 'Generate the Stage 1 readiness pack',
-    why: 'The single artefact you hand the certification body — SoA, RTP, audits, MRMs, parties, objectives, evidence manifest, every active evidence file in one ZIP.',
+    why: 'The single artefact you hand the certification body - SoA, RTP, audits, MRMs, parties, objectives, evidence manifest, every active evidence file in one ZIP.',
     cta: 'Open audit pack', href: `/workspaces/${wsId}/audit-pack`,
   };
 }
@@ -5360,7 +5360,7 @@ function computeNeedsAttention(wsId) {
   db.prepare(`SELECT a.id, a.risk_id, a.expires_at, r.title FROM risk_acceptances a
     INNER JOIN risks r ON r.id=a.risk_id
     WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL AND a.expires_at < ?`)
-    .all(wsId, today).forEach(a => push('high', 'risk', `Expired acceptance: R-${a.risk_id} ${a.title}`, `/workspaces/${wsId}/risks/${a.risk_id}`, `Expired ${a.expires_at} — re-accept or treat`));
+    .all(wsId, today).forEach(a => push('high', 'risk', `Expired acceptance: R-${a.risk_id} ${a.title}`, `/workspaces/${wsId}/risks/${a.risk_id}`, `Expired ${a.expires_at} - re-accept or treat`));
   db.prepare(`SELECT a.id, a.risk_id, a.expires_at, r.title FROM risk_acceptances a
     INNER JOIN risks r ON r.id=a.risk_id
     WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL AND a.expires_at >= ? AND a.expires_at < ?`)
@@ -5379,7 +5379,7 @@ function computeNeedsAttention(wsId) {
     WHERE workspace_id=? AND status NOT IN ('closed') AND planned_date IS NOT NULL AND planned_date >= ? AND planned_date < ?`)
     .all(wsId, today, expSoon).forEach(e => push('medium', 'cert', `Upcoming: ${e.event_type.replace('_',' ')}`, `/workspaces/${wsId}/cert-cycle`, `Planned ${e.planned_date}`));
 
-  // Stale-control signals — controls included in SoA whose last_verified_at
+  // Stale-control signals - controls included in SoA whose last_verified_at
   // is > 12 months ago (or never verified). Drives the re-engagement scope.
   const stale = db.prepare(`SELECT cs.iso_item_id, cs.last_verified_at, i.title
     FROM control_states cs
@@ -5392,8 +5392,8 @@ function computeNeedsAttention(wsId) {
   for (const s of stale) {
     const code = s.iso_item_id.replace('annex-','').toUpperCase();
     const detail = s.last_verified_at
-      ? `Last verified ${s.last_verified_at.slice(0,10)} — re-assess`
-      : 'Never verified — re-assess in this engagement';
+      ? `Last verified ${s.last_verified_at.slice(0,10)} - re-assess`
+      : 'Never verified - re-assess in this engagement';
     push(s.last_verified_at ? 'medium' : 'high', 'stale', `${code} stale: ${s.title.replace(/^A\.[0-9.]+ /,'')}`,
          `/workspaces/${wsId}/controls/assess/${s.iso_item_id}`, detail);
   }
@@ -5417,7 +5417,7 @@ function computeNeedsAttention(wsId) {
       `Objective off-track: ${o.title}`,
       `/workspaces/${wsId}/objectives`, ''));
 
-  // ISMS-stale signals — last MRM / audit older than 12 months
+  // ISMS-stale signals - last MRM / audit older than 12 months
   const lastMrm = db.prepare(`SELECT meeting_date FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
   if (!lastMrm) push('medium', 'mrm', 'No completed management review on record', `/workspaces/${wsId}/mrms`, '');
   else if (lastMrm.meeting_date < new Date(Date.now() - 365*86400000).toISOString().slice(0,10))
@@ -5459,7 +5459,7 @@ app.post('/workspaces/:wsId/notifications/mark-all-read', requireAuth, requireWo
   redirectBack(req, res);
 });
 
-// Tier B.8 — Calendar view aggregating every due-dated item across the workspace.
+// Tier B.8 - Calendar view aggregating every due-dated item across the workspace.
 // Month grid; navigate prev/next via ?month=YYYY-MM. Pulls audits, MRMs,
 // NCs, cert events, doc reviews, treatment actions, risk-acceptance expiries.
 app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) => {
@@ -5629,7 +5629,7 @@ app.get('/workspaces/:wsId/soa/snapshots', requireAuth, requireWorkspace, requir
   res.render('soa_snapshots', { user: req.user, ws: req.workspace, snapshots: list });
 });
 
-// /snapshots/diff MUST be registered BEFORE /snapshots/:id — Express matches
+// /snapshots/diff MUST be registered BEFORE /snapshots/:id - Express matches
 // in registration order, and a `:id` placeholder will happily capture "diff"
 // otherwise. The :id route also constrains to digits via the regex pattern
 // so similar collisions can't recur if more sibling routes are added.
@@ -5695,7 +5695,7 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
 });
 
 // ==================== FIRM CONTENT LIBRARY ====================
-// The firm's own curated content — risks today, policy templates and control
+// The firm's own curated content - risks today, policy templates and control
 // narratives later. Clone into a workspace with one click so junior consultants
 // don't reinvent the wheel each engagement.
 
@@ -5852,10 +5852,10 @@ app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res
     AND snapshot_at < datetime('now','-30 days')`).get(ws.id).c;
   const velocityDelta = velNow - velPrior;
 
-  // Residual-risk financial estimate. ISO doesn't mandate $ — but a board
+  // Residual-risk financial estimate. ISO doesn't mandate $ - but a board
   // wants one. Use Annual Loss Expectancy: SLE × ARO heuristic.
   // For each open risk, treat (likelihood / 5) as ARO and (impact * tier) as
-  // SLE. Tier defaults to $50k * impact (1=$50k, 5=$250k) — configurable
+  // SLE. Tier defaults to $50k * impact (1=$50k, 5=$250k) - configurable
   // via workspace setting later.
   const tierBase = 50000;
   const openRisks = db.prepare(`SELECT id, title, likelihood, impact, owner_name FROM risks
@@ -5904,7 +5904,7 @@ app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res
 
 
 // ==================== CONSULTANT PLAYBOOKS ====================
-// Firm-level reference material — kickoff agenda, scoping workshop, risk
+// Firm-level reference material - kickoff agenda, scoping workshop, risk
 // workshop facilitator script. Read-only. Lives at /playbooks (no workspace
 // context required) so a junior consultant can open it during any client call.
 const PLAYBOOKS = require('./data/playbooks');
@@ -5921,7 +5921,7 @@ app.get('/playbooks/:id', requireAuth, (req, res) => {
 
 // ==================== ENGAGEMENT INTAKE + 12-WEEK PLAN ====================
 // Extracted to routes/engagement.js. Same dependency-injection pattern as
-// routes/tenants.js — engagement routes get db + middleware via deps.
+// routes/tenants.js - engagement routes get db + middleware via deps.
 require('./routes/engagement').register(app, {
   db, requireAuth, requireWorkspace, withToast, logAction, auditCtx,
 });
@@ -6044,7 +6044,7 @@ app.post('/workspaces/:wsId/soa/custom-controls/:id/delete', requireAuth, requir
 // ==================== SOA METADATA HEADER ====================
 // Save SoA document-control metadata (version / owner / approver / approved_at).
 // Each Save captures a NEW snapshot stamped with the metadata, so audit history
-// preserves every revision — bumping v1.0 → v2.0 leaves v1.0's signoff intact
+// preserves every revision - bumping v1.0 → v2.0 leaves v1.0's signoff intact
 // instead of overwriting it. Label defaults to "v{version}" if version is set.
 app.post('/workspaces/:wsId/soa/metadata', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const b = req.body;
@@ -6090,7 +6090,7 @@ function deliverableHtmlShell(title, ws, bodyHtml) {
     </body></html>`;
 }
 function statusTag(s) {
-  if (!s) return '<span class="tag tag-na">—</span>';
+  if (!s) return '<span class="tag tag-na">-</span>';
   const cls = s === 'Implemented' ? 'tag-impl'
     : s === 'Partially Implemented' ? 'tag-partial'
     : s === 'Work In Progress' ? 'tag-wip'
@@ -6099,7 +6099,7 @@ function statusTag(s) {
   return `<span class="tag ${cls}">${escHtml(s)}</span>`;
 }
 
-// Risk Treatment Plan (clause 6.1.3.e) — formal document export pulling from
+// Risk Treatment Plan (clause 6.1.3.e) - formal document export pulling from
 // the live risk register.
 app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, async (req, res) => {
   const ws = req.workspace;
@@ -6121,7 +6121,7 @@ app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, asyn
       .all(...rids).forEach(c => { (ctrlByRisk[c.risk_id] = ctrlByRisk[c.risk_id] || []).push(c); });
   }
 
-  let body = '<h2>Methodology</h2><p>This Risk Treatment Plan documents, for every risk in the register, the chosen treatment option, the controls applied, the responsible owner, and the implementation timeframe — as required by ISO/IEC 27001:2022 clause 6.1.3.e.</p>';
+  let body = '<h2>Methodology</h2><p>This Risk Treatment Plan documents, for every risk in the register, the chosen treatment option, the controls applied, the responsible owner, and the implementation timeframe - as required by ISO/IEC 27001:2022 clause 6.1.3.e.</p>';
   body += `<p>Risks: <strong>${risks.length}</strong></p>`;
   body += '<h2>Treatment plan by risk</h2>';
   if (risks.length === 0) {
@@ -6129,9 +6129,9 @@ app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, asyn
   } else {
     body += '<table><thead><tr><th width="8%">ID</th><th>Risk</th><th width="10%">L×I</th><th width="10%">Treatment</th><th width="14%">Owner</th><th>Controls applied</th><th>Actions</th></tr></thead><tbody>';
     for (const r of risks) {
-      const ctrls = (ctrlByRisk[r.id] || []).map(c => escHtml(c.iso_item_id.replace('annex-','').toUpperCase()) + ' ' + escHtml(c.title.replace(/^A\.[0-9.]+ /,''))).join('<br>') || '<em class="meta">—</em>';
-      const acts = (actionsByRisk[r.id] || []).map(a => `<strong>${escHtml(a.title)}</strong><br><span class="meta">${escHtml(a.assignee_role || '')}${a.due_date ? ' · due ' + escHtml(a.due_date) : ''} · ${escHtml(a.status || '')}</span>`).join('<br><br>') || '<em class="meta">—</em>';
-      body += `<tr><td>R-${r.id}</td><td><strong>${escHtml(r.title)}</strong>${r.description ? '<br><span class="meta">' + escHtml(r.description) + '</span>' : ''}</td><td>${r.likelihood || '—'}×${r.impact || '—'}</td><td>${escHtml(r.treatment || '—')}</td><td>${escHtml(r.owner_name || '—')}</td><td>${ctrls}</td><td>${acts}</td></tr>`;
+      const ctrls = (ctrlByRisk[r.id] || []).map(c => escHtml(c.iso_item_id.replace('annex-','').toUpperCase()) + ' ' + escHtml(c.title.replace(/^A\.[0-9.]+ /,''))).join('<br>') || '<em class="meta">-</em>';
+      const acts = (actionsByRisk[r.id] || []).map(a => `<strong>${escHtml(a.title)}</strong><br><span class="meta">${escHtml(a.assignee_role || '')}${a.due_date ? ' · due ' + escHtml(a.due_date) : ''} · ${escHtml(a.status || '')}</span>`).join('<br><br>') || '<em class="meta">-</em>';
+      body += `<tr><td>R-${r.id}</td><td><strong>${escHtml(r.title)}</strong>${r.description ? '<br><span class="meta">' + escHtml(r.description) + '</span>' : ''}</td><td>${r.likelihood || '-'}×${r.impact || '-'}</td><td>${escHtml(r.treatment || '-')}</td><td>${escHtml(r.owner_name || '-')}</td><td>${ctrls}</td><td>${acts}</td></tr>`;
     }
     body += '</tbody></table>';
   }
@@ -6142,7 +6142,7 @@ app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, asyn
   res.send(buf);
 });
 
-// Gap Assessment Report — produced at end-of-pass for handoff.
+// Gap Assessment Report - produced at end-of-pass for handoff.
 app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspace, async (req, res) => {
   const ws = req.workspace;
   const passId = req.query.pass ? parseInt(req.query.pass, 10) : null;
@@ -6176,7 +6176,7 @@ app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspac
   const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(ws.id).c;
 
   let body = '<h2>Executive summary</h2>';
-  body += `<p>This report summarises the gap-assessment findings produced during <strong>Pass ${pass ? pass.pass_number : '—'}${pass && pass.label ? ' · ' + escHtml(pass.label) : ''}</strong>${pass && pass.completed_at ? ' (completed ' + pass.completed_at.slice(0,10) + ')' : pass && pass.status === 'in_progress' ? ' (in progress)' : ''}. The findings are based on documented evidence reviewed and consultant interviews.</p>`;
+  body += `<p>This report summarises the gap-assessment findings produced during <strong>Pass ${pass ? pass.pass_number : '-'}${pass && pass.label ? ' · ' + escHtml(pass.label) : ''}</strong>${pass && pass.completed_at ? ' (completed ' + pass.completed_at.slice(0,10) + ')' : pass && pass.status === 'in_progress' ? ' (in progress)' : ''}. The findings are based on documented evidence reviewed and consultant interviews.</p>`;
   body += '<table style="width:auto"><thead><tr><th>Status</th><th>Count</th><th>%</th></tr></thead><tbody>';
   for (const [s, c] of Object.entries(counts)) {
     body += `<tr><td>${statusTag(s)}</td><td>${c}</td><td>${total ? Math.round(c/total*100) : 0}%</td></tr>`;
@@ -6201,11 +6201,11 @@ app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspac
   body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th width="8%">Maturity</th></tr></thead><tbody>';
   for (const r of rows) {
     const cleanTitle = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
-    body += `<tr><td>${escHtml(r.code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(r.status)}</td><td>${r.maturity == null ? '—' : r.maturity}</td></tr>`;
+    body += `<tr><td>${escHtml(r.code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(r.status)}</td><td>${r.maturity == null ? '-' : r.maturity}</td></tr>`;
   }
   body += '</tbody></table>';
 
-  const title = `Gap Assessment Report — Pass ${pass ? pass.pass_number : ''}`;
+  const title = `Gap Assessment Report - Pass ${pass ? pass.pass_number : ''}`;
   const html = deliverableHtmlShell(title, ws, body);
   const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -6213,10 +6213,10 @@ app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspac
   res.send(buf);
 });
 
-// Recommendations memo — ranked, actionable handoff.
+// Recommendations memo - ranked, actionable handoff.
 app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWorkspace, async (req, res) => {
   const ws = req.workspace;
-  // Pull rows where status is Not Implemented / Partially / WIP — ordered by severity.
+  // Pull rows where status is Not Implemented / Partially / WIP - ordered by severity.
   const items = db.prepare(`SELECT i.id, i.type, i.title, COALESCE(cs.status,'Not Assessed') AS status,
       cs.maturity, cs.notes
     FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
@@ -6230,7 +6230,7 @@ app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWor
   body += `<p>Items requiring action: <strong>${items.length}</strong></p>`;
   body += '<h2>Recommendations</h2>';
   if (items.length === 0) {
-    body += '<p><em>No outstanding recommendations — every assessed item is at "Implemented".</em></p>';
+    body += '<p><em>No outstanding recommendations - every assessed item is at "Implemented".</em></p>';
   } else {
     body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th>Recommendation / consultant notes</th></tr></thead><tbody>';
     for (const r of items) {
@@ -6248,7 +6248,7 @@ app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWor
   res.send(buf);
 });
 
-// Stage 1/2 readiness pack — single ZIP with the management-system docs +
+// Stage 1/2 readiness pack - single ZIP with the management-system docs +
 // linked evidence + manifest.
 app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorkspace, async (req, res) => {
   const ws = req.workspace;
@@ -6339,18 +6339,18 @@ app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorks
 
   // README
   archive.append(
-`Stage ${stage} readiness pack — ${ws.client_name || 'Workspace ' + ws.id}
+`Stage ${stage} readiness pack - ${ws.client_name || 'Workspace ' + ws.id}
 Generated ${new Date().toISOString()}
 
 Contents:
-  01_soa.csv                — Statement of Applicability (Annex A + custom controls)
-  02_risk_treatment_plan.docx — Formal RTP (clause 6.1.3.e)
-  03_internal_audits.csv    — Internal audit programme history
-  04_management_reviews.csv — MRM history
-  05_interested_parties.csv — Clause 4.2 register
-  06_objectives.csv         — Clause 6.2 register
-  07_evidence_manifest.csv  — Index of every evidence file with SHA-256 + linked controls
-  evidence/                 — Actual evidence artefacts (filename: <id>-<name>)
+  01_soa.csv                - Statement of Applicability (Annex A + custom controls)
+  02_risk_treatment_plan.docx - Formal RTP (clause 6.1.3.e)
+  03_internal_audits.csv    - Internal audit programme history
+  04_management_reviews.csv - MRM history
+  05_interested_parties.csv - Clause 4.2 register
+  06_objectives.csv         - Clause 6.2 register
+  07_evidence_manifest.csv  - Index of every evidence file with SHA-256 + linked controls
+  evidence/                 - Actual evidence artefacts (filename: <id>-<name>)
 
 This is the artefact set a Stage ${stage} certification audit will request.
 SHA-256 in the manifest lets the auditor verify nothing was altered after export.
@@ -6509,7 +6509,7 @@ app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requi
   res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=termination`);
 });
 
-// External tokenized questionnaire link — external supplier completes without an account.
+// External tokenized questionnaire link - external supplier completes without an account.
 app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const token = crypto.randomBytes(20).toString('hex');
   db.prepare(`UPDATE supplier_questionnaires SET external_token=?, external_email=? WHERE id=? AND workspace_id=?`)
@@ -6576,7 +6576,7 @@ app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWor
     db.prepare(`INSERT INTO tasks (workspace_id, entity_id, title, description, assignee_id, due_date, status, created_by, template_id)
       VALUES (?, ?, ?, ?, ?, ?, 'todo', ?, ?)`).run(
       req.workspace.id, req.entityScopeId || null,
-      s.title, tpl.name + ' — step',
+      s.title, tpl.name + ' - step',
       req.body.assignee_id || null, due, req.user.id, tpl.id);
   }
   logAction(req.user.id, req.workspace.id, 'spawn_template', 'task_template', tpl.id, { name: tpl.name, steps: steps.length }, auditCtx(req));
@@ -6760,7 +6760,7 @@ app.post('/workspaces/:wsId/access/apply-template', requireAuth, requireWorkspac
   const ins = db.prepare(`INSERT INTO workspace_role_overrides (workspace_id, user_id, permission, granted, granted_by, reason, expires_at)
     VALUES (?, ?, ?, 1, ?, ?, ?)
     ON CONFLICT(workspace_id, user_id, permission) DO UPDATE SET granted=1, granted_by=excluded.granted_by, reason=excluded.reason, expires_at=excluded.expires_at`);
-  perms.forEach(p => ins.run(req.workspace.id, userId, p, req.user.id, `Template: ${tpl.name}` + (req.body.reason ? ' — ' + req.body.reason : ''), expires));
+  perms.forEach(p => ins.run(req.workspace.id, userId, p, req.user.id, `Template: ${tpl.name}` + (req.body.reason ? ' - ' + req.body.reason : ''), expires));
   logAction(req.user.id, req.workspace.id, 'apply_perm_template', 'user', userId, { template: tpl.name, expires_at: expires }, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/access`);
 });
@@ -6854,7 +6854,7 @@ app.post('/workspaces/:wsId/controls/import', requireAuth, requireWorkspace, req
   const ix = (k) => header.indexOf(k);
   let updated = 0;
   for (const ln of lines) {
-    // Naive CSV — values may be quoted; handle simple unquote
+    // Naive CSV - values may be quoted; handle simple unquote
     const parts = ln.match(/"[^"]*"|[^,]+/g)?.map(p => p.replace(/^"|"$/g,'').replace(/""/g,'"').trim()) || [];
     const id = ix('id') >= 0 ? parts[ix('id')] : null;
     if (!id) continue;
@@ -6942,7 +6942,7 @@ app.post('/workspaces/:wsId/risks/:id/acceptances/:aid/revoke', requireAuth, req
 });
 
 // ==================== COMPLIANCE CALENDAR ====================
-// (Old list-style calendar removed — replaced by Tier B.8 month-view above.)
+// (Old list-style calendar removed - replaced by Tier B.8 month-view above.)
 
 // ==================== FTS5 SEARCH UI ====================
 app.get('/workspaces/:wsId/search', requireAuth, requireWorkspace, (req, res) => {
@@ -7017,7 +7017,7 @@ app.get('/workspaces/:wsId/handover', requireAuth, requireWorkspace, requirePerm
   }
 
   // README + import instructions
-  const readme = `ISMS handover package — ${ws.client_name}
+  const readme = `ISMS handover package - ${ws.client_name}
 ==========================================================
 
 Generated: ${new Date().toISOString()}
@@ -7025,13 +7025,13 @@ Workspace ID: ${ws.id}
 Client: ${ws.client_name}
 
 Contents:
-  data/*.json     — every database row scoped to this workspace, decrypted for portability
-  evidence/       — every evidence file uploaded against any control
-  supplier-files/ — every supplier attestation / contract
+  data/*.json     - every database row scoped to this workspace, decrypted for portability
+  evidence/       - every evidence file uploaded against any control
+  supplier-files/ - every supplier attestation / contract
 
 To import this elsewhere:
   1. Stand up an ISMS instance (any version >= today's).
-  2. Restore the JSON files into the corresponding tables — preserving primary keys
+  2. Restore the JSON files into the corresponding tables - preserving primary keys
      where possible. \`workspaces\` first, then everything keyed off workspace_id.
   3. Place evidence/* and supplier-files/* into the new instance's uploads/ directory
      using the same filenames.
@@ -7113,7 +7113,7 @@ app.post('/workspaces/:wsId/reports', requireAuth, requireWorkspace, requirePerm
 
 // ==================== AUDIT OBSERVATIONS + CRISIS COMMS ====================
 // Audit observations (lighter than findings)
-// Audit checklist generator — populates audit_observations with starter questions for
+// Audit checklist generator - populates audit_observations with starter questions for
 // every Annex A control in the chosen category. Auditor fills in findings against each.
 app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
@@ -7128,13 +7128,13 @@ app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace
   const tx = db.transaction(() => {
     controls.forEach(c => {
       const cleanTitle = c.title.replace(/^A\.[0-9.]+ /, '').replace(/^Clause [0-9.]+ /, '');
-      const q = `${c.id.replace('annex-','').replace('clause-','').toUpperCase()} — ${cleanTitle}: Is there a documented process? Is it operating in practice (sample evidence)? Has it been reviewed in the last 12 months?`;
+      const q = `${c.id.replace('annex-','').replace('clause-','').toUpperCase()} - ${cleanTitle}: Is there a documented process? Is it operating in practice (sample evidence)? Has it been reviewed in the last 12 months?`;
       ins.run(audit.id, c.id, q);
     });
   });
   tx();
   logAction(req.user.id, req.workspace.id, 'generate_audit_checklist', 'audit', audit.id, { category, count: controls.length }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, `Generated ${controls.length} checklist item${controls.length === 1 ? '' : 's'} — fill in findings against each`));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, `Generated ${controls.length} checklist item${controls.length === 1 ? '' : 's'} - fill in findings against each`));
 });
 
 app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
@@ -7197,7 +7197,7 @@ function extractMentions(body) {
   return [...out];
 }
 
-// Keep existing POST /comments — just add a post-processor to record mentions
+// Keep existing POST /comments - just add a post-processor to record mentions
 // Hook into existing comment route by patching after-create. We already inserted
 // comments; add a small route that handles mentions parse separately.
 app.post('/workspaces/:wsId/comments/:id/mentions', requireAuth, requireWorkspace, (req, res) => {

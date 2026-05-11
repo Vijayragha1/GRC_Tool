@@ -28,7 +28,7 @@
     </div>
     <div><label class="label">Related ISO item</label>
       <select class="select" name="iso_item_id">
-        <option value="">— none —</option>
+        <option value="">- none -</option>
         <% allItems.forEach(i => { %><option value="<%= i.id %>" <%= nc.iso_item_id === i.id ? 'selected' : '' %>><%= i.title %></option><% }) %>
       </select>
     </div>
@@ -68,8 +68,8 @@
         <% correctiveTasks.forEach(t => { %>
           <tr>
             <td><a href="/workspaces/<%= ws.id %>/tasks/<%= t.id %>" class="link-muted" style="color:var(--text);"><%= t.title %></a></td>
-            <td class="meta"><%= t.assignee_name || '—' %></td>
-            <td class="meta"><%= t.due_date || '—' %></td>
+            <td class="meta"><%= t.assignee_name || '-' %></td>
+            <td class="meta"><%= t.due_date || '-' %></td>
             <td><span class="status s-<%= t.status === 'done' ? 'done' : t.status %>"><%= t.status %></span></td>
           </tr>
         <% }) %>

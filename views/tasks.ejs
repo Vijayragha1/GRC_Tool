@@ -22,7 +22,7 @@
     <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
     <div><label class="label">Assignee</label>
       <select class="select" name="assignee_id">
-        <option value="">— unassigned —</option>
+        <option value="">- unassigned -</option>
         <% wsUsers.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %>
       </select>
     </div>
@@ -48,12 +48,12 @@
           <td>
             <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>">
               <select name="assignee_id" onchange="this.form.submit()" class="select" style="font-size:12px;padding:4px 8px;">
-                <option value="">— unassigned —</option>
+                <option value="">- unassigned -</option>
                 <% wsUsers.forEach(u => { %><option value="<%= u.id %>" <%= t.assignee_id == u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
               </select>
             </form>
           </td>
-          <td class="num meta"><%= t.due_date || '—' %></td>
+          <td class="num meta"><%= t.due_date || '-' %></td>
           <td>
             <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>">
               <select name="status" onchange="this.form.submit()" class="select" style="font-size:12px;padding:4px 8px;">

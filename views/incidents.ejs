@@ -52,7 +52,7 @@
           <td><a href="/workspaces/<%= ws.id %>/incidents/<%= n.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= n.title %></a></td>
           <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= (n.category || '').replace(/_/g,' ') %></td>
           <td><span class="tag <%= n.severity === 'critical' || n.severity === 'high' ? 'tag-danger' : n.severity === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= n.severity %></span></td>
-          <td class="num meta"><%= n.detected_at || '—' %></td>
+          <td class="num meta"><%= n.detected_at || '-' %></td>
           <td><span class="status s-<%= n.status === 'closed' ? 'done' : 'open' %>"><%= n.status %></span></td>
         </tr>
       <% }) %>

@@ -63,7 +63,7 @@
             <td><%= o.name %></td>
             <td class="mono meta"><%= o.permission %></td>
             <td><span class="tag <%= o.granted ? 'tag-success' : 'tag-danger' %>"><%= o.granted ? 'GRANT' : 'REVOKE' %></span></td>
-            <td class="meta"><%= o.reason || '—' %></td>
+            <td class="meta"><%= o.reason || '-' %></td>
             <td class="meta"><%= o.created_at %></td>
             <td>
               <form method="POST" action="/workspaces/<%= ws.id %>/access/override/<%= o.id %>/delete" style="display:inline">
@@ -79,7 +79,7 @@
     <div>
       <label class="label">User</label>
       <select class="select" name="user_id" required>
-        <option value="">—</option>
+        <option value="">-</option>
         <% members.forEach(m => { %><option value="<%= m.user_id %>"><%= m.name %> (<%= m.role %>)</option><% }) %>
         <% firmUsers.forEach(u => { if (u.firm_role !== 'owner') { %><option value="<%= u.id %>"><%= u.name %> (firm)</option><% } }) %>
       </select>
@@ -87,8 +87,8 @@
     <div>
       <label class="label">Permission</label>
       <select class="select" name="permission" required>
-        <option value="">—</option>
-        <% Object.entries(permissions).forEach(([k, v]) => { %><option value="<%= k %>"><%= k %> — <%= v %></option><% }) %>
+        <option value="">-</option>
+        <% Object.entries(permissions).forEach(([k, v]) => { %><option value="<%= k %>"><%= k %> - <%= v %></option><% }) %>
       </select>
     </div>
     <div>

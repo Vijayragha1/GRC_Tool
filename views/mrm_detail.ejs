@@ -26,7 +26,7 @@
       <% riskSummary.forEach(r => { %><div style="font-size:13px;"><%= r.status %>: <%= r.c %></div><% }) %>
     </div>
     <div>
-      <div class="meta" style="margin-bottom:4px;">c) ISMS performance — KPIs</div>
+      <div class="meta" style="margin-bottom:4px;">c) ISMS performance - KPIs</div>
       <div style="font-size:13px;">Coverage: <%= progress.percent %>% (<%= progress.assessed %>/<%= progress.total %>)</div>
     </div>
     <div>
@@ -50,7 +50,7 @@
     </div>
     <div>
       <div class="meta" style="margin-bottom:4px;">f) Risk-treatment status</div>
-      <% if (riskSummary.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">—</div>
+      <% if (riskSummary.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">-</div>
       <% } else { %><% riskSummary.forEach(r => { %><div style="font-size:12px;"><%= r.status %>: <%= r.c %></div><% }) %><% } %>
     </div>
     <div>
@@ -75,7 +75,7 @@
 
   <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;">
     <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Required inputs · 9.3.2</div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs" style="display:inline;" onsubmit="return appConfirmForm(event, 'Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current workspace data? This overwrites the auto-filled fields below — your free-text additions to those fields will be lost.')">
+    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs" style="display:inline;" onsubmit="return appConfirmForm(event, 'Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current workspace data? This overwrites the auto-filled fields below - your free-text additions to those fields will be lost.')">
       <button class="btn btn-secondary btn-xs" title="Re-pull live data into the auto-filled fields below">↻ Refresh inputs from live data</button>
     </form>
   </div>

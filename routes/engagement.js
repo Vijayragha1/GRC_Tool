@@ -1,5 +1,5 @@
 // Engagement routes: kickoff intake (25-question scoping questionnaire) and
-// the 12-week project plan. Both are workspace-scoped read/write — they read
+// the 12-week project plan. Both are workspace-scoped read/write - they read
 // from data/intake-questions.js and data/engagement-plan.js for templates,
 // and persist per-workspace state in engagement_intake and
 // engagement_plan_progress.

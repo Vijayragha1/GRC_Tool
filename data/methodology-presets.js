@@ -2,7 +2,7 @@
 
 module.exports = {
   iso_27005: {
-    name: 'ISO 27005:2022 — qualitative 5×5',
+    name: 'ISO 27005:2022 - qualitative 5×5',
     description: 'Standard ISO 27005 qualitative scale aligned with most ISO 27001 audits.',
     likelihood_scale: [
       { value: 1, label: 'Very low',   description: 'Once every 5+ years' },

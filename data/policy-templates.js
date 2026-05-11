@@ -9,7 +9,7 @@
 //   {{client_name}}  {{scope}}  {{date}}  {{firm_name}}
 //   {{document_owner}}  {{approval_authority}}  {{review_period}}  {{industry}}
 
-const STARTER_NOTE = `> **Starting point.** This document is a starter template aligned with ISO 27001:2022 / 27002:2022. Review every section, replace bracketed placeholders, and adjust to {{client_name}}'s actual practices and risk appetite. Where this template specifies values (review intervals, retention, thresholds), the standard does not prescribe them — confirm with stakeholders before publishing.\n\n---\n`;
+const STARTER_NOTE = `> **Starting point.** This document is a starter template aligned with ISO 27001:2022 / 27002:2022. Review every section, replace bracketed placeholders, and adjust to {{client_name}}'s actual practices and risk appetite. Where this template specifies values (review intervals, retention, thresholds), the standard does not prescribe them - confirm with stakeholders before publishing.\n\n---\n`;
 
 module.exports = [
   {
@@ -112,7 +112,7 @@ Access requests are submitted via [DEFINE CHANNEL], approved by the information 
 On change of role, access is re-evaluated and modified or removed as appropriate.
 
 ### 5.3 Review
-Access rights are reviewed [DEFINE INTERVAL — based on risk; commonly more frequent for privileged access]. Reviewers attest to the appropriateness of access.
+Access rights are reviewed [DEFINE INTERVAL - based on risk; commonly more frequent for privileged access]. Reviewers attest to the appropriateness of access.
 
 ### 5.4 Revocation
 On termination or end of access need, access is removed within [DEFINE SLA].
@@ -153,7 +153,7 @@ Applies to information assets and related processes and systems within {{scope}}
 ## 3. Risk criteria
 
 ### 3.1 Risk acceptance criteria
-[DEFINE: the organization's basis for accepting residual risk — e.g., described qualitatively, by score band, by category, or by approval authority.]
+[DEFINE: the organization's basis for accepting residual risk - e.g., described qualitatively, by score band, by category, or by approval authority.]
 
 ### 3.2 Criteria for performing assessments
 Risk assessments are performed:
@@ -171,7 +171,7 @@ Each risk is analyzed by estimating:
 - **Consequences (impact)** of the risk being realized.
 - **Likelihood** of the risk occurring.
 
-The organization may use qualitative, semi-quantitative, or quantitative methods. [DEFINE: the chosen scales — e.g., 1–5 likelihood, 1–5 impact, with documented descriptors for each level.]
+The organization may use qualitative, semi-quantitative, or quantitative methods. [DEFINE: the chosen scales - e.g., 1–5 likelihood, 1–5 impact, with documented descriptors for each level.]
 
 ## 6. Risk evaluation
 
@@ -515,7 +515,7 @@ All suppliers whose products or services can affect the security of in-scope inf
 
 ## 3. Supplier classification
 
-Suppliers are classified based on the risk they pose. [DEFINE: criteria — e.g., access to confidential data, criticality to operations, regulatory implications.]
+Suppliers are classified based on the risk they pose. [DEFINE: criteria - e.g., access to confidential data, criticality to operations, regulatory implications.]
 
 ## 4. Pre-engagement assessment
 
@@ -634,7 +634,7 @@ ${STARTER_NOTE}
 
 ## 4. Effectiveness
 
-[DEFINE: how the organization measures effectiveness — e.g., completion rates, knowledge checks, simulation outcomes.]
+[DEFINE: how the organization measures effectiveness - e.g., completion rates, knowledge checks, simulation outcomes.]
 
 ## 5. Records
 
@@ -663,7 +663,7 @@ To plan, conduct, and report on internal audits that determine whether the ISMS 
 
 An audit programme is established and maintained covering frequency, methods, responsibilities, planning, and reporting.
 
-[DEFINE: programme cadence and rotation across ISMS clauses and applicable Annex A controls — proportionate to risk and prior findings.]
+[DEFINE: programme cadence and rotation across ISMS clauses and applicable Annex A controls - proportionate to risk and prior findings.]
 
 ## 3. Auditor independence
 
@@ -707,7 +707,7 @@ To define how top management reviews the ISMS to confirm its continuing suitabil
 
 ## 2. Frequency
 
-Reviews are held at planned intervals. [DEFINE INTERVAL — typically at least annually; more frequently if significant changes warrant.]
+Reviews are held at planned intervals. [DEFINE INTERVAL - typically at least annually; more frequently if significant changes warrant.]
 
 ## 3. Inputs (per Clause 9.3.2)
 
@@ -799,7 +799,7 @@ Clause 7.5.
   },
 
   {
-    name: 'Statement of Applicability — cover page',
+    name: 'Statement of Applicability - cover page',
     category: 'record',
     description: 'Cover page for the SoA. The full control register is exported separately from the SoA module.',
     content: `# Statement of Applicability
@@ -825,12 +825,12 @@ Decisions on applicability are based on:
 
 Each control is recorded with:
 - Whether it is **included** or **excluded**.
-- Justification (driving risks, regulatory basis, business need; or — for exclusions — the reason the control is not relevant).
+- Justification (driving risks, regulatory basis, business need; or - for exclusions - the reason the control is not relevant).
 - Implementation status.
 
 ## 3. Control register
 
-The full register of all 93 Annex A controls — applicability, justification, and implementation status — is maintained in the ISMS tool and is exported alongside this cover page.
+The full register of all 93 Annex A controls - applicability, justification, and implementation status - is maintained in the ISMS tool and is exported alongside this cover page.
 
 ## 4. Maintenance
 
