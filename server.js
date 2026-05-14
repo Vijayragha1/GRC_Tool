@@ -6815,6 +6815,49 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/versions/:vid(\\d+)', requireAuth, requ
   });
 });
 
+// ---- Stage 8: Reports + CSV export ------------------------------------------
+const csfReports = require('./lib/csf-reports');
+
+// Word: live engagement (draft watermark) OR a specific version (vid query param).
+app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx', requireAuth, requireWorkspace, async (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  csfPolicy.ensureAssessmentRows(db, engagement);
+
+  let rollup, versionRow = null, isDraft;
+  if (req.query.vid) {
+    versionRow = db.prepare(`SELECT * FROM csf_engagement_versions WHERE id=? AND engagement_id=?`).get(req.query.vid, engagement.id);
+    if (!versionRow) return res.status(404).send('Version not found in this engagement.');
+    rollup = csfVersioning.loadSnapshotRollup(db, versionRow);
+    isDraft = false;
+  } else {
+    rollup = csfScoring.computeEngagementRollup(db, engagement);
+    isDraft = true;
+  }
+
+  const firm = db.prepare(`SELECT name FROM firms WHERE id=?`).get(req.workspace.firm_id);
+  const buf = await csfReports.buildWordReport({ db, engagement, ws: req.workspace, firm, currentRollup: rollup, isDraft, versionRow });
+  const filename = `csf-report-${(engagement.name || 'engagement').replace(/[^\w.-]+/g, '_')}-${versionRow ? 'v' + versionRow.version_number : 'DRAFT'}.docx`;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buf);
+  logAction(req.user.id, req.workspace.id, 'csf_report_export_docx', 'csf_engagement', engagement.id, { version_id: versionRow?.id || null }, auditCtx(req));
+});
+
+// CSV: one row per Subcategory.
+app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/data.csv', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  csfPolicy.ensureAssessmentRows(db, engagement);
+  const rollup = csfScoring.computeEngagementRollup(db, engagement);
+  const csv = csfReports.buildCsvExport({ db, engagement, currentRollup: rollup });
+  const filename = `csf-data-${(engagement.name || 'engagement').replace(/[^\w.-]+/g, '_')}-${new Date().toISOString().slice(0,10)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(csv);
+  logAction(req.user.id, req.workspace.id, 'csf_report_export_csv', 'csf_engagement', engagement.id, {}, auditCtx(req));
+});
+
 // Diff between two versions.
 app.get('/workspaces/:wsId/csf/:id(\\d+)/versions/:vid(\\d+)/diff/:against(\\d+)', requireAuth, requireWorkspace, (req, res) => {
   const { engagement, error } = loadCsfEngagement(req);
