@@ -93,12 +93,128 @@
   </div>
 </div>
 
-<div class="panel">
-  <div class="panel-head"><h2>Next stages</h2></div>
-  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;">
-    <div>Stage 6 adds the consultant dashboard (progress, time, score distribution, outstanding items, activity feed).</div>
-    <div>Stage 7 adds engagement versions + snapshots (immutable point-in-time copies, "what changed" diff).</div>
-    <div>Stages 8-12 add report generation (Word + PDF), client portal, benchmarking, beginner-friendly analyst features, and prototype polish.</div>
+<!-- Stage 6: consultant dashboard -->
+<% const sevColor = { 'CRITICAL':'#b91c1c', 'HIGH':'#dc2626', 'MEDIUM':'#a16207', 'LOW':'var(--text-tertiary)' }; %>
+
+<!-- Progress KPI strip -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px;">
+    <div>
+      <div class="kpi-num"><%= scoredPct %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">%</span></div>
+      <div class="kpi-label">Scored</div>
+      <div class="meta" style="font-size:11.5px;margin-top:4px;"><%= scoredSubs %> of <%= inscopeSubs %> in-scope</div>
+    </div>
+    <div>
+      <div class="kpi-num num"><%= statusCounts['Not Started'] || 0 %></div>
+      <div class="kpi-label">Not started</div>
+    </div>
+    <div>
+      <div class="kpi-num num" style="color:#1d4ed8;"><%= (statusCounts['In Progress'] || 0) + (statusCounts['Evidence Collected'] || 0) + (statusCounts['Draft Complete'] || 0) %></div>
+      <div class="kpi-label">In flight</div>
+      <div class="meta" style="font-size:11px;margin-top:2px;">In progress + Evidence + Draft</div>
+    </div>
+    <div>
+      <div class="kpi-num num" style="color:#15803d;"><%= (statusCounts['Reviewed'] || 0) + (statusCounts['Approved'] || 0) %></div>
+      <div class="kpi-label">Reviewed/Approved</div>
+    </div>
+    <div>
+      <% if (daysRemaining !== null) { %>
+        <div class="kpi-num num" style="color:<%= daysOverdue ? '#b91c1c' : daysRemaining < 14 ? '#a16207' : 'var(--text)' %>;"><%= Math.abs(daysRemaining) %></div>
+        <div class="kpi-label"><%= daysOverdue ? 'Days overdue' : 'Days to target' %></div>
+        <div class="meta" style="font-size:11px;margin-top:2px;"><%= engagement.target_completion_date %></div>
+      <% } else { %>
+        <div class="kpi-num num" style="color:var(--text-tertiary);">-</div>
+        <div class="kpi-label">No target date</div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<!-- Score distribution -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head"><h2>Score distribution (current)</h2><span class="meta" style="font-size:11.5px;"><%= scoredSubs %> scored</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+    <% const maxC = Math.max(1, ...distribution.map(d => d.count)); %>
+    <% distribution.forEach(d => { %>
+      <div style="text-align:center;">
+        <div style="height:80px;display:flex;align-items:flex-end;justify-content:center;">
+          <div style="width:36px;background:<%= d.score >= 4 ? '#15803d' : d.score >= 3 ? '#1d4ed8' : d.score >= 2 ? '#a16207' : '#b91c1c' %>;height:<%= Math.round((d.count / maxC) * 76) + 4 %>px;border-radius:4px 4px 0 0;"></div>
+        </div>
+        <div style="font-size:18px;font-weight:600;margin-top:6px;"><%= d.count %></div>
+        <div class="kpi-meta">CMMI <%= d.score %></div>
+      </div>
+    <% }) %>
+  </div>
+</div>
+
+<!-- Outstanding items + activity feed side by side -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Outstanding items</h2></div>
+
+    <% if (subsWithScoreNoEvidence.length) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);">
+        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;color:#b91c1c;">Scored without evidence (<%= subsWithScoreNoEvidence.length %>)</div>
+        <div style="font-size:12.5px;line-height:1.6;display:flex;flex-wrap:wrap;gap:6px;">
+          <% subsWithScoreNoEvidence.slice(0, 12).forEach(s => { %>
+            <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= s.subcategory_id %>" class="mono" style="color:var(--accent);background:rgba(185,28,28,0.08);padding:2px 6px;border-radius:4px;font-size:11px;text-decoration:none;"><%= s.sub_code %></a>
+          <% }) %>
+          <% if (subsWithScoreNoEvidence.length > 12) { %><span class="meta" style="font-size:11px;align-self:center;">+<%= subsWithScoreNoEvidence.length - 12 %> more</span><% } %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (unresolvedComments.length) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);">
+        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;color:#a16207;">Unresolved reviewer comments (<%= unresolvedComments.length %>)</div>
+        <% unresolvedComments.slice(0, 5).forEach(c => { %>
+          <div style="font-size:12px;padding:4px 0;line-height:1.5;">
+            <% if (c.requires_revision) { %><span class="tag tag-warn" style="font-size:10px;">needs revision</span><% } %>
+            <strong style="font-size:12px;"><%= c.commenter_name %>:</strong>
+            <%= c.text.length > 100 ? c.text.slice(0, 100) + '...' : c.text %>
+            <% if (c.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= c.subcategory_id %>" class="mono" style="color:var(--accent);text-decoration:none;font-size:11px;">&rarr; <%= c.sub_code %></a><% } %>
+            <% if (c.finding_title) { %><span class="meta" style="font-size:11px;">on finding: <%= c.finding_title.slice(0, 40) %></span><% } %>
+          </div>
+        <% }) %>
+        <% if (unresolvedComments.length > 5) { %><div class="meta" style="font-size:11px;">+<%= unresolvedComments.length - 5 %> more</div><% } %>
+      </div>
+    <% } %>
+
+    <% if (findingsNoRecs.length) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);">
+        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;color:#a16207;">Findings without recommendations (<%= findingsNoRecs.length %>)</div>
+        <% findingsNoRecs.slice(0, 8).forEach(f => { %>
+          <div style="font-size:12px;padding:3px 0;line-height:1.5;display:flex;gap:6px;align-items:center;">
+            <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:9.5px;font-weight:600;"><%= f.severity %></span>
+            <span style="flex:1;"><%= f.title %></span>
+            <% if (f.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= f.subcategory_id %>" class="mono" style="color:var(--accent);text-decoration:none;font-size:11px;"><%= f.sub_code %></a><% } %>
+          </div>
+        <% }) %>
+        <% if (findingsNoRecs.length > 8) { %><div class="meta" style="font-size:11px;">+<%= findingsNoRecs.length - 8 %> more</div><% } %>
+      </div>
+    <% } %>
+
+    <% if (!subsWithScoreNoEvidence.length && !unresolvedComments.length && !findingsNoRecs.length) { %>
+      <div class="panel-pad meta" style="font-size:12.5px;">Nothing outstanding. Either nothing's been worked on yet, or every flagged item has been resolved.</div>
+    <% } %>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Activity</h2><span class="meta" style="font-size:11.5px;">last <%= activity.length %></span></div>
+    <% if (activity.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No activity yet on this workspace's CSF module.</div>
+    <% } else { %>
+      <div class="divide-row" style="max-height:380px;overflow-y:auto;">
+        <% activity.forEach(a => { %>
+          <div style="padding:6px 14px;font-size:12px;line-height:1.5;">
+            <div style="display:flex;gap:6px;align-items:baseline;">
+              <span class="meta" style="font-size:10.5px;flex-shrink:0;width:90px;"><%= a.created_at %></span>
+              <span style="flex:1;"><strong><%= a.actor || '-' %></strong> <span class="meta" style="font-size:11.5px;"><%= a.action.replace(/^csf_/, '').replace(/_/g, ' ') %></span></span>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
   </div>
 </div>
 

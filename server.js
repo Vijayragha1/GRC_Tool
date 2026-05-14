@@ -6076,7 +6076,7 @@ app.get('/workspaces/:wsId/csf/catalog', requireAuth, requireWorkspace, (req, re
   });
 });
 
-// Engagement detail
+// Engagement detail (Stage 6: consultant dashboard surface)
 app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, res) => {
   const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
   if (!engagement) return res.status(404).render('error', { user: req.user, message: 'CSF engagement not found, or it was deleted.' });
@@ -6096,12 +6096,87 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
     UNION
     SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1
   `).all(req.workspace.id, req.workspace.firm_id);
+
+  // ---- Stage 6 dashboard data ----
+  csfPolicy.ensureAssessmentRows(db, engagement);
+  // Status counts
+  const statusCounts = db.prepare(`
+    SELECT status, COUNT(*) AS c FROM csf_subcategory_assessments WHERE engagement_id=? GROUP BY status
+  `).all(engagement.id).reduce((acc, r) => { acc[r.status] = r.c; return acc; }, {});
+  const totalSubs = db.prepare(`SELECT COUNT(*) AS c FROM csf_subcategory_assessments WHERE engagement_id=?`).get(engagement.id).c;
+  const inscopeSubs = db.prepare(`SELECT COUNT(*) AS c FROM csf_subcategory_assessments WHERE engagement_id=? AND excluded_from_scope=0`).get(engagement.id).c;
+  const scoredSubs = db.prepare(`SELECT COUNT(*) AS c FROM csf_subcategory_assessments WHERE engagement_id=? AND excluded_from_scope=0 AND current_score IS NOT NULL`).get(engagement.id).c;
+  const scoredPct = inscopeSubs === 0 ? 0 : Math.round((scoredSubs / inscopeSubs) * 100);
+
+  // Score distribution
+  const distRows = db.prepare(`
+    SELECT current_score AS s, COUNT(*) AS c FROM csf_subcategory_assessments
+    WHERE engagement_id=? AND excluded_from_scope=0 AND current_score IS NOT NULL
+    GROUP BY current_score ORDER BY current_score
+  `).all(engagement.id);
+  const distribution = [1, 2, 3, 4, 5].map(s => ({ score: s, count: distRows.find(r => r.s === s)?.c || 0 }));
+
+  // Days remaining (decision #16)
+  let daysRemaining = null, daysOverdue = false;
+  if (engagement.target_completion_date) {
+    const ms = new Date(engagement.target_completion_date).getTime() - Date.now();
+    daysRemaining = Math.ceil(ms / (1000 * 60 * 60 * 24));
+    daysOverdue = daysRemaining < 0;
+  }
+
+  // Outstanding items
+  const subsWithScoreNoEvidence = db.prepare(`
+    SELECT a.id, a.subcategory_id, s.code AS sub_code
+    FROM csf_subcategory_assessments a
+    INNER JOIN csf_subcategories s ON s.id = a.subcategory_id
+    WHERE a.engagement_id=? AND a.excluded_from_scope=0 AND a.current_score IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM csf_evidence_items e WHERE e.assessment_id=a.id AND e.deleted_at IS NULL)
+    ORDER BY s.display_order LIMIT 30
+  `).all(engagement.id);
+
+  const unresolvedComments = db.prepare(`
+    SELECT c.id, c.text, c.requires_revision, c.created_at, u.name AS commenter_name,
+      a.subcategory_id, s.code AS sub_code, c.finding_id, f.title AS finding_title
+    FROM csf_reviewer_comments c
+    INNER JOIN users u ON u.id = c.commenter_id
+    LEFT JOIN csf_subcategory_assessments a ON a.id = c.assessment_id
+    LEFT JOIN csf_subcategories s ON s.id = a.subcategory_id
+    LEFT JOIN csf_findings f ON f.id = c.finding_id
+    WHERE c.engagement_id=? AND c.resolved=0 AND c.deleted_at IS NULL
+    ORDER BY c.created_at DESC LIMIT 20
+  `).all(engagement.id);
+
+  const findingsNoRecs = db.prepare(`
+    SELECT f.id, f.title, f.severity,
+      s.code AS sub_code, s.id AS subcategory_id
+    FROM csf_findings f
+    LEFT JOIN csf_subcategory_assessments a ON a.id = f.assessment_id
+    LEFT JOIN csf_subcategories s ON s.id = a.subcategory_id
+    WHERE f.engagement_id=? AND f.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM csf_recommendations r WHERE r.finding_id=f.id AND r.deleted_at IS NULL)
+    ORDER BY CASE f.severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
+    LIMIT 20
+  `).all(engagement.id);
+
+  // Activity feed - recent csf_* audit log entries for this engagement
+  const activity = db.prepare(`
+    SELECT a.action, a.entity_type, a.entity_id, a.created_at, a.details, u.name AS actor
+    FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+    WHERE a.workspace_id = ? AND a.action LIKE 'csf_%'
+    ORDER BY a.created_at DESC LIMIT 30
+  `).all(req.workspace.id);
+
   res.render('csf_engagement_detail', {
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, lead, assignments, assignableUsers,
     canAssign: csfPolicy.canAssignMembers(db, req.user, engagement),
     canEdit: csfPolicy.canEditEngagementMeta(db, req.user, engagement),
     engagementRoles: csfPolicy.ENGAGEMENT_ROLES,
+    // dashboard data
+    statusCounts, totalSubs, inscopeSubs, scoredSubs, scoredPct,
+    distribution, daysRemaining, daysOverdue,
+    subsWithScoreNoEvidence, unresolvedComments, findingsNoRecs,
+    activity,
   });
 });
 
