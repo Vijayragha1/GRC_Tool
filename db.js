@@ -2081,6 +2081,62 @@ function init() {
       FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id)
     );
     CREATE INDEX IF NOT EXISTS idx_csf_wpi_profile ON csf_weighting_profile_items(profile_id);
+
+    -- ========== NIST CSF Stage 3: Subcategory assessments + evidence ==========
+    -- One row per (engagement, subcategory). Rows are lazily created on first
+    -- access to the assess view, so existing engagements don't need migration.
+    -- State machine per handoff Section 4:
+    --   Not Started -> In Progress -> Evidence Collected -> Draft Complete
+    --     -> Reviewed -> Approved
+    -- Score (current_score / target_score) can only be set once state has
+    -- reached Evidence Collected (handoff decision #18, hard gate).
+    -- locked_by_user_id / locked_at columns are reserved for the locking
+    -- feature deferred from this stage (handoff decision #15).
+    CREATE TABLE IF NOT EXISTS csf_subcategory_assessments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      subcategory_id INTEGER NOT NULL,
+      current_score INTEGER,
+      target_score INTEGER,
+      narrative TEXT,
+      status TEXT NOT NULL DEFAULT 'Not Started',
+      is_bulk_set INTEGER DEFAULT 0,
+      excluded_from_scope INTEGER DEFAULT 0,
+      exclusion_rationale TEXT,
+      evidence_collected_by INTEGER,
+      evidence_collected_at DATETIME,
+      narrative_drafted_by INTEGER,
+      narrative_drafted_at DATETIME,
+      scored_by INTEGER,
+      scored_at DATETIME,
+      reviewed_by INTEGER,
+      reviewed_at DATETIME,
+      last_edited_by INTEGER,
+      last_edited_at DATETIME,
+      locked_by_user_id INTEGER,
+      locked_at DATETIME,
+      UNIQUE (engagement_id, subcategory_id),
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_assess_eng ON csf_subcategory_assessments(engagement_id);
+    CREATE INDEX IF NOT EXISTS idx_csf_assess_status ON csf_subcategory_assessments(status);
+
+    CREATE TABLE IF NOT EXISTS csf_evidence_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assessment_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      file_path TEXT,
+      url TEXT,
+      interview_source TEXT,
+      description TEXT,
+      visible_to_client INTEGER DEFAULT 0,
+      deleted_at DATETIME,
+      uploaded_by INTEGER NOT NULL,
+      uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (assessment_id) REFERENCES csf_subcategory_assessments(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_ev_assess ON csf_evidence_items(assessment_id);
   `);
 
   // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on

@@ -6132,6 +6132,280 @@ app.post('/workspaces/:wsId/csf/:id(\\d+)/unassign/:aid(\\d+)', requireAuth, req
   res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}`);
 });
 
+// ---- Stage 3: Subcategory assessment lifecycle ------------------------------
+
+// Helper used by every assess route: load the engagement and confirm view perm.
+function loadCsfEngagement(req) {
+  const eng = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!eng) return { error: { status: 404, message: 'CSF engagement not found, or it was deleted.' } };
+  if (!csfPolicy.canViewEngagement(db, req.user, eng)) return { error: { status: 403, message: 'You are not assigned to this CSF engagement.' } };
+  return { engagement: eng };
+}
+
+// Assessment list - all 106 (or filtered) for an engagement.
+app.get('/workspaces/:wsId/csf/:id(\\d+)/assess', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  csfPolicy.ensureAssessmentRows(db, engagement);  // lazy seed on first visit
+
+  const fnFilter = req.query.fn || '';
+  const statusFilter = req.query.status || '';
+  const params = [engagement.id, engagement.catalog_version];
+  let where = `a.engagement_id=? AND s.catalog_version=?`;
+  if (fnFilter) { where += ` AND f.code=?`; params.push(fnFilter); }
+  if (statusFilter) { where += ` AND a.status=?`; params.push(statusFilter); }
+
+  const rows = db.prepare(`
+    SELECT a.id AS assessment_id, a.status, a.current_score, a.target_score,
+      a.excluded_from_scope, a.is_bulk_set, a.last_edited_at,
+      s.id AS subcategory_id, s.code AS sub_code, s.description AS sub_description, s.display_order AS sub_order,
+      c.code AS cat_code, c.name AS cat_name, c.display_order AS cat_order,
+      f.code AS fn_code, f.name AS fn_name, f.display_order AS fn_order,
+      (SELECT COUNT(*) FROM csf_evidence_items e WHERE e.assessment_id=a.id AND e.deleted_at IS NULL) AS evidence_count
+    FROM csf_subcategory_assessments a
+    INNER JOIN csf_subcategories s ON s.id = a.subcategory_id
+    INNER JOIN csf_categories c ON c.id = s.category_id
+    INNER JOIN csf_functions f ON f.id = c.function_id
+    WHERE ${where}
+    ORDER BY f.display_order, c.display_order, s.display_order
+  `).all(...params);
+
+  // Stats for the header (ignore filter when computing totals so the user sees
+  // overall progress; filter only shapes the table).
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status='Not Started' THEN 1 ELSE 0 END) AS not_started,
+      SUM(CASE WHEN status='In Progress' THEN 1 ELSE 0 END) AS in_progress,
+      SUM(CASE WHEN status='Evidence Collected' THEN 1 ELSE 0 END) AS evidence_collected,
+      SUM(CASE WHEN status='Draft Complete' THEN 1 ELSE 0 END) AS draft_complete,
+      SUM(CASE WHEN status='Reviewed' THEN 1 ELSE 0 END) AS reviewed,
+      SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN current_score IS NOT NULL THEN 1 ELSE 0 END) AS scored,
+      SUM(CASE WHEN excluded_from_scope=1 THEN 1 ELSE 0 END) AS excluded
+    FROM csf_subcategory_assessments WHERE engagement_id=?
+  `).get(engagement.id);
+
+  const fns = db.prepare(`SELECT code, name FROM csf_functions WHERE catalog_version=? ORDER BY display_order`).all(engagement.catalog_version);
+
+  res.render('csf_assess', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, rows, stats, fns,
+    fnFilter, statusFilter,
+    states: csfPolicy.SUBCATEGORY_STATES,
+    canBulkScore: csfPolicy.canScoreSubcategory(db, req.user, engagement),
+    canBulkTransition: csfPolicy.canCollectEvidence(db, req.user, engagement),
+  });
+});
+
+// Bulk action - apply same status transition or same score to many subcategories.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/bulk', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const action = req.body.action;
+  const ids = Array.isArray(req.body.assessment_id) ? req.body.assessment_id : (req.body.assessment_id ? [req.body.assessment_id] : []);
+  if (!ids.length) return res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess`);
+
+  let appliedTo = 0;
+  if (action === 'set_score') {
+    if (!csfPolicy.canScoreSubcategory(db, req.user, engagement)) return res.status(403).send('Forbidden');
+    const score = parseInt(req.body.bulk_score, 10);
+    if (!(score >= 1 && score <= 5)) return res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess`);
+    const upd = db.prepare(`UPDATE csf_subcategory_assessments
+      SET current_score=?, is_bulk_set=1, scored_by=?, scored_at=CURRENT_TIMESTAMP,
+          last_edited_by=?, last_edited_at=CURRENT_TIMESTAMP
+      WHERE id=? AND engagement_id=?
+        AND status IN ('Evidence Collected','Draft Complete','Reviewed')`);
+    const tx = db.transaction(() => { ids.forEach(id => { appliedTo += upd.run(score, req.user.id, req.user.id, id, engagement.id).changes; }); });
+    tx();
+    logAction(req.user.id, req.workspace.id, 'csf_bulk_score', 'csf_engagement', engagement.id, { count: appliedTo, score }, auditCtx(req));
+  } else if (action === 'transition') {
+    const to = req.body.to_state;
+    if (!csfPolicy.SUBCATEGORY_STATES.includes(to)) return res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess`);
+    // Check permission generally; per-row transition validity is enforced inside the loop.
+    const tx = db.transaction(() => {
+      ids.forEach(id => {
+        const a = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE id=? AND engagement_id=?`).get(id, engagement.id);
+        if (!a) return;
+        if (!csfPolicy.canTransitionTo(db, req.user, engagement, a, to)) return;
+        db.prepare(`UPDATE csf_subcategory_assessments SET status=?, last_edited_by=?, last_edited_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(to, req.user.id, id);
+        appliedTo++;
+      });
+    });
+    tx();
+    logAction(req.user.id, req.workspace.id, 'csf_bulk_transition', 'csf_engagement', engagement.id, { count: appliedTo, to_state: to }, auditCtx(req));
+  }
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess`, `${appliedTo} subcategor${appliedTo === 1 ? 'y' : 'ies'} updated`));
+});
+
+// Subcategory detail (work surface for evidence + narrative + score).
+app.get('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  csfPolicy.ensureAssessmentRows(db, engagement);
+
+  const detail = db.prepare(`
+    SELECT a.*, s.code AS sub_code, s.description AS sub_description, s.implementation_examples,
+      c.code AS cat_code, c.name AS cat_name, c.description AS cat_description,
+      f.code AS fn_code, f.name AS fn_name
+    FROM csf_subcategory_assessments a
+    INNER JOIN csf_subcategories s ON s.id = a.subcategory_id
+    INNER JOIN csf_categories c ON c.id = s.category_id
+    INNER JOIN csf_functions f ON f.id = c.function_id
+    WHERE a.engagement_id=? AND a.subcategory_id=?
+  `).get(engagement.id, req.params.subId);
+  if (!detail) return res.status(404).render('error', { user: req.user, message: 'Subcategory not found in this engagement.' });
+
+  const evidence = db.prepare(`SELECT * FROM csf_evidence_items WHERE assessment_id=? AND deleted_at IS NULL ORDER BY uploaded_at DESC`).all(detail.id);
+  const isoRefs = db.prepare(`SELECT ref_type, ref_value FROM csf_subcategory_iso_refs WHERE subcategory_id=?`).all(detail.subcategory_id);
+
+  // Adjacent navigation for the workflow ("Next" button after saving)
+  const adj = db.prepare(`
+    SELECT a.subcategory_id, s.code, s.display_order, c.display_order AS c_order, f.display_order AS f_order
+    FROM csf_subcategory_assessments a
+    INNER JOIN csf_subcategories s ON s.id=a.subcategory_id
+    INNER JOIN csf_categories c ON c.id=s.category_id
+    INNER JOIN csf_functions f ON f.id=c.function_id
+    WHERE a.engagement_id=?
+    ORDER BY f.display_order, c.display_order, s.display_order
+  `).all(engagement.id);
+  const curIdx = adj.findIndex(r => r.subcategory_id === parseInt(req.params.subId, 10));
+  const prev = curIdx > 0 ? adj[curIdx - 1] : null;
+  const next = curIdx >= 0 && curIdx < adj.length - 1 ? adj[curIdx + 1] : null;
+
+  const next_state_opts = csfPolicy.nextStateOptions(detail.status);
+  const allowedNextStates = next_state_opts.filter(s => csfPolicy.canTransitionTo(db, req.user, engagement, detail, s));
+  const warnings = csfPolicy.thinnessWarnings(detail, evidence.length);
+
+  res.render('csf_assess_detail', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, detail, evidence, isoRefs,
+    prev, next,
+    allowedNextStates,
+    warnings,
+    canEnterScore: csfPolicy.canEnterScore(db, req.user, engagement, detail),
+    canCollect: csfPolicy.canCollectEvidence(db, req.user, engagement),
+  });
+});
+
+// Update narrative / scores / exclusion. Score updates are gated by state.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE engagement_id=? AND subcategory_id=?`).get(engagement.id, req.params.subId);
+  if (!assess) return res.status(404).send('Not found');
+  if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) return res.status(403).send('Forbidden');
+
+  const b = req.body;
+  const sets = []; const vals = [];
+
+  if (b.narrative !== undefined) {
+    sets.push('narrative=?', 'narrative_drafted_by=?', 'narrative_drafted_at=CURRENT_TIMESTAMP');
+    vals.push(b.narrative.trim(), req.user.id);
+  }
+  if (b.excluded_from_scope !== undefined) {
+    const excluded = b.excluded_from_scope === '1' || b.excluded_from_scope === 'on' ? 1 : 0;
+    sets.push('excluded_from_scope=?');
+    vals.push(excluded);
+    if (excluded) { sets.push('exclusion_rationale=?'); vals.push((b.exclusion_rationale || '').trim() || null); }
+    else { sets.push('exclusion_rationale=NULL'); }
+  }
+  // Score updates: gated. Allow null to clear; allow 1-5; reject everything else.
+  if (b.current_score !== undefined) {
+    if (!csfPolicy.canEnterScore(db, req.user, engagement, assess)) return res.status(403).send('Cannot enter score: requires Consultant/Lead role and Evidence Collected state.');
+    const v = b.current_score === '' ? null : parseInt(b.current_score, 10);
+    if (v !== null && !(v >= 1 && v <= 5)) return res.status(400).send('current_score must be 1-5 or empty');
+    sets.push('current_score=?', 'scored_by=?', 'scored_at=CURRENT_TIMESTAMP', 'is_bulk_set=0');
+    vals.push(v, req.user.id);
+  }
+  if (b.target_score !== undefined && engagement.scope_mode === 'CURRENT_TARGET') {
+    if (!csfPolicy.canEnterScore(db, req.user, engagement, assess)) return res.status(403).send('Cannot enter score: requires Consultant/Lead role and Evidence Collected state.');
+    const v = b.target_score === '' ? null : parseInt(b.target_score, 10);
+    if (v !== null && !(v >= 1 && v <= 5)) return res.status(400).send('target_score must be 1-5 or empty');
+    sets.push('target_score=?');
+    vals.push(v);
+  }
+
+  if (sets.length) {
+    sets.push('last_edited_by=?', 'last_edited_at=CURRENT_TIMESTAMP');
+    vals.push(req.user.id);
+    vals.push(assess.id);
+    db.prepare(`UPDATE csf_subcategory_assessments SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+    logAction(req.user.id, req.workspace.id, 'csf_assessment_update', 'csf_subcategory_assessment', assess.id, Object.keys(b).filter(k => k !== '_csrf'), auditCtx(req));
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
+});
+
+// State transition.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/transition', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE engagement_id=? AND subcategory_id=?`).get(engagement.id, req.params.subId);
+  if (!assess) return res.status(404).send('Not found');
+  const to = req.body.to_state;
+  if (!csfPolicy.canTransitionTo(db, req.user, engagement, assess, to)) return res.status(403).send('Transition not allowed.');
+
+  // Stamp the right "by/at" fields so the audit trail in deliverables shows
+  // who moved each subcategory through each gate.
+  const sets = ['status=?', 'last_edited_by=?', 'last_edited_at=CURRENT_TIMESTAMP'];
+  const vals = [to, req.user.id];
+  if (to === 'Evidence Collected') { sets.push('evidence_collected_by=?', 'evidence_collected_at=CURRENT_TIMESTAMP'); vals.push(req.user.id); }
+  if (to === 'Reviewed') { sets.push('reviewed_by=?', 'reviewed_at=CURRENT_TIMESTAMP'); vals.push(req.user.id); }
+  vals.push(assess.id);
+  db.prepare(`UPDATE csf_subcategory_assessments SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+  logAction(req.user.id, req.workspace.id, 'csf_assessment_transition', 'csf_subcategory_assessment', assess.id, { from: assess.status, to }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
+});
+
+// Add evidence (FILE | LINK | INTERVIEW). Multer mounts per-route so multipart
+// parsing only happens for this endpoint; CSRF token must be appended to the
+// URL for multipart bodies (see lib/csrf.js comment).
+app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE engagement_id=? AND subcategory_id=?`).get(engagement.id, req.params.subId);
+  if (!assess) return res.status(404).send('Not found');
+  if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) return res.status(403).send('Forbidden');
+
+  const type = (req.body.type || 'LINK').toUpperCase();
+  if (!['FILE', 'LINK', 'INTERVIEW'].includes(type)) return res.status(400).send('type must be FILE | LINK | INTERVIEW');
+
+  const filePath = type === 'FILE' && req.file ? req.file.filename : null;
+  const url = type === 'LINK' ? (req.body.url || '').trim() || null : null;
+  const interviewSource = type === 'INTERVIEW' ? (req.body.interview_source || '').trim() || null : null;
+  const description = (req.body.description || '').trim() || null;
+  const visibleToClient = req.body.visible_to_client === '1' || req.body.visible_to_client === 'on' ? 1 : 0;
+
+  if (type === 'FILE' && !filePath) return res.status(400).send('FILE evidence requires a file upload');
+  if (type === 'LINK' && !url) return res.status(400).send('LINK evidence requires a url');
+  if (type === 'INTERVIEW' && !interviewSource) return res.status(400).send('INTERVIEW evidence requires the interview source attribution');
+
+  const evId = db.prepare(`
+    INSERT INTO csf_evidence_items (assessment_id, type, file_path, url, interview_source, description, visible_to_client, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(assess.id, type, filePath, url, interviewSource, description, visibleToClient, req.user.id).lastInsertRowid;
+
+  // Auto-advance Not Started → In Progress on first evidence (gentle nudge through the state machine).
+  if (assess.status === 'Not Started') {
+    db.prepare(`UPDATE csf_subcategory_assessments SET status='In Progress', last_edited_by=?, last_edited_at=CURRENT_TIMESTAMP WHERE id=?`).run(req.user.id, assess.id);
+  }
+  logAction(req.user.id, req.workspace.id, 'csf_evidence_add', 'csf_subcategory_assessment', assess.id, { evidence_id: evId, type }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
+});
+
+// Soft-delete evidence (decision #21).
+app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/evidence/:evId(\\d+)/delete', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE engagement_id=? AND subcategory_id=?`).get(engagement.id, req.params.subId);
+  if (!assess) return res.status(404).send('Not found');
+  db.prepare(`UPDATE csf_evidence_items SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND assessment_id=?`).run(req.params.evId, assess.id);
+  logAction(req.user.id, req.workspace.id, 'csf_evidence_delete', 'csf_evidence_item', req.params.evId, null, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
+});
+
 // ==================== INTERESTED PARTIES (clause 4.2) ====================
 app.get('/workspaces/:wsId/interested-parties', requireAuth, requireWorkspace, (req, res) => {
   const rows = db.prepare(`SELECT * FROM interested_parties WHERE workspace_id=? ORDER BY party_type, party`)

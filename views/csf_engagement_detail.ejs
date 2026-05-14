@@ -15,6 +15,7 @@
   <div style="display:flex;align-items:center;gap:10px;">
     <% const statusColor = { 'Draft':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Under Review':'#a16207', 'Approved':'#15803d', 'Published':'#15803d', 'Closed':'var(--text-tertiary)' }[engagement.status] || 'var(--text)' ; %>
     <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:12px;"><%= engagement.status %></span>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="btn btn-primary btn-xs">Open assessment &rarr;</a>
   </div>
 </div>
 
@@ -93,9 +94,8 @@
 <div class="panel">
   <div class="panel-head"><h2>Next stages</h2></div>
   <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;">
-    <div>Stage 3 will add Subcategory assessment lifecycle (Not Started &rarr; In Progress &rarr; Evidence Collected &rarr; Draft Complete &rarr; Reviewed &rarr; Approved), evidence attachments, and pessimistic locking.</div>
-    <div>Stage 4 adds findings + recommendations + reviewer comments.</div>
-    <div>Stage 5 wires the scoring engine and Tier overlay.</div>
+    <div>Stage 4 adds findings + recommendations + reviewer comments per subcategory.</div>
+    <div>Stage 5 wires the scoring engine (rollups Category &rarr; Function &rarr; Overall) and the Tier overlay (1-4).</div>
     <div>Stages 6-12 add dashboards, versioning, reports, client portal, benchmarking, and the analyst-friendly content layer.</div>
   </div>
 </div>

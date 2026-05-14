@@ -1,0 +1,135 @@
+<%- include('partials/header', { title: 'CSF assessment', user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta" style="font-size:12px;text-decoration:none;">&larr; <%= engagement.name %></a>
+    </div>
+    <h1 class="page-title" style="margin-top:6px;">Assessment</h1>
+    <div class="page-subtitle"><%= stats.total %> subcategories &middot; CSF <%= engagement.catalog_version %> &middot; <%= engagement.scope_mode === 'CURRENT_TARGET' ? 'Current + Target' : 'Current only' %></div>
+  </div>
+</div>
+
+<!-- Stats strip -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(8,1fr);gap:12px;font-size:12px;">
+    <div><div class="kpi-num num"><%= stats.total %></div><div class="kpi-meta">Total</div></div>
+    <div><div class="kpi-num num" style="color:var(--text-tertiary);"><%= stats.not_started %></div><div class="kpi-meta">Not started</div></div>
+    <div><div class="kpi-num num" style="color:#1d4ed8;"><%= stats.in_progress %></div><div class="kpi-meta">In progress</div></div>
+    <div><div class="kpi-num num" style="color:#a16207;"><%= stats.evidence_collected %></div><div class="kpi-meta">Evidence done</div></div>
+    <div><div class="kpi-num num" style="color:#1d4ed8;"><%= stats.draft_complete %></div><div class="kpi-meta">Draft complete</div></div>
+    <div><div class="kpi-num num" style="color:#a16207;"><%= stats.reviewed %></div><div class="kpi-meta">Reviewed</div></div>
+    <div><div class="kpi-num num" style="color:#15803d;"><%= stats.approved %></div><div class="kpi-meta">Approved</div></div>
+    <div><div class="kpi-num num"><%= stats.scored %></div><div class="kpi-meta">Scored</div></div>
+  </div>
+</div>
+
+<!-- Filter + bulk bar -->
+<form method="GET" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="panel" style="margin-bottom:10px;display:flex;gap:10px;align-items:end;padding:10px 14px;">
+  <div>
+    <label class="label">Function</label>
+    <select class="select" name="fn" onchange="this.form.submit()" style="width:200px;">
+      <option value="">All functions</option>
+      <% fns.forEach(f => { %><option value="<%= f.code %>" <%= fnFilter === f.code ? 'selected' : '' %>><%= f.code %> &middot; <%= f.name %></option><% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="label">Status</label>
+    <select class="select" name="status" onchange="this.form.submit()" style="width:200px;">
+      <option value="">All statuses</option>
+      <% states.forEach(s => { %><option value="<%= s %>" <%= statusFilter === s ? 'selected' : '' %>><%= s %></option><% }) %>
+    </select>
+  </div>
+  <% if (fnFilter || statusFilter) { %>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="btn btn-secondary btn-xs">Clear filters</a>
+  <% } %>
+  <div style="margin-left:auto;" class="meta" style="font-size:11.5px;"><%= rows.length %> row<%= rows.length === 1 ? '' : 's' %> shown</div>
+</form>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/bulk" id="bulkForm">
+  <% if (canBulkTransition || canBulkScore) { %>
+    <div class="panel" style="margin-bottom:10px;border:1px dashed var(--border-strong);background:var(--bg-subtle);">
+      <div class="panel-pad" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+        <div class="meta" style="font-size:11.5px;align-self:center;"><span id="bulkCount">0</span> selected</div>
+        <% if (canBulkTransition) { %>
+          <div>
+            <label class="label">Transition selected to</label>
+            <select class="select" name="to_state" style="width:200px;">
+              <% states.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+            </select>
+          </div>
+          <button class="btn btn-secondary btn-xs" name="action" value="transition" onclick="return appConfirmClick(event, 'Apply transition to selected rows? Rows where the transition is not valid will be skipped.')">Apply transition</button>
+        <% } %>
+        <% if (canBulkScore) { %>
+          <div>
+            <label class="label">Set CMMI score to</label>
+            <select class="select" name="bulk_score" style="width:120px;">
+              <% [1,2,3,4,5].forEach(n => { %><option value="<%= n %>"><%= n %></option><% }) %>
+            </select>
+          </div>
+          <button class="btn btn-secondary btn-xs" name="action" value="set_score" onclick="return appConfirmClick(event, 'Apply this CMMI score to selected rows? Score is only applied to rows already in Evidence Collected / Draft Complete / Reviewed state. is_bulk_set audit flag will be set.')">Apply score (bulk)</button>
+        <% } %>
+      </div>
+    </div>
+  <% } %>
+
+  <div class="panel" style="overflow:hidden">
+    <table class="t">
+      <thead>
+        <tr>
+          <% if (canBulkTransition || canBulkScore) { %><th style="width:30px;"><input type="checkbox" id="selAll"></th><% } %>
+          <th style="width:110px">Code</th>
+          <th>Subcategory</th>
+          <th style="width:160px">Status</th>
+          <th style="width:80px;text-align:center;">Current</th>
+          <% if (engagement.scope_mode === 'CURRENT_TARGET') { %><th style="width:80px;text-align:center;">Target</th><% } %>
+          <th style="width:80px;text-align:right;">Evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% let prevCat = ''; %>
+        <% rows.forEach(r => { %>
+          <% if (r.cat_code !== prevCat) { prevCat = r.cat_code; %>
+            <tr style="background:var(--bg-subtle);">
+              <td colspan="<%= (canBulkTransition || canBulkScore) ? 7 : 6 %>" style="padding:6px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">
+                <span class="mono"><%= r.fn_code %> &middot; <%= r.cat_code %></span> &mdash; <%= r.cat_name %>
+              </td>
+            </tr>
+          <% } %>
+          <tr>
+            <% if (canBulkTransition || canBulkScore) { %>
+              <td><input type="checkbox" name="assessment_id" value="<%= r.assessment_id %>" class="bulkSel"></td>
+            <% } %>
+            <td class="mono" style="font-size:11.5px;"><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= r.subcategory_id %>" style="color:var(--accent);text-decoration:none;"><%= r.sub_code %></a></td>
+            <td style="font-size:12.5px;line-height:1.4;"><%= r.sub_description %><% if (r.excluded_from_scope) { %> <span class="tag" style="background:rgba(0,0,0,0.06);font-size:10px;">excluded</span><% } %></td>
+            <td>
+              <% const statusColor = { 'Not Started':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Evidence Collected':'#a16207', 'Draft Complete':'#1d4ed8', 'Reviewed':'#a16207', 'Approved':'#15803d' }[r.status] || 'var(--text)' ; %>
+              <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:11px;"><%= r.status %></span>
+            </td>
+            <td style="text-align:center;font-size:13px;">
+              <%= r.current_score == null ? '-' : r.current_score %>
+              <% if (r.is_bulk_set) { %><span title="Score was set via bulk action" style="color:var(--text-tertiary);font-size:10px;">b</span><% } %>
+            </td>
+            <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
+              <td style="text-align:center;font-size:13px;"><%= r.target_score == null ? '-' : r.target_score %></td>
+            <% } %>
+            <td style="text-align:right;font-size:12px;"><%= r.evidence_count %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<script>
+(function () {
+  const all = document.getElementById('selAll');
+  const boxes = document.querySelectorAll('.bulkSel');
+  const counter = document.getElementById('bulkCount');
+  function recount() { counter && (counter.textContent = String(document.querySelectorAll('.bulkSel:checked').length)); }
+  if (all) all.addEventListener('change', () => { boxes.forEach(b => { b.checked = all.checked; }); recount(); });
+  boxes.forEach(b => b.addEventListener('change', recount));
+})();
+</script>
+
+<%- include('partials/footer') %>
