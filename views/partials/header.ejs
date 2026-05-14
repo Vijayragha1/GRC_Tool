@@ -445,9 +445,9 @@
         </a>
 
         <div class="nav-group-label">NIST CSF</div>
-        <a href="/workspaces/<%= ws.id %>/csf" class="nav-item <%= (typeof active !== 'undefined' && active === 'csf') ? 'active' : '' %>">
+        <a href="/workspaces/<%= ws.id %>/csf" class="nav-item <%= (typeof active !== 'undefined' && (active === 'csf' || active === 'csf-catalog')) ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
-          <span class="nav-item-text">CSF 2.0 Catalog</span>
+          <span class="nav-item-text">NIST CSF 2.0</span>
         </a>
 
         <div class="nav-group-label">Operations</div>

@@ -2012,6 +2012,77 @@ function init() {
     );
   `);
 
+  // ========== NIST CSF engagements (Stage 2) ==========
+  // Per-workspace CSF assessments. Each engagement is created against a pinned
+  // catalog_version so future catalog revisions don't shift mid-engagement.
+  // Assignments hold which users have which role on this engagement; ANALYST
+  // is CSF-engagement-only (not a global workspace role) per the design
+  // handoff Section 3.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS csf_engagements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      catalog_version TEXT NOT NULL,
+      name TEXT NOT NULL,
+      period_start DATE,
+      period_end DATE,
+      target_completion_date DATE,
+      scope_mode TEXT NOT NULL DEFAULT 'CURRENT_ONLY',
+      status TEXT NOT NULL DEFAULT 'Draft',
+      assigned_lead_id INTEGER,
+      weighting_profile_id INTEGER,
+      current_version TEXT,
+      visible_in_portal INTEGER DEFAULT 0,
+      deleted_at DATETIME,
+      deletion_scheduled_at DATETIME,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_lead_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_eng_ws ON csf_engagements(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_csf_eng_status ON csf_engagements(status);
+
+    CREATE TABLE IF NOT EXISTS csf_engagement_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role_on_engagement TEXT NOT NULL,
+      assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      assigned_by INTEGER,
+      UNIQUE (engagement_id, user_id, role_on_engagement),
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_assign_eng ON csf_engagement_assignments(engagement_id);
+    CREATE INDEX IF NOT EXISTS idx_csf_assign_user ON csf_engagement_assignments(user_id);
+
+    CREATE TABLE IF NOT EXISTS csf_weighting_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER,
+      workspace_id INTEGER,
+      name TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS csf_weighting_profile_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL,
+      subcategory_id INTEGER NOT NULL,
+      weight REAL NOT NULL DEFAULT 1.0,
+      UNIQUE (profile_id, subcategory_id),
+      FOREIGN KEY (profile_id) REFERENCES csf_weighting_profiles(id) ON DELETE CASCADE,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_wpi_profile ON csf_weighting_profile_items(profile_id);
+  `);
+
   // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on
   // (catalog_version='2.0') so a partial load won't double-insert.
   const csfCount = db.prepare("SELECT COUNT(*) AS c FROM csf_functions WHERE catalog_version=?").get('2.0').c;

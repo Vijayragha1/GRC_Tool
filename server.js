@@ -5952,28 +5952,109 @@ require('./routes/engagement').register(app, {
 });
 
 // ==================== NIST CSF 2.0 ====================
-// Stage 1 of the CSF module: catalog browser. Read-only view of the seeded
-// Functions / Categories / Subcategories with their ISO 27001 cross-refs.
-// Assessment, scoring, findings, deliverables come in later stages.
-app.get('/workspaces/:wsId/csf', requireAuth, requireWorkspace, (req, res) => {
-  const catalogVersion = '2.0';
-  const fns = db.prepare(`
-    SELECT id, code, name, description, display_order
-    FROM csf_functions WHERE catalog_version=? ORDER BY display_order
-  `).all(catalogVersion);
-  const cats = db.prepare(`
-    SELECT id, function_id, code, name, description, display_order
-    FROM csf_categories WHERE catalog_version=? ORDER BY display_order
-  `).all(catalogVersion);
-  const subs = db.prepare(`
-    SELECT id, category_id, code, description, implementation_examples, display_order
-    FROM csf_subcategories WHERE catalog_version=? ORDER BY display_order
-  `).all(catalogVersion);
-  const isoRefs = db.prepare(`
-    SELECT subcategory_id, ref_type, ref_value FROM csf_subcategory_iso_refs
-  `).all();
+// Module layout (Stage 2):
+//   GET  /workspaces/:wsId/csf                    engagement list (landing)
+//   GET  /workspaces/:wsId/csf/catalog            catalog browser (read-only)
+//   GET  /workspaces/:wsId/csf/new                new engagement form
+//   POST /workspaces/:wsId/csf                    create engagement
+//   GET  /workspaces/:wsId/csf/:id(\\d+)           engagement detail
+//   POST /workspaces/:wsId/csf/:id/assign         add assignment
+//   POST /workspaces/:wsId/csf/:id/unassign/:aid  remove assignment
+//
+// Literal sub-routes (`new`, `catalog`) must be registered before `/:id` and
+// the :id capture is digit-constrained so they can't collide (same lesson as
+// /soa/snapshots/:id vs /soa/snapshots/diff in commit 6fdb9b5).
+const csfPolicy = require('./lib/csf-policy');
 
-  // Build a nested structure for the view
+// Engagement list
+app.get('/workspaces/:wsId/csf', requireAuth, requireWorkspace, (req, res) => {
+  const engagements = db.prepare(`
+    SELECT e.id, e.name, e.status, e.scope_mode, e.period_start, e.period_end,
+      e.target_completion_date, e.catalog_version, e.current_version, e.created_at,
+      u.name AS lead_name,
+      (SELECT COUNT(*) FROM csf_engagement_assignments a WHERE a.engagement_id=e.id) AS assignment_count
+    FROM csf_engagements e
+    LEFT JOIN users u ON u.id = e.assigned_lead_id
+    WHERE e.workspace_id=? AND e.deleted_at IS NULL
+    ORDER BY e.created_at DESC
+  `).all(req.workspace.id);
+  const canCreate = csfPolicy.canCreateEngagement(req.user, req.workspace);
+  res.render('csf_engagements', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagements, canCreate,
+  });
+});
+
+// New engagement form
+app.get('/workspaces/:wsId/csf/new', requireAuth, requireWorkspace, (req, res) => {
+  if (!csfPolicy.canCreateEngagement(req.user, req.workspace)) {
+    return res.status(403).render('error', { user: req.user, message: 'You do not have permission to create CSF engagements in this workspace.' });
+  }
+  // Assignable users = workspace members + firm operators (same pool used by tasks)
+  const assignableUsers = db.prepare(`
+    SELECT u.id, u.name FROM users u
+    INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
+    UNION
+    SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1
+  `).all(req.workspace.id, req.workspace.firm_id);
+  res.render('csf_engagement_new', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    assignableUsers,
+  });
+});
+
+// Create engagement (seeds a default weighting profile with weight=1.0 on every subcategory)
+app.post('/workspaces/:wsId/csf', requireAuth, requireWorkspace, (req, res) => {
+  if (!csfPolicy.canCreateEngagement(req.user, req.workspace)) return res.status(403).send('Forbidden');
+  const b = req.body;
+  if (!b.name || !b.name.trim()) return redirectBack(req, res, 'Engagement name is required', 'error');
+  const catalogVersion = '2.0';
+  const scopeMode = b.scope_mode === 'CURRENT_TARGET' ? 'CURRENT_TARGET' : 'CURRENT_ONLY';
+  const leadId = b.assigned_lead_id ? parseInt(b.assigned_lead_id, 10) : null;
+
+  const create = db.transaction(() => {
+    const engId = db.prepare(`
+      INSERT INTO csf_engagements (workspace_id, catalog_version, name, period_start, period_end,
+        target_completion_date, scope_mode, status, assigned_lead_id, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', ?, ?)
+    `).run(
+      req.workspace.id, catalogVersion, b.name.trim(),
+      b.period_start || null, b.period_end || null,
+      b.target_completion_date || null,
+      scopeMode, leadId, req.user.id,
+    ).lastInsertRowid;
+
+    // Seed default weighting profile: all 106 subcategories at weight 1.0
+    const profileId = db.prepare(`
+      INSERT INTO csf_weighting_profiles (engagement_id, workspace_id, name, is_default)
+      VALUES (?, ?, 'Default (equal weighting)', 1)
+    `).run(engId, req.workspace.id).lastInsertRowid;
+    const subs = db.prepare(`SELECT id FROM csf_subcategories WHERE catalog_version=?`).all(catalogVersion);
+    const insWPI = db.prepare(`INSERT INTO csf_weighting_profile_items (profile_id, subcategory_id, weight) VALUES (?, ?, 1.0)`);
+    subs.forEach(s => insWPI.run(profileId, s.id));
+
+    db.prepare(`UPDATE csf_engagements SET weighting_profile_id=? WHERE id=?`).run(profileId, engId);
+
+    // Auto-assign the Lead (if specified) and the creator (as Lead too if no other Lead chosen)
+    const insAssign = db.prepare(`INSERT OR IGNORE INTO csf_engagement_assignments (engagement_id, user_id, role_on_engagement, assigned_by) VALUES (?, ?, 'ENGAGEMENT_LEAD', ?)`);
+    if (leadId) insAssign.run(engId, leadId, req.user.id);
+    insAssign.run(engId, req.user.id, req.user.id);
+
+    return engId;
+  });
+  const engId = create();
+  logAction(req.user.id, req.workspace.id, 'csf_engagement_create', 'csf_engagement', engId, { name: b.name }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engId}`, 'CSF engagement created'));
+});
+
+// Catalog browser (moved from /csf to /csf/catalog)
+app.get('/workspaces/:wsId/csf/catalog', requireAuth, requireWorkspace, (req, res) => {
+  const catalogVersion = '2.0';
+  const fns = db.prepare(`SELECT id, code, name, description, display_order FROM csf_functions WHERE catalog_version=? ORDER BY display_order`).all(catalogVersion);
+  const cats = db.prepare(`SELECT id, function_id, code, name, description, display_order FROM csf_categories WHERE catalog_version=? ORDER BY display_order`).all(catalogVersion);
+  const subs = db.prepare(`SELECT id, category_id, code, description, implementation_examples, display_order FROM csf_subcategories WHERE catalog_version=? ORDER BY display_order`).all(catalogVersion);
+  const isoRefs = db.prepare(`SELECT subcategory_id, ref_type, ref_value FROM csf_subcategory_iso_refs`).all();
+
   const catsByFn = {};
   cats.forEach(c => { (catsByFn[c.function_id] = catsByFn[c.function_id] || []).push(c); });
   const subsByCat = {};
@@ -5985,18 +6066,70 @@ app.get('/workspaces/:wsId/csf', requireAuth, requireWorkspace, (req, res) => {
     ...f,
     categories: (catsByFn[f.id] || []).map(c => ({
       ...c,
-      subcategories: (subsByCat[c.id] || []).map(s => ({
-        ...s, iso_refs: refsBySub[s.id] || []
-      }))
+      subcategories: (subsByCat[c.id] || []).map(s => ({ ...s, iso_refs: refsBySub[s.id] || [] }))
     }))
   }));
 
-  const totalSubs = subs.length;
-  const totalCats = cats.length;
   res.render('csf_catalog', {
-    user: req.user, ws: req.workspace, active: 'csf',
-    catalogVersion, tree, totalFns: fns.length, totalCats, totalSubs,
+    user: req.user, ws: req.workspace, active: 'csf-catalog',
+    catalogVersion, tree, totalFns: fns.length, totalCats: cats.length, totalSubs: subs.length,
   });
+});
+
+// Engagement detail
+app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!engagement) return res.status(404).render('error', { user: req.user, message: 'CSF engagement not found, or it was deleted.' });
+  if (!csfPolicy.canViewEngagement(db, req.user, engagement)) {
+    return res.status(403).render('error', { user: req.user, message: 'You are not assigned to this CSF engagement.' });
+  }
+  const assignments = db.prepare(`
+    SELECT a.id, a.role_on_engagement, a.assigned_at, u.id AS user_id, u.name AS user_name, u.email
+    FROM csf_engagement_assignments a
+    INNER JOIN users u ON u.id = a.user_id
+    WHERE a.engagement_id = ? ORDER BY a.assigned_at
+  `).all(engagement.id);
+  const lead = engagement.assigned_lead_id ? db.prepare('SELECT id, name FROM users WHERE id=?').get(engagement.assigned_lead_id) : null;
+  const assignableUsers = db.prepare(`
+    SELECT u.id, u.name FROM users u
+    INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
+    UNION
+    SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1
+  `).all(req.workspace.id, req.workspace.firm_id);
+  res.render('csf_engagement_detail', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, lead, assignments, assignableUsers,
+    canAssign: csfPolicy.canAssignMembers(db, req.user, engagement),
+    canEdit: csfPolicy.canEditEngagementMeta(db, req.user, engagement),
+    engagementRoles: csfPolicy.ENGAGEMENT_ROLES,
+  });
+});
+
+// Assign a member to an engagement
+app.post('/workspaces/:wsId/csf/:id(\\d+)/assign', requireAuth, requireWorkspace, (req, res) => {
+  const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!engagement) return res.status(404).send('Not found');
+  if (!csfPolicy.canAssignMembers(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const userId = parseInt(req.body.user_id, 10);
+  const role = req.body.role_on_engagement;
+  if (!userId || !csfPolicy.ENGAGEMENT_ROLES.includes(role)) return redirectBack(req, res, 'Pick a user and a role', 'error');
+  db.prepare(`INSERT OR IGNORE INTO csf_engagement_assignments (engagement_id, user_id, role_on_engagement, assigned_by) VALUES (?, ?, ?, ?)`)
+    .run(engagement.id, userId, role, req.user.id);
+  logAction(req.user.id, req.workspace.id, 'csf_assignment_add', 'csf_engagement', engagement.id, { user_id: userId, role }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}`, 'Assignment added'));
+});
+
+// Unassign
+app.post('/workspaces/:wsId/csf/:id(\\d+)/unassign/:aid(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!engagement) return res.status(404).send('Not found');
+  if (!csfPolicy.canAssignMembers(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const assign = db.prepare(`SELECT * FROM csf_engagement_assignments WHERE id=? AND engagement_id=?`).get(req.params.aid, engagement.id);
+  if (assign) {
+    db.prepare(`DELETE FROM csf_engagement_assignments WHERE id=?`).run(assign.id);
+    logAction(req.user.id, req.workspace.id, 'csf_assignment_remove', 'csf_engagement', engagement.id, { user_id: assign.user_id, role: assign.role_on_engagement }, auditCtx(req));
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}`);
 });
 
 // ==================== INTERESTED PARTIES (clause 4.2) ====================

@@ -1,0 +1,103 @@
+<%- include('partials/header', { title: engagement.name, user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <a href="/workspaces/<%= ws.id %>/csf" class="meta" style="font-size:12px;text-decoration:none;">&larr; CSF engagements</a>
+    </div>
+    <h1 class="page-title" style="margin-top:6px;"><%= engagement.name %></h1>
+    <div class="page-subtitle">
+      CSF <%= engagement.catalog_version %>
+      <% if (engagement.current_version) { %> &middot; v<%= engagement.current_version %><% } %>
+      &middot; <%= engagement.scope_mode === 'CURRENT_TARGET' ? 'Current + Target' : 'Current only' %>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <% const statusColor = { 'Draft':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Under Review':'#a16207', 'Approved':'#15803d', 'Published':'#15803d', 'Closed':'var(--text-tertiary)' }[engagement.status] || 'var(--text)' ; %>
+    <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:12px;"><%= engagement.status %></span>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
+  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
+    <strong style="color:#a16207;">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
+    Stage 2 of the CSF module. Engagement overview + assignments. Assessment workspace, scoring, findings, and reporting come in subsequent stages.
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+  <!-- Engagement metadata -->
+  <div class="panel">
+    <div class="panel-head"><h2>Engagement</h2></div>
+    <div class="panel-pad" style="font-size:13px;line-height:1.7;">
+      <div><span class="meta" style="font-size:11.5px;">Lead:</span> <%= lead ? lead.name : '-' %></div>
+      <div><span class="meta" style="font-size:11.5px;">Period:</span> <%= engagement.period_start || '-' %> &rarr; <%= engagement.period_end || '-' %></div>
+      <div><span class="meta" style="font-size:11.5px;">Target completion:</span> <%= engagement.target_completion_date || '-' %></div>
+      <div><span class="meta" style="font-size:11.5px;">Created:</span> <%= engagement.created_at %></div>
+    </div>
+  </div>
+
+  <!-- Assignments -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Team</h2>
+      <span class="meta" style="font-size:11.5px;"><%= assignments.length %> assignments</span>
+    </div>
+    <% if (assignments.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12.5px;">No assignments yet.</div>
+    <% } else { %>
+      <table class="t">
+        <thead><tr><th>Person</th><th style="width:170px;">Role</th><th style="width:50px;"></th></tr></thead>
+        <tbody>
+          <% assignments.forEach(a => { %>
+            <tr>
+              <td style="font-size:12.5px;"><%= a.user_name %><% if (a.email) { %><div class="meta" style="font-size:11px;"><%= a.email %></div><% } %></td>
+              <td>
+                <span class="mono" style="font-size:11px;background:var(--bg-subtle);padding:2px 6px;border-radius:4px;border:1px solid var(--border);"><%= a.role_on_engagement %></span>
+              </td>
+              <td style="text-align:right;">
+                <% if (canAssign) { %>
+                  <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/unassign/<%= a.id %>" style="display:inline;" onsubmit="return appConfirmForm(event, 'Remove this assignment?')">
+                    <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:11px;">&times;</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+
+    <% if (canAssign) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assign" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 170px auto;gap:8px;">
+        <select class="select" name="user_id" required style="font-size:12px;">
+          <option value="">- pick a person -</option>
+          <% assignableUsers.forEach(u => { %>
+            <option value="<%= u.id %>"><%= u.name %></option>
+          <% }) %>
+        </select>
+        <select class="select" name="role_on_engagement" required style="font-size:12px;">
+          <% engagementRoles.forEach(r => { %>
+            <option value="<%= r %>" <%= r === 'CONSULTANT' ? 'selected' : '' %>><%= r %></option>
+          <% }) %>
+        </select>
+        <button class="btn btn-primary btn-xs">Assign</button>
+      </form>
+      <div class="panel-pad meta" style="font-size:11px;color:var(--text-tertiary);border-top:1px solid var(--border);">
+        Role meanings: <strong>ENGAGEMENT_LEAD</strong> approves and publishes. <strong>CONSULTANT</strong> scores Subcategories. <strong>REVIEWER</strong> comments on scores. <strong>ANALYST</strong> collects evidence and drafts narratives but cannot score.
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Next stages</h2></div>
+  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;">
+    <div>Stage 3 will add Subcategory assessment lifecycle (Not Started &rarr; In Progress &rarr; Evidence Collected &rarr; Draft Complete &rarr; Reviewed &rarr; Approved), evidence attachments, and pessimistic locking.</div>
+    <div>Stage 4 adds findings + recommendations + reviewer comments.</div>
+    <div>Stage 5 wires the scoring engine and Tier overlay.</div>
+    <div>Stages 6-12 add dashboards, versioning, reports, client portal, benchmarking, and the analyst-friendly content layer.</div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

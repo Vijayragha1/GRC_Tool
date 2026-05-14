@@ -1,0 +1,73 @@
+<%- include('partials/header', { title: 'NIST CSF', user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">NIST CSF assessments</h1>
+    <div class="page-subtitle">CSF 2.0 maturity assessments for <%= ws.client_name || 'this workspace' %>. Each engagement scores the 106 Subcategories on a CMMI 1-5 scale.</div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <a href="/workspaces/<%= ws.id %>/csf/catalog" class="btn btn-secondary btn-xs">View catalog</a>
+    <% if (canCreate) { %>
+      <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary btn-xs">+ New engagement</a>
+    <% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
+  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
+    <strong style="color:#a16207;">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
+    Stage 2 of the CSF module. Engagement creation and assignment work; scoring, findings, and reporting come in subsequent stages.
+  </div>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th style="width:110px">Status</th>
+        <th style="width:130px">Scope</th>
+        <th style="width:150px">Lead</th>
+        <th style="width:120px;text-align:right;">Assigned</th>
+        <th style="width:140px">Target date</th>
+        <th style="width:70px">CSF</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (engagements.length === 0) { %>
+        <tr><td colspan="7" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></div>
+            <div class="empty-title">No CSF engagements yet</div>
+            <div class="empty-sub">Create an engagement to start a CSF 2.0 maturity assessment for this workspace. The first engagement seeds a default equal-weighting profile across all 106 Subcategories.</div>
+            <% if (canCreate) { %>
+              <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary">+ New engagement</a>
+            <% } %>
+          </div>
+        </td></tr>
+      <% } %>
+      <% engagements.forEach(e => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/csf/<%= e.id %>'">
+          <td>
+            <strong style="font-size:13px;"><%= e.name %></strong>
+            <% if (e.current_version) { %><span class="tag tag-info" style="margin-left:6px;font-size:10.5px;">v<%= e.current_version %></span><% } %>
+            <% if (e.period_start || e.period_end) { %>
+              <div class="meta" style="font-size:11px;margin-top:2px;"><%= e.period_start || '' %> &rarr; <%= e.period_end || '' %></div>
+            <% } %>
+          </td>
+          <td>
+            <% const statusColor = { 'Draft':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Under Review':'#a16207', 'Approved':'#15803d', 'Published':'#15803d', 'Closed':'var(--text-tertiary)' }[e.status] || 'var(--text)' ; %>
+            <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:11px;"><%= e.status %></span>
+          </td>
+          <td class="meta" style="font-size:11.5px;"><%= e.scope_mode === 'CURRENT_TARGET' ? 'Current + Target' : 'Current only' %></td>
+          <td class="meta" style="font-size:12px;"><%= e.lead_name || '-' %></td>
+          <td class="num" style="font-size:12.5px;"><%= e.assignment_count %></td>
+          <td class="meta" style="font-size:11.5px;"><%= e.target_completion_date || '-' %></td>
+          <td class="mono meta" style="font-size:10.5px;"><%= e.catalog_version %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>
