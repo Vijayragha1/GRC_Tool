@@ -1,0 +1,86 @@
+<%- include('partials/header', { title: 'NIST CSF 2.0', user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">NIST CSF <%= catalogVersion %></h1>
+    <div class="page-subtitle">
+      <%= totalFns %> Functions / <%= totalCats %> Categories / <%= totalSubs %> Subcategories.
+      Source: <span class="mono">NIST.CSWP.29</span> (published 2024-02-26). Implementation examples and ISO 27001 cross-references via the CSF 2.0 Reference Tool.
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
+  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
+    <strong style="color:#a16207;">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
+    The NIST CSF assessment module is in Stage 1 (catalog browser only). Assessment, scoring, findings, deliverables, and benchmarking will land in subsequent stages. Until production security work is built, do not use this with real client information.
+  </div>
+</div>
+
+<% tree.forEach(fn => { %>
+  <details class="panel" style="margin-bottom:10px;" open>
+    <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
+      <span class="mono" style="font-weight:600;font-size:13px;color:var(--accent);"><%= fn.code %></span>
+      <span style="font-weight:600;font-size:14px;"><%= fn.name %></span>
+      <span class="meta" style="font-size:12px;">(<%= fn.categories.length %> categories, <%= fn.categories.reduce((s, c) => s + c.subcategories.length, 0) %> subcategories)</span>
+    </summary>
+    <div class="panel-pad" style="padding-top:0;font-size:12.5px;color:var(--text-secondary);"><%= fn.description %></div>
+
+    <% fn.categories.forEach(cat => { %>
+      <details style="border-top:1px solid var(--border);">
+        <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--bg-subtle);">
+          <span class="mono" style="font-weight:500;font-size:12.5px;"><%= cat.code %></span>
+          <span style="font-weight:500;font-size:13px;"><%= cat.name %></span>
+          <span class="meta" style="font-size:11.5px;">(<%= cat.subcategories.length %> subcategories)</span>
+        </summary>
+        <div class="panel-pad" style="padding-top:6px;font-size:12px;color:var(--text-secondary);"><%= cat.description %></div>
+
+        <table class="t">
+          <thead>
+            <tr>
+              <th style="width:110px">Code</th>
+              <th>Outcome</th>
+              <th style="width:220px">ISO 27001:2022 refs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% cat.subcategories.forEach(sub => { %>
+              <tr>
+                <td class="mono" style="font-size:11.5px;vertical-align:top;padding-top:10px;"><%= sub.code %></td>
+                <td style="font-size:12.5px;line-height:1.5;">
+                  <%= sub.description %>
+                  <% if (sub.implementation_examples) { %>
+                    <details style="margin-top:6px;">
+                      <summary style="cursor:pointer;font-size:11.5px;color:var(--accent);">Implementation examples</summary>
+                      <div style="margin-top:6px;font-size:12px;color:var(--text-secondary);line-height:1.55;white-space:pre-wrap;"><%= sub.implementation_examples %></div>
+                    </details>
+                  <% } %>
+                </td>
+                <td style="font-size:11.5px;line-height:1.5;vertical-align:top;padding-top:10px;">
+                  <% if (sub.iso_refs.length === 0) { %>
+                    <span class="meta">-</span>
+                  <% } else { %>
+                    <% const clauses = sub.iso_refs.filter(r => r.ref_type === 'mandatory_clause'); %>
+                    <% const annexa  = sub.iso_refs.filter(r => r.ref_type === 'annex_a'); %>
+                    <% if (clauses.length) { %>
+                      <div class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Clauses</div>
+                      <div class="mono" style="font-size:11px;margin-bottom:6px;"><%= clauses.map(c => c.ref_value).join(', ') %></div>
+                    <% } %>
+                    <% if (annexa.length) { %>
+                      <div class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Annex A</div>
+                      <div class="mono" style="font-size:11px;">
+                        <% annexa.forEach((a, i) => { %><a href="/workspaces/<%= ws.id %>/controls/annex-a.<%= a.ref_value %>" style="color:var(--accent);text-decoration:none;"><%= a.ref_value %></a><%= i < annexa.length - 1 ? ', ' : '' %><% }) %>
+                      </div>
+                    <% } %>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </details>
+    <% }) %>
+  </details>
+<% }) %>
+
+<%- include('partials/footer') %>

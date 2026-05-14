@@ -1946,6 +1946,104 @@ function init() {
     ccs.forEach(c => ins.run(c.name, c.audience, c.channel, c.body));
     console.log(`[db] Seeded ${ccs.length} crisis comms templates`);
   }
+
+  // ========== NIST CSF 2.0 catalog ==========
+  // Tables hold reference data shared across all tenants. catalog_version pins
+  // which CSF revision an engagement is created against, so engagements created
+  // on 2.0 stay on 2.0 even after a future 3.0 is added. See data/nist-csf.js.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS csf_functions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      catalog_version TEXT NOT NULL,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      display_order INTEGER NOT NULL,
+      UNIQUE (catalog_version, code)
+    );
+    CREATE TABLE IF NOT EXISTS csf_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      function_id INTEGER NOT NULL,
+      catalog_version TEXT NOT NULL,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      display_order INTEGER NOT NULL,
+      UNIQUE (catalog_version, code),
+      FOREIGN KEY (function_id) REFERENCES csf_functions(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_cats_fn ON csf_categories(function_id);
+    CREATE TABLE IF NOT EXISTS csf_subcategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      catalog_version TEXT NOT NULL,
+      code TEXT NOT NULL,
+      description TEXT NOT NULL,
+      implementation_examples TEXT,
+      display_order INTEGER NOT NULL,
+      UNIQUE (catalog_version, code),
+      FOREIGN KEY (category_id) REFERENCES csf_categories(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_subs_cat ON csf_subcategories(category_id);
+    CREATE TABLE IF NOT EXISTS csf_subcategory_iso_refs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subcategory_id INTEGER NOT NULL,
+      ref_type TEXT NOT NULL,
+      ref_value TEXT NOT NULL,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_iso_refs_sub ON csf_subcategory_iso_refs(subcategory_id);
+    CREATE TABLE IF NOT EXISTS csf_maturity_levels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      catalog_version TEXT NOT NULL,
+      level INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      definition TEXT NOT NULL,
+      UNIQUE (catalog_version, level)
+    );
+    CREATE TABLE IF NOT EXISTS csf_tier_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      catalog_version TEXT NOT NULL,
+      tier INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      cmmi_lower REAL NOT NULL,
+      cmmi_upper REAL NOT NULL,
+      UNIQUE (catalog_version, tier)
+    );
+  `);
+
+  // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on
+  // (catalog_version='2.0') so a partial load won't double-insert.
+  const csfCount = db.prepare("SELECT COUNT(*) AS c FROM csf_functions WHERE catalog_version=?").get('2.0').c;
+  if (csfCount === 0) {
+    const csf = require('./data/nist-csf');
+    const insFn  = db.prepare('INSERT INTO csf_functions (catalog_version, code, name, description, display_order) VALUES (?, ?, ?, ?, ?)');
+    const insCat = db.prepare('INSERT INTO csf_categories (function_id, catalog_version, code, name, description, display_order) VALUES (?, ?, ?, ?, ?, ?)');
+    const insSub = db.prepare('INSERT INTO csf_subcategories (category_id, catalog_version, code, description, implementation_examples, display_order) VALUES (?, ?, ?, ?, ?, ?)');
+    const insRef = db.prepare('INSERT INTO csf_subcategory_iso_refs (subcategory_id, ref_type, ref_value) VALUES (?, ?, ?)');
+    const insLvl = db.prepare('INSERT INTO csf_maturity_levels (catalog_version, level, name, definition) VALUES (?, ?, ?, ?)');
+    const insTier= db.prepare('INSERT INTO csf_tier_mappings (catalog_version, tier, name, cmmi_lower, cmmi_upper) VALUES (?, ?, ?, ?, ?)');
+
+    const seed = db.transaction(() => {
+      csf.FUNCTIONS.forEach(f => {
+        const fnId = insFn.run(csf.CATALOG_VERSION, f.code, f.name, f.description, f.display_order).lastInsertRowid;
+        f.categories.forEach((c, ci) => {
+          const catId = insCat.run(fnId, csf.CATALOG_VERSION, c.code, c.name, c.description, ci + 1).lastInsertRowid;
+          c.subcategories.forEach((s, si) => {
+            const subId = insSub.run(catId, csf.CATALOG_VERSION, s.code, s.description, s.implementation_examples || null, si + 1).lastInsertRowid;
+            (s.iso_27001_refs || []).forEach(r => insRef.run(subId, r.type, r.value));
+          });
+        });
+      });
+      csf.MATURITY_LEVELS.forEach(l => insLvl.run(csf.CATALOG_VERSION, l.level, l.name, l.definition));
+      csf.TIER_MAPPINGS.forEach(t => insTier.run(csf.CATALOG_VERSION, t.tier, t.name, t.cmmi_lower, t.cmmi_upper));
+    });
+    seed();
+
+    const cats = csf.FUNCTIONS.reduce((s, f) => s + f.categories.length, 0);
+    const subs = csf.FUNCTIONS.reduce((s, f) => s + f.categories.reduce((s2, c) => s2 + c.subcategories.length, 0), 0);
+    console.log(`[db] Seeded NIST CSF ${csf.CATALOG_VERSION}: ${csf.FUNCTIONS.length} functions, ${cats} categories, ${subs} subcategories`);
+  }
 }
 
 const crypto = require('crypto');

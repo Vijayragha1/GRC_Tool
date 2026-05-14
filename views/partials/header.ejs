@@ -444,6 +444,12 @@
           <span class="nav-item-text">Evidence library</span>
         </a>
 
+        <div class="nav-group-label">NIST CSF</div>
+        <a href="/workspaces/<%= ws.id %>/csf" class="nav-item <%= (typeof active !== 'undefined' && active === 'csf') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+          <span class="nav-item-text">CSF 2.0 Catalog</span>
+        </a>
+
         <div class="nav-group-label">Operations</div>
         <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>

@@ -5951,6 +5951,54 @@ require('./routes/engagement').register(app, {
   db, requireAuth, requireWorkspace, withToast, logAction, auditCtx,
 });
 
+// ==================== NIST CSF 2.0 ====================
+// Stage 1 of the CSF module: catalog browser. Read-only view of the seeded
+// Functions / Categories / Subcategories with their ISO 27001 cross-refs.
+// Assessment, scoring, findings, deliverables come in later stages.
+app.get('/workspaces/:wsId/csf', requireAuth, requireWorkspace, (req, res) => {
+  const catalogVersion = '2.0';
+  const fns = db.prepare(`
+    SELECT id, code, name, description, display_order
+    FROM csf_functions WHERE catalog_version=? ORDER BY display_order
+  `).all(catalogVersion);
+  const cats = db.prepare(`
+    SELECT id, function_id, code, name, description, display_order
+    FROM csf_categories WHERE catalog_version=? ORDER BY display_order
+  `).all(catalogVersion);
+  const subs = db.prepare(`
+    SELECT id, category_id, code, description, implementation_examples, display_order
+    FROM csf_subcategories WHERE catalog_version=? ORDER BY display_order
+  `).all(catalogVersion);
+  const isoRefs = db.prepare(`
+    SELECT subcategory_id, ref_type, ref_value FROM csf_subcategory_iso_refs
+  `).all();
+
+  // Build a nested structure for the view
+  const catsByFn = {};
+  cats.forEach(c => { (catsByFn[c.function_id] = catsByFn[c.function_id] || []).push(c); });
+  const subsByCat = {};
+  subs.forEach(s => { (subsByCat[s.category_id] = subsByCat[s.category_id] || []).push(s); });
+  const refsBySub = {};
+  isoRefs.forEach(r => { (refsBySub[r.subcategory_id] = refsBySub[r.subcategory_id] || []).push(r); });
+
+  const tree = fns.map(f => ({
+    ...f,
+    categories: (catsByFn[f.id] || []).map(c => ({
+      ...c,
+      subcategories: (subsByCat[c.id] || []).map(s => ({
+        ...s, iso_refs: refsBySub[s.id] || []
+      }))
+    }))
+  }));
+
+  const totalSubs = subs.length;
+  const totalCats = cats.length;
+  res.render('csf_catalog', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    catalogVersion, tree, totalFns: fns.length, totalCats, totalSubs,
+  });
+});
+
 // ==================== INTERESTED PARTIES (clause 4.2) ====================
 app.get('/workspaces/:wsId/interested-parties', requireAuth, requireWorkspace, (req, res) => {
   const rows = db.prepare(`SELECT * FROM interested_parties WHERE workspace_id=? ORDER BY party_type, party`)
