@@ -6176,6 +6176,11 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
     SELECT COUNT(*) AS c FROM csf_ask_lead_messages
     WHERE engagement_id=? AND recipient_id=? AND read_at IS NULL AND deleted_at IS NULL
   `).get(engagement.id, req.user.id).c;
+  // Unresolved-comment count for badge on the Findings button.
+  const unresolvedCommentCount = db.prepare(`
+    SELECT COUNT(*) AS c FROM csf_reviewer_comments
+    WHERE engagement_id=? AND resolved=0 AND deleted_at IS NULL
+  `).get(engagement.id).c;
 
   res.render('csf_engagement_detail', {
     user: req.user, ws: req.workspace, active: 'csf',
@@ -6191,7 +6196,7 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
     // state transition
     nextEngState, canTransitionEng, canPublishNow,
     // Stage 11/12
-    inboxUnread,
+    inboxUnread, unresolvedCommentCount,
   });
 });
 
@@ -7071,18 +7076,49 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx', requireAuth, requ
   logAction(req.user.id, req.workspace.id, 'csf_report_export_docx', 'csf_engagement', engagement.id, { version_id: versionRow?.id || null }, auditCtx(req));
 });
 
-// CSV: one row per Subcategory.
+// CSV: one row per Subcategory. Stage 12 adds optional filters via query
+// params (?fn=GV, ?status=Approved, ?scored=1). Filters are advisory; the
+// rollup math is recomputed only against the kept rows so a filtered export
+// stays internally consistent.
 app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/data.csv', requireAuth, requireWorkspace, (req, res) => {
   const { engagement, error } = loadCsfEngagement(req);
   if (error) return res.status(error.status).send(error.message);
   csfPolicy.ensureAssessmentRows(db, engagement);
   const rollup = csfScoring.computeEngagementRollup(db, engagement);
+
+  // Apply optional filters by trimming the rollup tree client-side. The CSV
+  // builder iterates the supplied tree, so this is enough.
+  const fnFilter = (req.query.fn || '').toUpperCase();
+  const statusFilter = req.query.status || '';
+  const scoredOnly = req.query.scored === '1';
+  const excludedOnly = req.query.excluded === '1';
+
+  if (fnFilter || statusFilter || scoredOnly || excludedOnly) {
+    const filtered = JSON.parse(JSON.stringify(rollup));
+    if (fnFilter) filtered.functions = filtered.functions.filter(f => f.code === fnFilter);
+    for (const fn of filtered.functions) {
+      for (const cat of fn.categories) {
+        cat.subcategories = cat.subcategories.filter(s => {
+          if (scoredOnly && s.current == null) return false;
+          if (excludedOnly && !s.excluded) return false;
+          if (statusFilter && s.status !== statusFilter) return false;
+          return true;
+        });
+      }
+      // Drop empty categories so the CSV doesn't have trailing nothing.
+      fn.categories = fn.categories.filter(c => c.subcategories.length);
+    }
+    filtered.functions = filtered.functions.filter(f => f.categories.length);
+    rollup.functions = filtered.functions;
+  }
+
   const csv = csfReports.buildCsvExport({ db, engagement, currentRollup: rollup });
-  const filename = `csf-data-${(engagement.name || 'engagement').replace(/[^\w.-]+/g, '_')}-${new Date().toISOString().slice(0,10)}.csv`;
+  const filterSuffix = [fnFilter, statusFilter && statusFilter.replace(/\s+/g, '_'), scoredOnly && 'scored', excludedOnly && 'excluded'].filter(Boolean).join('-');
+  const filename = `csf-data-${(engagement.name || 'engagement').replace(/[^\w.-]+/g, '_')}${filterSuffix ? '-' + filterSuffix : ''}-${new Date().toISOString().slice(0,10)}.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(csv);
-  logAction(req.user.id, req.workspace.id, 'csf_report_export_csv', 'csf_engagement', engagement.id, {}, auditCtx(req));
+  logAction(req.user.id, req.workspace.id, 'csf_report_export_csv', 'csf_engagement', engagement.id, { filters: { fn: fnFilter, status: statusFilter, scoredOnly, excludedOnly } }, auditCtx(req));
 });
 
 // Diff between two versions.

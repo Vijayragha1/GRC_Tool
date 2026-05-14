@@ -28,7 +28,7 @@
       </form>
     <% } %>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/scores" class="btn btn-secondary btn-xs">Scores</a>
-    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="btn btn-secondary btn-xs">Findings</a>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="btn btn-secondary btn-xs">Findings<% if (unresolvedCommentCount > 0) { %> <span class="tag" style="background:rgba(161,98,7,0.12);color:#a16207;font-size:10px;font-weight:600;margin-left:2px;padding:1px 5px;" title="<%= unresolvedCommentCount %> unresolved reviewer comment<%= unresolvedCommentCount === 1 ? '' : 's' %>"><%= unresolvedCommentCount %></span><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions" class="btn btn-secondary btn-xs">Versions<% if (engagement.current_version) { %> v<%= engagement.current_version %><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal" class="btn btn-secondary btn-xs" title="Read-only client-facing view. Published engagements only.">Client portal</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead" class="btn btn-secondary btn-xs" title="Async question thread with the Lead">Inbox<% if (inboxUnread > 0) { %> <span class="tag" style="background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:600;margin-left:2px;padding:1px 5px;"><%= inboxUnread %></span><% } %></a>
