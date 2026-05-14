@@ -12,11 +12,24 @@
       &middot; <%= engagement.scope_mode === 'CURRENT_TARGET' ? 'Current + Target' : 'Current only' %>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <% const statusColor = { 'Draft':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Under Review':'#a16207', 'Approved':'#15803d', 'Published':'#15803d', 'Closed':'var(--text-tertiary)' }[engagement.status] || 'var(--text)' ; %>
     <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:12px;"><%= engagement.status %></span>
+    <% if (nextEngState && canTransitionEng) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/transition" style="display:inline;" onsubmit="return appConfirmForm(event, 'Move engagement to <%= nextEngState %>?')">
+        <input type="hidden" name="to_state" value="<%= nextEngState %>">
+        <button class="btn btn-secondary btn-xs">Mark as <%= nextEngState %> &rarr;</button>
+      </form>
+    <% } %>
+    <% if (canPublishNow) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/publish" style="display:inline;" onsubmit="return appConfirmForm(event, 'Publish this engagement as v1.0? Scores, findings, and recommendations will be frozen into an immutable snapshot.')">
+        <input type="hidden" name="change_summary" value="Initial publish">
+        <button class="btn btn-primary btn-xs">Publish v1.0</button>
+      </form>
+    <% } %>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/scores" class="btn btn-secondary btn-xs">Scores</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="btn btn-secondary btn-xs">Findings</a>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions" class="btn btn-secondary btn-xs">Versions<% if (engagement.current_version) { %> v<%= engagement.current_version %><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="btn btn-primary btn-xs">Open assessment &rarr;</a>
   </div>
 </div>

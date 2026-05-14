@@ -2218,6 +2218,82 @@ function init() {
       FOREIGN KEY (client_user_id) REFERENCES users(id)
     );
     CREATE INDEX IF NOT EXISTS idx_csf_cc_finding ON csf_client_comments(finding_id);
+
+    -- ========== NIST CSF Stage 7: Versions + immutable snapshots ==========
+    -- Versioned publish per locked decision #12. Snapshots are stored as
+    -- normalised child tables (decision #20) so trend benchmarking can run
+    -- clean SQL aggregations across snapshots without parsing JSON blobs.
+    --
+    -- Once a row is written to a snapshot table it must never be updated -
+    -- the entire point of a snapshot is that v1.0 reflects the engagement
+    -- state at the moment v1.0 was published, forever. Republish creates a
+    -- new version with new snapshot rows; it does NOT touch prior rows.
+    CREATE TABLE IF NOT EXISTS csf_engagement_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      version_number TEXT NOT NULL,
+      published_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      published_by INTEGER,
+      change_summary TEXT,
+      is_current INTEGER DEFAULT 0,
+      UNIQUE (engagement_id, version_number),
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (published_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_ev_eng ON csf_engagement_versions(engagement_id);
+
+    -- Frozen subcategory state at the moment of a publish. Stores the same
+    -- shape as csf_subcategory_assessments minus the lifecycle/audit fields
+    -- that aren't meaningful in a snapshot.
+    CREATE TABLE IF NOT EXISTS csf_subcategory_assessment_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      version_id INTEGER NOT NULL,
+      subcategory_id INTEGER NOT NULL,
+      current_score INTEGER,
+      target_score INTEGER,
+      narrative TEXT,
+      status TEXT,
+      is_bulk_set INTEGER DEFAULT 0,
+      excluded_from_scope INTEGER DEFAULT 0,
+      exclusion_rationale TEXT,
+      weight REAL NOT NULL DEFAULT 1.0,
+      UNIQUE (version_id, subcategory_id),
+      FOREIGN KEY (version_id) REFERENCES csf_engagement_versions(id) ON DELETE CASCADE,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_assess_snap_ver ON csf_subcategory_assessment_snapshots(version_id);
+
+    CREATE TABLE IF NOT EXISTS csf_finding_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      version_id INTEGER NOT NULL,
+      finding_id INTEGER NOT NULL,
+      subcategory_id INTEGER,
+      title TEXT NOT NULL,
+      description TEXT,
+      severity TEXT NOT NULL,
+      status TEXT,
+      promoted_to_engagement_theme INTEGER DEFAULT 0,
+      FOREIGN KEY (version_id) REFERENCES csf_engagement_versions(id) ON DELETE CASCADE,
+      FOREIGN KEY (finding_id) REFERENCES csf_findings(id),
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_finding_snap_ver ON csf_finding_snapshots(version_id);
+
+    CREATE TABLE IF NOT EXISTS csf_recommendation_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      version_id INTEGER NOT NULL,
+      recommendation_id INTEGER NOT NULL,
+      finding_id INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      estimated_effort TEXT,
+      priority TEXT,
+      target_completion_date DATE,
+      roadmap_phase TEXT,
+      FOREIGN KEY (version_id) REFERENCES csf_engagement_versions(id) ON DELETE CASCADE,
+      FOREIGN KEY (recommendation_id) REFERENCES csf_recommendations(id),
+      FOREIGN KEY (finding_id) REFERENCES csf_findings(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_rec_snap_ver ON csf_recommendation_snapshots(version_id);
   `);
 
   // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on

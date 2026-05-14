@@ -6166,6 +6166,11 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
     ORDER BY a.created_at DESC LIMIT 30
   `).all(req.workspace.id);
 
+  // Engagement-level state transition controls
+  const nextEngState = csfPolicy.nextEngagementState(engagement.status);
+  const canTransitionEng = nextEngState ? csfPolicy.canTransitionEngagement(db, req.user, engagement, nextEngState) : false;
+  const canPublishNow = engagement.status === 'Approved' && csfPolicy.canPublish(db, req.user, engagement);
+
   res.render('csf_engagement_detail', {
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, lead, assignments, assignableUsers,
@@ -6177,6 +6182,8 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
     distribution, daysRemaining, daysOverdue,
     subsWithScoreNoEvidence, unresolvedComments, findingsNoRecs,
     activity,
+    // state transition
+    nextEngState, canTransitionEng, canPublishNow,
   });
 });
 
@@ -6192,6 +6199,20 @@ app.post('/workspaces/:wsId/csf/:id(\\d+)/assign', requireAuth, requireWorkspace
     .run(engagement.id, userId, role, req.user.id);
   logAction(req.user.id, req.workspace.id, 'csf_assignment_add', 'csf_engagement', engagement.id, { user_id: userId, role }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}`, 'Assignment added'));
+});
+
+// Engagement-level state transition (Draft -> In Progress -> Under Review -> Approved).
+// Approved -> Published goes through the publish route, not here.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/transition', requireAuth, requireWorkspace, (req, res) => {
+  const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!engagement) return res.status(404).send('Not found');
+  const to = req.body.to_state;
+  if (!csfPolicy.canTransitionEngagement(db, req.user, engagement, to)) {
+    return res.status(403).send('Forbidden: only the Engagement Lead can advance the engagement, and the transition must be the next step forward.');
+  }
+  db.prepare(`UPDATE csf_engagements SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(to, engagement.id);
+  logAction(req.user.id, req.workspace.id, 'csf_engagement_transition', 'csf_engagement', engagement.id, { from: engagement.status, to }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}`, `Engagement moved to ${to}`));
 });
 
 // Unassign
@@ -6716,6 +6737,95 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/scores', requireAuth, requireWorkspace,
   res.render('csf_scores', {
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, rollup,
+    r1: csfScoring.r1,
+  });
+});
+
+// ---- Stage 7: Versions + snapshots ------------------------------------------
+const csfVersioning = require('./lib/csf-versioning');
+
+// First publish: Approved -> Published, create v1.0 snapshot.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/publish', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canPublish(db, req.user, engagement)) return res.status(403).send('Forbidden: only the Engagement Lead can publish an Approved engagement.');
+
+  const versionNumber = csfVersioning.nextVersionNumber(db, engagement); // 1.0 on first call
+  const versionId = csfVersioning.createSnapshot(db, engagement, versionNumber, req.user.id, (req.body.change_summary || '').trim() || 'Initial publish');
+  db.prepare(`UPDATE csf_engagements SET status='Published', current_version=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(versionNumber, engagement.id);
+  logAction(req.user.id, req.workspace.id, 'csf_engagement_publish', 'csf_engagement', engagement.id, { version_id: versionId, version_number: versionNumber }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}`, `Engagement published as v${versionNumber}`));
+});
+
+// Republish: engagement stays Published, increment version, require change_summary.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/republish', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (engagement.status !== 'Published') return res.status(400).send('Only Published engagements can be republished.');
+  if (!csfPolicy.canPublish(db, req.user, engagement)) return res.status(403).send('Forbidden: only the Engagement Lead can republish.');
+  const summary = (req.body.change_summary || '').trim();
+  if (!summary) return redirectBack(req, res, 'Change summary is required for a republish', 'error');
+
+  const versionNumber = csfVersioning.nextVersionNumber(db, engagement);
+  const versionId = csfVersioning.createSnapshot(db, engagement, versionNumber, req.user.id, summary);
+  db.prepare(`UPDATE csf_engagements SET current_version=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(versionNumber, engagement.id);
+  logAction(req.user.id, req.workspace.id, 'csf_engagement_republish', 'csf_engagement', engagement.id, { version_id: versionId, version_number: versionNumber }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/versions/${versionId}`, `Republished as v${versionNumber}`));
+});
+
+// Versions list.
+app.get('/workspaces/:wsId/csf/:id(\\d+)/versions', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  const versions = db.prepare(`
+    SELECT v.*, u.name AS publisher_name,
+      (SELECT COUNT(*) FROM csf_subcategory_assessment_snapshots s WHERE s.version_id=v.id) AS sub_count,
+      (SELECT COUNT(*) FROM csf_finding_snapshots fs WHERE fs.version_id=v.id) AS finding_count
+    FROM csf_engagement_versions v
+    LEFT JOIN users u ON u.id = v.published_by
+    WHERE v.engagement_id=? ORDER BY v.published_at DESC
+  `).all(engagement.id);
+  res.render('csf_versions', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, versions,
+    canPublish: csfPolicy.canPublish(db, req.user, engagement),
+    canRepublish: engagement.status === 'Published' && csfPolicy.canPublish(db, req.user, { ...engagement, status: 'Approved' }),  // policy.canPublish requires status=Approved; for republish we override
+  });
+});
+
+// Version detail - snapshot view.
+app.get('/workspaces/:wsId/csf/:id(\\d+)/versions/:vid(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  const version = db.prepare(`SELECT * FROM csf_engagement_versions WHERE id=? AND engagement_id=?`).get(req.params.vid, engagement.id);
+  if (!version) return res.status(404).render('error', { user: req.user, message: 'Version not found in this engagement.' });
+  const rollup = csfVersioning.loadSnapshotRollup(db, version);
+  const findingSnaps = db.prepare(`
+    SELECT fs.*, s.code AS sub_code
+    FROM csf_finding_snapshots fs
+    LEFT JOIN csf_subcategories s ON s.id = fs.subcategory_id
+    WHERE fs.version_id=?
+    ORDER BY CASE fs.severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
+  `).all(version.id);
+  const otherVersions = db.prepare(`SELECT id, version_number FROM csf_engagement_versions WHERE engagement_id=? AND id != ? ORDER BY published_at DESC`).all(engagement.id, version.id);
+  res.render('csf_version_detail', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, version, rollup, findingSnaps, otherVersions,
+    r1: csfScoring.r1,
+  });
+});
+
+// Diff between two versions.
+app.get('/workspaces/:wsId/csf/:id(\\d+)/versions/:vid(\\d+)/diff/:against(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  const newVer = db.prepare(`SELECT * FROM csf_engagement_versions WHERE id=? AND engagement_id=?`).get(req.params.vid, engagement.id);
+  const oldVer = db.prepare(`SELECT * FROM csf_engagement_versions WHERE id=? AND engagement_id=?`).get(req.params.against, engagement.id);
+  if (!newVer || !oldVer) return res.status(404).render('error', { user: req.user, message: 'One or both versions not found.' });
+  const diff = csfVersioning.computeVersionDiff(db, oldVer, newVer);
+  res.render('csf_version_diff', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, oldVer, newVer, diff,
     r1: csfScoring.r1,
   });
 });
