@@ -6171,6 +6171,12 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
   const canTransitionEng = nextEngState ? csfPolicy.canTransitionEngagement(db, req.user, engagement, nextEngState) : false;
   const canPublishNow = engagement.status === 'Approved' && csfPolicy.canPublish(db, req.user, engagement);
 
+  // Stage 11/12: unread inbox count for current user (badge on Inbox button)
+  const inboxUnread = db.prepare(`
+    SELECT COUNT(*) AS c FROM csf_ask_lead_messages
+    WHERE engagement_id=? AND recipient_id=? AND read_at IS NULL AND deleted_at IS NULL
+  `).get(engagement.id, req.user.id).c;
+
   res.render('csf_engagement_detail', {
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, lead, assignments, assignableUsers,
@@ -6184,6 +6190,8 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, 
     activity,
     // state transition
     nextEngState, canTransitionEng, canPublishNow,
+    // Stage 11/12
+    inboxUnread,
   });
 });
 
@@ -6400,6 +6408,13 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)', requireAuth, requ
     ORDER BY c.created_at DESC
   `).all(engagement.id, detail.id);
 
+  // ---- Stage 11: Analyst content for this subcategory ----
+  const explainer = db.prepare(`SELECT * FROM csf_subcategory_explainers WHERE subcategory_id=?`).get(detail.subcategory_id);
+  const questions = db.prepare(`SELECT * FROM csf_subcategory_questions WHERE subcategory_id=? ORDER BY display_order`).all(detail.subcategory_id);
+  const prompts = db.prepare(`SELECT * FROM csf_subcategory_evidence_prompts WHERE subcategory_id=? ORDER BY display_order`).all(detail.subcategory_id);
+  const selfCheckPrompts = db.prepare(`SELECT prompt FROM csf_self_check_prompts ORDER BY display_order`).all().map(r => r.prompt);
+  const narrativeSections = csfPolicy.parseStructuredNarrative(detail.narrative);
+
   res.render('csf_assess_detail', {
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, detail, evidence, isoRefs,
@@ -6416,6 +6431,9 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)', requireAuth, requ
     efforts: csfPolicy.RECOMMENDATION_EFFORTS,
     priorities: csfPolicy.RECOMMENDATION_PRIORITIES,
     phases: csfPolicy.ROADMAP_PHASES,
+    // Stage 11
+    explainer, questions, prompts, selfCheckPrompts, narrativeSections,
+    narrativeSectionDefs: csfPolicy.NARRATIVE_SECTIONS,
   });
 });
 
@@ -6430,7 +6448,20 @@ app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)', requireAuth, req
   const b = req.body;
   const sets = []; const vals = [];
 
-  if (b.narrative !== undefined) {
+  // Structured narrative (Stage 11): 4 sub-fields combine into the single
+  // narrative TEXT column. Falls back to b.narrative for legacy callers.
+  const hasStructured = ['narrative_practice_observed', 'narrative_evidence_reviewed', 'narrative_gaps_or_concerns', 'narrative_follow_up_needed']
+    .some(k => b[k] !== undefined);
+  if (hasStructured) {
+    const combined = csfPolicy.buildStructuredNarrative({
+      practice_observed: b.narrative_practice_observed || '',
+      evidence_reviewed: b.narrative_evidence_reviewed || '',
+      gaps_or_concerns: b.narrative_gaps_or_concerns || '',
+      follow_up_needed: b.narrative_follow_up_needed || '',
+    });
+    sets.push('narrative=?', 'narrative_drafted_by=?', 'narrative_drafted_at=CURRENT_TIMESTAMP');
+    vals.push(combined, req.user.id);
+  } else if (b.narrative !== undefined) {
     sets.push('narrative=?', 'narrative_drafted_by=?', 'narrative_drafted_at=CURRENT_TIMESTAMP');
     vals.push(b.narrative.trim(), req.user.id);
   }
@@ -6812,6 +6843,90 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/versions/:vid(\\d+)', requireAuth, requ
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, version, rollup, findingSnaps, otherVersions,
     r1: csfScoring.r1,
+  });
+});
+
+// ---- Stage 11: Ask my Lead + Learn section ----------------------------------
+// Reuse the existing top-level MarkdownIt import (line 12) for rendering
+// Learn docs.
+const csfLearnMd = new MarkdownIt({ html: false, linkify: true, breaks: false });
+
+// Ask my Lead - send a question.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/ask-lead', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const body = (req.body.body || '').trim();
+  if (!body) return redirectBack(req, res, 'Message body required', 'error');
+  const subject = (req.body.subject || '').trim() || null;
+  const subId = req.body.subcategory_id ? parseInt(req.body.subcategory_id, 10) : null;
+  const recipient = engagement.assigned_lead_id;
+  const msgId = db.prepare(`
+    INSERT INTO csf_ask_lead_messages (engagement_id, sender_id, recipient_id, subcategory_id, subject, body)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(engagement.id, req.user.id, recipient, subId, subject, body).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'csf_ask_lead_send', 'csf_ask_lead_message', msgId, { recipient }, auditCtx(req));
+  const back = req.body.return_to || (subId
+    ? `/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${subId}`
+    : `/workspaces/${req.workspace.id}/csf/${engagement.id}`);
+  res.redirect(withToast(back, 'Message sent to Lead'));
+});
+
+// Inbox view - all ask-lead messages for this engagement.
+app.get('/workspaces/:wsId/csf/:id(\\d+)/ask-lead', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  const messages = db.prepare(`
+    SELECT m.*, sender.name AS sender_name, recipient.name AS recipient_name,
+      s.code AS sub_code
+    FROM csf_ask_lead_messages m
+    INNER JOIN users sender ON sender.id = m.sender_id
+    LEFT JOIN users recipient ON recipient.id = m.recipient_id
+    LEFT JOIN csf_subcategories s ON s.id = m.subcategory_id
+    WHERE m.engagement_id=? AND m.deleted_at IS NULL
+    ORDER BY m.created_at DESC
+  `).all(engagement.id);
+  // Mark messages addressed to current user as read.
+  db.prepare(`UPDATE csf_ask_lead_messages SET read_at=CURRENT_TIMESTAMP WHERE engagement_id=? AND recipient_id=? AND read_at IS NULL`).run(engagement.id, req.user.id);
+  res.render('csf_ask_lead', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, messages,
+  });
+});
+
+// Reply to an ask-lead message.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/ask-lead/:msgId(\\d+)/reply', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const original = db.prepare(`SELECT * FROM csf_ask_lead_messages WHERE id=? AND engagement_id=? AND deleted_at IS NULL`).get(req.params.msgId, engagement.id);
+  if (!original) return res.status(404).send('Message not found');
+  const body = (req.body.body || '').trim();
+  if (!body) return redirectBack(req, res, 'Reply body required', 'error');
+  const tx = db.transaction(() => {
+    const replyId = db.prepare(`
+      INSERT INTO csf_ask_lead_messages (engagement_id, sender_id, recipient_id, subcategory_id, in_reply_to, subject, body)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(engagement.id, req.user.id, original.sender_id, original.subcategory_id, original.id, original.subject ? `Re: ${original.subject}` : null, body).lastInsertRowid;
+    db.prepare(`UPDATE csf_ask_lead_messages SET replied_at=CURRENT_TIMESTAMP WHERE id=?`).run(original.id);
+    return replyId;
+  });
+  const replyId = tx();
+  logAction(req.user.id, req.workspace.id, 'csf_ask_lead_reply', 'csf_ask_lead_message', replyId, { in_reply_to: original.id }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/ask-lead`);
+});
+
+// Learn section - workspace-scoped index + reader.
+app.get('/workspaces/:wsId/csf/learn', requireAuth, requireWorkspace, (req, res) => {
+  const docs = db.prepare(`SELECT id, slug, title, summary FROM csf_learn_docs ORDER BY display_order, title`).all();
+  res.render('csf_learn', { user: req.user, ws: req.workspace, active: 'csf-learn', docs });
+});
+
+app.get('/workspaces/:wsId/csf/learn/:slug', requireAuth, requireWorkspace, (req, res) => {
+  const doc = db.prepare(`SELECT * FROM csf_learn_docs WHERE slug=?`).get(req.params.slug);
+  if (!doc) return res.status(404).render('error', { user: req.user, message: 'Learn document not found.' });
+  const otherDocs = db.prepare(`SELECT slug, title FROM csf_learn_docs WHERE slug != ? ORDER BY display_order`).all(req.params.slug);
+  res.render('csf_learn_doc', {
+    user: req.user, ws: req.workspace, active: 'csf-learn',
+    doc, otherDocs, html: csfLearnMd.render(doc.body_markdown || ''),
   });
 });
 

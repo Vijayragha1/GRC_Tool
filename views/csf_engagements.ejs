@@ -70,4 +70,30 @@
   </table>
 </div>
 
+<!-- Stage 11: one-time welcome modal. localStorage keeps it skipped after dismiss. -->
+<div id="csfOnboardingModal" style="display:none;position:fixed;inset:0;background:rgba(15,15,18,0.55);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--bg);border-radius:var(--radius);padding:24px 28px;max-width:520px;box-shadow:var(--shadow-xl);font-size:13.5px;line-height:1.6;">
+    <h2 style="margin:0 0 10px;font-size:18px;">Welcome to the NIST CSF module</h2>
+    <p style="margin:0 0 10px;color:var(--text-secondary);">This is a CSF 2.0 maturity assessment workspace. Before you dive in, two suggestions:</p>
+    <ul style="margin:0 0 10px;padding-left:18px;color:var(--text-secondary);">
+      <li>If CSF is new to you, read the <strong>Primer</strong> in <a href="/workspaces/<%= ws.id %>/csf/learn" style="color:var(--accent);">CSF Learn</a> (~5 min).</li>
+      <li>Open the <strong>Catalog</strong> to see the 6 Functions / 22 Categories / 106 Subcategories the assessment covers.</li>
+      <li>Then create an Engagement, assign your team (Lead / Consultant / Reviewer / Analyst), and start scoring.</li>
+    </ul>
+    <p style="margin:0 0 14px;color:var(--text-tertiary);font-size:12px;">This prototype is for synthetic data only. Real client data is gated on the production-security work in Stage 13.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <a href="/workspaces/<%= ws.id %>/csf/learn" class="btn btn-secondary btn-xs" onclick="document.getElementById('csfOnboardingModal').style.display='none';localStorage.setItem('csfOnboardSeen','1');">Read the primer</a>
+      <button class="btn btn-primary btn-xs" onclick="document.getElementById('csfOnboardingModal').style.display='none';localStorage.setItem('csfOnboardSeen','1');">Got it</button>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    if (!localStorage.getItem('csfOnboardSeen')) {
+      var m = document.getElementById('csfOnboardingModal');
+      if (m) m.style.display = 'flex';
+    }
+  })();
+</script>
+
 <%- include('partials/footer') %>

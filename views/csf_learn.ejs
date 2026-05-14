@@ -1,0 +1,21 @@
+<%- include('partials/header', { title: 'CSF Learn', user, ws, active: 'csf-learn' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">CSF Learn</h1>
+    <div class="page-subtitle">Background reading for the NIST CSF 2.0 assessment workflow. Target audience is an analyst with no prior CSF or cybersecurity assessment experience.</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <% docs.forEach(d => { %>
+    <a href="/workspaces/<%= ws.id %>/csf/learn/<%= d.slug %>" class="panel" style="display:block;text-decoration:none;color:inherit;">
+      <div class="panel-pad">
+        <h3 style="margin:0;font-size:14px;color:var(--accent);"><%= d.title %></h3>
+        <% if (d.summary) { %><div style="margin-top:6px;font-size:12.5px;color:var(--text-secondary);line-height:1.5;"><%= d.summary %></div><% } %>
+      </div>
+    </a>
+  <% }) %>
+</div>
+
+<%- include('partials/footer') %>

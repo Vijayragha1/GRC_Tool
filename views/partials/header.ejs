@@ -449,6 +449,10 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
           <span class="nav-item-text">NIST CSF 2.0</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/csf/learn" class="nav-item <%= (typeof active !== 'undefined' && active === 'csf-learn') ? 'active' : '' %>" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span class="nav-item-text">CSF Learn</span>
+        </a>
 
         <div class="nav-group-label">Operations</div>
         <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">

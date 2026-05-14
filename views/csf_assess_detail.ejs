@@ -54,13 +54,97 @@
   </div>
 <% } %>
 
+<!-- Stage 11: Analyst guidance sidebar (Layers 1-3) -->
+<% if (explainer || questions.length || prompts.length) { %>
+  <details class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);" <%= detail.status === 'Not Started' || detail.status === 'In Progress' ? 'open' : '' %>>
+    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);">Analyst guide for <%= detail.sub_code %></summary>
+
+    <% if (explainer) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+        <% if (explainer.plain_what) { %>
+          <div style="font-size:13px;line-height:1.55;margin-bottom:6px;"><strong>What this is asking:</strong> <%= explainer.plain_what %></div>
+        <% } %>
+        <% if (explainer.plain_why) { %>
+          <div style="font-size:13px;line-height:1.55;margin-bottom:8px;"><strong>Why it matters:</strong> <%= explainer.plain_why %></div>
+        <% } %>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;line-height:1.55;">
+          <% if (explainer.signs_of_strength) { %>
+            <div><span class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#15803d;">Signs of strength</span><div style="margin-top:4px;color:var(--text-secondary);"><%= explainer.signs_of_strength %></div></div>
+          <% } %>
+          <% if (explainer.signs_of_weakness) { %>
+            <div><span class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#b91c1c;">Signs of weakness</span><div style="margin-top:4px;color:var(--text-secondary);"><%= explainer.signs_of_weakness %></div></div>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (questions.length) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);">
+        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Interview questions</div>
+        <ul style="font-size:12.5px;line-height:1.6;margin:0;padding-left:18px;">
+          <% questions.forEach(q => { %><li><span class="tag" style="font-size:9.5px;background:var(--bg-subtle);text-transform:uppercase;margin-right:6px;"><%= q.question_type %></span><%= q.question %></li><% }) %>
+        </ul>
+      </div>
+    <% } %>
+
+    <% if (prompts.length) { %>
+      <div class="panel-pad" style="border-top:1px solid var(--border);">
+        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Evidence to ask for</div>
+        <ul style="font-size:12.5px;line-height:1.6;margin:0;padding-left:18px;">
+          <% prompts.forEach(p => { %><li><% if (p.evidence_type) { %><span class="tag" style="font-size:9.5px;background:var(--bg-subtle);text-transform:uppercase;margin-right:6px;"><%= p.evidence_type %></span><% } %><%= p.prompt %></li><% }) %>
+        </ul>
+      </div>
+    <% } %>
+
+    <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+      <details>
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--accent);">Stuck? Ask your Lead</summary>
+        <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead" style="margin-top:8px;display:grid;grid-template-columns:1fr;gap:6px;">
+          <input class="input" name="subject" placeholder="Subject (optional)" style="font-size:12px;">
+          <textarea class="textarea" name="body" rows="3" required placeholder="What's the question? Include what you've already tried or seen." style="font-size:12px;"></textarea>
+          <input type="hidden" name="subcategory_id" value="<%= detail.subcategory_id %>">
+          <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
+          <div style="text-align:right;"><button class="btn btn-primary btn-xs">Send to Lead</button></div>
+        </form>
+      </details>
+    </div>
+  </details>
+<% } %>
+
+<!-- Self-check prompts (Layer 6) - non-blocking, shown when at Draft Complete or beyond -->
+<% if (selfCheckPrompts.length && ['Draft Complete', 'Reviewed', 'Approved'].includes(detail.status)) { %>
+  <details class="panel" style="margin-bottom:14px;">
+    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;">Self-check before review</summary>
+    <div class="panel-pad" style="border-top:1px solid var(--border);font-size:12.5px;line-height:1.6;">
+      <ul style="margin:0;padding-left:18px;">
+        <% selfCheckPrompts.forEach(p => { %><li><%= p %></li><% }) %>
+      </ul>
+    </div>
+  </details>
+<% } %>
+
 <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;">
   <!-- LEFT: narrative + scoring + exclusion -->
   <div>
     <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>" class="panel" style="margin-bottom:14px;">
-      <div class="panel-head"><h2>Narrative</h2></div>
-      <div class="panel-pad">
-        <textarea class="textarea" name="narrative" rows="10" placeholder="Practice observed / Evidence reviewed / Gaps or concerns / Follow-up needed. Specific over generic. What did interviews and document review actually show? At least 3-5 sentences for audit-grade write-ups." style="font-family:inherit;font-size:13px;line-height:1.55;"><%= detail.narrative || '' %></textarea>
+      <div class="panel-head"><h2>Narrative</h2><span class="meta" style="font-size:11.5px;">structured into 4 sections</span></div>
+      <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <label class="label">Practice observed</label>
+          <textarea class="textarea" name="narrative_practice_observed" rows="5" placeholder="What did the team actually do in practice? Specifics over generic. Names, dates, system IDs where useful." style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.practice_observed %></textarea>
+        </div>
+        <div>
+          <label class="label">Evidence reviewed</label>
+          <textarea class="textarea" name="narrative_evidence_reviewed" rows="5" placeholder="Which documents, screenshots, configurations, or interview attributions support what you observed?" style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.evidence_reviewed %></textarea>
+        </div>
+        <div>
+          <label class="label">Gaps or concerns</label>
+          <textarea class="textarea" name="narrative_gaps_or_concerns" rows="4" placeholder="What's missing, weak, or inconsistent? Don't soften - this is what becomes a finding." style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.gaps_or_concerns %></textarea>
+        </div>
+        <div>
+          <label class="label">Follow-up needed</label>
+          <textarea class="textarea" name="narrative_follow_up_needed" rows="4" placeholder="Anything promised but not produced? Anything you couldn't verify today and want to chase before scoring?" style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.follow_up_needed %></textarea>
+        </div>
       </div>
 
       <div class="panel-head" style="border-top:1px solid var(--border);"><h2>Scoring</h2><span class="meta" style="font-size:11.5px;"><%= canEnterScore ? 'Editable' : 'Locked until Evidence Collected + scoring role' %></span></div>

@@ -2313,6 +2313,86 @@ function init() {
       FOREIGN KEY (recommendation_id) REFERENCES csf_recommendations(id) ON DELETE CASCADE,
       FOREIGN KEY (updated_by) REFERENCES users(id)
     );
+
+    -- ========== NIST CSF Stage 11: Beginner-friendly Analyst content ==========
+    -- Per-subcategory teaching content - Layers 1-3 of handoff Section 9.
+    -- One row per (subcategory, content type). Content workstream (Section 14)
+    -- writes here as it produces material; UI gracefully hides when empty.
+    CREATE TABLE IF NOT EXISTS csf_subcategory_explainers (
+      subcategory_id INTEGER PRIMARY KEY,
+      plain_what TEXT,
+      plain_why TEXT,
+      signs_of_strength TEXT,
+      signs_of_weakness TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS csf_subcategory_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subcategory_id INTEGER NOT NULL,
+      question_type TEXT NOT NULL,
+      question TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_q_sub ON csf_subcategory_questions(subcategory_id);
+
+    CREATE TABLE IF NOT EXISTS csf_subcategory_evidence_prompts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subcategory_id INTEGER NOT NULL,
+      prompt TEXT NOT NULL,
+      evidence_type TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_ep_sub ON csf_subcategory_evidence_prompts(subcategory_id);
+
+    -- Learn-section documents (Layer 5). Markdown body; rendered with the
+    -- existing markdown-it dependency at view time.
+    CREATE TABLE IF NOT EXISTS csf_learn_docs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      summary TEXT,
+      body_markdown TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Generic self-check prompts (Layer 6). Single set in v1 (locked decision
+    -- #44); per-Subcategory custom prompts can layer onto csf_subcategory_*
+    -- tables later.
+    CREATE TABLE IF NOT EXISTS csf_self_check_prompts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prompt TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- "Ask my Lead" async messages (Layer 8). One row per question; threading
+    -- is via in_reply_to. Recipient is normally the engagement's assigned
+    -- lead; sender is whoever clicked the button.
+    CREATE TABLE IF NOT EXISTS csf_ask_lead_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      sender_id INTEGER NOT NULL,
+      recipient_id INTEGER,
+      subcategory_id INTEGER,
+      in_reply_to INTEGER,
+      subject TEXT,
+      body TEXT NOT NULL,
+      read_at DATETIME,
+      replied_at DATETIME,
+      deleted_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (sender_id) REFERENCES users(id),
+      FOREIGN KEY (recipient_id) REFERENCES users(id),
+      FOREIGN KEY (subcategory_id) REFERENCES csf_subcategories(id),
+      FOREIGN KEY (in_reply_to) REFERENCES csf_ask_lead_messages(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_aml_eng ON csf_ask_lead_messages(engagement_id);
+    CREATE INDEX IF NOT EXISTS idx_csf_aml_recipient ON csf_ask_lead_messages(recipient_id, read_at);
   `);
 
   // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on
@@ -2346,6 +2426,37 @@ function init() {
     const cats = csf.FUNCTIONS.reduce((s, f) => s + f.categories.length, 0);
     const subs = csf.FUNCTIONS.reduce((s, f) => s + f.categories.reduce((s2, c) => s2 + c.subcategories.length, 0), 0);
     console.log(`[db] Seeded NIST CSF ${csf.CATALOG_VERSION}: ${csf.FUNCTIONS.length} functions, ${cats} categories, ${subs} subcategories`);
+  }
+
+  // Seed Stage 11 analyst content if not present. Idempotent: keyed on slug
+  // for Learn docs, on (subcategory_id) for explainers; questions and prompts
+  // re-seed only when nothing exists for that subcategory.
+  const haveLearn = db.prepare(`SELECT COUNT(*) AS c FROM csf_learn_docs`).get().c;
+  if (haveLearn === 0) {
+    const analyst = require('./data/csf-analyst-content');
+    const subBySlug = {};
+    db.prepare(`SELECT id, code FROM csf_subcategories WHERE catalog_version='2.0'`).all().forEach(r => { subBySlug[r.code] = r.id; });
+
+    const seed = db.transaction(() => {
+      const insLearn = db.prepare(`INSERT INTO csf_learn_docs (slug, title, summary, body_markdown, display_order) VALUES (?, ?, ?, ?, ?)`);
+      analyst.LEARN_DOCS.forEach(d => insLearn.run(d.slug, d.title, d.summary, d.body_markdown, d.display_order));
+
+      const insExpl = db.prepare(`INSERT OR REPLACE INTO csf_subcategory_explainers (subcategory_id, plain_what, plain_why, signs_of_strength, signs_of_weakness) VALUES (?, ?, ?, ?, ?)`);
+      analyst.EXPLAINERS.forEach(e => { const sid = subBySlug[e.sub_code]; if (sid) insExpl.run(sid, e.plain_what, e.plain_why, e.signs_of_strength, e.signs_of_weakness); });
+
+      const insQ = db.prepare(`INSERT INTO csf_subcategory_questions (subcategory_id, question_type, question, display_order) VALUES (?, ?, ?, ?)`);
+      const qOrder = {};
+      analyst.QUESTIONS.forEach(q => { const sid = subBySlug[q.sub_code]; if (!sid) return; qOrder[sid] = (qOrder[sid] || 0) + 1; insQ.run(sid, q.type, q.question, qOrder[sid]); });
+
+      const insP = db.prepare(`INSERT INTO csf_subcategory_evidence_prompts (subcategory_id, prompt, evidence_type, display_order) VALUES (?, ?, ?, ?)`);
+      const pOrder = {};
+      analyst.EVIDENCE_PROMPTS.forEach(p => { const sid = subBySlug[p.sub_code]; if (!sid) return; pOrder[sid] = (pOrder[sid] || 0) + 1; insP.run(sid, p.prompt, p.type, pOrder[sid]); });
+
+      const insSC = db.prepare(`INSERT INTO csf_self_check_prompts (prompt, display_order) VALUES (?, ?)`);
+      analyst.SELF_CHECK_PROMPTS.forEach((s, i) => insSC.run(s, i + 1));
+    });
+    seed();
+    console.log(`[db] Seeded CSF analyst content: ${analyst.LEARN_DOCS.length} learn docs, ${analyst.EXPLAINERS.length} explainers, ${analyst.QUESTIONS.length} questions, ${analyst.EVIDENCE_PROMPTS.length} prompts, ${analyst.SELF_CHECK_PROMPTS.length} self-check prompts`);
   }
 }
 
