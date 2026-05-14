@@ -1,0 +1,141 @@
+<%- include('partials/header', { title: 'CSF scores', user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta" style="font-size:12px;text-decoration:none;">&larr; <%= engagement.name %></a>
+    </div>
+    <h1 class="page-title" style="margin-top:6px;">Scores</h1>
+    <div class="page-subtitle">
+      Rollup of subcategory scores into Categories, Functions, and Overall. Tier overlay applied at Function and Overall.
+      &middot; <%= rollup.coverage.scored %>/<%= rollup.coverage.total - rollup.coverage.excluded %> in-scope subcategories scored (<%= rollup.coverage.scoredPct %>%)
+      <% if (rollup.coverage.excluded > 0) { %>&middot; <%= rollup.coverage.excluded %> excluded from scope<% } %>
+    </div>
+  </div>
+</div>
+
+<% function tierColor(t) {
+     if (!t) return 'var(--text-tertiary)';
+     return { 1:'#b91c1c', 2:'#a16207', 3:'#1d4ed8', 4:'#15803d' }[t.tier] || 'var(--text)';
+   } %>
+<% function gapBadge(g) {
+     if (g == null) return '';
+     if (g === 0) return `<span class="meta" style="font-size:11px;">no gap</span>`;
+     if (g > 0)  return `<span style="color:#a16207;font-size:11px;">gap +${r1(g)}</span>`;
+     return `<span style="color:#15803d;font-size:11px;">${r1(g)}</span>`;
+   } %>
+
+<!-- Overall headline -->
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr <%= engagement.scope_mode === 'CURRENT_TARGET' ? '1fr 1fr' : '' %>;gap:24px;">
+    <div>
+      <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier) %>;">
+        <%= rollup.overall.current == null ? '-' : r1(rollup.overall.current) %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">/5</span>
+      </div>
+      <div class="kpi-label">Overall current</div>
+      <% if (rollup.overall.tier) { %>
+        <div class="meta" style="font-size:12px;margin-top:4px;color:<%= tierColor(rollup.overall.tier) %>;font-weight:500;"><%= rollup.overall.tier.label %></div>
+      <% } %>
+    </div>
+    <div>
+      <div class="kpi-num"><%= rollup.coverage.scoredPct %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+      <div class="kpi-label">Scoring coverage</div>
+      <div class="meta" style="font-size:11.5px;margin-top:4px;"><%= rollup.coverage.scored %> of <%= rollup.coverage.total - rollup.coverage.excluded %> in-scope</div>
+    </div>
+    <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
+      <div>
+        <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier_target) %>;">
+          <%= rollup.overall.target == null ? '-' : r1(rollup.overall.target) %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">/5</span>
+        </div>
+        <div class="kpi-label">Overall target</div>
+        <% if (rollup.overall.tier_target) { %>
+          <div class="meta" style="font-size:12px;margin-top:4px;color:<%= tierColor(rollup.overall.tier_target) %>;font-weight:500;"><%= rollup.overall.tier_target.label %></div>
+        <% } %>
+      </div>
+      <div>
+        <div class="kpi-num" style="color:#a16207;"><%= rollup.overall.gap == null ? '-' : (rollup.overall.gap > 0 ? '+' : '') + r1(rollup.overall.gap) %></div>
+        <div class="kpi-label">Overall gap</div>
+        <div class="meta" style="font-size:11.5px;margin-top:4px;">target - current</div>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Function tiles -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
+  <% rollup.functions.forEach(fn => { %>
+    <div class="panel" style="border-top:3px solid <%= tierColor(fn.tier) %>;">
+      <div class="panel-pad">
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span class="mono" style="font-weight:600;color:var(--accent);font-size:13px;"><%= fn.code %></span>
+          <span style="font-weight:600;font-size:13px;"><%= fn.name %></span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px;">
+          <div>
+            <div class="kpi-num num" style="font-size:24px;color:<%= tierColor(fn.tier) %>;"><%= fn.current == null ? '-' : r1(fn.current) %></div>
+            <div class="kpi-meta">current</div>
+          </div>
+          <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
+            <div>
+              <div class="kpi-num num" style="font-size:24px;color:<%= tierColor(fn.tier_target) %>;"><%= fn.target == null ? '-' : r1(fn.target) %></div>
+              <div class="kpi-meta">target</div>
+            </div>
+            <div>
+              <div class="kpi-num num" style="font-size:24px;color:#a16207;"><%= fn.gap == null ? '-' : (fn.gap > 0 ? '+' : '') + r1(fn.gap) %></div>
+              <div class="kpi-meta">gap</div>
+            </div>
+          <% } %>
+        </div>
+        <% if (fn.tier) { %>
+          <div style="margin-top:6px;font-size:11.5px;color:<%= tierColor(fn.tier) %>;font-weight:500;"><%= fn.tier.label %></div>
+        <% } %>
+      </div>
+    </div>
+  <% }) %>
+</div>
+
+<!-- Drill-down: Function -> Category -->
+<% rollup.functions.forEach(fn => { %>
+  <details class="panel" style="margin-bottom:10px;" open>
+    <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
+      <span class="mono" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
+      <span style="font-weight:600;font-size:14px;"><%= fn.name %></span>
+      <div style="margin-left:auto;display:flex;gap:18px;align-items:center;">
+        <span style="font-size:14px;font-weight:500;color:<%= tierColor(fn.tier) %>;"><%= fn.current == null ? '-' : r1(fn.current) %><span style="font-size:11px;color:var(--text-tertiary);">/5</span></span>
+        <% if (fn.tier) { %><span class="tag" style="background:rgba(0,0,0,0.04);color:<%= tierColor(fn.tier) %>;font-size:11px;">Tier <%= fn.tier.tier %></span><% } %>
+      </div>
+    </summary>
+    <table class="t">
+      <thead>
+        <tr>
+          <th style="width:90px">Code</th>
+          <th>Category</th>
+          <th style="width:90px;text-align:right;">Current</th>
+          <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
+            <th style="width:90px;text-align:right;">Target</th>
+            <th style="width:90px;text-align:right;">Gap</th>
+          <% } %>
+          <th style="width:90px;text-align:right;">Subs scored</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% fn.categories.forEach(cat => { %>
+          <% const scored = cat.subcategories.filter(s => !s.excluded && s.current != null).length; %>
+          <% const inscope = cat.subcategories.filter(s => !s.excluded).length; %>
+          <tr>
+            <td class="mono" style="font-size:11.5px;"><%= cat.code %></td>
+            <td style="font-size:12.5px;"><%= cat.name %></td>
+            <td class="num" style="font-size:13px;"><%= cat.current == null ? '-' : r1(cat.current) %></td>
+            <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
+              <td class="num" style="font-size:13px;"><%= cat.target == null ? '-' : r1(cat.target) %></td>
+              <td class="num" style="font-size:12px;"><%- gapBadge(cat.gap) %></td>
+            <% } %>
+            <td class="num meta" style="font-size:11.5px;"><%= scored %>/<%= inscope %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </details>
+<% }) %>
+
+<%- include('partials/footer') %>

@@ -15,6 +15,7 @@
   <div style="display:flex;align-items:center;gap:10px;">
     <% const statusColor = { 'Draft':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Under Review':'#a16207', 'Approved':'#15803d', 'Published':'#15803d', 'Closed':'var(--text-tertiary)' }[engagement.status] || 'var(--text)' ; %>
     <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:12px;"><%= engagement.status %></span>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/scores" class="btn btn-secondary btn-xs">Scores</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="btn btn-secondary btn-xs">Findings</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="btn btn-primary btn-xs">Open assessment &rarr;</a>
   </div>
@@ -95,8 +96,9 @@
 <div class="panel">
   <div class="panel-head"><h2>Next stages</h2></div>
   <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;">
-    <div>Stage 5 wires the scoring engine (rollups Category &rarr; Function &rarr; Overall) and the Tier overlay (1-4).</div>
-    <div>Stages 6-12 add dashboards, versioning, reports, client portal, benchmarking, and the analyst-friendly content layer.</div>
+    <div>Stage 6 adds the consultant dashboard (progress, time, score distribution, outstanding items, activity feed).</div>
+    <div>Stage 7 adds engagement versions + snapshots (immutable point-in-time copies, "what changed" diff).</div>
+    <div>Stages 8-12 add report generation (Word + PDF), client portal, benchmarking, beginner-friendly analyst features, and prototype polish.</div>
   </div>
 </div>
 

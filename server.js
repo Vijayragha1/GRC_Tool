@@ -6630,6 +6630,21 @@ app.post('/workspaces/:wsId/csf/:id(\\d+)/comments', requireAuth, requireWorkspa
   res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
 });
 
+// ---- Stage 5: Scoring rollup ------------------------------------------------
+const csfScoring = require('./lib/csf-scoring');
+
+app.get('/workspaces/:wsId/csf/:id(\\d+)/scores', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  csfPolicy.ensureAssessmentRows(db, engagement);
+  const rollup = csfScoring.computeEngagementRollup(db, engagement);
+  res.render('csf_scores', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, rollup,
+    r1: csfScoring.r1,
+  });
+});
+
 // Resolve a reviewer comment.
 app.post('/workspaces/:wsId/csf/:id(\\d+)/comments/:commentId(\\d+)/resolve', requireAuth, requireWorkspace, (req, res) => {
   const { engagement, error } = loadCsfEngagement(req);
