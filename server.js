@@ -6815,6 +6815,118 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/versions/:vid(\\d+)', requireAuth, requ
   });
 });
 
+// ---- Stage 9: Client portal -------------------------------------------------
+// Read-mostly view of a Published engagement. In prototype mode (auth deferred)
+// anyone with workspace access can hit this; real client-user auth comes in
+// Stage 13. The portal shows the current Published version's data plus the
+// live remediation tracker (decision #34: snapshot-at-publish except for
+// remediation, which stays live).
+
+const REMEDIATION_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'BLOCKED'];
+
+app.get('/workspaces/:wsId/csf/:id(\\d+)/portal', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+
+  // Pick the current published version. If never published, show the empty
+  // state - the portal is a published-data surface by design.
+  const currentVersion = db.prepare(`
+    SELECT * FROM csf_engagement_versions WHERE engagement_id=? AND is_current=1 LIMIT 1
+  `).get(engagement.id);
+
+  if (!currentVersion) {
+    return res.render('csf_portal', {
+      user: req.user, ws: req.workspace, active: 'csf',
+      engagement, currentVersion: null,
+    });
+  }
+
+  const rollup = csfVersioning.loadSnapshotRollup(db, currentVersion);
+  const allVersions = db.prepare(`SELECT id, version_number, published_at FROM csf_engagement_versions WHERE engagement_id=? ORDER BY published_at DESC`).all(engagement.id);
+
+  // Snapshot findings + live remediation status joined onto live recommendations.
+  const findingSnaps = db.prepare(`
+    SELECT fs.*, s.code AS sub_code
+    FROM csf_finding_snapshots fs
+    LEFT JOIN csf_subcategories s ON s.id = fs.subcategory_id
+    WHERE fs.version_id=?
+    ORDER BY CASE fs.severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END
+  `).all(currentVersion.id);
+  const recSnaps = db.prepare(`
+    SELECT rs.*, rstat.status AS rem_status, rstat.client_note AS rem_note, rstat.updated_at AS rem_updated_at,
+      f.title AS finding_title, f.severity AS finding_severity
+    FROM csf_recommendation_snapshots rs
+    LEFT JOIN csf_remediation_status rstat ON rstat.recommendation_id = rs.recommendation_id
+    LEFT JOIN csf_finding_snapshots f ON f.finding_id = rs.finding_id AND f.version_id = rs.version_id
+    WHERE rs.version_id=?
+  `).all(currentVersion.id);
+
+  // Comments on findings (client side). Empty in prototype until client users exist.
+  const clientComments = db.prepare(`
+    SELECT cc.*, u.name AS commenter_name FROM csf_client_comments cc
+    INNER JOIN users u ON u.id = cc.client_user_id
+    INNER JOIN csf_findings f ON f.id = cc.finding_id
+    WHERE f.engagement_id=? AND cc.deleted_at IS NULL ORDER BY cc.created_at DESC LIMIT 50
+  `).all(engagement.id);
+
+  res.render('csf_portal', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, currentVersion, allVersions, rollup,
+    findingSnaps, recSnaps, clientComments,
+    REMEDIATION_STATUSES,
+    r1: csfScoring.r1,
+  });
+});
+
+// Update remediation status for a recommendation.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/remediation/:recId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!engagement) return res.status(404).send('Not found');
+  if (engagement.status !== 'Published') return res.status(400).send('Remediation tracker is only available after publish.');
+
+  const status = req.body.status;
+  if (!REMEDIATION_STATUSES.includes(status)) return res.status(400).send('Bad status');
+  const note = (req.body.client_note || '').trim() || null;
+  const url = (req.body.client_evidence_url || '').trim() || null;
+
+  // Verify recommendation belongs to this engagement.
+  const rec = db.prepare(`
+    SELECT r.id FROM csf_recommendations r
+    INNER JOIN csf_findings f ON f.id = r.finding_id
+    WHERE r.id=? AND f.engagement_id=?
+  `).get(req.params.recId, engagement.id);
+  if (!rec) return res.status(404).send('Recommendation not found');
+
+  db.prepare(`
+    INSERT INTO csf_remediation_status (recommendation_id, status, client_evidence_url, client_note, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(recommendation_id) DO UPDATE SET
+      status=excluded.status, client_evidence_url=excluded.client_evidence_url,
+      client_note=excluded.client_note, updated_by=excluded.updated_by,
+      updated_at=CURRENT_TIMESTAMP
+  `).run(rec.id, status, url, note, req.user.id);
+
+  logAction(req.user.id, req.workspace.id, 'csf_remediation_update', 'csf_recommendation', rec.id, { status }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/portal#rec-${rec.id}`);
+});
+
+// Client comment on a finding.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/comments', requireAuth, requireWorkspace, (req, res) => {
+  const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+  if (!engagement) return res.status(404).send('Not found');
+  if (engagement.status !== 'Published') return res.status(400).send('Comments only available after publish.');
+  const findingId = parseInt(req.body.finding_id, 10);
+  const text = (req.body.text || '').trim();
+  if (!findingId || !text) return redirectBack(req, res, 'Comment text and finding id required', 'error');
+
+  const f = db.prepare(`SELECT id FROM csf_findings WHERE id=? AND engagement_id=? AND deleted_at IS NULL`).get(findingId, engagement.id);
+  if (!f) return res.status(404).send('Finding not found');
+
+  db.prepare(`INSERT INTO csf_client_comments (finding_id, client_user_id, text) VALUES (?, ?, ?)`).run(f.id, req.user.id, text);
+  logAction(req.user.id, req.workspace.id, 'csf_client_comment', 'csf_finding', f.id, {}, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/portal#comments`);
+});
+
 // ---- Stage 8: Reports + CSV export ------------------------------------------
 const csfReports = require('./lib/csf-reports');
 

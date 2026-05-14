@@ -2294,6 +2294,25 @@ function init() {
       FOREIGN KEY (finding_id) REFERENCES csf_findings(id)
     );
     CREATE INDEX IF NOT EXISTS idx_csf_rec_snap_ver ON csf_recommendation_snapshots(version_id);
+
+    -- ========== NIST CSF Stage 9: Remediation tracker (client-advisory) ==========
+    -- The remediation tracker is the one piece of the client portal that stays
+    -- live after publish (locked decision #34). Clients use it to share
+    -- progress on recommendations; consultants see it in their inbox.
+    -- Recommendation IDs reference the live csf_recommendations row, not a
+    -- snapshot, because the same recommendation may carry remediation status
+    -- across multiple republished versions.
+    CREATE TABLE IF NOT EXISTS csf_remediation_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recommendation_id INTEGER NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+      client_evidence_url TEXT,
+      client_note TEXT,
+      updated_by INTEGER,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (recommendation_id) REFERENCES csf_recommendations(id) ON DELETE CASCADE,
+      FOREIGN KEY (updated_by) REFERENCES users(id)
+    );
   `);
 
   // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on
