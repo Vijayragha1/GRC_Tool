@@ -1,0 +1,83 @@
+<%- include('partials/header', { title: 'Findings', user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta" style="font-size:12px;text-decoration:none;">&larr; <%= engagement.name %></a>
+    </div>
+    <h1 class="page-title" style="margin-top:6px;">Findings &amp; recommendations</h1>
+    <div class="page-subtitle"><%= findings.length %> finding<%= findings.length === 1 ? '' : 's' %> across this engagement.</div>
+  </div>
+</div>
+
+<% if (canCreate) { %>
+  <details class="panel" style="margin-bottom:14px;">
+    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);">+ New engagement-level finding</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:2fr 1fr;gap:10px;">
+      <div style="grid-column:1/-1;">
+        <label class="label">Title</label>
+        <input class="input" name="title" required placeholder="One-line summary of the finding">
+      </div>
+      <div style="grid-column:1/-1;">
+        <label class="label">Description</label>
+        <textarea class="textarea" name="description" rows="3" placeholder="Detail. What was observed; why it matters; any cross-cutting context."></textarea>
+      </div>
+      <div>
+        <label class="label">Severity</label>
+        <select class="select" name="severity">
+          <% severities.forEach(s => { %><option value="<%= s %>" <%= s === 'MEDIUM' ? 'selected' : '' %>><%= s %></option><% }) %>
+        </select>
+      </div>
+      <div style="align-self:end;text-align:right;">
+        <input type="hidden" name="promoted_to_engagement_theme" value="1">
+        <button class="btn btn-primary btn-xs">Create finding</button>
+      </div>
+    </form>
+  </details>
+<% } %>
+
+<% const sevColor = { 'CRITICAL':'#b91c1c', 'HIGH':'#dc2626', 'MEDIUM':'#a16207', 'LOW':'var(--text-tertiary)' }; %>
+
+<% if (findings.length === 0) { %>
+  <div class="panel">
+    <div class="panel-pad">
+      <div class="empty-state">
+        <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div class="empty-title">No findings yet</div>
+        <div class="empty-sub">Findings can be created against a specific Subcategory (from its detail page) or at the engagement level (from this page). Each finding can have one or more recommendations.</div>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<% findings.forEach(f => { %>
+  <div class="panel" style="margin-bottom:12px;border-left:3px solid <%= sevColor[f.severity] || 'var(--border)' %>;">
+    <div class="panel-head" style="display:flex;align-items:center;gap:10px;">
+      <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:11px;font-weight:600;"><%= f.severity %></span>
+      <h2 style="font-size:14px;font-weight:600;margin:0;flex:1;"><%= f.title %></h2>
+      <span class="meta" style="font-size:11.5px;">
+        <% if (f.sub_code) { %>
+          <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= f.subcategory_id %>" class="mono" style="color:var(--accent);text-decoration:none;"><%= f.sub_code %></a>
+        <% } else if (f.promoted_to_engagement_theme) { %>
+          engagement theme
+        <% } else { %>
+          -
+        <% } %>
+      </span>
+      <span class="tag" style="background:var(--bg-subtle);font-size:11px;"><%= f.status %></span>
+    </div>
+    <% if (f.description) { %>
+      <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);line-height:1.55;white-space:pre-wrap;"><%= f.description %></div>
+    <% } %>
+    <div class="panel-pad" style="font-size:11px;color:var(--text-tertiary);padding-top:0;">By <%= f.creator || '-' %> &middot; <%= f.created_at %> &middot; <%= f.rec_count %> recommendation<%= f.rec_count === 1 ? '' : 's' %></div>
+
+    <% if (canCreate) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings/<%= f.id %>/delete" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:flex-end;gap:6px;" onsubmit="return appConfirmForm(event, 'Delete this finding (soft-delete)?')">
+        <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings">
+        <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:11px;">Delete</button>
+      </form>
+    <% } %>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

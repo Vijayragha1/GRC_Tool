@@ -2137,6 +2137,87 @@ function init() {
       FOREIGN KEY (assessment_id) REFERENCES csf_subcategory_assessments(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_csf_ev_assess ON csf_evidence_items(assessment_id);
+
+    -- ========== NIST CSF Stage 4: Findings, Recommendations, Comments ==========
+    -- Findings hang off either a Subcategory assessment (per-subcat finding)
+    -- OR the Engagement directly (engagement-level theme). assessment_id is
+    -- NULL when promoted_to_engagement_theme=1 OR when the finding was opened
+    -- at engagement scope to begin with. Severity per locked decision #19.
+    CREATE TABLE IF NOT EXISTS csf_findings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      assessment_id INTEGER,
+      title TEXT NOT NULL,
+      description TEXT,
+      severity TEXT NOT NULL DEFAULT 'MEDIUM',
+      status TEXT NOT NULL DEFAULT 'Draft',
+      promoted_to_engagement_theme INTEGER DEFAULT 0,
+      deleted_at DATETIME,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (assessment_id) REFERENCES csf_subcategory_assessments(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_findings_eng ON csf_findings(engagement_id);
+    CREATE INDEX IF NOT EXISTS idx_csf_findings_assess ON csf_findings(assessment_id);
+
+    -- Recommendations are children of Findings.
+    CREATE TABLE IF NOT EXISTS csf_recommendations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      finding_id INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      estimated_effort TEXT,
+      priority TEXT,
+      target_completion_date DATE,
+      roadmap_phase TEXT,
+      deleted_at DATETIME,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (finding_id) REFERENCES csf_findings(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_recs_finding ON csf_recommendations(finding_id);
+
+    -- Reviewer comments attach to either an assessment OR a finding.
+    -- requires_revision=1 on an assessment-targeted comment is the "Needs
+    -- Revision" mechanism and reopens the assessment state.
+    CREATE TABLE IF NOT EXISTS csf_reviewer_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      assessment_id INTEGER,
+      finding_id INTEGER,
+      commenter_id INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      requires_revision INTEGER DEFAULT 0,
+      resolved INTEGER DEFAULT 0,
+      resolved_by INTEGER,
+      resolved_at DATETIME,
+      deleted_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (engagement_id) REFERENCES csf_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (assessment_id) REFERENCES csf_subcategory_assessments(id) ON DELETE CASCADE,
+      FOREIGN KEY (finding_id) REFERENCES csf_findings(id) ON DELETE CASCADE,
+      FOREIGN KEY (commenter_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_rc_assess ON csf_reviewer_comments(assessment_id);
+    CREATE INDEX IF NOT EXISTS idx_csf_rc_finding ON csf_reviewer_comments(finding_id);
+
+    -- Client comments land here for the portal-side commenting that arrives
+    -- after publication (Stage 9). Schema lands now so the migration doesn't
+    -- have to backfill later.
+    CREATE TABLE IF NOT EXISTS csf_client_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      finding_id INTEGER NOT NULL,
+      client_user_id INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      read_by_consultant INTEGER DEFAULT 0,
+      deleted_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (finding_id) REFERENCES csf_findings(id) ON DELETE CASCADE,
+      FOREIGN KEY (client_user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_csf_cc_finding ON csf_client_comments(finding_id);
   `);
 
   // Seed CSF 2.0 catalog if this version isn't already loaded. Idempotent on

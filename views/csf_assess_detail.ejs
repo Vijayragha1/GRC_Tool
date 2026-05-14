@@ -197,4 +197,148 @@
   </div>
 </div>
 
+<!-- Stage 4: Findings + Reviewer comments -->
+<% const sevColor = { 'CRITICAL':'#b91c1c', 'HIGH':'#dc2626', 'MEDIUM':'#a16207', 'LOW':'var(--text-tertiary)' }; %>
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;">
+  <!-- Findings + recommendations -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Findings</h2>
+      <span class="meta" style="font-size:11.5px;"><%= findings.length %> on this subcategory</span>
+    </div>
+
+    <% if (findings.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No findings yet on <%= detail.sub_code %>. Add one below if there's a gap, weakness, or non-conformity that should be tracked.</div>
+    <% } else { %>
+      <div class="divide-row">
+        <% findings.forEach(f => { %>
+          <div style="padding:10px 14px;border-left:3px solid <%= sevColor[f.severity] || 'var(--border)' %>;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
+              <strong style="font-size:13px;flex:1;"><%= f.title %></strong>
+              <span class="tag" style="background:var(--bg-subtle);font-size:10px;"><%= f.status %></span>
+              <% if (canCreateFinding) { %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings/<%= f.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this finding (soft-delete)?')">
+                  <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
+                  <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:10.5px;">&times;</button>
+                </form>
+              <% } %>
+            </div>
+            <% if (f.description) { %>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= f.description %></div>
+            <% } %>
+            <div class="meta" style="font-size:11px;margin-top:4px;">By <%= f.creator || '-' %> &middot; <%= f.created_at %></div>
+
+            <% const recs = recsByFinding[f.id] || []; %>
+            <% if (recs.length) { %>
+              <div style="margin-top:8px;padding-left:12px;border-left:2px solid var(--border);">
+                <div class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recommendations</div>
+                <% recs.forEach(r => { %>
+                  <div style="font-size:12px;margin-bottom:6px;line-height:1.5;">
+                    <%= r.description %>
+                    <div style="display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;">
+                      <% if (r.estimated_effort) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">effort: <%= r.estimated_effort %></span><% } %>
+                      <% if (r.priority) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">priority: <%= r.priority %></span><% } %>
+                      <% if (r.roadmap_phase) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);"><%= r.roadmap_phase.replace('_PLUS','+').replace('_','-') %></span><% } %>
+                      <% if (r.target_completion_date) { %><span class="meta" style="font-size:10px;">due <%= r.target_completion_date %></span><% } %>
+                      <% if (canManageRecs) { %>
+                        <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/recommendations/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this recommendation?')">
+                          <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
+                          <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:10px;">&times;</button>
+                        </form>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }) %>
+              </div>
+            <% } %>
+
+            <% if (canManageRecs) { %>
+              <details style="margin-top:6px;">
+                <summary style="cursor:pointer;font-size:11px;color:var(--accent);">+ Add recommendation</summary>
+                <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings/<%= f.id %>/recommendations" style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;">
+                  <textarea class="textarea" name="description" rows="2" placeholder="What should the client do?" required style="grid-column:1/-1;font-size:11.5px;"></textarea>
+                  <select class="select" name="estimated_effort" style="font-size:11px;">
+                    <option value="">- effort -</option>
+                    <% efforts.forEach(e => { %><option value="<%= e %>"><%= e %></option><% }) %>
+                  </select>
+                  <select class="select" name="priority" style="font-size:11px;">
+                    <option value="">- priority -</option>
+                    <% priorities.forEach(p => { %><option value="<%= p %>"><%= p %></option><% }) %>
+                  </select>
+                  <select class="select" name="roadmap_phase" style="font-size:11px;">
+                    <option value="">- phase -</option>
+                    <% phases.forEach(ph => { %><option value="<%= ph %>"><%= ph.replace('_PLUS','+').replace('_','-') %></option><% }) %>
+                  </select>
+                  <input class="input" type="date" name="target_completion_date" style="font-size:11px;">
+                  <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
+                  <button class="btn btn-primary btn-xs" style="grid-column:1/-1;font-size:11px;">Add</button>
+                </form>
+              </details>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (canCreateFinding) { %>
+      <details class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ New finding on <%= detail.sub_code %></summary>
+        <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" style="margin-top:8px;display:grid;grid-template-columns:2fr 1fr;gap:8px;">
+          <input class="input" name="title" required placeholder="Short summary" style="grid-column:1/-1;font-size:12px;">
+          <textarea class="textarea" name="description" rows="3" placeholder="Detail" style="grid-column:1/-1;font-size:12px;"></textarea>
+          <select class="select" name="severity" style="font-size:12px;">
+            <% severities.forEach(s => { %><option value="<%= s %>" <%= s === 'MEDIUM' ? 'selected' : '' %>><%= s %></option><% }) %>
+          </select>
+          <div style="text-align:right;align-self:end;">
+            <input type="hidden" name="assessment_id" value="<%= detail.id %>">
+            <button class="btn btn-primary btn-xs">Create finding</button>
+          </div>
+        </form>
+      </details>
+    <% } %>
+  </div>
+
+  <!-- Reviewer comments -->
+  <div class="panel">
+    <div class="panel-head"><h2>Reviewer comments</h2><span class="meta" style="font-size:11.5px;"><%= comments.length %></span></div>
+    <% if (comments.length === 0) { %>
+      <div class="panel-pad meta" style="font-size:12px;">No comments yet. Reviewers can leave notes here; "Needs revision" reopens this subcategory if it's been reviewed.</div>
+    <% } else { %>
+      <div class="divide-row">
+        <% comments.forEach(c => { %>
+          <div style="padding:10px 14px;<%= c.resolved ? 'opacity:0.5;' : '' %>">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <strong style="font-size:12px;"><%= c.commenter_name %></strong>
+              <% if (c.requires_revision) { %><span class="tag tag-warn" style="font-size:10px;">needs revision</span><% } %>
+              <% if (c.resolved) { %><span class="tag" style="background:rgba(21,128,61,0.08);color:#15803d;font-size:10px;">resolved</span><% } %>
+              <span class="meta" style="font-size:11px;margin-left:auto;"><%= c.created_at %></span>
+            </div>
+            <div style="font-size:12.5px;margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= c.text %></div>
+            <% if (!c.resolved) { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/comments/<%= c.id %>/resolve" style="margin-top:6px;">
+                <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
+                <button class="btn btn-ghost btn-xs" style="font-size:11px;">Mark resolved</button>
+              </form>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (canPostComment) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/comments" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+        <textarea class="textarea" name="text" rows="3" placeholder="Comment, push-back, or clarification" required style="font-size:12px;"></textarea>
+        <input type="hidden" name="assessment_id" value="<%= detail.id %>">
+        <label style="display:flex;gap:6px;align-items:center;font-size:11.5px;margin-top:6px;">
+          <input type="checkbox" name="requires_revision" value="1">
+          Needs revision (reopens to Draft Complete if in Reviewed state)
+        </label>
+        <button class="btn btn-primary btn-xs" style="margin-top:6px;">Post comment</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
 <%- include('partials/footer') %>

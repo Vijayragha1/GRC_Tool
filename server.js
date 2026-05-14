@@ -6278,14 +6278,48 @@ app.get('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)', requireAuth, requ
   const allowedNextStates = next_state_opts.filter(s => csfPolicy.canTransitionTo(db, req.user, engagement, detail, s));
   const warnings = csfPolicy.thinnessWarnings(detail, evidence.length);
 
+  // Stage 4: findings on this subcategory + reviewer comments on this assessment
+  const findings = db.prepare(`
+    SELECT f.*, u.name AS creator,
+      (SELECT COUNT(*) FROM csf_recommendations r WHERE r.finding_id=f.id AND r.deleted_at IS NULL) AS rec_count
+    FROM csf_findings f
+    LEFT JOIN users u ON u.id = f.created_by
+    WHERE f.engagement_id=? AND f.assessment_id=? AND f.deleted_at IS NULL
+    ORDER BY
+      CASE f.severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END,
+      f.created_at DESC
+  `).all(engagement.id, detail.id);
+  const findingIds = findings.map(f => f.id);
+  const recsByFinding = {};
+  if (findingIds.length) {
+    const placeholders = findingIds.map(() => '?').join(',');
+    const recs = db.prepare(`SELECT * FROM csf_recommendations WHERE finding_id IN (${placeholders}) AND deleted_at IS NULL ORDER BY created_at`).all(...findingIds);
+    recs.forEach(r => { (recsByFinding[r.finding_id] = recsByFinding[r.finding_id] || []).push(r); });
+  }
+  const comments = db.prepare(`
+    SELECT c.*, u.name AS commenter_name
+    FROM csf_reviewer_comments c
+    INNER JOIN users u ON u.id = c.commenter_id
+    WHERE c.engagement_id=? AND c.assessment_id=? AND c.deleted_at IS NULL
+    ORDER BY c.created_at DESC
+  `).all(engagement.id, detail.id);
+
   res.render('csf_assess_detail', {
     user: req.user, ws: req.workspace, active: 'csf',
     engagement, detail, evidence, isoRefs,
     prev, next,
     allowedNextStates,
     warnings,
+    findings, recsByFinding, comments,
     canEnterScore: csfPolicy.canEnterScore(db, req.user, engagement, detail),
     canCollect: csfPolicy.canCollectEvidence(db, req.user, engagement),
+    canCreateFinding: csfPolicy.canCreateFinding(db, req.user, engagement),
+    canManageRecs: csfPolicy.canManageRecommendations(db, req.user, engagement),
+    canPostComment: csfPolicy.canPostReviewerComment(db, req.user, engagement),
+    severities: csfPolicy.FINDING_SEVERITIES,
+    efforts: csfPolicy.RECOMMENDATION_EFFORTS,
+    priorities: csfPolicy.RECOMMENDATION_PRIORITIES,
+    phases: csfPolicy.ROADMAP_PHASES,
   });
 });
 
@@ -6404,6 +6438,208 @@ app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/evidence/:evId(\\d
   db.prepare(`UPDATE csf_evidence_items SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND assessment_id=?`).run(req.params.evId, assess.id);
   logAction(req.user.id, req.workspace.id, 'csf_evidence_delete', 'csf_evidence_item', req.params.evId, null, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
+});
+
+// ---- Stage 4: Findings, Recommendations, Reviewer comments ------------------
+
+// Engagement-level findings list (all findings across the engagement).
+app.get('/workspaces/:wsId/csf/:id(\\d+)/findings', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+  const findings = db.prepare(`
+    SELECT f.*, u.name AS creator,
+      s.code AS sub_code, s.id AS subcategory_id,
+      (SELECT COUNT(*) FROM csf_recommendations r WHERE r.finding_id=f.id AND r.deleted_at IS NULL) AS rec_count
+    FROM csf_findings f
+    LEFT JOIN users u ON u.id = f.created_by
+    LEFT JOIN csf_subcategory_assessments a ON a.id = f.assessment_id
+    LEFT JOIN csf_subcategories s ON s.id = a.subcategory_id
+    WHERE f.engagement_id=? AND f.deleted_at IS NULL
+    ORDER BY
+      CASE f.severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END,
+      f.created_at DESC
+  `).all(engagement.id);
+  res.render('csf_findings', {
+    user: req.user, ws: req.workspace, active: 'csf',
+    engagement, findings,
+    severities: csfPolicy.FINDING_SEVERITIES,
+    canCreate: csfPolicy.canCreateFinding(db, req.user, engagement),
+  });
+});
+
+// Create a finding. assessment_id from body is optional (engagement-level
+// theme when omitted).
+app.post('/workspaces/:wsId/csf/:id(\\d+)/findings', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canCreateFinding(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const b = req.body;
+  if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Title is required', 'error');
+  const severity = csfPolicy.FINDING_SEVERITIES.includes(b.severity) ? b.severity : 'MEDIUM';
+  const assessmentId = b.assessment_id ? parseInt(b.assessment_id, 10) : null;
+  const promoted = b.promoted_to_engagement_theme === '1' || !assessmentId ? 1 : 0;
+  const findingId = db.prepare(`
+    INSERT INTO csf_findings (engagement_id, assessment_id, title, description, severity, status, promoted_to_engagement_theme, created_by)
+    VALUES (?, ?, ?, ?, ?, 'Draft', ?, ?)
+  `).run(engagement.id, assessmentId, b.title.trim(), (b.description || '').trim() || null, severity, promoted, req.user.id).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'csf_finding_create', 'csf_finding', findingId, { title: b.title, severity }, auditCtx(req));
+  // Redirect back to where the user came from: subcategory detail if attached, else findings list.
+  if (assessmentId) {
+    const sub = db.prepare(`SELECT subcategory_id FROM csf_subcategory_assessments WHERE id=?`).get(assessmentId);
+    if (sub) return res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${sub.subcategory_id}`);
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Update a finding (title / description / severity / status / promote).
+app.post('/workspaces/:wsId/csf/:id(\\d+)/findings/:findingId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const finding = db.prepare(`SELECT * FROM csf_findings WHERE id=? AND engagement_id=? AND deleted_at IS NULL`).get(req.params.findingId, engagement.id);
+  if (!finding) return res.status(404).send('Not found');
+  if (!csfPolicy.canEditFinding(db, req.user, engagement, finding)) return res.status(403).send('Forbidden');
+  const b = req.body;
+  const sets = []; const vals = [];
+  if (b.title !== undefined) { sets.push('title=?'); vals.push(b.title.trim()); }
+  if (b.description !== undefined) { sets.push('description=?'); vals.push((b.description || '').trim() || null); }
+  if (b.severity !== undefined && csfPolicy.FINDING_SEVERITIES.includes(b.severity)) { sets.push('severity=?'); vals.push(b.severity); }
+  if (b.status !== undefined && csfPolicy.FINDING_STATUSES.includes(b.status)) { sets.push('status=?'); vals.push(b.status); }
+  if (b.promoted_to_engagement_theme !== undefined) {
+    const v = b.promoted_to_engagement_theme === '1' || b.promoted_to_engagement_theme === 'on' ? 1 : 0;
+    sets.push('promoted_to_engagement_theme=?'); vals.push(v);
+  }
+  if (sets.length) {
+    sets.push('updated_at=CURRENT_TIMESTAMP');
+    vals.push(finding.id);
+    db.prepare(`UPDATE csf_findings SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+    logAction(req.user.id, req.workspace.id, 'csf_finding_update', 'csf_finding', finding.id, Object.keys(b).filter(k => k !== '_csrf'), auditCtx(req));
+  }
+  res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Soft-delete a finding.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/findings/:findingId(\\d+)/delete', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const finding = db.prepare(`SELECT * FROM csf_findings WHERE id=? AND engagement_id=? AND deleted_at IS NULL`).get(req.params.findingId, engagement.id);
+  if (!finding) return res.status(404).send('Not found');
+  if (!csfPolicy.canDeleteFinding(db, req.user, engagement, finding)) return res.status(403).send('Forbidden');
+  db.prepare(`UPDATE csf_findings SET deleted_at=CURRENT_TIMESTAMP WHERE id=?`).run(finding.id);
+  logAction(req.user.id, req.workspace.id, 'csf_finding_delete', 'csf_finding', finding.id, null, auditCtx(req));
+  res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Add a recommendation to a finding.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/findings/:findingId(\\d+)/recommendations', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canManageRecommendations(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const finding = db.prepare(`SELECT * FROM csf_findings WHERE id=? AND engagement_id=? AND deleted_at IS NULL`).get(req.params.findingId, engagement.id);
+  if (!finding) return res.status(404).send('Not found');
+  const b = req.body;
+  if (!b.description || !b.description.trim()) return redirectBack(req, res, 'Recommendation text is required', 'error');
+  const effort = csfPolicy.RECOMMENDATION_EFFORTS.includes(b.estimated_effort) ? b.estimated_effort : null;
+  const priority = csfPolicy.RECOMMENDATION_PRIORITIES.includes(b.priority) ? b.priority : null;
+  const phase = csfPolicy.ROADMAP_PHASES.includes(b.roadmap_phase) ? b.roadmap_phase : null;
+  const recId = db.prepare(`
+    INSERT INTO csf_recommendations (finding_id, description, estimated_effort, priority, target_completion_date, roadmap_phase, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(finding.id, b.description.trim(), effort, priority, b.target_completion_date || null, phase, req.user.id).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'csf_recommendation_create', 'csf_recommendation', recId, { finding_id: finding.id }, auditCtx(req));
+  res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Update a recommendation.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/recommendations/:recId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canManageRecommendations(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const rec = db.prepare(`
+    SELECT r.* FROM csf_recommendations r
+    INNER JOIN csf_findings f ON f.id = r.finding_id
+    WHERE r.id=? AND f.engagement_id=? AND r.deleted_at IS NULL
+  `).get(req.params.recId, engagement.id);
+  if (!rec) return res.status(404).send('Not found');
+  const b = req.body;
+  const sets = []; const vals = [];
+  if (b.description !== undefined) { sets.push('description=?'); vals.push(b.description.trim()); }
+  if (b.estimated_effort !== undefined) { sets.push('estimated_effort=?'); vals.push(csfPolicy.RECOMMENDATION_EFFORTS.includes(b.estimated_effort) ? b.estimated_effort : null); }
+  if (b.priority !== undefined) { sets.push('priority=?'); vals.push(csfPolicy.RECOMMENDATION_PRIORITIES.includes(b.priority) ? b.priority : null); }
+  if (b.target_completion_date !== undefined) { sets.push('target_completion_date=?'); vals.push(b.target_completion_date || null); }
+  if (b.roadmap_phase !== undefined) { sets.push('roadmap_phase=?'); vals.push(csfPolicy.ROADMAP_PHASES.includes(b.roadmap_phase) ? b.roadmap_phase : null); }
+  if (sets.length) {
+    vals.push(rec.id);
+    db.prepare(`UPDATE csf_recommendations SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+    logAction(req.user.id, req.workspace.id, 'csf_recommendation_update', 'csf_recommendation', rec.id, Object.keys(b).filter(k => k !== '_csrf'), auditCtx(req));
+  }
+  res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Soft-delete a recommendation.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/recommendations/:recId(\\d+)/delete', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canManageRecommendations(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const rec = db.prepare(`
+    SELECT r.* FROM csf_recommendations r
+    INNER JOIN csf_findings f ON f.id = r.finding_id
+    WHERE r.id=? AND f.engagement_id=? AND r.deleted_at IS NULL
+  `).get(req.params.recId, engagement.id);
+  if (!rec) return res.status(404).send('Not found');
+  db.prepare(`UPDATE csf_recommendations SET deleted_at=CURRENT_TIMESTAMP WHERE id=?`).run(rec.id);
+  logAction(req.user.id, req.workspace.id, 'csf_recommendation_delete', 'csf_recommendation', rec.id, null, auditCtx(req));
+  res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Post a reviewer comment. Body may target an assessment OR a finding.
+// requires_revision on an assessment in Reviewed state reopens it.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/comments', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  if (!csfPolicy.canPostReviewerComment(db, req.user, engagement)) return res.status(403).send('Forbidden');
+  const b = req.body;
+  if (!b.text || !b.text.trim()) return redirectBack(req, res, 'Comment text is required', 'error');
+  const assessmentId = b.assessment_id ? parseInt(b.assessment_id, 10) : null;
+  const findingId = b.finding_id ? parseInt(b.finding_id, 10) : null;
+  if (!assessmentId && !findingId) return res.status(400).send('Comment must target an assessment or a finding');
+  const requiresRevision = b.requires_revision === '1' || b.requires_revision === 'on' ? 1 : 0;
+
+  const tx = db.transaction(() => {
+    const commentId = db.prepare(`
+      INSERT INTO csf_reviewer_comments (engagement_id, assessment_id, finding_id, commenter_id, text, requires_revision)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(engagement.id, assessmentId, findingId, req.user.id, b.text.trim(), requiresRevision).lastInsertRowid;
+
+    // Needs Revision: reopen the assessment if it had reached Reviewed.
+    if (assessmentId) {
+      const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE id=?`).get(assessmentId);
+      if (csfPolicy.shouldReopenAssessment({ requires_revision: requiresRevision }, assess)) {
+        db.prepare(`UPDATE csf_subcategory_assessments SET status='Draft Complete', last_edited_by=?, last_edited_at=CURRENT_TIMESTAMP WHERE id=?`).run(req.user.id, assessmentId);
+        logAction(req.user.id, req.workspace.id, 'csf_assessment_reopen', 'csf_subcategory_assessment', assessmentId, { from: 'Reviewed', to: 'Draft Complete', reason: 'Needs Revision', comment_id: commentId }, auditCtx(req));
+      }
+    }
+    return commentId;
+  });
+  const commentId = tx();
+  logAction(req.user.id, req.workspace.id, 'csf_comment_create', 'csf_reviewer_comment', commentId, { assessment_id: assessmentId, finding_id: findingId, requires_revision: requiresRevision }, auditCtx(req));
+
+  if (assessmentId) {
+    const sub = db.prepare(`SELECT subcategory_id FROM csf_subcategory_assessments WHERE id=?`).get(assessmentId);
+    if (sub) return res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${sub.subcategory_id}`);
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
+});
+
+// Resolve a reviewer comment.
+app.post('/workspaces/:wsId/csf/:id(\\d+)/comments/:commentId(\\d+)/resolve', requireAuth, requireWorkspace, (req, res) => {
+  const { engagement, error } = loadCsfEngagement(req);
+  if (error) return res.status(error.status).send(error.message);
+  const comment = db.prepare(`SELECT * FROM csf_reviewer_comments WHERE id=? AND engagement_id=? AND deleted_at IS NULL`).get(req.params.commentId, engagement.id);
+  if (!comment) return res.status(404).send('Not found');
+  if (!csfPolicy.canResolveComment(db, req.user, engagement, comment)) return res.status(403).send('Forbidden');
+  db.prepare(`UPDATE csf_reviewer_comments SET resolved=1, resolved_by=?, resolved_at=CURRENT_TIMESTAMP WHERE id=?`).run(req.user.id, comment.id);
+  logAction(req.user.id, req.workspace.id, 'csf_comment_resolve', 'csf_reviewer_comment', comment.id, null, auditCtx(req));
+  res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
 });
 
 // ==================== INTERESTED PARTIES (clause 4.2) ====================
