@@ -1,0 +1,44 @@
+/* Inter (variable). Self-hosted. Source: https://rsms.me/inter/ v4.1. */
+@font-face {
+  font-family: InterVariable;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/font-files/InterVariable.woff2') format('woff2');
+}
+@font-face {
+  font-family: InterVariable;
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/font-files/InterVariable-Italic.woff2') format('woff2');
+}
+/* Aliases for the family names used across the codebase. */
+@font-face {
+  font-family: 'Inter var';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/font-files/InterVariable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter var';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/font-files/InterVariable-Italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/font-files/InterVariable.woff2') format('woff2');
+}
+@font-face {
+  font-family: Inter;
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/font-files/InterVariable-Italic.woff2') format('woff2');
+}
