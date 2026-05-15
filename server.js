@@ -1730,6 +1730,9 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
 
   // Linked controls for the visible rows.
   const linksByEvidence = {};
+  // Cross-framework link counts and per-row link details for the visible rows.
+  // crossLinksByEvidence[evId] = { iso27001: [...], iso42001: [...], csf: [...] }
+  const crossLinksByEvidence = {};
   if (evidenceList.length) {
     const ids = evidenceList.map(e => e.id);
     const placeholders = ids.map(() => '?').join(',');
@@ -1744,6 +1747,26 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
     for (const l of links) {
       if (!linksByEvidence[l.evidence_id]) linksByEvidence[l.evidence_id] = [];
       linksByEvidence[l.evidence_id].push(l);
+    }
+    // Pull every evidence_links row for these evidence ids. We resolve the
+    // human-readable title for ISO 42001 and CSF by joining each framework's
+    // own catalog. Done as two LEFT JOINs because SQLite doesn't have CASE-
+    // dependent joins.
+    const allLinks = db.prepare(`
+      SELECT el.id AS link_id, el.evidence_id, el.framework, el.item_ref, el.section_ref,
+             ai.title AS iso42001_title,
+             cs.description AS csf_description
+      FROM evidence_links el
+      LEFT JOIN iso42001_items ai ON el.framework='iso42001' AND ai.id = el.item_ref
+      LEFT JOIN csf_subcategories cs ON el.framework='csf' AND cs.code = el.item_ref
+      WHERE el.evidence_id IN (${placeholders})
+      ORDER BY el.framework, el.item_ref
+    `).all(...ids);
+    for (const l of allLinks) {
+      if (!crossLinksByEvidence[l.evidence_id]) {
+        crossLinksByEvidence[l.evidence_id] = { iso27001: [], iso42001: [], csf: [] };
+      }
+      crossLinksByEvidence[l.evidence_id][l.framework].push(l);
     }
   }
 
@@ -1767,13 +1790,20 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
   const tagList = Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const allIsoItems = db.prepare(`SELECT id, type, title FROM iso_items ORDER BY sort_order ASC`).all();
+  // Per-framework catalogs for the "Link to..." picker on each row. Only
+  // populated when the workspace has that framework enabled.
+  const allIso42001Items = req.workspace.frameworks.includes('iso42001')
+    ? db.prepare(`SELECT id, type, title FROM iso42001_items ORDER BY sort_order ASC`).all() : [];
+  const allCsfSubcats = req.workspace.frameworks.includes('csf')
+    ? db.prepare(`SELECT code, description FROM csf_subcategories ORDER BY code ASC`).all() : [];
 
   res.render('evidence_library', {
     user: req.user, ws: req.workspace,
     title: 'Evidence library',
     active: 'evidence',
     evidenceList, linksByEvidence, counters,
-    allIsoItems,
+    crossLinksByEvidence,
+    allIsoItems, allIso42001Items, allCsfSubcats,
     q, filter, tag, today, expSoon,
     tagList
   });
@@ -1985,6 +2015,59 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
 // Tier A.1 - Add/remove additional control links on an evidence file.
 // section_ref may be either a single shared value (form: section_ref=...) or
 // per-link via a parallel array section_ref_for_<isoId>=... - the latter wins.
+// Cross-framework link route. Accepts framework=iso42001|csf and one or more
+// item_ref values, writes them into evidence_links directly. The existing
+// /controls endpoint stays for ISO 27001 (it writes to evidence_controls and
+// the sync trigger mirrors into evidence_links).
+app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  const framework = (req.body.framework || '').toString();
+  if (!ALLOWED_FRAMEWORKS.includes(framework) || framework === 'iso27001') {
+    // ISO 27001 keeps its own legacy route so the section_ref + primary
+    // bookkeeping stays consistent. Cross-framework only here.
+    return res.status(400).send('Use /controls for ISO 27001 links');
+  }
+  const refs = parseFormArray(req.body.item_ref);
+  if (!refs.length) return redirectBack(req, res);
+  // Validate item_refs against the framework's source-of-truth table so a
+  // typo or attacker-injected ref doesn't get stored.
+  let valid;
+  if (framework === 'iso42001') {
+    const ph = refs.map(() => '?').join(',');
+    valid = new Set(db.prepare(`SELECT id FROM iso42001_items WHERE id IN (${ph})`).all(...refs).map(r => r.id));
+  } else { // csf
+    const ph = refs.map(() => '?').join(',');
+    valid = new Set(db.prepare(`SELECT code FROM csf_subcategories WHERE code IN (${ph})`).all(...refs).map(r => r.code));
+  }
+  const filtered = refs.filter(r => valid.has(r));
+  if (!filtered.length) return redirectBack(req, res);
+  const ins = db.prepare(`INSERT OR IGNORE INTO evidence_links (evidence_id, framework, item_ref, section_ref) VALUES (?, ?, ?, ?)`);
+  const tx = db.transaction(() => {
+    for (const ref of filtered) ins.run(ev.id, framework, ref, req.body.section_ref || null);
+  });
+  try { tx(); } catch (_) {}
+  logAction(req.user.id, req.workspace.id, 'link_evidence_cross_framework', 'evidence', ev.id,
+            { framework, refs: filtered, count: filtered.length }, auditCtx(req));
+  redirectBack(req, res);
+});
+
+// Delete a single cross-framework link.
+app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  // Don't touch iso27001 rows from this route - those belong to the legacy
+  // /controls flow which has additional primary-key bookkeeping.
+  const link = db.prepare(`SELECT * FROM evidence_links WHERE id=? AND evidence_id=? AND framework != 'iso27001'`)
+                 .get(req.params.linkId, ev.id);
+  if (link) {
+    db.prepare(`DELETE FROM evidence_links WHERE id=?`).run(link.id);
+    logAction(req.user.id, req.workspace.id, 'unlink_evidence_cross_framework', 'evidence', ev.id,
+              { framework: link.framework, item_ref: link.item_ref }, auditCtx(req));
+  }
+  redirectBack(req, res);
+});
+
 app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
