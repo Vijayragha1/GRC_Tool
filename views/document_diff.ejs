@@ -27,14 +27,14 @@
         <%= diff.filter(d => d.k === 'eq').length %> unchanged
       </span>
     </div>
-    <div style="font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.6;padding:8px 0;background:var(--bg);">
+    <div class="text-md" style="font-family:ui-monospace,monospace;line-height:1.6;padding:8px 0;background:var(--bg);">
       <% diff.forEach(d => { %>
         <% if (d.k === 'eq') { %>
-          <div style="padding:1px 16px;color:var(--text-secondary);"><span style="display:inline-block;width:14px;color:var(--text-tertiary);"> </span><%= escapeHtml(d.a) %></div>
+          <div class="text-secondary" style="padding:1px 16px;"><span class="text-tertiary" style="display:inline-block;width:14px;"> </span><%= escapeHtml(d.a) %></div>
         <% } else if (d.k === 'add') { %>
-          <div style="padding:1px 16px;background:rgba(22,163,74,0.08);color:#15803d;"><span style="display:inline-block;width:14px;font-weight:600;">+</span><%= escapeHtml(d.b) %></div>
+          <div class="text-success" style="padding:1px 16px;background:rgba(22,163,74,0.08);"><span style="display:inline-block;width:14px;font-weight:600;">+</span><%= escapeHtml(d.b) %></div>
         <% } else { %>
-          <div style="padding:1px 16px;background:rgba(220,38,38,0.06);color:#b91c1c;text-decoration:line-through;"><span style="display:inline-block;width:14px;font-weight:600;">−</span><%= escapeHtml(d.a) %></div>
+          <div class="text-danger" style="padding:1px 16px;background:rgba(220,38,38,0.06);text-decoration:line-through;"><span style="display:inline-block;width:14px;font-weight:600;">−</span><%= escapeHtml(d.a) %></div>
         <% } %>
       <% }) %>
     </div>

@@ -60,7 +60,7 @@
         %>
           <form method="POST" action="/workspaces/<%= ws.id %>/improvements/<%= i.id %>" class="contents">
             <tr>
-              <td><input type="text" name="title" value="<%= i.title %>" class="input" style="font-size:12.5px;width:100%;" required></td>
+              <td><input type="text" name="title" value="<%= i.title %>" class="input text-md" style="width:100%;" required></td>
               <td>
                 <select name="source" class="select text-base">
                   <% ['','audit','mrm','monitoring','incident','ad-hoc'].forEach(s => { %>
@@ -80,7 +80,7 @@
               <td><button class="btn btn-ghost btn-xs text-xs">Save</button></td>
             </tr>
             <% if (i.description || i.impact_notes || i.source_ref) { %>
-              <tr><td colspan="6" class="meta" style="font-size:11.5px;padding:0 14px 6px 14px;line-height:1.5;border-bottom:1px solid var(--border);">
+              <tr><td colspan="6" class="meta text-sm" style="padding:0 14px 6px 14px;line-height:1.5;border-bottom:1px solid var(--border);">
                 <% if (i.source_ref) { %><span class="mono text-eyebrow">@<%= i.source_ref %></span> · <% } %>
                 <% if (i.description) { %><%= i.description %><% } %>
                 <% if (i.impact_notes) { %> · <strong>Impact:</strong> <%= i.impact_notes %><% } %>

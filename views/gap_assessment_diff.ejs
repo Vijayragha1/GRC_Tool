@@ -2,7 +2,7 @@
 
 <div class="page-head">
   <div>
-    <div class="meta" style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:4px;">
+    <div class="meta text-sm text-tertiary" style="margin-bottom:4px;">
       <a href="/workspaces/<%= ws.id %>/gap-assessment" class="link-muted">Gap assessment</a> &nbsp;›&nbsp; Diff
     </div>
     <h1 class="page-title">Pass <%= passFrom.pass_number %> → Pass <%= passTo.pass_number %></h1>
@@ -20,24 +20,24 @@
 <!-- Summary chips -->
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-pad" style="display:flex;gap:8px;flex-wrap:wrap;">
-    <span class="tag tag-success" style="font-size:11.5px;padding:3px 9px;">Improved <span class="num">·  <%= summary.improved %></span></span>
-    <span class="tag tag-danger" style="font-size:11.5px;padding:3px 9px;">Regressed <span class="num">·  <%= summary.regressed %></span></span>
-    <% if (summary.changed) { %><span class="tag tag-warn" style="font-size:11.5px;padding:3px 9px;">Changed (other) <span class="num">·  <%= summary.changed %></span></span><% } %>
-    <span class="tag tag-neutral" style="font-size:11.5px;padding:3px 9px;">Unchanged <span class="num">·  <%= summary.unchanged %></span></span>
+    <span class="tag tag-success text-sm" style="padding:3px 9px;">Improved <span class="num">·  <%= summary.improved %></span></span>
+    <span class="tag tag-danger text-sm" style="padding:3px 9px;">Regressed <span class="num">·  <%= summary.regressed %></span></span>
+    <% if (summary.changed) { %><span class="tag tag-warn text-sm" style="padding:3px 9px;">Changed (other) <span class="num">·  <%= summary.changed %></span></span><% } %>
+    <span class="tag tag-neutral text-sm" style="padding:3px 9px;">Unchanged <span class="num">·  <%= summary.unchanged %></span></span>
     <div style="flex:1;"></div>
-    <span class="meta" style="font-size:11.5px;align-self:center;"><%= rows.length %> total items compared</span>
+    <span class="meta text-sm" style="align-self:center;"><%= rows.length %> total items compared</span>
   </div>
 </div>
 
 <!-- Filter chips -->
 <div class="panel" style="margin-bottom:10px;">
   <div class="panel-pad" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-    <span class="meta" style="font-size:11px;margin-right:4px;">Show:</span>
-    <button type="button" class="diff-filter-btn tag tag-accent" data-filter="all" onclick="setDiffFilter('all', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">All</button>
-    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="improved" onclick="setDiffFilter('improved', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Improved</button>
-    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="regressed" onclick="setDiffFilter('regressed', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Regressed</button>
-    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="changed" onclick="setDiffFilter('changed', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Changed (other)</button>
-    <button type="button" class="diff-filter-btn tag tag-neutral" data-filter="unchanged" onclick="setDiffFilter('unchanged', this)" style="font-size:11px;padding:3px 9px;cursor:pointer;border:0;">Unchanged</button>
+    <span class="meta text-xs" style="margin-right:4px;">Show:</span>
+    <button type="button" class="diff-filter-btn tag tag-accent text-xs" data-filter="all" onclick="setDiffFilter('all', this)" style="padding:3px 9px;cursor:pointer;border:0;">All</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral text-xs" data-filter="improved" onclick="setDiffFilter('improved', this)" style="padding:3px 9px;cursor:pointer;border:0;">Improved</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral text-xs" data-filter="regressed" onclick="setDiffFilter('regressed', this)" style="padding:3px 9px;cursor:pointer;border:0;">Regressed</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral text-xs" data-filter="changed" onclick="setDiffFilter('changed', this)" style="padding:3px 9px;cursor:pointer;border:0;">Changed (other)</button>
+    <button type="button" class="diff-filter-btn tag tag-neutral text-xs" data-filter="unchanged" onclick="setDiffFilter('unchanged', this)" style="padding:3px 9px;cursor:pointer;border:0;">Unchanged</button>
   </div>
 </div>
 

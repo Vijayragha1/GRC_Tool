@@ -43,7 +43,7 @@
           <td class="meta num" style="<%= t.due_date && t.due_date < new Date().toISOString().slice(0,10) && t.status !== 'done' ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.due_date || '-' %></td>
           <td>
             <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments/<%= t.id %>" style="display:inline-flex;gap:4px;align-items:center;">
-              <select class="select" name="status" onchange="this.form.submit()" style="font-size:11px;padding:3px 22px 3px 6px;width:auto;">
+              <select class="select text-xs" name="status" onchange="this.form.submit()" style="padding:3px 22px 3px 6px;width:auto;">
                 <% ['planned','in_progress','done','blocked'].forEach(s => { %><option value="<%= s %>" <%= t.status === s ? 'selected' : '' %>><%= s %></option><% }) %>
               </select>
             </form>

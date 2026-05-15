@@ -17,7 +17,7 @@
 <% if (blockers.length === 0) { %>
   <div class="panel" style="border-color:#16a34a;background:rgba(22,163,74,0.04);">
     <div class="panel-pad" style="text-align:center;">
-      <div style="font-size:18px;font-weight:600;color:#16a34a;margin-bottom:6px;">No blockers detected</div>
+      <div class="text-success" style="font-size:18px;font-weight:600;margin-bottom:6px;">No blockers detected</div>
       <div class="meta">All concrete pre-cert checks pass. This doesn't replace a real readiness audit, but it means no obvious red flags.</div>
     </div>
   </div>
@@ -30,14 +30,14 @@
       <div class="panel-pad" style="background:<%= sevBg %>;border-bottom:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:8px;">
           <span class="tag" style="background:<%= sevColor %>;color:white;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;font-weight:600;"><%= b.severity %></span>
-          <div style="font-size:14px;font-weight:600;"><%= b.title %></div>
+          <div class="text-xl" style="font-weight:600;"><%= b.title %></div>
         </div>
-        <div class="meta" style="font-size:12.5px;margin-top:4px;line-height:1.5;"><%= b.detail %></div>
+        <div class="meta text-md" style="margin-top:4px;line-height:1.5;"><%= b.detail %></div>
       </div>
       <% if (b.items && b.items.length) { %>
         <div style="max-height:240px;overflow-y:auto;">
           <% b.items.forEach(it => { %>
-            <a href="<%= it.link %>" style="display:block;padding:7px 16px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text);text-decoration:none;"><%= it.label %></a>
+            <a class="text-md" href="<%= it.link %>" style="display:block;padding:7px 16px;border-bottom:1px solid var(--border);text-decoration:none;"><%= it.label %></a>
           <% }) %>
         </div>
       <% } %>

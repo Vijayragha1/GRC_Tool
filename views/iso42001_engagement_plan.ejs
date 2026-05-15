@@ -11,7 +11,7 @@
 <div class="panel" style="padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
   <div style="font-size:30px;font-weight:600;"><%= done %>/<%= phases.length %></div>
   <div>
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);">phases complete</div>
+    <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.5px;">phases complete</div>
     <div style="height:6px;width:300px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;margin-top:4px;">
       <div style="height:100%;width:<%= Math.round((done/phases.length)*100) %>%;background:var(--accent);"></div>
     </div>
@@ -31,18 +31,18 @@
       </form>
       <div style="flex:1;">
         <div style="display:flex;align-items:baseline;gap:10px;">
-          <span style="font-size:11px;color:var(--text-tertiary);font-weight:500;">Phase <%= i+1 %></span>
+          <span class="text-xs text-tertiary" style="font-weight:500;">Phase <%= i+1 %></span>
           <span style="font-size:14px;font-weight:600;<%= isDone ? 'text-decoration:line-through;color:var(--text-secondary);' : '' %>"><%= p.title %></span>
         </div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;"><%= p.summary %></div>
+        <div class="text-base text-secondary" style="margin-top:2px;"><%= p.summary %></div>
         <% if (isDone) { %>
-          <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">
+          <div class="text-xs text-tertiary" style="margin-top:6px;">
             Completed <%= prog.completed_at %><% if (prog.completed_by_name) { %> by <%= prog.completed_by_name %><% } %>
           </div>
         <% } %>
         <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/engagement-plan/<%= p.key %>/notes" style="margin-top:8px;display:flex;gap:6px;">
           <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-          <input type="text" name="notes" value="<%= prog.notes || '' %>" placeholder="Phase notes (decisions, owners, dates)…" class="input" style="flex:1;font-size:12px;">
+          <input type="text" name="notes" value="<%= prog.notes || '' %>" placeholder="Phase notes (decisions, owners, dates)…" class="input text-base" style="flex:1;">
           <button class="btn btn-ghost btn-xs">Save notes</button>
         </form>
       </div>

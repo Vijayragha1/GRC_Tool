@@ -20,14 +20,14 @@
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
   <div class="panel">
-    <div class="panel-head"><h2 style="margin:0;font-size:14px;">Who to invite</h2></div>
-    <ul style="margin:0;padding:14px 18px 16px 36px;font-size:13px;line-height:1.6;">
+    <div class="panel-head"><h2 class="text-xl" style="margin:0;">Who to invite</h2></div>
+    <ul class="text-lg" style="margin:0;padding:14px 18px 16px 36px;line-height:1.6;">
       <% playbook.whoToInvite.forEach(p => { %><li><%= p %></li><% }) %>
     </ul>
   </div>
   <div class="panel">
-    <div class="panel-head"><h2 style="margin:0;font-size:14px;">Pre-work</h2></div>
-    <ul style="margin:0;padding:14px 18px 16px 36px;font-size:13px;line-height:1.6;">
+    <div class="panel-head"><h2 class="text-xl" style="margin:0;">Pre-work</h2></div>
+    <ul class="text-lg" style="margin:0;padding:14px 18px 16px 36px;line-height:1.6;">
       <% playbook.prework.forEach(p => { %><li><%= p %></li><% }) %>
     </ul>
   </div>
@@ -39,15 +39,15 @@
     <div style="padding:18px 20px;<%= idx > 0 ? 'border-top:1px solid var(--border);' : '' %>">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
         <span class="tag tag-accent text-eyebrow"><%= seg.time %></span>
-        <h3 style="margin:0;font-size:14px;"><%= seg.title %></h3>
+        <h3 class="text-xl" style="margin:0;"><%= seg.title %></h3>
       </div>
       <ul style="margin:0;padding:0 0 0 22px;font-size:13.5px;line-height:1.55;">
         <% seg.script.forEach(line => { %><li style="margin-bottom:6px;"><%= line %></li><% }) %>
       </ul>
       <% if (seg.decisions && seg.decisions.length) { %>
         <div style="margin-top:12px;padding:10px 14px;background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:4px;">
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:6px;">Decisions to leave with</div>
-          <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.5;color:var(--text);">
+          <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:6px;">Decisions to leave with</div>
+          <ul class="text-md" style="margin:0;padding-left:18px;line-height:1.5;">
             <% seg.decisions.forEach(d => { %><li><%= d %></li><% }) %>
           </ul>
         </div>
@@ -58,15 +58,15 @@
 
 <div style="display:grid;grid-template-columns:<%= playbook.watchOuts ? '1fr 1fr' : '1fr' %>;gap:14px;">
   <div class="panel">
-    <div class="panel-head"><h2 style="margin:0;font-size:14px;">Artefacts produced</h2></div>
-    <ul style="margin:0;padding:14px 18px 16px 36px;font-size:13px;line-height:1.6;">
+    <div class="panel-head"><h2 class="text-xl" style="margin:0;">Artefacts produced</h2></div>
+    <ul class="text-lg" style="margin:0;padding:14px 18px 16px 36px;line-height:1.6;">
       <% playbook.artefactsProduced.forEach(a => { %><li><%= a %></li><% }) %>
     </ul>
   </div>
   <% if (playbook.watchOuts) { %>
     <div class="panel" style="border-left:3px solid #ca8a04;">
-      <div class="panel-head"><h2 style="margin:0;font-size:14px;color:#b45309;">Watch-outs</h2></div>
-      <ul style="margin:0;padding:14px 18px 16px 36px;font-size:13px;line-height:1.6;">
+      <div class="panel-head"><h2 class="text-xl" style="margin:0;color:#b45309;">Watch-outs</h2></div>
+      <ul class="text-lg" style="margin:0;padding:14px 18px 16px 36px;line-height:1.6;">
         <% playbook.watchOuts.forEach(w => { %><li><%= w %></li><% }) %>
       </ul>
     </div>

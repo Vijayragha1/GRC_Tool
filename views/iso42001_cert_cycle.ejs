@@ -23,9 +23,9 @@
 %>
   <div class="panel kpi" style="margin-bottom:18px;border-left:3px solid #0891b2;">
     <div class="panel-pad">
-      <div class="meta" style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.05em;">Next event</div>
+      <div class="meta text-sm" style="text-transform:uppercase;letter-spacing:0.05em;">Next event</div>
       <div style="font-size:18px;font-weight:600;margin-top:4px;"><%= upcoming.event_type %></div>
-      <div class="meta" style="font-size:13px;margin-top:2px;">
+      <div class="meta text-lg" style="margin-top:2px;">
         <%= upcoming.planned_date %>
         <% if (days >= 0) { %>&middot; <strong style="color:<%= days < 30 ? '#b91c1c' : days < 90 ? '#a16207' : 'var(--text)' %>;"><%= days %> day<%= days === 1 ? '' : 's' %></strong> away<% } %>
       </div>
@@ -37,7 +37,7 @@
   <div class="panel" style="margin-bottom:18px;">
     <div class="panel-head"><h2>No cycle planned yet</h2></div>
     <div class="panel-pad">
-      <div style="font-size:13px;line-height:1.55;margin-bottom:14px;">
+      <div class="text-lg" style="line-height:1.55;margin-bottom:14px;">
         A typical first-cert path: Stage 1 in ~60 days, Stage 2 ~30 days after Stage 1, surveillance audits at year 1 and year 2, recertification at year 3. Seed these defaults to start, then edit the dates as the cert body confirms.
       </div>
       <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/seed" style="display:inline;">
@@ -67,7 +67,7 @@
             <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
             <tr>
               <td>
-                <div style="font-size:13px;font-weight:500;"><%= e.event_type %></div>
+                <div class="text-lg" style="font-weight:500;"><%= e.event_type %></div>
               </td>
               <td>
                 <input type="date" name="planned_date" value="<%= e.planned_date || '' %>" class="input" style="font-size:12px;<%= overdue ? 'border-color:#b91c1c;color:#b91c1c;' : '' %>">

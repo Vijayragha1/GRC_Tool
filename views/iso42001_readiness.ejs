@@ -9,7 +9,7 @@
     <a href="/workspaces/<%= ws.id %>/iso42001/readiness/blockers" class="btn btn-primary btn-xs">Pre-cert blocker check →</a>
     <% if (r.daysToTarget !== null) { %>
       <div style="text-align:right">
-        <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span style="font-size:13px;font-weight:400;color:var(--text-tertiary);"> days</span></div>
+        <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span class="text-lg text-tertiary" style="font-weight:400;"> days</span></div>
         <div class="meta">to target cert &middot; <%= ws.target_cert_date %></div>
       </div>
     <% } %>
@@ -18,17 +18,17 @@
 
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
   <div class="panel kpi">
-    <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-label">Stage 1 readiness</div>
     <div class="kpi-meta">documentation &amp; AIMS framework</div>
   </div>
   <div class="panel kpi">
-    <div class="kpi-num" style="color:<%= r.stage2 >= 80 ? '#15803d' : r.stage2 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage2 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-num" style="color:<%= r.stage2 >= 80 ? '#15803d' : r.stage2 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-label">Stage 2 readiness</div>
     <div class="kpi-meta">operational effectiveness</div>
   </div>
   <div class="panel kpi">
-    <div class="kpi-num"><%= r.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= r.records.total %></span></div>
+    <div class="kpi-num"><%= r.records.found %><span class="text-tertiary" style="font-weight:400;">/<%= r.records.total %></span></div>
     <div class="kpi-label">Documented information</div>
     <div class="kpi-meta">mandatory + expected per ISO 42001</div>
   </div>
@@ -50,9 +50,9 @@
           <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
               <div style="flex:1;min-width:0;">
-                <div style="font-size:13px;font-weight:500;line-height:1.4;"><%= f.label %></div>
+                <div class="text-lg" style="font-weight:500;line-height:1.4;"><%= f.label %></div>
                 <% if (f.items.length) { %>
-                  <ul style="margin-top:6px;font-size:12px;color:var(--text-secondary);list-style:none;padding:0;">
+                  <ul class="text-base text-secondary" style="margin-top:6px;list-style:none;padding:0;">
                     <% f.items.slice(0, 5).forEach(it => { %>
                       <li style="padding:1px 0;">·
                         <% if (it.id && (String(it.id).startsWith('ai-clause') || String(it.id).startsWith('ai-annex'))) { %>
@@ -77,8 +77,8 @@
   <div class="panel">
     <div class="panel-head"><h2>Documented information</h2><span class="meta">Heuristic - confirm manually</span></div>
     <div class="panel-pad">
-      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:8px;">Mandatory per ISO 42001:2023 (<%= r.records.mandatory.found %>/<%= r.records.mandatory.total %>)</div>
-      <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;margin-bottom:16px;">
+      <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Mandatory per ISO 42001:2023 (<%= r.records.mandatory.found %>/<%= r.records.mandatory.total %>)</div>
+      <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:16px;">
         <% r.records.mandatory.checks.forEach(c => { %>
           <div style="display:flex;align-items:flex-start;gap:8px;">
             <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : '#b91c1c' %>;"><%= c.found ? '✓' : '✗' %></span>
@@ -90,8 +90,8 @@
         <% }) %>
       </div>
 
-      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:8px;">Expected if related Annex A control is included (<%= r.records.expected.found %>/<%= r.records.expected.total %>)</div>
-      <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;">
+      <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Expected if related Annex A control is included (<%= r.records.expected.found %>/<%= r.records.expected.total %>)</div>
+      <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;">
         <% r.records.expected.checks.forEach(c => { %>
           <div style="display:flex;align-items:flex-start;gap:8px;">
             <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : 'var(--text-tertiary)' %>;"><%= c.found ? '✓' : '○' %></span>

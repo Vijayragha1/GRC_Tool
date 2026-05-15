@@ -61,7 +61,7 @@
           <td class="text-lg"><%= l.user_name %></td>
           <td><span class="mono meta text-sm"><%= l.action %></span></td>
           <td class="meta text-base"><%= l.entity_type || '' %><% if (l.entity_id) { %> · <span class="mono"><%= l.entity_id %></span><% } %></td>
-          <td class="mono meta" style="font-size:11px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= l.details || '' %>"><%= l.details || '' %></td>
+          <td class="mono meta text-xs" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= l.details || '' %>"><%= l.details || '' %></td>
         </tr>
       <% }) %>
       <% if (log.length === 0) { %><tr><td colspan="5" class="t-empty">No matching events.</td></tr><% } %>

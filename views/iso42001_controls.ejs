@@ -29,16 +29,16 @@
 
 <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/bulk-controls" id="bulkForm">
   <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-  <div id="bulkBar" class="hidden panel" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;font-size:13px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
+  <div id="bulkBar" class="hidden panel text-lg" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
     <span><span id="bulkCount">0</span> selected</span>
     <span class="text-tertiary">·</span>
-    <select name="status" class="select" style="width:200px;font-size:12px;padding:4px 8px;">
+    <select name="status" class="select text-base" style="width:200px;padding:4px 8px;">
       <option value="">Set status…</option>
       <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %>
         <option value="<%= s %>"><%= s %></option>
       <% }) %>
     </select>
-    <select name="applicability" class="select" style="width:170px;font-size:12px;padding:4px 8px;">
+    <select name="applicability" class="select text-base" style="width:170px;padding:4px 8px;">
       <option value="">Applicability…</option>
       <option value="undecided">Undecided</option>
       <option value="included">Included</option>
@@ -63,13 +63,13 @@
         <% rows.forEach(r => { %>
           <tr>
             <td style="padding-right:0"><input type="checkbox" name="ids" value="<%= r.id %>" class="bulkChk" onclick="updBulk()"></td>
-            <td><span class="mono" style="font-size:11px;color:var(--text-tertiary);">
+            <td><span class="mono text-xs text-tertiary">
               <%= r.type === 'clause' ? '§' + r.id.replace('ai-clause-', '') : r.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %>
             </span></td>
             <td><a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></a></td>
             <td><span class="status s-<%= r.status.toLowerCase().replace(/ /g,'-') %>"><%= r.status %></span></td>
             <td class="num text-secondary"><%= r.maturity || 0 %>/5</td>
-            <td style="color:var(--text-secondary);font-size:12px;"><%= r.owner_name || '-' %></td>
+            <td class="text-secondary text-base"><%= r.owner_name || '-' %></td>
             <td class="num meta"><%= r.due_date || '-' %></td>
           </tr>
         <% }) %>

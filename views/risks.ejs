@@ -22,7 +22,7 @@
 
 <%- include('partials/risk_tabs', { ws, active: 'register' }) %>
 
-<div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:12px;">
+<div class="text-md text-secondary" style="margin-bottom:12px;">
   Methodology in use: <strong><%= methodology.name %></strong> · <%= lScale.length %>×<%= iScale.length %> matrix
 </div>
 
@@ -91,7 +91,7 @@
                   <span class="num" style="font-size:15px;"><%= cellRisks.length %></span>
                   <div class="meta" style="font-size:10px;color:<%= c %>"><%= band %></div>
                 <% } else { %>
-                  <span style="opacity:0.5;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;"><%= band %></span>
+                  <span class="text-xxs" style="opacity:0.5;text-transform:uppercase;letter-spacing:0.04em;"><%= band %></span>
                 <% } %>
               </td>
             <% }) %>
@@ -121,12 +121,12 @@
       %>
         <tr>
           <td class="mono meta">R-<%= String(r.id).padStart(3, '0') %></td>
-          <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= r.title %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="font-weight:500;"><%= r.title %></a></td>
           <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %><td class="meta"><%= r.entity_name || '-' %></td><% } %>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= r.asset_name || '-' %></td>
+          <td class="text-secondary text-base"><%= r.asset_name || '-' %></td>
           <td class="num meta"><%= r.likelihood %> · <%= r.impact %></td>
           <td><span class="tag" style="background:<%= bandColor %>1a;color:<%= bandColor %>;border-color:<%= bandColor %>40;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;"><%= r.band %></span></td>
-          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= r.treatment %></td>
+          <td class="text-secondary text-base" style="text-transform:capitalize;"><%= r.treatment %></td>
           <td><span class="status s-<%= r.status %>"><%= r.status %></span></td>
         </tr>
       <% }) %>

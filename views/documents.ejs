@@ -18,7 +18,7 @@
      const tierOrder = ['mandatory','expected','recommended'];
      const tieredCounts = { mandatory: 0, expected: 0, recommended: 0 };
      templates.forEach(t => { tieredCounts[t.tier || 'recommended']++; }); %>
-  <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);font-size:12px;display:flex;gap:14px;">
+  <div class="panel-pad text-base" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);display:flex;gap:14px;">
     <span><strong class="text-danger">★ <%= tieredCounts.mandatory %></strong> mandatory</span>
     <span><strong class="text-warn">◆ <%= tieredCounts.expected %></strong> expected</span>
     <span><strong class="text-secondary">· <%= tieredCounts.recommended %></strong> recommended</span>
@@ -124,7 +124,7 @@
       <tbody>
         <% registers.forEach(r => { %>
           <tr style="cursor:pointer" onclick="location='<%= r.href %>'">
-            <td><strong><%= r.name %></strong><% if (r.overdue_count > 0) { %><div class="meta" style="color:#b91c1c;font-size:11px;margin-top:2px;"><%= r.overdue_count %> entr<%= r.overdue_count === 1 ? 'y' : 'ies' %> overdue for review</div><% } %></td>
+            <td><strong><%= r.name %></strong><% if (r.overdue_count > 0) { %><div class="meta text-danger text-xs" style="margin-top:2px;"><%= r.overdue_count %> entr<%= r.overdue_count === 1 ? 'y' : 'ies' %> overdue for review</div><% } %></td>
             <td class="mono meta">Cl. <%= r.clause %></td>
             <td class="num"><%= r.total %></td>
             <td class="meta"><%= r.last_reviewed || '-' %></td>
@@ -132,7 +132,7 @@
             <td>
               <% if (r.review_status === 'overdue') { %><span class="tag tag-danger">overdue</span>
               <% } else if (r.review_status === 'due_soon') { %><span class="tag tag-warn">due soon</span>
-              <% } else if (r.review_status === 'current') { %><span class="tag" style="background:rgba(21,128,61,0.08);color:#15803d;">current</span>
+              <% } else if (r.review_status === 'current') { %><span class="tag text-success" style="background:rgba(21,128,61,0.08);">current</span>
               <% } else { %><span class="meta">-</span><% } %>
             </td>
           </tr>
@@ -161,13 +161,13 @@
            const hiddenCount = tags.length - visibleTags.length;
       %>
         <tr>
-          <td><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= d.name %></a></td>
-          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= d.category || '-' %></td>
+          <td><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted" style="font-weight:500;"><%= d.name %></a></td>
+          <td class="text-secondary text-base" style="text-transform:capitalize;"><%= d.category || '-' %></td>
           <td><span class="status s-<%= d.status === 'approved' || d.status === 'published' ? 'done' : d.status %>"><%= d.status %></span></td>
           <td class="num meta">v<%= d.version %></td>
           <td>
             <% if (tags.length === 0) { %>
-              <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="font-size:11.5px;color:#a16207;text-decoration:none;font-style:italic;" title="No tags - auditors use these to trace coverage">+ tag</a>
+              <a class="text-sm text-warn" href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="text-decoration:none;font-style:italic;" title="No tags - auditors use these to trace coverage">+ tag</a>
             <% } else { %>
               <div style="display:flex;flex-wrap:wrap;gap:3px;">
                 <% visibleTags.forEach(t => {
@@ -177,7 +177,7 @@
                   <a href="?tag=<%= t.iso_item_id %>" class="mono" style="font-size:10.5px;font-weight:500;padding:1px 6px;border-radius:3px;text-decoration:none;background:<%= isClause ? 'rgba(8,145,178,0.10)' : 'rgba(124,58,237,0.10)' %>;color:<%= isClause ? '#0891b2' : '#7c3aed' %>;" title="<%= t.section_ref ? '§' + t.section_ref : '' %>"><%= code %></a>
                 <% }) %>
                 <% if (hiddenCount > 0) { %>
-                  <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="meta" style="font-size:10.5px;text-decoration:none;padding:1px 4px;">+<%= hiddenCount %></a>
+                  <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="meta text-eyebrow" style="text-decoration:none;padding:1px 4px;">+<%= hiddenCount %></a>
                 <% } %>
               </div>
             <% } %>
@@ -189,13 +189,13 @@
                  const rsColor = d.review_status === 'overdue' ? '#b91c1c' : d.review_status === 'due_soon' ? '#a16207' : 'var(--text-secondary)';
             %>
               <span style="font-size:11.5px;color:<%= rsColor %>;font-weight:<%= d.review_status === 'overdue' ? 600 : 500 %>;"><%= d.next_review_date %></span>
-              <% if (d.review_status === 'overdue') { %><div style="font-size:10px;font-weight:600;color:#b91c1c;text-transform:uppercase;letter-spacing:0.04em;">overdue</div>
-              <% } else if (d.review_status === 'due_soon') { %><div style="font-size:10px;font-weight:600;color:#a16207;text-transform:uppercase;letter-spacing:0.04em;">due soon</div><% } %>
+              <% if (d.review_status === 'overdue') { %><div class="text-xxs text-danger" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">overdue</div>
+              <% } else if (d.review_status === 'due_soon') { %><div class="text-xxs text-warn" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">due soon</div><% } %>
             <% } %>
           </td>
           <td class="num meta text-sm"><%= d.updated_at %></td>
           <td style="text-align:right">
-            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/docx" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">.docx</a>
+            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/docx" class="link-muted text-base" style="font-weight:500;color:var(--accent);">.docx</a>
             <span class="text-tertiary">·</span>
             <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/print" target="_blank" class="link-muted text-base">Print</a>
             <span class="text-tertiary">·</span>

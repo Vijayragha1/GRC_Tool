@@ -31,7 +31,7 @@
           <td>
             <form method="POST" action="/workspaces/<%= ws.id %>/access/role" style="display:inline-flex;gap:6px;align-items:center">
               <input type="hidden" name="user_id" value="<%= m.user_id %>">
-              <select class="select" name="role" style="width:auto;min-width:160px;font-size:12px;padding:4px 28px 4px 8px;">
+              <select class="select text-base" name="role" style="width:auto;min-width:160px;padding:4px 28px 4px 8px;">
                 <% Object.entries(roles).forEach(([k, v]) => { %>
                   <% if (['client_admin','contributor','reviewer','auditor','read_only'].includes(k)) { %>
                     <option value="<%= k %>" <%= m.role === k ? 'selected' : '' %>><%= v %></option>

@@ -14,7 +14,7 @@
     let html = '';
     const list = byParent[parentId] || [];
     list.forEach(d => {
-      html += `<div style="padding:8px 16px;padding-left:${16 + depth * 24}px;border-bottom:1px solid var(--border);"><a href="/workspaces/${ws.id}/documents/${d.id}" class="link-muted" style="color:var(--text);font-weight:500;">${d.name}</a> <span class="tag tag-neutral text-eyebrow">${d.doc_kind || d.category || '-'}</span> ${d.reference_code ? '<span class="meta mono text-xs">'+d.reference_code+'</span>' : ''} <span class="tag ${d.status === 'published' || d.status === 'approved' ? 'tag-success' : d.status === 'in_review' ? 'tag-warn' : 'tag-neutral'} text-eyebrow">${d.status}</span></div>`;
+      html += `<div style="padding:8px 16px;padding-left:${16 + depth * 24}px;border-bottom:1px solid var(--border);"><a href="/workspaces/${ws.id}/documents/${d.id}" class="link-muted" style="font-weight:500;">${d.name}</a> <span class="tag tag-neutral text-eyebrow">${d.doc_kind || d.category || '-'}</span> ${d.reference_code ? '<span class="meta mono text-xs">'+d.reference_code+'</span>' : ''} <span class="tag ${d.status === 'published' || d.status === 'approved' ? 'tag-success' : d.status === 'in_review' ? 'tag-warn' : 'tag-neutral'} text-eyebrow">${d.status}</span></div>`;
       html += render(d.id, depth + 1);
     });
     return html;

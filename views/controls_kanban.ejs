@@ -35,15 +35,15 @@
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;overflow-x:auto;" id="kanban-board">
   <% cols.forEach(c => { %>
     <div class="panel kanban-col" data-status="<%= c.key %>" style="padding:10px;min-width:180px;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;color:var(--text-secondary);">
+      <div class="text-xs text-secondary" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
         <span style="width:7px;height:7px;border-radius:50%;background:<%= c.color %>;"></span><%= c.label %>
         <span class="meta col-count" style="margin-left:auto;font-weight:500;text-transform:none;letter-spacing:0;"><%= grouped[c.key].length %></span>
       </div>
       <div class="kanban-drop" style="min-height:30px;">
       <% grouped[c.key].forEach(r => { %>
-        <a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" draggable="true" data-iso="<%= r.id %>" class="kanban-card" style="display:block;padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--text);font-size:12px;cursor:grab;">
+        <a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" draggable="true" data-iso="<%= r.id %>" class="kanban-card text-base" style="display:block;padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-decoration:none;cursor:grab;">
           <div style="font-weight:500;line-height:1.3;"><%= r.title %></div>
-          <div class="meta mono" style="font-size:10.5px;margin-top:2px;"><%= r.id.replace('annex-','').toUpperCase() %><% if (r.maturity) { %> · M<%= r.maturity %><% } %><% if (r.owner) { %> · <%= r.owner %><% } %></div>
+          <div class="meta mono text-eyebrow" style="margin-top:2px;"><%= r.id.replace('annex-','').toUpperCase() %><% if (r.maturity) { %> · M<%= r.maturity %><% } %><% if (r.owner) { %> · <%= r.owner %><% } %></div>
         </a>
       <% }) %>
       </div>

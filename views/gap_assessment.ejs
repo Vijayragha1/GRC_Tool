@@ -11,14 +11,14 @@
   <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(79,70,229,0.25);">
     <div class="panel-pad">
       <div class="sec-label" style="color:var(--accent-deep);">Re-engagement orientation</div>
-      <div style="font-size:12.5px;color:var(--text);margin-top:4px;line-height:1.5;">
+      <div class="text-md" style="margin-top:4px;line-height:1.5;">
         Since <strong>Pass <%= orientation.priorPass.pass_number %><% if (orientation.priorPass.label) { %> · <%= orientation.priorPass.label %><% } %></strong> closed on <%= orientation.since.slice(0,10) %>:
       </div>
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;">
         <% function chip(label, n, link) { %>
-          <a href="<%= link %>" class="panel" style="padding:8px 10px;text-align:center;text-decoration:none;color:var(--text);background:var(--bg);">
+          <a href="<%= link %>" class="panel" style="padding:8px 10px;text-align:center;text-decoration:none;background:var(--bg);">
             <div class="num" style="font-size:18px;font-weight:600;line-height:1.1;color:var(--accent-deep);"><%= n %></div>
-            <div class="meta" style="font-size:10.5px;line-height:1.3;margin-top:2px;"><%= label %></div>
+            <div class="meta text-eyebrow" style="line-height:1.3;margin-top:2px;"><%= label %></div>
           </a>
         <% } %>
         <% chip('new evidence',  orientation.newEvidence,    '/workspaces/' + ws.id + '/evidence') %>
@@ -38,28 +38,28 @@
     <div class="panel-pad">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
         <div style="flex:1;min-width:0;">
-          <div class="meta" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px;">Active pass · in progress</div>
-          <div style="font-size:20px;font-weight:600;letter-spacing:-0.01em;color:var(--ink);">Pass <%= activePass.pass_number %><% if (activePass.label) { %> · <%= activePass.label %><% } %></div>
-          <div class="meta" style="font-size:12.5px;margin-top:4px;line-height:1.5;">
+          <div class="meta text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px;">Active pass · in progress</div>
+          <div class="text-ink" style="font-size:20px;font-weight:600;letter-spacing:-0.01em;">Pass <%= activePass.pass_number %><% if (activePass.label) { %> · <%= activePass.label %><% } %></div>
+          <div class="meta text-md" style="margin-top:4px;line-height:1.5;">
             Started <%= activePass.started_at ? activePass.started_at.slice(0,10) : '-' %>
             <% if (activePass.started_by_name) { %> by <%= activePass.started_by_name %><% } %>
             · <%= activePass.items_touched %> of <%= totalItems %> item<%= totalItems === 1 ? '' : 's' %> touched in this pass
             · <%= activePass.save_count %> save<%= activePass.save_count === 1 ? '' : 's' %>
           </div>
           <% if (activePass.notes) { %>
-            <div style="font-size:13px;margin-top:6px;color:var(--text);"><%= activePass.notes %></div>
+            <div class="text-lg" style="margin-top:6px;"><%= activePass.notes %></div>
           <% } %>
           <%
             const pct = totalItems ? Math.round((assessedNow / totalItems) * 100) : 0;
           %>
           <div style="margin-top:10px;">
-            <div class="meta" style="font-size:11.5px;display:flex;justify-content:space-between;margin-bottom:3px;">
+            <div class="meta text-sm" style="display:flex;justify-content:space-between;margin-bottom:3px;">
               <span>Workspace progress</span><span><%= assessedNow %> / <%= totalItems %> · <%= pct %>%</span>
             </div>
             <div style="height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
               <div style="height:100%;width:<%= pct %>%;background:var(--accent);"></div>
             </div>
-            <div class="meta" style="font-size:10.5px;margin-top:4px;font-style:italic;">Reflects every item with a status other than "Not Assessed". Items touched specifically during this pass: <%= activePass.items_touched %>.</div>
+            <div class="meta text-eyebrow" style="margin-top:4px;font-style:italic;">Reflects every item with a status other than "Not Assessed". Items touched specifically during this pass: <%= activePass.items_touched %>.</div>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
@@ -82,7 +82,7 @@
 
 <!-- Start a new pass -->
 <details class="panel" style="margin-bottom:14px;" <%= !activePass ? 'open' : '' %>>
-  <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;">
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     <% if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">- this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">- typically a re-assessment after the client has implemented changes</span><% } %>
   </summary>
@@ -108,11 +108,11 @@
     <% if (passes.length >= 2) { %>
       <form method="GET" action="/workspaces/<%= ws.id %>/gap-assessment/diff" style="display:flex;gap:6px;align-items:center;">
         <span class="meta text-sm">Diff:</span>
-        <select name="from" class="select" style="font-size:12px;padding:3px 22px 3px 8px;">
+        <select name="from" class="select text-base" style="padding:3px 22px 3px 8px;">
           <% passes.forEach(p => { %><option value="<%= p.id %>">Pass <%= p.pass_number %><%= p.label ? ' · ' + p.label : '' %></option><% }) %>
         </select>
         <span class="meta">→</span>
-        <select name="to" class="select" style="font-size:12px;padding:3px 22px 3px 8px;">
+        <select name="to" class="select text-base" style="padding:3px 22px 3px 8px;">
           <% passes.forEach((p, i) => { %><option value="<%= p.id %>" <%= i === 0 ? 'selected' : '' %>>Pass <%= p.pass_number %><%= p.label ? ' · ' + p.label : '' %></option><% }) %>
         </select>
         <button class="btn btn-secondary btn-xs">Compare</button>
@@ -134,30 +134,30 @@
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
             <div style="flex:1;min-width:0;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <span style="font-size:14px;font-weight:600;color:var(--ink);">Pass <%= p.pass_number %></span>
-                <% if (p.label) { %><span style="font-size:13px;color:var(--text);"><%= p.label %></span><% } %>
+                <span class="text-xl text-ink" style="font-weight:600;">Pass <%= p.pass_number %></span>
+                <% if (p.label) { %><span class="text-lg"><%= p.label %></span><% } %>
                 <% if (p.status === 'in_progress') { %>
                   <span class="tag tag-accent text-xxs">IN PROGRESS</span>
                 <% } else { %>
                   <span class="tag tag-success text-xxs">COMPLETED</span>
                 <% } %>
               </div>
-              <div class="meta" style="font-size:11.5px;margin-top:3px;">
+              <div class="meta text-sm" style="margin-top:3px;">
                 Started <%= p.started_at ? p.started_at.slice(0,10) : '-' %><% if (p.started_by_name) { %> by <%= p.started_by_name %><% } %>
                 <% if (p.completed_at) { %> · completed <%= p.completed_at.slice(0,10) %><% if (p.completed_by_name) { %> by <%= p.completed_by_name %><% } %><% } %>
                 · <%= p.items_touched %> item<%= p.items_touched === 1 ? '' : 's' %> touched · <%= p.save_count %> save<%= p.save_count === 1 ? '' : 's' %>
               </div>
               <% if (p.notes) { %>
-                <div style="font-size:12.5px;margin-top:5px;color:var(--text);line-height:1.5;"><%= p.notes %></div>
+                <div class="text-md" style="margin-top:5px;line-height:1.5;"><%= p.notes %></div>
               <% } %>
             </div>
             <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
               <details style="position:relative;">
-                <summary class="btn btn-ghost btn-xs" style="font-size:11px;list-style:none;cursor:pointer;">Edit</summary>
+                <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Edit</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/rename"
                       style="position:absolute;right:0;top:100%;width:300px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);margin-top:4px;">
-                  <input type="text" name="label" value="<%= p.label || '' %>" class="input" placeholder="Label" style="font-size:12px;margin-bottom:6px;">
-                  <textarea name="notes" rows="2" class="textarea" placeholder="Notes" style="font-size:12px;margin-bottom:6px;"><%= p.notes || '' %></textarea>
+                  <input type="text" name="label" value="<%= p.label || '' %>" class="input text-base" placeholder="Label" style="margin-bottom:6px;">
+                  <textarea name="notes" rows="2" class="textarea text-base" placeholder="Notes" style="margin-bottom:6px;"><%= p.notes || '' %></textarea>
                   <button class="btn btn-primary btn-xs" style="width:100%;">Save</button>
                 </form>
               </details>
@@ -185,7 +185,7 @@
      const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
 %>
   <div class="panel" style="margin-top:18px;">
-    <div class="panel-head"><h3>Trend across passes <span class="meta" style="font-weight:400;font-size:12px;">- average maturity (0–4) per Annex A theme</span></h3></div>
+    <div class="panel-head"><h3>Trend across passes <span class="meta text-base" style="font-weight:400;">- average maturity (0–4) per Annex A theme</span></h3></div>
     <div class="panel-pad">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
         <% themeKeys.forEach(k => {
@@ -202,7 +202,7 @@
               <% } %>
             </div>
             <% if (!hasData) { %>
-              <div class="meta" style="font-size:11px;font-style:italic;">No maturity recorded yet for this theme.</div>
+              <div class="meta text-xs" style="font-style:italic;">No maturity recorded yet for this theme.</div>
             <% } else { %>
               <% const cw = 100 / Math.max(1, points.length); %>
               <svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:60px;background:var(--bg-subtle);border-radius:4px;">
@@ -243,7 +243,7 @@
      }
 %>
   <div class="panel" style="margin-top:18px;">
-    <div class="panel-head"><h3>Annex A heatmap <span class="meta" style="font-weight:400;font-size:12px;">- current coverage by theme</span></h3></div>
+    <div class="panel-head"><h3>Annex A heatmap <span class="meta text-base" style="font-weight:400;">- current coverage by theme</span></h3></div>
     <div class="panel-pad">
       <% themeKeys.forEach(k => {
            const items = heatmap[k] || [];
@@ -269,7 +269,7 @@
           </div>
         </div>
       <% }) %>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:10.5px;color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
+      <div class="text-eyebrow text-tertiary" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
         <span>Legend:</span>
         <span><span style="display:inline-block;width:12px;height:10px;background:#16a34a;border-radius:2px;vertical-align:middle;"></span> Implemented</span>
         <span><span style="display:inline-block;width:12px;height:10px;background:#a16207;border-radius:2px;vertical-align:middle;"></span> Partial</span>

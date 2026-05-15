@@ -8,13 +8,13 @@
 <%- include('partials/activity_tabs', { ws, tab: 'anomalies' }) %>
 
 <% if (!flags.length) { %>
-  <div class="callout" style="background:rgba(22,163,74,0.08);border-color:#16a34a;color:#15803d;">No anomalies detected.</div>
+  <div class="callout text-success" style="background:rgba(22,163,74,0.08);border-color:#16a34a;">No anomalies detected.</div>
 <% } %>
 
 <% flags.forEach(f => { %>
   <div class="panel" style="margin-bottom:14px">
     <div class="panel-head"><h2><%= f.label %></h2><span class="tag tag-warn"><%= f.kind %></span></div>
-    <div class="panel-pad" style="font-size:12.5px;font-family:ui-monospace,monospace;max-height:300px;overflow-y:auto;">
+    <div class="panel-pad text-md" style="font-family:ui-monospace,monospace;max-height:300px;overflow-y:auto;">
       <% if (f.kind === 'after_hours' || f.kind === 'denials') { %>
         <% f.items.forEach(i => { %>
           <div style="padding:4px 0;border-bottom:1px dashed var(--border);"><%= i.created_at %> · <%= i.user_name %> · <%= i.action %><% if (i.entity_type) { %> · <%= i.entity_type %> <%= i.entity_id %><% } %><% if (i.ip_address) { %> · <%= i.ip_address %><% } %></div>

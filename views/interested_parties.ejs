@@ -8,7 +8,7 @@
 </div>
 
 <details class="panel" style="margin-bottom:14px;" <%= rows.length === 0 ? 'open' : '' %>>
-  <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;">+ Add interested party</summary>
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Add interested party</summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/interested-parties" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <div><label class="label">Party <span class="meta">required</span></label><input class="input" name="party" required placeholder="e.g., Customers, Regulator (ICO), Employees, Investors"></div>
     <div><label class="label">Type</label>
@@ -57,8 +57,8 @@
           <tr style="<%= overdue ? 'background:rgba(185,28,28,0.04);' : '' %>">
             <td><strong class="text-lg"><%= r.party %></strong></td>
             <td><% if (r.party_type) { %><span class="tag tag-neutral text-xs"><%= r.party_type %></span><% } %></td>
-            <td style="font-size:12.5px;line-height:1.45;"><%= r.needs || '' %></td>
-            <td style="font-size:12.5px;line-height:1.45;"><%= r.how_addressed || '' %></td>
+            <td class="text-md" style="line-height:1.45;"><%= r.needs || '' %></td>
+            <td class="text-md" style="line-height:1.45;"><%= r.how_addressed || '' %></td>
             <td class="text-base"><%= r.owner || '' %></td>
             <td class="text-sm">
               <% if (r.next_review) { %>
@@ -67,27 +67,27 @@
             </td>
             <td>
               <details>
-                <summary class="btn btn-ghost btn-xs" style="font-size:11px;list-style:none;cursor:pointer;">Edit</summary>
+                <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Edit</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/interested-parties/<%= r.id %>" style="position:absolute;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);width:380px;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">
-                  <input type="text" name="party" value="<%= r.party %>" class="input" style="font-size:12px;grid-column:1/-1;">
+                  <input type="text" name="party" value="<%= r.party %>" class="input text-base col-full">
                   <select class="select text-base" name="party_type">
                     <option value="">-</option>
                     <% ['Customer','Regulator','Employee','Supplier','Investor','Partner','Auditor','Public','Other'].forEach(t => { %><option value="<%= t %>" <%= r.party_type === t ? 'selected' : '' %>><%= t %></option><% }) %>
                   </select>
                   <input type="text" name="owner" value="<%= r.owner || '' %>" placeholder="Owner" class="input text-base">
-                  <textarea name="needs" rows="2" class="textarea" placeholder="Needs" style="font-size:12px;grid-column:1/-1;"><%= r.needs || '' %></textarea>
-                  <textarea name="how_addressed" rows="2" class="textarea" placeholder="How addressed" style="font-size:12px;grid-column:1/-1;"><%= r.how_addressed || '' %></textarea>
+                  <textarea name="needs" rows="2" class="textarea text-base col-full" placeholder="Needs"><%= r.needs || '' %></textarea>
+                  <textarea name="how_addressed" rows="2" class="textarea text-base col-full" placeholder="How addressed"><%= r.how_addressed || '' %></textarea>
                   <select class="select text-base" name="review_cadence">
                     <option value="">cadence</option>
                     <% ['monthly','quarterly','semi-annual','annual','biennial'].forEach(c => { %><option value="<%= c %>" <%= r.review_cadence === c ? 'selected' : '' %>><%= c %></option><% }) %>
                   </select>
                   <input type="date" name="last_reviewed" value="<%= r.last_reviewed || '' %>" class="input text-base">
-                  <input type="date" name="next_review" value="<%= r.next_review || '' %>" class="input" style="font-size:12px;grid-column:1/-1;">
+                  <input type="date" name="next_review" value="<%= r.next_review || '' %>" class="input text-base col-full">
                   <button class="btn btn-primary btn-xs col-full">Save</button>
                 </form>
               </details>
               <form method="POST" action="/workspaces/<%= ws.id %>/interested-parties/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this party?')">
-                <button class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;">×</button>
+                <button class="btn btn-ghost btn-xs text-xs text-danger">×</button>
               </form>
             </td>
           </tr>

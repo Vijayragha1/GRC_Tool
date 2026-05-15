@@ -11,7 +11,7 @@
 </div>
 
 <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
-  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
+  <div class="panel-pad text-md text-secondary">
     <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
     The NIST CSF assessment module is in Stage 1 (catalog browser only). Assessment, scoring, findings, deliverables, and benchmarking will land in subsequent stages. Until production security work is built, do not use this with real client information.
   </div>
@@ -20,20 +20,20 @@
 <% tree.forEach(fn => { %>
   <details class="panel" style="margin-bottom:10px;" open>
     <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
-      <span class="mono" style="font-weight:600;font-size:13px;color:var(--accent);"><%= fn.code %></span>
-      <span style="font-weight:600;font-size:14px;"><%= fn.name %></span>
+      <span class="mono text-lg" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
+      <span class="text-xl" style="font-weight:600;"><%= fn.name %></span>
       <span class="meta text-base">(<%= fn.categories.length %> categories, <%= fn.categories.reduce((s, c) => s + c.subcategories.length, 0) %> subcategories)</span>
     </summary>
-    <div class="panel-pad" style="padding-top:0;font-size:12.5px;color:var(--text-secondary);"><%= fn.description %></div>
+    <div class="panel-pad text-md text-secondary" style="padding-top:0;"><%= fn.description %></div>
 
     <% fn.categories.forEach(cat => { %>
       <details style="border-top:1px solid var(--border);">
         <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;background:var(--bg-subtle);">
-          <span class="mono" style="font-weight:500;font-size:12.5px;"><%= cat.code %></span>
-          <span style="font-weight:500;font-size:13px;"><%= cat.name %></span>
+          <span class="mono text-md" style="font-weight:500;"><%= cat.code %></span>
+          <span class="text-lg" style="font-weight:500;"><%= cat.name %></span>
           <span class="meta text-sm">(<%= cat.subcategories.length %> subcategories)</span>
         </summary>
-        <div class="panel-pad" style="padding-top:6px;font-size:12px;color:var(--text-secondary);"><%= cat.description %></div>
+        <div class="panel-pad text-base text-secondary" style="padding-top:6px;"><%= cat.description %></div>
 
         <table class="t">
           <thead>
@@ -46,28 +46,28 @@
           <tbody>
             <% cat.subcategories.forEach(sub => { %>
               <tr>
-                <td class="mono" style="font-size:11.5px;vertical-align:top;padding-top:10px;"><%= sub.code %></td>
-                <td style="font-size:12.5px;line-height:1.5;">
+                <td class="mono text-sm" style="vertical-align:top;padding-top:10px;"><%= sub.code %></td>
+                <td class="text-md" style="line-height:1.5;">
                   <%= sub.description %>
                   <% if (sub.implementation_examples) { %>
                     <details style="margin-top:6px;">
-                      <summary style="cursor:pointer;font-size:11.5px;color:var(--accent);">Implementation examples</summary>
-                      <div style="margin-top:6px;font-size:12px;color:var(--text-secondary);line-height:1.55;white-space:pre-wrap;"><%= sub.implementation_examples %></div>
+                      <summary class="text-sm" style="cursor:pointer;color:var(--accent);">Implementation examples</summary>
+                      <div class="text-base text-secondary" style="margin-top:6px;line-height:1.55;white-space:pre-wrap;"><%= sub.implementation_examples %></div>
                     </details>
                   <% } %>
                 </td>
-                <td style="font-size:11.5px;line-height:1.5;vertical-align:top;padding-top:10px;">
+                <td class="text-sm" style="line-height:1.5;vertical-align:top;padding-top:10px;">
                   <% if (sub.iso_refs.length === 0) { %>
                     <span class="meta">-</span>
                   <% } else { %>
                     <% const clauses = sub.iso_refs.filter(r => r.ref_type === 'mandatory_clause'); %>
                     <% const annexa  = sub.iso_refs.filter(r => r.ref_type === 'annex_a'); %>
                     <% if (clauses.length) { %>
-                      <div class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Clauses</div>
-                      <div class="mono" style="font-size:11px;margin-bottom:6px;"><%= clauses.map(c => c.ref_value).join(', ') %></div>
+                      <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Clauses</div>
+                      <div class="mono text-xs" style="margin-bottom:6px;"><%= clauses.map(c => c.ref_value).join(', ') %></div>
                     <% } %>
                     <% if (annexa.length) { %>
-                      <div class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Annex A</div>
+                      <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Annex A</div>
                       <div class="mono text-xs">
                         <% annexa.forEach((a, i) => { %><a href="/workspaces/<%= ws.id %>/controls/annex-a.<%= a.ref_value %>" style="color:var(--accent);text-decoration:none;"><%= a.ref_value %></a><%= i < annexa.length - 1 ? ', ' : '' %><% }) %>
                       </div>

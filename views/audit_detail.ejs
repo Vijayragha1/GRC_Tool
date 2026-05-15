@@ -37,7 +37,7 @@
     <% }) %>
   </div>
   <% if (audit.fieldwork_started_at || audit.report_issued_at || audit.closed_at) { %>
-    <div class="meta" style="font-size:11px;padding:6px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+    <div class="meta text-xs" style="padding:6px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
       <% if (audit.fieldwork_started_at) { %>Fieldwork started: <strong><%= audit.fieldwork_started_at %></strong><% } %>
       <% if (audit.report_issued_at) { %> · Report issued: <strong><%= audit.report_issued_at %></strong><% } %>
       <% if (audit.closed_at) { %> · Closed: <strong><%= audit.closed_at %></strong><% } %>
@@ -58,7 +58,7 @@
     </div>
     <div></div>
     <div class="col-full"><label class="label">Summary / executive notes</label><textarea class="textarea" name="summary" rows="3"><%= audit.summary || '' %></textarea></div>
-    <div style="grid-column:1/-1;display:flex;gap:6px;">
+    <div class="col-full" style="display:flex;gap:6px;">
       <button class="btn btn-primary">Save</button>
       <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
         <button class="btn btn-danger">Delete audit</button>
@@ -116,7 +116,7 @@
   <% } %>
 
   <details>
-    <summary class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);font-size:13px;color:var(--text-secondary);">+ Add finding</summary>
+    <summary class="panel-pad text-lg text-secondary" style="border-top:1px solid var(--border);background:var(--bg-subtle);">+ Add finding</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/findings" class="panel-pad" style="border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
       <div><label class="label">Type</label>
         <select class="select" name="finding_type">
@@ -142,7 +142,7 @@
 <!-- Tier C.9 - Sampling justification + per-control sample log (clause 9.2) -->
 <div class="panel" style="margin-top:18px;">
   <div class="panel-head">
-    <h2>Sampling <span class="meta" style="font-weight:400;font-size:13px;">· Clause 9.2</span></h2>
+    <h2>Sampling <span class="meta text-lg" style="font-weight:400;">· Clause 9.2</span></h2>
     <span class="meta">Pop. <%= audit.population_size || '-' %> · sample <%= audit.sample_size || '-' %></span>
   </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/sampling" class="panel-pad" style="display:grid;grid-template-columns:1fr 100px 100px;gap:8px;align-items:end;">

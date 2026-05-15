@@ -14,15 +14,15 @@
   <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
     <div>
       <div class="meta" style="margin-bottom:4px;">a) Status of prior actions</div>
-      <% if (!priorMrm) { %><div style="font-size:13px;color:var(--text-tertiary);">no prior MRM</div>
+      <% if (!priorMrm) { %><div class="text-lg text-tertiary">no prior MRM</div>
       <% } else { %>
         <div class="text-lg"><%= priorActions.filter(t => t.status === 'done').length %> / <%= priorActions.length %> closed (from <%= priorMrm.meeting_date || 'last MRM' %>)</div>
-        <% priorActions.slice(0,3).forEach(t => { %><div style="font-size:12px;color:var(--text-secondary);"><%= t.title %> <span class="meta">[<%= t.status %>]</span></div><% }) %>
+        <% priorActions.slice(0,3).forEach(t => { %><div class="text-base text-secondary"><%= t.title %> <span class="meta">[<%= t.status %>]</span></div><% }) %>
       <% } %>
     </div>
     <div>
       <div class="meta" style="margin-bottom:4px;">b) Changes in context / risks</div>
-      <% if (riskSummary.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">no risks</div><% } %>
+      <% if (riskSummary.length === 0) { %><div class="text-lg text-tertiary">no risks</div><% } %>
       <% riskSummary.forEach(r => { %><div class="text-lg"><%= r.status %>: <%= r.c %></div><% }) %>
     </div>
     <div>
@@ -33,11 +33,11 @@
       <div class="meta" style="margin-bottom:4px;">c.i) Nonconformities & corrective action</div>
       <% const openN = ncs.filter(n => n.status !== 'closed' && n.status !== 'verified'); %>
       <div class="text-lg"><strong><%= openN.length %></strong> open / <%= ncs.length %> total</div>
-      <% openN.slice(0, 3).forEach(n => { %><div style="font-size:12px;color:var(--text-secondary);"><%= n.title %> <span class="meta">[<%= n.severity %>]</span></div><% }) %>
+      <% openN.slice(0, 3).forEach(n => { %><div class="text-base text-secondary"><%= n.title %> <span class="meta">[<%= n.severity %>]</span></div><% }) %>
     </div>
     <div>
       <div class="meta" style="margin-bottom:4px;">c.iii) Audit results</div>
-      <% if (audits.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">none</div><% } %>
+      <% if (audits.length === 0) { %><div class="text-lg text-tertiary">none</div><% } %>
       <% audits.slice(0, 4).forEach(a => { %><div class="text-base"><%= a.title %> <span class="meta">[<%= a.status %>]</span></div><% }) %>
     </div>
     <div>
@@ -50,12 +50,12 @@
     </div>
     <div>
       <div class="meta" style="margin-bottom:4px;">f) Risk-treatment status</div>
-      <% if (riskSummary.length === 0) { %><div style="font-size:13px;color:var(--text-tertiary);">-</div>
+      <% if (riskSummary.length === 0) { %><div class="text-lg text-tertiary">-</div>
       <% } else { %><% riskSummary.forEach(r => { %><div class="text-base"><%= r.status %>: <%= r.c %></div><% }) %><% } %>
     </div>
     <div>
       <div class="meta" style="margin-bottom:4px;">g) Improvement opportunities</div>
-      <div style="font-size:12px;color:var(--text-secondary);">Capture in field below.</div>
+      <div class="text-base text-secondary">Capture in field below.</div>
     </div>
   </div>
 </div>
@@ -74,7 +74,7 @@
   </div>
 
   <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;">
-    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Required inputs · 9.3.2</div>
+    <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Required inputs · 9.3.2</div>
     <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs" style="display:inline;" onsubmit="return appConfirmForm(event, 'Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current workspace data? This overwrites the auto-filled fields below - your free-text additions to those fields will be lost.')">
       <button class="btn btn-secondary btn-xs" title="Re-pull live data into the auto-filled fields below">↻ Refresh inputs from live data</button>
     </form>
@@ -89,7 +89,7 @@
   </div>
 
   <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);">
-    <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Outputs · 9.3.3</div>
+    <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Outputs · 9.3.3</div>
   </div>
   <div class="panel-pad" style="display:grid;grid-template-columns:1fr;gap:12px;">
     <div><label class="label">Decisions made</label><textarea class="textarea" name="decisions" rows="3"><%= mrm.decisions || '' %></textarea></div>

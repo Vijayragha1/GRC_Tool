@@ -55,14 +55,14 @@
       <div class="panel-pad">
         <div class="sec-label">E-signatures</div>
         <% if (v.signatureIssues.length) { %>
-          <div class="callout" style="background:rgba(220,38,38,0.08);border-color:#dc2626;color:#b91c1c;margin-bottom:12px;">
+          <div class="callout text-danger" style="background:rgba(220,38,38,0.08);border-color:#dc2626;margin-bottom:12px;">
             <div class="callout-title text-danger">Integrity warning</div>
             <ul style="margin:6px 0 0 18px;">
               <% v.signatureIssues.forEach(issue => { %><li><%= issue %></li><% }) %>
             </ul>
           </div>
         <% } else { %>
-          <div class="meta" style="margin-bottom:8px;color:#16a34a;">✓ All <%= v.signatures.length %> signature<%= v.signatures.length === 1 ? '' : 's' %> verified against content hash.</div>
+          <div class="meta text-success" style="margin-bottom:8px;">✓ All <%= v.signatures.length %> signature<%= v.signatures.length === 1 ? '' : 's' %> verified against content hash.</div>
         <% } %>
         <table class="t">
           <thead><tr><th>Signer</th><th>Role</th><th>Intent</th><th>When</th><th>IP</th><th>HMAC</th></tr></thead>
@@ -83,7 +83,7 @@
     <% } %>
 
     <% if (!v.approvers.length && !v.signatures.length) { %>
-      <div class="panel-pad" style="text-align:center;color:var(--text-tertiary);font-size:13px;padding:20px;">No review or signing activity on this version.</div>
+      <div class="panel-pad text-tertiary text-lg" style="text-align:center;padding:20px;">No review or signing activity on this version.</div>
     <% } %>
   </div>
 <% }) %>

@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// Single-purpose codemod: replace sole-property inline styles in EJS views
-// with semantic utility classes. Each mapping is the exact sole-property
-// inline-style string -> the class name to add (null means "just strip,
-// no class needed - the inline was redundant").
+// Codemod: replace inline-style properties with semantic utility classes.
 //
-// Scope: only sole-property inline styles. Mixed styles like
-// `style="font-size:12px;color:#b91c1c;"` are left alone for later passes.
-// The opening tag is rewritten atomically so that style attr placement
-// (before or after class) doesn't change the outcome.
+// Per property we look at every css `key:value` declaration found in any
+// style="..." attribute and check it against a mapping table. If a property
+// matches, we strip it from the style string and add the corresponding
+// class to the element. If the style is empty afterwards we drop the
+// attribute entirely; otherwise we keep the rest.
+//
+// EJS expressions are skipped: any style attribute whose value contains a
+// `<%` token is left alone, since the conditional output can contain
+// semicolons and partial property pairs that a naive splitter would
+// mangle. Those remain for hand-cleanup.
 
 const fs = require('fs');
 const path = require('path');
@@ -44,6 +47,23 @@ const STYLE_TO_CLASS = {
 // scan tag-by-tag with a bounded look-ahead.
 const TAG_OPEN = /<([a-zA-Z][a-zA-Z0-9-]*)\b/g;
 
+// Normalize a single property declaration so values with stray whitespace
+// (`color: #b91c1c` vs `color:#b91c1c`) hit the same lookup key.
+function normalizeDecl(decl) {
+  const colon = decl.indexOf(':');
+  if (colon < 0) return decl.trim();
+  const key = decl.slice(0, colon).trim();
+  const value = decl.slice(colon + 1).trim();
+  return `${key}:${value}`;
+}
+
+// Split a style attribute value into individual property declarations on
+// the top-level `;`. We don't recurse into parens (no url(...) values in
+// this codebase), but we do trim and skip empties.
+function splitDecls(styleValue) {
+  return styleValue.split(';').map(s => s.trim()).filter(Boolean);
+}
+
 function rewriteTag(src, tagStart) {
   // Find the matching '>' for the opening tag starting at `tagStart`. EJS
   // expressions inside attribute values are safe as long as they don't
@@ -65,35 +85,60 @@ function rewriteTag(src, tagStart) {
   const tagEnd = i; // index of '>'
   const original = src.slice(tagStart, tagEnd + 1);
 
-  // Look for an inline style attr in this opening tag whose value matches
-  // one of our sole-property targets.
+  // Look for an inline style attribute in this opening tag.
   const styleRe = /\sstyle="([^"]*)"/;
   const m = styleRe.exec(original);
   if (!m) return null;
-  const styleValue = m[1].trim().replace(/;\s*$/, '');
-  if (!Object.prototype.hasOwnProperty.call(STYLE_TO_CLASS, styleValue)) return null;
-  const newClass = STYLE_TO_CLASS[styleValue];
+  const rawValue = m[1];
 
-  // Strip the style attribute entirely.
-  let rewritten = original.replace(styleRe, '');
+  // Skip styles that contain an EJS expression. Splitting on `;` inside an
+  // expression would mangle conditional rendering.
+  if (rawValue.includes('<%')) return null;
 
-  // Merge the new class. If a class attr already exists, append; otherwise
-  // insert one right after the tag name (keeps attrs visually together).
-  if (newClass) {
+  const decls = splitDecls(rawValue);
+  const remaining = [];
+  const newClasses = [];
+  let matched = 0;
+  for (const decl of decls) {
+    const normalized = normalizeDecl(decl);
+    if (Object.prototype.hasOwnProperty.call(STYLE_TO_CLASS, normalized)) {
+      const cls = STYLE_TO_CLASS[normalized];
+      if (cls) newClasses.push(cls);
+      matched++;
+    } else {
+      remaining.push(decl);
+    }
+  }
+  if (matched === 0) return null;
+
+  let rewritten;
+  if (remaining.length === 0) {
+    // Style attribute has no surviving properties - drop it entirely.
+    rewritten = original.replace(styleRe, '');
+  } else {
+    // Reassemble the surviving properties, preserving trailing semicolon if
+    // the original had one.
+    const trailing = /;\s*$/.test(rawValue) ? ';' : '';
+    rewritten = original.replace(styleRe, ` style="${remaining.join(';')}${trailing}"`);
+  }
+
+  // Merge any new classes. Add them to an existing class attribute, or
+  // insert one right after the tag name.
+  if (newClasses.length) {
     const classRe = /(\sclass=")([^"]*)(")/;
     const cm = classRe.exec(rewritten);
     if (cm) {
       const existing = cm[2].trim();
-      const merged = existing ? `${existing} ${newClass}` : newClass;
+      const merged = existing ? `${existing} ${newClasses.join(' ')}` : newClasses.join(' ');
       rewritten = rewritten.replace(classRe, `$1${merged}$3`);
     } else {
       const tagNameMatch = /^<([a-zA-Z][a-zA-Z0-9-]*)/.exec(rewritten);
       const insertAt = tagNameMatch[0].length;
-      rewritten = rewritten.slice(0, insertAt) + ` class="${newClass}"` + rewritten.slice(insertAt);
+      rewritten = rewritten.slice(0, insertAt) + ` class="${newClasses.join(' ')}"` + rewritten.slice(insertAt);
     }
   }
 
-  // Tidy doubled whitespace introduced by removing the style attr.
+  // Tidy doubled whitespace introduced by removing the style attribute.
   rewritten = rewritten.replace(/\s{2,}/g, ' ').replace(/\s+>/, '>');
 
   return { original, rewritten, tagEnd };

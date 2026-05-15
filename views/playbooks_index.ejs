@@ -9,13 +9,13 @@
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;">
   <% playbooks.forEach(p => { %>
-    <a href="/playbooks/<%= p.id %>" class="panel" style="display:block;padding:18px 20px;text-decoration:none;color:var(--text);position:relative;overflow:hidden;transition:all 0.15s;">
+    <a href="/playbooks/<%= p.id %>" class="panel" style="display:block;padding:18px 20px;text-decoration:none;position:relative;overflow:hidden;transition:all 0.15s;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <span class="tag tag-info text-xxs"><%= p.when %></span>
       </div>
       <div style="font-size:15px;font-weight:600;margin-bottom:6px;letter-spacing:-0.005em;"><%= p.title %></div>
-      <div class="meta" style="font-size:12.5px;line-height:1.5;"><%= p.blurb %></div>
-      <div style="margin-top:14px;font-size:12px;color:var(--accent);font-weight:500;">Open script →</div>
+      <div class="meta text-md" style="line-height:1.5;"><%= p.blurb %></div>
+      <div class="text-base" style="margin-top:14px;color:var(--accent);font-weight:500;">Open script →</div>
     </a>
   <% }) %>
 </div>

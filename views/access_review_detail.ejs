@@ -24,13 +24,13 @@
         <td>
           <% if (review.status === 'open') { %>
             <form method="POST" action="/workspaces/<%= ws.id %>/access-reviews/<%= review.id %>/items/<%= i.id %>" style="display:inline-flex;gap:4px;align-items:center;">
-              <select class="select" name="decision" style="font-size:11px;padding:3px 22px 3px 6px;width:auto;">
+              <select class="select text-xs" name="decision" style="padding:3px 22px 3px 6px;width:auto;">
                 <option value="">-</option>
                 <option value="retain" <%= i.decision === 'retain' ? 'selected' : '' %>>Retain</option>
                 <option value="modify" <%= i.decision === 'modify' ? 'selected' : '' %>>Modify</option>
                 <option value="remove" <%= i.decision === 'remove' ? 'selected' : '' %>>Remove access</option>
               </select>
-              <input class="input" name="decision_reason" placeholder="Reason" style="font-size:11px;width:140px;">
+              <input class="input text-xs" name="decision_reason" placeholder="Reason" style="width:140px;">
               <button class="btn btn-primary btn-xs">Save</button>
             </form>
           <% } else { %>

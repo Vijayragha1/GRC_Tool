@@ -32,7 +32,7 @@
       <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       <div class="kpi-label">Avg Stage 1</div>
     </div>
-    <div class="kpi-num num"><%= totals.avgStage1 %><span style="font-size:15px;color:var(--text-tertiary);font-weight:400;margin-left:1px;">%</span></div>
+    <div class="kpi-num num"><%= totals.avgStage1 %><span class="text-tertiary" style="font-size:15px;font-weight:400;margin-left:1px;">%</span></div>
     <div class="kpi-meta">readiness across portfolio</div>
   </div>
   <div class="panel kpi <%= nearCertCls %>">
@@ -71,10 +71,10 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
     <div style="min-width:0;">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">
         Setup <%= onboarding.done %> / <%= onboarding.total %><% if (onboarding.skipped) { %> · resumed after skip<% } %>
       </div>
-      <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--ink);margin-bottom:4px;">
+      <div class="text-xl text-ink" style="font-weight:600;letter-spacing:-0.005em;margin-bottom:4px;">
         <% if (onboarding.nextStep) { %>Next: <%= onboarding.nextStep.title %><% } else { %>Setup almost complete<% } %>
       </div>
       <div style="height:5px;background:var(--bg-muted);border-radius:3px;overflow:hidden;max-width:380px;">
@@ -91,7 +91,7 @@
 <% if (typeof thisWeek !== 'undefined' && thisWeek.totalActionable > 0) { %>
   <div class="panel" style="margin-bottom:24px;">
     <div class="panel-head">
-      <h2>This week <span class="meta" style="font-weight:400;font-size:13px;">- what's due across all engagements</span></h2>
+      <h2>This week <span class="meta text-lg" style="font-weight:400;">- what's due across all engagements</span></h2>
       <span class="meta">
         <% if (thisWeek.overdue.length) { %><strong class="text-danger"><%= thisWeek.overdue.length %></strong> overdue · <% } %>
         <% if (thisWeek.dueThisWeek.length) { %><strong class="text-warn"><%= thisWeek.dueThisWeek.length %></strong> due this week<% } %>
@@ -100,18 +100,18 @@
 
     <% if (thisWeek.overdue.length) { %>
       <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(220,38,38,0.03);">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#b91c1c;margin-bottom:8px;">Overdue (<%= thisWeek.overdue.length %>)</div>
+        <div class="text-xs text-danger" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Overdue (<%= thisWeek.overdue.length %>)</div>
         <div style="display:grid;gap:6px;">
           <% thisWeek.overdue.slice(0, 10).forEach(it => { %>
-            <a href="<%= it.href %>" class="link-muted" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;font-size:12.5px;align-items:center;">
-              <span class="tag tag-danger" style="font-size:10px;justify-self:start;"><%= it.kind %></span>
-              <span class="meta" style="font-size:11px;font-weight:500;color:#b91c1c;"><%= it.due_date %></span>
+            <a href="<%= it.href %>" class="link-muted text-md" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;align-items:center;">
+              <span class="tag tag-danger text-xxs" style="justify-self:start;"><%= it.kind %></span>
+              <span class="meta text-xs text-danger" style="font-weight:500;"><%= it.due_date %></span>
               <span><%= it.title %></span>
-              <span class="meta" style="font-size:11px;text-align:right;"><%= it.client %></span>
+              <span class="meta text-xs" style="text-align:right;"><%= it.client %></span>
             </a>
           <% }) %>
           <% if (thisWeek.overdue.length > 10) { %>
-            <div class="meta" style="font-size:11px;padding:4px 8px;">+ <%= thisWeek.overdue.length - 10 %> more</div>
+            <div class="meta text-xs" style="padding:4px 8px;">+ <%= thisWeek.overdue.length - 10 %> more</div>
           <% } %>
         </div>
       </div>
@@ -119,18 +119,18 @@
 
     <% if (thisWeek.dueThisWeek.length) { %>
       <div class="panel-pad">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#a16207;margin-bottom:8px;">Due this week (<%= thisWeek.dueThisWeek.length %>)</div>
+        <div class="text-xs text-warn" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Due this week (<%= thisWeek.dueThisWeek.length %>)</div>
         <div style="display:grid;gap:6px;">
           <% thisWeek.dueThisWeek.slice(0, 10).forEach(it => { %>
-            <a href="<%= it.href %>" class="link-muted" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;font-size:12.5px;align-items:center;">
-              <span class="tag tag-warn" style="font-size:10px;justify-self:start;"><%= it.kind %></span>
+            <a href="<%= it.href %>" class="link-muted text-md" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;align-items:center;">
+              <span class="tag tag-warn text-xxs" style="justify-self:start;"><%= it.kind %></span>
               <span class="meta num text-xs"><%= it.due_date %></span>
               <span><%= it.title %></span>
-              <span class="meta" style="font-size:11px;text-align:right;"><%= it.client %></span>
+              <span class="meta text-xs" style="text-align:right;"><%= it.client %></span>
             </a>
           <% }) %>
           <% if (thisWeek.dueThisWeek.length > 10) { %>
-            <div class="meta" style="font-size:11px;padding:4px 8px;">+ <%= thisWeek.dueThisWeek.length - 10 %> more</div>
+            <div class="meta text-xs" style="padding:4px 8px;">+ <%= thisWeek.dueThisWeek.length - 10 %> more</div>
           <% } %>
         </div>
       </div>
@@ -141,10 +141,10 @@
     %>
     <% if (byClient.length > 1) { %>
       <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:8px;">By client</div>
+        <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">By client</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
           <% byClient.forEach(c => { %>
-            <a href="/workspaces/<%= c.ws_id %>" class="link-muted" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-size:12px;">
+            <a href="/workspaces/<%= c.ws_id %>" class="link-muted text-base" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
               <span style="font-weight:500;"><%= c.name %></span>
               <span style="display:flex;gap:4px;">
                 <% if (c.overdue) { %><span class="tag tag-danger text-xxs"><%= c.overdue %> late</span><% } %>
@@ -162,7 +162,7 @@
 <% if (typeof atRisk !== 'undefined' && atRisk.length > 0) { %>
   <div class="panel" style="margin-bottom:24px;border-left:3px solid <%= atRisk.some(r => r.severity === 'high') ? '#b91c1c' : '#a16207' %>;">
     <div class="panel-head">
-      <h2>At-risk engagements <span class="meta" style="font-weight:400;font-size:13px;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
+      <h2>At-risk engagements <span class="meta text-lg" style="font-weight:400;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
       <span class="meta">
         <% const high = atRisk.filter(r => r.severity === 'high').length; const med = atRisk.filter(r => r.severity === 'medium').length; %>
         <% if (high) { %><strong class="text-danger"><%= high %></strong> high · <% } %>
@@ -209,7 +209,7 @@
                 </span>
               <% } else { %><span class="meta">no target</span><% } %>
             </td>
-            <td style="font-size:11.5px;line-height:1.5;">
+            <td class="text-sm" style="line-height:1.5;">
               <%
                 // Each reason chip links to the most relevant sub-page so a
                 // consultant can drill straight in instead of bouncing through
@@ -224,7 +224,7 @@
                   return `/workspaces/${wsId}`;
                 }
               %>
-              <% r.reasons.forEach(reason => { %><a href="<%= reasonLink(reason, r.id) %>" class="tag tag-neutral" style="font-size:10.5px;margin:1px 2px 1px 0;text-decoration:none;cursor:pointer;"><%= reason %></a><% }) %>
+              <% r.reasons.forEach(reason => { %><a href="<%= reasonLink(reason, r.id) %>" class="tag tag-neutral text-eyebrow" style="margin:1px 2px 1px 0;text-decoration:none;cursor:pointer;"><%= reason %></a><% }) %>
             </td>
             <td><a href="/workspaces/<%= r.id %>" class="btn btn-secondary btn-xs">Open</a></td>
           </tr>
@@ -280,7 +280,7 @@
           <td>
             <div style="display:flex;align-items:center;gap:8px">
               <div style="width:120px;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;"><div style="height:100%;background:var(--accent);width:<%= w.progress.percent %>%;"></div></div>
-              <span class="num" style="font-size:11px;color:var(--text-tertiary);min-width:42px;"><%= w.progress.assessed %>/<%= w.progress.total %></span>
+              <span class="num text-xs text-tertiary" style="min-width:42px;"><%= w.progress.assessed %>/<%= w.progress.total %></span>
             </div>
           </td>
           <% if (user.user_type === 'firm') { %>
@@ -352,17 +352,17 @@
 <div id="deleteClientModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(185,28,28,0.06);">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client engagement</div>
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client engagement</div>
       <div id="dcmTitle" style="font-size:15px;font-weight:600;margin-top:4px;"></div>
     </div>
     <form id="deleteClientForm" method="POST" action="">
       <div style="padding:18px;">
-        <div class="meta" style="font-size:12.5px;line-height:1.5;margin-bottom:14px;">
+        <div class="meta text-md" style="line-height:1.5;margin-bottom:14px;">
           Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (DB and disk), audits, MRMs, NCs, incidents, suppliers, documents, registers. <strong>Cannot be undone.</strong>
         </div>
         <label class="label text-base">Type <strong id="dcmExpected"></strong> to confirm</label>
         <input id="dcmInput" class="input" name="confirm_name" autocomplete="off" required>
-        <div id="dcmError" style="font-size:11.5px;color:var(--danger,#b91c1c);margin-top:6px;display:none;">Name did not match.</div>
+        <div class="text-sm" id="dcmError" style="color:var(--danger,#b91c1c);margin-top:6px;display:none;">Name did not match.</div>
       </div>
       <div style="padding:12px 18px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:flex-end;gap:8px;">
         <button type="button" id="dcmCancel" class="btn btn-ghost btn-xs">Cancel</button>

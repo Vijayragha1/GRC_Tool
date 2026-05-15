@@ -3,11 +3,11 @@
 <div class="page-head">
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="meta" style="font-size:12px;text-decoration:none;">&larr; All subcategories</a>
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="meta text-base" style="text-decoration:none;">&larr; All subcategories</a>
     </div>
     <h1 class="page-title" style="margin-top:6px;display:flex;align-items:center;gap:10px;">
       <span class="mono" style="color:var(--accent);"><%= detail.sub_code %></span>
-      <span style="font-size:18px;font-weight:500;color:var(--text-secondary);"><%= detail.cat_code %> &middot; <%= detail.cat_name %></span>
+      <span class="text-secondary" style="font-size:18px;font-weight:500;"><%= detail.cat_code %> &middot; <%= detail.cat_name %></span>
     </h1>
     <div class="page-subtitle" style="margin-top:4px;"><%= detail.sub_description %></div>
   </div>
@@ -19,7 +19,7 @@
 
 <!-- State strip -->
 <div class="panel" style="margin-bottom:14px;">
-  <div class="panel-pad" style="display:flex;gap:6px;align-items:center;font-size:11.5px;flex-wrap:wrap;">
+  <div class="panel-pad text-sm" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
     <% const stateOrder = ['Not Started','In Progress','Evidence Collected','Draft Complete','Reviewed','Approved']; %>
     <% const curIdx = stateOrder.indexOf(detail.status); %>
     <% stateOrder.forEach((s, i) => { %>
@@ -45,7 +45,7 @@
 
 <% if (warnings && warnings.length) { %>
   <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
-    <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
+    <div class="panel-pad text-md text-secondary">
       <strong class="text-warn">Soft warnings (not blocking):</strong>
       <ul style="margin:6px 0 0 0;padding-left:18px;">
         <% warnings.forEach(w => { %><li><%= w %></li><% }) %>
@@ -57,22 +57,22 @@
 <!-- Stage 11: Analyst guidance sidebar (Layers 1-3) -->
 <% if (explainer || questions.length || prompts.length) { %>
   <details class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);" <%= detail.status === 'Not Started' || detail.status === 'In Progress' ? 'open' : '' %>>
-    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);">Analyst guide for <%= detail.sub_code %></summary>
+    <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;color:var(--accent);">Analyst guide for <%= detail.sub_code %></summary>
 
     <% if (explainer) { %>
       <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
         <% if (explainer.plain_what) { %>
-          <div style="font-size:13px;line-height:1.55;margin-bottom:6px;"><strong>What this is asking:</strong> <%= explainer.plain_what %></div>
+          <div class="text-lg" style="line-height:1.55;margin-bottom:6px;"><strong>What this is asking:</strong> <%= explainer.plain_what %></div>
         <% } %>
         <% if (explainer.plain_why) { %>
-          <div style="font-size:13px;line-height:1.55;margin-bottom:8px;"><strong>Why it matters:</strong> <%= explainer.plain_why %></div>
+          <div class="text-lg" style="line-height:1.55;margin-bottom:8px;"><strong>Why it matters:</strong> <%= explainer.plain_why %></div>
         <% } %>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;line-height:1.55;">
+        <div class="text-base" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;line-height:1.55;">
           <% if (explainer.signs_of_strength) { %>
-            <div><span class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#15803d;">Signs of strength</span><div style="margin-top:4px;color:var(--text-secondary);"><%= explainer.signs_of_strength %></div></div>
+            <div><span class="meta text-eyebrow text-success" style="text-transform:uppercase;letter-spacing:0.04em;">Signs of strength</span><div class="text-secondary" style="margin-top:4px;"><%= explainer.signs_of_strength %></div></div>
           <% } %>
           <% if (explainer.signs_of_weakness) { %>
-            <div><span class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;color:#b91c1c;">Signs of weakness</span><div style="margin-top:4px;color:var(--text-secondary);"><%= explainer.signs_of_weakness %></div></div>
+            <div><span class="meta text-eyebrow text-danger" style="text-transform:uppercase;letter-spacing:0.04em;">Signs of weakness</span><div class="text-secondary" style="margin-top:4px;"><%= explainer.signs_of_weakness %></div></div>
           <% } %>
         </div>
       </div>
@@ -80,8 +80,8 @@
 
     <% if (questions.length) { %>
       <div class="panel-pad" style="border-top:1px solid var(--border);">
-        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Interview questions</div>
-        <ul style="font-size:12.5px;line-height:1.6;margin:0;padding-left:18px;">
+        <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Interview questions</div>
+        <ul class="text-md" style="line-height:1.6;margin:0;padding-left:18px;">
           <% questions.forEach(q => { %><li><span class="tag" style="font-size:9.5px;background:var(--bg-subtle);text-transform:uppercase;margin-right:6px;"><%= q.question_type %></span><%= q.question %></li><% }) %>
         </ul>
       </div>
@@ -89,8 +89,8 @@
 
     <% if (prompts.length) { %>
       <div class="panel-pad" style="border-top:1px solid var(--border);">
-        <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Evidence to ask for</div>
-        <ul style="font-size:12.5px;line-height:1.6;margin:0;padding-left:18px;">
+        <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Evidence to ask for</div>
+        <ul class="text-md" style="line-height:1.6;margin:0;padding-left:18px;">
           <% prompts.forEach(p => { %><li><% if (p.evidence_type) { %><span class="tag" style="font-size:9.5px;background:var(--bg-subtle);text-transform:uppercase;margin-right:6px;"><%= p.evidence_type %></span><% } %><%= p.prompt %></li><% }) %>
         </ul>
       </div>
@@ -98,7 +98,7 @@
 
     <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
       <details>
-        <summary style="cursor:pointer;font-size:12.5px;color:var(--accent);">Stuck? Ask your Lead</summary>
+        <summary class="text-md" style="cursor:pointer;color:var(--accent);">Stuck? Ask your Lead</summary>
         <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead" style="margin-top:8px;display:grid;grid-template-columns:1fr;gap:6px;">
           <input class="input text-base" name="subject" placeholder="Subject (optional)">
           <textarea class="textarea text-base" name="body" rows="3" required placeholder="What's the question? Include what you've already tried or seen."></textarea>
@@ -114,8 +114,8 @@
 <!-- Self-check prompts (Layer 6) - non-blocking, shown when at Draft Complete or beyond -->
 <% if (selfCheckPrompts.length && ['Draft Complete', 'Reviewed', 'Approved'].includes(detail.status)) { %>
   <details class="panel" style="margin-bottom:14px;">
-    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;">Self-check before review</summary>
-    <div class="panel-pad" style="border-top:1px solid var(--border);font-size:12.5px;line-height:1.6;">
+    <summary class="panel-pad text-md" style="cursor:pointer;">Self-check before review</summary>
+    <div class="panel-pad text-md" style="border-top:1px solid var(--border);line-height:1.6;">
       <ul style="margin:0;padding-left:18px;">
         <% selfCheckPrompts.forEach(p => { %><li><%= p %></li><% }) %>
       </ul>
@@ -131,19 +131,19 @@
       <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div>
           <label class="label">Practice observed</label>
-          <textarea class="textarea" name="narrative_practice_observed" rows="5" placeholder="What did the team actually do in practice? Specifics over generic. Names, dates, system IDs where useful." style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.practice_observed %></textarea>
+          <textarea class="textarea text-md" name="narrative_practice_observed" rows="5" placeholder="What did the team actually do in practice? Specifics over generic. Names, dates, system IDs where useful." style="line-height:1.5;"><%= narrativeSections.practice_observed %></textarea>
         </div>
         <div>
           <label class="label">Evidence reviewed</label>
-          <textarea class="textarea" name="narrative_evidence_reviewed" rows="5" placeholder="Which documents, screenshots, configurations, or interview attributions support what you observed?" style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.evidence_reviewed %></textarea>
+          <textarea class="textarea text-md" name="narrative_evidence_reviewed" rows="5" placeholder="Which documents, screenshots, configurations, or interview attributions support what you observed?" style="line-height:1.5;"><%= narrativeSections.evidence_reviewed %></textarea>
         </div>
         <div>
           <label class="label">Gaps or concerns</label>
-          <textarea class="textarea" name="narrative_gaps_or_concerns" rows="4" placeholder="What's missing, weak, or inconsistent? Don't soften - this is what becomes a finding." style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.gaps_or_concerns %></textarea>
+          <textarea class="textarea text-md" name="narrative_gaps_or_concerns" rows="4" placeholder="What's missing, weak, or inconsistent? Don't soften - this is what becomes a finding." style="line-height:1.5;"><%= narrativeSections.gaps_or_concerns %></textarea>
         </div>
         <div>
           <label class="label">Follow-up needed</label>
-          <textarea class="textarea" name="narrative_follow_up_needed" rows="4" placeholder="Anything promised but not produced? Anything you couldn't verify today and want to chase before scoring?" style="font-size:12.5px;line-height:1.5;"><%= narrativeSections.follow_up_needed %></textarea>
+          <textarea class="textarea text-md" name="narrative_follow_up_needed" rows="4" placeholder="Anything promised but not produced? Anything you couldn't verify today and want to chase before scoring?" style="line-height:1.5;"><%= narrativeSections.follow_up_needed %></textarea>
         </div>
       </div>
 
@@ -155,7 +155,7 @@
             <option value="">- not set -</option>
             <% [1,2,3,4,5].forEach(n => { %><option value="<%= n %>" <%= detail.current_score === n ? 'selected' : '' %>><%= n %></option><% }) %>
           </select>
-          <% if (detail.is_bulk_set) { %><div class="meta" style="font-size:11px;margin-top:4px;color:var(--text-tertiary);">Set via bulk action (audit-flagged)</div><% } %>
+          <% if (detail.is_bulk_set) { %><div class="meta text-xs text-tertiary" style="margin-top:4px;">Set via bulk action (audit-flagged)</div><% } %>
         </div>
         <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
           <div>
@@ -170,11 +170,11 @@
 
       <div class="panel-head" style="border-top:1px solid var(--border);"><h2>Scope</h2></div>
       <div class="panel-pad">
-        <label style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer;">
+        <label class="text-lg" style="display:flex;gap:8px;align-items:center;cursor:pointer;">
           <input type="checkbox" name="excluded_from_scope" value="1" <%= detail.excluded_from_scope ? 'checked' : '' %>>
           Excluded from this engagement's scope
         </label>
-        <textarea class="textarea" name="exclusion_rationale" rows="2" placeholder="Rationale for exclusion (required if excluded)" style="margin-top:8px;font-size:12.5px;"><%= detail.exclusion_rationale || '' %></textarea>
+        <textarea class="textarea text-md" name="exclusion_rationale" rows="2" placeholder="Rationale for exclusion (required if excluded)" style="margin-top:8px;"><%= detail.exclusion_rationale || '' %></textarea>
       </div>
 
       <div class="panel-pad" style="background:var(--bg-subtle);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
@@ -185,8 +185,8 @@
     <!-- Implementation examples + ISO refs (from Stage 1 catalog) -->
     <% if (detail.implementation_examples) { %>
       <details class="panel" style="margin-bottom:14px;">
-        <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;">NIST implementation examples</summary>
-        <div class="panel-pad" style="padding-top:0;font-size:12.5px;color:var(--text-secondary);line-height:1.55;white-space:pre-wrap;"><%= detail.implementation_examples %></div>
+        <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">NIST implementation examples</summary>
+        <div class="panel-pad text-md text-secondary" style="padding-top:0;line-height:1.55;white-space:pre-wrap;"><%= detail.implementation_examples %></div>
       </details>
     <% } %>
     <% if (isoRefs && isoRefs.length) { %>
@@ -194,7 +194,7 @@
       <% const annexa = isoRefs.filter(r => r.ref_type === 'annex_a'); %>
       <div class="panel" style="margin-bottom:14px;">
         <div class="panel-head"><h2>ISO 27001:2022 cross-references</h2></div>
-        <div class="panel-pad" style="font-size:12.5px;line-height:1.7;">
+        <div class="panel-pad text-md" style="line-height:1.7;">
           <% if (clauses.length) { %><div><span class="meta text-sm">Mandatory clauses:</span> <span class="mono"><%= clauses.map(c => c.ref_value).join(', ') %></span></div><% } %>
           <% if (annexa.length) { %>
             <div><span class="meta text-sm">Annex A controls:</span>
@@ -219,21 +219,21 @@
               <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
                 <div style="flex:1;min-width:0;">
                   <div style="display:flex;align-items:center;gap:6px;">
-                    <span class="tag" style="font-size:10px;background:var(--bg-subtle);"><%= e.type %></span>
-                    <% if (e.visible_to_client) { %><span class="tag" style="font-size:10px;background:rgba(21,128,61,0.08);color:#15803d;">visible to client</span><% } %>
+                    <span class="tag text-xxs" style="background:var(--bg-subtle);"><%= e.type %></span>
+                    <% if (e.visible_to_client) { %><span class="tag text-xxs text-success" style="background:rgba(21,128,61,0.08);">visible to client</span><% } %>
                   </div>
                   <% if (e.type === 'FILE') { %>
-                    <div class="mono" style="font-size:11.5px;margin-top:4px;"><%= e.file_path %></div>
+                    <div class="mono text-sm" style="margin-top:4px;"><%= e.file_path %></div>
                   <% } else if (e.type === 'LINK') { %>
-                    <div style="font-size:12px;margin-top:4px;"><a href="<%= e.url %>" target="_blank" rel="noopener" style="color:var(--accent);"><%= e.url %></a></div>
+                    <div class="text-base" style="margin-top:4px;"><a href="<%= e.url %>" target="_blank" rel="noopener" style="color:var(--accent);"><%= e.url %></a></div>
                   <% } else if (e.type === 'INTERVIEW') { %>
-                    <div style="font-size:12px;margin-top:4px;"><%= e.interview_source %></div>
+                    <div class="text-base" style="margin-top:4px;"><%= e.interview_source %></div>
                   <% } %>
-                  <% if (e.description) { %><div class="meta" style="font-size:11.5px;margin-top:4px;"><%= e.description %></div><% } %>
+                  <% if (e.description) { %><div class="meta text-sm" style="margin-top:4px;"><%= e.description %></div><% } %>
                 </div>
                 <% if (canCollect) { %>
                   <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>/evidence/<%= e.id %>/delete" onsubmit="return appConfirmForm(event, 'Remove this evidence item?')">
-                    <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:11px;">&times;</button>
+                    <button class="btn btn-ghost btn-xs text-danger text-xs">&times;</button>
                   </form>
                 <% } %>
               </div>
@@ -245,16 +245,16 @@
       <% if (canCollect) { %>
         <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>/evidence" enctype="multipart/form-data" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
           <label class="label">Add evidence</label>
-          <select class="select" name="type" id="csfEvType" style="margin-bottom:8px;font-size:12px;">
+          <select class="select text-base" name="type" id="csfEvType" style="margin-bottom:8px;">
             <option value="LINK">Link (URL)</option>
             <option value="FILE">File upload</option>
             <option value="INTERVIEW">Interview attribution</option>
           </select>
-          <input class="input" name="url" id="csfEvUrl" placeholder="https://..." style="margin-bottom:8px;font-size:12px;">
-          <input class="input" type="file" name="file" id="csfEvFile" style="margin-bottom:8px;display:none;font-size:12px;">
-          <input class="input" name="interview_source" id="csfEvInterview" placeholder="e.g., Jane Doe, IT Manager, 2026-05-14" style="margin-bottom:8px;display:none;font-size:12px;">
-          <textarea class="textarea" name="description" rows="2" placeholder="What does this evidence show? (optional)" style="margin-bottom:8px;font-size:12px;"></textarea>
-          <label style="display:flex;gap:6px;align-items:center;font-size:11.5px;margin-bottom:8px;">
+          <input class="input text-base" name="url" id="csfEvUrl" placeholder="https://..." style="margin-bottom:8px;">
+          <input class="input text-base" type="file" name="file" id="csfEvFile" style="margin-bottom:8px;display:none;">
+          <input class="input text-base" name="interview_source" id="csfEvInterview" placeholder="e.g., Jane Doe, IT Manager, 2026-05-14" style="margin-bottom:8px;display:none;">
+          <textarea class="textarea text-base" name="description" rows="2" placeholder="What does this evidence show? (optional)" style="margin-bottom:8px;"></textarea>
+          <label class="text-sm" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
             <input type="checkbox" name="visible_to_client" value="1"> Visible to client portal
           </label>
           <button class="btn btn-primary btn-xs">Attach</button>
@@ -300,36 +300,36 @@
           <div style="padding:10px 14px;border-left:3px solid <%= sevColor[f.severity] || 'var(--border)' %>;">
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
-              <strong style="font-size:13px;flex:1;"><%= f.title %></strong>
-              <span class="tag" style="background:var(--bg-subtle);font-size:10px;"><%= f.status %></span>
+              <strong class="text-lg" style="flex:1;"><%= f.title %></strong>
+              <span class="tag text-xxs" style="background:var(--bg-subtle);"><%= f.status %></span>
               <% if (canCreateFinding) { %>
                 <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings/<%= f.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this finding (soft-delete)?')">
                   <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
-                  <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:10.5px;">&times;</button>
+                  <button class="btn btn-ghost btn-xs text-danger text-eyebrow">&times;</button>
                 </form>
               <% } %>
             </div>
             <% if (f.description) { %>
-              <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= f.description %></div>
+              <div class="text-base text-secondary" style="margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= f.description %></div>
             <% } %>
-            <div class="meta" style="font-size:11px;margin-top:4px;">By <%= f.creator || '-' %> &middot; <%= f.created_at %></div>
+            <div class="meta text-xs" style="margin-top:4px;">By <%= f.creator || '-' %> &middot; <%= f.created_at %></div>
 
             <% const recs = recsByFinding[f.id] || []; %>
             <% if (recs.length) { %>
               <div style="margin-top:8px;padding-left:12px;border-left:2px solid var(--border);">
-                <div class="meta" style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recommendations</div>
+                <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recommendations</div>
                 <% recs.forEach(r => { %>
-                  <div style="font-size:12px;margin-bottom:6px;line-height:1.5;">
+                  <div class="text-base" style="margin-bottom:6px;line-height:1.5;">
                     <%= r.description %>
                     <div style="display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;">
-                      <% if (r.estimated_effort) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">effort: <%= r.estimated_effort %></span><% } %>
-                      <% if (r.priority) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">priority: <%= r.priority %></span><% } %>
-                      <% if (r.roadmap_phase) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);"><%= r.roadmap_phase.replace('_PLUS','+').replace('_','-') %></span><% } %>
+                      <% if (r.estimated_effort) { %><span class="tag text-xxs" style="background:var(--bg-subtle);">effort: <%= r.estimated_effort %></span><% } %>
+                      <% if (r.priority) { %><span class="tag text-xxs" style="background:var(--bg-subtle);">priority: <%= r.priority %></span><% } %>
+                      <% if (r.roadmap_phase) { %><span class="tag text-xxs" style="background:var(--bg-subtle);"><%= r.roadmap_phase.replace('_PLUS','+').replace('_','-') %></span><% } %>
                       <% if (r.target_completion_date) { %><span class="meta text-xxs">due <%= r.target_completion_date %></span><% } %>
                       <% if (canManageRecs) { %>
                         <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/recommendations/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this recommendation?')">
                           <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
-                          <button class="btn btn-ghost btn-xs" style="color:#b91c1c;font-size:10px;">&times;</button>
+                          <button class="btn btn-ghost btn-xs text-danger text-xxs">&times;</button>
                         </form>
                       <% } %>
                     </div>
@@ -340,9 +340,9 @@
 
             <% if (canManageRecs) { %>
               <details style="margin-top:6px;">
-                <summary style="cursor:pointer;font-size:11px;color:var(--accent);">+ Add recommendation</summary>
+                <summary class="text-xs" style="cursor:pointer;color:var(--accent);">+ Add recommendation</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings/<%= f.id %>/recommendations" style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;">
-                  <textarea class="textarea" name="description" rows="2" placeholder="What should the client do?" required style="grid-column:1/-1;font-size:11.5px;"></textarea>
+                  <textarea class="textarea col-full text-sm" name="description" rows="2" placeholder="What should the client do?" required></textarea>
                   <select class="select text-xs" name="estimated_effort">
                     <option value="">- effort -</option>
                     <% efforts.forEach(e => { %><option value="<%= e %>"><%= e %></option><% }) %>
@@ -357,7 +357,7 @@
                   </select>
                   <input class="input text-xs" type="date" name="target_completion_date">
                   <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
-                  <button class="btn btn-primary btn-xs" style="grid-column:1/-1;font-size:11px;">Add</button>
+                  <button class="btn btn-primary btn-xs col-full text-xs">Add</button>
                 </form>
               </details>
             <% } %>
@@ -368,10 +368,10 @@
 
     <% if (canCreateFinding) { %>
       <details class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
-        <summary style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ New finding on <%= detail.sub_code %></summary>
+        <summary class="text-md" style="cursor:pointer;color:var(--accent);">+ New finding on <%= detail.sub_code %></summary>
         <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" style="margin-top:8px;display:grid;grid-template-columns:2fr 1fr;gap:8px;">
-          <input class="input" name="title" required placeholder="Short summary" style="grid-column:1/-1;font-size:12px;">
-          <textarea class="textarea" name="description" rows="3" placeholder="Detail" style="grid-column:1/-1;font-size:12px;"></textarea>
+          <input class="input col-full text-base" name="title" required placeholder="Short summary">
+          <textarea class="textarea col-full text-base" name="description" rows="3" placeholder="Detail"></textarea>
           <select class="select text-base" name="severity">
             <% severities.forEach(s => { %><option value="<%= s %>" <%= s === 'MEDIUM' ? 'selected' : '' %>><%= s %></option><% }) %>
           </select>
@@ -396,10 +396,10 @@
             <div style="display:flex;align-items:center;gap:6px;">
               <strong class="text-base"><%= c.commenter_name %></strong>
               <% if (c.requires_revision) { %><span class="tag tag-warn text-xxs">needs revision</span><% } %>
-              <% if (c.resolved) { %><span class="tag" style="background:rgba(21,128,61,0.08);color:#15803d;font-size:10px;">resolved</span><% } %>
-              <span class="meta" style="font-size:11px;margin-left:auto;"><%= c.created_at %></span>
+              <% if (c.resolved) { %><span class="tag text-success text-xxs" style="background:rgba(21,128,61,0.08);">resolved</span><% } %>
+              <span class="meta text-xs" style="margin-left:auto;"><%= c.created_at %></span>
             </div>
-            <div style="font-size:12.5px;margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= c.text %></div>
+            <div class="text-md" style="margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= c.text %></div>
             <% if (!c.resolved) { %>
               <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/comments/<%= c.id %>/resolve" style="margin-top:6px;">
                 <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
@@ -415,7 +415,7 @@
       <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/comments" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
         <textarea class="textarea text-base" name="text" rows="3" placeholder="Comment, push-back, or clarification" required></textarea>
         <input type="hidden" name="assessment_id" value="<%= detail.id %>">
-        <label style="display:flex;gap:6px;align-items:center;font-size:11.5px;margin-top:6px;">
+        <label class="text-sm" style="display:flex;gap:6px;align-items:center;margin-top:6px;">
           <input type="checkbox" name="requires_revision" value="1">
           Needs revision (reopens to Draft Complete if in Reviewed state)
         </label>

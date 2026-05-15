@@ -13,19 +13,19 @@
     <a href="/workspaces/<%= ws.id %>/audit-pack" class="btn-headline" style="display:inline-flex;align-items:center;gap:10px;padding:10px 18px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-deep) 100%);color:#fff;border:none;border-radius:8px;text-decoration:none;font-weight:600;font-size:13.5px;box-shadow:0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 12px rgba(79,70,229,0.30);transition:transform 0.12s, box-shadow 0.12s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 16px rgba(79,70,229,0.40)';" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 12px rgba(79,70,229,0.30)';">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span>Audit pack</span>
-      <span style="font-size:10.5px;font-weight:500;opacity:0.78;background:rgba(255,255,255,0.14);padding:2px 7px;border-radius:999px;letter-spacing:0.02em;">.zip</span>
+      <span class="text-eyebrow" style="font-weight:500;opacity:0.78;background:rgba(255,255,255,0.14);padding:2px 7px;border-radius:999px;letter-spacing:0.02em;">.zip</span>
     </a>
     <details style="position:relative;">
-      <summary class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;font-size:13px;cursor:pointer;height:100%;">
+      <summary class="btn btn-secondary text-lg" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;height:100%;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         More exports
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </summary>
       <div style="position:absolute;right:0;top:calc(100% + 4px);background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);min-width:180px;z-index:50;overflow:hidden;">
-        <a href="/workspaces/<%= ws.id %>/export/soa.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">SoA <span class="meta text-eyebrow">.csv</span></a>
-        <a href="/workspaces/<%= ws.id %>/export/risks.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Risks <span class="meta text-eyebrow">.csv</span></a>
-        <a href="/workspaces/<%= ws.id %>/export/assets.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Assets <span class="meta text-eyebrow">.csv</span></a>
-        <a href="/workspaces/<%= ws.id %>/reports" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);background:var(--bg-subtle);" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='var(--bg-subtle)'">All deliverables <span class="meta text-eyebrow">+ markdown templates</span></a>
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/export/soa.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">SoA <span class="meta text-eyebrow">.csv</span></a>
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/export/risks.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Risks <span class="meta text-eyebrow">.csv</span></a>
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/export/assets.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Assets <span class="meta text-eyebrow">.csv</span></a>
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/reports" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;background:var(--bg-subtle);" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='var(--bg-subtle)'">All deliverables <span class="meta text-eyebrow">+ markdown templates</span></a>
       </div>
     </details>
   </div>
@@ -40,9 +40,9 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
     <div style="min-width:0;">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
-      <div style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--ink);margin-bottom:4px;"><%= nextStep.title %></div>
-      <div class="meta" style="font-size:12.5px;line-height:1.5;color:var(--text);"><%= nextStep.why %></div>
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
+      <div class="text-ink" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin-bottom:4px;"><%= nextStep.title %></div>
+      <div class="meta text-md" style="line-height:1.5;"><%= nextStep.why %></div>
     </div>
     <a href="<%= nextStep.href %>" class="btn btn-primary" style="white-space:nowrap;"><%= nextStep.cta %> →</a>
   </div>
@@ -60,28 +60,28 @@
   }
 %>
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= s1Cls %>" style="text-decoration:none;color:var(--text);">
+  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= s1Cls %>" style="text-decoration:none;">
     <div class="kpi-head">
       <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       <div class="kpi-label">Stage 1 readiness</div>
     </div>
-    <div class="kpi-num num"><%= readiness.stage1 %><span style="font-size:15px;color:var(--text-tertiary);font-weight:400;margin-left:1px;">%</span></div>
+    <div class="kpi-num num"><%= readiness.stage1 %><span class="text-tertiary" style="font-size:15px;font-weight:400;margin-left:1px;">%</span></div>
     <div class="kpi-meta"><%= readiness.flags.filter(f => f.severity==='high').length %> high-severity gap<%= readiness.flags.filter(f => f.severity==='high').length === 1 ? '' : 's' %></div>
   </a>
-  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= s2Cls %>" style="text-decoration:none;color:var(--text);">
+  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= s2Cls %>" style="text-decoration:none;">
     <div class="kpi-head">
       <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
       <div class="kpi-label">Stage 2 readiness</div>
     </div>
-    <div class="kpi-num num"><%= readiness.stage2 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-num num"><%= readiness.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta">operational evidence</div>
   </a>
-  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= recCls %>" style="text-decoration:none;color:var(--text);">
+  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= recCls %>" style="text-decoration:none;">
     <div class="kpi-head">
       <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <div class="kpi-label">Mandatory docs</div>
     </div>
-    <div class="kpi-num num"><%= readiness.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= readiness.records.total %></span></div>
+    <div class="kpi-num num"><%= readiness.records.found %><span class="text-tertiary" style="font-weight:400;">/<%= readiness.records.total %></span></div>
     <div class="kpi-meta">required by ISO 27001:2022</div>
   </a>
   <div class="panel kpi <%= daysCls %>">
@@ -130,7 +130,7 @@
         <% openTasks.forEach(t => { %>
           <div style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
             <div style="min-width:0">
-              <div style="font-size:13px;font-weight:500"><%= t.title %></div>
+              <div class="text-lg" style="font-weight:500"><%= t.title %></div>
               <div class="meta"><%= t.assignee_name || 'unassigned' %><% if (t.due_date) { %> · due <%= t.due_date %><% } %></div>
             </div>
             <span class="status s-<%= t.status %>"><%= t.status.replace('_',' ') %></span>
@@ -147,22 +147,22 @@
     <div>
       <div class="meta" style="margin-bottom:6px">Risks created</div>
       <div id="tr-risks" style="height:48px;"></div>
-      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-risks-tot"></div>
+      <div class="text-xs text-tertiary" style="margin-top:4px;" id="tr-risks-tot"></div>
     </div>
     <div>
       <div class="meta" style="margin-bottom:6px">Controls implemented</div>
       <div id="tr-controls" style="height:48px;"></div>
-      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-controls-tot"></div>
+      <div class="text-xs text-tertiary" style="margin-top:4px;" id="tr-controls-tot"></div>
     </div>
     <div>
       <div class="meta" style="margin-bottom:6px">NCs opened</div>
       <div id="tr-ncs-open" style="height:48px;"></div>
-      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-ncs-open-tot"></div>
+      <div class="text-xs text-tertiary" style="margin-top:4px;" id="tr-ncs-open-tot"></div>
     </div>
     <div>
       <div class="meta" style="margin-bottom:6px">NCs closed</div>
       <div id="tr-ncs-closed" style="height:48px;"></div>
-      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;" id="tr-ncs-closed-tot"></div>
+      <div class="text-xs text-tertiary" style="margin-top:4px;" id="tr-ncs-closed-tot"></div>
     </div>
   </div>
 </div>
@@ -196,7 +196,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
   <% } else { %>
     <div class="divide-row">
       <% actionItems.forEach(a => { %>
-        <a href="/workspaces/<%= ws.id %>/controls/<%= a.id %>" class="link-muted" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;font-size:13px;">
+        <a href="/workspaces/<%= ws.id %>/controls/<%= a.id %>" class="link-muted text-lg" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;">
           <span><%= a.title %></span>
           <span class="status s-<%= a.status.toLowerCase().replace(/ /g,'-') %>"><%= a.status %></span>
         </a>
@@ -223,7 +223,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
   <% } else { %>
     <div class="divide-row">
       <% recentActivity.forEach(a => { %>
-        <div style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+        <div class="text-lg" style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
           <span><span style="font-weight:500"><%= a.user_name %></span> <span class="text-secondary"><%= a.action.replace(/_/g, ' ') %></span> <span class="meta"><%= a.entity_type || '' %></span></span>
           <span class="meta num"><%= a.created_at %></span>
         </div>
@@ -248,9 +248,9 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
         </select>
       </div>
 
-      <div style="grid-column:1/-1;margin-top:6px;padding-top:14px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:6px;">Branding & sector</div>
-        <div class="meta" style="font-size:11.5px;margin-bottom:10px;">Customise per-client without a code change. Used in the sidebar workspace block, the dashboard chip, and DOCX cover pages (when set).</div>
+      <div class="col-full" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--border);">
+        <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Branding & sector</div>
+        <div class="meta text-sm" style="margin-bottom:10px;">Customise per-client without a code change. Used in the sidebar workspace block, the dashboard chip, and DOCX cover pages (when set).</div>
       </div>
       <div><label class="label">Display name (overrides client_name on cover pages)</label><input class="input" name="brand_display_name" value="<%= ws.brand_display_name || '' %>" placeholder="e.g., Acme Health Tech Inc."></div>
       <div><label class="label">Sector</label>
@@ -273,11 +273,11 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       <div class="col-full"><button class="btn btn-primary">Save</button></div>
     </form>
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
       <details>
-        <summary style="cursor:pointer;font-size:13px;color:var(--danger,#b91c1c);">Delete this client engagement</summary>
+        <summary class="text-lg" style="cursor:pointer;color:var(--danger,#b91c1c);">Delete this client engagement</summary>
         <div style="margin-top:10px;padding:12px;border:1px solid var(--danger,#b91c1c);border-radius:6px;background:rgba(185,28,28,0.04);">
-          <div class="meta" style="font-size:12px;line-height:1.5;margin-bottom:10px;">
+          <div class="meta text-base" style="line-height:1.5;margin-bottom:10px;">
             Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (on disk and in DB), audits, MRMs, NCs, incidents, suppliers, documents, registers. Cannot be undone.
           </div>
           <form method="POST" action="/workspaces/<%= ws.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete &quot;<%= ws.client_name %>&quot; and everything under it?');">

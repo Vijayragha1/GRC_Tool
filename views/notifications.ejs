@@ -17,7 +17,7 @@
 <% if (computedItems.length > 0) { %>
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-head">
-      <h2>Needs your attention <span class="meta" style="font-weight:400;font-size:13px;">· live from data</span></h2>
+      <h2>Needs your attention <span class="meta text-lg" style="font-weight:400;">· live from data</span></h2>
       <span class="meta"><strong class="text-danger"><%= computedItems.filter(i => i.severity === 'high').length %></strong> high · <strong class="text-warn"><%= computedItems.filter(i => i.severity === 'medium').length %></strong> medium</span>
     </div>
     <% computedItems.forEach(c => {
@@ -26,7 +26,7 @@
       <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
         <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:<%= dotColor %>;"></span>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:500;"><%= c.title %></div>
+          <div class="text-lg" style="font-weight:500;"><%= c.title %></div>
           <% if (c.detail) { %><div class="meta text-sm"><%= c.detail %></div><% } %>
         </div>
         <span class="tag tag-neutral text-xxs"><%= c.category %></span>
@@ -52,10 +52,10 @@
             <strong style="font-size:13.5px;"><%= n.title %></strong>
             <span class="meta"><%= n.created_at %></span>
           </div>
-          <% if (n.body) { %><div class="meta" style="margin-top:2px;font-size:12.5px;color:var(--text-secondary);"><%= n.body %></div><% } %>
+          <% if (n.body) { %><div class="meta text-md text-secondary" style="margin-top:2px;"><%= n.body %></div><% } %>
           <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
             <span class="tag tag-neutral text-eyebrow"><%= n.category %></span>
-            <% if (n.link) { %><a href="<%= n.link %>" class="link-muted" style="font-size:12px;color:var(--accent);">Open →</a><% } %>
+            <% if (n.link) { %><a href="<%= n.link %>" class="link-muted text-base" style="color:var(--accent);">Open →</a><% } %>
             <span style="flex:1"></span>
             <% if (!n.read_at) { %>
               <form method="POST" action="/workspaces/<%= ws.id %>/notifications/<%= n.id %>/read" style="display:inline"><button class="btn btn-ghost btn-xs">Read</button></form>

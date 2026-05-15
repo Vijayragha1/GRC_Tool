@@ -30,13 +30,13 @@
     <tbody>
       <% audits.forEach(a => { %>
         <tr>
-          <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= a.title %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="font-weight:500;"><%= a.title %></a></td>
           <td class="num meta"><%= a.audit_date || '-' %></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= a.auditor_name || '-' %></td>
+          <td class="text-secondary text-base"><%= a.auditor_name || '-' %></td>
           <td><span class="status s-<%= a.status === 'complete' ? 'done' : a.status %>"><%= a.status %></span></td>
           <td class="meta">
             <%= a.finding_count %>
-            <% if (a.open_findings > 0) { %> · <span style="color:#b91c1c;font-weight:500;"><%= a.open_findings %> open</span><% } %>
+            <% if (a.open_findings > 0) { %> · <span class="text-danger" style="font-weight:500;"><%= a.open_findings %> open</span><% } %>
           </td>
         </tr>
       <% }) %>

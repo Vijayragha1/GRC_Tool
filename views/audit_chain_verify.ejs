@@ -15,12 +15,12 @@
 </div>
 
 <% if (issues.length === 0) { %>
-  <div class="callout" style="background:rgba(22,163,74,0.08);border-color:#16a34a;color:#15803d;">
+  <div class="callout text-success" style="background:rgba(22,163,74,0.08);border-color:#16a34a;">
     <div class="callout-title text-success">✓ Chain intact</div>
     Every audit log entry verifies cleanly. The log has not been tampered with since each entry was first recorded.
   </div>
 <% } else { %>
-  <div class="callout" style="background:rgba(220,38,38,0.06);border-color:#dc2626;color:#b91c1c;">
+  <div class="callout text-danger" style="background:rgba(220,38,38,0.06);border-color:#dc2626;">
     <div class="callout-title text-danger">Tampering detected</div>
     The audit log has been modified outside the application. Investigate immediately.
   </div>

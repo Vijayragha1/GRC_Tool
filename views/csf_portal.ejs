@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta" style="font-size:12px;text-decoration:none;">&larr; back to engagement (consultant view)</a>
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta text-base" style="text-decoration:none;">&larr; back to engagement (consultant view)</a>
     </div>
     <h1 class="page-title" style="margin-top:6px;"><%= engagement.name %></h1>
     <% if (currentVersion) { %>
@@ -36,17 +36,17 @@
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;">
       <div>
-        <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier) %>;"><%= rollup.overall.current == null ? '-' : r1(rollup.overall.current) %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">/5</span></div>
+        <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier) %>;"><%= rollup.overall.current == null ? '-' : r1(rollup.overall.current) %><span class="text-xl text-tertiary" style="font-weight:400;">/5</span></div>
         <div class="kpi-label">Overall maturity</div>
         <% if (rollup.overall.tier) { %><div class="meta" style="font-size:12px;margin-top:4px;color:<%= tierColor(rollup.overall.tier) %>;font-weight:500;"><%= rollup.overall.tier.label %></div><% } %>
       </div>
       <div>
-        <div class="kpi-num"><%= rollup.coverage.scored %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/<%= rollup.coverage.total - rollup.coverage.excluded %></span></div>
+        <div class="kpi-num"><%= rollup.coverage.scored %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= rollup.coverage.total - rollup.coverage.excluded %></span></div>
         <div class="kpi-label">Subcategories assessed</div>
       </div>
       <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
         <div>
-          <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier_target) %>;"><%= rollup.overall.target == null ? '-' : r1(rollup.overall.target) %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">/5</span></div>
+          <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier_target) %>;"><%= rollup.overall.target == null ? '-' : r1(rollup.overall.target) %><span class="text-xl text-tertiary" style="font-weight:400;">/5</span></div>
           <div class="kpi-label">Target maturity</div>
           <% if (rollup.overall.tier_target) { %><div class="meta" style="font-size:12px;margin-top:4px;color:<%= tierColor(rollup.overall.tier_target) %>;font-weight:500;"><%= rollup.overall.tier_target.label %></div><% } %>
         </div>
@@ -61,7 +61,7 @@
         <div class="panel-pad">
           <div style="display:flex;align-items:baseline;gap:8px;">
             <span class="mono" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-            <span style="font-weight:600;font-size:13px;"><%= fn.name %></span>
+            <span class="text-lg" style="font-weight:600;"><%= fn.name %></span>
           </div>
           <div style="font-size:24px;font-weight:600;color:<%= tierColor(fn.tier) %>;margin-top:8px;"><%= fn.current == null ? '-' : r1(fn.current) %></div>
           <% if (fn.tier) { %><div style="font-size:11.5px;color:<%= tierColor(fn.tier) %>;font-weight:500;"><%= fn.tier.label %></div><% } %>
@@ -82,13 +82,13 @@
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
               <strong class="text-lg"><%= f.title %></strong>
-              <% if (f.sub_code) { %><span class="meta mono" style="font-size:11px;margin-left:auto;"><%= f.sub_code %></span><% } %>
+              <% if (f.sub_code) { %><span class="meta mono text-xs" style="margin-left:auto;"><%= f.sub_code %></span><% } %>
             </div>
-            <% if (f.description) { %><div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= f.description %></div><% } %>
+            <% if (f.description) { %><div class="text-base text-secondary" style="margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= f.description %></div><% } %>
 
             <% const ccs = clientComments.filter(c => c.finding_id === f.finding_id); %>
             <% if (ccs.length) { %>
-              <div style="margin-top:8px;padding-left:12px;border-left:2px solid var(--border);font-size:12px;line-height:1.5;">
+              <div class="text-base" style="margin-top:8px;padding-left:12px;border-left:2px solid var(--border);line-height:1.5;">
                 <% ccs.forEach(c => { %>
                   <div style="padding:3px 0;"><strong class="text-sm"><%= c.commenter_name %>:</strong> <%= c.text %> <span class="meta text-eyebrow"><%= c.created_at %></span></div>
                 <% }) %>
@@ -96,10 +96,10 @@
             <% } %>
 
             <details style="margin-top:6px;">
-              <summary style="cursor:pointer;font-size:11.5px;color:var(--accent);">+ Add comment</summary>
+              <summary class="text-sm" style="cursor:pointer;color:var(--accent);">+ Add comment</summary>
               <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal/comments" style="margin-top:6px;">
                 <input type="hidden" name="finding_id" value="<%= f.finding_id %>">
-                <textarea class="textarea" name="text" rows="2" required placeholder="Question or context to share with the consultant" style="font-size:12px;width:100%;"></textarea>
+                <textarea class="textarea text-base" name="text" rows="2" required placeholder="Question or context to share with the consultant" style="width:100%;"></textarea>
                 <button class="btn btn-primary btn-xs" style="margin-top:4px;">Post</button>
               </form>
             </details>
@@ -124,29 +124,29 @@
       <% if (inPhase.length) { %>
         <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
           <strong class="text-lg"><%= ph.label %></strong>
-          <span class="meta" style="font-size:11.5px;margin-left:8px;"><%= inPhase.length %> action<%= inPhase.length === 1 ? '' : 's' %></span>
+          <span class="meta text-sm" style="margin-left:8px;"><%= inPhase.length %> action<%= inPhase.length === 1 ? '' : 's' %></span>
         </div>
         <div class="divide-row">
           <% inPhase.forEach(r => { %>
             <div id="rec-<%= r.recommendation_id %>" style="padding:10px 14px;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <% if (r.priority) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">priority: <%= r.priority %></span><% } %>
-                <% if (r.estimated_effort) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">effort: <%= r.estimated_effort %></span><% } %>
-                <strong style="font-size:12.5px;flex:1;"><%= r.description %></strong>
+                <% if (r.priority) { %><span class="tag text-xxs" style="background:var(--bg-subtle);">priority: <%= r.priority %></span><% } %>
+                <% if (r.estimated_effort) { %><span class="tag text-xxs" style="background:var(--bg-subtle);">effort: <%= r.estimated_effort %></span><% } %>
+                <strong class="text-md" style="flex:1;"><%= r.description %></strong>
                 <% const remColor = { 'NOT_STARTED':'var(--text-tertiary)', 'IN_PROGRESS':'#1d4ed8', 'DONE':'#15803d', 'BLOCKED':'#b91c1c' }; %>
                 <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= remColor[r.rem_status || 'NOT_STARTED'] %>;font-size:11px;"><%= (r.rem_status || 'NOT_STARTED').replace('_',' ') %></span>
               </div>
-              <% if (r.finding_title) { %><div class="meta" style="font-size:11px;margin-top:2px;">From finding: <%= r.finding_title %></div><% } %>
-              <% if (r.rem_note) { %><div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= r.rem_note %></div><% } %>
+              <% if (r.finding_title) { %><div class="meta text-xs" style="margin-top:2px;">From finding: <%= r.finding_title %></div><% } %>
+              <% if (r.rem_note) { %><div class="text-base text-secondary" style="margin-top:4px;line-height:1.5;white-space:pre-wrap;"><%= r.rem_note %></div><% } %>
 
               <details style="margin-top:6px;">
-                <summary style="cursor:pointer;font-size:11.5px;color:var(--accent);">Update status</summary>
+                <summary class="text-sm" style="cursor:pointer;color:var(--accent);">Update status</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal/remediation/<%= r.recommendation_id %>" style="margin-top:6px;display:grid;grid-template-columns:170px 1fr;gap:6px;align-items:end;">
                   <select class="select text-sm" name="status">
                     <% REMEDIATION_STATUSES.forEach(s => { %><option value="<%= s %>" <%= s === (r.rem_status || 'NOT_STARTED') ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
                   </select>
                   <input class="input text-sm" name="client_evidence_url" placeholder="Optional URL (ticket, doc, deploy)" value="<%= '' %>">
-                  <textarea class="textarea" name="client_note" rows="2" placeholder="What's been done? What's blocking?" style="grid-column:1/-1;font-size:11.5px;"><%= r.rem_note || '' %></textarea>
+                  <textarea class="textarea col-full text-sm" name="client_note" rows="2" placeholder="What's been done? What's blocking?"><%= r.rem_note || '' %></textarea>
                   <button class="btn btn-primary btn-xs col-full">Save</button>
                 </form>
               </details>
@@ -169,7 +169,7 @@
         <tbody>
           <% allVersions.forEach(v => { %>
             <tr>
-              <td><strong class="mono">v<%= v.version_number %></strong><% if (currentVersion.id === v.id) { %><span class="tag" style="background:rgba(21,128,61,0.08);color:#15803d;font-size:10px;margin-left:6px;">current</span><% } %></td>
+              <td><strong class="mono">v<%= v.version_number %></strong><% if (currentVersion.id === v.id) { %><span class="tag text-success text-xxs" style="background:rgba(21,128,61,0.08);margin-left:6px;">current</span><% } %></td>
               <td class="meta text-sm"><%= v.published_at %></td>
               <td style="text-align:right;">
                 <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/report.docx?vid=<%= v.id %>" class="btn btn-ghost btn-xs">Download &darr;</a>

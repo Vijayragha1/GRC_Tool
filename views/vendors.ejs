@@ -88,14 +88,14 @@
     <div>
       <div class="sec-label">By region (high+ risk)</div>
       <% concentration.by_region.forEach(r => { %>
-        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border);font-size:12.5px;"><span><%= r.location %></span><strong><%= r.c %></strong></div>
+        <div class="text-md" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border);"><span><%= r.location %></span><strong><%= r.c %></strong></div>
       <% }) %>
       <% if (!concentration.by_region.length) { %><div class="meta">No clustering by region.</div><% } %>
     </div>
     <div>
       <div class="sec-label">By parent company</div>
       <% concentration.by_parent.forEach(r => { %>
-        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border);font-size:12.5px;"><span><%= r.parent_company %></span><strong><%= r.c %></strong></div>
+        <div class="text-md" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border);"><span><%= r.parent_company %></span><strong><%= r.c %></strong></div>
       <% }) %>
       <% if (!concentration.by_parent.length) { %><div class="meta">No multi-supplier parents detected.</div><% } %>
     </div>
@@ -133,7 +133,7 @@
           <td><span class="status s-<%= v.lifecycle_stage === 'terminated' ? 'closed' : v.lifecycle_stage === 'approved' || v.lifecycle_stage === 'active' ? 'in_progress' : 'todo' %>"><%= (v.lifecycle_stage || 'active').replace(/_/g,' ') %></span></td>
           <td class="meta">
             <%= v.doc_count %>
-            <% if (v.expired_docs > 0) { %><span style="color:#b91c1c;font-weight:500;"> · <%= v.expired_docs %> exp</span><% } else if (v.expiring_docs > 0) { %><span style="color:#a16207;font-weight:500;"> · <%= v.expiring_docs %> ⏱</span><% } %>
+            <% if (v.expired_docs > 0) { %><span class="text-danger" style="font-weight:500;"> · <%= v.expired_docs %> exp</span><% } else if (v.expiring_docs > 0) { %><span class="text-warn" style="font-weight:500;"> · <%= v.expiring_docs %> ⏱</span><% } %>
           </td>
           <td class="meta"><%= v.q_count %><% if (v.best_q_score !== null) { %> · <span style="color:<%= v.best_q_score >= 80 ? '#15803d' : v.best_q_score >= 60 ? '#a16207' : '#b91c1c' %>;font-weight:500;"><%= v.best_q_score %>%</span><% } %></td>
           <td class="num meta" style="color:<%= v.next_review_date && v.next_review_date < new Date().toISOString().split('T')[0] ? '#b91c1c' : '' %>"><%= v.next_review_date || '-' %></td>

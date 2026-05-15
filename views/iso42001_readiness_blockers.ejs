@@ -2,7 +2,7 @@
 
 <div class="page-head">
   <div>
-    <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;">
+    <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.5px;">
       <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="link-muted">ISO 42001 readiness</a>
     </div>
     <h1 class="page-title" style="margin-top:4px;">Pre-cert blocker check</h1>
@@ -12,14 +12,14 @@
 
 <% if (blockers.length === 0) { %>
   <div class="panel" style="padding:24px;text-align:center;background:rgba(22,163,74,0.04);border-color:#16a34a;">
-    <div style="font-size:18px;color:#16a34a;font-weight:600;margin-bottom:6px;">No blockers detected</div>
+    <div class="text-success" style="font-size:18px;font-weight:600;margin-bottom:6px;">No blockers detected</div>
     <div class="meta">Every high-severity readiness check is clean. Schedule the Stage 1 audit.</div>
   </div>
 <% } else { %>
   <% blockers.forEach(b => { %>
     <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;">
       <div class="panel-head">
-        <h2 style="font-size:14px;color:#b91c1c;"><%= b.label %></h2>
+        <h2 class="text-xl text-danger"><%= b.label %></h2>
         <span class="meta"><%= b.items.length %> item<%= b.items.length === 1 ? '' : 's' %></span>
       </div>
       <table class="t">

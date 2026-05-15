@@ -15,10 +15,10 @@
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight:600;color:#b45309;margin-bottom:6px;">Looking to add a new client engagement?</div>
-      <div class="meta" style="font-size:12.5px;line-height:1.55;color:var(--text);">
+      <div class="meta text-md" style="line-height:1.55;">
         <strong>Don't create a firm here.</strong> A firm is a separate, walled-off environment - different users, different evidence directory, different encryption keys. Almost no one needs more than one. Each <em>client engagement</em> is a <strong>workspace</strong> inside a firm. To add a client, go to the <a href="/dashboard" style="color:var(--accent);font-weight:500;">Clients dashboard → New client</a>.
       </div>
-      <div class="meta" style="font-size:11.5px;line-height:1.55;color:var(--text-secondary);margin-top:8px;">
+      <div class="meta text-sm text-secondary" style="line-height:1.55;margin-top:8px;">
         Create a firm here only if you actually run a second consulting practice (or you want a clean sandbox), and you want its data invisible to the current firm.
       </div>
     </div>
@@ -36,7 +36,7 @@
       </div>
       <button class="btn btn-primary" onclick="return appConfirmClick(event, 'A firm is a fully isolated environment with its own users and evidence. Almost no consulting practice needs more than one. Most likely you want to add a client engagement instead - that lives on the Clients dashboard. Continue creating a new firm?');">Create + switch</button>
     </form>
-    <div class="meta panel-pad" style="border-top:1px solid var(--border);font-size:11.5px;padding-top:8px;">
+    <div class="meta panel-pad text-sm" style="border-top:1px solid var(--border);padding-top:8px;">
       A new firm gets a fresh firm-owner user, a clean uploads directory at <code>uploads/firm_{id}/</code>, and zero workspaces. You'll switch into it after creation.
     </div>
   </div>
@@ -60,7 +60,7 @@
           <td class="mono meta"><%= f.id %></td>
           <td>
             <form method="POST" action="/tenants/<%= f.id %>/rename" style="display:flex;gap:6px;align-items:center;">
-              <input class="input" name="name" value="<%= f.name %>" style="font-size:13px;flex:1;">
+              <input class="input text-lg" name="name" value="<%= f.name %>" style="flex:1;">
               <button class="btn btn-ghost btn-xs" title="Rename">Save</button>
             </form>
           </td>
@@ -79,11 +79,11 @@
                 <details style="display:inline-block;">
                   <summary class="btn btn-ghost btn-xs" style="color:var(--danger,#b91c1c);cursor:pointer;list-style:none;">Delete</summary>
                   <div style="position:absolute;right:24px;margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:10;width:340px;text-align:left;">
-                    <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--danger,#b91c1c);">Permanently delete "<%= f.name %>"</div>
-                    <div class="meta" style="font-size:11px;line-height:1.45;margin-bottom:8px;">Removes all workspaces, evidence files, users, audit log, and the <code>uploads/firm_<%= f.id %>/</code> directory. Cannot be undone.</div>
+                    <div class="text-base" style="font-weight:600;margin-bottom:6px;color:var(--danger,#b91c1c);">Permanently delete "<%= f.name %>"</div>
+                    <div class="meta text-xs" style="line-height:1.45;margin-bottom:8px;">Removes all workspaces, evidence files, users, audit log, and the <code>uploads/firm_<%= f.id %>/</code> directory. Cannot be undone.</div>
                     <form method="POST" action="/tenants/<%= f.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete tenant &quot;<%= f.name %>&quot; and everything under it?');">
                       <label class="label text-xs">Type <strong><%= f.name %></strong> to confirm</label>
-                      <input class="input" name="confirm_name" required style="font-size:12px;margin-bottom:8px;" autocomplete="off">
+                      <input class="input text-base" name="confirm_name" required style="margin-bottom:8px;" autocomplete="off">
                       <button class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete tenant</button>
                     </form>
                   </div>

@@ -39,7 +39,7 @@
     <div class="t-empty">Pick two different snapshots above.</div>
   <% } else if (diff.changes.length === 0) { %>
     <div class="panel" style="padding:24px;text-align:center;background:rgba(22,163,74,0.04);">
-      <div style="color:#16a34a;font-weight:600;">No changes between these snapshots</div>
+      <div class="text-success" style="font-weight:600;">No changes between these snapshots</div>
       <div class="meta">Same applicability, status, and justifications on every control.</div>
     </div>
   <% } else { %>
@@ -60,7 +60,7 @@
             <tr>
               <td class="mono meta text-xs"><%= c.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %></td>
               <td><%= c.title.replace(/^A\.[0-9.]+ /, '') %></td>
-              <td style="font-size:11.5px;line-height:1.45;color:var(--text-secondary);">
+              <td class="text-sm text-secondary" style="line-height:1.45;">
                 <% if (!c.before) { %><em>(not in A)</em><% } else { %>
                   <strong>Applicability:</strong> <%= c.before.applicability %><br>
                   <strong>Status:</strong> <%= c.before.status %><br>
@@ -68,7 +68,7 @@
                   <% if (c.before.exclusion_justification) { %><span class="meta">Exc:</span> <%= c.before.exclusion_justification.slice(0, 80) %><% } %>
                 <% } %>
               </td>
-              <td style="font-size:11.5px;line-height:1.45;">
+              <td class="text-sm" style="line-height:1.45;">
                 <% if (!c.after) { %><em>(not in B)</em><% } else { %>
                   <strong>Applicability:</strong> <%= c.after.applicability %><br>
                   <strong>Status:</strong> <%= c.after.status %><br>

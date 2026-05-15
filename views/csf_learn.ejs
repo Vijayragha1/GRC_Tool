@@ -11,8 +11,8 @@
   <% docs.forEach(d => { %>
     <a href="/workspaces/<%= ws.id %>/csf/learn/<%= d.slug %>" class="panel" style="display:block;text-decoration:none;color:inherit;">
       <div class="panel-pad">
-        <h3 style="margin:0;font-size:14px;color:var(--accent);"><%= d.title %></h3>
-        <% if (d.summary) { %><div style="margin-top:6px;font-size:12.5px;color:var(--text-secondary);line-height:1.5;"><%= d.summary %></div><% } %>
+        <h3 class="text-xl" style="margin:0;color:var(--accent);"><%= d.title %></h3>
+        <% if (d.summary) { %><div class="text-md text-secondary" style="margin-top:6px;line-height:1.5;"><%= d.summary %></div><% } %>
       </div>
     </a>
   <% }) %>

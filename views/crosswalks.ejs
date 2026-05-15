@@ -29,12 +29,12 @@
        const pct = c.total_included ? Math.round((c.included_mapped / c.total_included) * 100) : 0;
        const cls = pct >= 70 ? 'kpi-good' : pct >= 40 ? 'kpi-warn' : 'kpi-bad';
   %>
-    <a href="?framework=<%= fw %>&status=included" class="panel kpi <%= cls %>" style="text-decoration:none;color:var(--text);">
+    <a href="?framework=<%= fw %>&status=included" class="panel kpi <%= cls %>" style="text-decoration:none;">
       <div class="kpi-head">
         <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:<%= m.color %>;"></span>
         <div class="kpi-label"><%= m.label %></div>
       </div>
-      <div class="kpi-num num"><%= pct %><span style="font-size:15px;color:var(--text-tertiary);font-weight:400;margin-left:1px;">%</span></div>
+      <div class="kpi-num num"><%= pct %><span class="text-tertiary" style="font-size:15px;font-weight:400;margin-left:1px;">%</span></div>
       <div class="kpi-meta">
         <%= c.included_mapped %> of <%= c.total_included %> included controls mapped &middot; <%= c.total_mapped %> total Annex A mappings
       </div>
@@ -71,7 +71,7 @@
   </div>
 </form>
 
-<div class="meta" style="font-size:12px;margin-bottom:10px;">
+<div class="meta text-base" style="margin-bottom:10px;">
   Showing <strong><%= rowCount %></strong> of <%= totalControls %> Annex A controls.
   <% if (statusFilter === 'unmapped') { %>
     &middot; These controls have no recorded equivalent in the selected frameworks &mdash; either add a mapping or accept the gap.
@@ -84,7 +84,7 @@
 %>
   <div class="panel" style="overflow:hidden;margin-bottom:16px;">
     <div class="panel-head">
-      <h2><%= theme.label %> <span class="meta" style="font-weight:400;font-size:12px;">&middot; <%= items.length %> control<%= items.length === 1 ? '' : 's' %></span></h2>
+      <h2><%= theme.label %> <span class="meta text-base" style="font-weight:400;">&middot; <%= items.length %> control<%= items.length === 1 ? '' : 's' %></span></h2>
     </div>
     <table class="t">
       <thead><tr>
@@ -122,14 +122,14 @@
                return refs.map(m => {
                  const noteAttr = m.notes ? ` title="${(m.notes || '').replace(/"/g,'&quot;')}"` : '';
                  const cursor = m.notes ? 'cursor:help;' : '';
-                 return `<span class="mono"${noteAttr} style="display:inline-block;padding:2px 7px;margin:1px 2px 1px 0;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-size:11.5px;font-weight:500;${cursor}">${m.external_ref}</span>`;
+                 return `<span class="mono text-sm"${noteAttr} style="display:inline-block;padding:2px 7px;margin:1px 2px 1px 0;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-weight:500;${cursor}">${m.external_ref}</span>`;
                }).join('');
              };
         %>
           <tr>
             <td class="mono meta" style="font-weight:500;"><%= code %></td>
             <td>
-              <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="link-muted" style="color:var(--text);font-size:13px;"><%= title %></a>
+              <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="link-muted text-lg"><%= title %></a>
             </td>
             <td>
               <% if (isIncluded) { %><span class="tag tag-success text-eyebrow">Included</span>

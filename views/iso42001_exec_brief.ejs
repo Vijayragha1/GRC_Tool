@@ -31,17 +31,17 @@
   %>
   <div class="panel kpi" style="padding:12px 14px;">
     <div class="kpi-label text-eyebrow">Stage 1 readiness</div>
-    <div class="kpi-num exec-num" style="color:<%= s1Color %>"><%= readiness.stage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-num exec-num" style="color:<%= s1Color %>"><%= readiness.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta">target ≥ 80% before Stage 1 audit</div>
   </div>
   <div class="panel kpi" style="padding:12px 14px;">
     <div class="kpi-label text-eyebrow">Stage 2 readiness</div>
-    <div class="kpi-num exec-num" style="color:<%= s2Color %>"><%= readiness.stage2 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+    <div class="kpi-num exec-num" style="color:<%= s2Color %>"><%= readiness.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta">3 months operational evidence required</div>
   </div>
   <div class="panel kpi" style="padding:12px 14px;">
     <div class="kpi-label text-eyebrow">Velocity (last 30d)</div>
-    <div class="kpi-num exec-num" style="color:<%= velColor %>"><%= velocityNow %><span style="font-size:13px;color:var(--text-tertiary);font-weight:400;"> moved to Implemented</span></div>
+    <div class="kpi-num exec-num" style="color:<%= velColor %>"><%= velocityNow %><span class="text-lg text-tertiary" style="font-weight:400;"> moved to Implemented</span></div>
     <div class="kpi-meta">prev 30d: <%= velocityPrior %> &middot; <%= velocityDelta >= 0 ? '+' : '' %><%= velocityDelta %> change</div>
   </div>
   <div class="panel kpi" style="padding:12px 14px;">
@@ -54,10 +54,10 @@
 <!-- Plan + days-to-target band -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
   <div class="panel" style="padding:12px 14px;">
-    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:6px;">Engagement plan</div>
+    <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Engagement plan</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
       <div>
-        <div class="exec-num" style="font-size:22px;font-weight:600;"><%= planDone %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/<%= planTotal %></span></div>
+        <div class="exec-num" style="font-size:22px;font-weight:600;"><%= planDone %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= planTotal %></span></div>
         <div class="kpi-meta">phases complete &middot; <%= planPct %>%</div>
       </div>
       <div style="flex:1;height:6px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
@@ -66,13 +66,13 @@
     </div>
   </div>
   <div class="panel" style="padding:12px 14px;">
-    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);margin-bottom:6px;">Cert target</div>
+    <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Cert target</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
       <div>
-        <div class="exec-num" style="font-size:22px;font-weight:600;color:<%= readiness.daysToTarget !== null && readiness.daysToTarget < 30 ? '#b91c1c' : 'var(--text)' %>"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;"> days</span></div>
+        <div class="exec-num" style="font-size:22px;font-weight:600;color:<%= readiness.daysToTarget !== null && readiness.daysToTarget < 30 ? '#b91c1c' : 'var(--text)' %>"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %><span class="text-xl text-tertiary" style="font-weight:400;"> days</span></div>
         <div class="kpi-meta"><%= ws.target_cert_date || 'no target set' %></div>
       </div>
-      <div style="font-size:11px;color:var(--text-secondary);text-align:right;line-height:1.5;">
+      <div class="text-xs text-secondary" style="text-align:right;line-height:1.5;">
         Open NCs: <strong><%= ncTotals.major %></strong> major / <strong><%= ncTotals.minor %></strong> minor<br>
         Overdue: <strong style="color:<%= ncTotals.overdue ? '#b91c1c' : 'var(--text)' %>;"><%= ncTotals.overdue %></strong>
       </div>
@@ -83,9 +83,9 @@
 <!-- Top risks + top NCs -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
   <div class="panel">
-    <div class="panel-head" style="padding:10px 14px;"><h2 style="margin:0;font-size:13px;">Top 5 open AI risks</h2></div>
+    <div class="panel-head" style="padding:10px 14px;"><h2 class="text-lg" style="margin:0;">Top 5 open AI risks</h2></div>
     <% if (topRisks.length === 0) { %>
-      <div class="t-empty" style="padding:20px;font-size:12px;">No open risks linked to ISO 42001.</div>
+      <div class="t-empty text-base" style="padding:20px;">No open risks linked to ISO 42001.</div>
     <% } else { %>
       <table class="t text-sm">
         <thead><tr><th style="padding:6px 14px;">Risk</th><th style="width:70px;text-align:right;padding:6px 14px;">L×I</th><th style="width:90px;padding:6px 14px;">Owner</th></tr></thead>
@@ -94,7 +94,7 @@
             <tr>
               <td style="padding:6px 14px;"><%= r.title %></td>
               <td class="num" style="text-align:right;padding:6px 14px;font-weight:600;color:<%= r.score >= 15 ? '#b91c1c' : r.score >= 8 ? '#a16207' : 'var(--text)' %>;"><%= r.likelihood %>×<%= r.impact %>=<%= r.score %></td>
-              <td class="meta" style="padding:6px 14px;font-size:10.5px;"><%= r.owner_name || '-' %></td>
+              <td class="meta text-eyebrow" style="padding:6px 14px;"><%= r.owner_name || '-' %></td>
             </tr>
           <% }) %>
         </tbody>
@@ -102,9 +102,9 @@
     <% } %>
   </div>
   <div class="panel">
-    <div class="panel-head" style="padding:10px 14px;"><h2 style="margin:0;font-size:13px;">Top open nonconformities</h2></div>
+    <div class="panel-head" style="padding:10px 14px;"><h2 class="text-lg" style="margin:0;">Top open nonconformities</h2></div>
     <% if (topNCs.length === 0) { %>
-      <div class="t-empty" style="padding:20px;font-size:12px;">No open NCs - clean bill of health.</div>
+      <div class="t-empty text-base" style="padding:20px;">No open NCs - clean bill of health.</div>
     <% } else { %>
       <table class="t text-sm">
         <thead><tr><th style="padding:6px 14px;">Finding</th><th style="width:60px;padding:6px 14px;">Sev</th><th style="width:85px;text-align:right;padding:6px 14px;">Due</th></tr></thead>
@@ -123,7 +123,7 @@
 </div>
 
 <!-- Footer note -->
-<div class="panel" style="padding:10px 14px;background:var(--bg-subtle);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+<div class="panel text-xs text-secondary" style="padding:10px 14px;background:var(--bg-subtle);line-height:1.5;">
   <strong>Reading the numbers:</strong>
   Stage 1 readiness blends clauses 4-10 and policy/governance Annex A controls (A.2, A.3, A.5) at Implemented. Stage 2 adds operational Annex A controls (A.4, A.6, A.7, A.8, A.9, A.10) that are Included. Velocity is the count of items moved to "Implemented" in the last 30 days, from the assessment history. Residual ALE is a heuristic - actuals depend on impact tiers your insurer assigns. Generated automatically; refresh by re-loading.
 </div>

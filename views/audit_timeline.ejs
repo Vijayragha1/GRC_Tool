@@ -18,10 +18,10 @@
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:120px 1fr;gap:12px;">
       <div class="meta mono text-xs"><%= l.created_at.slice(11, 19) %></div>
       <div>
-        <span class="mono" style="font-size:12.5px;font-weight:500;"><%= l.action %></span>
+        <span class="mono text-md" style="font-weight:500;"><%= l.action %></span>
         <% if (l.entity_type) { %><span class="meta">· <%= l.entity_type %><% if (l.entity_id) { %> #<%= l.entity_id %><% } %></span><% } %>
-        <% if (l.ip_address) { %><span class="meta mono" style="font-size:10.5px;float:right;"><%= l.ip_address %></span><% } %>
-        <% if (l.details) { %><div class="meta" style="font-family:ui-monospace,monospace;font-size:11px;margin-top:2px;"><%= l.details.slice(0,160) %></div><% } %>
+        <% if (l.ip_address) { %><span class="meta mono text-eyebrow" style="float:right;"><%= l.ip_address %></span><% } %>
+        <% if (l.details) { %><div class="meta text-xs" style="font-family:ui-monospace,monospace;margin-top:2px;"><%= l.details.slice(0,160) %></div><% } %>
       </div>
     </div>
   <% }) %>

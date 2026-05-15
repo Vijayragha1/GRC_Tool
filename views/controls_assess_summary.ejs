@@ -26,7 +26,7 @@
 <% if (notAssessedCount > 0) { %>
   <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);">
     <div class="panel-pad">
-      <div style="font-weight:600;color:#b91c1c;margin-bottom:4px;">⚠ <%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</div>
+      <div class="text-danger" style="font-weight:600;margin-bottom:4px;">⚠ <%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</div>
       <div class="meta">The gap assessment is incomplete. Finish the wizard before treating this as a final view. <a href="/workspaces/<%= ws.id %>/controls/assess" style="color:var(--accent);">→ Re-open wizard</a></div>
     </div>
   </div>
@@ -45,10 +45,10 @@
       <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
         <button type="button" onclick="pickGaps(true)" class="btn btn-secondary btn-xs">Select all gaps without an open task</button>
         <button type="button" onclick="pickGaps(false)" class="btn btn-secondary btn-xs">Clear</button>
-        <span class="meta" style="margin-left:8px;font-size:12px;"><span id="gapCount">0</span> selected</span>
+        <span class="meta text-base" style="margin-left:8px;"><span id="gapCount">0</span> selected</span>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
           <label class="meta text-base">Default due:</label>
-          <input type="date" name="due_date" class="input" style="width:140px;font-size:12px;">
+          <input type="date" name="due_date" class="input text-base" style="width:140px;">
           <button type="submit" class="btn btn-primary btn-xs">Spawn selected tasks</button>
         </span>
       </div>
@@ -132,7 +132,7 @@
            const refCode = e.id.replace('annex-','').replace('clause-','').toUpperCase();
            const cleanTitle = e.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
       %>
-        <a href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--text);font-size:13px;">
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);text-decoration:none;">
           <span><span class="mono meta" style="margin-right:8px;"><%= refCode %></span><%= cleanTitle %></span>
           <span class="meta text-sm">→ Upload evidence</span>
         </a>

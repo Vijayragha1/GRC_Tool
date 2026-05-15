@@ -38,7 +38,7 @@
             <td class="num meta"><%= r.maturity != null ? r.maturity : '-' %></td>
             <td class="num meta"><%= r.scope_pct != null ? r.scope_pct + '%' : '-' %></td>
             <td class="meta text-base"><%= r.applicability || '-' %></td>
-            <td style="font-size:12px;line-height:1.4;max-width:520px;"><%= (r.notes || '').slice(0, 240) %><%= (r.notes && r.notes.length > 240) ? '…' : '' %></td>
+            <td class="text-base" style="line-height:1.4;max-width:520px;"><%= (r.notes || '').slice(0, 240) %><%= (r.notes && r.notes.length > 240) ? '…' : '' %></td>
           </tr>
         <% }) %>
       </tbody>

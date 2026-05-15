@@ -45,10 +45,10 @@
         <tr>
           <td class="mono meta">NC-<%= String(n.id).padStart(3,'0') %></td>
           <td>
-            <a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= n.title %></a>
+            <a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" class="link-muted" style="font-weight:500;"><%= n.title %></a>
             <% if (n.iso_title) { %><div class="meta" style="margin-top:2px;"><%= n.iso_title %></div><% } %>
           </td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= n.source %></td>
+          <td class="text-secondary text-base"><%= n.source %></td>
           <td><span class="tag <%= n.severity === 'major' ? 'tag-danger' : n.severity === 'minor' ? 'tag-warn' : 'tag-neutral' %>"><%= n.severity %></span></td>
           <td class="num meta"><%= n.due_date || '-' %></td>
           <td><span class="status s-<%= n.status === 'verified' || n.status === 'closed' ? 'done' : n.status %>"><%= n.status %></span></td>
