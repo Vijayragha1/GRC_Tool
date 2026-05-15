@@ -5,7 +5,7 @@
     <h1 class="page-title">Statement of Applicability</h1>
     <div class="page-subtitle">Mandatory ISO 27001 document (clause 6.1.3.d). Applicability and justification for all 93 Annex A controls, plus any non-Annex-A controls you've added.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <span class="text-xs" id="soaAutosaveStatus" style="line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing or change a dropdown.">All changes saved</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'For every Annex A control that any open risk has selected as a treatment, mark it Included and pre-fill an inclusion justification of the form &quot;Treats {risk titles}&quot;. Existing justifications are not overwritten. This is the fastest way to a defensible first-pass SoA. You can edit each justification afterwards. Continue?')"><button class="btn btn-secondary btn-xs" title="For every control linked to a risk: mark Included + write justification of the form 'Treats X, Y, Z'. Existing justifications kept. Idempotent.">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs" title="Capture an immutable, hashed copy of the current SoA state. Auditors compare snapshots over time - capture before each MRM and before each audit.">Capture snapshot</button></form>
@@ -34,7 +34,7 @@
     <div><label class="label">Owner</label><input class="input" name="owner" value="<%= soaMeta.owner || '' %>" placeholder="e.g., CISO"></div>
     <div><label class="label">Approved by</label><input class="input" name="approved_by" value="<%= soaMeta.approved_by || '' %>" placeholder="e.g., CEO"></div>
     <div><label class="label">Approved on</label><input type="date" class="input" name="approved_at" value="<%= soaMeta.approved_at || '' %>"></div>
-    <div class="col-full" style="display:flex;gap:6px;align-items:center;">
+    <div class="col-full row-center">
       <button class="btn btn-primary btn-xs">Save metadata</button>
       <span class="meta text-xs">Saving captures a fresh SoA snapshot if none exists.</span>
     </div>

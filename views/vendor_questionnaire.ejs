@@ -62,14 +62,14 @@
 
   <div class="panel" style="margin-bottom:16px">
     <div class="panel-head"><h2>Reviewer notes</h2></div>
-    <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div class="panel-pad grid-2">
       <div><label class="label">Reviewer</label><input class="input" name="reviewer" value="<%= q.reviewer || '' %>"></div>
       <div></div>
       <div class="col-full"><label class="label">Reviewer comments</label><textarea class="textarea" name="reviewer_comments" rows="3"><%= q.reviewer_comments || '' %></textarea></div>
     </div>
   </div>
 
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <button name="action" value="save" class="btn btn-secondary">Save draft</button>
     <button name="action" value="submit" class="btn btn-primary">Submit responses</button>
     <button name="action" value="review" class="btn btn-accent">Mark reviewed</button>

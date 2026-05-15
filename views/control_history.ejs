@@ -10,7 +10,7 @@
     <h1 class="page-title"><%= refCode %> - assessment history</h1>
     <div class="page-subtitle"><%= cleanTitle %> · <%= rows.length %> snapshot<%= rows.length === 1 ? '' : 's' %> · append-only audit trail</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <a href="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>" class="btn btn-secondary btn-xs">→ Open control</a>
   </div>
 </div>

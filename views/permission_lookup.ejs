@@ -7,7 +7,7 @@
     <h1 class="page-title">Who has <span class="mono"><%= perm %></span>?</h1>
     <div class="page-subtitle"><%= allPerms[perm] %></div>
   </div>
-  <form method="GET" style="display:flex;gap:6px;">
+  <form class="row" method="GET">
     <select class="select" onchange="window.location='/workspaces/<%= ws.id %>/access/who-has/'+this.value;">
       <% Object.keys(allPerms).forEach(p => { %><option value="<%= p %>" <%= p === perm ? 'selected' : '' %>><%= p %></option><% }) %>
     </select>

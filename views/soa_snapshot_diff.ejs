@@ -3,7 +3,7 @@
 <div class="page-head">
   <div><h1 class="page-title">Statement of Applicability</h1>
     <div class="page-subtitle">Diff between two snapshots - added, removed, applicability change, status change, justification edits.</div></div>
-  <form method="GET" action="/workspaces/<%= ws.id %>/soa/snapshots/diff" style="display:flex;gap:6px;">
+  <form class="row" method="GET" action="/workspaces/<%= ws.id %>/soa/snapshots/diff">
     <select name="a" class="select"><option value="">- pick A -</option><% all.forEach(s => { %><option value="<%= s.id %>" <%= sa && sa.id === s.id ? 'selected' : '' %>><%= s.label || s.created_at %></option><% }) %></select>
     <span class="meta" style="line-height:32px;">vs</span>
     <select name="b" class="select"><option value="">- pick B -</option><% all.forEach(s => { %><option value="<%= s.id %>" <%= sb && sb.id === s.id ? 'selected' : '' %>><%= s.label || s.created_at %></option><% }) %></select>

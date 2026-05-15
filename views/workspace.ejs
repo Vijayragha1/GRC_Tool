@@ -235,7 +235,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
 <details id="workspace-settings" style="margin-top:24px">
   <summary class="link-muted text-lg">Workspace settings</summary>
   <div class="panel panel-pad" style="margin-top:8px">
-    <form method="POST" action="/workspaces/<%= ws.id %>/update" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <form class="grid-2" method="POST" action="/workspaces/<%= ws.id %>/update">
       <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
       <div><label class="label">Industry</label><input class="input" name="industry" value="<%= ws.industry || '' %>"></div>
       <div class="col-full"><label class="label">Scope</label><input class="input" id="scope-input" name="scope" value="<%= ws.scope || '' %>"></div>

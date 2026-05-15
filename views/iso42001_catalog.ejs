@@ -5,7 +5,7 @@
     <h1 class="page-title">ISO/IEC 42001:2023 catalog</h1>
     <div class="page-subtitle">27 clauses (4-10) and 38 Annex A reference controls for AI management systems.</div>
   </div>
-  <form method="GET" style="display:flex;gap:6px;align-items:center;">
+  <form class="row-center" method="GET">
     <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
     <select name="filter" class="select" style="width:240px" onchange="this.form.submit()">
       <option value="all" <%= filter==='all'?'selected':'' %>>All items</option>

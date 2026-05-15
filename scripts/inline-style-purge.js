@@ -15,6 +15,25 @@
 const fs = require('fs');
 const path = require('path');
 
+// Composite mappings - a full inline-style value (after sorting its
+// `;`-separated declarations) maps to a single utility class. Used to
+// replace recurring layout patterns like flex+gap+align that don't make
+// sense to decompose into atomic utilities. The codemod tries composite
+// matches BEFORE the per-property splitter so that a style attribute
+// matching one of these is rewritten in one shot.
+const COMPOSITE_TO_CLASS = {
+  // .row = display:flex;gap:6px
+  'display:flex;gap:6px':                                       'row',
+  // .row-center = display:flex;align-items:center;gap:6px
+  'align-items:center;display:flex;gap:6px':                    'row-center',
+  // .stack = display:flex;flex-direction:column;gap:6px
+  'display:flex;flex-direction:column;gap:6px':                 'stack',
+  // .grid-2 = display:grid;grid-template-columns:1fr 1fr;gap:12px
+  // (also recognises the repeat(2,1fr) shorthand).
+  'display:grid;gap:12px;grid-template-columns:1fr 1fr':        'grid-2',
+  'display:grid;gap:12px;grid-template-columns:repeat(2,1fr)':  'grid-2'
+};
+
 const STYLE_TO_CLASS = {
   'color:#b91c1c':               'text-danger',
   'color:#a16207':               'text-warn',
@@ -96,6 +115,30 @@ function rewriteTag(src, tagStart) {
   if (rawValue.includes('<%')) return null;
 
   const decls = splitDecls(rawValue);
+
+  // Composite match: if the full style (after normalizing + sorting its
+  // declarations alphabetically) equals a composite key, swap the whole
+  // attribute for the matching class. This catches recurring layout shapes
+  // regardless of the source property order.
+  const normalizedAll = decls.map(normalizeDecl).slice().sort().join(';');
+  if (Object.prototype.hasOwnProperty.call(COMPOSITE_TO_CLASS, normalizedAll)) {
+    const compositeClass = COMPOSITE_TO_CLASS[normalizedAll];
+    let rewritten = original.replace(styleRe, '');
+    const classRe = /(\sclass=")([^"]*)(")/;
+    const cm = classRe.exec(rewritten);
+    if (cm) {
+      const existing = cm[2].trim();
+      const merged = existing ? `${existing} ${compositeClass}` : compositeClass;
+      rewritten = rewritten.replace(classRe, `$1${merged}$3`);
+    } else {
+      const tagNameMatch = /^<([a-zA-Z][a-zA-Z0-9-]*)/.exec(rewritten);
+      const insertAt = tagNameMatch[0].length;
+      rewritten = rewritten.slice(0, insertAt) + ` class="${compositeClass}"` + rewritten.slice(insertAt);
+    }
+    rewritten = rewritten.replace(/\s{2,}/g, ' ').replace(/\s+>/, '>');
+    return { original, rewritten, tagEnd };
+  }
+
   const remaining = [];
   const newClasses = [];
   let matched = 0;

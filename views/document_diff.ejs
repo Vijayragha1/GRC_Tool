@@ -7,7 +7,7 @@
     <h1 class="page-title">Compare versions</h1>
     <div class="page-subtitle"><%= doc.name %></div>
   </div>
-  <form method="GET" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/diff" style="display:flex;gap:6px;align-items:center;">
+  <form class="row-center" method="GET" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/diff">
     <select name="a" class="select" style="width:auto"><% all.forEach(v => { %><option value="<%= v.id %>" <%= va && va.id === v.id ? 'selected' : '' %>>v<%= v.version %> · <%= v.status %></option><% }) %></select>
     <span class="meta">vs</span>
     <select name="b" class="select" style="width:auto"><% all.forEach(v => { %><option value="<%= v.id %>" <%= vb && vb.id === v.id ? 'selected' : '' %>>v<%= v.version %> · <%= v.status %></option><% }) %></select>

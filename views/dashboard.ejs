@@ -237,7 +237,7 @@
 <% if (user.user_type === 'firm') { %>
 <div id="newWs" class="panel hidden" style="margin-bottom:24px">
   <div class="panel-head"><h2>New client engagement</h2></div>
-  <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+  <form method="POST" action="/workspaces" class="panel-pad grid-2">
     <div><label class="label">Client name</label><input class="input" name="client_name" required></div>
     <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
     <div class="col-full"><label class="label">ISMS scope</label><input class="input" name="scope" placeholder="Production SaaS platform and supporting infrastructure"></div>

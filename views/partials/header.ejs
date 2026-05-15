@@ -298,6 +298,14 @@
      col-full means "stretch across all grid columns of the parent". */
   .col-full       { grid-column: 1 / -1; }
 
+  /* Layout composites - intent-named so a reader doesn't have to mentally
+     unpack a list of flex properties. Each one matches an inline-style
+     shape that appears 20+ times across the views. */
+  .row            { display: flex; gap: 6px; }
+  .row-center     { display: flex; align-items: center; gap: 6px; }
+  .stack          { display: flex; flex-direction: column; gap: 6px; }
+  .grid-2         { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
   /* Type scale - eight named sizes covering every pixel value in actual
      use. Half-step values (10.5/11.5/12.5) get explicit names so it's
      visible they're off the standard 6-step scale; text-eyebrow is the

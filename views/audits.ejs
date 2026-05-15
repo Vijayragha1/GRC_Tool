@@ -12,7 +12,7 @@
 
 <div id="newAudit" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New audit</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/audits" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits" class="panel-pad grid-2">
     <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., 2026 Q1 ISMS Internal Audit"></div>
     <div class="col-full"><label class="label">Scope</label><input class="input" name="scope" placeholder="e.g., All Annex A controls + Clauses 4-10"></div>
     <div><label class="label">Audit date</label><input class="input" type="date" name="audit_date"></div>

@@ -5,7 +5,7 @@
     <h1 class="page-title">NIST CSF assessments</h1>
     <div class="page-subtitle">CSF 2.0 maturity assessments for <%= ws.client_name || 'this workspace' %>. Each engagement scores the 106 Subcategories on a CMMI 1-5 scale.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <a href="/workspaces/<%= ws.id %>/csf/catalog" class="btn btn-secondary btn-xs">View catalog</a>
     <% if (canCreate) { %>
       <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary btn-xs">+ New engagement</a>

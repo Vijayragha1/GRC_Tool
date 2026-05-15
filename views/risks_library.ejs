@@ -13,7 +13,7 @@
 <form method="POST" action="/workspaces/<%= ws.id %>/risks/library">
   <div style="position:sticky;top:0;background:var(--bg-deep);padding:8px 0;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);z-index:5;">
     <div class="meta"><span id="pickCount">0</span> selected · <%= Object.keys(byDomain).length %> domains · <%= Object.values(byDomain).reduce((n, a) => n + a.length, 0) %> risks total</div>
-    <div style="display:flex;gap:6px;">
+    <div class="row">
       <button type="button" onclick="pickAll(true)" class="btn btn-secondary btn-xs">Select all visible</button>
       <button type="button" onclick="pickAll(false)" class="btn btn-secondary btn-xs">Clear</button>
       <button type="submit" class="btn btn-primary btn-xs">Add selected to register</button>

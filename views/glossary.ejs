@@ -37,7 +37,7 @@
         <% }) %>
       </select>
     </div>
-    <div style="display:flex;gap:6px;">
+    <div class="row">
       <% if (letter && letter !== 'all') { %><input type="hidden" name="letter" value="<%= letter %>"><% } %>
       <button class="btn btn-primary">Apply</button>
       <% if (q || (category && category !== 'all') || (letter && letter !== 'all')) { %>

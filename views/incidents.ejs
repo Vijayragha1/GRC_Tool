@@ -5,7 +5,7 @@
     <h1 class="page-title">Information security incidents</h1>
     <div class="page-subtitle">Per A.5.24–A.5.28: detection, classification, response, recovery, and lessons learned. Promote material incidents to nonconformities.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <select onchange="window.location='?filter='+this.value" class="select" style="width:120px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
       <option value="all" <%= filter==='all'?'selected':'' %>>All</option>
@@ -16,7 +16,7 @@
 
 <div id="newInc" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Log new incident</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/incidents" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/incidents" class="panel-pad grid-2">
     <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Phishing campaign targeting finance team"></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">

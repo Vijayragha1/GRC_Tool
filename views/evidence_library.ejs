@@ -5,7 +5,7 @@
     <h1 class="page-title">Evidence library</h1>
     <div class="page-subtitle">Workspace-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <button class="btn btn-secondary btn-xs" type="button" onclick="document.getElementById('packDialog').showModal()">Auditor pack ↓</button>
   </div>
 </div>
@@ -40,8 +40,7 @@
     </div>
 
     <!-- Single upload -->
-    <form id="singleUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data"
-          class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <form id="singleUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" class="panel-pad grid-2">
       <div class="col-full">
         <label class="label">File <span class="meta">required</span></label>
         <input class="text-lg" type="file" name="file" required style="width:100%;">

@@ -42,7 +42,7 @@
     <h1 class="page-title">ISO 42001 gap assessment</h1>
     <div class="page-subtitle">Walks 27 ISO 42001 management-system clauses (4-10) plus 38 Annex A controls - one item at a time, with the prompts and evidence auditors expect.</div>
   </div>
-  <div style="display:flex;gap:6px;align-items:center;">
+  <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/iso42001/gap-assessment" class="btn btn-secondary btn-xs">Passes</a>
     <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="btn btn-secondary btn-xs">Go to SoA</a>
     <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="btn btn-primary btn-xs">Readiness →</a>
@@ -404,7 +404,7 @@
       %>
         <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;<%= isExpired ? 'background:rgba(185,28,28,0.04);' : '' %>">
           <div style="flex:1;min-width:0;">
-            <div style="display:flex;gap:6px;align-items:center;">
+            <div class="row-center">
               <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
               <% if (badgeLabel) { %><span style="font-size:9px;font-weight:700;color:white;background:<%= badgeColor %>;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;"><%= badgeLabel %></span><% } %>
               <% if (e.clause_section) { %><span class="mono meta text-eyebrow" style="background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>

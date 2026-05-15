@@ -218,7 +218,7 @@
             <div style="padding:10px 14px;">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
                 <div style="flex:1;min-width:0;">
-                  <div style="display:flex;align-items:center;gap:6px;">
+                  <div class="row-center">
                     <span class="tag text-xxs" style="background:var(--bg-subtle);"><%= e.type %></span>
                     <% if (e.visible_to_client) { %><span class="tag text-xxs text-success" style="background:rgba(21,128,61,0.08);">visible to client</span><% } %>
                   </div>
@@ -393,7 +393,7 @@
       <div class="divide-row">
         <% comments.forEach(c => { %>
           <div style="padding:10px 14px;<%= c.resolved ? 'opacity:0.5;' : '' %>">
-            <div style="display:flex;align-items:center;gap:6px;">
+            <div class="row-center">
               <strong class="text-base"><%= c.commenter_name %></strong>
               <% if (c.requires_revision) { %><span class="tag tag-warn text-xxs">needs revision</span><% } %>
               <% if (c.resolved) { %><span class="tag text-success text-xxs" style="background:rgba(21,128,61,0.08);">resolved</span><% } %>

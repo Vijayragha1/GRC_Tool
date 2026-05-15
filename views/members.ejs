@@ -48,7 +48,7 @@
 
 <div class="panel">
   <div class="panel-head"><h2>Invite a client user</h2><span class="meta">Creates an account scoped to this workspace</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/members/client" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/members/client" class="panel-pad grid-2">
     <div><label class="label">Name</label><input class="input" name="name" required></div>
     <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
     <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>

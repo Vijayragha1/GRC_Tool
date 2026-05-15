@@ -38,7 +38,7 @@
     </div>
     <div><label class="label">From</label><input class="input" type="date" name="since" value="<%= filters.since || '' %>"></div>
     <div><label class="label">To</label><input class="input" type="date" name="until" value="<%= filters.until || '' %>"></div>
-    <div style="display:flex;gap:6px;">
+    <div class="row">
       <button class="btn btn-primary btn-xs">Apply</button>
       <a href="/workspaces/<%= ws.id %>/activity" class="btn btn-secondary btn-xs">Clear</a>
     </div>

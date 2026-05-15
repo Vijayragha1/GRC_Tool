@@ -120,7 +120,7 @@
 
     <div class="col-full"><label class="label">Internal notes</label><textarea class="textarea" name="notes" rows="3"><%= v.notes || '' %></textarea></div>
 
-    <div class="col-full" style="display:flex;gap:6px;">
+    <div class="col-full row">
       <button class="btn btn-primary">Save changes</button>
       <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete supplier and all related data?')" style="display:inline">
         <button class="btn btn-danger">Delete supplier</button>
@@ -133,7 +133,7 @@
 <% if (tab === 'documents') { %>
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Upload attestation / contract / report</h2><span class="meta">Risk score recomputes on upload</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents" enctype="multipart/form-data" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents" enctype="multipart/form-data" class="panel-pad grid-2">
     <div><label class="label">Document type</label>
       <select class="select" name="doc_type">
         <option value="soc2_type2">SOC 2 Type II</option><option value="soc2_type1">SOC 2 Type I</option>
@@ -321,7 +321,7 @@
       </select>
     </div>
     <div><label class="label">Location</label><input class="input" name="location"></div>
-    <div style="align-self:end"><label class="text-base text-secondary" style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="approved" value="1"> Approved</label><button class="btn btn-primary" style="margin-top:6px;">Add</button></div>
+    <div style="align-self:end"><label class="text-base text-secondary row-center"><input type="checkbox" name="approved" value="1"> Approved</label><button class="btn btn-primary" style="margin-top:6px;">Add</button></div>
   </form>
 </div>
 
@@ -352,7 +352,7 @@
 <% if (tab === 'reviews') { %>
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Log a review</h2><span class="meta">A.5.22 - periodic supplier review</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/reviews" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/reviews" class="panel-pad grid-2">
     <div><label class="label">Review date</label><input class="input" type="date" name="review_date" value="<%= new Date().toISOString().split('T')[0] %>" required></div>
     <div><label class="label">Reviewer</label><input class="input" name="reviewer" placeholder="Name"></div>
     <div><label class="label">Outcome</label>
@@ -450,7 +450,7 @@
             <details>
               <summary class="btn btn-secondary btn-xs">Update</summary>
               <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/termination/<%= it.id %>" style="margin-top:6px;display:grid;gap:6px;width:280px;">
-                <label class="text-base" style="display:flex;gap:6px;align-items:center;"><input type="checkbox" name="done" value="1" <%= it.done ? 'checked' : '' %>> Done</label>
+                <label class="text-base row-center"><input type="checkbox" name="done" value="1" <%= it.done ? 'checked' : '' %>> Done</label>
                 <input class="input" name="evidence" placeholder="Evidence ref" value="<%= it.evidence || '' %>">
                 <textarea class="textarea" name="notes" rows="2" placeholder="Notes"><%= it.notes || '' %></textarea>
                 <button class="btn btn-primary btn-xs">Save</button>
@@ -471,7 +471,7 @@
   <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/notes" class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
     <textarea name="body" class="textarea" rows="2" placeholder="Add a note about this supplier (e.g., recent call, issue raised, change announced)…" required></textarea>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
-      <label class="meta" style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="internal_only" value="1" checked> Internal only</label>
+      <label class="meta row-center"><input type="checkbox" name="internal_only" value="1" checked> Internal only</label>
       <button class="btn btn-primary btn-xs">Add note</button>
     </div>
   </form>

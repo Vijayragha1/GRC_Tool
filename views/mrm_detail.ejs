@@ -61,7 +61,7 @@
 </div>
 
 <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>" class="panel" style="margin-bottom:16px">
-  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+  <div class="panel-pad grid-2">
     <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date" value="<%= mrm.meeting_date || '' %>"></div>
     <div><label class="label">Attendees</label><input class="input" name="attendees" value="<%= mrm.attendees || '' %>"></div>
     <div><label class="label">Status</label>

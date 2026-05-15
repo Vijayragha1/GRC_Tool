@@ -5,7 +5,7 @@
     <h1 class="page-title">Tasks</h1>
     <div class="page-subtitle">Implementation work assigned to consultants and client team members.</div>
   </div>
-  <div style="display:flex;gap:6px;align-items:center;">
+  <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/calendar" class="btn btn-secondary btn-xs" title="Compliance calendar - every due date and review cadence across documents, suppliers, NCs, and tasks.">Calendar</a>
     <a href="/workspaces/<%= ws.id %>/task-templates" class="btn btn-secondary btn-xs" title="Task templates - reusable task sets seeded into new engagements.">Templates</a>
     <select onchange="window.location='?filter='+this.value" class="select" style="width:140px">
@@ -19,7 +19,7 @@
 
 <div id="newTask" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New task</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/tasks" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/tasks" class="panel-pad grid-2">
     <div class="col-full"><label class="label">Title</label><input class="input" name="title" required></div>
     <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
     <div><label class="label">Assignee</label>

@@ -5,7 +5,7 @@
     <h1 class="page-title">Supplier risk management</h1>
     <div class="page-subtitle">Per A.5.19–A.5.23: tier suppliers by risk, track contractual obligations, attestations, sub-processors, and re-assessments.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <select onchange="window.location='?filter='+this.value" class="select" style="width:160px">
       <option value="active" <%= filter==='active'?'selected':'' %>>Active</option>
       <option value="all" <%= filter==='all'?'selected':'' %>>All</option>

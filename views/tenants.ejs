@@ -59,7 +59,7 @@
         <tr style="<%= f.id === activeFirmId ? 'background:rgba(8,145,178,0.05);' : '' %>">
           <td class="mono meta"><%= f.id %></td>
           <td>
-            <form method="POST" action="/tenants/<%= f.id %>/rename" style="display:flex;gap:6px;align-items:center;">
+            <form class="row-center" method="POST" action="/tenants/<%= f.id %>/rename">
               <input class="input text-lg" name="name" value="<%= f.name %>" style="flex:1;">
               <button class="btn btn-ghost btn-xs" title="Rename">Save</button>
             </form>

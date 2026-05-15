@@ -6,7 +6,7 @@
   <div><h1 class="page-title">Access review · <%= review.period_end %></h1>
     <div class="page-subtitle"><%= review.period_start %> → <%= review.period_end %> · reviewer: <%= review.reviewer || '-' %> · status: <%= review.status %></div></div>
   <% if (review.status === 'open') { %>
-    <form method="POST" action="/workspaces/<%= ws.id %>/access-reviews/<%= review.id %>/close" style="display:flex;gap:6px;align-items:center;">
+    <form class="row-center" method="POST" action="/workspaces/<%= ws.id %>/access-reviews/<%= review.id %>/close">
       <input class="input" name="outcome" placeholder="Outcome / summary">
       <button class="btn btn-primary btn-xs">Close review</button>
     </form>

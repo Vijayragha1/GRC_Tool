@@ -212,7 +212,7 @@
   <div class="panel-pad" style="border-bottom:1px solid var(--border);">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
       <div style="flex:1;min-width:0;">
-        <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" style="display:flex;gap:6px;">
+        <form class="row" method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>">
           <input class="input" name="name" value="<%= doc.name %>" style="font-size:18px;font-weight:600;" <%= doc.locked ? 'disabled' : '' %>>
           <% if (!doc.locked && can('document.edit')) { %><button class="btn btn-secondary btn-xs">Rename</button><% } %>
         </form>
@@ -307,7 +307,7 @@
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/decide">
         <div class="sec-label">Your decision (approver #<%= pendingApprover.sequence %><% if (pendingApprover.role_label) { %> · <%= pendingApprover.role_label %><% } %>)</div>
         <div style="margin-bottom:10px;"><label class="label">Reason / comment</label><textarea class="textarea" name="reason" rows="2"></textarea></div>
-        <div style="display:flex;gap:6px;">
+        <div class="row">
           <button name="decision" value="approve" class="btn btn-primary btn-xs">Approve</button>
           <button name="decision" value="reject" class="btn btn-danger btn-xs" onclick="return appConfirmClick(event, 'Reject and send back to draft?')">Reject</button>
         </div>

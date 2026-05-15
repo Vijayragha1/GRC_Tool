@@ -5,7 +5,7 @@
     <h1 class="page-title">Nonconformities & corrective actions</h1>
     <div class="page-subtitle">Per Clause 10.2 - track NCs from audits, incidents, monitoring; root cause; corrective action; effectiveness check.</div>
   </div>
-  <div style="display:flex;gap:6px;align-items:center;">
+  <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/improvements" class="btn btn-secondary btn-xs" title="Continual improvement register (clause 10.1) - the non-corrective half of clause 10.">Improvements →</a>
     <select onchange="window.location='?filter='+this.value" class="select" style="width:120px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
@@ -17,7 +17,7 @@
 
 <div id="newNc" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New nonconformity</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities" class="panel-pad grid-2">
     <div class="col-full"><label class="label">Title</label><input class="input" name="title" required></div>
     <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"></textarea></div>
     <div><label class="label">Source</label>

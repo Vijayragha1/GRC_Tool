@@ -62,7 +62,7 @@
             <div class="meta text-eyebrow" style="margin-top:4px;font-style:italic;">Reflects every item with a status other than "Not Assessed". Items touched specifically during this pass: <%= activePass.items_touched %>.</div>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
+        <div class="stack">
           <% if (nextItem) { %>
             <a href="/workspaces/<%= ws.id %>/controls/assess/<%= nextItem.id %>" class="btn btn-primary btn-xs">Continue assessing →</a>
           <% } else { %>
@@ -106,7 +106,7 @@
   <div class="panel-head">
     <h3>Pass history (<%= passes.length %>)</h3>
     <% if (passes.length >= 2) { %>
-      <form method="GET" action="/workspaces/<%= ws.id %>/gap-assessment/diff" style="display:flex;gap:6px;align-items:center;">
+      <form class="row-center" method="GET" action="/workspaces/<%= ws.id %>/gap-assessment/diff">
         <span class="meta text-sm">Diff:</span>
         <select name="from" class="select text-base" style="padding:3px 22px 3px 8px;">
           <% passes.forEach(p => { %><option value="<%= p.id %>">Pass <%= p.pass_number %><%= p.label ? ' · ' + p.label : '' %></option><% }) %>

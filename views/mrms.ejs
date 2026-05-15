@@ -10,7 +10,7 @@
 
 <div id="newMrm" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New review</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/mrms" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/mrms" class="panel-pad grid-2">
     <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date"></div>
     <div><label class="label">Attendees</label><input class="input" name="attendees" placeholder="CEO, CISO, CTO"></div>
     <div class="col-full"><button class="btn btn-primary">Create</button></div>
