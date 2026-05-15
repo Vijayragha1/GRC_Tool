@@ -9,6 +9,7 @@
     "seed": "node seed.js",
     "backup": "node scripts/backup.js",
     "csf-demo": "node scripts/csf-demo.js",
+    "content-parity": "node scripts/content-parity.js",
     "test": "node tests/smoke.test.js && node --test tests/security.test.js tests/rbac.test.js",
     "test:security": "node --test tests/security.test.js tests/rbac.test.js",
     "test:browser": "node tests/browser-ui.js"
