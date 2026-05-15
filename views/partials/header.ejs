@@ -431,6 +431,14 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14 9 11"/></svg>
           <span class="nav-item-text">Readiness</span>
         </a>
+        <%# Unified all-framework view - only meaningful when the engagement
+            covers more than one framework. %>
+        <% if (ws.frameworks && ws.frameworks.length > 1) { %>
+          <a href="/workspaces/<%= ws.id %>/readiness/overview" class="nav-item <%= (typeof active !== 'undefined' && active === 'readiness-overview') ? 'active' : '' %>" style="padding-left:30px;">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span class="nav-item-text">All frameworks</span>
+          </a>
+        <% } %>
 
         <div class="nav-group-label">Implementation</div>
         <a href="/workspaces/<%= ws.id %>/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'intake') ? 'active' : '' %>">

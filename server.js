@@ -9780,6 +9780,87 @@ app.get('/workspaces/:wsId/iso42001/readiness', requireAuth, requireWorkspace, (
   res.render('iso42001_readiness', { user: req.user, ws: req.workspace, r });
 });
 
+// Unified readiness view - the "executive brief" moment. Shows a headline
+// score per enabled framework side-by-side so a sponsor sees engagement
+// health at a glance. Each tile deep-links into the per-framework
+// readiness page for detail.
+app.get('/workspaces/:wsId/readiness/overview', requireAuth, requireWorkspace, (req, res) => {
+  const ws = req.workspace;
+  const tiles = [];
+
+  if (ws.frameworks.includes('iso27001')) {
+    const r = computeReadiness(ws);
+    tiles.push({
+      key: 'iso27001',
+      label: 'ISO 27001:2022',
+      sub: 'Information security management',
+      score: r.stage1,
+      stage2: r.stage2,
+      detail: `${r.metrics.implemented} / ${r.metrics.totalItems} implemented · ${r.metrics.partial} partial · ${r.metrics.notImpl} not implemented`,
+      flagsHigh: r.flags.filter(f => f.severity === 'high').length,
+      href: `/workspaces/${ws.id}/readiness`,
+      color: '#4F46E5'
+    });
+  }
+
+  if (ws.frameworks.includes('iso42001')) {
+    const r = computeIso42001Readiness(ws.id);
+    tiles.push({
+      key: 'iso42001',
+      label: 'ISO 42001:2023',
+      sub: 'AI management system',
+      score: r.stage1,
+      stage2: r.stage2,
+      detail: `${r.metrics.implemented} implemented · ${r.metrics.partial} partial · ${r.metrics.notImpl} not implemented`,
+      flagsHigh: r.flags ? r.flags.filter(f => f.severity === 'high').length : 0,
+      href: `/workspaces/${ws.id}/iso42001/readiness`,
+      color: '#0891B2'
+    });
+  }
+
+  if (ws.frameworks.includes('csf')) {
+    // Most-recently-touched non-deleted engagement, if any. A workspace may
+    // have multiple CSF engagements; the most-recent is the right "current"
+    // for an executive overview. If none exists we still render a tile so
+    // the consultant can click through and create one.
+    const eng = db.prepare(`SELECT * FROM csf_engagements
+      WHERE workspace_id=? AND deleted_at IS NULL
+      ORDER BY updated_at DESC, id DESC LIMIT 1`).get(ws.id);
+    let score = 0, detail = 'No engagement started yet';
+    let href = `/workspaces/${ws.id}/csf`;
+    if (eng) {
+      const counts = db.prepare(`SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) AS approved
+        FROM csf_subcategory_assessments WHERE engagement_id=?`).get(eng.id);
+      const approved = counts.approved || 0;
+      const total = counts.total || 0;
+      score = total ? Math.round(approved / total * 100) : 0;
+      detail = `${approved} / ${total} subcategories approved · "${eng.name}" · ${eng.status}`;
+      href = `/workspaces/${ws.id}/csf/${eng.id}/scores`;
+    }
+    tiles.push({
+      key: 'csf',
+      label: 'NIST CSF 2.0',
+      sub: 'Cybersecurity Framework',
+      score, detail, href,
+      flagsHigh: 0,
+      color: '#7C3AED'
+    });
+  }
+
+  // Days to target cert for the page subhead (same field powers all three).
+  let daysToTarget = null;
+  if (ws.target_cert_date) {
+    daysToTarget = Math.round((new Date(ws.target_cert_date).getTime() - Date.now()) / 86400000);
+  }
+
+  res.render('readiness_overview', {
+    user: req.user, ws, tiles, daysToTarget,
+    title: 'Readiness overview'
+  });
+});
+
 // Pre-cert blocker check - the long-form list of items that must be cleared
 // before a Stage 2 audit.
 app.get('/workspaces/:wsId/iso42001/readiness/blockers', requireAuth, requireWorkspace, (req, res) => {
