@@ -1200,6 +1200,21 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
     ORDER BY (CASE severity WHEN 'major' THEN 0 WHEN 'minor' THEN 1 ELSE 2 END), due_date IS NULL, due_date`).all(item.id, req.workspace.id);
 
+  // Crosswalks - which other frameworks this control also satisfies. Read from
+  // the framework_mappings table seeded from data/framework-mappings.js. ISO
+  // 27001 Annex A is the keyed side; the value is a free-text external ref
+  // (e.g., "CC6.1, CC6.2") in the target framework. Clauses don't carry
+  // mappings today, so the result is empty for them.
+  const crosswalks = db.prepare(
+    `SELECT framework, external_ref, notes FROM framework_mappings
+     WHERE iso_item_id = ? ORDER BY framework`
+  ).all(item.id);
+  const crosswalksByFramework = {};
+  for (const m of crosswalks) {
+    if (!crosswalksByFramework[m.framework]) crosswalksByFramework[m.framework] = [];
+    crosswalksByFramework[m.framework].push(m);
+  }
+
   // Per-pass notes - derived from history. The current pass's textarea shows
   // ONLY notes saved within the active pass; prior-pass notes appear above as
   // read-only context blocks so the consultant can verify against earlier
@@ -1235,7 +1250,8 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     prevId, nextId: nextById, doneFlag: !!req.query.done,
     questions, savedAnswers, suggestedStatus,
     evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs,
-    activePass, currentPassNotes, priorPassNotes
+    activePass, currentPassNotes, priorPassNotes,
+    crosswalksByFramework
   });
 });
 
@@ -2520,6 +2536,105 @@ app.post('/workspaces/:wsId/soa/bulk', requireAuth, requireWorkspace, requirePer
   }
   logAction(req.user.id, req.workspace.id, 'soa_bulk', 'soa', null, { action, affected, count: ids.length }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `${affected} control${affected === 1 ? '' : 's'} updated`));
+});
+
+// ==================== CROSSWALKS ====================
+// Full-matrix view of which ISO 27001 Annex A controls map to which external
+// frameworks (SOC 2, NIST CSF 2.0, GDPR). The point of a multi-framework GRC
+// tool: one piece of evidence credits controls across all frameworks the
+// engagement runs. Grouped by Annex A theme. Filterable by framework, status,
+// and search. Inclusion / status come from control_states for this workspace.
+app.get('/workspaces/:wsId/crosswalks', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const frameworkFilter = (req.query.framework || 'all').toString();
+  const statusFilter = (req.query.status || 'all').toString();
+  const q = (req.query.q || '').toString().trim().toLowerCase();
+
+  // Annex A controls only. Clauses don't carry crosswalks.
+  const controls = db.prepare(
+    `SELECT i.id, i.title, i.category, i.sort_order,
+            COALESCE(cs.applicability, 'undecided') AS applicability,
+            COALESCE(cs.status, 'Not Assessed')     AS status
+     FROM iso_items i
+     LEFT JOIN control_states cs
+       ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+     WHERE i.type = 'control'
+     ORDER BY i.sort_order ASC`
+  ).all(req.workspace.id);
+
+  const allMappings = db.prepare(
+    `SELECT iso_item_id, framework, external_ref, notes FROM framework_mappings`
+  ).all();
+  const byControl = {};
+  for (const m of allMappings) {
+    if (!byControl[m.iso_item_id]) byControl[m.iso_item_id] = {};
+    if (!byControl[m.iso_item_id][m.framework]) byControl[m.iso_item_id][m.framework] = [];
+    byControl[m.iso_item_id][m.framework].push(m);
+  }
+
+  // Coverage counters - how many included controls in this workspace are mapped
+  // to each framework. Drives the headline KPI tiles.
+  const includedIds = new Set(controls.filter(c => c.applicability === 'included').map(c => c.id));
+  const frameworks = ['soc2', 'nist_csf', 'gdpr'];
+  const coverage = {};
+  for (const fw of frameworks) {
+    const mapped = new Set(allMappings.filter(m => m.framework === fw).map(m => m.iso_item_id));
+    const includedMapped = [...includedIds].filter(id => mapped.has(id)).length;
+    coverage[fw] = {
+      total_mapped: mapped.size,
+      included_mapped: includedMapped,
+      total_included: includedIds.size
+    };
+  }
+
+  // Apply filters to the displayed rows.
+  let rows = controls.map(c => ({
+    ...c,
+    mappings: byControl[c.id] || {}
+  }));
+  if (frameworkFilter !== 'all') {
+    rows = rows.filter(r => r.mappings[frameworkFilter]);
+  }
+  if (statusFilter === 'included') {
+    rows = rows.filter(r => r.applicability === 'included');
+  } else if (statusFilter === 'unmapped') {
+    rows = rows.filter(r => Object.keys(r.mappings).length === 0);
+  }
+  if (q) {
+    rows = rows.filter(r => {
+      if (r.id.toLowerCase().includes(q)) return true;
+      if ((r.title || '').toLowerCase().includes(q)) return true;
+      for (const fw of Object.keys(r.mappings)) {
+        for (const m of r.mappings[fw]) {
+          if ((m.external_ref || '').toLowerCase().includes(q)) return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  // Group rendered rows by Annex A theme. DB column iso_items.category uses
+  // the short codes: org / people / physical / tech.
+  const themes = [
+    { key: 'org',      label: 'A.5 Organizational' },
+    { key: 'people',   label: 'A.6 People'         },
+    { key: 'physical', label: 'A.7 Physical'       },
+    { key: 'tech',     label: 'A.8 Technological'  }
+  ];
+  const byTheme = {};
+  for (const t of themes) byTheme[t.key] = [];
+  for (const r of rows) {
+    if (byTheme[r.category]) byTheme[r.category].push(r);
+  }
+
+  res.render('crosswalks', {
+    user: req.user, ws: req.workspace,
+    title: 'Crosswalks',
+    active: 'crosswalks',
+    themes, byTheme, coverage,
+    frameworkFilter, statusFilter, q: req.query.q || '',
+    totalControls: controls.length,
+    rowCount: rows.length
+  });
 });
 
 // ==================== TASKS ====================

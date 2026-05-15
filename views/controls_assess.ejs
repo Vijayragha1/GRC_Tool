@@ -199,6 +199,40 @@
         </div>
       </div>
     <% } %>
+
+    <% if (typeof crosswalksByFramework !== 'undefined' && Object.keys(crosswalksByFramework).length) { %>
+      <%
+        const fwMeta = {
+          soc2:     { label: 'SOC 2',          sub: 'Trust Services Criteria' },
+          nist_csf: { label: 'NIST CSF 2.0',   sub: 'Functions · Categories'  },
+          gdpr:     { label: 'GDPR',           sub: 'Articles'                }
+        };
+      %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+        <%- hLabel('Also satisfies (crosswalks)') %>
+        <div class="meta" style="font-size:11.5px;margin-bottom:8px;">
+          When this control is implemented, the references below typically count as the same control in the named framework. Use these to credit a single piece of evidence to multiple frameworks.
+          <a href="/workspaces/<%= ws.id %>/crosswalks" class="link-muted" style="margin-left:6px;">View full matrix →</a>
+        </div>
+        <div style="display:grid;gap:6px;">
+          <% Object.keys(crosswalksByFramework).forEach(fw => {
+               const meta = fwMeta[fw] || { label: fw, sub: '' };
+          %>
+            <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:start;font-size:12.5px;">
+              <div>
+                <div style="font-weight:600;color:var(--ink);"><%= meta.label %></div>
+                <% if (meta.sub) { %><div class="meta" style="font-size:10.5px;"><%= meta.sub %></div><% } %>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;">
+                <% crosswalksByFramework[fw].forEach(m => { %>
+                  <span class="mono" style="display:inline-flex;align-items:center;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--bg);font-size:11.5px;font-weight:500;<%= m.notes ? 'cursor:help;' : '' %>" <% if (m.notes) { %>title="<%= m.notes.replace(/"/g,'&quot;') %>"<% } %>><%= m.external_ref %></span>
+                <% }) %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
   <% } else { %>
     <%# Fallback to legacy 3-column layout for items not yet authored %>
     <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-bottom:1px solid var(--border);">
