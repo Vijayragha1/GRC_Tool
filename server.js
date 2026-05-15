@@ -7401,30 +7401,196 @@ function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+// Resolve a workspace's brand_logo_path to a data: URI for embedding in DOCX.
+// Returns null if the path is empty, points at a remote URL (offline-first), or
+// the file cannot be read. Tries the per-tenant uploads directory first, then
+// the app-root relative path, then the literal path as absolute.
+function brandLogoDataUri(ws) {
+  const raw = (ws && ws.brand_logo_path) ? String(ws.brand_logo_path).trim() : '';
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return null;
+  const candidates = [];
+  if (ws.firm_id) candidates.push(path.join(__dirname, 'uploads', `firm_${ws.firm_id}`, raw));
+  candidates.push(path.join(__dirname, raw));
+  if (path.isAbsolute(raw)) candidates.push(raw);
+  for (const p of candidates) {
+    try {
+      const stat = fs.statSync(p);
+      if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
+      const ext = path.extname(p).toLowerCase();
+      const mime = ext === '.png'  ? 'image/png'
+                 : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+                 : ext === '.svg'  ? 'image/svg+xml'
+                 : ext === '.webp' ? 'image/webp'
+                 : ext === '.gif'  ? 'image/gif' : null;
+      if (!mime) continue;
+      const b64 = fs.readFileSync(p).toString('base64');
+      return `data:${mime};base64,${b64}`;
+    } catch (_) { /* try next candidate */ }
+  }
+  return null;
+}
+
+// Two-letter brand initials for the cover-page logo fallback.
+function brandInitials(ws) {
+  const name = (ws && (ws.brand_display_name || ws.client_name)) || 'ISMS';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return parts[0].slice(0, 2).toUpperCase();
+}
+
+// Validate + default the workspace brand color. Mirrors the regex used at
+// /workspaces/:wsId/update so a malformed value never leaks into HTML.
+function brandColor(ws) {
+  const c = ws && ws.brand_primary_color;
+  if (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c.trim())) return c.trim();
+  return '#4F46E5'; // app accent (--accent)
+}
+
+// Shared CSS for every page of a branded deliverable. Used by the cover,
+// header, footer, and body so the document is visually one piece.
+function deliverableCss(ws) {
+  const accent = brandColor(ws);
+  return `
+    body{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.45;color:#0F0F12;margin:0;}
+    h1{font-size:22pt;color:#0F0F12;margin:0 0 4pt;letter-spacing:-0.01em;}
+    h2{font-size:14pt;color:${accent};margin:18pt 0 6pt;border-bottom:1pt solid #ECECEF;padding-bottom:3pt;}
+    h3{font-size:12pt;color:#0F0F12;margin:12pt 0 4pt;}
+    .meta{color:#71717A;font-size:9.5pt;}
+    table{border-collapse:collapse;width:100%;margin:6pt 0;font-size:9.5pt;}
+    th,td{border:1pt solid #D6D6DB;padding:4pt 6pt;text-align:left;vertical-align:top;}
+    th{background:#F4F4F5;color:#0F0F12;font-weight:600;}
+    .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:600;}
+    .tag-impl{background:#dcfce7;color:#15803d;}
+    .tag-partial{background:#fef3c7;color:#a16207;}
+    .tag-wip{background:#dbeafe;color:#1d4ed8;}
+    .tag-noimpl{background:#fee2e2;color:#b91c1c;}
+    .tag-na{background:#e5e7eb;color:#71717A;}
+  `;
+}
+
+// Cover-page HTML for the first page of a branded deliverable. Built as a
+// table because html-to-docx only honours `background-color` on table cells
+// (divs are converted to plain paragraphs with no shading). The colored
+// header band is a single full-width <td> with background; the metadata row
+// below sits in a borderless table. Followed by a forced page break so the
+// running header/footer kick in from page 2.
+function deliverableCoverHtml(title, ws) {
+  const accent = brandColor(ws);
+  const logo = brandLogoDataUri(ws);
+  const initials = brandInitials(ws);
+  const clientName = escHtml(ws.brand_display_name || ws.client_name || '');
+  const sector = ws.sector ? escHtml(ws.sector) : (ws.industry ? escHtml(ws.industry) : '');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Logo line on the colored band. With a resolved local file we render an
+  // <img> (html-to-docx inlines data: URIs natively). Without one, the
+  // initials become a small uppercase eyebrow over the title - cleaner than
+  // a nested table for the cover, and nested tables get silently dropped by
+  // html-to-docx when used inside a shaded <td>.
+  const logoLine = logo
+    ? `<p style="margin:0 0 22pt 0;"><img src="${logo}" alt="" style="width:64pt;height:64pt;"></p>`
+    : `<p style="margin:0 0 18pt 0;font-size:14pt;font-weight:700;color:#FFFFFF;letter-spacing:0.05em;">${escHtml(initials)}</p>`;
+
+  // Metadata cells - only the ones that have content. Built as an array and
+  // joined so we don't emit empty cells (would render as visible blanks).
+  const metaCells = [];
+  if (sector) metaCells.push(`<td style="border:none;padding:0 24pt 0 0;color:#51525C;font-size:10pt;"><strong style="color:#0F0F12;">Sector</strong><br>${sector}</td>`);
+  metaCells.push(`<td style="border:none;padding:0 24pt 0 0;color:#51525C;font-size:10pt;"><strong style="color:#0F0F12;">Generated</strong><br>${today}</td>`);
+  if (ws.target_cert_date) {
+    metaCells.push(`<td style="border:none;padding:0;color:#51525C;font-size:10pt;"><strong style="color:#0F0F12;">Target certification</strong><br>${escHtml(ws.target_cert_date)}</td>`);
+  }
+
+  return `
+    <table style="width:100%;border-collapse:collapse;border:none;margin:0 0 28pt 0;">
+      <tr>
+        <td style="background-color:${accent};color:#FFFFFF;padding:48pt 40pt 48pt 40pt;border:none;">
+          ${logoLine}
+          <p style="margin:0 0 6pt 0;font-size:10pt;font-weight:600;color:#FFFFFF;letter-spacing:0.10em;">${escHtml(title.toUpperCase())}</p>
+          <p style="margin:0;font-size:30pt;font-weight:700;line-height:1.15;color:#FFFFFF;">${clientName}</p>
+        </td>
+      </tr>
+    </table>
+    <table style="width:100%;border:none;border-collapse:collapse;margin:0 0 8pt 0;">
+      <tr>${metaCells.join('')}</tr>
+    </table>
+    <div class="page-break" style="page-break-after: always;"></div>
+  `;
+}
+
+// Running header HTML: client name on left, document title on right; a thin
+// brand-color rule renders as a single-row table whose only cell has the
+// brand color as its background (html-to-docx only honours background-color
+// on <td>).
+function deliverableHeaderHtml(title, ws) {
+  const accent = brandColor(ws);
+  const clientName = escHtml(ws.brand_display_name || ws.client_name || '');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${deliverableCss(ws)}</style></head><body>
+    <table style="width:100%;border:none;border-collapse:collapse;font-size:9pt;color:#71717A;margin:0;">
+      <tr>
+        <td style="border:none;padding:0 0 3pt 0;text-align:left;"><strong style="color:#0F0F12;">${clientName}</strong></td>
+        <td style="border:none;padding:0 0 3pt 0;text-align:right;">${escHtml(title)}</td>
+      </tr>
+    </table>
+    <table style="width:100%;border:none;border-collapse:collapse;margin:0;">
+      <tr><td style="background-color:${accent};border:none;padding:0;height:1.5pt;line-height:1.5pt;font-size:1pt;">&nbsp;</td></tr>
+    </table>
+  </body></html>`;
+}
+
+// Running footer HTML: workspace name on left, generated date center. Page
+// number is appended by html-to-docx via pageNumber:true on the options.
+function deliverableFooterHtml(ws) {
+  const clientName = escHtml(ws.brand_display_name || ws.client_name || '');
+  const today = new Date().toISOString().slice(0, 10);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${deliverableCss(ws)}</style></head><body>
+    <table style="width:100%;border:none;font-size:8.5pt;color:#9C9CA5;margin:0;">
+      <tr>
+        <td style="border:none;padding:0;text-align:left;">${clientName}</td>
+        <td style="border:none;padding:0;text-align:center;">${today}</td>
+        <td style="border:none;padding:0;text-align:right;">Page </td>
+      </tr>
+    </table>
+  </body></html>`;
+}
+
+// Full-document HTML: shared CSS + cover page + body. The cover page is on
+// its own page (the forced page-break inside deliverableCoverHtml) so the
+// header / footer / page-number machinery from html-to-docx kicks in on
+// page 2 onwards (skipFirstHeaderFooter:true). This is the entry the four
+// callsites below use.
 function deliverableHtmlShell(title, ws, bodyHtml) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
-    <style>
-      body{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.45;color:#0F0F12;}
-      h1{font-size:22pt;color:#0F0F12;margin:0 0 4pt;letter-spacing:-0.01em;}
-      h2{font-size:14pt;color:#3730A3;margin:18pt 0 6pt;border-bottom:1pt solid #ECECEF;padding-bottom:3pt;}
-      h3{font-size:12pt;color:#0F0F12;margin:12pt 0 4pt;}
-      .meta{color:#71717A;font-size:9.5pt;}
-      table{border-collapse:collapse;width:100%;margin:6pt 0;font-size:9.5pt;}
-      th,td{border:1pt solid #D6D6DB;padding:4pt 6pt;text-align:left;vertical-align:top;}
-      th{background:#F4F4F5;color:#0F0F12;font-weight:600;}
-      .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:600;}
-      .tag-impl{background:#dcfce7;color:#15803d;}
-      .tag-partial{background:#fef3c7;color:#a16207;}
-      .tag-wip{background:#dbeafe;color:#1d4ed8;}
-      .tag-noimpl{background:#fee2e2;color:#b91c1c;}
-      .tag-na{background:#e5e7eb;color:#71717A;}
-      .footer{color:#9C9CA5;font-size:8.5pt;text-align:center;margin-top:24pt;border-top:1pt solid #ECECEF;padding-top:6pt;}
-    </style></head><body>
-    <h1>${escHtml(title)}</h1>
-    <p class="meta">${escHtml(ws.client_name || '')}${ws.industry ? ' · ' + escHtml(ws.industry) : ''} · Generated ${new Date().toISOString().slice(0,10)}</p>
-    ${bodyHtml}
-    <p class="footer">Generated by ISMS tool on ${new Date().toISOString()}</p>
+    <style>${deliverableCss(ws)}</style></head><body>
+    ${deliverableCoverHtml(title, ws)}
+    <div style="padding:0 6pt;">
+      <h1>${escHtml(title)}</h1>
+      ${bodyHtml}
+    </div>
     </body></html>`;
+}
+
+// One-call wrapper around html-to-docx that wires the cover + header + footer
+// + page-number bundle for every branded deliverable. Returns the DOCX as a
+// Buffer ready to send or to append to a ZIP.
+async function brandedDocx(ws, title, bodyHtml) {
+  const html = deliverableHtmlShell(title, ws, bodyHtml);
+  return await htmlToDocx(
+    html,
+    deliverableHeaderHtml(title, ws),
+    {
+      title,
+      subject: `${ws.client_name || ''} · ${title}`,
+      creator: 'ISMS tool',
+      header: true,
+      footer: true,
+      pageNumber: true,
+      skipFirstHeaderFooter: true,
+      table: { row: { cantSplit: true } }
+    },
+    deliverableFooterHtml(ws)
+  );
 }
 function statusTag(s) {
   if (!s) return '<span class="tag tag-na">-</span>';
@@ -7472,8 +7638,7 @@ app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, asyn
     }
     body += '</tbody></table>';
   }
-  const html = deliverableHtmlShell('Risk Treatment Plan', ws, body);
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await brandedDocx(ws, 'Risk Treatment Plan', body);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="risk-treatment-plan-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
   res.send(buf);
@@ -7543,8 +7708,7 @@ app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspac
   body += '</tbody></table>';
 
   const title = `Gap Assessment Report - Pass ${pass ? pass.pass_number : ''}`;
-  const html = deliverableHtmlShell(title, ws, body);
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await brandedDocx(ws, title, body);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="gap-assessment-report-${ws.id}-pass${pass ? pass.pass_number : 'X'}-${new Date().toISOString().slice(0,10)}.docx"`);
   res.send(buf);
@@ -7578,8 +7742,7 @@ app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWor
     body += '</tbody></table>';
   }
 
-  const html = deliverableHtmlShell('Recommendations Memo', ws, body);
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await brandedDocx(ws, 'Recommendations Memo', body);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="recommendations-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
   res.send(buf);
@@ -7622,7 +7785,7 @@ app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorks
     rtpBody += `<tr><td>R-${r.id}</td><td>${escHtml(r.title)}</td><td>${r.likelihood || ''}×${r.impact || ''}</td><td>${escHtml(r.treatment || '')}</td><td>${escHtml(r.owner_name || '')}</td></tr>`;
   }
   rtpBody += '</tbody></table>';
-  const rtpDocx = await htmlToDocx(deliverableHtmlShell('Risk Treatment Plan', ws, rtpBody), null, { table: { row: { cantSplit: true } } });
+  const rtpDocx = await brandedDocx(ws, 'Risk Treatment Plan', rtpBody);
   archive.append(rtpDocx, { name: '02_risk_treatment_plan.docx' });
 
   // 3. Internal audit summary CSV
