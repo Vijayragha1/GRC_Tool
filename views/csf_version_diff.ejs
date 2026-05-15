@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions" class="meta" style="font-size:12px;text-decoration:none;">&larr; Version history</a>
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions" class="meta text-base" style="text-decoration:none;">&larr; Version history</a>
     </div>
     <h1 class="page-title" style="margin-top:6px;">v<%= oldVer.version_number %> &rarr; v<%= newVer.version_number %></h1>
     <div class="page-subtitle"><%= engagement.name %> &middot; what changed between these two published snapshots</div>
@@ -11,11 +11,11 @@
 </div>
 
 <% function deltaBadge(d) {
-     if (d == null) return '<span class="meta" style="font-size:11px;">-</span>';
-     if (d === 0) return '<span class="meta" style="font-size:11px;">no change</span>';
+     if (d == null) return '<span class="meta text-xs">-</span>';
+     if (d === 0) return '<span class="meta text-xs">no change</span>';
      const sign = d > 0 ? '+' : '';
      const color = d > 0 ? '#15803d' : '#b91c1c';
-     return `<span style="color:${color};font-size:12px;font-weight:500;">${sign}${r1(d)}</span>`;
+     return `<span class="text-base" style="color:${color};font-weight:500;">${sign}${r1(d)}</span>`;
    } %>
 
 <!-- Score deltas -->
@@ -26,7 +26,7 @@
       <div class="kpi-meta">Overall current</div>
       <div style="font-size:18px;font-weight:500;display:flex;gap:8px;align-items:baseline;">
         <%= diff.scoreDeltas.overall.from == null ? '-' : r1(diff.scoreDeltas.overall.from) %>
-        <span style="color:var(--text-tertiary);">&rarr;</span>
+        <span class="text-tertiary">&rarr;</span>
         <%= diff.scoreDeltas.overall.to == null ? '-' : r1(diff.scoreDeltas.overall.to) %>
         <%- deltaBadge(diff.scoreDeltas.overall.delta) %>
       </div>
@@ -41,10 +41,10 @@
     <tbody>
       <% diff.scoreDeltas.functions.forEach(f => { %>
         <tr>
-          <td class="mono" style="font-size:12px;"><%= f.code %></td>
-          <td style="font-size:12.5px;"><%= f.name %></td>
-          <td class="num" style="font-size:13px;"><%= f.from == null ? '-' : r1(f.from) %></td>
-          <td class="num" style="font-size:13px;"><%= f.to == null ? '-' : r1(f.to) %></td>
+          <td class="mono text-base"><%= f.code %></td>
+          <td class="text-md"><%= f.name %></td>
+          <td class="num text-lg"><%= f.from == null ? '-' : r1(f.from) %></td>
+          <td class="num text-lg"><%= f.to == null ? '-' : r1(f.to) %></td>
           <td class="num"><%- deltaBadge(f.delta) %></td>
         </tr>
       <% }) %>
@@ -56,13 +56,13 @@
 <% const sevColor = { 'CRITICAL':'#b91c1c', 'HIGH':'#dc2626', 'MEDIUM':'#a16207', 'LOW':'var(--text-tertiary)' }; %>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
   <div class="panel">
-    <div class="panel-head"><h2>Findings added</h2><span class="meta" style="font-size:11.5px;"><%= diff.findings.added.length %></span></div>
+    <div class="panel-head"><h2>Findings added</h2><span class="meta text-sm"><%= diff.findings.added.length %></span></div>
     <% if (diff.findings.added.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">None.</div>
+      <div class="panel-pad meta text-base">None.</div>
     <% } else { %>
       <div class="divide-row">
         <% diff.findings.added.forEach(f => { %>
-          <div style="padding:8px 14px;display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+          <div class="text-base" style="padding:8px 14px;display:flex;gap:8px;align-items:flex-start;line-height:1.5;">
             <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
             <span><%= f.title %></span>
           </div>
@@ -72,14 +72,14 @@
   </div>
 
   <div class="panel">
-    <div class="panel-head"><h2>Findings removed</h2><span class="meta" style="font-size:11.5px;"><%= diff.findings.removed.length %></span></div>
+    <div class="panel-head"><h2>Findings removed</h2><span class="meta text-sm"><%= diff.findings.removed.length %></span></div>
     <% if (diff.findings.removed.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">None.</div>
+      <div class="panel-pad meta text-base">None.</div>
     <% } else { %>
       <div class="divide-row">
         <% diff.findings.removed.forEach(f => { %>
-          <div style="padding:8px 14px;display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;text-decoration:line-through;color:var(--text-tertiary);">
-            <span class="tag" style="background:var(--bg-subtle);font-size:10px;"><%= f.severity %></span>
+          <div class="text-base text-tertiary" style="padding:8px 14px;display:flex;gap:8px;align-items:flex-start;line-height:1.5;text-decoration:line-through;">
+            <span class="tag text-xxs" style="background:var(--bg-subtle);"><%= f.severity %></span>
             <span><%= f.title %></span>
           </div>
         <% }) %>
@@ -90,14 +90,14 @@
 
 <% if (diff.findings.modified.length > 0) { %>
   <div class="panel" style="margin-bottom:14px;">
-    <div class="panel-head"><h2>Findings modified</h2><span class="meta" style="font-size:11.5px;"><%= diff.findings.modified.length %></span></div>
+    <div class="panel-head"><h2>Findings modified</h2><span class="meta text-sm"><%= diff.findings.modified.length %></span></div>
     <div class="divide-row">
       <% diff.findings.modified.forEach(f => { %>
-        <div style="padding:10px 14px;font-size:12px;line-height:1.55;">
-          <strong style="font-size:12.5px;"><%= f.title %></strong>
-          <ul style="margin:4px 0 0 0;padding-left:16px;color:var(--text-secondary);">
+        <div class="text-base" style="padding:10px 14px;line-height:1.55;">
+          <strong class="text-md"><%= f.title %></strong>
+          <ul class="text-secondary" style="margin:4px 0 0 0;padding-left:16px;">
             <% Object.entries(f.changes).forEach(([k, c]) => { %>
-              <li><strong><%= k %>:</strong> <span style="text-decoration:line-through;color:var(--text-tertiary);"><%= c.from || '-' %></span> &rarr; <span style="color:var(--text);"><%= c.to || '-' %></span></li>
+              <li><strong><%= k %>:</strong> <span class="text-tertiary" style="text-decoration:line-through;"><%= c.from || '-' %></span> &rarr; <span><%= c.to || '-' %></span></li>
             <% }) %>
           </ul>
         </div>
@@ -109,21 +109,21 @@
 <!-- Recommendations -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
   <div class="panel">
-    <div class="panel-head"><h2>Recommendations added</h2><span class="meta" style="font-size:11.5px;"><%= diff.recommendations.added.length %></span></div>
-    <% if (diff.recommendations.added.length === 0) { %><div class="panel-pad meta" style="font-size:12px;">None.</div><% } else { %>
+    <div class="panel-head"><h2>Recommendations added</h2><span class="meta text-sm"><%= diff.recommendations.added.length %></span></div>
+    <% if (diff.recommendations.added.length === 0) { %><div class="panel-pad meta text-base">None.</div><% } else { %>
       <div class="divide-row">
         <% diff.recommendations.added.forEach(r => { %>
-          <div style="padding:8px 14px;font-size:12px;line-height:1.5;"><%= r.description %></div>
+          <div class="text-base" style="padding:8px 14px;line-height:1.5;"><%= r.description %></div>
         <% }) %>
       </div>
     <% } %>
   </div>
   <div class="panel">
-    <div class="panel-head"><h2>Recommendations removed</h2><span class="meta" style="font-size:11.5px;"><%= diff.recommendations.removed.length %></span></div>
-    <% if (diff.recommendations.removed.length === 0) { %><div class="panel-pad meta" style="font-size:12px;">None.</div><% } else { %>
+    <div class="panel-head"><h2>Recommendations removed</h2><span class="meta text-sm"><%= diff.recommendations.removed.length %></span></div>
+    <% if (diff.recommendations.removed.length === 0) { %><div class="panel-pad meta text-base">None.</div><% } else { %>
       <div class="divide-row">
         <% diff.recommendations.removed.forEach(r => { %>
-          <div style="padding:8px 14px;font-size:12px;line-height:1.5;text-decoration:line-through;color:var(--text-tertiary);"><%= r.description %></div>
+          <div class="text-base text-tertiary" style="padding:8px 14px;line-height:1.5;text-decoration:line-through;"><%= r.description %></div>
         <% }) %>
       </div>
     <% } %>

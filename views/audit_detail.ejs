@@ -2,7 +2,7 @@
 
 <%- include('partials/audit_tabs', { ws, tab: 'audits' }) %>
 
-<a href="/workspaces/<%= ws.id %>/audits" class="link-muted" style="font-size:12px;">← All audits</a>
+<a href="/workspaces/<%= ws.id %>/audits" class="link-muted text-base">← All audits</a>
 
 <%
   // Tier 1.4 - Internal audit lifecycle stages
@@ -37,7 +37,7 @@
     <% }) %>
   </div>
   <% if (audit.fieldwork_started_at || audit.report_issued_at || audit.closed_at) { %>
-    <div class="meta" style="font-size:11px;padding:6px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+    <div class="meta text-xs" style="padding:6px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
       <% if (audit.fieldwork_started_at) { %>Fieldwork started: <strong><%= audit.fieldwork_started_at %></strong><% } %>
       <% if (audit.report_issued_at) { %> · Report issued: <strong><%= audit.report_issued_at %></strong><% } %>
       <% if (audit.closed_at) { %> · Closed: <strong><%= audit.closed_at %></strong><% } %>
@@ -46,9 +46,9 @@
 </div>
 
 <div class="panel" style="margin-bottom:16px">
-  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= audit.title %>" required></div>
-    <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" value="<%= audit.scope || '' %>"></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= audit.title %>" required></div>
+    <div class="col-full"><label class="label">Scope</label><input class="input" name="scope" value="<%= audit.scope || '' %>"></div>
     <div><label class="label">Audit date</label><input class="input" type="date" name="audit_date" value="<%= audit.audit_date || '' %>"></div>
     <div><label class="label">Auditor</label><input class="input" name="auditor_name" value="<%= audit.auditor_name || '' %>"></div>
     <div><label class="label">Status</label>
@@ -57,8 +57,8 @@
       </select>
     </div>
     <div></div>
-    <div style="grid-column:1/-1"><label class="label">Summary / executive notes</label><textarea class="textarea" name="summary" rows="3"><%= audit.summary || '' %></textarea></div>
-    <div style="grid-column:1/-1;display:flex;gap:6px;">
+    <div class="col-full"><label class="label">Summary / executive notes</label><textarea class="textarea" name="summary" rows="3"><%= audit.summary || '' %></textarea></div>
+    <div class="col-full row">
       <button class="btn btn-primary">Save</button>
       <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
         <button class="btn btn-danger">Delete audit</button>
@@ -100,7 +100,7 @@
                 <span class="tag <%= f.severity === 'high' ? 'tag-danger' : f.severity === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= f.severity %></span>
                 <% if (f.iso_title) { %><span class="meta"><%= f.iso_title %></span><% } %>
               </div>
-              <div style="font-size:13px;"><%= f.description %></div>
+              <div class="text-lg"><%= f.description %></div>
             </div>
             <% if (f.nonconformity_id) { %>
               <a href="/workspaces/<%= ws.id %>/nonconformities/<%= f.nonconformity_id %>" class="btn btn-secondary btn-xs">→ NC #<%= f.nonconformity_id %></a>
@@ -116,7 +116,7 @@
   <% } %>
 
   <details>
-    <summary class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);font-size:13px;color:var(--text-secondary);">+ Add finding</summary>
+    <summary class="panel-pad text-lg text-secondary" style="border-top:1px solid var(--border);background:var(--bg-subtle);">+ Add finding</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/findings" class="panel-pad" style="border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
       <div><label class="label">Type</label>
         <select class="select" name="finding_type">
@@ -133,8 +133,8 @@
           <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.title %></option><% }) %>
         </select>
       </div>
-      <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" required></textarea></div>
-      <div style="grid-column:1/-1"><button class="btn btn-primary btn-xs">Add finding</button></div>
+      <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" required></textarea></div>
+      <div class="col-full"><button class="btn btn-primary btn-xs">Add finding</button></div>
     </form>
   </details>
 </div>
@@ -142,7 +142,7 @@
 <!-- Tier C.9 - Sampling justification + per-control sample log (clause 9.2) -->
 <div class="panel" style="margin-top:18px;">
   <div class="panel-head">
-    <h2>Sampling <span class="meta" style="font-weight:400;font-size:13px;">· Clause 9.2</span></h2>
+    <h2>Sampling <span class="meta text-lg" style="font-weight:400;">· Clause 9.2</span></h2>
     <span class="meta">Pop. <%= audit.population_size || '-' %> · sample <%= audit.sample_size || '-' %></span>
   </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/sampling" class="panel-pad" style="display:grid;grid-template-columns:1fr 100px 100px;gap:8px;align-items:end;">
@@ -152,7 +152,7 @@
     </div>
     <div><label class="label">Population size</label><input class="input" type="number" name="population_size" value="<%= audit.population_size || '' %>"></div>
     <div><label class="label">Sample size</label><input class="input" type="number" name="sample_size" value="<%= audit.sample_size || '' %>"></div>
-    <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Save sampling</button></div>
+    <div class="col-full"><button class="btn btn-primary btn-xs">Save sampling</button></div>
   </form>
 
   <% if (samples && samples.length > 0) { %>
@@ -168,14 +168,14 @@
       <tbody>
         <% samples.forEach(s => { %>
           <tr>
-            <td class="mono meta" style="font-size:11.5px;"><%= s.iso_item_id ? s.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() : '-' %></td>
-            <td style="font-size:12.5px;"><%= s.description %></td>
-            <td class="meta" style="font-size:11.5px;"><%= s.sample_taken_at || '-' %></td>
-            <td class="num meta" style="font-size:11.5px;"><%= s.population_size || '-' %> / <%= s.sample_size || '-' %></td>
-            <td style="font-size:12px;"><%= s.finding || '-' %></td>
+            <td class="mono meta text-sm"><%= s.iso_item_id ? s.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() : '-' %></td>
+            <td class="text-md"><%= s.description %></td>
+            <td class="meta text-sm"><%= s.sample_taken_at || '-' %></td>
+            <td class="num meta text-sm"><%= s.population_size || '-' %> / <%= s.sample_size || '-' %></td>
+            <td class="text-base"><%= s.finding || '-' %></td>
             <td>
               <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples/<%= s.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete sample?')" style="display:inline;">
-                <button class="btn btn-ghost btn-xs" style="color:var(--text-secondary);">×</button>
+                <button class="btn btn-ghost btn-xs text-secondary">×</button>
               </form>
             </td>
           </tr>
@@ -187,16 +187,16 @@
   <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:160px 1fr 110px 80px 80px 1fr auto;gap:6px;align-items:end;">
     <div>
       <label class="label">Control / clause</label>
-      <select name="iso_item_id" class="select" style="font-size:12px;">
+      <select name="iso_item_id" class="select text-base">
         <option value="">- optional -</option>
         <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.id.replace('annex-','').replace('clause-','').toUpperCase() %></option><% }) %>
       </select>
     </div>
-    <div><label class="label">What was sampled</label><input class="input" name="description" required placeholder="e.g., 5 of 28 access reviews from Q1" style="font-size:12px;"></div>
-    <div><label class="label">Date</label><input class="input" type="date" name="sample_taken_at" style="font-size:12px;"></div>
-    <div><label class="label">Pop</label><input class="input" type="number" name="population_size" style="font-size:12px;"></div>
-    <div><label class="label">Sample</label><input class="input" type="number" name="sample_size" style="font-size:12px;"></div>
-    <div><label class="label">Finding</label><input class="input" name="finding" placeholder="OK / minor NC / major NC" style="font-size:12px;"></div>
+    <div><label class="label">What was sampled</label><input class="input text-base" name="description" required placeholder="e.g., 5 of 28 access reviews from Q1"></div>
+    <div><label class="label">Date</label><input class="input text-base" type="date" name="sample_taken_at"></div>
+    <div><label class="label">Pop</label><input class="input text-base" type="number" name="population_size"></div>
+    <div><label class="label">Sample</label><input class="input text-base" type="number" name="sample_size"></div>
+    <div><label class="label">Finding</label><input class="input text-base" name="finding" placeholder="OK / minor NC / major NC"></div>
     <div><button class="btn btn-primary btn-xs">Add</button></div>
   </form>
 </div>

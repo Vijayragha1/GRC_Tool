@@ -17,7 +17,7 @@
       <div><label class="label">Medium band - score ≤</label><input class="input num" type="number" step="0.5" name="appetite_med_max" value="<%= appetite.appetite_med_max %>"></div>
       <div><label class="label">Approver role for acceptances</label><input class="input" name="approver_role" value="<%= appetite.approver_role || '' %>" placeholder="e.g., CISO"></div>
     </div>
-    <label style="display:flex;gap:6px;align-items:center;font-size:13px;">
+    <label class="text-lg row-center">
       <input type="checkbox" name="auto_accept_below" <%= appetite.auto_accept_below ? 'checked' : '' %>> Auto-accept risks within the low band (no e-sign required)
     </label>
     <div><button class="btn btn-primary">Save appetite</button></div>

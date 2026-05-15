@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: inc.title, user, ws, active: 'incidents' }) %>
 
-<a href="/workspaces/<%= ws.id %>/incidents" class="link-muted" style="font-size:12px;">← All incidents</a>
+<a href="/workspaces/<%= ws.id %>/incidents" class="link-muted text-base">← All incidents</a>
 
 <div class="panel" style="margin-top:12px">
   <div class="panel-pad" style="border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -8,7 +8,7 @@
       <div class="mono meta">INC-<%= String(inc.id).padStart(3,'0') %></div>
       <h1 class="page-title" style="margin-top:2px;"><%= inc.title %></h1>
     </div>
-    <div style="display:flex;gap:6px;align-items:center;">
+    <div class="row-center">
       <% if (inc.nonconformity_id) { %>
         <a href="/workspaces/<%= ws.id %>/nonconformities/<%= inc.nonconformity_id %>" class="btn btn-secondary btn-xs">→ NC #<%= inc.nonconformity_id %></a>
       <% } else { %>
@@ -21,8 +21,8 @@
     </div>
   </div>
 
-  <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= inc.title %>" required></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= inc.title %>" required></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">
         <% ['malware','phishing','breach','dos','physical','insider','supplier','other'].forEach(c => { %>
@@ -47,18 +47,18 @@
       </select>
     </div>
     <div><label class="label">Affected assets</label><input class="input" name="affected_assets" value="<%= inc.affected_assets || '' %>" placeholder="comma-separated"></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= inc.description || '' %></textarea></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= inc.description || '' %></textarea></div>
 
-    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;">
+    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;">
       <div class="sec-label">Response timeline (A.5.26)</div>
     </div>
-    <div style="grid-column:1/-1"><label class="label">Containment actions</label><textarea class="textarea" name="containment_actions" rows="2"><%= inc.containment_actions || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Eradication actions</label><textarea class="textarea" name="eradication_actions" rows="2"><%= inc.eradication_actions || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Recovery actions</label><textarea class="textarea" name="recovery_actions" rows="2"><%= inc.recovery_actions || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">External notification (regulators, customers, law enforcement)</label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Lessons learned (A.5.27)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
+    <div class="col-full"><label class="label">Containment actions</label><textarea class="textarea" name="containment_actions" rows="2"><%= inc.containment_actions || '' %></textarea></div>
+    <div class="col-full"><label class="label">Eradication actions</label><textarea class="textarea" name="eradication_actions" rows="2"><%= inc.eradication_actions || '' %></textarea></div>
+    <div class="col-full"><label class="label">Recovery actions</label><textarea class="textarea" name="recovery_actions" rows="2"><%= inc.recovery_actions || '' %></textarea></div>
+    <div class="col-full"><label class="label">External notification (regulators, customers, law enforcement)</label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
+    <div class="col-full"><label class="label">Lessons learned (A.5.27)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
 
-    <div style="grid-column:1/-1;display:flex;gap:6px;">
+    <div class="col-full row">
       <button class="btn btn-primary">Save</button>
       <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
         <button class="btn btn-danger">Delete</button>
@@ -106,9 +106,9 @@
   <% if (runbook) { %>
     <div class="panel-pad" style="border-top:1px solid var(--border);">
       <div class="sec-label"><%= runbook.name %></div>
-      <ol style="font-size:13px;padding-left:18px;line-height:1.6;">
+      <ol class="text-lg" style="padding-left:18px;line-height:1.6;">
         <% runbook.steps.forEach(s => { %>
-          <li style="margin-bottom:8px;"><span class="tag tag-info" style="font-size:10.5px;text-transform:uppercase;"><%= s.phase %></span> <strong><%= s.title %></strong><div class="meta" style="margin-top:2px;"><%= s.desc %></div></li>
+          <li style="margin-bottom:8px;"><span class="tag tag-info text-eyebrow" style="text-transform:uppercase;"><%= s.phase %></span> <strong><%= s.title %></strong><div class="meta" style="margin-top:2px;"><%= s.desc %></div></li>
         <% }) %>
       </ol>
     </div>
@@ -119,9 +119,9 @@
   <div class="panel-head"><h2>Timeline</h2><span class="meta"><%= events.length %> events</span></div>
   <% events.forEach(ev => { %>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:130px 100px 1fr;gap:10px;align-items:start;">
-      <div class="meta mono" style="font-size:11.5px;"><%= ev.event_at %></div>
-      <div><span class="tag <%= ev.phase === 'detect' ? 'tag-info' : ev.phase === 'contain' ? 'tag-warn' : ev.phase === 'eradicate' ? 'tag-warn' : ev.phase === 'recover' ? 'tag-success' : 'tag-neutral' %>" style="font-size:10.5px;text-transform:uppercase;"><%= ev.phase %></span></div>
-      <div style="font-size:13px;"><%= ev.description %><% if (ev.actor) { %><div class="meta">by <%= ev.actor %></div><% } %></div>
+      <div class="meta mono text-sm"><%= ev.event_at %></div>
+      <div><span class="tag <%= ev.phase === 'detect' ? 'tag-info' : ev.phase === 'contain' ? 'tag-warn' : ev.phase === 'eradicate' ? 'tag-warn' : ev.phase === 'recover' ? 'tag-success' : 'tag-neutral' %> text-eyebrow" style="text-transform:uppercase;"><%= ev.phase %></span></div>
+      <div class="text-lg"><%= ev.description %><% if (ev.actor) { %><div class="meta">by <%= ev.actor %></div><% } %></div>
     </div>
   <% }) %>
   <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/events" class="panel-pad" style="display:grid;grid-template-columns:120px 130px 1fr 130px auto;gap:6px;align-items:end;">

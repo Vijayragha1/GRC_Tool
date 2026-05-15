@@ -10,9 +10,8 @@
 <%# and falls back to the default behaviour gracefully. %>
 <meta name="view-transition" content="same-origin">
 <title><%= typeof title !== 'undefined' ? title : 'ISO 27001' %> · ISMS</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="preconnect" href="https://rsms.me/">
-<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/inter.css">
 <style>
   /* Cross-document view transitions on same-origin navigations. The browser
      animates a soft cross-fade between the old and new page so clicking a
@@ -281,6 +280,45 @@
   .kpi-delta-down { color: #b91c1c; background: rgba(220,38,38,0.10); }
   .kpi-delta-flat { color: var(--text-tertiary); background: var(--bg-muted); }
 
+  /* Utilities (used to be Tailwind; vendored to drop the CDN) */
+  .hidden { display: none !important; }
+  .contents { display: contents; }
+
+  /* Semantic text colors - replace the inline color overrides scattered
+     across views. Each one matches the exact pixel value it replaces so
+     the codemod-driven swap is visually a no-op. */
+  .text-secondary { color: var(--text-secondary); }
+  .text-tertiary  { color: var(--text-tertiary);  }
+  .text-ink       { color: var(--ink);            }
+  .text-danger    { color: #b91c1c; }
+  .text-warn      { color: #a16207; }
+  .text-success   { color: #15803d; }
+
+  /* Layout - the only spans/grids we use enough to deserve a class.
+     col-full means "stretch across all grid columns of the parent". */
+  .col-full       { grid-column: 1 / -1; }
+
+  /* Layout composites - intent-named so a reader doesn't have to mentally
+     unpack a list of flex properties. Each one matches an inline-style
+     shape that appears 20+ times across the views. */
+  .row            { display: flex; gap: 6px; }
+  .row-center     { display: flex; align-items: center; gap: 6px; }
+  .stack          { display: flex; flex-direction: column; gap: 6px; }
+  .grid-2         { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* Type scale - eight named sizes covering every pixel value in actual
+     use. Half-step values (10.5/11.5/12.5) get explicit names so it's
+     visible they're off the standard 6-step scale; text-eyebrow is the
+     uppercase section-label size found across panels. */
+  .text-xxs     { font-size: 10px;   }
+  .text-eyebrow { font-size: 10.5px; }
+  .text-xs      { font-size: 11px;   }
+  .text-sm      { font-size: 11.5px; }
+  .text-base    { font-size: 12px;   }
+  .text-md      { font-size: 12.5px; }
+  .text-lg      { font-size: 13px;   }
+  .text-xl      { font-size: 14px;   }
+
   /* Misc */
   details > summary { cursor: pointer; list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
@@ -360,8 +398,8 @@
       <a href="/dashboard" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#fff;">
         <span class="brand-mark">I</span>
         <div style="line-height:1.1">
-          <div style="font-weight:600;font-size:14px;letter-spacing:-0.01em;">ISMS</div>
-          <div style="font-size:10.5px;color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.04em;text-transform:uppercase;">ISO 27001</div>
+          <div class="text-xl" style="font-weight:600;letter-spacing:-0.01em;">ISMS</div>
+          <div class="text-eyebrow" style="color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.04em;text-transform:uppercase;">ISO 27001</div>
         </div>
       </a>
     </div>
@@ -373,10 +411,10 @@
       const brandColor = (ws.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(ws.brand_primary_color)) ? ws.brand_primary_color : null;
     %>
     <div class="sidebar-section ws-context" style="<%= brandColor ? 'border-left:3px solid ' + brandColor + ';padding-left:11px;' : '' %>">
-      <a href="/dashboard" style="font-size:11px;color:rgba(255,255,255,0.5);text-decoration:none;">← All clients</a>
-      <div style="margin-top:10px;font-size:13px;font-weight:600;letter-spacing:-0.005em;line-height:1.3;color:#fff;"><%= ws.brand_display_name || ws.client_name %></div>
-      <div style="margin-top:3px;font-size:11px;color:rgba(255,255,255,0.45);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <% if (ws.sector) { %><span style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:999px;font-size:10px;font-weight:500;"><%= ws.sector %></span><% } %>
+      <a class="text-xs" href="/dashboard" style="color:rgba(255,255,255,0.5);text-decoration:none;">← All clients</a>
+      <div class="text-lg" style="margin-top:10px;font-weight:600;letter-spacing:-0.005em;line-height:1.3;color:#fff;"><%= ws.brand_display_name || ws.client_name %></div>
+      <div class="text-xs" style="margin-top:3px;color:rgba(255,255,255,0.45);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <% if (ws.sector) { %><span class="text-xxs" style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:999px;font-weight:500;"><%= ws.sector %></span><% } %>
         <span><%= ws.industry || ws.stage.replace(/_/g,' ') %></span>
       </div>
     </div>
@@ -393,6 +431,14 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14 9 11"/></svg>
           <span class="nav-item-text">Readiness</span>
         </a>
+        <%# Unified all-framework view - only meaningful when the engagement
+            covers more than one framework. %>
+        <% if (ws.frameworks && ws.frameworks.length > 1) { %>
+          <a href="/workspaces/<%= ws.id %>/readiness/overview" class="nav-item <%= (typeof active !== 'undefined' && active === 'readiness-overview') ? 'active' : '' %>" style="padding-left:30px;">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span class="nav-item-text">All frameworks</span>
+          </a>
+        <% } %>
 
         <div class="nav-group-label">Implementation</div>
         <a href="/workspaces/<%= ws.id %>/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'intake') ? 'active' : '' %>">
@@ -435,6 +481,10 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span class="nav-item-text">Statement of Applicability</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/crosswalks" class="nav-item <%= (typeof active !== 'undefined' && active === 'crosswalks') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h4l3 5-3 5H3z"/><path d="M21 6h-4l-3 5 3 5h4z"/><line x1="10" y1="11" x2="14" y2="11"/></svg>
+          <span class="nav-item-text">Crosswalks</span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/documents" data-shortcut="g d" class="nav-item <%= (typeof active !== 'undefined' && active === 'documents') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="nav-item-text">Documents</span>
@@ -444,6 +494,7 @@
           <span class="nav-item-text">Evidence library</span>
         </a>
 
+        <% if (ws.frameworks && ws.frameworks.includes('csf')) { %>
         <div class="nav-group-label">NIST CSF</div>
         <a href="/workspaces/<%= ws.id %>/csf" class="nav-item <%= (typeof active !== 'undefined' && (active === 'csf' || active === 'csf-catalog')) ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
@@ -453,7 +504,9 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           <span class="nav-item-text">CSF Learn</span>
         </a>
+        <% } %>
 
+        <% if (ws.frameworks && ws.frameworks.includes('iso42001')) { %>
         <div class="nav-group-label">ISO 42001 (AI MS)</div>
         <a href="/workspaces/<%= ws.id %>/iso42001/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-intake') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -495,6 +548,7 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="nav-item-text">Cert cycle</span>
         </a>
+        <% } %>
 
         <div class="nav-group-label">Operations</div>
         <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
@@ -517,10 +571,8 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
           <span class="nav-item-text">Incidents</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/improvements" class="nav-item <%= (typeof active !== 'undefined' && active === 'improvements') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="nav-item-text">Improvements</span>
-        </a>
+        <%# Improvements demoted from the sidebar - reachable as a tab on the
+            Nonconformities page since clause 10 keeps both concepts adjacent. %>
         <a href="/workspaces/<%= ws.id %>/vendors" data-shortcut="g v" class="nav-item <%= (typeof active !== 'undefined' && active === 'vendors') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           <span class="nav-item-text">Suppliers</span>
@@ -529,28 +581,13 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span class="nav-item-text">Tasks</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/task-templates" class="nav-item" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
-          <span class="nav-item-text">Task templates</span>
-        </a>
+        <%# Task templates / Calendar reachable from the Tasks page header. %>
 
         <div class="nav-group-label">Workspace</div>
-        <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="nav-item-text">Compliance calendar</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/search" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span class="nav-item-text">Search</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/reports" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          <span class="nav-item-text">Reports</span>
-        </a>
-        <a href="/glossary" class="nav-item <%= (typeof active !== 'undefined' && active === 'glossary') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          <span class="nav-item-text">Glossary</span>
-        </a>
+        <%# Search reachable via the Cmd-K palette in the topbar. Reports is a
+            thin index of exports that already live next to each module. The
+            Glossary nav entry only renders outside a workspace context (the
+            else branch below) - inside a workspace it just adds noise. %>
         <% if (user.firm_role === 'owner') { %>
         <a href="/workspaces/<%= ws.id %>/system" class="nav-item">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -602,10 +639,10 @@
     </nav>
 
     <div class="sidebar-foot">
-      <div class="avatar" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:11px;flex-shrink:0;"><%= user.name.charAt(0).toUpperCase() %></div>
+      <div class="avatar text-xs" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;flex-shrink:0;"><%= user.name.charAt(0).toUpperCase() %></div>
       <div style="min-width:0;flex:1;">
-        <div style="font-size:13px;font-weight:500;line-height:1.2;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= user.name %></div>
-        <div style="font-size:10.5px;color:rgba(255,255,255,0.4);">local · no auth</div>
+        <div class="text-lg" style="font-weight:500;line-height:1.2;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= user.name %></div>
+        <div class="text-eyebrow" style="color:rgba(255,255,255,0.4);">local · no auth</div>
       </div>
       <button onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:rgba(255,255,255,0.5);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.color='rgba(255,255,255,0.5)';this.style.background='transparent'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -635,28 +672,28 @@
            // confusion between "tenant" (firm) and "workspace" (client engagement). %>
         <% if (typeof allFirms !== 'undefined' && allFirms && allFirms.length > 1) { %>
           <div style="position:relative;" id="tenantSwitcher">
-            <button type="button" class="palette-trigger" onclick="document.getElementById('tenantMenu').style.display = (document.getElementById('tenantMenu').style.display === 'block' ? 'none' : 'block')" style="gap:6px;padding:5px 10px;font-size:12px;" title="Switch tenant">
+            <button type="button" class="palette-trigger text-base" onclick="document.getElementById('tenantMenu').style.display = (document.getElementById('tenantMenu').style.display === 'block' ? 'none' : 'block')" style="gap:6px;padding:5px 10px;" title="Switch tenant">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               <span style="font-weight:500;"><%= activeFirm ? activeFirm.name : 'No tenant' %></span>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="tenantMenu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow-lg);min-width:240px;z-index:50;overflow:hidden;">
-              <div style="padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-subtle);">Firms (<%= allFirms.length %>)</div>
+              <div class="text-xxs text-secondary" style="padding:6px 10px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);background:var(--bg-subtle);">Firms (<%= allFirms.length %>)</div>
               <% allFirms.forEach(f => {
                    const isActive = activeFirm && activeFirm.id === f.id;
               %>
                 <% if (isActive) { %>
-                  <div style="padding:8px 12px;font-size:13px;display:flex;justify-content:space-between;align-items:center;background:rgba(8,145,178,0.06);">
+                  <div class="text-lg" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;background:rgba(8,145,178,0.06);">
                     <span style="font-weight:500;"><%= f.name %></span>
-                    <span class="meta" style="font-size:10.5px;">active</span>
+                    <span class="meta text-eyebrow">active</span>
                   </div>
                 <% } else { %>
                   <form method="POST" action="/tenants/<%= f.id %>/switch" style="margin:0;">
-                    <button type="submit" style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background='none'"><%= f.name %></button>
+                    <button class="text-lg" type="submit" style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer;" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background='none'"><%= f.name %></button>
                   </form>
                 <% } %>
               <% }) %>
-              <a href="/tenants" style="display:block;padding:8px 12px;font-size:12px;border-top:1px solid var(--border);text-decoration:none;color:var(--accent);background:var(--bg-subtle);">Manage firms →</a>
+              <a class="text-base" href="/tenants" style="display:block;padding:8px 12px;border-top:1px solid var(--border);text-decoration:none;color:var(--accent);background:var(--bg-subtle);">Manage firms →</a>
             </div>
           </div>
           <script>

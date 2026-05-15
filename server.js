@@ -164,9 +164,27 @@ function getWorkspace(workspaceId, user) {
   return { ...ws, role: m.role, _userRole: m.role };
 }
 
+// Allowed framework identifiers. Treated as a closed set so a malformed
+// workspace.frameworks value can't introduce phantom nav groups.
+const ALLOWED_FRAMEWORKS = ['iso27001', 'iso42001', 'csf'];
+
+// Parse the workspace.frameworks JSON column into an Array. Falls back to
+// "all three" so a workspace created before the column existed (or one
+// whose value got corrupted) still renders something useful.
+function parseWorkspaceFrameworks(raw) {
+  if (!raw) return ALLOWED_FRAMEWORKS.slice();
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return ALLOWED_FRAMEWORKS.slice();
+    const cleaned = arr.filter(x => ALLOWED_FRAMEWORKS.includes(x));
+    return cleaned.length ? cleaned : ALLOWED_FRAMEWORKS.slice();
+  } catch (_) { return ALLOWED_FRAMEWORKS.slice(); }
+}
+
 function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
+  ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
   req.workspace = ws;
   // Remember the workspace they were last in, so firm-level pages (Glossary,
   // Playbooks, Firm library, Tenants) can offer a "← Back to {client}"
@@ -695,11 +713,22 @@ app.post('/workspaces', requireAuth, (req, res) => {
   if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
   const { client_name, industry, scope, target_cert_date } = req.body;
   if (!client_name) return res.redirect('/dashboard');
-  const id = db.prepare(`INSERT INTO workspaces (firm_id, client_name, industry, scope, target_cert_date, lead_consultant_id)
-                         VALUES (?, ?, ?, ?, ?, ?)`)
+  // Framework picker. Form sends `frameworks` as either a string (one box
+  // checked) or an array (two or more). An empty list falls back to all
+  // three - a workspace with zero frameworks would be useless.
+  const submitted = req.body.frameworks;
+  let frameworks;
+  if (Array.isArray(submitted))      frameworks = submitted;
+  else if (typeof submitted === 'string') frameworks = [submitted];
+  else                                frameworks = [];
+  frameworks = frameworks.filter(f => ALLOWED_FRAMEWORKS.includes(f));
+  if (!frameworks.length) frameworks = ALLOWED_FRAMEWORKS.slice();
+  const id = db.prepare(`INSERT INTO workspaces (firm_id, client_name, industry, scope, target_cert_date, lead_consultant_id, frameworks)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(req.user.firm_id, client_name.trim(), industry || null,
-         scope || null, target_cert_date || null, req.user.id).lastInsertRowid;
-  logAction(req.user.id, id, 'create_workspace', 'workspace', id, { client_name });
+         scope || null, target_cert_date || null, req.user.id,
+         JSON.stringify(frameworks)).lastInsertRowid;
+  logAction(req.user.id, id, 'create_workspace', 'workspace', id, { client_name, frameworks });
   // Redirect into the intake page rather than the workspace overview. The
   // overview is meaningful only once the engagement has real context;
   // intake is the obvious next step (scope sign-off, stakeholders, crown
@@ -1200,6 +1229,21 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
     ORDER BY (CASE severity WHEN 'major' THEN 0 WHEN 'minor' THEN 1 ELSE 2 END), due_date IS NULL, due_date`).all(item.id, req.workspace.id);
 
+  // Crosswalks - which other frameworks this control also satisfies. Read from
+  // the framework_mappings table seeded from data/framework-mappings.js. ISO
+  // 27001 Annex A is the keyed side; the value is a free-text external ref
+  // (e.g., "CC6.1, CC6.2") in the target framework. Clauses don't carry
+  // mappings today, so the result is empty for them.
+  const crosswalks = db.prepare(
+    `SELECT framework, external_ref, notes FROM framework_mappings
+     WHERE iso_item_id = ? ORDER BY framework`
+  ).all(item.id);
+  const crosswalksByFramework = {};
+  for (const m of crosswalks) {
+    if (!crosswalksByFramework[m.framework]) crosswalksByFramework[m.framework] = [];
+    crosswalksByFramework[m.framework].push(m);
+  }
+
   // Per-pass notes - derived from history. The current pass's textarea shows
   // ONLY notes saved within the active pass; prior-pass notes appear above as
   // read-only context blocks so the consultant can verify against earlier
@@ -1235,7 +1279,8 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     prevId, nextId: nextById, doneFlag: !!req.query.done,
     questions, savedAnswers, suggestedStatus,
     evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs,
-    activePass, currentPassNotes, priorPassNotes
+    activePass, currentPassNotes, priorPassNotes,
+    crosswalksByFramework
   });
 });
 
@@ -1685,6 +1730,9 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
 
   // Linked controls for the visible rows.
   const linksByEvidence = {};
+  // Cross-framework link counts and per-row link details for the visible rows.
+  // crossLinksByEvidence[evId] = { iso27001: [...], iso42001: [...], csf: [...] }
+  const crossLinksByEvidence = {};
   if (evidenceList.length) {
     const ids = evidenceList.map(e => e.id);
     const placeholders = ids.map(() => '?').join(',');
@@ -1699,6 +1747,26 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
     for (const l of links) {
       if (!linksByEvidence[l.evidence_id]) linksByEvidence[l.evidence_id] = [];
       linksByEvidence[l.evidence_id].push(l);
+    }
+    // Pull every evidence_links row for these evidence ids. We resolve the
+    // human-readable title for ISO 42001 and CSF by joining each framework's
+    // own catalog. Done as two LEFT JOINs because SQLite doesn't have CASE-
+    // dependent joins.
+    const allLinks = db.prepare(`
+      SELECT el.id AS link_id, el.evidence_id, el.framework, el.item_ref, el.section_ref,
+             ai.title AS iso42001_title,
+             cs.description AS csf_description
+      FROM evidence_links el
+      LEFT JOIN iso42001_items ai ON el.framework='iso42001' AND ai.id = el.item_ref
+      LEFT JOIN csf_subcategories cs ON el.framework='csf' AND cs.code = el.item_ref
+      WHERE el.evidence_id IN (${placeholders})
+      ORDER BY el.framework, el.item_ref
+    `).all(...ids);
+    for (const l of allLinks) {
+      if (!crossLinksByEvidence[l.evidence_id]) {
+        crossLinksByEvidence[l.evidence_id] = { iso27001: [], iso42001: [], csf: [] };
+      }
+      crossLinksByEvidence[l.evidence_id][l.framework].push(l);
     }
   }
 
@@ -1722,13 +1790,20 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
   const tagList = Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const allIsoItems = db.prepare(`SELECT id, type, title FROM iso_items ORDER BY sort_order ASC`).all();
+  // Per-framework catalogs for the "Link to..." picker on each row. Only
+  // populated when the workspace has that framework enabled.
+  const allIso42001Items = req.workspace.frameworks.includes('iso42001')
+    ? db.prepare(`SELECT id, type, title FROM iso42001_items ORDER BY sort_order ASC`).all() : [];
+  const allCsfSubcats = req.workspace.frameworks.includes('csf')
+    ? db.prepare(`SELECT code, description FROM csf_subcategories ORDER BY code ASC`).all() : [];
 
   res.render('evidence_library', {
     user: req.user, ws: req.workspace,
     title: 'Evidence library',
     active: 'evidence',
     evidenceList, linksByEvidence, counters,
-    allIsoItems,
+    crossLinksByEvidence,
+    allIsoItems, allIso42001Items, allCsfSubcats,
     q, filter, tag, today, expSoon,
     tagList
   });
@@ -1940,6 +2015,59 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
 // Tier A.1 - Add/remove additional control links on an evidence file.
 // section_ref may be either a single shared value (form: section_ref=...) or
 // per-link via a parallel array section_ref_for_<isoId>=... - the latter wins.
+// Cross-framework link route. Accepts framework=iso42001|csf and one or more
+// item_ref values, writes them into evidence_links directly. The existing
+// /controls endpoint stays for ISO 27001 (it writes to evidence_controls and
+// the sync trigger mirrors into evidence_links).
+app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  const framework = (req.body.framework || '').toString();
+  if (!ALLOWED_FRAMEWORKS.includes(framework) || framework === 'iso27001') {
+    // ISO 27001 keeps its own legacy route so the section_ref + primary
+    // bookkeeping stays consistent. Cross-framework only here.
+    return res.status(400).send('Use /controls for ISO 27001 links');
+  }
+  const refs = parseFormArray(req.body.item_ref);
+  if (!refs.length) return redirectBack(req, res);
+  // Validate item_refs against the framework's source-of-truth table so a
+  // typo or attacker-injected ref doesn't get stored.
+  let valid;
+  if (framework === 'iso42001') {
+    const ph = refs.map(() => '?').join(',');
+    valid = new Set(db.prepare(`SELECT id FROM iso42001_items WHERE id IN (${ph})`).all(...refs).map(r => r.id));
+  } else { // csf
+    const ph = refs.map(() => '?').join(',');
+    valid = new Set(db.prepare(`SELECT code FROM csf_subcategories WHERE code IN (${ph})`).all(...refs).map(r => r.code));
+  }
+  const filtered = refs.filter(r => valid.has(r));
+  if (!filtered.length) return redirectBack(req, res);
+  const ins = db.prepare(`INSERT OR IGNORE INTO evidence_links (evidence_id, framework, item_ref, section_ref) VALUES (?, ?, ?, ?)`);
+  const tx = db.transaction(() => {
+    for (const ref of filtered) ins.run(ev.id, framework, ref, req.body.section_ref || null);
+  });
+  try { tx(); } catch (_) {}
+  logAction(req.user.id, req.workspace.id, 'link_evidence_cross_framework', 'evidence', ev.id,
+            { framework, refs: filtered, count: filtered.length }, auditCtx(req));
+  redirectBack(req, res);
+});
+
+// Delete a single cross-framework link.
+app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  // Don't touch iso27001 rows from this route - those belong to the legacy
+  // /controls flow which has additional primary-key bookkeeping.
+  const link = db.prepare(`SELECT * FROM evidence_links WHERE id=? AND evidence_id=? AND framework != 'iso27001'`)
+                 .get(req.params.linkId, ev.id);
+  if (link) {
+    db.prepare(`DELETE FROM evidence_links WHERE id=?`).run(link.id);
+    logAction(req.user.id, req.workspace.id, 'unlink_evidence_cross_framework', 'evidence', ev.id,
+              { framework: link.framework, item_ref: link.item_ref }, auditCtx(req));
+  }
+  redirectBack(req, res);
+});
+
 app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
@@ -2520,6 +2648,105 @@ app.post('/workspaces/:wsId/soa/bulk', requireAuth, requireWorkspace, requirePer
   }
   logAction(req.user.id, req.workspace.id, 'soa_bulk', 'soa', null, { action, affected, count: ids.length }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `${affected} control${affected === 1 ? '' : 's'} updated`));
+});
+
+// ==================== CROSSWALKS ====================
+// Full-matrix view of which ISO 27001 Annex A controls map to which external
+// frameworks (SOC 2, NIST CSF 2.0, GDPR). The point of a multi-framework GRC
+// tool: one piece of evidence credits controls across all frameworks the
+// engagement runs. Grouped by Annex A theme. Filterable by framework, status,
+// and search. Inclusion / status come from control_states for this workspace.
+app.get('/workspaces/:wsId/crosswalks', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const frameworkFilter = (req.query.framework || 'all').toString();
+  const statusFilter = (req.query.status || 'all').toString();
+  const q = (req.query.q || '').toString().trim().toLowerCase();
+
+  // Annex A controls only. Clauses don't carry crosswalks.
+  const controls = db.prepare(
+    `SELECT i.id, i.title, i.category, i.sort_order,
+            COALESCE(cs.applicability, 'undecided') AS applicability,
+            COALESCE(cs.status, 'Not Assessed')     AS status
+     FROM iso_items i
+     LEFT JOIN control_states cs
+       ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+     WHERE i.type = 'control'
+     ORDER BY i.sort_order ASC`
+  ).all(req.workspace.id);
+
+  const allMappings = db.prepare(
+    `SELECT iso_item_id, framework, external_ref, notes FROM framework_mappings`
+  ).all();
+  const byControl = {};
+  for (const m of allMappings) {
+    if (!byControl[m.iso_item_id]) byControl[m.iso_item_id] = {};
+    if (!byControl[m.iso_item_id][m.framework]) byControl[m.iso_item_id][m.framework] = [];
+    byControl[m.iso_item_id][m.framework].push(m);
+  }
+
+  // Coverage counters - how many included controls in this workspace are mapped
+  // to each framework. Drives the headline KPI tiles.
+  const includedIds = new Set(controls.filter(c => c.applicability === 'included').map(c => c.id));
+  const frameworks = ['soc2', 'nist_csf', 'gdpr'];
+  const coverage = {};
+  for (const fw of frameworks) {
+    const mapped = new Set(allMappings.filter(m => m.framework === fw).map(m => m.iso_item_id));
+    const includedMapped = [...includedIds].filter(id => mapped.has(id)).length;
+    coverage[fw] = {
+      total_mapped: mapped.size,
+      included_mapped: includedMapped,
+      total_included: includedIds.size
+    };
+  }
+
+  // Apply filters to the displayed rows.
+  let rows = controls.map(c => ({
+    ...c,
+    mappings: byControl[c.id] || {}
+  }));
+  if (frameworkFilter !== 'all') {
+    rows = rows.filter(r => r.mappings[frameworkFilter]);
+  }
+  if (statusFilter === 'included') {
+    rows = rows.filter(r => r.applicability === 'included');
+  } else if (statusFilter === 'unmapped') {
+    rows = rows.filter(r => Object.keys(r.mappings).length === 0);
+  }
+  if (q) {
+    rows = rows.filter(r => {
+      if (r.id.toLowerCase().includes(q)) return true;
+      if ((r.title || '').toLowerCase().includes(q)) return true;
+      for (const fw of Object.keys(r.mappings)) {
+        for (const m of r.mappings[fw]) {
+          if ((m.external_ref || '').toLowerCase().includes(q)) return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  // Group rendered rows by Annex A theme. DB column iso_items.category uses
+  // the short codes: org / people / physical / tech.
+  const themes = [
+    { key: 'org',      label: 'A.5 Organizational' },
+    { key: 'people',   label: 'A.6 People'         },
+    { key: 'physical', label: 'A.7 Physical'       },
+    { key: 'tech',     label: 'A.8 Technological'  }
+  ];
+  const byTheme = {};
+  for (const t of themes) byTheme[t.key] = [];
+  for (const r of rows) {
+    if (byTheme[r.category]) byTheme[r.category].push(r);
+  }
+
+  res.render('crosswalks', {
+    user: req.user, ws: req.workspace,
+    title: 'Crosswalks',
+    active: 'crosswalks',
+    themes, byTheme, coverage,
+    frameworkFilter, statusFilter, q: req.query.q || '',
+    totalControls: controls.length,
+    rowCount: rows.length
+  });
 });
 
 // ==================== TASKS ====================
@@ -7286,30 +7513,196 @@ function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+// Resolve a workspace's brand_logo_path to a data: URI for embedding in DOCX.
+// Returns null if the path is empty, points at a remote URL (offline-first), or
+// the file cannot be read. Tries the per-tenant uploads directory first, then
+// the app-root relative path, then the literal path as absolute.
+function brandLogoDataUri(ws) {
+  const raw = (ws && ws.brand_logo_path) ? String(ws.brand_logo_path).trim() : '';
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return null;
+  const candidates = [];
+  if (ws.firm_id) candidates.push(path.join(__dirname, 'uploads', `firm_${ws.firm_id}`, raw));
+  candidates.push(path.join(__dirname, raw));
+  if (path.isAbsolute(raw)) candidates.push(raw);
+  for (const p of candidates) {
+    try {
+      const stat = fs.statSync(p);
+      if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
+      const ext = path.extname(p).toLowerCase();
+      const mime = ext === '.png'  ? 'image/png'
+                 : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+                 : ext === '.svg'  ? 'image/svg+xml'
+                 : ext === '.webp' ? 'image/webp'
+                 : ext === '.gif'  ? 'image/gif' : null;
+      if (!mime) continue;
+      const b64 = fs.readFileSync(p).toString('base64');
+      return `data:${mime};base64,${b64}`;
+    } catch (_) { /* try next candidate */ }
+  }
+  return null;
+}
+
+// Two-letter brand initials for the cover-page logo fallback.
+function brandInitials(ws) {
+  const name = (ws && (ws.brand_display_name || ws.client_name)) || 'ISMS';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return parts[0].slice(0, 2).toUpperCase();
+}
+
+// Validate + default the workspace brand color. Mirrors the regex used at
+// /workspaces/:wsId/update so a malformed value never leaks into HTML.
+function brandColor(ws) {
+  const c = ws && ws.brand_primary_color;
+  if (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c.trim())) return c.trim();
+  return '#4F46E5'; // app accent (--accent)
+}
+
+// Shared CSS for every page of a branded deliverable. Used by the cover,
+// header, footer, and body so the document is visually one piece.
+function deliverableCss(ws) {
+  const accent = brandColor(ws);
+  return `
+    body{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.45;color:#0F0F12;margin:0;}
+    h1{font-size:22pt;color:#0F0F12;margin:0 0 4pt;letter-spacing:-0.01em;}
+    h2{font-size:14pt;color:${accent};margin:18pt 0 6pt;border-bottom:1pt solid #ECECEF;padding-bottom:3pt;}
+    h3{font-size:12pt;color:#0F0F12;margin:12pt 0 4pt;}
+    .meta{color:#71717A;font-size:9.5pt;}
+    table{border-collapse:collapse;width:100%;margin:6pt 0;font-size:9.5pt;}
+    th,td{border:1pt solid #D6D6DB;padding:4pt 6pt;text-align:left;vertical-align:top;}
+    th{background:#F4F4F5;color:#0F0F12;font-weight:600;}
+    .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:600;}
+    .tag-impl{background:#dcfce7;color:#15803d;}
+    .tag-partial{background:#fef3c7;color:#a16207;}
+    .tag-wip{background:#dbeafe;color:#1d4ed8;}
+    .tag-noimpl{background:#fee2e2;color:#b91c1c;}
+    .tag-na{background:#e5e7eb;color:#71717A;}
+  `;
+}
+
+// Cover-page HTML for the first page of a branded deliverable. Built as a
+// table because html-to-docx only honours `background-color` on table cells
+// (divs are converted to plain paragraphs with no shading). The colored
+// header band is a single full-width <td> with background; the metadata row
+// below sits in a borderless table. Followed by a forced page break so the
+// running header/footer kick in from page 2.
+function deliverableCoverHtml(title, ws) {
+  const accent = brandColor(ws);
+  const logo = brandLogoDataUri(ws);
+  const initials = brandInitials(ws);
+  const clientName = escHtml(ws.brand_display_name || ws.client_name || '');
+  const sector = ws.sector ? escHtml(ws.sector) : (ws.industry ? escHtml(ws.industry) : '');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Logo line on the colored band. With a resolved local file we render an
+  // <img> (html-to-docx inlines data: URIs natively). Without one, the
+  // initials become a small uppercase eyebrow over the title - cleaner than
+  // a nested table for the cover, and nested tables get silently dropped by
+  // html-to-docx when used inside a shaded <td>.
+  const logoLine = logo
+    ? `<p style="margin:0 0 22pt 0;"><img src="${logo}" alt="" style="width:64pt;height:64pt;"></p>`
+    : `<p style="margin:0 0 18pt 0;font-size:14pt;font-weight:700;color:#FFFFFF;letter-spacing:0.05em;">${escHtml(initials)}</p>`;
+
+  // Metadata cells - only the ones that have content. Built as an array and
+  // joined so we don't emit empty cells (would render as visible blanks).
+  const metaCells = [];
+  if (sector) metaCells.push(`<td style="border:none;padding:0 24pt 0 0;color:#51525C;font-size:10pt;"><strong style="color:#0F0F12;">Sector</strong><br>${sector}</td>`);
+  metaCells.push(`<td style="border:none;padding:0 24pt 0 0;color:#51525C;font-size:10pt;"><strong style="color:#0F0F12;">Generated</strong><br>${today}</td>`);
+  if (ws.target_cert_date) {
+    metaCells.push(`<td style="border:none;padding:0;color:#51525C;font-size:10pt;"><strong style="color:#0F0F12;">Target certification</strong><br>${escHtml(ws.target_cert_date)}</td>`);
+  }
+
+  return `
+    <table style="width:100%;border-collapse:collapse;border:none;margin:0 0 28pt 0;">
+      <tr>
+        <td style="background-color:${accent};color:#FFFFFF;padding:48pt 40pt 48pt 40pt;border:none;">
+          ${logoLine}
+          <p style="margin:0 0 6pt 0;font-size:10pt;font-weight:600;color:#FFFFFF;letter-spacing:0.10em;">${escHtml(title.toUpperCase())}</p>
+          <p style="margin:0;font-size:30pt;font-weight:700;line-height:1.15;color:#FFFFFF;">${clientName}</p>
+        </td>
+      </tr>
+    </table>
+    <table style="width:100%;border:none;border-collapse:collapse;margin:0 0 8pt 0;">
+      <tr>${metaCells.join('')}</tr>
+    </table>
+    <div class="page-break" style="page-break-after: always;"></div>
+  `;
+}
+
+// Running header HTML: client name on left, document title on right; a thin
+// brand-color rule renders as a single-row table whose only cell has the
+// brand color as its background (html-to-docx only honours background-color
+// on <td>).
+function deliverableHeaderHtml(title, ws) {
+  const accent = brandColor(ws);
+  const clientName = escHtml(ws.brand_display_name || ws.client_name || '');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${deliverableCss(ws)}</style></head><body>
+    <table style="width:100%;border:none;border-collapse:collapse;font-size:9pt;color:#71717A;margin:0;">
+      <tr>
+        <td style="border:none;padding:0 0 3pt 0;text-align:left;"><strong style="color:#0F0F12;">${clientName}</strong></td>
+        <td style="border:none;padding:0 0 3pt 0;text-align:right;">${escHtml(title)}</td>
+      </tr>
+    </table>
+    <table style="width:100%;border:none;border-collapse:collapse;margin:0;">
+      <tr><td style="background-color:${accent};border:none;padding:0;height:1.5pt;line-height:1.5pt;font-size:1pt;">&nbsp;</td></tr>
+    </table>
+  </body></html>`;
+}
+
+// Running footer HTML: workspace name on left, generated date center. Page
+// number is appended by html-to-docx via pageNumber:true on the options.
+function deliverableFooterHtml(ws) {
+  const clientName = escHtml(ws.brand_display_name || ws.client_name || '');
+  const today = new Date().toISOString().slice(0, 10);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${deliverableCss(ws)}</style></head><body>
+    <table style="width:100%;border:none;font-size:8.5pt;color:#9C9CA5;margin:0;">
+      <tr>
+        <td style="border:none;padding:0;text-align:left;">${clientName}</td>
+        <td style="border:none;padding:0;text-align:center;">${today}</td>
+        <td style="border:none;padding:0;text-align:right;">Page </td>
+      </tr>
+    </table>
+  </body></html>`;
+}
+
+// Full-document HTML: shared CSS + cover page + body. The cover page is on
+// its own page (the forced page-break inside deliverableCoverHtml) so the
+// header / footer / page-number machinery from html-to-docx kicks in on
+// page 2 onwards (skipFirstHeaderFooter:true). This is the entry the four
+// callsites below use.
 function deliverableHtmlShell(title, ws, bodyHtml) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
-    <style>
-      body{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.45;color:#0F0F12;}
-      h1{font-size:22pt;color:#0F0F12;margin:0 0 4pt;letter-spacing:-0.01em;}
-      h2{font-size:14pt;color:#3730A3;margin:18pt 0 6pt;border-bottom:1pt solid #ECECEF;padding-bottom:3pt;}
-      h3{font-size:12pt;color:#0F0F12;margin:12pt 0 4pt;}
-      .meta{color:#71717A;font-size:9.5pt;}
-      table{border-collapse:collapse;width:100%;margin:6pt 0;font-size:9.5pt;}
-      th,td{border:1pt solid #D6D6DB;padding:4pt 6pt;text-align:left;vertical-align:top;}
-      th{background:#F4F4F5;color:#0F0F12;font-weight:600;}
-      .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:600;}
-      .tag-impl{background:#dcfce7;color:#15803d;}
-      .tag-partial{background:#fef3c7;color:#a16207;}
-      .tag-wip{background:#dbeafe;color:#1d4ed8;}
-      .tag-noimpl{background:#fee2e2;color:#b91c1c;}
-      .tag-na{background:#e5e7eb;color:#71717A;}
-      .footer{color:#9C9CA5;font-size:8.5pt;text-align:center;margin-top:24pt;border-top:1pt solid #ECECEF;padding-top:6pt;}
-    </style></head><body>
-    <h1>${escHtml(title)}</h1>
-    <p class="meta">${escHtml(ws.client_name || '')}${ws.industry ? ' · ' + escHtml(ws.industry) : ''} · Generated ${new Date().toISOString().slice(0,10)}</p>
-    ${bodyHtml}
-    <p class="footer">Generated by ISMS tool on ${new Date().toISOString()}</p>
+    <style>${deliverableCss(ws)}</style></head><body>
+    ${deliverableCoverHtml(title, ws)}
+    <div style="padding:0 6pt;">
+      <h1>${escHtml(title)}</h1>
+      ${bodyHtml}
+    </div>
     </body></html>`;
+}
+
+// One-call wrapper around html-to-docx that wires the cover + header + footer
+// + page-number bundle for every branded deliverable. Returns the DOCX as a
+// Buffer ready to send or to append to a ZIP.
+async function brandedDocx(ws, title, bodyHtml) {
+  const html = deliverableHtmlShell(title, ws, bodyHtml);
+  return await htmlToDocx(
+    html,
+    deliverableHeaderHtml(title, ws),
+    {
+      title,
+      subject: `${ws.client_name || ''} · ${title}`,
+      creator: 'ISMS tool',
+      header: true,
+      footer: true,
+      pageNumber: true,
+      skipFirstHeaderFooter: true,
+      table: { row: { cantSplit: true } }
+    },
+    deliverableFooterHtml(ws)
+  );
 }
 function statusTag(s) {
   if (!s) return '<span class="tag tag-na">-</span>';
@@ -7357,8 +7750,7 @@ app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, asyn
     }
     body += '</tbody></table>';
   }
-  const html = deliverableHtmlShell('Risk Treatment Plan', ws, body);
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await brandedDocx(ws, 'Risk Treatment Plan', body);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="risk-treatment-plan-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
   res.send(buf);
@@ -7428,8 +7820,7 @@ app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspac
   body += '</tbody></table>';
 
   const title = `Gap Assessment Report - Pass ${pass ? pass.pass_number : ''}`;
-  const html = deliverableHtmlShell(title, ws, body);
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await brandedDocx(ws, title, body);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="gap-assessment-report-${ws.id}-pass${pass ? pass.pass_number : 'X'}-${new Date().toISOString().slice(0,10)}.docx"`);
   res.send(buf);
@@ -7463,8 +7854,7 @@ app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWor
     body += '</tbody></table>';
   }
 
-  const html = deliverableHtmlShell('Recommendations Memo', ws, body);
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await brandedDocx(ws, 'Recommendations Memo', body);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="recommendations-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
   res.send(buf);
@@ -7507,7 +7897,7 @@ app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorks
     rtpBody += `<tr><td>R-${r.id}</td><td>${escHtml(r.title)}</td><td>${r.likelihood || ''}×${r.impact || ''}</td><td>${escHtml(r.treatment || '')}</td><td>${escHtml(r.owner_name || '')}</td></tr>`;
   }
   rtpBody += '</tbody></table>';
-  const rtpDocx = await htmlToDocx(deliverableHtmlShell('Risk Treatment Plan', ws, rtpBody), null, { table: { row: { cantSplit: true } } });
+  const rtpDocx = await brandedDocx(ws, 'Risk Treatment Plan', rtpBody);
   archive.append(rtpDocx, { name: '02_risk_treatment_plan.docx' });
 
   // 3. Internal audit summary CSV
@@ -9471,6 +9861,87 @@ function computeIso42001Readiness(wsId) {
 app.get('/workspaces/:wsId/iso42001/readiness', requireAuth, requireWorkspace, (req, res) => {
   const r = computeIso42001Readiness(req.workspace.id);
   res.render('iso42001_readiness', { user: req.user, ws: req.workspace, r });
+});
+
+// Unified readiness view - the "executive brief" moment. Shows a headline
+// score per enabled framework side-by-side so a sponsor sees engagement
+// health at a glance. Each tile deep-links into the per-framework
+// readiness page for detail.
+app.get('/workspaces/:wsId/readiness/overview', requireAuth, requireWorkspace, (req, res) => {
+  const ws = req.workspace;
+  const tiles = [];
+
+  if (ws.frameworks.includes('iso27001')) {
+    const r = computeReadiness(ws);
+    tiles.push({
+      key: 'iso27001',
+      label: 'ISO 27001:2022',
+      sub: 'Information security management',
+      score: r.stage1,
+      stage2: r.stage2,
+      detail: `${r.metrics.implemented} / ${r.metrics.totalItems} implemented · ${r.metrics.partial} partial · ${r.metrics.notImpl} not implemented`,
+      flagsHigh: r.flags.filter(f => f.severity === 'high').length,
+      href: `/workspaces/${ws.id}/readiness`,
+      color: '#4F46E5'
+    });
+  }
+
+  if (ws.frameworks.includes('iso42001')) {
+    const r = computeIso42001Readiness(ws.id);
+    tiles.push({
+      key: 'iso42001',
+      label: 'ISO 42001:2023',
+      sub: 'AI management system',
+      score: r.stage1,
+      stage2: r.stage2,
+      detail: `${r.metrics.implemented} implemented · ${r.metrics.partial} partial · ${r.metrics.notImpl} not implemented`,
+      flagsHigh: r.flags ? r.flags.filter(f => f.severity === 'high').length : 0,
+      href: `/workspaces/${ws.id}/iso42001/readiness`,
+      color: '#0891B2'
+    });
+  }
+
+  if (ws.frameworks.includes('csf')) {
+    // Most-recently-touched non-deleted engagement, if any. A workspace may
+    // have multiple CSF engagements; the most-recent is the right "current"
+    // for an executive overview. If none exists we still render a tile so
+    // the consultant can click through and create one.
+    const eng = db.prepare(`SELECT * FROM csf_engagements
+      WHERE workspace_id=? AND deleted_at IS NULL
+      ORDER BY updated_at DESC, id DESC LIMIT 1`).get(ws.id);
+    let score = 0, detail = 'No engagement started yet';
+    let href = `/workspaces/${ws.id}/csf`;
+    if (eng) {
+      const counts = db.prepare(`SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) AS approved
+        FROM csf_subcategory_assessments WHERE engagement_id=?`).get(eng.id);
+      const approved = counts.approved || 0;
+      const total = counts.total || 0;
+      score = total ? Math.round(approved / total * 100) : 0;
+      detail = `${approved} / ${total} subcategories approved · "${eng.name}" · ${eng.status}`;
+      href = `/workspaces/${ws.id}/csf/${eng.id}/scores`;
+    }
+    tiles.push({
+      key: 'csf',
+      label: 'NIST CSF 2.0',
+      sub: 'Cybersecurity Framework',
+      score, detail, href,
+      flagsHigh: 0,
+      color: '#7C3AED'
+    });
+  }
+
+  // Days to target cert for the page subhead (same field powers all three).
+  let daysToTarget = null;
+  if (ws.target_cert_date) {
+    daysToTarget = Math.round((new Date(ws.target_cert_date).getTime() - Date.now()) / 86400000);
+  }
+
+  res.render('readiness_overview', {
+    user: req.user, ws, tiles, daysToTarget,
+    title: 'Readiness overview'
+  });
 });
 
 // Pre-cert blocker check - the long-form list of items that must be cleared

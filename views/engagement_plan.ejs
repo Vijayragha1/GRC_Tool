@@ -7,7 +7,7 @@
   </div>
   <div style="display:flex;gap:14px;align-items:center;">
     <% const pct = total ? Math.round(done / total * 100) : 0; %>
-    <span class="meta" style="font-size:12.5px;"><strong><%= done %></strong> / <%= total %> done · <strong><%= pct %>%</strong></span>
+    <span class="meta text-md"><strong><%= done %></strong> / <%= total %> done · <strong><%= pct %>%</strong></span>
     <div style="width:140px;height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
       <div style="height:100%;background:var(--accent);width:<%= pct %>%;transition:width 0.2s;"></div>
     </div>
@@ -21,9 +21,9 @@
 %>
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-head" style="display:flex;align-items:center;gap:14px;">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);min-width:60px;">Week <%= ph.week %></div>
+      <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;min-width:60px;">Week <%= ph.week %></div>
       <h2 style="margin:0;flex:1;"><%= ph.phase %></h2>
-      <span class="meta" style="font-size:11.5px;"><%= phDone %>/<%= phTotal %></span>
+      <span class="meta text-sm"><%= phDone %>/<%= phTotal %></span>
       <div style="width:80px;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;">
         <div style="height:100%;background:<%= phPct === 100 ? '#16a34a' : 'var(--accent)' %>;width:<%= phPct %>%;"></div>
       </div>
@@ -42,14 +42,14 @@
           </form>
           <div>
             <div style="font-size:13.5px;font-weight:500;color:<%= m.completed_at ? 'var(--text-tertiary)' : 'var(--text)' %>;<%= m.completed_at ? 'text-decoration:line-through;' : '' %>"><%= m.title %></div>
-            <div class="meta" style="font-size:11.5px;margin-top:4px;"><%= m.deliverables %></div>
+            <div class="meta text-sm" style="margin-top:4px;"><%= m.deliverables %></div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
             <% (m.clauses || []).forEach(c => { %>
-              <span class="tag tag-neutral" style="font-size:10px;"><%= c %></span>
+              <span class="tag tag-neutral text-xxs"><%= c %></span>
             <% }) %>
             <% if (m.completed_at) { %>
-              <span class="meta" style="font-size:10px;">done <%= (m.completed_at || '').slice(0, 10) %></span>
+              <span class="meta text-xxs">done <%= (m.completed_at || '').slice(0, 10) %></span>
             <% } %>
           </div>
         </div>

@@ -6,7 +6,7 @@
     <div class="page-subtitle">Capture AI context, role determination, AI footprint, regulatory obligations, and engagement scope. Apply pushes the draft into the AIMS - clause 4.1, 4.2, 4.3 notes.</div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <span class="meta" style="font-size:12px;"><strong><%= answered %></strong> / <%= total %> answered</span>
+    <span class="meta text-base"><strong><%= answered %></strong> / <%= total %> answered</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/intake/apply" onsubmit="return confirm('Apply the draft scope statement to clause 4.3 notes, seed clauses 4.1 / 4.2 from intake answers, and set the target cert date? Existing notes are not overwritten.');">
       <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
       <button class="btn btn-primary btn-xs" <%= answered === 0 ? 'disabled' : '' %>>Apply to workspace</button>
@@ -19,7 +19,7 @@
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight:600;margin-bottom:3px;">New AIMS engagement - finish the intake first</div>
-      <div class="meta" style="font-size:12px;line-height:1.5;">Send this intake to the client 3 days before kickoff (just the URL works). When they're done, hit <strong>Apply to workspace</strong> above to push the scope statement into clauses 4.1, 4.2, 4.3 and set the target cert date.</div>
+      <div class="meta text-base" style="line-height:1.5;">Send this intake to the client 3 days before kickoff (just the URL works). When they're done, hit <strong>Apply to workspace</strong> above to push the scope statement into clauses 4.1, 4.2, 4.3 and set the target cert date.</div>
     </div>
     <a href="/workspaces/<%= ws.id %>" class="btn btn-ghost btn-xs">Skip for now →</a>
   </div>
@@ -32,7 +32,7 @@
       <div class="panel-head" style="border-bottom:1px solid var(--border);">
         <div>
           <h2 style="margin:0;"><%= sec.title %></h2>
-          <div class="meta" style="font-size:12px;margin-top:4px;"><%= sec.blurb %></div>
+          <div class="meta text-base" style="margin-top:4px;"><%= sec.blurb %></div>
         </div>
       </div>
       <div class="panel-pad" style="display:grid;gap:16px;">
@@ -40,10 +40,10 @@
           <div>
             <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
               <span><%= q.text %><%= q.required ? ' *' : '' %></span>
-              <% if (q.clause) { %><span class="tag tag-neutral" style="font-size:10px;">clause <%= q.clause %></span><% } %>
+              <% if (q.clause) { %><span class="tag tag-neutral text-xxs">clause <%= q.clause %></span><% } %>
             </label>
             <% if (q.hint) { %>
-              <div class="meta" style="font-size:11.5px;margin-bottom:6px;color:var(--text-tertiary);"><%= q.hint %></div>
+              <div class="meta text-sm text-tertiary" style="margin-bottom:6px;"><%= q.hint %></div>
             <% } %>
             <% if (q.type === 'textarea') { %>
               <textarea class="textarea" id="q-<%= q.id %>" name="<%= q.id %>" rows="3" <%= q.required ? 'required' : '' %>><%= answers[q.id] || '' %></textarea>
@@ -60,17 +60,17 @@
 
   <div style="display:flex;gap:10px;align-items:center;">
     <button type="submit" class="btn btn-primary">Save intake</button>
-    <span class="meta" style="font-size:11.5px;">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to workspace</strong> at the top.</span>
+    <span class="meta text-sm">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to workspace</strong> at the top.</span>
   </div>
 </form>
 
 <div class="panel" style="margin-top:22px;">
   <div class="panel-head">
     <h2 style="margin:0;">Draft AIMS scope statement (clause 4.3)</h2>
-    <span class="meta" style="font-size:11.5px;">Generated from your answers. Re-renders on save.</span>
+    <span class="meta text-sm">Generated from your answers. Re-renders on save.</span>
   </div>
   <div class="panel-pad">
-    <pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.55;color:var(--text);margin:0;"><%= draftScope %></pre>
+    <pre class="text-lg" style="white-space:pre-wrap;font-family:inherit;line-height:1.55;margin:0;"><%= draftScope %></pre>
   </div>
 </div>
 

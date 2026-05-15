@@ -5,7 +5,8 @@
     <h1 class="page-title">Continual improvement register</h1>
     <div class="page-subtitle">Improvement actions driven by data (audit findings, MRM outputs, monitoring trends, lessons learned). Distinct from corrective actions on NCs - these are the "we noticed something we should be doing better" items required by clause 10.1.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row-center">
+    <a href="/workspaces/<%= ws.id %>/nonconformities" class="btn btn-secondary btn-xs" title="Nonconformities + corrective action (clause 10.2) - the corrective half of clause 10.">← Nonconformities</a>
     <a href="?filter=open" class="btn <%= filter === 'open' ? 'btn-primary' : 'btn-secondary' %> btn-xs">Open</a>
     <a href="?filter=all" class="btn <%= filter === 'all' ? 'btn-primary' : 'btn-secondary' %> btn-xs">All</a>
   </div>
@@ -38,7 +39,7 @@
     <h2><%= items.length %> improvement<%= items.length === 1 ? '' : 's' %></h2>
   </div>
   <% if (items.length === 0) { %>
-    <div class="panel-pad meta" style="font-size:12.5px;">
+    <div class="panel-pad meta text-md">
       No improvements logged yet. ISO 27001 clause 10.1 requires the ISMS to be continually improved - track every "we should do this better" item here so the register tells the story.
     </div>
   <% } else { %>
@@ -59,15 +60,15 @@
         %>
           <form method="POST" action="/workspaces/<%= ws.id %>/improvements/<%= i.id %>" class="contents">
             <tr>
-              <td><input type="text" name="title" value="<%= i.title %>" class="input" style="font-size:12.5px;width:100%;" required></td>
+              <td><input type="text" name="title" value="<%= i.title %>" class="input text-md" style="width:100%;" required></td>
               <td>
-                <select name="source" class="select" style="font-size:12px;">
+                <select name="source" class="select text-base">
                   <% ['','audit','mrm','monitoring','incident','ad-hoc'].forEach(s => { %>
                     <option value="<%= s %>" <%= i.source === s ? 'selected' : '' %>><%= s || '-' %></option>
                   <% }) %>
                 </select>
               </td>
-              <td><input type="text" name="owner_name" value="<%= i.owner_name || '' %>" class="input" style="font-size:12px;"></td>
+              <td><input type="text" name="owner_name" value="<%= i.owner_name || '' %>" class="input text-base"></td>
               <td><input type="date" name="due_date" value="<%= i.due_date || '' %>" class="input" style="font-size:11.5px;<%= overdue ? 'border-color:#b91c1c;color:#b91c1c;' : '' %>"></td>
               <td>
                 <select name="status" class="select" style="font-size:12px;color:<%= statusColor %>;font-weight:600;">
@@ -76,11 +77,11 @@
                   <% }) %>
                 </select>
               </td>
-              <td><button class="btn btn-ghost btn-xs" style="font-size:11px;">Save</button></td>
+              <td><button class="btn btn-ghost btn-xs text-xs">Save</button></td>
             </tr>
             <% if (i.description || i.impact_notes || i.source_ref) { %>
-              <tr><td colspan="6" class="meta" style="font-size:11.5px;padding:0 14px 6px 14px;line-height:1.5;border-bottom:1px solid var(--border);">
-                <% if (i.source_ref) { %><span class="mono" style="font-size:10.5px;">@<%= i.source_ref %></span> · <% } %>
+              <tr><td colspan="6" class="meta text-sm" style="padding:0 14px 6px 14px;line-height:1.5;border-bottom:1px solid var(--border);">
+                <% if (i.source_ref) { %><span class="mono text-eyebrow">@<%= i.source_ref %></span> · <% } %>
                 <% if (i.description) { %><%= i.description %><% } %>
                 <% if (i.impact_notes) { %> · <strong>Impact:</strong> <%= i.impact_notes %><% } %>
               </td></tr>

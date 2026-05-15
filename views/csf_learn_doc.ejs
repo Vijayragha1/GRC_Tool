@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <a href="/workspaces/<%= ws.id %>/csf/learn" class="meta" style="font-size:12px;text-decoration:none;">&larr; Learn</a>
+      <a href="/workspaces/<%= ws.id %>/csf/learn" class="meta text-base" style="text-decoration:none;">&larr; Learn</a>
     </div>
     <h1 class="page-title" style="margin-top:6px;"><%= doc.title %></h1>
     <% if (doc.summary) { %><div class="page-subtitle"><%= doc.summary %></div><% } %>
@@ -23,7 +23,7 @@
         <div class="panel-head"><h2>Other docs</h2></div>
         <div class="divide-row">
           <% otherDocs.forEach(o => { %>
-            <a href="/workspaces/<%= ws.id %>/csf/learn/<%= o.slug %>" style="display:block;padding:8px 14px;text-decoration:none;color:var(--text);font-size:13px;line-height:1.4;">
+            <a class="text-lg" href="/workspaces/<%= ws.id %>/csf/learn/<%= o.slug %>" style="display:block;padding:8px 14px;text-decoration:none;line-height:1.4;">
               <%= o.title %>
             </a>
           <% }) %>

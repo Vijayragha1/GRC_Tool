@@ -10,10 +10,10 @@
 
 <div id="newMrm" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New review</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/mrms" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/mrms" class="panel-pad grid-2">
     <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date"></div>
     <div><label class="label">Attendees</label><input class="input" name="attendees" placeholder="CEO, CISO, CTO"></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+    <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
 
@@ -23,8 +23,8 @@
     <tbody>
       <% mrms.forEach(m => { %>
         <tr>
-          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= m.meeting_date || 'unscheduled' %></a></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= m.attendees || '-' %></td>
+          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="link-muted" style="font-weight:500;"><%= m.meeting_date || 'unscheduled' %></a></td>
+          <td class="text-secondary text-base"><%= m.attendees || '-' %></td>
           <td><span class="status s-<%= m.status === 'complete' ? 'done' : 'todo' %>"><%= m.status %></span></td>
         </tr>
       <% }) %>

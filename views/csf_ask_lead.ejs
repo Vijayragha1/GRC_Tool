@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta" style="font-size:12px;text-decoration:none;">&larr; <%= engagement.name %></a>
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta text-base" style="text-decoration:none;">&larr; <%= engagement.name %></a>
     </div>
     <h1 class="page-title" style="margin-top:6px;">Ask my Lead</h1>
     <div class="page-subtitle">Async questions sent to the engagement Lead. Use this when you're stuck on a subcategory and need a hand before scoring or escalating.</div>
@@ -25,28 +25,28 @@
 <% messages.forEach(m => { %>
   <div class="panel" style="margin-bottom:10px;<%= m.read_at ? '' : 'border-left:3px solid var(--accent);' %>">
     <div class="panel-pad">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;">
+      <div class="text-base" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <strong><%= m.sender_name %></strong>
         <span class="meta">&rarr;</span>
         <span><%= m.recipient_name || '(unassigned)' %></span>
-        <% if (m.in_reply_to) { %><span class="tag" style="font-size:10px;background:var(--bg-subtle);">reply</span><% } %>
-        <% if (!m.read_at) { %><span class="tag" style="background:var(--accent-soft);color:var(--accent);font-size:10px;">unread</span><% } %>
-        <% if (m.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= m.subcategory_id %>" class="mono" style="font-size:11px;color:var(--accent);text-decoration:none;margin-left:auto;"><%= m.sub_code %></a><% } %>
+        <% if (m.in_reply_to) { %><span class="tag text-xxs" style="background:var(--bg-subtle);">reply</span><% } %>
+        <% if (!m.read_at) { %><span class="tag text-xxs" style="background:var(--accent-soft);color:var(--accent);">unread</span><% } %>
+        <% if (m.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= m.subcategory_id %>" class="mono text-xs" style="color:var(--accent);text-decoration:none;margin-left:auto;"><%= m.sub_code %></a><% } %>
         <span class="meta" style="font-size:11px;<%= m.sub_code ? '' : 'margin-left:auto;' %>"><%= m.created_at %></span>
       </div>
-      <% if (m.subject) { %><div style="font-weight:500;font-size:13px;margin-top:6px;"><%= m.subject %></div><% } %>
-      <div style="font-size:12.5px;margin-top:4px;line-height:1.55;white-space:pre-wrap;color:var(--text-secondary);"><%= m.body %></div>
+      <% if (m.subject) { %><div class="text-lg" style="font-weight:500;margin-top:6px;"><%= m.subject %></div><% } %>
+      <div class="text-md text-secondary" style="margin-top:4px;line-height:1.55;white-space:pre-wrap;"><%= m.body %></div>
 
       <% if (m.recipient_id === user.id && !m.replied_at) { %>
         <details style="margin-top:8px;">
-          <summary style="cursor:pointer;font-size:12px;color:var(--accent);">+ Reply</summary>
+          <summary class="text-base" style="cursor:pointer;color:var(--accent);">+ Reply</summary>
           <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead/<%= m.id %>/reply" style="margin-top:6px;">
-            <textarea class="textarea" name="body" rows="3" required placeholder="Reply..." style="font-size:12px;width:100%;"></textarea>
+            <textarea class="textarea text-base" name="body" rows="3" required placeholder="Reply..." style="width:100%;"></textarea>
             <button class="btn btn-primary btn-xs" style="margin-top:4px;">Send reply</button>
           </form>
         </details>
       <% } %>
-      <% if (m.replied_at) { %><div class="meta" style="font-size:11px;margin-top:6px;">replied <%= m.replied_at %></div><% } %>
+      <% if (m.replied_at) { %><div class="meta text-xs" style="margin-top:6px;">replied <%= m.replied_at %></div><% } %>
     </div>
   </div>
 <% }) %>

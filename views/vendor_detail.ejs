@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: v.name, user, ws, active: 'vendors' }) %>
 
-<a href="/workspaces/<%= ws.id %>/vendors" class="link-muted" style="font-size:12px;">← All suppliers</a>
+<a href="/workspaces/<%= ws.id %>/vendors" class="link-muted text-base">← All suppliers</a>
 
 <div class="page-head" style="margin-top:8px">
   <div>
@@ -20,12 +20,12 @@
 <!-- Risk summary tiles -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
   <div class="panel kpi">
-    <div class="kpi-num num" style="color:<%= (inherent||0) >= 18 ? '#b91c1c' : (inherent||0) >= 10 ? '#a16207' : '#15803d' %>"><%= inherent || '-' %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/25</span></div>
+    <div class="kpi-num num" style="color:<%= (inherent||0) >= 18 ? '#b91c1c' : (inherent||0) >= 10 ? '#a16207' : '#15803d' %>"><%= inherent || '-' %><span class="text-xl text-tertiary" style="font-weight:400;">/25</span></div>
     <div class="kpi-label">Inherent risk</div>
     <div class="kpi-meta">data × criticality × dependency</div>
   </div>
   <div class="panel kpi">
-    <div class="kpi-num num" style="color:<%= (residual||0) >= 18 ? '#b91c1c' : (residual||0) >= 10 ? '#a16207' : '#15803d' %>"><%= residual || '-' %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/25</span></div>
+    <div class="kpi-num num" style="color:<%= (residual||0) >= 18 ? '#b91c1c' : (residual||0) >= 10 ? '#a16207' : '#15803d' %>"><%= residual || '-' %><span class="text-xl text-tertiary" style="font-weight:400;">/25</span></div>
     <div class="kpi-label">Residual risk</div>
     <div class="kpi-meta">after attestations + controls</div>
   </div>
@@ -33,11 +33,11 @@
     <div class="kpi-num num"><%= docs.length %></div>
     <div class="kpi-label">Attestations & contracts</div>
     <% const expDocs = docs.filter(d => d.expiry_date && d.expiry_date < new Date(Date.now()+30*86400000).toISOString().split('T')[0]).length; %>
-    <% if (expDocs > 0) { %><div class="kpi-meta" style="color:#b91c1c;"><%= expDocs %> expiring soon</div><% } %>
+    <% if (expDocs > 0) { %><div class="kpi-meta text-danger"><%= expDocs %> expiring soon</div><% } %>
   </div>
   <div class="panel kpi">
     <% const presentClauses = clauses.filter(c => c.status === 'present').length; const totalClauses = clauses.length; %>
-    <div class="kpi-num num"><%= presentClauses %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">/<%= totalClauses %></span></div>
+    <div class="kpi-num num"><%= presentClauses %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= totalClauses %></span></div>
     <div class="kpi-label">Contract clauses present</div>
   </div>
 </div>
@@ -46,7 +46,7 @@
 <div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);">
   <% const tabs = [['overview','Overview'],['documents','Documents'],['questionnaires','Questionnaires'],['clauses','Contract clauses'],['controls','Controls handled'],['subprocessors','Sub-processors'],['reviews','Reviews'],['monitoring','Monitoring'],['termination','Termination'],['notes','Notes']]; %>
   <% tabs.forEach(([k, label]) => { %>
-    <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span style="font-size:11px;color:var(--text-tertiary);">(<%= reviews.length %>)</span><% } %></a>
+    <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span class="text-xs text-tertiary">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span class="text-xs text-tertiary">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span class="text-xs text-tertiary">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span class="text-xs text-tertiary">(<%= reviews.length %>)</span><% } %></a>
   <% }) %>
 </div>
 
@@ -61,9 +61,9 @@
         <% }) %>
       </select>
     </div>
-    <div style="grid-column:1/-1"><label class="label">Service provided</label><input class="input" name="service_provided" value="<%= v.service_provided || '' %>"></div>
+    <div class="col-full"><label class="label">Service provided</label><input class="input" name="service_provided" value="<%= v.service_provided || '' %>"></div>
 
-    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Risk drivers (recompute on save)</div></div>
+    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Risk drivers (recompute on save)</div></div>
     <div><label class="label">Business criticality</label>
       <select class="select" name="business_criticality">
         <% ['low','medium','high','critical'].forEach(s => { %><option value="<%= s %>" <%= v.business_criticality === s ? 'selected' : '' %>><%= s %></option><% }) %>
@@ -93,14 +93,14 @@
     </div>
     <div><label class="label">Regulatory exposure</label><input class="input" name="regulatory_exposure" value="<%= v.regulatory_exposure || '' %>" placeholder="GDPR, HIPAA, PCI…"></div>
 
-    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Profile</div></div>
+    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Profile</div></div>
     <div><label class="label">Industry</label><input class="input" name="industry" value="<%= v.industry || '' %>"></div>
     <div><label class="label">Location / HQ</label><input class="input" name="location" value="<%= v.location || '' %>"></div>
     <div><label class="label">Parent company</label><input class="input" name="parent_company" value="<%= v.parent_company || '' %>"></div>
     <div style="grid-column:1/2"><label class="label">Website</label><input class="input" name="website" value="<%= v.website || '' %>"></div>
     <div style="grid-column:2/-1"><label class="label">Primary contact</label><input class="input" name="contact" value="<%= v.contact || '' %>"></div>
 
-    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Contract & commercial</div></div>
+    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Contract & commercial</div></div>
     <div><label class="label">Contract start</label><input class="input" type="date" name="contract_start" value="<%= v.contract_start || '' %>"></div>
     <div><label class="label">Contract end</label><input class="input" type="date" name="contract_end" value="<%= v.contract_end || '' %>"></div>
     <div><label class="label">Renewal notice (days)</label><input class="input" type="number" name="renewal_notice_days" value="<%= v.renewal_notice_days || '' %>"></div>
@@ -113,14 +113,14 @@
     </div>
     <div><label class="label">Approved by</label><input class="input" name="approved_by" value="<%= v.approved_by || '' %>"></div>
 
-    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Review schedule</div></div>
+    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Review schedule</div></div>
     <div><label class="label">Last assessed</label><input class="input" type="date" name="last_assessed" value="<%= v.last_assessed || '' %>"></div>
     <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date" value="<%= v.next_review_date || '' %>"></div>
     <div><label class="label">Attestations summary</label><input class="input" name="attestations" value="<%= v.attestations || '' %>" placeholder="ISO 27001, SOC 2…"></div>
 
-    <div style="grid-column:1/-1"><label class="label">Internal notes</label><textarea class="textarea" name="notes" rows="3"><%= v.notes || '' %></textarea></div>
+    <div class="col-full"><label class="label">Internal notes</label><textarea class="textarea" name="notes" rows="3"><%= v.notes || '' %></textarea></div>
 
-    <div style="grid-column:1/-1;display:flex;gap:6px;">
+    <div class="col-full row">
       <button class="btn btn-primary">Save changes</button>
       <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete supplier and all related data?')" style="display:inline">
         <button class="btn btn-danger">Delete supplier</button>
@@ -133,7 +133,7 @@
 <% if (tab === 'documents') { %>
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Upload attestation / contract / report</h2><span class="meta">Risk score recomputes on upload</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents" enctype="multipart/form-data" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents" enctype="multipart/form-data" class="panel-pad grid-2">
     <div><label class="label">Document type</label>
       <select class="select" name="doc_type">
         <option value="soc2_type2">SOC 2 Type II</option><option value="soc2_type1">SOC 2 Type I</option>
@@ -149,9 +149,9 @@
     <div><label class="label">Document name</label><input class="input" name="name" required placeholder="e.g., SOC 2 Type II - FY2026"></div>
     <div><label class="label">Effective date</label><input class="input" type="date" name="effective_date"></div>
     <div><label class="label">Expiry date</label><input class="input" type="date" name="expiry_date"></div>
-    <div style="grid-column:1/-1"><label class="label">File</label><input class="input" type="file" name="file"></div>
-    <div style="grid-column:1/-1"><label class="label">Notes</label><input class="input" name="notes" placeholder="Optional: scope, opinion, exceptions noted"></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Upload</button></div>
+    <div class="col-full"><label class="label">File</label><input class="input" type="file" name="file"></div>
+    <div class="col-full"><label class="label">Notes</label><input class="input" name="notes" placeholder="Optional: scope, opinion, exceptions noted"></div>
+    <div class="col-full"><button class="btn btn-primary">Upload</button></div>
   </form>
 </div>
 
@@ -173,17 +173,17 @@
             <div style="font-weight:500"><%= d.name %></div>
             <% if (d.notes) { %><div class="meta"><%= d.notes %></div><% } %>
           </td>
-          <td style="font-size:12px;color:var(--text-secondary);"><%= (d.doc_type || '').replace(/_/g,' ') %></td>
+          <td class="text-base text-secondary"><%= (d.doc_type || '').replace(/_/g,' ') %></td>
           <td class="num meta"><%= d.effective_date || '-' %></td>
-          <td class="num <%= expired ? 'tag tag-danger' : expiringSoon ? 'tag tag-warn' : 'meta' %>" style="font-size:12px;"><%= d.expiry_date || '-' %><% if (expired) { %> · expired<% } else if (expiringSoon) { %> · soon<% } %></td>
+          <td class="num <%= expired ? 'tag tag-danger' : expiringSoon ? 'tag tag-warn' : 'meta' %> text-base"><%= d.expiry_date || '-' %><% if (expired) { %> · expired<% } else if (expiringSoon) { %> · soon<% } %></td>
           <td>
             <% if (d.stored_path) { %>
-              <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/download" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">Download</a>
+              <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/download" class="link-muted text-base" style="font-weight:500;color:var(--accent);">Download</a>
             <% } else { %><span class="meta">-</span><% } %>
           </td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+              <button class="btn btn-ghost btn-xs text-danger">Delete</button>
             </form>
           </td>
         </tr>
@@ -251,10 +251,10 @@
     <% clauses.forEach(c => { %>
       <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/clauses/<%= c.id %>" style="display:grid;grid-template-columns:1fr 160px 1fr 80px;gap:12px;align-items:center;padding:10px 16px;">
         <div>
-          <div style="font-size:13px;font-weight:500;"><%= c.clause_label %></div>
+          <div class="text-lg" style="font-weight:500;"><%= c.clause_label %></div>
           <% if (c.reviewed_at) { %><div class="meta">reviewed <%= c.reviewed_at.split(' ')[0] %></div><% } %>
         </div>
-        <select name="status" class="select" style="font-size:12px;padding:4px 8px;">
+        <select name="status" class="select text-base" style="padding:4px 8px;">
           <option value="pending" <%= c.status === 'pending' ? 'selected' : '' %>>Pending</option>
           <option value="present" <%= c.status === 'present' ? 'selected' : '' %>>Present</option>
           <option value="absent" <%= c.status === 'absent' ? 'selected' : '' %>>Absent</option>
@@ -280,7 +280,7 @@
         <% supplierControls.forEach(sc => { %>
           <tr>
             <td class="mono meta"><%= sc.iso_item_id.replace('annex-','').toUpperCase() %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= sc.iso_item_id %>" class="link-muted" style="color:var(--text);"><%= sc.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= sc.iso_item_id %>" class="link-muted"><%= sc.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
             <td class="meta"><%= sc.notes || '-' %></td>
             <td style="text-align:right;">
               <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/controls/<%= sc.link_id %>/delete" onsubmit="return appConfirmForm(event, 'Remove?')" style="display:inline;">
@@ -321,7 +321,7 @@
       </select>
     </div>
     <div><label class="label">Location</label><input class="input" name="location"></div>
-    <div style="align-self:end"><label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);"><input type="checkbox" name="approved" value="1"> Approved</label><button class="btn btn-primary" style="margin-top:6px;">Add</button></div>
+    <div style="align-self:end"><label class="text-base text-secondary row-center"><input type="checkbox" name="approved" value="1"> Approved</label><button class="btn btn-primary" style="margin-top:6px;">Add</button></div>
   </form>
 </div>
 
@@ -332,13 +332,13 @@
       <% subprocessors.forEach(s => { %>
         <tr>
           <td style="font-weight:500"><%= s.name %></td>
-          <td style="font-size:12px;color:var(--text-secondary);"><%= s.service_provided || '-' %></td>
+          <td class="text-base text-secondary"><%= s.service_provided || '-' %></td>
           <td><span class="tag <%= s.data_access === 'pii' || s.data_access === 'customer_data' ? 'tag-warn' : 'tag-neutral' %>"><%= s.data_access || '-' %></span></td>
-          <td style="font-size:12px;color:var(--text-secondary);"><%= s.location || '-' %></td>
+          <td class="text-base text-secondary"><%= s.location || '-' %></td>
           <td><% if (s.approved) { %><span class="status s-done">approved</span><% } else { %><span class="status s-open">pending</span><% } %></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/subprocessors/<%= s.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">×</button>
+              <button class="btn btn-ghost btn-xs text-danger">×</button>
             </form>
           </td>
         </tr>
@@ -352,7 +352,7 @@
 <% if (tab === 'reviews') { %>
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Log a review</h2><span class="meta">A.5.22 - periodic supplier review</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/reviews" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/reviews" class="panel-pad grid-2">
     <div><label class="label">Review date</label><input class="input" type="date" name="review_date" value="<%= new Date().toISOString().split('T')[0] %>" required></div>
     <div><label class="label">Reviewer</label><input class="input" name="reviewer" placeholder="Name"></div>
     <div><label class="label">Outcome</label>
@@ -364,9 +364,9 @@
       </select>
     </div>
     <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date"></div>
-    <div style="grid-column:1/-1"><label class="label">Findings</label><textarea class="textarea" name="findings" rows="3" placeholder="What did the review identify?"></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2" placeholder="Required follow-ups, owners, dates"></textarea></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Log review</button></div>
+    <div class="col-full"><label class="label">Findings</label><textarea class="textarea" name="findings" rows="3" placeholder="What did the review identify?"></textarea></div>
+    <div class="col-full"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2" placeholder="Required follow-ups, owners, dates"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Log review</button></div>
   </form>
 </div>
 
@@ -386,12 +386,12 @@
             </div>
             <% if (r.next_review_date) { %><span class="meta">next: <%= r.next_review_date %></span><% } %>
           </div>
-          <div style="display:flex;gap:8px;font-size:11px;color:var(--text-tertiary);margin-bottom:6px;">
+          <div class="text-xs text-tertiary" style="display:flex;gap:8px;margin-bottom:6px;">
             <% if (r.inherent_risk !== null) { %><span>inherent: <%= r.inherent_risk %>/25</span><% } %>
             <% if (r.residual_risk !== null) { %><span>· residual: <%= r.residual_risk %>/25</span><% } %>
           </div>
-          <% if (r.findings) { %><div style="font-size:13px;margin-bottom:4px;"><strong>Findings:</strong> <%= r.findings %></div><% } %>
-          <% if (r.action_items) { %><div style="font-size:13px;color:var(--text-secondary);"><strong>Actions:</strong> <%= r.action_items %></div><% } %>
+          <% if (r.findings) { %><div class="text-lg" style="margin-bottom:4px;"><strong>Findings:</strong> <%= r.findings %></div><% } %>
+          <% if (r.action_items) { %><div class="text-lg text-secondary"><strong>Actions:</strong> <%= r.action_items %></div><% } %>
         </div>
       <% }) %>
     </div>
@@ -450,7 +450,7 @@
             <details>
               <summary class="btn btn-secondary btn-xs">Update</summary>
               <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/termination/<%= it.id %>" style="margin-top:6px;display:grid;gap:6px;width:280px;">
-                <label style="font-size:12px;display:flex;gap:6px;align-items:center;"><input type="checkbox" name="done" value="1" <%= it.done ? 'checked' : '' %>> Done</label>
+                <label class="text-base row-center"><input type="checkbox" name="done" value="1" <%= it.done ? 'checked' : '' %>> Done</label>
                 <input class="input" name="evidence" placeholder="Evidence ref" value="<%= it.evidence || '' %>">
                 <textarea class="textarea" name="notes" rows="2" placeholder="Notes"><%= it.notes || '' %></textarea>
                 <button class="btn btn-primary btn-xs">Save</button>
@@ -471,7 +471,7 @@
   <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/notes" class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
     <textarea name="body" class="textarea" rows="2" placeholder="Add a note about this supplier (e.g., recent call, issue raised, change announced)…" required></textarea>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
-      <label class="meta" style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="internal_only" value="1" checked> Internal only</label>
+      <label class="meta row-center"><input type="checkbox" name="internal_only" value="1" checked> Internal only</label>
       <button class="btn btn-primary btn-xs">Add note</button>
     </div>
   </form>
@@ -482,12 +482,12 @@
       <% notes.forEach(n => { %>
         <div style="padding:12px 16px;<%= n.internal_only ? 'background:#fefce8;' : '' %>">
           <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div class="meta"><%= n.user_name %> · <%= n.created_at %><% if (n.internal_only) { %> · <span style="color:#a16207;font-weight:500;">internal</span><% } %></div>
+            <div class="meta"><%= n.user_name %> · <%= n.created_at %><% if (n.internal_only) { %> · <span class="text-warn" style="font-weight:500;">internal</span><% } %></div>
             <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/notes/<%= n.id %>/delete">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">×</button>
+              <button class="btn btn-ghost btn-xs text-danger">×</button>
             </form>
           </div>
-          <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;"><%= n.body %></div>
+          <div class="text-lg" style="margin-top:4px;white-space:pre-wrap;"><%= n.body %></div>
         </div>
       <% }) %>
     </div>

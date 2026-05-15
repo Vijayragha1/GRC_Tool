@@ -5,7 +5,7 @@
     <h1 class="page-title">Post-assessment summary</h1>
     <div class="page-subtitle">Your gap walkthrough turned into a worklist. Spawn remediation tasks, generate missing policies, and surface evidence the auditor will ask for.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <a href="/workspaces/<%= ws.id %>/controls/assess/summary.docx" class="btn btn-secondary btn-xs">Export report (DOCX)</a>
     <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-secondary btn-xs">Re-open wizard</a>
     <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-secondary btn-xs">Pre-cert blocker check →</a>
@@ -15,18 +15,18 @@
 
 <!-- Status distribution -->
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;">
-  <div class="panel kpi"><div class="kpi-num num" style="color:#16a34a;"><%= dist.Implemented %></div><div class="kpi-label" style="font-size:11px;">Implemented</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:#a16207;"><%= dist['Partially Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Partial</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:#ea580c;"><%= dist['Work In Progress'] %></div><div class="kpi-label" style="font-size:11px;">In progress</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:#b91c1c;"><%= dist['Not Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Not implemented</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:var(--text-secondary);"><%= dist['Not Applicable'] %></div><div class="kpi-label" style="font-size:11px;">Not applicable</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:<%= notAssessedCount > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;"><%= notAssessedCount %></div><div class="kpi-label" style="font-size:11px;">Not assessed</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-success"><%= dist.Implemented %></div><div class="kpi-label text-xs">Implemented</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-warn"><%= dist['Partially Implemented'] %></div><div class="kpi-label text-xs">Partial</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:#ea580c;"><%= dist['Work In Progress'] %></div><div class="kpi-label text-xs">In progress</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-danger"><%= dist['Not Implemented'] %></div><div class="kpi-label text-xs">Not implemented</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-secondary"><%= dist['Not Applicable'] %></div><div class="kpi-label text-xs">Not applicable</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= notAssessedCount > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;"><%= notAssessedCount %></div><div class="kpi-label text-xs">Not assessed</div></div>
 </div>
 
 <% if (notAssessedCount > 0) { %>
   <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);">
     <div class="panel-pad">
-      <div style="font-weight:600;color:#b91c1c;margin-bottom:4px;">⚠ <%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</div>
+      <div class="text-danger" style="font-weight:600;margin-bottom:4px;">⚠ <%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</div>
       <div class="meta">The gap assessment is incomplete. Finish the wizard before treating this as a final view. <a href="/workspaces/<%= ws.id %>/controls/assess" style="color:var(--accent);">→ Re-open wizard</a></div>
     </div>
   </div>
@@ -45,10 +45,10 @@
       <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
         <button type="button" onclick="pickGaps(true)" class="btn btn-secondary btn-xs">Select all gaps without an open task</button>
         <button type="button" onclick="pickGaps(false)" class="btn btn-secondary btn-xs">Clear</button>
-        <span class="meta" style="margin-left:8px;font-size:12px;"><span id="gapCount">0</span> selected</span>
+        <span class="meta text-base" style="margin-left:8px;"><span id="gapCount">0</span> selected</span>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
-          <label class="meta" style="font-size:12px;">Default due:</label>
-          <input type="date" name="due_date" class="input" style="width:140px;font-size:12px;">
+          <label class="meta text-base">Default due:</label>
+          <input type="date" name="due_date" class="input text-base" style="width:140px;">
           <button type="submit" class="btn btn-primary btn-xs">Spawn selected tasks</button>
         </span>
       </div>
@@ -74,11 +74,11 @@
             <tr>
               <td><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
               <td class="mono meta"><%= refCode %></td>
-              <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info" style="font-size:10px;">clause</span><% } %></td>
+              <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info text-xxs">clause</span><% } %></td>
               <td><span class="tag" style="background:<%= sevColor %>;color:white;font-size:10.5px;"><%= g.status %></span></td>
               <td><span style="font-size:10.5px;font-weight:600;color:<%= prioColor %>;text-transform:uppercase;"><%= prio %></span></td>
               <td class="meta"><%= g.maturity != null ? g.maturity : '-' %></td>
-              <td><% if (g.has_open_task) { %><span class="tag tag-warn" style="font-size:10px;">open task exists</span><% } else { %><span class="meta">-</span><% } %></td>
+              <td><% if (g.has_open_task) { %><span class="tag tag-warn text-xxs">open task exists</span><% } else { %><span class="meta">-</span><% } %></td>
             </tr>
           <% }) %>
         </tbody>
@@ -105,7 +105,7 @@
         %>
           <tr>
             <td class="mono meta"><%= refCode %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>" class="link-muted"><%= cleanTitle %></a></td>
             <td class="meta"><%= g.status %></td>
             <td style="text-align:right;"><a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">Pick template →</a></td>
           </tr>
@@ -132,9 +132,9 @@
            const refCode = e.id.replace('annex-','').replace('clause-','').toUpperCase();
            const cleanTitle = e.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
       %>
-        <a href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--text);font-size:13px;">
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);text-decoration:none;">
           <span><span class="mono meta" style="margin-right:8px;"><%= refCode %></span><%= cleanTitle %></span>
-          <span class="meta" style="font-size:11.5px;">→ Upload evidence</span>
+          <span class="meta text-sm">→ Upload evidence</span>
         </a>
       <% }) %>
     </div>
@@ -160,8 +160,8 @@
              });
         %>
           <tr>
-            <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title %></a></td>
-            <td style="font-size:12px;">
+            <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted"><%= r.title %></a></td>
+            <td class="text-base">
               <% blocks.forEach((b, idx) => {
                    const color = b.st === 'Not Implemented' ? '#b91c1c' : b.st === 'Partially Implemented' ? '#a16207' : '#ea580c';
               %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= b.id %>" class="mono" style="color:<%= color %>;text-decoration:none;border-bottom:1px dotted <%= color %>;"><%= b.code %></a><%= idx < blocks.length - 1 ? ', ' : '' %><% }) %>

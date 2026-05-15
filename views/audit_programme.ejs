@@ -3,7 +3,7 @@
 <div class="page-head">
   <div><h1 class="page-title">Internal audit</h1>
     <div class="page-subtitle">Programme - <%= year %>. Clause 9.2.2 requires a documented internal audit programme: frequency, methods, responsibilities, reporting.</div></div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <a href="?year=<%= year - 1 %>" class="btn btn-secondary btn-xs">← <%= year - 1 %></a>
     <a href="?year=<%= year + 1 %>" class="btn btn-secondary btn-xs"><%= year + 1 %> →</a>
   </div>
@@ -34,7 +34,7 @@
 </div>
 
 <div class="panel"><div class="panel-head"><h2>Scheduled audits</h2>
-  <div style="display:flex;gap:10px;font-size:11px;">
+  <div class="text-xs" style="display:flex;gap:10px;">
     <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#0ea5e9;"></span>planned</span>
     <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#ea580c;"></span>in progress</span>
     <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#16a34a;"></span>complete</span>
@@ -48,11 +48,11 @@
   <% for (let m = 0; m < 12; m++) { %>
     <% const monthAudits = audits.filter(a => a.audit_date && new Date(a.audit_date).getMonth() === m && new Date(a.audit_date).getFullYear() === year); %>
     <div style="background:var(--bg);padding:10px;min-height:120px;">
-      <div class="meta" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;font-size:10.5px;"><%= months[m] %></div>
+      <div class="meta text-eyebrow" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;"><%= months[m] %></div>
       <% monthAudits.forEach(a => { %>
         <a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="display:block;font-size:11.5px;margin-top:6px;padding:5px 7px;border-radius:4px;border-left:3px solid <%= statusColor(a.status) %>;background:<%= statusBg(a.status) %>;color:var(--text);">
           <strong style="font-weight:500;"><%= a.title %></strong>
-          <div class="meta" style="font-size:10.5px;"><%= a.audit_date %> · <%= (a.status || 'planned').replace('_',' ') %></div>
+          <div class="meta text-eyebrow"><%= a.audit_date %> · <%= (a.status || 'planned').replace('_',' ') %></div>
         </a>
       <% }) %>
     </div>

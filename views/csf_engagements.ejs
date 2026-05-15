@@ -5,7 +5,7 @@
     <h1 class="page-title">NIST CSF assessments</h1>
     <div class="page-subtitle">CSF 2.0 maturity assessments for <%= ws.client_name || 'this workspace' %>. Each engagement scores the 106 Subcategories on a CMMI 1-5 scale.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <a href="/workspaces/<%= ws.id %>/csf/catalog" class="btn btn-secondary btn-xs">View catalog</a>
     <% if (canCreate) { %>
       <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary btn-xs">+ New engagement</a>
@@ -14,8 +14,8 @@
 </div>
 
 <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
-  <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
-    <strong style="color:#a16207;">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
+  <div class="panel-pad text-md text-secondary">
+    <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
     Stage 2 of the CSF module. Engagement creation and assignment work; scoring, findings, and reporting come in subsequent stages.
   </div>
 </div>
@@ -49,21 +49,21 @@
       <% engagements.forEach(e => { %>
         <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/csf/<%= e.id %>'">
           <td>
-            <strong style="font-size:13px;"><%= e.name %></strong>
-            <% if (e.current_version) { %><span class="tag tag-info" style="margin-left:6px;font-size:10.5px;">v<%= e.current_version %></span><% } %>
+            <strong class="text-lg"><%= e.name %></strong>
+            <% if (e.current_version) { %><span class="tag tag-info text-eyebrow" style="margin-left:6px;">v<%= e.current_version %></span><% } %>
             <% if (e.period_start || e.period_end) { %>
-              <div class="meta" style="font-size:11px;margin-top:2px;"><%= e.period_start || '' %> &rarr; <%= e.period_end || '' %></div>
+              <div class="meta text-xs" style="margin-top:2px;"><%= e.period_start || '' %> &rarr; <%= e.period_end || '' %></div>
             <% } %>
           </td>
           <td>
             <% const statusColor = { 'Draft':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Under Review':'#a16207', 'Approved':'#15803d', 'Published':'#15803d', 'Closed':'var(--text-tertiary)' }[e.status] || 'var(--text)' ; %>
             <span class="tag" style="background:rgba(0,0,0,0.04);color:<%= statusColor %>;font-size:11px;"><%= e.status %></span>
           </td>
-          <td class="meta" style="font-size:11.5px;"><%= e.scope_mode === 'CURRENT_TARGET' ? 'Current + Target' : 'Current only' %></td>
-          <td class="meta" style="font-size:12px;"><%= e.lead_name || '-' %></td>
-          <td class="num" style="font-size:12.5px;"><%= e.assignment_count %></td>
-          <td class="meta" style="font-size:11.5px;"><%= e.target_completion_date || '-' %></td>
-          <td class="mono meta" style="font-size:10.5px;"><%= e.catalog_version %></td>
+          <td class="meta text-sm"><%= e.scope_mode === 'CURRENT_TARGET' ? 'Current + Target' : 'Current only' %></td>
+          <td class="meta text-base"><%= e.lead_name || '-' %></td>
+          <td class="num text-md"><%= e.assignment_count %></td>
+          <td class="meta text-sm"><%= e.target_completion_date || '-' %></td>
+          <td class="mono meta text-eyebrow"><%= e.catalog_version %></td>
         </tr>
       <% }) %>
     </tbody>
@@ -74,13 +74,13 @@
 <div id="csfOnboardingModal" style="display:none;position:fixed;inset:0;background:rgba(15,15,18,0.55);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border-radius:var(--radius);padding:24px 28px;max-width:520px;box-shadow:var(--shadow-xl);font-size:13.5px;line-height:1.6;">
     <h2 style="margin:0 0 10px;font-size:18px;">Welcome to the NIST CSF module</h2>
-    <p style="margin:0 0 10px;color:var(--text-secondary);">This is a CSF 2.0 maturity assessment workspace. Before you dive in, two suggestions:</p>
-    <ul style="margin:0 0 10px;padding-left:18px;color:var(--text-secondary);">
+    <p class="text-secondary" style="margin:0 0 10px;">This is a CSF 2.0 maturity assessment workspace. Before you dive in, two suggestions:</p>
+    <ul class="text-secondary" style="margin:0 0 10px;padding-left:18px;">
       <li>If CSF is new to you, read the <strong>Primer</strong> in <a href="/workspaces/<%= ws.id %>/csf/learn" style="color:var(--accent);">CSF Learn</a> (~5 min).</li>
       <li>Open the <strong>Catalog</strong> to see the 6 Functions / 22 Categories / 106 Subcategories the assessment covers.</li>
       <li>Then create an Engagement, assign your team (Lead / Consultant / Reviewer / Analyst), and start scoring.</li>
     </ul>
-    <p style="margin:0 0 14px;color:var(--text-tertiary);font-size:12px;">This prototype is for synthetic data only. Real client data is gated on the production-security work in Stage 13.</p>
+    <p class="text-tertiary text-base" style="margin:0 0 14px;">This prototype is for synthetic data only. Real client data is gated on the production-security work in Stage 13.</p>
     <div style="display:flex;justify-content:flex-end;gap:8px;">
       <a href="/workspaces/<%= ws.id %>/csf/learn" class="btn btn-secondary btn-xs" onclick="document.getElementById('csfOnboardingModal').style.display='none';localStorage.setItem('csfOnboardSeen','1');">Read the primer</a>
       <button class="btn btn-primary btn-xs" onclick="document.getElementById('csfOnboardingModal').style.display='none';localStorage.setItem('csfOnboardSeen','1');">Got it</button>

@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: q.template_name, user, ws, active: 'vendors' }) %>
 
-<a href="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>?tab=questionnaires" class="link-muted" style="font-size:12px;">← Back to <%= q.supplier_name %></a>
+<a href="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>?tab=questionnaires" class="link-muted text-base">← Back to <%= q.supplier_name %></a>
 
 <div class="page-head" style="margin-top:8px">
   <div>
@@ -9,7 +9,7 @@
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
     <% if (q.score !== null) { %>
-      <span class="tag <%= q.score >= 80 ? 'tag-success' : q.score >= 60 ? 'tag-warn' : 'tag-danger' %>" style="font-size:14px;padding:4px 12px;font-weight:600;">Score: <%= q.score %>%</span>
+      <span class="tag <%= q.score>= 80 ? 'tag-success' : q.score >= 60 ? 'tag-warn' : 'tag-danger' %> text-xl" style="padding:4px 12px;font-weight:600;">Score: <%= q.score %>%</span>
     <% } %>
     <span class="status s-<%= q.status === 'reviewed' ? 'done' : q.status === 'responded' ? 'in_review' : 'todo' %>"><%= q.status %></span>
   </div>
@@ -41,7 +41,7 @@
           <div style="padding:12px 16px;<%= isWrong ? 'background:#fef2f2;' : isCorrect ? 'background:#f0fdf4;' : '' %>">
             <div style="display:flex;align-items:flex-start;gap:12px;">
               <div style="flex:1;">
-                <div style="font-size:13px;font-weight:500;line-height:1.4;"><%= qu.question %></div>
+                <div class="text-lg" style="font-weight:500;line-height:1.4;"><%= qu.question %></div>
                 <% if (qu.iso_control_ref) { %><div class="meta" style="margin-top:3px;">→ <%= qu.iso_control_ref %></div><% } %>
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0;">
@@ -53,7 +53,7 @@
                 <% }) %>
               </div>
             </div>
-            <input type="text" name="comment_<%= qu.id %>" class="input" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)" style="margin-top:8px;font-size:12px;">
+            <input type="text" name="comment_<%= qu.id %>" class="input text-base" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)" style="margin-top:8px;">
           </div>
         <% }) %>
       </div>
@@ -62,14 +62,14 @@
 
   <div class="panel" style="margin-bottom:16px">
     <div class="panel-head"><h2>Reviewer notes</h2></div>
-    <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div class="panel-pad grid-2">
       <div><label class="label">Reviewer</label><input class="input" name="reviewer" value="<%= q.reviewer || '' %>"></div>
       <div></div>
-      <div style="grid-column:1/-1"><label class="label">Reviewer comments</label><textarea class="textarea" name="reviewer_comments" rows="3"><%= q.reviewer_comments || '' %></textarea></div>
+      <div class="col-full"><label class="label">Reviewer comments</label><textarea class="textarea" name="reviewer_comments" rows="3"><%= q.reviewer_comments || '' %></textarea></div>
     </div>
   </div>
 
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <button name="action" value="save" class="btn btn-secondary">Save draft</button>
     <button name="action" value="submit" class="btn btn-primary">Submit responses</button>
     <button name="action" value="review" class="btn btn-accent">Mark reviewed</button>

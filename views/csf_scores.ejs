@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta" style="font-size:12px;text-decoration:none;">&larr; <%= engagement.name %></a>
+      <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta text-base" style="text-decoration:none;">&larr; <%= engagement.name %></a>
     </div>
     <h1 class="page-title" style="margin-top:6px;">Scores</h1>
     <div class="page-subtitle">
@@ -20,9 +20,9 @@
    } %>
 <% function gapBadge(g) {
      if (g == null) return '';
-     if (g === 0) return `<span class="meta" style="font-size:11px;">no gap</span>`;
-     if (g > 0)  return `<span style="color:#a16207;font-size:11px;">gap +${r1(g)}</span>`;
-     return `<span style="color:#15803d;font-size:11px;">${r1(g)}</span>`;
+     if (g === 0) return `<span class="meta text-xs">no gap</span>`;
+     if (g > 0)  return `<span class="text-warn text-xs">gap +${r1(g)}</span>`;
+     return `<span class="text-success text-xs">${r1(g)}</span>`;
    } %>
 
 <!-- Overall headline -->
@@ -30,7 +30,7 @@
   <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr <%= engagement.scope_mode === 'CURRENT_TARGET' ? '1fr 1fr' : '' %>;gap:24px;">
     <div>
       <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier) %>;">
-        <%= rollup.overall.current == null ? '-' : r1(rollup.overall.current) %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">/5</span>
+        <%= rollup.overall.current == null ? '-' : r1(rollup.overall.current) %><span class="text-xl text-tertiary" style="font-weight:400;">/5</span>
       </div>
       <div class="kpi-label">Overall current</div>
       <% if (rollup.overall.tier) { %>
@@ -38,14 +38,14 @@
       <% } %>
     </div>
     <div>
-      <div class="kpi-num"><%= rollup.coverage.scoredPct %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
+      <div class="kpi-num"><%= rollup.coverage.scoredPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
       <div class="kpi-label">Scoring coverage</div>
-      <div class="meta" style="font-size:11.5px;margin-top:4px;"><%= rollup.coverage.scored %> of <%= rollup.coverage.total - rollup.coverage.excluded %> in-scope</div>
+      <div class="meta text-sm" style="margin-top:4px;"><%= rollup.coverage.scored %> of <%= rollup.coverage.total - rollup.coverage.excluded %> in-scope</div>
     </div>
     <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
       <div>
         <div class="kpi-num" style="color:<%= tierColor(rollup.overall.tier_target) %>;">
-          <%= rollup.overall.target == null ? '-' : r1(rollup.overall.target) %><span style="font-size:14px;font-weight:400;color:var(--text-tertiary);">/5</span>
+          <%= rollup.overall.target == null ? '-' : r1(rollup.overall.target) %><span class="text-xl text-tertiary" style="font-weight:400;">/5</span>
         </div>
         <div class="kpi-label">Overall target</div>
         <% if (rollup.overall.tier_target) { %>
@@ -53,9 +53,9 @@
         <% } %>
       </div>
       <div>
-        <div class="kpi-num" style="color:#a16207;"><%= rollup.overall.gap == null ? '-' : (rollup.overall.gap > 0 ? '+' : '') + r1(rollup.overall.gap) %></div>
+        <div class="kpi-num text-warn"><%= rollup.overall.gap == null ? '-' : (rollup.overall.gap > 0 ? '+' : '') + r1(rollup.overall.gap) %></div>
         <div class="kpi-label">Overall gap</div>
-        <div class="meta" style="font-size:11.5px;margin-top:4px;">target - current</div>
+        <div class="meta text-sm" style="margin-top:4px;">target - current</div>
       </div>
     <% } %>
   </div>
@@ -67,8 +67,8 @@
     <div class="panel" style="border-top:3px solid <%= tierColor(fn.tier) %>;">
       <div class="panel-pad">
         <div style="display:flex;align-items:baseline;gap:8px;">
-          <span class="mono" style="font-weight:600;color:var(--accent);font-size:13px;"><%= fn.code %></span>
-          <span style="font-weight:600;font-size:13px;"><%= fn.name %></span>
+          <span class="mono text-lg" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
+          <span class="text-lg" style="font-weight:600;"><%= fn.name %></span>
         </div>
         <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px;">
           <div>
@@ -81,7 +81,7 @@
               <div class="kpi-meta">target</div>
             </div>
             <div>
-              <div class="kpi-num num" style="font-size:24px;color:#a16207;"><%= fn.gap == null ? '-' : (fn.gap > 0 ? '+' : '') + r1(fn.gap) %></div>
+              <div class="kpi-num num text-warn" style="font-size:24px;"><%= fn.gap == null ? '-' : (fn.gap > 0 ? '+' : '') + r1(fn.gap) %></div>
               <div class="kpi-meta">gap</div>
             </div>
           <% } %>
@@ -99,9 +99,9 @@
   <details class="panel" style="margin-bottom:10px;" open>
     <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
       <span class="mono" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-      <span style="font-weight:600;font-size:14px;"><%= fn.name %></span>
+      <span class="text-xl" style="font-weight:600;"><%= fn.name %></span>
       <div style="margin-left:auto;display:flex;gap:18px;align-items:center;">
-        <span style="font-size:14px;font-weight:500;color:<%= tierColor(fn.tier) %>;"><%= fn.current == null ? '-' : r1(fn.current) %><span style="font-size:11px;color:var(--text-tertiary);">/5</span></span>
+        <span style="font-size:14px;font-weight:500;color:<%= tierColor(fn.tier) %>;"><%= fn.current == null ? '-' : r1(fn.current) %><span class="text-xs text-tertiary">/5</span></span>
         <% if (fn.tier) { %><span class="tag" style="background:rgba(0,0,0,0.04);color:<%= tierColor(fn.tier) %>;font-size:11px;">Tier <%= fn.tier.tier %></span><% } %>
       </div>
     </summary>
@@ -123,14 +123,14 @@
           <% const scored = cat.subcategories.filter(s => !s.excluded && s.current != null).length; %>
           <% const inscope = cat.subcategories.filter(s => !s.excluded).length; %>
           <tr>
-            <td class="mono" style="font-size:11.5px;"><%= cat.code %></td>
-            <td style="font-size:12.5px;"><%= cat.name %></td>
-            <td class="num" style="font-size:13px;"><%= cat.current == null ? '-' : r1(cat.current) %></td>
+            <td class="mono text-sm"><%= cat.code %></td>
+            <td class="text-md"><%= cat.name %></td>
+            <td class="num text-lg"><%= cat.current == null ? '-' : r1(cat.current) %></td>
             <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
-              <td class="num" style="font-size:13px;"><%= cat.target == null ? '-' : r1(cat.target) %></td>
-              <td class="num" style="font-size:12px;"><%- gapBadge(cat.gap) %></td>
+              <td class="num text-lg"><%= cat.target == null ? '-' : r1(cat.target) %></td>
+              <td class="num text-base"><%- gapBadge(cat.gap) %></td>
             <% } %>
-            <td class="num meta" style="font-size:11.5px;"><%= scored %>/<%= inscope %></td>
+            <td class="num meta text-sm"><%= scored %>/<%= inscope %></td>
           </tr>
         <% }) %>
       </tbody>

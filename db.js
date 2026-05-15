@@ -1738,6 +1738,67 @@ function init() {
   db.exec(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id)
     SELECT id, iso_item_id FROM evidence WHERE iso_item_id IS NOT NULL`);
 
+  // ============================================================
+  // evidence_links - the universal cross-framework join.
+  // ------------------------------------------------------------
+  // One uploaded artefact can satisfy controls in multiple frameworks
+  // (ISO 27001 / ISO 42001 / NIST CSF), so the consultant uploads once and
+  // links to as many items as apply. Stored as (evidence_id, framework,
+  // item_ref) where item_ref is whatever identifier each framework uses
+  // for its leaf item:
+  //   iso27001  -> iso_items.id      (e.g. 'annex-a.5.15', 'clause-6.1')
+  //   iso42001  -> iso42001_items.id (e.g. 'ai-clause-6.1.2')
+  //   csf       -> subcategory code  (e.g. 'GV.OC-01')
+  // We deliberately don't enforce a foreign key to the framework-specific
+  // tables here because the item_ref is polymorphic and SQLite can't
+  // express a conditional FK. Validation lives in the link route.
+  //
+  // The legacy evidence_controls table stays as-is for ISO 27001. Triggers
+  // mirror writes/deletes into evidence_links so the unified view is
+  // always in sync and existing ISO 27001 code paths don't need to change.
+  db.exec(`CREATE TABLE IF NOT EXISTS evidence_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_id INTEGER NOT NULL,
+    framework TEXT NOT NULL CHECK(framework IN ('iso27001','iso42001','csf')),
+    item_ref TEXT NOT NULL,
+    section_ref TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(evidence_id, framework, item_ref),
+    FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_evlinks_ev ON evidence_links(evidence_id);
+  CREATE INDEX IF NOT EXISTS idx_evlinks_fw_item ON evidence_links(framework, item_ref);`);
+
+  // Backfill: every existing evidence_controls row becomes an iso27001 link.
+  db.exec(`INSERT OR IGNORE INTO evidence_links (evidence_id, framework, item_ref, section_ref)
+    SELECT evidence_id, 'iso27001', iso_item_id, section_ref FROM evidence_controls`);
+
+  // Sync triggers keep evidence_links in lock-step with evidence_controls so
+  // existing ISO 27001 link routes don't have to know about the new table.
+  // INSERT OR IGNORE is safe because UNIQUE(evidence_id, framework, item_ref)
+  // means a re-insert just no-ops.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS evctrl_to_evlinks_ins
+    AFTER INSERT ON evidence_controls BEGIN
+      INSERT OR IGNORE INTO evidence_links (evidence_id, framework, item_ref, section_ref)
+      VALUES (NEW.evidence_id, 'iso27001', NEW.iso_item_id, NEW.section_ref);
+    END;
+    CREATE TRIGGER IF NOT EXISTS evctrl_to_evlinks_del
+    AFTER DELETE ON evidence_controls BEGIN
+      DELETE FROM evidence_links
+      WHERE evidence_id = OLD.evidence_id
+        AND framework   = 'iso27001'
+        AND item_ref    = OLD.iso_item_id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS evctrl_to_evlinks_upd
+    AFTER UPDATE OF section_ref ON evidence_controls BEGIN
+      UPDATE evidence_links SET section_ref = NEW.section_ref
+      WHERE evidence_id = NEW.evidence_id
+        AND framework   = 'iso27001'
+        AND item_ref    = NEW.iso_item_id;
+    END;
+  `);
+
   // C.10 - Continual improvement register (clause 10.1). Improvements driven
   // by data - distinct from corrective actions on NCs (10.2).
   db.exec(`CREATE TABLE IF NOT EXISTS improvements (
@@ -1781,6 +1842,13 @@ function init() {
 
   // Workspaces - locale + retention defaults
   addColumnIfMissing('workspaces', 'locale', "TEXT DEFAULT 'en'");
+  // Per-workspace framework scope. Stored as a JSON array of identifiers
+  // ('iso27001', 'iso42001', 'csf'). Defaulting to all three preserves the
+  // existing behaviour for workspaces created before this column existed -
+  // they kept seeing all three framework nav groups, so they still do.
+  // New workspaces choose at creation time via the framework picker.
+  addColumnIfMissing('workspaces', 'frameworks',
+    `TEXT DEFAULT '["iso27001","iso42001","csf"]'`);
 
   // Comments - threading, mentions
   addColumnIfMissing('comments', 'parent_comment_id', 'INTEGER REFERENCES comments(id) ON DELETE CASCADE');

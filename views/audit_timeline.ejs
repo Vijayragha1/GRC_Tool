@@ -3,7 +3,7 @@
 <div class="page-head">
   <div><h1 class="page-title">Activity log</h1>
     <div class="page-subtitle">Timeline - every action by the selected user on the selected day, in order.</div></div>
-  <form method="GET" style="display:flex;gap:6px;">
+  <form class="row" method="GET">
     <select name="user_id" class="select"><% users.forEach(u => { %><option value="<%= u.id %>" <%= u.id === userId ? 'selected' : '' %>><%= u.name %></option><% }) %></select>
     <input class="input" type="date" name="day" value="<%= day %>">
     <button class="btn btn-primary btn-xs">Show</button>
@@ -16,12 +16,12 @@
   <% if (!log.length) { %><div class="empty-state"><div class="empty-sub">No activity for this user on this day.</div></div><% } %>
   <% log.forEach((l, i) => { %>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:120px 1fr;gap:12px;">
-      <div class="meta mono" style="font-size:11px;"><%= l.created_at.slice(11, 19) %></div>
+      <div class="meta mono text-xs"><%= l.created_at.slice(11, 19) %></div>
       <div>
-        <span class="mono" style="font-size:12.5px;font-weight:500;"><%= l.action %></span>
+        <span class="mono text-md" style="font-weight:500;"><%= l.action %></span>
         <% if (l.entity_type) { %><span class="meta">· <%= l.entity_type %><% if (l.entity_id) { %> #<%= l.entity_id %><% } %></span><% } %>
-        <% if (l.ip_address) { %><span class="meta mono" style="font-size:10.5px;float:right;"><%= l.ip_address %></span><% } %>
-        <% if (l.details) { %><div class="meta" style="font-family:ui-monospace,monospace;font-size:11px;margin-top:2px;"><%= l.details.slice(0,160) %></div><% } %>
+        <% if (l.ip_address) { %><span class="meta mono text-eyebrow" style="float:right;"><%= l.ip_address %></span><% } %>
+        <% if (l.details) { %><div class="meta text-xs" style="font-family:ui-monospace,monospace;margin-top:2px;"><%= l.details.slice(0,160) %></div><% } %>
       </div>
     </div>
   <% }) %>

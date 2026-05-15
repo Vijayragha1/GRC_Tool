@@ -5,8 +5,8 @@
     <h1 class="page-title">Statement of Applicability</h1>
     <div class="page-subtitle">Mandatory ISO 27001 document (clause 6.1.3.d). Applicability and justification for all 93 Annex A controls, plus any non-Annex-A controls you've added.</div>
   </div>
-  <div style="display:flex;gap:6px;">
-    <span id="soaAutosaveStatus" style="font-size:11px;line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing or change a dropdown.">All changes saved</span>
+  <div class="row">
+    <span class="text-xs" id="soaAutosaveStatus" style="line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing or change a dropdown.">All changes saved</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'For every Annex A control that any open risk has selected as a treatment, mark it Included and pre-fill an inclusion justification of the form &quot;Treats {risk titles}&quot;. Existing justifications are not overwritten. This is the fastest way to a defensible first-pass SoA. You can edit each justification afterwards. Continue?')"><button class="btn btn-secondary btn-xs" title="For every control linked to a risk: mark Included + write justification of the form 'Treats X, Y, Z'. Existing justifications kept. Idempotent.">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs" title="Capture an immutable, hashed copy of the current SoA state. Auditors compare snapshots over time - capture before each MRM and before each audit.">Capture snapshot</button></form>
     <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
@@ -19,14 +19,14 @@
 
 <!-- SoA metadata header - version / owner / approver / approved-on (clause 7.5.3) -->
 <details class="panel" style="margin-bottom:10px;<%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'border-left:3px solid #a16207;' : 'border-left:3px solid #16a34a;' %>" <%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'open' : '' %>>
-  <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;">
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:8px;">
     <span style="font-weight:600;">SoA metadata</span>
     <% if (soaMeta.version || soaMeta.owner || soaMeta.approved_by) { %>
-      <% if (soaMeta.version) { %><span class="tag tag-info" style="font-size:10.5px;">v<%= soaMeta.version %></span><% } %>
-      <% if (soaMeta.owner) { %><span class="meta" style="font-size:11px;">owner: <%= soaMeta.owner %></span><% } %>
-      <% if (soaMeta.approved_by) { %><span class="meta" style="font-size:11px;">approved by <%= soaMeta.approved_by %><% if (soaMeta.approved_at) { %> on <%= soaMeta.approved_at %><% } %></span><% } %>
+      <% if (soaMeta.version) { %><span class="tag tag-info text-eyebrow">v<%= soaMeta.version %></span><% } %>
+      <% if (soaMeta.owner) { %><span class="meta text-xs">owner: <%= soaMeta.owner %></span><% } %>
+      <% if (soaMeta.approved_by) { %><span class="meta text-xs">approved by <%= soaMeta.approved_by %><% if (soaMeta.approved_at) { %> on <%= soaMeta.approved_at %><% } %></span><% } %>
     <% } else { %>
-      <span class="tag tag-warn" style="font-size:10.5px;">missing - auditors expect this on arrival</span>
+      <span class="tag tag-warn text-eyebrow">missing - auditors expect this on arrival</span>
     <% } %>
   </summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/soa/metadata" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
@@ -34,21 +34,21 @@
     <div><label class="label">Owner</label><input class="input" name="owner" value="<%= soaMeta.owner || '' %>" placeholder="e.g., CISO"></div>
     <div><label class="label">Approved by</label><input class="input" name="approved_by" value="<%= soaMeta.approved_by || '' %>" placeholder="e.g., CEO"></div>
     <div><label class="label">Approved on</label><input type="date" class="input" name="approved_at" value="<%= soaMeta.approved_at || '' %>"></div>
-    <div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;">
+    <div class="col-full row-center">
       <button class="btn btn-primary btn-xs">Save metadata</button>
-      <span class="meta" style="font-size:11px;">Saving captures a fresh SoA snapshot if none exists.</span>
+      <span class="meta text-xs">Saving captures a fresh SoA snapshot if none exists.</span>
     </div>
   </form>
 </details>
 
 <!-- Bulk applicability bar - fast-path for large workspaces -->
 <details class="panel" style="margin-bottom:10px;">
-  <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;">+ Bulk decide applicability <span class="meta" style="font-weight:400;">- include all, include undecided, or set selection in one shot</span></summary>
-  <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);font-size:12px;color:var(--text-secondary);line-height:1.55;">
-    <strong style="color:var(--text);">Use this for the first-pass sweep.</strong> "Include all" marks every Annex A control as <em>Included</em> in one shot - auditors expect most controls to be included for ISO 27001:2022, so it's a defensible default. "Include undecided" only flips controls still marked <em>Undecided</em> (existing Excluded decisions stay). Add a justification once and it's stamped on every row affected. Per-row dropdowns below let you override individual controls afterwards (e.g., explicitly exclude controls that genuinely don't apply, with their own justification - required by clause 6.1.3.d).
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Bulk decide applicability <span class="meta" style="font-weight:400;">- include all, include undecided, or set selection in one shot</span></summary>
+  <div class="panel-pad text-base text-secondary" style="border-top:1px solid var(--border);background:var(--bg-subtle);line-height:1.55;">
+    <strong>Use this for the first-pass sweep.</strong> "Include all" marks every Annex A control as <em>Included</em> in one shot - auditors expect most controls to be included for ISO 27001:2022, so it's a defensible default. "Include undecided" only flips controls still marked <em>Undecided</em> (existing Excluded decisions stay). Add a justification once and it's stamped on every row affected. Per-row dropdowns below let you override individual controls afterwards (e.g., explicitly exclude controls that genuinely don't apply, with their own justification - required by clause 6.1.3.d).
   </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/soa/bulk" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;">
-    <div style="grid-column:1/-1;">
+    <div class="col-full">
       <label class="label">Justification (optional, applied to every affected row)</label>
       <input class="input" name="justification" placeholder="e.g., Required by linked risks per workspace risk register">
     </div>
@@ -76,11 +76,11 @@
         <form method="POST" action="/workspaces/<%= ws.id %>/soa/<%= r.id %>" class="contents">
           <tr>
             <td class="mono meta"><%= r.id.replace('annex-', '').toUpperCase() %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.systemic_count >= 3) { %> <span class="tag tag-danger" style="font-size:10px;" title="<%= r.systemic_count %> findings in last 12 months">SYSTEMIC</span><% } %><% if (r.last_verified_at) { %><div class="meta" style="font-size:10.5px;">verified <%= r.last_verified_at.slice(0,10) %></div><% } %></td>
-            <td style="font-size:11.5px;line-height:1.4;">
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.systemic_count >= 3) { %> <span class="tag tag-danger text-xxs" title="<%= r.systemic_count %> findings in last 12 months">SYSTEMIC</span><% } %><% if (r.last_verified_at) { %><div class="meta text-eyebrow">verified <%= r.last_verified_at.slice(0,10) %></div><% } %></td>
+            <td class="text-sm" style="line-height:1.4;">
               <% if (linkedRisks.length === 0) { %>
                 <% if (r.applicability === 'included') { %>
-                  <span class="tag tag-warn" style="font-size:10px;" title="An included control with no linked risk fails 6.1.3.d.1">unjustified</span>
+                  <span class="tag tag-warn text-xxs" title="An included control with no linked risk fails 6.1.3.d.1">unjustified</span>
                 <% } else { %>
                   <span class="meta">-</span>
                 <% } %>
@@ -92,25 +92,25 @@
               <% if (linkedDocs.length === 0) { %>
                 <span class="meta">-</span>
               <% } else { %>
-                <% linkedDocs.forEach((d, idx) => { %><a href="/workspaces/<%= ws.id %>/documents/<%= d.doc_id %>" style="font-size:12px;color:var(--accent);text-decoration:none;" title="<%= d.category || '' %> · <%= d.doc_status %>"><%= d.doc_name %><% if (d.section_ref) { %> <%= d.section_ref %><% } %></a><% if (idx < linkedDocs.length - 1) { %><span class="meta">, </span><% } %><% }) %>
+                <% linkedDocs.forEach((d, idx) => { %><a class="text-base" href="/workspaces/<%= ws.id %>/documents/<%= d.doc_id %>" style="color:var(--accent);text-decoration:none;" title="<%= d.category || '' %> · <%= d.doc_status %>"><%= d.doc_name %><% if (d.section_ref) { %> <%= d.section_ref %><% } %></a><% if (idx < linkedDocs.length - 1) { %><span class="meta">, </span><% } %><% }) %>
               <% } %>
             </td>
             <td>
-              <select name="applicability" class="select" style="font-size:12px;padding:4px 8px;">
+              <select name="applicability" class="select text-base" style="padding:4px 8px;">
                 <option value="undecided" <%= r.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>
                 <option value="included" <%= r.applicability === 'included' ? 'selected' : '' %>>Included</option>
                 <option value="excluded" <%= r.applicability === 'excluded' ? 'selected' : '' %>>Excluded</option>
               </select>
             </td>
             <td>
-              <select name="status" class="select" style="font-size:12px;padding:4px 8px;">
+              <select name="status" class="select text-base" style="padding:4px 8px;">
                 <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %>
                   <option value="<%= s %>" <%= r.status === s ? 'selected' : '' %>><%= s %></option>
                 <% }) %>
               </select>
             </td>
             <td>
-              <textarea name="<%= r.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea" style="font-size:12px;padding:4px 8px;" placeholder="<%= r.applicability === 'excluded' ? 'Why excluded' : 'Why included' %>"><%= r.applicability === 'excluded' ? (r.exclusion_justification || '') : (r.inclusion_justification || '') %></textarea>
+              <textarea name="<%= r.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea text-base" style="padding:4px 8px;" placeholder="<%= r.applicability === 'excluded' ? 'Why excluded' : 'Why included' %>"><%= r.applicability === 'excluded' ? (r.exclusion_justification || '') : (r.inclusion_justification || '') %></textarea>
             </td>
           </tr>
         </form>
@@ -123,11 +123,11 @@
      necessary to treat your risks. ISO 27001 explicitly contemplates these. -->
 <div class="panel" style="margin-top:18px;">
   <div class="panel-head">
-    <h3>Custom (non-Annex-A) controls <span class="meta" style="font-weight:400;font-size:12px;">- additional controls beyond Annex A (NIST CSF, SOC 2, internal)</span></h3>
+    <h3>Custom (non-Annex-A) controls <span class="meta text-base" style="font-weight:400;">- additional controls beyond Annex A (NIST CSF, SOC 2, internal)</span></h3>
     <span class="meta"><%= customControls.length %> custom</span>
   </div>
   <% if (customControls.length === 0) { %>
-    <div class="panel-pad meta" style="font-size:12.5px;">No custom controls. Most workspaces don't need any - Annex A covers the common ground. Add only if a real control exists outside Annex A.</div>
+    <div class="panel-pad meta text-md">No custom controls. Most workspaces don't need any - Annex A covers the common ground. Add only if a real control exists outside Annex A.</div>
   <% } else { %>
     <table class="t">
       <thead><tr>
@@ -143,24 +143,24 @@
         <% customControls.forEach(c => { %>
           <form method="POST" action="/workspaces/<%= ws.id %>/soa/custom-controls/<%= c.id %>" class="contents">
             <tr>
-              <td><input class="input mono" name="code" value="<%= c.code %>" style="font-size:12px;padding:4px 6px;"></td>
-              <td><input class="input" name="title" value="<%= c.title %>" style="font-size:12.5px;padding:4px 6px;"></td>
-              <td><input class="input" name="source_framework" value="<%= c.source_framework || '' %>" placeholder="NIST CSF" style="font-size:12px;padding:4px 6px;"></td>
+              <td><input class="input mono text-base" name="code" value="<%= c.code %>" style="padding:4px 6px;"></td>
+              <td><input class="input text-md" name="title" value="<%= c.title %>" style="padding:4px 6px;"></td>
+              <td><input class="input text-base" name="source_framework" value="<%= c.source_framework || '' %>" placeholder="NIST CSF" style="padding:4px 6px;"></td>
               <td>
-                <select name="applicability" class="select" style="font-size:12px;padding:4px 8px;">
+                <select name="applicability" class="select text-base" style="padding:4px 8px;">
                   <% ['undecided','included','excluded'].forEach(a => { %><option value="<%= a %>" <%= c.applicability === a ? 'selected' : '' %>><%= a %></option><% }) %>
                 </select>
               </td>
               <td>
-                <select name="status" class="select" style="font-size:12px;padding:4px 8px;">
+                <select name="status" class="select text-base" style="padding:4px 8px;">
                   <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %><option value="<%= s %>" <%= c.status === s ? 'selected' : '' %>><%= s %></option><% }) %>
                 </select>
               </td>
               <td>
-                <textarea name="<%= c.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea" style="font-size:12px;padding:4px 8px;"><%= c.applicability === 'excluded' ? (c.exclusion_justification || '') : (c.inclusion_justification || '') %></textarea>
+                <textarea name="<%= c.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification' %>" rows="1" class="textarea text-base" style="padding:4px 8px;"><%= c.applicability === 'excluded' ? (c.exclusion_justification || '') : (c.inclusion_justification || '') %></textarea>
               </td>
               <td>
-                <button formaction="/workspaces/<%= ws.id %>/soa/custom-controls/<%= c.id %>/delete" formmethod="POST" class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;" onclick="return appConfirmClick(event, 'Delete custom control <%= c.code %>?')">×</button>
+                <button formaction="/workspaces/<%= ws.id %>/soa/custom-controls/<%= c.id %>/delete" formmethod="POST" class="btn btn-ghost btn-xs text-xs text-danger" onclick="return appConfirmClick(event, 'Delete custom control <%= c.code %>?')">×</button>
               </td>
             </tr>
           </form>
@@ -169,19 +169,19 @@
     </table>
   <% } %>
   <details style="border-top:1px solid var(--border);">
-    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Add custom control</summary>
+    <summary class="panel-pad text-md" style="cursor:pointer;color:var(--accent);">+ Add custom control</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/custom-controls" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:120px 1fr 160px 140px;gap:8px;">
-      <input class="input mono" name="code" placeholder="C-001" required style="font-size:12.5px;">
-      <input class="input" name="title" placeholder="Control title" required style="font-size:12.5px;">
-      <input class="input" name="source_framework" placeholder="NIST CSF / Internal" style="font-size:12.5px;">
-      <select class="select" name="applicability" style="font-size:12.5px;">
+      <input class="input mono text-md" name="code" placeholder="C-001" required>
+      <input class="input text-md" name="title" placeholder="Control title" required>
+      <input class="input text-md" name="source_framework" placeholder="NIST CSF / Internal">
+      <select class="select text-md" name="applicability">
         <option value="included">Included</option>
         <option value="excluded">Excluded</option>
         <option value="undecided">Undecided</option>
       </select>
-      <textarea class="textarea" name="description" rows="2" placeholder="What this control does (optional)" style="font-size:12.5px;grid-column:1/-1;"></textarea>
-      <textarea class="textarea" name="inclusion_justification" rows="2" placeholder="Why this control is necessary - what risk does it treat?" style="font-size:12.5px;grid-column:1/-1;"></textarea>
-      <button class="btn btn-primary btn-xs" style="grid-column:1/-1;">Add custom control</button>
+      <textarea class="textarea text-md col-full" name="description" rows="2" placeholder="What this control does (optional)"></textarea>
+      <textarea class="textarea text-md col-full" name="inclusion_justification" rows="2" placeholder="Why this control is necessary - what risk does it treat?"></textarea>
+      <button class="btn btn-primary btn-xs col-full">Add custom control</button>
     </form>
   </details>
 </div>

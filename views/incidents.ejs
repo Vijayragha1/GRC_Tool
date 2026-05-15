@@ -5,7 +5,7 @@
     <h1 class="page-title">Information security incidents</h1>
     <div class="page-subtitle">Per A.5.24–A.5.28: detection, classification, response, recovery, and lessons learned. Promote material incidents to nonconformities.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <select onchange="window.location='?filter='+this.value" class="select" style="width:120px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
       <option value="all" <%= filter==='all'?'selected':'' %>>All</option>
@@ -16,8 +16,8 @@
 
 <div id="newInc" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Log new incident</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/incidents" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Phishing campaign targeting finance team"></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/incidents" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Phishing campaign targeting finance team"></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">
         <option value="malware">Malware</option><option value="phishing">Phishing / social engineering</option>
@@ -34,8 +34,8 @@
     </div>
     <div><label class="label">Detected at</label><input class="input" type="datetime-local" name="detected_at"></div>
     <div><label class="label">Reported by</label><input class="input" name="reported_by"></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" placeholder="What happened, what was observed, initial impact assessment…"></textarea></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Log incident</button></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" placeholder="What happened, what was observed, initial impact assessment…"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Log incident</button></div>
   </form>
 </div>
 
@@ -49,8 +49,8 @@
       <% incidents.forEach(n => { %>
         <tr>
           <td class="mono meta">INC-<%= String(n.id).padStart(3,'0') %></td>
-          <td><a href="/workspaces/<%= ws.id %>/incidents/<%= n.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= n.title %></a></td>
-          <td style="color:var(--text-secondary);font-size:12px;text-transform:capitalize;"><%= (n.category || '').replace(/_/g,' ') %></td>
+          <td><a href="/workspaces/<%= ws.id %>/incidents/<%= n.id %>" class="link-muted" style="font-weight:500;"><%= n.title %></a></td>
+          <td class="text-secondary text-base" style="text-transform:capitalize;"><%= (n.category || '').replace(/_/g,' ') %></td>
           <td><span class="tag <%= n.severity === 'critical' || n.severity === 'high' ? 'tag-danger' : n.severity === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= n.severity %></span></td>
           <td class="num meta"><%= n.detected_at || '-' %></td>
           <td><span class="status s-<%= n.status === 'closed' ? 'done' : 'open' %>"><%= n.status %></span></td>

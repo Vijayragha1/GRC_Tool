@@ -7,8 +7,8 @@
 </div>
 
 <div class="panel" style="margin-bottom:14px">
-  <form method="GET" class="panel-pad" style="display:flex;gap:6px;">
-    <input class="input" name="q" value="<%= q %>" placeholder="Search…" autofocus style="font-size:14px;">
+  <form method="GET" class="panel-pad row">
+    <input class="input text-xl" name="q" value="<%= q %>" placeholder="Search…" autofocus>
     <button class="btn btn-primary">Search</button>
   </form>
 </div>
@@ -32,9 +32,9 @@
                    : '#';
     %>
       <tr style="cursor:pointer" onclick="location='<%= link %>'">
-        <td><span class="tag tag-info" style="font-size:10.5px;text-transform:uppercase;"><%= r.entity_type %></span></td>
+        <td><span class="tag tag-info text-eyebrow" style="text-transform:uppercase;"><%= r.entity_type %></span></td>
         <td><strong><%= r.title %></strong></td>
-        <td class="meta" style="max-width:580px;font-size:12.5px;"><%- (r.excerpt || '').replace(/<<(.+?)>>/g, '<mark style="background:#fffbe6;color:#854d0e;padding:0 2px;">$1</mark>') %></td>
+        <td class="meta text-md" style="max-width:580px;"><%- (r.excerpt || '').replace(/<<(.+?)>>/g, '<mark style="background:#fffbe6;color:#854d0e;padding:0 2px;">$1</mark>') %></td>
       </tr>
     <% }) %>
   </tbody>

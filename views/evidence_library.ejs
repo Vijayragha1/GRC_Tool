@@ -5,7 +5,7 @@
     <h1 class="page-title">Evidence library</h1>
     <div class="page-subtitle">Workspace-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row">
     <button class="btn btn-secondary btn-xs" type="button" onclick="document.getElementById('packDialog').showModal()">Auditor pack ↓</button>
   </div>
 </div>
@@ -14,7 +14,7 @@
 <dialog id="packDialog" style="border:1px solid var(--border);border-radius:8px;padding:0;max-width:440px;width:90vw;background:var(--bg);box-shadow:var(--shadow-xl);">
   <form method="GET" action="/workspaces/<%= ws.id %>/evidence/pack.zip" style="padding:18px;">
     <h3 style="font-size:15px;font-weight:600;margin:0 0 6px;">Export auditor evidence pack</h3>
-    <div class="meta" style="font-size:12px;line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the workspace, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
+    <div class="meta text-base" style="line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the workspace, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div><label class="label">From (optional)</label><input type="date" name="from" class="input"></div>
       <div><label class="label">To (optional)</label><input type="date" name="to" class="input"></div>
@@ -28,28 +28,27 @@
 
 <!-- Mode tabs: single upload vs bulk upload -->
 <details class="panel" style="margin-bottom:14px;" <%= (counters && counters.total === 0) ? 'open' : '' %>>
-  <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;">
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Upload evidence <span class="meta" style="font-weight:400;">- single or bulk; tick every control each file evidences.</span>
   </summary>
 
   <div style="border-top:1px solid var(--border);background:var(--bg-subtle);">
     <div style="display:flex;border-bottom:1px solid var(--border);background:var(--bg);">
-      <button type="button" class="upload-tab active" data-target="singleUploadForm" onclick="switchUploadTab(this)" style="flex:1;padding:10px 14px;border:0;background:transparent;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid var(--accent);color:var(--accent);">Single file</button>
-      <button type="button" class="upload-tab" data-target="bulkUploadForm" onclick="switchUploadTab(this)" style="flex:1;padding:10px 14px;border:0;background:transparent;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-secondary);">Bulk (many files, shared metadata)</button>
+      <button type="button" class="upload-tab active text-lg" data-target="singleUploadForm" onclick="switchUploadTab(this)" style="flex:1;padding:10px 14px;border:0;background:transparent;font-weight:500;cursor:pointer;border-bottom:2px solid var(--accent);color:var(--accent);">Single file</button>
+      <button type="button" class="upload-tab text-lg text-secondary" data-target="bulkUploadForm" onclick="switchUploadTab(this)" style="flex:1;padding:10px 14px;border:0;background:transparent;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;">Bulk (many files, shared metadata)</button>
     </div>
 
     <!-- Single upload -->
-    <form id="singleUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data"
-          class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="grid-column:1/-1;">
+    <form id="singleUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" class="panel-pad grid-2">
+      <div class="col-full">
         <label class="label">File <span class="meta">required</span></label>
-        <input type="file" name="file" required style="font-size:13px;width:100%;">
+        <input class="text-lg" type="file" name="file" required style="width:100%;">
       </div>
 
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Link to controls / clauses</label>
-        <input type="text" class="input upload-filter" placeholder="Filter… e.g., A.8.20, network, access" style="font-size:12.5px;margin-bottom:6px;" oninput="filterPicker(this)">
+        <input type="text" class="input upload-filter text-md" placeholder="Filter… e.g., A.8.20, network, access" style="margin-bottom:6px;" oninput="filterPicker(this)">
         <div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
           <% (allIsoItems || []).forEach(it => {
                const code = it.id.replace(/^annex-/,'').replace(/^clause-/,'');
@@ -64,8 +63,8 @@
           <% }) %>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-          <div class="meta pick-count-readout" style="font-size:11px;"><span class="pick-count">0</span> selected</div>
-          <button type="button" class="btn btn-ghost btn-xs" style="font-size:11px;" onclick="clearPicker(this.closest('form'))">Clear selection</button>
+          <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected</div>
+          <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
         </div>
       </div>
 
@@ -73,29 +72,29 @@
       <div><label class="label">Sub-clause / section (optional)</label><input type="text" name="clause_section" class="input" placeholder="e.g., A.5.18.b"></div>
       <div><label class="label">Valid from (optional)</label><input type="date" name="valid_from" class="input"></div>
       <div><label class="label">Valid until (optional)</label><input type="date" name="valid_until" class="input"></div>
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Tags (comma-separated, optional)</label>
         <input type="text" name="tags" class="input" placeholder="e.g., stage-2, q1-2026, audit-pack" list="evTagSuggestions">
         <datalist id="evTagSuggestions">
           <% (tagList || []).forEach(([t]) => { %><option value="<%= t %>"><% }) %>
         </datalist>
       </div>
-      <div style="grid-column:1/-1;"><label class="label">Description (optional)</label><input type="text" name="description" class="input" placeholder="What does this evidence - e.g., 'Production network topology, signed by Head of Platform'"></div>
-      <div style="grid-column:1/-1;"><button class="btn btn-primary">Upload evidence</button></div>
+      <div class="col-full"><label class="label">Description (optional)</label><input type="text" name="description" class="input" placeholder="What does this evidence - e.g., 'Production network topology, signed by Head of Platform'"></div>
+      <div class="col-full"><button class="btn btn-primary">Upload evidence</button></div>
     </form>
 
     <!-- Bulk upload - hidden by default -->
     <form id="bulkUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence/bulk" enctype="multipart/form-data"
           class="panel-pad" style="display:none;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Files (up to 50) <span class="meta">required - every selected file gets the same metadata and links</span></label>
-        <input type="file" name="files" multiple required style="font-size:13px;width:100%;">
-        <div class="meta" style="font-size:11px;margin-top:3px;">Tip: select multiple files in your file picker (Cmd-click / Ctrl-click). Hash-based dedupe is applied per file.</div>
+        <input class="text-lg" type="file" name="files" multiple required style="width:100%;">
+        <div class="meta text-xs" style="margin-top:3px;">Tip: select multiple files in your file picker (Cmd-click / Ctrl-click). Hash-based dedupe is applied per file.</div>
       </div>
 
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Link all of them to:</label>
-        <input type="text" class="input upload-filter" placeholder="Filter… e.g., A.8.20, network" style="font-size:12.5px;margin-bottom:6px;" oninput="filterPicker(this)">
+        <input type="text" class="input upload-filter text-md" placeholder="Filter… e.g., A.8.20, network" style="margin-bottom:6px;" oninput="filterPicker(this)">
         <div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
           <% (allIsoItems || []).forEach(it => {
                const code = it.id.replace(/^annex-/,'').replace(/^clause-/,'');
@@ -110,8 +109,8 @@
           <% }) %>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-          <div class="meta pick-count-readout" style="font-size:11px;"><span class="pick-count">0</span> selected</div>
-          <button type="button" class="btn btn-ghost btn-xs" style="font-size:11px;" onclick="clearPicker(this.closest('form'))">Clear selection</button>
+          <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected</div>
+          <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
         </div>
       </div>
 
@@ -119,8 +118,8 @@
       <div><label class="label">Tags (shared)</label><input type="text" name="tags" class="input" placeholder="e.g., stage-2, audit-pack" list="evTagSuggestions"></div>
       <div><label class="label">Valid from (shared)</label><input type="date" name="valid_from" class="input"></div>
       <div><label class="label">Valid until (shared)</label><input type="date" name="valid_until" class="input"></div>
-      <div style="grid-column:1/-1;"><label class="label">Description (shared)</label><input type="text" name="description" class="input" placeholder="Optional shared note for all files"></div>
-      <div style="grid-column:1/-1;"><button class="btn btn-primary">Upload all</button></div>
+      <div class="col-full"><label class="label">Description (shared)</label><input type="text" name="description" class="input" placeholder="Optional shared note for all files"></div>
+      <div class="col-full"><button class="btn btn-primary">Upload all</button></div>
     </form>
   </div>
 </details>
@@ -129,25 +128,23 @@
 <div class="panel" style="margin-bottom:10px;">
   <form method="GET" action="/workspaces/<%= ws.id %>/evidence" class="panel-pad" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
     <% function chip(key, label, count) { %>
-      <a href="/workspaces/<%= ws.id %>/evidence?filter=<%= key %><%= q ? '&q=' + encodeURIComponent(q) : '' %><%= tag ? '&tag=' + encodeURIComponent(tag) : '' %>"
-         class="<%= filter === key ? 'tag tag-accent' : 'tag tag-neutral' %>"
-         style="text-decoration:none;cursor:pointer;font-size:11.5px;padding:3px 9px;"><%= label %> <span class="num"><%= count %></span></a>
+      <a href="/workspaces/<%= ws.id %>/evidence?filter=<%= key %><%= q ? '&q=' + encodeURIComponent(q) : '' %><%= tag ? '&tag=' + encodeURIComponent(tag) : '' %>" class="<%= filter === key ? 'tag tag-accent' : 'tag tag-neutral' %> text-sm" style="text-decoration:none;cursor:pointer;padding:3px 9px;"><%= label %> <span class="num"><%= count %></span></a>
     <% } %>
     <% chip('all',      'All',           counters.total) %>
     <% chip('unlinked', 'Unlinked',      counters.unlinked) %>
     <% chip('expiring', 'Expiring soon', counters.expiring) %>
     <% chip('expired',  'Expired',       counters.expired) %>
-    <% if (counters.superseded) { %><span class="meta" style="font-size:10.5px;margin-left:4px;"><%= counters.superseded %> superseded (audit trail)</span><% } %>
+    <% if (counters.superseded) { %><span class="meta text-eyebrow" style="margin-left:4px;"><%= counters.superseded %> superseded (audit trail)</span><% } %>
     <div style="flex:1;"></div>
     <input type="hidden" name="filter" value="<%= filter %>">
     <% if (tag) { %><input type="hidden" name="tag" value="<%= tag %>"><% } %>
-    <input class="input" name="q" value="<%= q %>" placeholder="Search filename, description, period, tags…" style="max-width:280px;font-size:12.5px;">
+    <input class="input text-md" name="q" value="<%= q %>" placeholder="Search filename, description, period, tags…" style="max-width:280px;">
     <button class="btn btn-secondary btn-xs">Search</button>
     <% if (q || filter !== 'all' || tag) { %><a href="/workspaces/<%= ws.id %>/evidence" class="btn btn-ghost btn-xs">Reset</a><% } %>
   </form>
   <% if (tagList && tagList.length) { %>
     <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
-      <span class="meta" style="font-size:11px;margin-right:4px;">Tags:</span>
+      <span class="meta text-xs" style="margin-right:4px;">Tags:</span>
       <% tagList.forEach(([t, c]) => {
            const isActive = tag === t;
            const params = new URLSearchParams();
@@ -156,7 +153,7 @@
            if (!isActive) params.set('tag', t);
            const href = '/workspaces/' + ws.id + '/evidence' + (params.toString() ? '?' + params.toString() : '');
       %>
-        <a href="<%= href %>" class="<%= isActive ? 'tag tag-accent' : 'tag tag-neutral' %>" style="font-size:11px;padding:2px 8px;text-decoration:none;cursor:pointer;"><%= t %> <span class="num"><%= c %></span></a>
+        <a href="<%= href %>" class="<%= isActive ? 'tag tag-accent' : 'tag tag-neutral' %> text-xs" style="padding:2px 8px;text-decoration:none;cursor:pointer;"><%= t %> <span class="num"><%= c %></span></a>
       <% }) %>
     </div>
   <% } %>
@@ -192,83 +189,130 @@
           <div style="display:flex;align-items:flex-start;gap:10px;justify-content:space-between;">
             <div style="flex:1;min-width:0;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download"
-                   style="font-size:14px;font-weight:600;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--border-strong);">
+                <a class="text-xl text-ink" href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="font-weight:600;text-decoration:none;border-bottom:1px solid var(--border-strong);">
                   <%= e.filename %>
                 </a>
                 <% if (badgeLabel) { %><span style="font-size:9.5px;font-weight:700;color:white;background:<%= badgeColor %>;padding:1.5px 6px;border-radius:3px;letter-spacing:0.04em;"><%= badgeLabel %></span><% } %>
-                <% if (e.clause_section) { %><span class="mono meta" style="font-size:10.5px;background:var(--bg-subtle);padding:1px 5px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
-                <span class="meta" style="font-size:10.5px;">×<%= e.link_count %> link<%= e.link_count === 1 ? '' : 's' %></span>
+                <% if (e.clause_section) { %><span class="mono meta text-eyebrow" style="background:var(--bg-subtle);padding:1px 5px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
+                <%
+                  const xl = (typeof crossLinksByEvidence !== 'undefined' && crossLinksByEvidence[e.id]) || { iso27001: [], iso42001: [], csf: [] };
+                  const isoN = xl.iso27001.length, aiN = xl.iso42001.length, csfN = xl.csf.length;
+                  const totalN = isoN + aiN + csfN;
+                %>
+                <% if (totalN === 0) { %>
+                  <span class="meta text-eyebrow">unlinked</span>
+                <% } else { %>
+                  <span class="meta text-eyebrow" title="Total link count across all frameworks">×<%= totalN %> link<%= totalN === 1 ? '' : 's' %></span>
+                  <% if (isoN > 0) { %><span class="tag tag-info text-xxs" title="ISO 27001 controls / clauses"><%= isoN %> ISO 27001</span><% } %>
+                  <% if (aiN > 0) { %><span class="tag tag-info text-xxs" style="background:rgba(8,145,178,0.12);color:#0e7490;border-color:rgba(8,145,178,0.25);" title="ISO 42001 controls / clauses"><%= aiN %> ISO 42001</span><% } %>
+                  <% if (csfN > 0) { %><span class="tag tag-info text-xxs" style="background:rgba(124,58,237,0.12);color:#6d28d9;border-color:rgba(124,58,237,0.25);" title="NIST CSF subcategories"><%= csfN %> CSF</span><% } %>
+                <% } %>
                 <% if (e.supersedes_id && e.superseded_filename) { %>
-                  <span class="tag tag-info" style="font-size:10px;" title="This file replaced an earlier version">supersedes <%= e.superseded_filename %></span>
+                  <span class="tag tag-info text-xxs" title="This file replaced an earlier version">supersedes <%= e.superseded_filename %></span>
                 <% } %>
               </div>
-              <div class="meta" style="font-size:11.5px;margin-top:3px;">
+              <div class="meta text-sm" style="margin-top:3px;">
                 <%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %>
                 <% if (e.period_label) { %> · period <%= e.period_label %><% } %>
                 <% if (e.valid_from) { %> · from <%= e.valid_from %><% } %>
                 <% if (e.valid_until) { %> · until <%= e.valid_until %><% } %>
-                <span class="mono" style="font-size:10px;color:var(--text-tertiary);"> · sha <%= (e.sha256 || '').slice(0, 10) %></span>
+                <span class="mono text-xxs text-tertiary"> · sha <%= (e.sha256 || '').slice(0, 10) %></span>
               </div>
               <% if (e.description) { %>
-                <div style="font-size:12.5px;margin-top:4px;color:var(--text);"><%= e.description %></div>
+                <div class="text-md" style="margin-top:4px;"><%= e.description %></div>
               <% } %>
               <% if (fileTags.length) { %>
                 <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px;">
-                  <% fileTags.forEach(t => { %><a href="/workspaces/<%= ws.id %>/evidence?tag=<%= encodeURIComponent(t) %>" class="tag tag-info" style="font-size:10px;padding:1px 6px;text-decoration:none;"><%= t %></a><% }) %>
+                  <% fileTags.forEach(t => { %><a href="/workspaces/<%= ws.id %>/evidence?tag=<%= encodeURIComponent(t) %>" class="tag tag-info text-xxs" style="padding:1px 6px;text-decoration:none;"><%= t %></a><% }) %>
                 </div>
               <% } %>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
               <details style="position:relative;">
-                <summary class="btn btn-ghost btn-xs" style="font-size:11px;list-style:none;cursor:pointer;">Replace…</summary>
+                <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Replace…</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/supersede" enctype="multipart/form-data"
                       style="position:absolute;right:0;top:100%;width:340px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;z-index:30;box-shadow:var(--shadow-lg);margin-top:4px;">
-                  <div class="meta" style="font-size:11.5px;line-height:1.4;margin-bottom:8px;">Upload a new version. The old file becomes superseded (kept for audit trail) and all links migrate to the new version.</div>
-                  <input type="file" name="file" required style="font-size:12px;width:100%;margin-bottom:8px;">
+                  <div class="meta text-sm" style="line-height:1.4;margin-bottom:8px;">Upload a new version. The old file becomes superseded (kept for audit trail) and all links migrate to the new version.</div>
+                  <input class="text-base" type="file" name="file" required style="width:100%;margin-bottom:8px;">
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-                    <input type="text" name="period_label" class="input" placeholder="Period" style="font-size:12px;">
-                    <input type="date" name="valid_until" class="input" style="font-size:12px;">
+                    <input type="text" name="period_label" class="input text-base" placeholder="Period">
+                    <input type="date" name="valid_until" class="input text-base">
                   </div>
-                  <input type="text" name="tags" class="input" placeholder="Tags (comma-separated)" style="font-size:12px;margin-bottom:8px;">
-                  <input type="text" name="description" class="input" placeholder="What changed in this version" style="font-size:12px;margin-bottom:8px;">
+                  <input type="text" name="tags" class="input text-base" placeholder="Tags (comma-separated)" style="margin-bottom:8px;">
+                  <input type="text" name="description" class="input text-base" placeholder="What changed in this version" style="margin-bottom:8px;">
                   <button class="btn btn-primary btn-xs" style="width:100%;">Replace with new version</button>
                 </form>
               </details>
               <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete"
                     onsubmit="return appConfirmForm(event, 'Delete this evidence file? This removes it from every control it\\'s linked to. Use Replace instead if you have a newer version.')">
-                <button class="btn btn-ghost btn-xs" style="font-size:11px;color:#b91c1c;">Delete</button>
+                <button class="btn btn-ghost btn-xs text-xs text-danger">Delete</button>
               </form>
             </div>
           </div>
 
           <!-- Linked controls chips with per-link section_ref -->
           <% if (links.length === 0) { %>
-            <div class="meta" style="font-size:11.5px;margin-top:8px;font-style:italic;">Not linked to any control. Use the picker below to attach.</div>
+            <div class="meta text-sm" style="margin-top:8px;font-style:italic;">Not linked to any control. Use the picker below to attach.</div>
           <% } else { %>
             <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">
               <% links.forEach(l => {
                    const code = l.iso_item_id.replace(/^annex-/,'').replace(/^clause-/,'').toUpperCase();
                    const label = l.iso_title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
               %>
-                <span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:14px;padding:2px 4px 2px 9px;font-size:11.5px;">
-                  <a href="/workspaces/<%= ws.id %>/controls/<%= l.iso_item_id %>" style="color:var(--text);text-decoration:none;" title="<%= l.iso_title %>">
-                    <span class="mono meta" style="font-size:10.5px;margin-right:4px;"><%= code %></span><%= label %>
+                <span class="text-sm" style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:14px;padding:2px 4px 2px 9px;">
+                  <a href="/workspaces/<%= ws.id %>/controls/<%= l.iso_item_id %>" style="text-decoration:none;" title="<%= l.iso_title %>">
+                    <span class="mono meta text-eyebrow" style="margin-right:4px;"><%= code %></span><%= label %>
                   </a>
                   <% if (l.section_ref) { %>
-                    <span class="mono" style="font-size:10px;color:var(--accent-deep);background:var(--accent-soft);padding:0 4px;border-radius:3px;" title="Per-link section reference">§<%= l.section_ref %></span>
+                    <span class="mono text-xxs" style="color:var(--accent-deep);background:var(--accent-soft);padding:0 4px;border-radius:3px;" title="Per-link section reference">§<%= l.section_ref %></span>
                   <% } %>
                   <details style="margin:0;">
-                    <summary style="cursor:pointer;font-size:10px;color:var(--text-tertiary);list-style:none;padding:0 2px;" title="Set per-link section reference">§</summary>
+                    <summary class="text-xxs text-tertiary" style="cursor:pointer;list-style:none;padding:0 2px;" title="Set per-link section reference">§</summary>
                     <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/controls/<%= l.link_id %>/section"
                           style="position:absolute;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;z-index:25;box-shadow:var(--shadow-md);display:flex;gap:4px;">
-                      <input type="text" name="section_ref" value="<%= l.section_ref || '' %>" class="input" placeholder="e.g., 4.1.b" style="font-size:11.5px;width:100px;">
-                      <button class="btn btn-primary btn-xs" style="font-size:10.5px;">Save</button>
+                      <input type="text" name="section_ref" value="<%= l.section_ref || '' %>" class="input text-sm" placeholder="e.g., 4.1.b" style="width:100px;">
+                      <button class="btn btn-primary btn-xs text-eyebrow">Save</button>
                     </form>
                   </details>
                   <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/controls/<%= l.link_id %>/delete"
                         style="display:inline;margin:0;" title="Remove link">
-                    <button type="submit" style="background:none;border:none;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+                    <button class="text-tertiary text-lg" type="submit" style="background:none;border:none;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+                  </form>
+                </span>
+              <% }) %>
+            </div>
+          <% } %>
+
+          <!-- Cross-framework chips: ISO 42001 + CSF links rendered as their
+               own coloured pill rows so the framework is visually obvious. -->
+          <% if (xl.iso42001.length > 0) { %>
+            <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+              <span class="text-eyebrow text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">ISO 42001</span>
+              <% xl.iso42001.forEach(l => {
+                   const code = (l.item_ref || '').replace(/^ai-/,'').toUpperCase();
+                   const label = (l.iso42001_title || '').replace(/^[\d.]+\s+/,'');
+              %>
+                <span class="text-sm" style="display:inline-flex;align-items:center;gap:4px;background:rgba(8,145,178,0.08);border:1px solid rgba(8,145,178,0.25);border-radius:14px;padding:2px 4px 2px 9px;">
+                  <span class="mono meta text-eyebrow" style="margin-right:2px;"><%= code %></span>
+                  <span><%= label %></span>
+                  <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/links/<%= l.link_id %>/delete"
+                        style="display:inline;margin:0;" title="Remove ISO 42001 link">
+                    <button class="text-tertiary text-lg" type="submit" style="background:none;border:none;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+                  </form>
+                </span>
+              <% }) %>
+            </div>
+          <% } %>
+          <% if (xl.csf.length > 0) { %>
+            <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+              <span class="text-eyebrow text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">NIST CSF</span>
+              <% xl.csf.forEach(l => { %>
+                <span class="text-sm" style="display:inline-flex;align-items:center;gap:4px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.25);border-radius:14px;padding:2px 4px 2px 9px;">
+                  <span class="mono meta text-eyebrow" style="margin-right:2px;"><%= l.item_ref %></span>
+                  <span><%= (l.csf_description || '').slice(0, 80) %></span>
+                  <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/links/<%= l.link_id %>/delete"
+                        style="display:inline;margin:0;" title="Remove CSF link">
+                    <button class="text-tertiary text-lg" type="submit" style="background:none;border:none;cursor:pointer;padding:0 4px;line-height:1;">×</button>
                   </form>
                 </span>
               <% }) %>
@@ -277,10 +321,10 @@
 
           <!-- Add more links -->
           <details style="margin-top:8px;">
-            <summary class="meta" style="cursor:pointer;font-size:11.5px;color:var(--accent);">+ Add more controls / clauses</summary>
+            <summary class="meta text-sm" style="cursor:pointer;color:var(--accent);">+ Add more controls / clauses</summary>
             <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/controls"
                   style="margin-top:6px;padding:8px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;">
-              <input type="text" class="input ev-row-filter" placeholder="Filter… e.g., A.8.20, network" style="font-size:12px;margin-bottom:6px;" oninput="filterRowList(this)">
+              <input type="text" class="input ev-row-filter text-base" placeholder="Filter… e.g., A.8.20, network" style="margin-bottom:6px;" oninput="filterRowList(this)">
               <div class="ev-row-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;background:var(--bg);padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;">
                 <% const linkedSet = new Set(links.map(l => l.iso_item_id)); %>
                 <% (allIsoItems || []).forEach(it => {
@@ -290,17 +334,74 @@
                 %>
                   <label class="ev-row-pick" data-search="<%= (code + ' ' + label).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:3px;cursor:pointer;font-size:11.5px;">
                     <input type="checkbox" name="iso_item_id" value="<%= it.id %>" style="margin:0;flex-shrink:0;">
-                    <span class="mono meta" style="font-size:10px;min-width:46px;"><%= code.toUpperCase() %></span>
+                    <span class="mono meta text-xxs" style="min-width:46px;"><%= code.toUpperCase() %></span>
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
                   </label>
                 <% }) %>
               </div>
               <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
-                <input type="text" name="section_ref" placeholder="Section ref (optional, applied to each new link)" class="input" style="font-size:12px;flex:1;">
+                <input type="text" name="section_ref" placeholder="Section ref (optional, applied to each new link)" class="input text-base" style="flex:1;">
                 <button class="btn btn-primary btn-xs">Add links</button>
               </div>
             </form>
           </details>
+
+          <% if (ws.frameworks && ws.frameworks.includes('iso42001') && (allIso42001Items || []).length) { %>
+            <details style="margin-top:6px;">
+              <summary class="meta text-sm" style="cursor:pointer;color:#0e7490;">+ Link to ISO 42001 controls / clauses</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/links"
+                    style="margin-top:6px;padding:8px;background:rgba(8,145,178,0.04);border:1px solid rgba(8,145,178,0.20);border-radius:6px;">
+                <input type="hidden" name="framework" value="iso42001">
+                <input type="text" class="input ev-row-filter text-base" placeholder="Filter ISO 42001… e.g., AI risk, training" style="margin-bottom:6px;" oninput="filterRowList(this)">
+                <div class="ev-row-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;background:var(--bg);padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;">
+                  <% const aiLinkedSet = new Set(xl.iso42001.map(l => l.item_ref)); %>
+                  <% allIso42001Items.forEach(it => {
+                       if (aiLinkedSet.has(it.id)) return;
+                       const code = (it.id || '').replace(/^ai-/,'');
+                       const label = (it.title || '').replace(/^[\d.]+\s+/,'');
+                  %>
+                    <label class="ev-row-pick" data-search="<%= (code + ' ' + label).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:3px;cursor:pointer;font-size:11.5px;">
+                      <input type="checkbox" name="item_ref" value="<%= it.id %>" style="margin:0;flex-shrink:0;">
+                      <span class="mono meta text-xxs" style="min-width:46px;"><%= code.toUpperCase() %></span>
+                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
+                    </label>
+                  <% }) %>
+                </div>
+                <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+                  <input type="text" name="section_ref" placeholder="Section ref (optional)" class="input text-base" style="flex:1;">
+                  <button class="btn btn-primary btn-xs">Link to ISO 42001</button>
+                </div>
+              </form>
+            </details>
+          <% } %>
+
+          <% if (ws.frameworks && ws.frameworks.includes('csf') && (allCsfSubcats || []).length) { %>
+            <details style="margin-top:6px;">
+              <summary class="meta text-sm" style="cursor:pointer;color:#6d28d9;">+ Link to NIST CSF subcategories</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/links"
+                    style="margin-top:6px;padding:8px;background:rgba(124,58,237,0.04);border:1px solid rgba(124,58,237,0.20);border-radius:6px;">
+                <input type="hidden" name="framework" value="csf">
+                <input type="text" class="input ev-row-filter text-base" placeholder="Filter CSF… e.g., GV.OC, identity" style="margin-bottom:6px;" oninput="filterRowList(this)">
+                <div class="ev-row-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;background:var(--bg);padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:1px 10px;">
+                  <% const csfLinkedSet = new Set(xl.csf.map(l => l.item_ref)); %>
+                  <% allCsfSubcats.forEach(sc => {
+                       if (csfLinkedSet.has(sc.code)) return;
+                       const label = (sc.description || '').slice(0, 60);
+                  %>
+                    <label class="ev-row-pick" data-search="<%= (sc.code + ' ' + (sc.description || '')).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:3px;cursor:pointer;font-size:11.5px;">
+                      <input type="checkbox" name="item_ref" value="<%= sc.code %>" style="margin:0;flex-shrink:0;">
+                      <span class="mono meta text-xxs" style="min-width:62px;"><%= sc.code %></span>
+                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
+                    </label>
+                  <% }) %>
+                </div>
+                <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+                  <input type="text" name="section_ref" placeholder="Section ref (optional)" class="input text-base" style="flex:1;">
+                  <button class="btn btn-primary btn-xs">Link to CSF</button>
+                </div>
+              </form>
+            </details>
+          <% } %>
         </div>
       <% }) %>
     </div>

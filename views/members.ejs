@@ -15,12 +15,12 @@
       <% members.forEach(m => { %>
         <tr>
           <td style="font-weight:500"><%= m.name %></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= m.email %></td>
+          <td class="text-secondary text-base"><%= m.email %></td>
           <td><span class="tag <%= m.user_type === 'firm' ? 'tag-info' : 'tag-success' %>"><%= m.user_type %></span></td>
           <td><span class="tag tag-neutral"><%= m.role.replace(/_/g, ' ') %></span></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/members/<%= m.id %>/remove" onsubmit="return appConfirmForm(event, 'Remove?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Remove</button>
+              <button class="btn btn-ghost btn-xs text-danger">Remove</button>
             </form>
           </td>
         </tr>
@@ -48,7 +48,7 @@
 
 <div class="panel">
   <div class="panel-head"><h2>Invite a client user</h2><span class="meta">Creates an account scoped to this workspace</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/members/client" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/members/client" class="panel-pad grid-2">
     <div><label class="label">Name</label><input class="input" name="name" required></div>
     <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
     <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>
@@ -59,7 +59,7 @@
         <option value="reviewer">Reviewer (read-only)</option>
       </select>
     </div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Invite</button></div>
+    <div class="col-full"><button class="btn btn-primary">Invite</button></div>
   </form>
 </div>
 

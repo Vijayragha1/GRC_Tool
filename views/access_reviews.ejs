@@ -1,11 +1,11 @@
 <%- include('partials/header', { title: 'Access reviews', user, ws, active: 'access' }) %>
 
-<a href="/workspaces/<%= ws.id %>/access" class="link-muted" style="font-size:12px;">← Access &amp; permissions</a>
+<a href="/workspaces/<%= ws.id %>/access" class="link-muted text-base">← Access &amp; permissions</a>
 
 <div class="page-head" style="margin-top:8px">
   <div><h1 class="page-title">Access reviews</h1>
     <div class="page-subtitle">A.5.18: review user access at planned intervals. Each review snapshots the current member list and lets reviewers attest, modify, or remove.</div></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/access-reviews" style="display:flex;gap:6px;align-items:center;">
+  <form class="row-center" method="POST" action="/workspaces/<%= ws.id %>/access-reviews">
     <input class="input" name="reviewer" placeholder="Reviewer">
     <button class="btn btn-primary btn-xs">Open new review</button>
   </form>

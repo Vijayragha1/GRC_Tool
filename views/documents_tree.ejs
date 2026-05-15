@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Documents - tree', user, ws, active: 'documents' }) %>
 
-<a href="/workspaces/<%= ws.id %>/documents" class="link-muted" style="font-size:12px;">← All documents</a>
+<a href="/workspaces/<%= ws.id %>/documents" class="link-muted text-base">← All documents</a>
 
 <div class="page-head" style="margin-top:8px">
   <div><h1 class="page-title">Document hierarchy</h1>
@@ -14,7 +14,7 @@
     let html = '';
     const list = byParent[parentId] || [];
     list.forEach(d => {
-      html += `<div style="padding:8px 16px;padding-left:${16 + depth * 24}px;border-bottom:1px solid var(--border);"><a href="/workspaces/${ws.id}/documents/${d.id}" class="link-muted" style="color:var(--text);font-weight:500;">${d.name}</a> <span class="tag tag-neutral" style="font-size:10.5px;">${d.doc_kind || d.category || '-'}</span> ${d.reference_code ? '<span class="meta mono" style="font-size:11px;">'+d.reference_code+'</span>' : ''} <span class="tag ${d.status === 'published' || d.status === 'approved' ? 'tag-success' : d.status === 'in_review' ? 'tag-warn' : 'tag-neutral'}" style="font-size:10.5px;">${d.status}</span></div>`;
+      html += `<div style="padding:8px 16px;padding-left:${16 + depth * 24}px;border-bottom:1px solid var(--border);"><a href="/workspaces/${ws.id}/documents/${d.id}" class="link-muted" style="font-weight:500;">${d.name}</a> <span class="tag tag-neutral text-eyebrow">${d.doc_kind || d.category || '-'}</span> ${d.reference_code ? '<span class="meta mono text-xs">'+d.reference_code+'</span>' : ''} <span class="tag ${d.status === 'published' || d.status === 'approved' ? 'tag-success' : d.status === 'in_review' ? 'tag-warn' : 'tag-neutral'} text-eyebrow">${d.status}</span></div>`;
       html += render(d.id, depth + 1);
     });
     return html;

@@ -5,7 +5,7 @@
     <h1 class="page-title">Risks</h1>
     <div class="page-subtitle">Customize the likelihood scale, impact scale, and risk matrix used across the risk register. Saving a new methodology activates it for all subsequent scoring; existing risk scores are kept as-is until re-assessed.</div>
   </div>
-  <div style="display:flex;gap:6px;align-items:center;">
+  <div class="row-center">
     <%
       // Each preset gets a one-line "what is this and when do you pick it"
       // hint so a junior consultant doesn't have to Google four standards
@@ -25,12 +25,12 @@
     <details style="position:relative;">
       <summary class="btn btn-secondary btn-xs">Apply preset</summary>
       <div style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:5;box-shadow:var(--shadow-lg);min-width:340px;max-width:380px;">
-        <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-secondary);line-height:1.45;">Replaces the current methodology with one of four standard templates. <strong>Existing risk scores are kept as-is until re-assessed.</strong></div>
+        <div class="text-xs text-secondary" style="padding:8px 10px;border-bottom:1px solid var(--border);line-height:1.45;">Replaces the current methodology with one of four standard templates. <strong>Existing risk scores are kept as-is until re-assessed.</strong></div>
         <% presets.forEach(p => { %>
           <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= p.key %>" style="margin:0;" onsubmit="return appConfirmForm(event, 'Apply the <%= p.label %> preset? This replaces likelihood / impact scales and the matrix bands; existing risk scores are not recalculated.');">
             <button class="btn btn-ghost btn-xs" style="width:100%;text-align:left;justify-content:flex-start;align-items:flex-start;flex-direction:column;padding:10px 12px;line-height:1.4;height:auto;">
-              <span style="font-weight:600;font-size:12.5px;"><%= p.label %></span>
-              <span style="font-size:11px;color:var(--text-secondary);font-weight:400;margin-top:3px;white-space:normal;"><%= p.desc %></span>
+              <span class="text-md" style="font-weight:600;"><%= p.label %></span>
+              <span class="text-xs text-secondary" style="font-weight:400;margin-top:3px;white-space:normal;"><%= p.desc %></span>
             </button>
           </form>
         <% }) %>

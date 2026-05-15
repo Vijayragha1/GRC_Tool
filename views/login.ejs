@@ -4,13 +4,13 @@
   <div class="panel panel-pad">
     <div style="margin-bottom:20px">
       <div style="font-size:20px;font-weight:600;letter-spacing:-0.015em;">ISMS</div>
-      <div style="font-size:13px;color:var(--text-secondary);margin-top:2px;">
+      <div class="text-lg text-secondary" style="margin-top:2px;">
         <%= mode === 'register' ? 'Create your firm account' : 'Sign in to your workspace' %>
       </div>
     </div>
 
     <% if (error) { %>
-      <div class="tag tag-danger" style="display:block;padding:8px 10px;margin-bottom:14px;font-size:12px;border-radius:6px;"><%= error %></div>
+      <div class="tag tag-danger text-base" style="display:block;padding:8px 10px;margin-bottom:14px;border-radius:6px;"><%= error %></div>
     <% } %>
 
     <% if (mode === 'register') { %>
@@ -21,14 +21,14 @@
         <div><label class="label">Password</label><input class="input" name="password" type="password" minlength="8" required><div class="meta" style="margin-top:4px;">Minimum 8 characters</div></div>
         <button class="btn btn-primary" style="justify-content:center;width:100%;margin-top:4px;">Create firm account</button>
       </form>
-      <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-secondary);">Have an account? <a href="/login" class="link-muted" style="color:var(--text);font-weight:500;">Sign in</a></div>
+      <div class="text-lg text-secondary" style="text-align:center;margin-top:16px;">Have an account? <a href="/login" class="link-muted" style="font-weight:500;">Sign in</a></div>
     <% } else { %>
       <form method="POST" action="/login" class="grid-list" style="gap:12px;">
         <div><label class="label">Email</label><input class="input" name="email" type="email" required autofocus></div>
         <div><label class="label">Password</label><input class="input" name="password" type="password" required></div>
         <button class="btn btn-primary" style="justify-content:center;width:100%;margin-top:4px;">Sign in</button>
       </form>
-      <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-secondary);">New consulting firm? <a href="/register" class="link-muted" style="color:var(--text);font-weight:500;">Register</a></div>
+      <div class="text-lg text-secondary" style="text-align:center;margin-top:16px;">New consulting firm? <a href="/register" class="link-muted" style="font-weight:500;">Register</a></div>
     <% } %>
   </div>
 </div>

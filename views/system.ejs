@@ -7,8 +7,8 @@
 
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-    <div><div class="meta">Master key fingerprint</div><div class="mono" style="font-weight:600;font-size:14px;"><%= masterFp %></div></div>
-    <div><div class="meta">Backup retention</div><div style="font-weight:600;font-size:14px;">Last <%= backups.length %> backups</div></div>
+    <div><div class="meta">Master key fingerprint</div><div class="mono text-xl" style="font-weight:600;"><%= masterFp %></div></div>
+    <div><div class="meta">Backup retention</div><div class="text-xl" style="font-weight:600;">Last <%= backups.length %> backups</div></div>
   </div>
 </div>
 
@@ -30,7 +30,7 @@
   <div class="panel-head"><h2>Master key rotation</h2></div>
   <div class="panel-pad" style="border-bottom:1px solid var(--border);">
     <div class="callout" style="margin-bottom:12px;background:rgba(202,138,4,0.06);border-color:#ca8a04;">
-      <div class="callout-title" style="color:#a16207;">Heavy operation</div>
+      <div class="callout-title text-warn">Heavy operation</div>
       Rotates the master encryption key. Re-encrypts every encrypted column under the new key inside one transaction. Old key fingerprint is logged. Backups taken before rotation will not decrypt under the new key - back up first if you need recoverability across the rotation.
     </div>
     <form method="POST" action="/workspaces/<%= ws.id %>/system/rotate-key" onsubmit="return appConfirmForm(event, 'Rotate master key now? This re-encrypts all data.')">

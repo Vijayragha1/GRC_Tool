@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: risk.title, user, ws, active: 'risks' }) %>
 
-<a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px;">← All risks</a>
+<a href="/workspaces/<%= ws.id %>/risks" class="link-muted text-base">← All risks</a>
 
 <%
   const lScale = methodology.likelihood_scale;
@@ -27,12 +27,12 @@
           <span class="meta">L<%= risk.residual_likelihood %> · I<%= risk.residual_impact %></span>
         </div>
       <% } %>
-      <div style="margin-left:auto;"><a href="/workspaces/<%= ws.id %>/risk-methodology" class="link-muted" style="font-size:12px;color:var(--accent);">Methodology: <%= methodology.name %></a></div>
+      <div style="margin-left:auto;"><a href="/workspaces/<%= ws.id %>/risk-methodology" class="link-muted text-base" style="color:var(--accent);">Methodology: <%= methodology.name %></a></div>
     </div>
   </div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= risk.title %>" required></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= risk.description || '' %></textarea></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= risk.title %>" required></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= risk.description || '' %></textarea></div>
     <div><label class="label">Asset</label>
       <select class="select" name="asset_id">
         <option value="">- none -</option>
@@ -72,7 +72,7 @@
         <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.residual_impact===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
       </select>
     </div>
-    <div style="grid-column:1/-1;display:flex;gap:6px;">
+    <div class="col-full row">
       <button class="btn btn-primary">Save</button>
       <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="btn btn-secondary">Treatment plan →</a>
       <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this risk?')" style="display:inline">
@@ -96,13 +96,13 @@
         <div style="font-size:28px;font-weight:600;color:<%= ihColor %>;"><%= inherentScore %></div>
         <div class="meta">L<%= risk.likelihood %> · I<%= risk.impact %></div>
       </div>
-      <div style="font-size:24px;color:var(--text-tertiary);">→</div>
+      <div class="text-tertiary" style="font-size:24px;">→</div>
       <div style="text-align:center;padding:14px;background:#eef2ff;border-radius:8px;border:1px dashed var(--accent);">
         <div class="meta">Controls applied</div>
         <div style="font-size:18px;font-weight:600;color:var(--accent);"><%= reduction > 0 ? '−' : '+' %><%= Math.abs(reduction) %></div>
         <div class="meta"><%= pctReduction %>% reduction</div>
       </div>
-      <div style="font-size:24px;color:var(--text-tertiary);">→</div>
+      <div class="text-tertiary" style="font-size:24px;">→</div>
       <div style="text-align:center;padding:14px;background:<%= resColor %>1a;border-radius:8px;">
         <div class="meta">Residual</div>
         <div style="font-size:28px;font-weight:600;color:<%= resColor %>;"><%= residualScore %></div>
@@ -118,11 +118,11 @@
   <% if (linked.length) { %>
     <div class="divide-row">
       <% linked.forEach(c => { %>
-        <div style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
-          <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted" style="color:var(--text);"><%= c.title %></a>
+        <div class="text-lg" style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
+          <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted"><%= c.title %></a>
           <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/unlink">
             <input type="hidden" name="iso_item_id" value="<%= c.id %>">
-            <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Unlink</button>
+            <button class="btn btn-ghost btn-xs text-danger">Unlink</button>
           </form>
         </div>
       <% }) %>
@@ -147,12 +147,12 @@
 %>
 <div class="panel" style="margin-top:18px;">
   <div class="panel-head">
-    <h2>Treatment plan actions <span class="meta" style="font-weight:400;font-size:13px;">· Clause 6.1.3</span></h2>
-    <span class="meta"><strong style="color:var(--text);"><%= openActions %></strong> open · <%= doneActions %> done · <%= acts.length %> total</span>
+    <h2>Treatment plan actions <span class="meta text-lg" style="font-weight:400;">· Clause 6.1.3</span></h2>
+    <span class="meta"><strong><%= openActions %></strong> open · <%= doneActions %> done · <%= acts.length %> total</span>
   </div>
 
   <% if (acts.length === 0) { %>
-    <div class="panel-pad meta" style="font-size:12.5px;">
+    <div class="panel-pad meta text-md">
       No actions yet. The treatment plan turns "we'll modify this risk" into a tracked workflow with owners and dates - what an auditor expects for clause 6.1.3.
     </div>
   <% } else { %>
@@ -172,8 +172,8 @@
         %>
           <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/actions/<%= a.id %>" class="contents">
             <tr>
-              <td><input type="text" name="title" value="<%= a.title %>" class="input" style="font-size:12.5px;" required></td>
-              <td><input type="text" name="owner_name" value="<%= a.owner_name || '' %>" class="input" style="font-size:12.5px;" placeholder="-"></td>
+              <td><input type="text" name="title" value="<%= a.title %>" class="input text-md" required></td>
+              <td><input type="text" name="owner_name" value="<%= a.owner_name || '' %>" class="input text-md" placeholder="-"></td>
               <td><input type="date" name="due_date" value="<%= a.due_date || '' %>" class="input" style="font-size:12px;<%= overdue ? 'border-color:#b91c1c;color:#b91c1c;' : '' %>"></td>
               <td>
                 <select name="status" class="select" style="font-size:12px;color:<%= sev %>;font-weight:600;">
@@ -183,10 +183,10 @@
                 </select>
               </td>
               <td style="display:flex;gap:3px;">
-                <input type="number" name="residual_likelihood" value="<%= a.residual_likelihood || '' %>" min="1" max="5" class="input" style="width:48%;font-size:12px;" placeholder="L">
-                <input type="number" name="residual_impact" value="<%= a.residual_impact || '' %>" min="1" max="5" class="input" style="width:48%;font-size:12px;" placeholder="I">
+                <input type="number" name="residual_likelihood" value="<%= a.residual_likelihood || '' %>" min="1" max="5" class="input text-base" style="width:48%;" placeholder="L">
+                <input type="number" name="residual_impact" value="<%= a.residual_impact || '' %>" min="1" max="5" class="input text-base" style="width:48%;" placeholder="I">
               </td>
-              <td><button class="btn btn-ghost btn-xs" style="font-size:11px;">Save</button></td>
+              <td><button class="btn btn-ghost btn-xs text-xs">Save</button></td>
             </tr>
           </form>
         <% }) %>
@@ -212,7 +212,7 @@
 %>
 <div class="panel" style="margin-top:18px;">
   <div class="panel-head">
-    <h2>Risk acceptance <span class="meta" style="font-weight:400;font-size:13px;">· Clause 6.1.3 e</span></h2>
+    <h2>Risk acceptance <span class="meta text-lg" style="font-weight:400;">· Clause 6.1.3 e</span></h2>
     <% if (acc) { %>
       <span class="meta">
         Accepted by <strong><%= acc.accepter_name %></strong>
@@ -228,15 +228,15 @@
     <div class="panel-pad" style="background:<%= accExpired ? 'rgba(185,28,28,0.04)' : accExpiringSoon ? 'rgba(161,98,7,0.04)' : 'rgba(22,163,74,0.04)' %>;">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
         <span style="font-size:9.5px;font-weight:700;color:white;background:<%= sevColor %>;padding:2px 7px;border-radius:3px;letter-spacing:0.05em;"><%= sevLabel %></span>
-        <span class="meta" style="font-size:12px;">Signed <%= acc.signed_at %></span>
+        <span class="meta text-base">Signed <%= acc.signed_at %></span>
       </div>
-      <% if (acc.accepter_role) { %><div class="meta" style="font-size:12px;"><strong>Role:</strong> <%= acc.accepter_role %></div><% } %>
-      <div class="meta" style="font-size:12.5px;margin-top:6px;line-height:1.55;"><strong>Rationale:</strong> <%= acc.rationale %></div>
-      <div class="meta" style="font-size:11px;margin-top:6px;font-family:monospace;">Residual score at acceptance: <%= acc.residual_score %> · Signature: <%= acc.signature.slice(0,20) %>…</div>
+      <% if (acc.accepter_role) { %><div class="meta text-base"><strong>Role:</strong> <%= acc.accepter_role %></div><% } %>
+      <div class="meta text-md" style="margin-top:6px;line-height:1.55;"><strong>Rationale:</strong> <%= acc.rationale %></div>
+      <div class="meta text-xs" style="margin-top:6px;font-family:monospace;">Residual score at acceptance: <%= acc.residual_score %> · Signature: <%= acc.signature.slice(0,20) %>…</div>
       <div style="margin-top:10px;display:flex;gap:6px;">
         <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances" class="btn btn-secondary btn-xs">View acceptance history →</a>
         <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= acc.id %>/revoke" onsubmit="return appConfirmForm(event, 'Revoke this acceptance? Risk will return to open.')" style="display:inline;">
-          <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Revoke</button>
+          <button class="btn btn-ghost btn-xs text-danger">Revoke</button>
         </form>
       </div>
     </div>
@@ -246,22 +246,22 @@
     <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/accept" class="panel-pad" style="<%= acc ? 'border-top:1px solid var(--border);' : '' %>display:grid;grid-template-columns:1fr 1fr 140px;gap:10px;align-items:start;">
       <div>
         <label class="label">Accepter name</label>
-        <input class="input" name="accepter_name" required placeholder="Person formally accepting" style="font-size:12.5px;">
+        <input class="input text-md" name="accepter_name" required placeholder="Person formally accepting">
       </div>
       <div>
         <label class="label">Role / authority</label>
-        <input class="input" name="accepter_role" placeholder="e.g., CISO, Risk Owner" style="font-size:12.5px;">
+        <input class="input text-md" name="accepter_role" placeholder="e.g., CISO, Risk Owner">
       </div>
       <div>
         <label class="label">Expires on <span class="meta">re-accept by this date</span></label>
-        <input class="input" type="date" name="expires_at" required style="font-size:12.5px;">
+        <input class="input text-md" type="date" name="expires_at" required>
       </div>
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Rationale <span class="meta">why is this residual risk acceptable</span></label>
-        <textarea class="textarea" name="rationale" rows="3" required placeholder="Why is the residual risk acceptable to the business? What compensating factors? When and why will it be re-evaluated?" style="font-size:12.5px;"></textarea>
+        <textarea class="textarea text-md" name="rationale" rows="3" required placeholder="Why is the residual risk acceptable to the business? What compensating factors? When and why will it be re-evaluated?"></textarea>
       </div>
-      <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;">
-        <label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer;">
+      <div class="col-full" style="display:flex;gap:8px;align-items:center;">
+        <label class="text-base" style="display:flex;gap:6px;align-items:center;cursor:pointer;">
           <input type="checkbox" name="attestation" value="1" required>
           I attest that I am authorised to accept this risk on behalf of the organisation.
         </label>

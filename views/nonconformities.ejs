@@ -5,7 +5,8 @@
     <h1 class="page-title">Nonconformities & corrective actions</h1>
     <div class="page-subtitle">Per Clause 10.2 - track NCs from audits, incidents, monitoring; root cause; corrective action; effectiveness check.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div class="row-center">
+    <a href="/workspaces/<%= ws.id %>/improvements" class="btn btn-secondary btn-xs" title="Continual improvement register (clause 10.1) - the non-corrective half of clause 10.">Improvements →</a>
     <select onchange="window.location='?filter='+this.value" class="select" style="width:120px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
       <option value="all" <%= filter==='all'?'selected':'' %>>All</option>
@@ -16,9 +17,9 @@
 
 <div id="newNc" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New nonconformity</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"></textarea></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"></textarea></div>
     <div><label class="label">Source</label>
       <select class="select" name="source">
         <option value="internal_audit">Internal audit</option><option value="external_audit">External audit</option>
@@ -29,7 +30,7 @@
     <div><label class="label">Severity</label>
       <select class="select" name="severity"><option value="major">Major</option><option value="minor" selected>Minor</option><option value="observation">Observation</option></select>
     </div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+    <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
 
@@ -44,10 +45,10 @@
         <tr>
           <td class="mono meta">NC-<%= String(n.id).padStart(3,'0') %></td>
           <td>
-            <a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= n.title %></a>
+            <a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" class="link-muted" style="font-weight:500;"><%= n.title %></a>
             <% if (n.iso_title) { %><div class="meta" style="margin-top:2px;"><%= n.iso_title %></div><% } %>
           </td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= n.source %></td>
+          <td class="text-secondary text-base"><%= n.source %></td>
           <td><span class="tag <%= n.severity === 'major' ? 'tag-danger' : n.severity === 'minor' ? 'tag-warn' : 'tag-neutral' %>"><%= n.severity %></span></td>
           <td class="num meta"><%= n.due_date || '-' %></td>
           <td><span class="status s-<%= n.status === 'verified' || n.status === 'closed' ? 'done' : n.status %>"><%= n.status %></span></td>

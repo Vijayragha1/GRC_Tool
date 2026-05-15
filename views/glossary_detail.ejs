@@ -2,15 +2,15 @@
 
 <div class="page-head">
   <div>
-    <div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:4px;">
+    <div class="text-sm text-tertiary" style="margin-bottom:4px;">
       <a href="/glossary" class="link-muted">Glossary</a> &nbsp;›&nbsp; <%= categoryLabel %>
     </div>
     <h1 class="page-title"><%= entry.term %></h1>
     <% if (entry.aliases && entry.aliases.length) { %>
       <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-        <span class="meta" style="font-size:11.5px;">Also known as:</span>
+        <span class="meta text-sm">Also known as:</span>
         <% entry.aliases.forEach(a => { %>
-          <span class="tag tag-neutral" style="font-size:11px;font-family:ui-monospace,monospace;"><%= a %></span>
+          <span class="tag tag-neutral text-xs" style="font-family:ui-monospace,monospace;"><%= a %></span>
         <% }) %>
       </div>
     <% } %>
@@ -33,7 +33,7 @@
     <!-- Formal definition -->
     <div class="panel">
       <div class="panel-head"><h3>Definition</h3></div>
-      <div class="panel-pad" style="font-size:13.5px;line-height:1.55;color:var(--text);">
+      <div class="panel-pad" style="font-size:13.5px;line-height:1.55;">
         <%= entry.definition %>
       </div>
     </div>
@@ -42,7 +42,7 @@
     <% if (entry.example) { %>
       <div class="panel">
         <div class="panel-head"><h3>Example</h3></div>
-        <div class="panel-pad" style="font-size:13.5px;line-height:1.55;color:var(--text);background:var(--bg-subtle);">
+        <div class="panel-pad" style="font-size:13.5px;line-height:1.55;background:var(--bg-subtle);">
           <%= entry.example %>
         </div>
       </div>
@@ -55,8 +55,8 @@
         <div class="divide-row">
           <% entry.notToConfuseWith.forEach(c => { %>
             <div style="padding:14px 18px;">
-              <div style="font-weight:600;font-size:13px;color:var(--ink);margin-bottom:4px;"><%= c.term %></div>
-              <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;"><%= c.why %></div>
+              <div class="text-lg text-ink" style="font-weight:600;margin-bottom:4px;"><%= c.term %></div>
+              <div class="text-lg text-secondary" style="line-height:1.5;"><%= c.why %></div>
             </div>
           <% }) %>
         </div>
@@ -72,12 +72,12 @@
       <div class="panel-pad" style="display:flex;flex-direction:column;gap:10px;">
         <div>
           <div class="sec-label">Category</div>
-          <a href="/glossary?category=<%= entry.category %>" class="tag tag-info" style="text-decoration:none;font-size:11.5px;"><%= categoryLabel %></a>
+          <a href="/glossary?category=<%= entry.category %>" class="tag tag-info text-sm" style="text-decoration:none;"><%= categoryLabel %></a>
         </div>
         <% if (entry.clauseRef) { %>
           <div>
             <div class="sec-label">ISO 27001 reference</div>
-            <div style="font-size:12px;font-family:ui-monospace,monospace;color:var(--text);background:var(--bg-muted);padding:4px 8px;border-radius:4px;display:inline-block;"><% if (typeof renderClauseRef === 'function') { %><%- renderClauseRef(entry.clauseRef) %><% } else { %><%= entry.clauseRef %><% } %></div>
+            <div class="text-base" style="font-family:ui-monospace,monospace;background:var(--bg-muted);padding:4px 8px;border-radius:4px;display:inline-block;"><% if (typeof renderClauseRef === 'function') { %><%- renderClauseRef(entry.clauseRef) %><% } else { %><%= entry.clauseRef %><% } %></div>
           </div>
         <% } %>
       </div>
@@ -89,10 +89,10 @@
         <div class="panel-head"><h3>Related terms</h3></div>
         <div class="divide-row">
           <% related.forEach(r => { %>
-            <a href="/glossary/<%= r.slug %>" style="display:block;padding:10px 16px;text-decoration:none;color:var(--text);">
-              <div style="font-size:13px;font-weight:500;color:var(--text);"><%= r.term %></div>
+            <a href="/glossary/<%= r.slug %>" style="display:block;padding:10px 16px;text-decoration:none;">
+              <div class="text-lg" style="font-weight:500;"><%= r.term %></div>
               <% if (r.plain) { %>
-                <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:2px;line-height:1.4;"><%= r.plain.length > 90 ? r.plain.slice(0, 90) + '…' : r.plain %></div>
+                <div class="text-sm text-tertiary" style="margin-top:2px;line-height:1.4;"><%= r.plain.length > 90 ? r.plain.slice(0, 90) + '…' : r.plain %></div>
               <% } %>
             </a>
           <% }) %>

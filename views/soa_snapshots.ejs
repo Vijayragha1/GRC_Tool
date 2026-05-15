@@ -3,7 +3,7 @@
 <div class="page-head">
   <div><h1 class="page-title">Statement of Applicability</h1>
     <div class="page-subtitle">Immutable, hashed snapshots of the SoA. Auditors will ask "what changed since last cert?" - capture before each MRM and before each audit.</div></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:flex;gap:6px;align-items:center;">
+  <form class="row-center" method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot">
     <input class="input" name="label" placeholder="Snapshot label">
     <input class="input" name="reason" placeholder="Reason">
     <button class="btn btn-primary btn-xs">Capture now</button>
@@ -35,9 +35,9 @@
           <td class="meta"><%= s.created_at %></td>
           <td class="meta"><%= s.author %></td>
           <td class="num"><%= s.control_count %></td>
-          <td class="num" style="color:#16a34a;"><%= s.included_count %></td>
-          <td class="num" style="color:#b91c1c;"><%= s.excluded_count %></td>
-          <td class="meta mono" style="font-size:10.5px;"><%= s.payload_hash.slice(0,12) %>…</td>
+          <td class="num text-success"><%= s.included_count %></td>
+          <td class="num text-danger"><%= s.excluded_count %></td>
+          <td class="meta mono text-eyebrow"><%= s.payload_hash.slice(0,12) %>…</td>
         </tr>
       <% }) %>
     </tbody>

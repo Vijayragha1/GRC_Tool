@@ -1,0 +1,78 @@
+<%- include('partials/header', { title: 'Readiness overview', user, ws, active: 'readiness-overview' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Readiness overview</h1>
+    <div class="page-subtitle">
+      One score per framework in this engagement<% if (daysToTarget !== null) { %>
+        &middot;
+        <strong class="<%= daysToTarget < 30 ? 'text-danger' : daysToTarget < 90 ? 'text-warn' : 'text-success' %>"><%= daysToTarget %> days</strong>
+        to target certification (<%= ws.target_cert_date %>)
+      <% } %>
+    </div>
+  </div>
+  <div class="row-center">
+    <a href="/workspaces/<%= ws.id %>/exec-brief" class="btn btn-secondary btn-xs">Exec brief →</a>
+  </div>
+</div>
+
+<% if (tiles.length === 0) { %>
+  <div class="panel">
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div class="empty-title">No frameworks in scope</div>
+      <div class="empty-sub">This workspace has zero frameworks selected. Re-pick frameworks from the workspace settings.</div>
+    </div>
+  </div>
+<% } else { %>
+  <div style="display:grid;grid-template-columns:repeat(<%= tiles.length %>,1fr);gap:14px;margin-bottom:24px;">
+    <% tiles.forEach(t => {
+         const band = t.score >= 80 ? 'good' : t.score >= 50 ? 'warn' : 'bad';
+         const cls = 'kpi-' + band;
+         const textCls = band === 'good' ? 'text-success' : band === 'warn' ? 'text-warn' : 'text-danger';
+    %>
+      <a href="<%= t.href %>" class="panel kpi <%= cls %>" style="text-decoration:none;color:var(--text);padding:18px 20px;">
+        <div class="row-center" style="margin-bottom:10px;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:<%= t.color %>;flex-shrink:0;"></span>
+          <div class="kpi-label" style="font-size:11px;"><%= t.label %></div>
+        </div>
+        <div class="kpi-num num <%= textCls %>" style="font-size:36px;line-height:1.05;">
+          <%= t.score %><span class="text-tertiary" style="font-size:16px;font-weight:400;margin-left:2px;">%</span>
+        </div>
+        <div class="kpi-meta" style="margin-top:8px;font-size:11.5px;line-height:1.45;"><%= t.sub %></div>
+        <div class="meta text-eyebrow" style="margin-top:4px;line-height:1.45;"><%= t.detail %></div>
+        <% if (t.flagsHigh > 0) { %>
+          <div class="meta text-eyebrow text-danger" style="margin-top:6px;font-weight:600;">
+            <%= t.flagsHigh %> high-severity gap<%= t.flagsHigh === 1 ? '' : 's' %>
+          </div>
+        <% } %>
+        <% if (typeof t.stage2 !== 'undefined') { %>
+          <div class="meta text-eyebrow" style="margin-top:4px;">Stage 2 readiness <%= t.stage2 %>%</div>
+        <% } %>
+      </a>
+    <% }) %>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="panel-head">
+      <h2>What this shows</h2>
+    </div>
+    <div class="panel-pad text-sm" style="line-height:1.6;">
+      <p style="margin:0 0 10px 0;">
+        Each tile is the Stage 1 readiness % for that framework's items in this workspace. The bands match the per-framework readiness pages:
+        <strong class="text-success">&ge; 80%</strong> ready,
+        <strong class="text-warn">50&ndash;79%</strong> partially ready,
+        <strong class="text-danger">&lt; 50%</strong> not yet ready.
+        Click any tile to drill into the per-framework view with the full flag list, mandatory-records check, and Stage 1 / Stage 2 breakdown.
+      </p>
+      <p style="margin:0;">
+        Tiles are gated by the framework picker chosen at engagement creation. If a framework is missing here, it isn't part of this engagement &mdash;
+        edit the workspace settings to add it.
+      </p>
+    </div>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

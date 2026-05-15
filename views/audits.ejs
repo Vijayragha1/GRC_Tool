@@ -12,12 +12,12 @@
 
 <div id="newAudit" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New audit</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/audits" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., 2026 Q1 ISMS Internal Audit"></div>
-    <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" name="scope" placeholder="e.g., All Annex A controls + Clauses 4-10"></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/audits" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., 2026 Q1 ISMS Internal Audit"></div>
+    <div class="col-full"><label class="label">Scope</label><input class="input" name="scope" placeholder="e.g., All Annex A controls + Clauses 4-10"></div>
     <div><label class="label">Audit date</label><input class="input" type="date" name="audit_date"></div>
     <div><label class="label">Auditor</label><input class="input" name="auditor_name" placeholder="Name / company"></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+    <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
 
@@ -30,13 +30,13 @@
     <tbody>
       <% audits.forEach(a => { %>
         <tr>
-          <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="color:var(--text);font-weight:500;"><%= a.title %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="font-weight:500;"><%= a.title %></a></td>
           <td class="num meta"><%= a.audit_date || '-' %></td>
-          <td style="color:var(--text-secondary);font-size:12px;"><%= a.auditor_name || '-' %></td>
+          <td class="text-secondary text-base"><%= a.auditor_name || '-' %></td>
           <td><span class="status s-<%= a.status === 'complete' ? 'done' : a.status %>"><%= a.status %></span></td>
           <td class="meta">
             <%= a.finding_count %>
-            <% if (a.open_findings > 0) { %> · <span style="color:#b91c1c;font-weight:500;"><%= a.open_findings %> open</span><% } %>
+            <% if (a.open_findings > 0) { %> · <span class="text-danger" style="font-weight:500;"><%= a.open_findings %> open</span><% } %>
           </td>
         </tr>
       <% }) %>

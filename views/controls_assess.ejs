@@ -31,7 +31,7 @@
     <h1 class="page-title">Gap assessment</h1>
     <div class="page-subtitle">Walks all 25 ISO 27001 main-body clauses (the "shall" requirements) plus 93 Annex A controls - one item at a time, with the prompts and evidence auditors expect.</div>
   </div>
-  <div style="display:flex;gap:6px;align-items:center;">
+  <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/controls/assess?start=clauses" class="btn btn-secondary btn-xs">Jump to clauses</a>
     <a href="/workspaces/<%= ws.id %>/controls/assess?start=controls" class="btn btn-secondary btn-xs">Jump to Annex A</a>
     <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-primary btn-xs">View summary →</a>
@@ -41,7 +41,7 @@
 <% if (doneFlag) { %>
   <div class="panel" style="margin-bottom:16px;border-color:#16a34a;background:rgba(22,163,74,0.04);">
     <div class="panel-pad">
-      <div style="font-weight:600;color:#16a34a;margin-bottom:4px;">All clauses and controls assessed</div>
+      <div class="text-success" style="font-weight:600;margin-bottom:4px;">All clauses and controls assessed</div>
       <div class="meta">Every item has a status other than "Not Assessed". The post-assessment summary turns your answers into a worklist - remediation tasks, missing policies, evidence asks, and risks needing treatment updates.</div>
       <div style="margin-top:10px;display:flex;gap:6px;">
         <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-primary">View post-assessment summary →</a>
@@ -55,25 +55,25 @@
 <!-- Two-section progress: clauses + Annex A -->
 <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:14px;margin-bottom:16px;align-items:center;">
   <div>
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
+    <div class="text-sm" style="display:flex;justify-content:space-between;margin-bottom:3px;">
       <span class="meta" style="font-weight:500;">Clauses (4–10)</span>
-      <span class="meta"><strong style="color:var(--text);"><%= totals.clausesAssessed %></strong> / <%= totals.clausesTotal %></span>
+      <span class="meta"><strong><%= totals.clausesAssessed %></strong> / <%= totals.clausesTotal %></span>
     </div>
     <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
       <div style="height:100%;width:<%= totals.clausesTotal ? Math.round(totals.clausesAssessed / totals.clausesTotal * 100) : 0 %>%;background:#0891b2;transition:width 0.2s;"></div>
     </div>
   </div>
   <div>
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
+    <div class="text-sm" style="display:flex;justify-content:space-between;margin-bottom:3px;">
       <span class="meta" style="font-weight:500;">Annex A controls</span>
-      <span class="meta"><strong style="color:var(--text);"><%= totals.controlsAssessed %></strong> / <%= totals.controlsTotal %></span>
+      <span class="meta"><strong><%= totals.controlsAssessed %></strong> / <%= totals.controlsTotal %></span>
     </div>
     <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
       <div style="height:100%;width:<%= totals.controlsTotal ? Math.round(totals.controlsAssessed / totals.controlsTotal * 100) : 0 %>%;background:var(--accent);transition:width 0.2s;"></div>
     </div>
   </div>
   <div style="display:flex;gap:4px;align-items:center;">
-    <span class="meta" style="font-size:12px;margin-right:6px;"><strong style="color:var(--text);"><%= overallAssessed %></strong> / <%= overallTotal %> · <%= pct %>%</span>
+    <span class="meta text-base" style="margin-right:6px;"><strong><%= overallAssessed %></strong> / <%= overallTotal %> · <%= pct %>%</span>
     <% if (prevId) { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= prevId %>" class="btn btn-secondary btn-xs" title="Previous">←</a><% } %>
     <% if (nextId) { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= nextId %>" class="btn btn-secondary btn-xs" title="Next">→</a><% } %>
   </div>
@@ -85,31 +85,31 @@
       <div class="meta" style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;color:<%= isClause ? '#0891b2' : 'var(--text-secondary)' %>;">
         <%= sectionTag %>
       </div>
-      <span class="meta" style="font-size:11.5px;"><%= isClause ? 'Clause' : 'Control' %> <%= sectionPosition %> of <%= sectionTotal %></span>
+      <span class="meta text-sm"><%= isClause ? 'Clause' : 'Control' %> <%= sectionPosition %> of <%= sectionTotal %></span>
     </div>
     <h2 style="margin:0;font-size:18px;font-weight:600;line-height:1.3;"><%= cleanTitle %></h2>
-    <p style="margin:8px 0 0 0;font-size:14px;line-height:1.55;color:var(--text);"><%= item.summary %></p>
+    <p class="text-xl" style="margin:8px 0 0 0;line-height:1.55;"><%= item.summary %></p>
     <% if (isClause) { %>
-      <div class="meta" style="font-size:12px;margin-top:8px;font-style:italic;">This is a "shall" requirement of ISO 27001:2022 - every certified ISMS must satisfy it. Applicability is not a choice.</div>
+      <div class="meta text-base" style="margin-top:8px;font-style:italic;">This is a "shall" requirement of ISO 27001:2022 - every certified ISMS must satisfy it. Applicability is not a choice.</div>
     <% } %>
   </div>
 
   <% if (item.purpose || item.what_good_looks_like) { %>
     <% // Audit-grade content shape - rich, narrative, cross-referenced. %>
     <%
-      const hLabel = (s) => `<div class="meta" style="font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">${s}</div>`;
+      const hLabel = (s) => `<div class="meta text-eyebrow text-secondary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">${s}</div>`;
     %>
     <div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:24px;">
       <% if (item.purpose) { %>
         <div>
           <%- hLabel('What this is actually for') %>
-          <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text);"><%= item.purpose %></p>
+          <p class="text-lg" style="margin:0;line-height:1.6;"><%= item.purpose %></p>
         </div>
       <% } %>
       <% if (item.what_good_looks_like) { %>
         <div>
           <%- hLabel('What good looks like') %>
-          <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text);"><%= item.what_good_looks_like %></p>
+          <p class="text-lg" style="margin:0;line-height:1.6;"><%= item.what_good_looks_like %></p>
         </div>
       <% } %>
     </div>
@@ -117,7 +117,7 @@
     <% if (item.common_pitfalls && item.common_pitfalls.length) { %>
       <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(185,28,28,0.03);">
         <%- hLabel('Where this usually goes wrong') %>
-        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.55;">
+        <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.55;">
           <% item.common_pitfalls.forEach(p => { %><li style="margin-bottom:4px;"><%= p %></li><% }) %>
         </ul>
       </div>
@@ -147,15 +147,15 @@
             <span><%= covLabel %></span>
           </div>
         </div>
-        <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <table class="text-md" style="width:100%;border-collapse:collapse;">
           <% item.evidence_to_look_for.forEach((e, i) => { %>
             <tr style="<%= i < item.evidence_to_look_for.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>">
               <td style="padding:6px 14px 6px 0;width:42%;line-height:1.5;font-weight:500;"><%= e.item %></td>
-              <td style="padding:6px 0;line-height:1.5;color:var(--text-secondary);"><%= e.what_it_tells_you %></td>
+              <td class="text-secondary" style="padding:6px 0;line-height:1.5;"><%= e.what_it_tells_you %></td>
             </tr>
           <% }) %>
         </table>
-        <div class="meta" style="font-size:11.5px;margin-top:6px;line-height:1.4;">
+        <div class="meta text-sm" style="margin-top:6px;line-height:1.4;">
           <%= attachedCount === 0
               ? 'No evidence attached yet for this item - scroll to the Evidence files panel below to upload.'
               : 'Match the list above to your attached files in the Evidence files panel below. The bot can\'t auto-match the descriptions to filenames; that judgement is yours.' %>
@@ -167,15 +167,15 @@
       <% if (item.scoping_notes) { %>
         <div>
           <%- hLabel('Scoping notes') %>
-          <p style="margin:0;font-size:12.5px;line-height:1.55;color:var(--text);"><%= item.scoping_notes %></p>
+          <p class="text-md" style="margin:0;line-height:1.55;"><%= item.scoping_notes %></p>
         </div>
       <% } %>
       <% if (item.maturity_ladder) { %>
         <div>
           <%- hLabel('Maturity ladder for this control') %>
-          <div style="display:grid;grid-template-columns:30px 1fr;gap:6px 10px;font-size:12px;line-height:1.5;">
+          <div class="text-base" style="display:grid;grid-template-columns:30px 1fr;gap:6px 10px;line-height:1.5;">
             <% [1,2,3,4].forEach(lvl => { if (item.maturity_ladder[lvl]) { %>
-              <div class="mono meta" style="font-weight:600;color:var(--text);"><%= lvl %> -</div>
+              <div class="mono meta" style="font-weight:600;"><%= lvl %> -</div>
               <div><%= item.maturity_ladder[lvl] %></div>
             <% } }) %>
           </div>
@@ -191,10 +191,44 @@
                const code = r.id.replace('annex-','').replace('clause-','').toUpperCase();
                const title = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
           %>
-            <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" style="display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-decoration:none;color:var(--text);background:var(--bg);">
+            <a class="text-base" href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" style="display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:4px;text-decoration:none;background:var(--bg);">
               <span class="mono meta" style="font-weight:600;"><%= code %></span>
               <span><%= title %></span>
             </a>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (typeof crosswalksByFramework !== 'undefined' && Object.keys(crosswalksByFramework).length) { %>
+      <%
+        const fwMeta = {
+          soc2:     { label: 'SOC 2',          sub: 'Trust Services Criteria' },
+          nist_csf: { label: 'NIST CSF 2.0',   sub: 'Functions · Categories'  },
+          gdpr:     { label: 'GDPR',           sub: 'Articles'                }
+        };
+      %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+        <%- hLabel('Also satisfies (crosswalks)') %>
+        <div class="meta text-sm" style="margin-bottom:8px;">
+          When this control is implemented, the references below typically count as the same control in the named framework. Use these to credit a single piece of evidence to multiple frameworks.
+          <a href="/workspaces/<%= ws.id %>/crosswalks" class="link-muted" style="margin-left:6px;">View full matrix →</a>
+        </div>
+        <div style="display:grid;gap:6px;">
+          <% Object.keys(crosswalksByFramework).forEach(fw => {
+               const meta = fwMeta[fw] || { label: fw, sub: '' };
+          %>
+            <div class="text-md" style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:start;">
+              <div>
+                <div class="text-ink" style="font-weight:600;"><%= meta.label %></div>
+                <% if (meta.sub) { %><div class="meta text-eyebrow"><%= meta.sub %></div><% } %>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;">
+                <% crosswalksByFramework[fw].forEach(m => { %>
+                  <span class="mono" style="display:inline-flex;align-items:center;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--bg);font-size:11.5px;font-weight:500;<%= m.notes ? 'cursor:help;' : '' %>" <% if (m.notes) { %>title="<%= m.notes.replace(/"/g,'&quot;') %>"<% } %>><%= m.external_ref %></span>
+                <% }) %>
+              </div>
+            </div>
           <% }) %>
         </div>
       </div>
@@ -203,27 +237,27 @@
     <%# Fallback to legacy 3-column layout for items not yet authored %>
     <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-bottom:1px solid var(--border);">
       <div>
-        <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">
+        <div class="meta text-eyebrow text-secondary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">
           <%= isClause ? 'Applicability notes' : 'Applicability - points to consider' %>
           <span class="tag tag-warn" style="font-size:9px;margin-left:6px;">legacy content - not yet rewritten</span>
         </div>
         <% if (item.questions.length === 0) { %>
-          <div class="meta" style="font-size:12.5px;">Generally applies to all organizations within the ISMS scope.</div>
+          <div class="meta text-md">Generally applies to all organizations within the ISMS scope.</div>
         <% } else { %>
-          <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+          <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.5;">
             <% item.questions.forEach(q => { %><li style="margin-bottom:4px;"><%= q %></li><% }) %>
           </ul>
         <% } %>
       </div>
       <div>
-        <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">What it requires</div>
-        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+        <div class="meta text-eyebrow text-secondary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">What it requires</div>
+        <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.5;">
           <% item.evidence_needed.forEach(e => { %><li style="margin-bottom:4px;"><%= e %></li><% }) %>
         </ul>
       </div>
       <div>
-        <div class="meta" style="font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;margin-bottom:6px;color:var(--text-secondary);">Evidence auditors expect</div>
-        <ul style="margin:0;padding-left:16px;font-size:12.5px;line-height:1.5;">
+        <div class="meta text-eyebrow text-secondary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Evidence auditors expect</div>
+        <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.5;">
           <% item.documentation_needed.forEach(d => { %><li style="margin-bottom:4px;"><%= d %></li><% }) %>
         </ul>
       </div>
@@ -236,19 +270,19 @@
       <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
         <div class="panel-pad" style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-size:13px;font-weight:600;">Current-state diagnostic <span class="meta" style="font-weight:400;">- <%= questions.length %> question<%= questions.length === 1 ? '' : 's' %> for this <%= isClause ? 'clause' : 'control' %></span></div>
-            <div class="meta" style="font-size:11.5px;line-height:1.45;">Answer based on evidence you can show an auditor - not on what you intend to do. The status hint below is a rough heuristic; <strong>you</strong> set the final status based on your judgement and the evidence available.</div>
+            <div class="text-lg" style="font-weight:600;">Current-state diagnostic <span class="meta" style="font-weight:400;">- <%= questions.length %> question<%= questions.length === 1 ? '' : 's' %> for this <%= isClause ? 'clause' : 'control' %></span></div>
+            <div class="meta text-sm" style="line-height:1.45;">Answer based on evidence you can show an auditor - not on what you intend to do. The status hint below is a rough heuristic; <strong>you</strong> set the final status based on your judgement and the evidence available.</div>
           </div>
           <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>;display:flex;gap:8px;align-items:center;" title="A heuristic from your answers. Always override with your own judgement.">
-            <span>Heuristic hint: <strong id="suggestedStatusText" style="color:var(--text-secondary);"><%= suggestedStatus || '' %></strong></span>
+            <span>Heuristic hint: <strong class="text-secondary" id="suggestedStatusText"><%= suggestedStatus || '' %></strong></span>
             <a href="#" id="applySuggestedLink" onclick="applySuggested(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;<%= suggestedStatus ? '' : 'display:none;' %>" title="Copies the hint into the status dropdown - review before saving">Use as draft</a>
-            <a href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;">Pre-fill notes from gaps</a>
+            <a class="text-xs text-secondary" href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" style="text-decoration:underline;">Pre-fill notes from gaps</a>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr;">
           <% questions.forEach((q, i) => { %>
             <div style="display:grid;grid-template-columns:1fr 220px;gap:12px;padding:9px 14px;<%= i < questions.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>align-items:center;">
-              <div style="font-size:12.5px;line-height:1.45;"><%= q %></div>
+              <div class="text-md" style="line-height:1.45;"><%= q %></div>
               <div style="display:flex;gap:4px;justify-content:flex-end;">
                 <% ['yes','partial','no'].forEach(opt => {
                      const isOn = savedAnswers[String(i)] === opt;
@@ -290,7 +324,7 @@
           <% }) %>
         </select>
         <% if (isClause) { %>
-          <div class="meta" style="font-size:11px;margin-top:4px;line-height:1.4;">Clauses are mandatory "shalls" - every certified ISMS must reach <strong>Implemented</strong>. There is no "Not Applicable" path.</div>
+          <div class="meta text-xs" style="margin-top:4px;line-height:1.4;">Clauses are mandatory "shalls" - every certified ISMS must reach <strong>Implemented</strong>. There is no "Not Applicable" path.</div>
         <% } %>
       </div>
       <div>
@@ -322,7 +356,7 @@
          editable textarea below is scoped to the current pass only. -->
     <% if (priorPassNotes && priorPassNotes.length) { %>
       <div style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);">
-        <div class="panel-pad" style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
+        <div class="panel-pad text-base text-secondary" style="padding:8px 14px;border-bottom:1px solid var(--border);font-weight:600;display:flex;align-items:center;gap:6px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           Notes from prior passes <span class="meta" style="font-weight:400;">- read-only context for re-assessment</span>
         </div>
@@ -330,19 +364,19 @@
              const isCollapsed = i > 0; // expand only the most recent prior pass by default
         %>
           <details <%= isCollapsed ? '' : 'open' %> style="border-bottom:<%= i < priorPassNotes.length - 1 ? '1px dashed var(--border)' : 'none' %>;">
-            <summary style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px;">
-              <span style="font-weight:600;color:var(--ink);">Pass <%= p.pass_number %></span>
-              <% if (p.label) { %><span style="color:var(--text);"><%= p.label %></span><% } %>
+            <summary class="text-base" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;">
+              <span class="text-ink" style="font-weight:600;">Pass <%= p.pass_number %></span>
+              <% if (p.label) { %><span><%= p.label %></span><% } %>
               <% if (p.pass_status === 'completed' && p.completed_at) { %>
-                <span class="meta" style="font-size:10.5px;">completed <%= p.completed_at.slice(0,10) %></span>
+                <span class="meta text-eyebrow">completed <%= p.completed_at.slice(0,10) %></span>
               <% } else if (p.pass_status === 'in_progress') { %>
                 <span class="tag tag-accent" style="font-size:9.5px;">IN PROGRESS</span>
               <% } %>
               <% if (p.item_status) { %>
-                <span class="status s-<%= p.item_status.toLowerCase().replace(/\s+/g,'-') %>" style="font-size:11px;margin-left:auto;"><%= p.item_status %></span>
+                <span class="status s-<%= p.item_status.toLowerCase().replace(/\s+/g,'-') %> text-xs" style="margin-left:auto;"><%= p.item_status %></span>
               <% } %>
             </summary>
-            <div style="padding:0 14px 10px;font-size:12.5px;line-height:1.55;color:var(--text);white-space:pre-wrap;"><%= p.notes %></div>
+            <div class="text-md" style="padding:0 14px 10px;line-height:1.55;white-space:pre-wrap;"><%= p.notes %></div>
           </details>
         <% }) %>
       </div>
@@ -361,8 +395,8 @@
     </div>
 
     <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
-      <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>/history" class="meta link-muted" style="font-size:12px;">View change history →</a>
-      <div style="display:flex;gap:6px;">
+      <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>/history" class="meta link-muted text-base">View change history →</a>
+      <div class="row">
         <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
         <button name="action" value="save" class="btn btn-primary">Save &amp; next →</button>
       </div>
@@ -375,25 +409,25 @@
   <!-- Evidence -->
   <div class="panel">
     <div class="panel-head">
-      <h2 style="font-size:14px;">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
+      <h2 class="text-xl">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
       <span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span>
     </div>
     <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
       <input type="hidden" name="iso_item_id" value="<%= item.id %>">
-      <div style="grid-column:1/-1;"><input type="file" name="file" required style="font-size:12px;width:100%;"></div>
-      <div><label class="label" style="font-size:10px;">Period (e.g., Q1 2026) - optional</label><input type="text" name="period_label" class="input" style="font-size:12px;" placeholder="Q1 2026"></div>
-      <div><label class="label" style="font-size:10px;">Sub-clause / section</label><input type="text" name="clause_section" class="input" style="font-size:12px;" placeholder="e.g., A.5.18.b"></div>
+      <div class="col-full"><input class="text-base" type="file" name="file" required style="width:100%;"></div>
+      <div><label class="label text-xxs">Period (e.g., Q1 2026) - optional</label><input type="text" name="period_label" class="input text-base" placeholder="Q1 2026"></div>
+      <div><label class="label text-xxs">Sub-clause / section</label><input type="text" name="clause_section" class="input text-base" placeholder="e.g., A.5.18.b"></div>
       <div></div>
-      <div><label class="label" style="font-size:10px;">Valid from</label><input type="date" name="valid_from" class="input" style="font-size:12px;"></div>
-      <div><label class="label" style="font-size:10px;">Valid until</label><input type="date" name="valid_until" class="input" style="font-size:12px;"></div>
+      <div><label class="label text-xxs">Valid from</label><input type="date" name="valid_from" class="input text-base"></div>
+      <div><label class="label text-xxs">Valid until</label><input type="date" name="valid_until" class="input text-base"></div>
       <div></div>
-      <div style="grid-column:1/-1;display:flex;gap:6px;align-items:end;">
-        <input type="text" name="description" placeholder="Optional note about what this evidences" class="input" style="font-size:12px;flex:1;">
+      <div class="col-full" style="display:flex;gap:6px;align-items:end;">
+        <input type="text" name="description" placeholder="Optional note about what this evidences" class="input text-base" style="flex:1;">
         <button class="btn btn-primary btn-xs">Upload evidence</button>
       </div>
     </form>
     <% if (!evidenceList || evidenceList.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No evidence yet.</div>
+      <div class="panel-pad meta text-base">No evidence yet.</div>
     <% } else { %>
       <%
         const today = new Date().toISOString().slice(0,10);
@@ -408,15 +442,15 @@
         %>
           <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;<%= isExpired ? 'background:rgba(185,28,28,0.04);' : '' %>">
             <div style="flex:1;min-width:0;">
-              <div style="display:flex;gap:6px;align-items:center;">
-                <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="color:var(--text);text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
+              <div class="row-center">
+                <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
                 <% if (badgeLabel) { %><span style="font-size:9px;font-weight:700;color:white;background:<%= badgeColor %>;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;"><%= badgeLabel %></span><% } %>
-                <% if (e.clause_section) { %><span class="mono meta" style="font-size:10.5px;background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
-                <% if (e.link_count && e.link_count > 1) { %><span class="mono" style="font-size:10px;color:#7c3aed;background:rgba(124,58,237,0.10);padding:1px 5px;border-radius:3px;" title="Linked to <%= e.link_count %> controls/clauses">×<%= e.link_count %></span><% } %>
+                <% if (e.clause_section) { %><span class="mono meta text-eyebrow" style="background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
+                <% if (e.link_count && e.link_count > 1) { %><span class="mono text-xxs" style="color:#7c3aed;background:rgba(124,58,237,0.10);padding:1px 5px;border-radius:3px;" title="Linked to <%= e.link_count %> controls/clauses">×<%= e.link_count %></span><% } %>
               </div>
-              <div class="meta" style="font-size:11px;"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
+              <div class="meta text-xs"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
             </div>
-            <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this evidence file?')"><button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);">×</button></form>
+            <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this evidence file?')"><button class="btn btn-ghost btn-xs text-xxs text-secondary">×</button></form>
           </div>
         <% }) %>
       </div>
@@ -426,22 +460,22 @@
   <!-- Open NCs -->
   <div class="panel">
     <div class="panel-head">
-      <h2 style="font-size:14px;">Open nonconformities (<%= openNCs ? openNCs.length : 0 %>)</h2>
+      <h2 class="text-xl">Open nonconformities (<%= openNCs ? openNCs.length : 0 %>)</h2>
       <span class="meta">NCs raised against this item</span>
     </div>
     <% if (!openNCs || openNCs.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No open NCs.</div>
+      <div class="panel-pad meta text-base">No open NCs.</div>
     <% } else { %>
       <div style="max-height:300px;overflow-y:auto;">
         <% openNCs.forEach(n => {
              const sev = n.severity === 'major' ? '#b91c1c' : n.severity === 'minor' ? '#a16207' : 'var(--text-secondary)';
         %>
-          <a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" style="display:block;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;text-decoration:none;color:var(--text);">
+          <a class="text-base" href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" style="display:block;padding:8px 14px;border-bottom:1px solid var(--border);text-decoration:none;">
             <div style="display:flex;justify-content:space-between;gap:8px;">
               <span style="font-weight:500;flex:1;"><%= n.title %></span>
               <span class="tag" style="background:<%= sev %>;color:white;font-size:10px;"><%= n.severity %></span>
             </div>
-            <div class="meta" style="font-size:11px;">Status: <%= n.status %><% if (n.due_date) { %> · due <%= n.due_date %><% } %></div>
+            <div class="meta text-xs">Status: <%= n.status %><% if (n.due_date) { %> · due <%= n.due_date %><% } %></div>
           </a>
         <% }) %>
       </div>
@@ -454,16 +488,16 @@
   <!-- Linked risks (controls only - clauses are mandatory and don't "treat" risks) -->
   <div class="panel">
     <div class="panel-head">
-      <h2 style="font-size:14px;">Risks treated by this control (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2>
+      <h2 class="text-xl">Risks treated by this control (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2>
     </div>
     <% if (!linkedRisks || linkedRisks.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No risks linked. <a href="/workspaces/<%= ws.id %>/risks" style="color:var(--accent);">Link from the risk register →</a></div>
+      <div class="panel-pad meta text-base">No risks linked. <a href="/workspaces/<%= ws.id %>/risks" style="color:var(--accent);">Link from the risk register →</a></div>
     <% } else { %>
       <div style="max-height:240px;overflow-y:auto;">
         <% linkedRisks.forEach(r => { %>
-          <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;text-decoration:none;color:var(--text);">
+          <a class="text-base" href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);text-decoration:none;">
             <span style="flex:1;"><span class="mono meta" style="margin-right:6px;">R-<%= r.id %></span><%= r.title %></span>
-            <span class="num meta" style="font-size:11px;"><%= r.likelihood %>×<%= r.impact %></span>
+            <span class="num meta text-xs"><%= r.likelihood %>×<%= r.impact %></span>
           </a>
         <% }) %>
       </div>
@@ -474,20 +508,20 @@
   <!-- Linked documents (bidirectional tagging - add / remove from this side too) -->
   <div class="panel">
     <div class="panel-head">
-      <h2 style="font-size:14px;">Documents covering this <%= isClause ? 'clause' : 'control' %> (<%= linkedDocs ? linkedDocs.length : 0 %>)</h2>
+      <h2 class="text-xl">Documents covering this <%= isClause ? 'clause' : 'control' %> (<%= linkedDocs ? linkedDocs.length : 0 %>)</h2>
     </div>
     <% if (!linkedDocs || linkedDocs.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No documents linked yet - pick one below or generate a template from the document library.</div>
+      <div class="panel-pad meta text-base">No documents linked yet - pick one below or generate a template from the document library.</div>
     <% } else { %>
       <div style="max-height:240px;overflow-y:auto;">
         <% linkedDocs.forEach(d => { %>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;">
-            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="text-decoration:none;color:var(--text);flex:1;min-width:0;">
+          <div class="text-base" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);">
+            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="text-decoration:none;flex:1;min-width:0;">
               <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= d.name %></div>
-              <div class="meta" style="font-size:11px;"><%= d.category || '-' %> · <%= d.status || '-' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
+              <div class="meta text-xs"><%= d.category || '-' %> · <%= d.status || '-' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
             </a>
             <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents/<%= d.link_id %>/delete" onsubmit="return appConfirmForm(event, 'Remove this document link?')" style="margin:0;">
-              <button class="btn btn-ghost btn-xs" style="font-size:10px;color:var(--text-secondary);" title="Remove link">×</button>
+              <button class="btn btn-ghost btn-xs text-xxs text-secondary" title="Remove link">×</button>
             </form>
           </div>
         <% }) %>
@@ -496,8 +530,8 @@
     <% if (linkableDocs && linkableDocs.length > 0) { %>
       <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
         <div>
-          <label class="label" style="font-size:10px;">Link a document</label>
-          <select class="select" name="document_id" required style="font-size:12px;">
+          <label class="label text-xxs">Link a document</label>
+          <select class="select text-base" name="document_id" required>
             <option value="">- pick a document -</option>
             <% linkableDocs.forEach(d => { %>
               <option value="<%= d.id %>"><%= d.name %><% if (d.status) { %> (<%= d.status %>)<% } %></option>
@@ -505,15 +539,15 @@
           </select>
         </div>
         <div>
-          <label class="label" style="font-size:10px;">Section</label>
-          <input class="input" name="section_ref" style="font-size:12px;" placeholder="e.g. §4.2">
+          <label class="label text-xxs">Section</label>
+          <input class="input text-base" name="section_ref" placeholder="e.g. §4.2">
         </div>
         <button class="btn btn-primary btn-xs">Link</button>
       </form>
     <% } else if (linkedDocs && linkedDocs.length > 0) { %>
-      <div class="meta panel-pad" style="font-size:11.5px;border-top:1px solid var(--border);background:var(--bg-subtle);">All workspace documents are already linked. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate another →</a></div>
+      <div class="meta panel-pad text-sm" style="border-top:1px solid var(--border);background:var(--bg-subtle);">All workspace documents are already linked. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate another →</a></div>
     <% } else { %>
-      <div class="meta panel-pad" style="font-size:11.5px;border-top:1px solid var(--border);background:var(--bg-subtle);">This workspace has no documents yet. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate one from a template →</a></div>
+      <div class="meta panel-pad text-sm" style="border-top:1px solid var(--border);background:var(--bg-subtle);">This workspace has no documents yet. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate one from a template →</a></div>
     <% } %>
   </div>
 </div>
