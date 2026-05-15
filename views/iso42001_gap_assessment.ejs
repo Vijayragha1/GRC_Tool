@@ -1,0 +1,58 @@
+<%- include('partials/header', { title: 'ISO 42001 gap assessment', user, ws, active: 'iso42001-gap' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO 42001 gap assessment</h1>
+    <div class="page-subtitle">Walk through 27 clauses (4-10) + 38 Annex A controls one at a time. Answers drive a suggested status; the result feeds the SoA, Roadmap, and Exec brief.</div>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/start">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <button class="btn btn-primary">▶ Start a new pass</button>
+  </form>
+</div>
+
+<div class="panel" style="padding:16px;margin-bottom:16px;">
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;text-align:center;font-size:12px;">
+    <div><div style="font-size:22px;font-weight:600;"><%= counts.implemented || 0 %></div><div class="meta">Implemented</div></div>
+    <div><div style="font-size:22px;font-weight:600;"><%= counts.partial || 0 %></div><div class="meta">Partial</div></div>
+    <div><div style="font-size:22px;font-weight:600;"><%= counts.wip || 0 %></div><div class="meta">WIP</div></div>
+    <div><div style="font-size:22px;font-weight:600;"><%= counts.notimpl || 0 %></div><div class="meta">Not implemented</div></div>
+    <div><div style="font-size:22px;font-weight:600;"><%= counts.na || 0 %></div><div class="meta">N/A</div></div>
+    <div><div style="font-size:22px;font-weight:600;color:var(--text-tertiary);"><%= counts.unassessed || 0 %></div><div class="meta">Unassessed</div></div>
+  </div>
+  <div style="margin-top:14px;text-align:center;">
+    <a href="/workspaces/<%= ws.id %>/iso42001/gap" class="btn btn-secondary">Resume - jump to next un-assessed item</a>
+  </div>
+</div>
+
+<h2 style="font-size:14px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);margin-bottom:8px;">Assessment passes</h2>
+<div class="panel" style="overflow:hidden;">
+  <table class="t">
+    <thead><tr><th style="width:80px;">Pass</th><th>Name</th><th>Started</th><th>Started by</th><th>Status</th><th>Completed</th><th style="width:130px;"></th></tr></thead>
+    <tbody>
+      <% passes.forEach(p => { %>
+        <tr>
+          <td class="mono">#<%= p.pass_number %></td>
+          <td><%= p.name %></td>
+          <td class="meta"><%= p.started_at %></td>
+          <td class="meta"><%= p.started_by_name || '-' %></td>
+          <td><span class="status s-<%= (p.status||'open').toLowerCase().replace(/ /g,'-') %>"><%= p.status %></span></td>
+          <td class="meta"><%= p.completed_at || '-' %></td>
+          <td>
+            <% if (p.status !== 'completed') { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/<%= p.id %>/complete" style="display:inline;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <button class="btn btn-ghost btn-xs">Mark complete</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (passes.length === 0) { %>
+        <tr><td colspan="7" class="t-empty">No passes yet. Click "Start a new pass" above to begin.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,51 @@
+<%- include('partials/header', { title: 'ISO 42001 SoA snapshots', user, ws, active: 'iso42001-soa' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO 42001 Statement of Applicability</h1>
+    <div class="page-subtitle">Snapshots: immutable, hashed copies of the SoA at a point in time. Auditors compare across cycles to confirm the SoA has evolved deliberately.</div>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/snapshot" style="display:inline">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <input type="hidden" name="label" value="Manual snapshot">
+    <button class="btn btn-primary btn-xs">Capture snapshot now</button>
+  </form>
+</div>
+
+<%- include('partials/iso42001_soa_tabs', { ws, tab: 'snapshots' }) %>
+
+<div class="panel" style="overflow:hidden;">
+  <table class="t">
+    <thead><tr>
+      <th>Date</th>
+      <th>Label</th>
+      <th>Version</th>
+      <th>Owner / Approver</th>
+      <th class="num">Total</th>
+      <th class="num">Included</th>
+      <th class="num">Excluded</th>
+      <th>Hash</th>
+      <th>Captured by</th>
+    </tr></thead>
+    <tbody>
+      <% snapshots.forEach(s => { %>
+        <tr>
+          <td class="meta"><%= s.created_at %></td>
+          <td><%= s.label || '-' %></td>
+          <td><%= s.version || '-' %></td>
+          <td class="meta" style="font-size:11px;"><%= s.owner || '-' %><% if (s.approved_by) { %> / <%= s.approved_by %><% } %></td>
+          <td class="num"><%= s.control_count %></td>
+          <td class="num"><%= s.included_count %></td>
+          <td class="num"><%= s.excluded_count %></td>
+          <td class="mono meta" style="font-size:10px;"><%= s.payload_hash ? s.payload_hash.slice(0, 12) + '...' : '-' %></td>
+          <td class="meta"><%= s.created_by_name || '-' %></td>
+        </tr>
+      <% }) %>
+      <% if (snapshots.length === 0) { %>
+        <tr><td colspan="9" class="t-empty">No snapshots yet. Capture one before each management review or audit.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

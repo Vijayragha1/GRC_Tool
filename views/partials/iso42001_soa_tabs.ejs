@@ -1,0 +1,17 @@
+<%
+  // Shared tab strip across the ISO 42001 SoA pages. Pass `tab` as one of:
+  //   'current' | 'snapshots' | 'diff'
+  const _tab = (typeof tab !== 'undefined' && tab) ? tab : 'current';
+  const _tabs = [
+    { id: 'current',   label: 'Current',   href: `/workspaces/${ws.id}/iso42001/soa` },
+    { id: 'snapshots', label: 'Snapshots', href: `/workspaces/${ws.id}/iso42001/soa/snapshots` },
+    { id: 'diff',      label: 'Diff',      href: `/workspaces/${ws.id}/iso42001/soa/snapshots/diff` },
+  ];
+%>
+<div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:18px;">
+  <% _tabs.forEach(t => { %>
+    <a href="<%= t.href %>" style="padding:9px 18px;font-size:13px;font-weight:500;text-decoration:none;color:<%= t.id === _tab ? 'var(--accent)' : 'var(--text-secondary)' %>;border-bottom:2px solid <%= t.id === _tab ? 'var(--accent)' : 'transparent' %>;margin-bottom:-1px;transition:color 0.12s;">
+      <%= t.label %>
+    </a>
+  <% }) %>
+</div>

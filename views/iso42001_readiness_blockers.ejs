@@ -1,0 +1,55 @@
+<%- include('partials/header', { title: 'ISO 42001 pre-cert blockers', user, ws, active: 'iso42001-readiness' }) %>
+
+<div class="page-head">
+  <div>
+    <div style="font-size:11px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;">
+      <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="link-muted">ISO 42001 readiness</a>
+    </div>
+    <h1 class="page-title" style="margin-top:4px;">Pre-cert blocker check</h1>
+    <div class="page-subtitle">High-severity items that must be cleared before a Stage 2 audit. Each is a specific control or NC the auditor will flag if left open.</div>
+  </div>
+</div>
+
+<% if (blockers.length === 0) { %>
+  <div class="panel" style="padding:24px;text-align:center;background:rgba(22,163,74,0.04);border-color:#16a34a;">
+    <div style="font-size:18px;color:#16a34a;font-weight:600;margin-bottom:6px;">No blockers detected</div>
+    <div class="meta">Every high-severity readiness check is clean. Schedule the Stage 1 audit.</div>
+  </div>
+<% } else { %>
+  <% blockers.forEach(b => { %>
+    <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;">
+      <div class="panel-head">
+        <h2 style="font-size:14px;color:#b91c1c;"><%= b.label %></h2>
+        <span class="meta"><%= b.items.length %> item<%= b.items.length === 1 ? '' : 's' %></span>
+      </div>
+      <table class="t">
+        <thead><tr><th style="width:120px;">ID</th><th>Title</th><th style="width:120px;"></th></tr></thead>
+        <tbody>
+          <% b.items.forEach(it => { %>
+            <tr>
+              <td class="mono meta" style="font-size:11px;">
+                <% if (it.id && String(it.id).startsWith('ai-')) { %>
+                  <%= it.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.') %>
+                <% } else { %>#<%= it.id %><% } %>
+              </td>
+              <td>
+                <% if (it.id && String(it.id).startsWith('ai-')) { %>
+                  <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= it.id %>" class="link-muted" style="color:var(--text);"><%= it.title %></a>
+                <% } else if (b.kind === 'open_ncs') { %>
+                  <a href="/workspaces/<%= ws.id %>/nonconformities/<%= it.id %>" class="link-muted" style="color:var(--text);"><%= it.title %></a>
+                <% } else { %><%= it.title %><% } %>
+              </td>
+              <td>
+                <% if (it.id && String(it.id).startsWith('ai-')) { %>
+                  <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= it.id %>" class="btn btn-secondary btn-xs">Open →</a>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% }) %>
+<% } %>
+
+<%- include('partials/footer') %>

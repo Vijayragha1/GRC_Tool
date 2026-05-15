@@ -1,0 +1,53 @@
+<%- include('partials/header', { title: 'ISO 42001 engagement plan', user, ws, active: 'iso42001-engagement-plan' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO 42001 engagement plan</h1>
+    <div class="page-subtitle">12-phase delivery plan for an ISO 42001 implementation engagement. Toggle each phase as it's completed; add notes to record decisions.</div>
+  </div>
+</div>
+
+<% const done = phases.filter(p => progress[p.key] && progress[p.key].completed_at).length; %>
+<div class="panel" style="padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
+  <div style="font-size:30px;font-weight:600;"><%= done %>/<%= phases.length %></div>
+  <div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);">phases complete</div>
+    <div style="height:6px;width:300px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;margin-top:4px;">
+      <div style="height:100%;width:<%= Math.round((done/phases.length)*100) %>%;background:var(--accent);"></div>
+    </div>
+  </div>
+</div>
+
+<% phases.forEach((p, i) => { %>
+  <% const prog = progress[p.key] || {}; %>
+  <% const isDone = !!prog.completed_at; %>
+  <div class="panel" style="padding:14px 16px;margin-bottom:8px;<%= isDone ? 'background:var(--bg-subtle);' : '' %>">
+    <div style="display:flex;align-items:start;gap:12px;">
+      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/engagement-plan/<%= p.key %>/toggle" style="margin-top:2px;">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+        <button type="submit" style="width:22px;height:22px;border-radius:4px;border:1.5px solid <%= isDone ? 'var(--accent)' : 'var(--border)' %>;background:<%= isDone ? 'var(--accent)' : '#fff' %>;cursor:pointer;padding:0;font-size:13px;color:#fff;line-height:18px;">
+          <%= isDone ? '✓' : '' %>
+        </button>
+      </form>
+      <div style="flex:1;">
+        <div style="display:flex;align-items:baseline;gap:10px;">
+          <span style="font-size:11px;color:var(--text-tertiary);font-weight:500;">Phase <%= i+1 %></span>
+          <span style="font-size:14px;font-weight:600;<%= isDone ? 'text-decoration:line-through;color:var(--text-secondary);' : '' %>"><%= p.title %></span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;"><%= p.summary %></div>
+        <% if (isDone) { %>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">
+            Completed <%= prog.completed_at %><% if (prog.completed_by_name) { %> by <%= prog.completed_by_name %><% } %>
+          </div>
+        <% } %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/engagement-plan/<%= p.key %>/notes" style="margin-top:8px;display:flex;gap:6px;">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <input type="text" name="notes" value="<%= prog.notes || '' %>" placeholder="Phase notes (decisions, owners, dates)…" class="input" style="flex:1;font-size:12px;">
+          <button class="btn btn-ghost btn-xs">Save notes</button>
+        </form>
+      </div>
+    </div>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

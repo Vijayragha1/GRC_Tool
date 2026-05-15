@@ -1,0 +1,87 @@
+<%- include('partials/header', { title: 'ISO 42001 SoA snapshot diff', user, ws, active: 'iso42001-soa' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO 42001 Statement of Applicability</h1>
+    <div class="page-subtitle">Compare two snapshots side-by-side. Auditors use this to confirm SoA changes are deliberate and justified.</div>
+  </div>
+</div>
+
+<%- include('partials/iso42001_soa_tabs', { ws, tab: 'diff' }) %>
+
+<% if (snapshots.length < 2) { %>
+  <div class="panel" style="padding:24px;text-align:center;">
+    <div class="meta">You need at least two snapshots to compare. Capture snapshots before each management review and audit.</div>
+    <a href="/workspaces/<%= ws.id %>/iso42001/soa/snapshots" class="btn btn-primary btn-xs" style="margin-top:10px;">Go to snapshots</a>
+  </div>
+<% } else { %>
+  <form method="GET" class="panel" style="padding:14px;display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px;">
+    <div>
+      <label class="label">Earlier snapshot (A)</label>
+      <select class="select" name="a">
+        <% snapshots.forEach(s => { %>
+          <option value="<%= s.id %>" <%= s.id === aId ? 'selected' : '' %>><%= s.created_at %> &middot; <%= s.label || '-' %><% if (s.version) { %> v<%= s.version %><% } %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Later snapshot (B)</label>
+      <select class="select" name="b">
+        <% snapshots.forEach(s => { %>
+          <option value="<%= s.id %>" <%= s.id === bId ? 'selected' : '' %>><%= s.created_at %> &middot; <%= s.label || '-' %><% if (s.version) { %> v<%= s.version %><% } %></option>
+        <% }) %>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-xs">Compare</button>
+  </form>
+
+  <% if (!diff) { %>
+    <div class="t-empty">Pick two different snapshots above.</div>
+  <% } else if (diff.changes.length === 0) { %>
+    <div class="panel" style="padding:24px;text-align:center;background:rgba(22,163,74,0.04);">
+      <div style="color:#16a34a;font-weight:600;">No changes between these snapshots</div>
+      <div class="meta">Same applicability, status, and justifications on every control.</div>
+    </div>
+  <% } else { %>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Changes (<%= diff.changes.length %>)</h2>
+        <span class="meta"><%= diff.a.created_at.slice(0,10) %> → <%= diff.b.created_at.slice(0,10) %></span>
+      </div>
+      <table class="t">
+        <thead><tr>
+          <th style="width:90px;">Code</th>
+          <th>Control</th>
+          <th>Before (A)</th>
+          <th>After (B)</th>
+        </tr></thead>
+        <tbody>
+          <% diff.changes.forEach(c => { %>
+            <tr>
+              <td class="mono meta" style="font-size:11px;"><%= c.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %></td>
+              <td><%= c.title.replace(/^A\.[0-9.]+ /, '') %></td>
+              <td style="font-size:11.5px;line-height:1.45;color:var(--text-secondary);">
+                <% if (!c.before) { %><em>(not in A)</em><% } else { %>
+                  <strong>Applicability:</strong> <%= c.before.applicability %><br>
+                  <strong>Status:</strong> <%= c.before.status %><br>
+                  <% if (c.before.inclusion_justification) { %><span class="meta">Inc:</span> <%= c.before.inclusion_justification.slice(0, 80) %><% } %>
+                  <% if (c.before.exclusion_justification) { %><span class="meta">Exc:</span> <%= c.before.exclusion_justification.slice(0, 80) %><% } %>
+                <% } %>
+              </td>
+              <td style="font-size:11.5px;line-height:1.45;">
+                <% if (!c.after) { %><em>(not in B)</em><% } else { %>
+                  <strong>Applicability:</strong> <%= c.after.applicability %><br>
+                  <strong>Status:</strong> <%= c.after.status %><br>
+                  <% if (c.after.inclusion_justification) { %><span class="meta">Inc:</span> <%= c.after.inclusion_justification.slice(0, 80) %><% } %>
+                  <% if (c.after.exclusion_justification) { %><span class="meta">Exc:</span> <%= c.after.exclusion_justification.slice(0, 80) %><% } %>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+<% } %>
+
+<%- include('partials/footer') %>

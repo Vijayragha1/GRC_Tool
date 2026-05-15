@@ -1,0 +1,68 @@
+<%- include('partials/header', { title: 'ISO 42001 catalog', user, ws, active: 'iso42001-catalog' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO/IEC 42001:2023 catalog</h1>
+    <div class="page-subtitle">27 clauses (4-10) and 38 Annex A reference controls for AI management systems.</div>
+  </div>
+  <form method="GET" style="display:flex;gap:6px;align-items:center;">
+    <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
+    <select name="filter" class="select" style="width:240px" onchange="this.form.submit()">
+      <option value="all" <%= filter==='all'?'selected':'' %>>All items</option>
+      <option value="clauses" <%= filter==='clauses'?'selected':'' %>>Clauses (4-10)</option>
+      <option value="annex" <%= filter==='annex'?'selected':'' %>>Annex A only</option>
+      <option value="a-policies" <%= filter==='a-policies'?'selected':'' %>>A.2 Policies related to AI</option>
+      <option value="b-internal-organization" <%= filter==='b-internal-organization'?'selected':'' %>>A.3 Internal organization</option>
+      <option value="c-resources" <%= filter==='c-resources'?'selected':'' %>>A.4 Resources for AI systems</option>
+      <option value="d-impact-assessment" <%= filter==='d-impact-assessment'?'selected':'' %>>A.5 Impact assessment</option>
+      <option value="e-lifecycle" <%= filter==='e-lifecycle'?'selected':'' %>>A.6 AI system life cycle</option>
+      <option value="f-data" <%= filter==='f-data'?'selected':'' %>>A.7 Data for AI systems</option>
+      <option value="g-information" <%= filter==='g-information'?'selected':'' %>>A.8 Information for interested parties</option>
+      <option value="h-use" <%= filter==='h-use'?'selected':'' %>>A.9 Use of AI systems</option>
+      <option value="i-third-party" <%= filter==='i-third-party'?'selected':'' %>>A.10 Third-party and customers</option>
+    </select>
+    <button class="btn btn-secondary">Apply</button>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden;margin-bottom:16px;">
+  <div style="padding:12px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
+    <div style="display:flex;gap:24px;font-size:13px;">
+      <div><a href="/workspaces/<%= ws.id %>/iso42001/controls" class="btn btn-primary btn-xs">Assess controls</a></div>
+      <div><a href="/workspaces/<%= ws.id %>/iso42001/soa" class="btn btn-secondary btn-xs">Statement of Applicability</a></div>
+      <div style="margin-left:auto;color:var(--text-tertiary);font-size:12px;">Showing <%= rows.length %> item<%= rows.length===1?'':'s' %></div>
+    </div>
+  </div>
+  <table class="t">
+    <thead><tr>
+      <th style="width:90px;">ID</th>
+      <th>Title</th>
+      <th>Summary</th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(r => { %>
+        <tr>
+          <td><span class="mono" style="font-size:11px;color:var(--text-tertiary);">
+            <%= r.type === 'clause' ? '§' + r.id.replace('ai-clause-', '') : r.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %>
+          </span></td>
+          <td>
+            <% if (r.type === 'control') { %>
+              <a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted" style="color:var(--text);">
+                <%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %>
+              </a>
+            <% } else { %>
+              <span><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></span>
+            <% } %>
+            <div style="font-size:11px;color:var(--text-tertiary);"><%= r.type === 'clause' ? 'Clause' : 'Annex A control' %></div>
+          </td>
+          <td style="color:var(--text-secondary);font-size:12px;"><%= r.summary || '' %></td>
+        </tr>
+      <% }) %>
+      <% if (rows.length === 0) { %>
+        <tr><td colspan="3" class="t-empty">No items match this filter.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

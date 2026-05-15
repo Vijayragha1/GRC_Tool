@@ -2458,6 +2458,239 @@ function init() {
     seed();
     console.log(`[db] Seeded CSF analyst content: ${analyst.LEARN_DOCS.length} learn docs, ${analyst.EXPLAINERS.length} explainers, ${analyst.QUESTIONS.length} questions, ${analyst.EVIDENCE_PROMPTS.length} prompts, ${analyst.SELF_CHECK_PROMPTS.length} self-check prompts`);
   }
+
+  // ==================== ISO/IEC 42001:2023 (AI MS) ====================
+  // Catalog (clauses 4-10 + Annex A reference controls) and per-workspace state.
+  // Parallels iso_items + control_states. Separate tables avoid touching the
+  // ISO 27001 module while keeping the data shape identical so views can be cloned.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS iso42001_items (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      category TEXT,
+      title TEXT NOT NULL,
+      summary TEXT,
+      questions TEXT,
+      evidence_needed TEXT,
+      documentation_needed TEXT,
+      sort_order INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS iso42001_control_states (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      iso_item_id TEXT NOT NULL,
+      status TEXT DEFAULT 'Not Assessed',
+      applicability TEXT DEFAULT 'undecided',
+      inclusion_justification TEXT,
+      exclusion_justification TEXT,
+      maturity INTEGER DEFAULT 0,
+      notes TEXT,
+      internal_notes TEXT,
+      owner_id INTEGER,
+      due_date DATE,
+      assessment_answers TEXT,
+      roadmap_phase TEXT,
+      last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(workspace_id, iso_item_id),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (iso_item_id) REFERENCES iso42001_items(id),
+      FOREIGN KEY (owner_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_iso42001_cs_workspace ON iso42001_control_states(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_iso42001_cs_iso ON iso42001_control_states(iso_item_id);
+
+    CREATE TABLE IF NOT EXISTS iso42001_assessment_passes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      pass_number INTEGER NOT NULL,
+      name TEXT,
+      started_by INTEGER,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME,
+      status TEXT DEFAULT 'open',
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (started_by) REFERENCES users(id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_iso42001_passes_ws_num ON iso42001_assessment_passes(workspace_id, pass_number);
+
+    CREATE TABLE IF NOT EXISTS iso42001_cert_cycle_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      planned_date DATE,
+      actual_date DATE,
+      status TEXT DEFAULT 'planned',
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_iso42001_ccev_workspace ON iso42001_cert_cycle_events(workspace_id, planned_date);
+
+    CREATE TABLE IF NOT EXISTS iso42001_intake_answers (
+      workspace_id INTEGER NOT NULL,
+      question_key TEXT NOT NULL,
+      answer TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (workspace_id, question_key),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS iso42001_engagement_plan_progress (
+      workspace_id INTEGER NOT NULL,
+      phase_key TEXT NOT NULL,
+      completed_at DATETIME,
+      completed_by INTEGER,
+      notes TEXT,
+      PRIMARY KEY (workspace_id, phase_key),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (completed_by) REFERENCES users(id)
+    );
+
+    -- Parallel link tables for ISO 42001 (existing risk_controls / document_controls
+    -- have FK to iso_items which rejects ai-* ids). Nonconformities reuses the
+    -- existing table since its iso_item_id FK isn't strictly enforced.
+    CREATE TABLE IF NOT EXISTS iso42001_risk_controls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      risk_id INTEGER NOT NULL,
+      iso_item_id TEXT NOT NULL,
+      UNIQUE(risk_id, iso_item_id),
+      FOREIGN KEY (risk_id) REFERENCES risks(id) ON DELETE CASCADE,
+      FOREIGN KEY (iso_item_id) REFERENCES iso42001_items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS iso42001_document_controls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_id INTEGER NOT NULL,
+      iso_item_id TEXT NOT NULL,
+      section_ref TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(document_id, iso_item_id),
+      FOREIGN KEY (document_id) REFERENCES generated_docs(id) ON DELETE CASCADE,
+      FOREIGN KEY (iso_item_id) REFERENCES iso42001_items(id) ON DELETE CASCADE
+    );
+
+    -- SoA snapshots: immutable hashed copies of SoA state, taken before
+    -- management review or audit so auditors can compare across time.
+    CREATE TABLE IF NOT EXISTS iso42001_soa_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      label TEXT,
+      reason TEXT,
+      version TEXT,
+      owner TEXT,
+      approved_by TEXT,
+      approved_at DATE,
+      payload TEXT NOT NULL,
+      payload_hash TEXT NOT NULL,
+      control_count INTEGER,
+      included_count INTEGER,
+      excluded_count INTEGER,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_iso42001_soa_snap_ws ON iso42001_soa_snapshots(workspace_id, created_at DESC);
+
+    -- Custom (non-Annex-A) controls the firm wants to track in the SoA.
+    CREATE TABLE IF NOT EXISTS iso42001_soa_custom_controls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      code TEXT NOT NULL,
+      title TEXT NOT NULL,
+      source TEXT,
+      summary TEXT,
+      applicability TEXT DEFAULT 'included',
+      inclusion_justification TEXT,
+      exclusion_justification TEXT,
+      status TEXT DEFAULT 'Not Assessed',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_iso42001_soa_custom_ws ON iso42001_soa_custom_controls(workspace_id);
+
+    -- Pass-history snapshot table: writes one row per save so prior-pass notes
+    -- and status changes are recoverable. pass_id may be null if no pass is open.
+    CREATE TABLE IF NOT EXISTS iso42001_control_state_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      iso_item_id TEXT NOT NULL,
+      pass_id INTEGER,
+      changed_by INTEGER,
+      snapshot_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status TEXT,
+      applicability TEXT,
+      maturity INTEGER,
+      inclusion_justification TEXT,
+      exclusion_justification TEXT,
+      notes TEXT,
+      assessment_answers TEXT,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (pass_id) REFERENCES iso42001_assessment_passes(id) ON DELETE SET NULL,
+      FOREIGN KEY (changed_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_iso42001_csh_ws_item ON iso42001_control_state_history(workspace_id, iso_item_id, snapshot_at DESC);
+  `);
+
+  // Seed ISO 42001 catalog if empty. Idempotent.
+  const iso42001Count = db.prepare('SELECT COUNT(*) AS c FROM iso42001_items').get().c;
+  if (iso42001Count === 0) {
+    const iso42001 = require('./data/iso42001-catalog');
+    const ins42 = db.prepare(`INSERT INTO iso42001_items
+      (id, type, category, title, summary, questions, evidence_needed, documentation_needed, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const tx42 = db.transaction((items) => {
+      for (const it of items) {
+        ins42.run(
+          it.id, it.type, it.category, it.title, it.summary,
+          JSON.stringify(it.questions || []),
+          JSON.stringify(it.evidence_needed || []),
+          JSON.stringify(it.documentation_needed || []),
+          it.sort_order
+        );
+      }
+    });
+    tx42(iso42001);
+    const clauses = iso42001.filter(i => i.type === 'clause').length;
+    const controls = iso42001.filter(i => i.type === 'control').length;
+    console.log(`[db] Seeded ISO 42001 catalog: ${clauses} clauses + ${controls} Annex A controls`);
+  }
+
+  // Audit-grade content for each ISO 42001 clause/control. Same shape as iso-content.js.
+  // Authored in data/iso42001-content.js and synced into iso42001_items on every boot
+  // so edits to the content file propagate after a restart. Existing summary/questions/
+  // evidence_needed columns remain (legacy / catalog layer).
+  addColumnIfMissing('iso42001_items', 'purpose', 'TEXT');
+  addColumnIfMissing('iso42001_items', 'what_good_looks_like', 'TEXT');
+  addColumnIfMissing('iso42001_items', 'common_pitfalls', 'TEXT');         // JSON array
+  addColumnIfMissing('iso42001_items', 'evidence_to_look_for', 'TEXT');    // JSON array of {item, what_it_tells_you}
+  addColumnIfMissing('iso42001_items', 'scoping_notes', 'TEXT');
+  addColumnIfMissing('iso42001_items', 'maturity_ladder', 'TEXT');         // JSON {1,2,3,4}
+  addColumnIfMissing('iso42001_items', 'related_items', 'TEXT');           // JSON array of ids
+  try {
+    const content42 = require('./data/iso42001-content');
+    const upd42 = db.prepare(`UPDATE iso42001_items SET
+      purpose=?, what_good_looks_like=?, common_pitfalls=?, evidence_to_look_for=?,
+      scoping_notes=?, maturity_ladder=?, related_items=? WHERE id=?`);
+    let n42 = 0;
+    for (const [id, c] of Object.entries(content42)) {
+      const r = upd42.run(
+        c.purpose || null,
+        c.what_good_looks_like || null,
+        c.common_pitfalls ? JSON.stringify(c.common_pitfalls) : null,
+        c.evidence_to_look_for ? JSON.stringify(c.evidence_to_look_for) : null,
+        c.scoping_notes || null,
+        c.maturity_ladder ? JSON.stringify(c.maturity_ladder) : null,
+        c.related_items ? JSON.stringify(c.related_items) : null,
+        id
+      );
+      if (r.changes > 0) n42++;
+    }
+    if (n42 > 0) console.log(`[content] synced ${n42} ISO 42001 item(s) from data/iso42001-content.js`);
+  } catch (e) {
+    if (e.code !== 'MODULE_NOT_FOUND') console.warn('[content] failed to sync ISO 42001:', e.message);
+  }
 }
 
 const crypto = require('crypto');

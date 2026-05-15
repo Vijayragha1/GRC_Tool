@@ -1,0 +1,138 @@
+<%- include('partials/header', { title: 'ISO 42001 roadmap', user, ws, active: 'iso42001-roadmap' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO 42001 roadmap</h1>
+    <div class="page-subtitle">Implementation roadmap aligned to ISO/IEC 42001:2023 PDCA. Each milestone maps to a clause / Annex A reference and a "done" signal computed from your AIMS data.</div>
+  </div>
+</div>
+
+<!-- Needs your attention -->
+<% if (needsAttention && needsAttention.length > 0) {
+     const naHigh = needsAttention.filter(i => i.severity === 'high').length;
+     const naMedium = needsAttention.filter(i => i.severity === 'medium').length;
+%>
+  <div class="panel" style="margin-bottom:18px;border-left:3px solid <%= naHigh > 0 ? '#dc2626' : '#a16207' %>;">
+    <div class="panel-head">
+      <h2>Needs your attention <span class="meta" style="font-weight:400;font-size:13px;">&middot; live from data</span></h2>
+      <span class="meta">
+        <% if (naHigh > 0) { %><strong style="color:#b91c1c;"><%= naHigh %></strong> high &middot; <% } %>
+        <% if (naMedium > 0) { %><strong style="color:#a16207;"><%= naMedium %></strong> medium<% } %>
+      </span>
+    </div>
+    <% needsAttention.forEach(c => {
+         const dotColor = c.severity === 'high' ? '#dc2626' : c.severity === 'medium' ? '#ca8a04' : 'var(--accent)';
+    %>
+      <div style="padding:9px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+        <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:<%= dotColor %>;"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12.5px;font-weight:500;"><%= c.title %></div>
+          <% if (c.detail) { %><div class="meta" style="font-size:11px;"><%= c.detail %></div><% } %>
+        </div>
+        <span class="tag tag-neutral" style="font-size:10px;"><%= c.category %></span>
+        <a href="<%= c.link %>" class="btn btn-secondary btn-xs">→</a>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<!-- PDCA Implementation roadmap milestones -->
+<% if (roadmap && roadmap.length) {
+     const completed = roadmap.filter(r => r.done).length;
+     const partials = roadmap.filter(r => r.partial).length;
+     const phases = [
+       { key: 'plan',  label: 'Plan',  blurb: 'Context, scope, AI policy, risks, SoA, objectives',  color: '#0891b2' },
+       { key: 'do',    label: 'Do',    blurb: 'Roles, competence, controls, monitoring',             color: '#7c3aed' },
+       { key: 'check', label: 'Check', blurb: 'Internal audit and management review',                color: '#a16207' },
+       { key: 'act',   label: 'Act',   blurb: 'Close NCs and continually improve',                   color: '#16a34a' }
+     ];
+%>
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-head">
+    <h2>Implementation roadmap <span class="meta" style="font-weight:400;font-size:13px;">&middot; PDCA</span></h2>
+    <span class="meta"><strong style="color:var(--text);"><%= completed %></strong> / <%= roadmap.length %> done<% if (partials) { %> &middot; <%= partials %> in progress<% } %></span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border);">
+    <% phases.forEach((ph, idx) => {
+         const items = roadmap.filter(r => r.phase === ph.key);
+         const phDone = items.filter(r => r.done).length;
+         const phPct  = items.length ? Math.round(phDone / items.length * 100) : 0;
+    %>
+      <div style="padding:10px 14px;<%= idx > 0 ? 'border-left:1px solid var(--border);' : '' %>">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <span style="font-weight:600;font-size:13px;color:<%= ph.color %>;text-transform:uppercase;letter-spacing:0.04em;"><%= ph.label %></span>
+          <span class="num meta" style="font-size:11.5px;"><%= phDone %>/<%= items.length %></span>
+        </div>
+        <div class="meta" style="font-size:11px;margin-bottom:6px;"><%= ph.blurb %></div>
+        <div style="height:4px;background:var(--bg-subtle);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:<%= phPct %>%;background:<%= ph.color %>;transition:width 0.2s;"></div>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+
+  <% phases.forEach(ph => {
+       const items = roadmap.filter(r => r.phase === ph.key);
+       if (items.length === 0) return;
+  %>
+    <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:<%= ph.color %>;">
+      <%= ph.label %> <span class="meta" style="font-weight:400;text-transform:none;letter-spacing:normal;">&middot; <%= ph.blurb %></span>
+    </div>
+    <% items.forEach((r, i) => {
+         const tickColor = r.done ? '#16a34a' : r.partial ? '#ea580c' : 'var(--text-tertiary)';
+         const tickBg    = r.done ? 'rgba(22,163,74,0.10)' : r.partial ? 'rgba(234,88,12,0.10)' : 'var(--bg-subtle)';
+         const tickGlyph = r.done ? '✓' : r.partial ? '·' : (i + 1);
+    %>
+      <div style="display:grid;grid-template-columns:30px 1fr auto;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:start;">
+        <div style="width:26px;height:26px;border-radius:13px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0;"><%= tickGlyph %></div>
+        <div style="min-width:0;">
+          <div style="font-size:13.5px;font-weight:500;line-height:1.3;"><%= r.label %> <span class="meta" style="font-weight:400;">&middot; <%= r.clause %></span></div>
+          <div class="meta" style="font-size:12px;margin-top:2px;line-height:1.4;"><%= r.detail %></div>
+        </div>
+        <a href="<%= r.link %>" class="btn <%= r.done ? 'btn-ghost' : 'btn-secondary' %> btn-xs" style="white-space:nowrap;<%= r.done ? 'color:var(--text-secondary);' : '' %>"><%= r.done ? 'Review →' : '→ ' + r.link_label %></a>
+      </div>
+    <% }) %>
+  <% }) %>
+</div>
+<% } %>
+
+<!-- Annex A treatment phase kanban (kept from v1) -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-head">
+    <h2>Annex A treatment phasing</h2>
+    <span class="meta">individual controls by planned treatment phase - drag-replace via the dropdown</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid var(--border);">
+    <% grouped.forEach((g, idx) => { %>
+      <div style="padding:10px;min-height:240px;<%= idx > 0 ? 'border-left:1px solid var(--border);' : '' %>">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);margin-bottom:8px;">
+          <%= g.label %>
+          <span style="float:right;font-weight:600;color:var(--text);"><%= g.rows.length %></span>
+        </div>
+        <% g.rows.forEach(r => { %>
+          <div style="border:1px solid var(--border);border-radius:4px;padding:6px 8px;margin-bottom:5px;background:var(--bg-subtle);">
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+              <span class="mono" style="font-size:10px;color:var(--text-tertiary);"><%= r.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %></span>
+              <span class="status s-<%= r.status.toLowerCase().replace(/ /g,'-') %>" style="font-size:10px;padding:1px 5px;"><%= r.status %></span>
+            </div>
+            <div style="font-size:11.5px;line-height:1.3;margin-bottom:5px;">
+              <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a>
+            </div>
+            <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/roadmap/<%= r.id %>/phase" class="rowForm" style="display:inline;">
+              <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+              <select name="phase" class="select rowInput" style="width:100%;font-size:11px;padding:2px 4px;" onchange="this.form.submit()">
+                <% phases.forEach(p => { %><option value="<%= p.key %>" <%= (r.roadmap_phase||'')===p.key?'selected':'' %>><%= p.label %></option><% }) %>
+              </select>
+            </form>
+          </div>
+        <% }) %>
+        <% if (g.rows.length === 0) { %>
+          <div class="meta" style="text-align:center;padding:20px 0;font-size:11px;">- empty -</div>
+        <% } %>
+      </div>
+    <% }) %>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

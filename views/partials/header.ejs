@@ -454,6 +454,48 @@
           <span class="nav-item-text">CSF Learn</span>
         </a>
 
+        <div class="nav-group-label">ISO 42001 (AI MS)</div>
+        <a href="/workspaces/<%= ws.id %>/iso42001/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-intake') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="nav-item-text">Intake</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-engagement-plan') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7"/><path d="M21 8h-4a2 2 0 0 0-2 2v10"/><path d="M3 20h18"/><circle cx="12" cy="6" r="3"/></svg>
+          <span class="nav-item-text">Engagement plan</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-catalog') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+          <span class="nav-item-text">Catalog</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-gap') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="nav-item-text">Gap assessment</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/controls" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-controls') ? 'active' : '' %>" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span class="nav-item-text">Controls</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/roadmap" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-roadmap') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+          <span class="nav-item-text">Roadmap</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-soa') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="nav-item-text">Statement of Applicability</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-readiness') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span class="nav-item-text">Readiness</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/exec-brief" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-exec-brief') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+          <span class="nav-item-text">Exec brief</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/iso42001/cert-cycle" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-cert-cycle') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="nav-item-text">Cert cycle</span>
+        </a>
+
         <div class="nav-group-label">Operations</div>
         <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
