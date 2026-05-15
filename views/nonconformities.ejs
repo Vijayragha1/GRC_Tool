@@ -5,7 +5,8 @@
     <h1 class="page-title">Nonconformities & corrective actions</h1>
     <div class="page-subtitle">Per Clause 10.2 - track NCs from audits, incidents, monitoring; root cause; corrective action; effectiveness check.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div style="display:flex;gap:6px;align-items:center;">
+    <a href="/workspaces/<%= ws.id %>/improvements" class="btn btn-secondary btn-xs" title="Continual improvement register (clause 10.1) - the non-corrective half of clause 10.">Improvements →</a>
     <select onchange="window.location='?filter='+this.value" class="select" style="width:120px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
       <option value="all" <%= filter==='all'?'selected':'' %>>All</option>

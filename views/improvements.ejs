@@ -5,7 +5,8 @@
     <h1 class="page-title">Continual improvement register</h1>
     <div class="page-subtitle">Improvement actions driven by data (audit findings, MRM outputs, monitoring trends, lessons learned). Distinct from corrective actions on NCs - these are the "we noticed something we should be doing better" items required by clause 10.1.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div style="display:flex;gap:6px;align-items:center;">
+    <a href="/workspaces/<%= ws.id %>/nonconformities" class="btn btn-secondary btn-xs" title="Nonconformities + corrective action (clause 10.2) - the corrective half of clause 10.">← Nonconformities</a>
     <a href="?filter=open" class="btn <%= filter === 'open' ? 'btn-primary' : 'btn-secondary' %> btn-xs">Open</a>
     <a href="?filter=all" class="btn <%= filter === 'all' ? 'btn-primary' : 'btn-secondary' %> btn-xs">All</a>
   </div>

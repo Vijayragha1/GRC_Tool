@@ -5,7 +5,9 @@
     <h1 class="page-title">Tasks</h1>
     <div class="page-subtitle">Implementation work assigned to consultants and client team members.</div>
   </div>
-  <div style="display:flex;gap:6px;">
+  <div style="display:flex;gap:6px;align-items:center;">
+    <a href="/workspaces/<%= ws.id %>/calendar" class="btn btn-secondary btn-xs" title="Compliance calendar - every due date and review cadence across documents, suppliers, NCs, and tasks.">Calendar</a>
+    <a href="/workspaces/<%= ws.id %>/task-templates" class="btn btn-secondary btn-xs" title="Task templates - reusable task sets seeded into new engagements.">Templates</a>
     <select onchange="window.location='?filter='+this.value" class="select" style="width:140px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
       <option value="mine" <%= filter==='mine'?'selected':'' %>>Assigned to me</option>
