@@ -16,7 +16,7 @@
   <% if (!log.length) { %><div class="empty-state"><div class="empty-sub">No activity for this user on this day.</div></div><% } %>
   <% log.forEach((l, i) => { %>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:120px 1fr;gap:12px;">
-      <div class="meta mono" style="font-size:11px;"><%= l.created_at.slice(11, 19) %></div>
+      <div class="meta mono text-xs"><%= l.created_at.slice(11, 19) %></div>
       <div>
         <span class="mono" style="font-size:12.5px;font-weight:500;"><%= l.action %></span>
         <% if (l.entity_type) { %><span class="meta">· <%= l.entity_type %><% if (l.entity_id) { %> #<%= l.entity_id %><% } %></span><% } %>

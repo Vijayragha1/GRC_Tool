@@ -27,11 +27,11 @@
   <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;">
     <span style="font-weight:600;">SoA metadata</span>
     <% if (soaMeta.version || soaMeta.owner || soaMeta.approved_by) { %>
-      <% if (soaMeta.version) { %><span class="tag tag-info" style="font-size:10.5px;">v<%= soaMeta.version %></span><% } %>
-      <% if (soaMeta.owner) { %><span class="meta" style="font-size:11px;">owner: <%= soaMeta.owner %></span><% } %>
-      <% if (soaMeta.approved_by) { %><span class="meta" style="font-size:11px;">approved by <%= soaMeta.approved_by %><% if (soaMeta.approved_at) { %> on <%= soaMeta.approved_at %><% } %></span><% } %>
+      <% if (soaMeta.version) { %><span class="tag tag-info text-eyebrow">v<%= soaMeta.version %></span><% } %>
+      <% if (soaMeta.owner) { %><span class="meta text-xs">owner: <%= soaMeta.owner %></span><% } %>
+      <% if (soaMeta.approved_by) { %><span class="meta text-xs">approved by <%= soaMeta.approved_by %><% if (soaMeta.approved_at) { %> on <%= soaMeta.approved_at %><% } %></span><% } %>
     <% } else { %>
-      <span class="tag tag-warn" style="font-size:10.5px;">missing - auditors expect this</span>
+      <span class="tag tag-warn text-eyebrow">missing - auditors expect this</span>
     <% } %>
   </summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/metadata" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
@@ -42,7 +42,7 @@
     <div><label class="label">Approved on</label><input type="date" class="input" name="approved_at" value="<%= soaMeta.approved_at || '' %>"></div>
     <div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;">
       <button class="btn btn-primary btn-xs">Save metadata</button>
-      <span class="meta" style="font-size:11px;">Saving captures a fresh snapshot with this metadata.</span>
+      <span class="meta text-xs">Saving captures a fresh snapshot with this metadata.</span>
     </div>
   </form>
 </details>
@@ -84,11 +84,11 @@
           <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
           <tr>
             <td class="mono meta"><%= r.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %></td>
-            <td><a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.last_updated) { %><div class="meta" style="font-size:10.5px;">updated <%= r.last_updated.slice(0,10) %></div><% } %></td>
+            <td><a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.last_updated) { %><div class="meta text-eyebrow">updated <%= r.last_updated.slice(0,10) %></div><% } %></td>
             <td style="font-size:11.5px;line-height:1.4;">
               <% if (linkedRisks.length === 0) { %>
                 <% if (r.applicability === 'included') { %>
-                  <span class="tag tag-warn" style="font-size:10px;" title="An included control with no linked risk weakens 6.1.3">unjustified</span>
+                  <span class="tag tag-warn text-xxs" title="An included control with no linked risk weakens 6.1.3">unjustified</span>
                 <% } else { %>
                   <span class="meta">-</span>
                 <% } %>
@@ -134,7 +134,7 @@
     <span class="meta"><%= customControls.length %> custom</span>
   </div>
   <% if (customControls.length === 0) { %>
-    <div class="panel-pad meta" style="font-size:12.5px;">No custom controls. Most workspaces don't need any - Annex A covers the common ground. Add only if a real control exists outside Annex A (e.g., a sector-specific AI standard, NIST AI RMF mapping).</div>
+    <div class="panel-pad meta text-md">No custom controls. Most workspaces don't need any - Annex A covers the common ground. Add only if a real control exists outside Annex A (e.g., a sector-specific AI standard, NIST AI RMF mapping).</div>
   <% } else { %>
     <table class="t">
       <thead><tr>
@@ -180,10 +180,10 @@
     <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Add custom control</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/custom-controls" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:120px 1fr 160px 140px;gap:8px;">
       <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-      <input class="input mono" name="code" placeholder="C-001" required style="font-size:12.5px;">
-      <input class="input" name="title" placeholder="Control title" required style="font-size:12.5px;">
-      <input class="input" name="source_framework" placeholder="NIST AI RMF / Internal" style="font-size:12.5px;">
-      <select class="select" name="applicability" style="font-size:12.5px;">
+      <input class="input mono text-md" name="code" placeholder="C-001" required>
+      <input class="input text-md" name="title" placeholder="Control title" required>
+      <input class="input text-md" name="source_framework" placeholder="NIST AI RMF / Internal">
+      <select class="select text-md" name="applicability">
         <option value="included">Included</option>
         <option value="excluded">Excluded</option>
         <option value="undecided">Undecided</option>

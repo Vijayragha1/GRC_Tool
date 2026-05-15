@@ -33,11 +33,11 @@
           <td class="meta"><%= s.created_at %></td>
           <td><%= s.label || '-' %></td>
           <td><%= s.version || '-' %></td>
-          <td class="meta" style="font-size:11px;"><%= s.owner || '-' %><% if (s.approved_by) { %> / <%= s.approved_by %><% } %></td>
+          <td class="meta text-xs"><%= s.owner || '-' %><% if (s.approved_by) { %> / <%= s.approved_by %><% } %></td>
           <td class="num"><%= s.control_count %></td>
           <td class="num"><%= s.included_count %></td>
           <td class="num"><%= s.excluded_count %></td>
-          <td class="mono meta" style="font-size:10px;"><%= s.payload_hash ? s.payload_hash.slice(0, 12) + '...' : '-' %></td>
+          <td class="mono meta text-xxs"><%= s.payload_hash ? s.payload_hash.slice(0, 12) + '...' : '-' %></td>
           <td class="meta"><%= s.created_by_name || '-' %></td>
         </tr>
       <% }) %>

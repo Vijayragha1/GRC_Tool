@@ -184,7 +184,7 @@
           </td>
           <td>
             <% if (!d.next_review_date) { %>
-              <span class="meta" style="font-size:11.5px;">-</span>
+              <span class="meta text-sm">-</span>
             <% } else {
                  const rsColor = d.review_status === 'overdue' ? '#b91c1c' : d.review_status === 'due_soon' ? '#a16207' : 'var(--text-secondary)';
             %>
@@ -193,13 +193,13 @@
               <% } else if (d.review_status === 'due_soon') { %><div style="font-size:10px;font-weight:600;color:#a16207;text-transform:uppercase;letter-spacing:0.04em;">due soon</div><% } %>
             <% } %>
           </td>
-          <td class="num meta" style="font-size:11.5px;"><%= d.updated_at %></td>
+          <td class="num meta text-sm"><%= d.updated_at %></td>
           <td style="text-align:right">
             <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/docx" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">.docx</a>
             <span class="text-tertiary">·</span>
-            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/print" target="_blank" class="link-muted" style="font-size:12px;">Print</a>
+            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/print" target="_blank" class="link-muted text-base">Print</a>
             <span class="text-tertiary">·</span>
-            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/download" class="link-muted" style="font-size:12px;">.md</a>
+            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>/download" class="link-muted text-base">.md</a>
           </td>
         </tr>
       <% }) %>

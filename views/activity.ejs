@@ -5,7 +5,7 @@
     <h1 class="page-title">Activity log</h1>
     <div class="page-subtitle">Append-only audit trail of every change in this workspace. Filter, search, paginate - required evidence for ISO 27001 certification.</div>
   </div>
-  <div class="meta" style="font-size:12px;"><strong><%= total %></strong> total event<%= total === 1 ? '' : 's' %> · page <%= page %> of <%= totalPages %></div>
+  <div class="meta text-base"><strong><%= total %></strong> total event<%= total === 1 ? '' : 's' %> · page <%= page %> of <%= totalPages %></div>
 </div>
 
 <!-- Filter bar -->
@@ -57,10 +57,10 @@
     <tbody>
       <% log.forEach(l => { %>
         <tr>
-          <td class="num meta" style="font-size:11.5px;"><%= l.created_at %></td>
-          <td style="font-size:13px;"><%= l.user_name %></td>
-          <td><span class="mono meta" style="font-size:11.5px;"><%= l.action %></span></td>
-          <td class="meta" style="font-size:12px;"><%= l.entity_type || '' %><% if (l.entity_id) { %> · <span class="mono"><%= l.entity_id %></span><% } %></td>
+          <td class="num meta text-sm"><%= l.created_at %></td>
+          <td class="text-lg"><%= l.user_name %></td>
+          <td><span class="mono meta text-sm"><%= l.action %></span></td>
+          <td class="meta text-base"><%= l.entity_type || '' %><% if (l.entity_id) { %> · <span class="mono"><%= l.entity_id %></span><% } %></td>
           <td class="mono meta" style="font-size:11px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= l.details || '' %>"><%= l.details || '' %></td>
         </tr>
       <% }) %>
@@ -81,7 +81,7 @@
     <% if (page > 1) { %>
       <a href="?<%= qs({ page: page - 1 }) %>" class="btn btn-secondary btn-xs">← Prev</a>
     <% } %>
-    <span class="meta" style="font-size:12px;">Page <%= page %> of <%= totalPages %></span>
+    <span class="meta text-base">Page <%= page %> of <%= totalPages %></span>
     <% if (page < totalPages) { %>
       <a href="?<%= qs({ page: page + 1 }) %>" class="btn btn-secondary btn-xs">Next →</a>
     <% } %>

@@ -298,6 +298,19 @@
      col-full means "stretch across all grid columns of the parent". */
   .col-full       { grid-column: 1 / -1; }
 
+  /* Type scale - eight named sizes covering every pixel value in actual
+     use. Half-step values (10.5/11.5/12.5) get explicit names so it's
+     visible they're off the standard 6-step scale; text-eyebrow is the
+     uppercase section-label size found across panels. */
+  .text-xxs     { font-size: 10px;   }
+  .text-eyebrow { font-size: 10.5px; }
+  .text-xs      { font-size: 11px;   }
+  .text-sm      { font-size: 11.5px; }
+  .text-base    { font-size: 12px;   }
+  .text-md      { font-size: 12.5px; }
+  .text-lg      { font-size: 13px;   }
+  .text-xl      { font-size: 14px;   }
+
   /* Misc */
   details > summary { cursor: pointer; list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
@@ -652,7 +665,7 @@
                 <% if (isActive) { %>
                   <div style="padding:8px 12px;font-size:13px;display:flex;justify-content:space-between;align-items:center;background:rgba(8,145,178,0.06);">
                     <span style="font-weight:500;"><%= f.name %></span>
-                    <span class="meta" style="font-size:10.5px;">active</span>
+                    <span class="meta text-eyebrow">active</span>
                   </div>
                 <% } else { %>
                   <form method="POST" action="/tenants/<%= f.id %>/switch" style="margin:0;">

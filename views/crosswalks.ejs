@@ -132,9 +132,9 @@
               <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="link-muted" style="color:var(--text);font-size:13px;"><%= title %></a>
             </td>
             <td>
-              <% if (isIncluded) { %><span class="tag tag-success" style="font-size:10.5px;">Included</span>
-              <% } else if (isExcluded) { %><span class="tag tag-danger" style="font-size:10.5px;">Excluded</span>
-              <% } else { %><span class="tag tag-neutral" style="font-size:10.5px;">Undecided</span><% } %>
+              <% if (isIncluded) { %><span class="tag tag-success text-eyebrow">Included</span>
+              <% } else if (isExcluded) { %><span class="tag tag-danger text-eyebrow">Excluded</span>
+              <% } else { %><span class="tag tag-neutral text-eyebrow">Undecided</span><% } %>
             </td>
             <td style="line-height:1.7;"><%- renderRefs('soc2') %></td>
             <td style="line-height:1.7;"><%- renderRefs('nist_csf') %></td>

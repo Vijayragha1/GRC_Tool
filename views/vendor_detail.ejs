@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: v.name, user, ws, active: 'vendors' }) %>
 
-<a href="/workspaces/<%= ws.id %>/vendors" class="link-muted" style="font-size:12px;">← All suppliers</a>
+<a href="/workspaces/<%= ws.id %>/vendors" class="link-muted text-base">← All suppliers</a>
 
 <div class="page-head" style="margin-top:8px">
   <div>
@@ -175,7 +175,7 @@
           </td>
           <td style="font-size:12px;color:var(--text-secondary);"><%= (d.doc_type || '').replace(/_/g,' ') %></td>
           <td class="num meta"><%= d.effective_date || '-' %></td>
-          <td class="num <%= expired ? 'tag tag-danger' : expiringSoon ? 'tag tag-warn' : 'meta' %>" style="font-size:12px;"><%= d.expiry_date || '-' %><% if (expired) { %> · expired<% } else if (expiringSoon) { %> · soon<% } %></td>
+          <td class="num <%= expired ? 'tag tag-danger' : expiringSoon ? 'tag tag-warn' : 'meta' %> text-base"><%= d.expiry_date || '-' %><% if (expired) { %> · expired<% } else if (expiringSoon) { %> · soon<% } %></td>
           <td>
             <% if (d.stored_path) { %>
               <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/download" class="link-muted" style="font-size:12px;font-weight:500;color:var(--accent);">Download</a>

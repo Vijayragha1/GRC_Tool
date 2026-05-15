@@ -56,7 +56,7 @@
             <a href="<%= e.link %>" style="display:block;text-decoration:none;font-size:10.5px;line-height:1.35;padding:1px 4px;margin-bottom:2px;border-radius:2px;background:<%= kindColor[e.kind] || '#666' %>;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= kindLabel[e.kind] || e.kind %>: <%= e.title %>"><%= e.title %></a>
           <% }) %>
           <% if (c.events.length > 3) { %>
-            <div class="meta" style="font-size:10px;">+ <%= c.events.length - 3 %> more</div>
+            <div class="meta text-xxs">+ <%= c.events.length - 3 %> more</div>
           <% } %>
         <% } %>
       </div>

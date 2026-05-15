@@ -50,10 +50,10 @@
   <div class="panel">
     <div class="panel-head"><h2>Engagement</h2></div>
     <div class="panel-pad" style="font-size:13px;line-height:1.7;">
-      <div><span class="meta" style="font-size:11.5px;">Lead:</span> <%= lead ? lead.name : '-' %></div>
-      <div><span class="meta" style="font-size:11.5px;">Period:</span> <%= engagement.period_start || '-' %> &rarr; <%= engagement.period_end || '-' %></div>
-      <div><span class="meta" style="font-size:11.5px;">Target completion:</span> <%= engagement.target_completion_date || '-' %></div>
-      <div><span class="meta" style="font-size:11.5px;">Created:</span> <%= engagement.created_at %></div>
+      <div><span class="meta text-sm">Lead:</span> <%= lead ? lead.name : '-' %></div>
+      <div><span class="meta text-sm">Period:</span> <%= engagement.period_start || '-' %> &rarr; <%= engagement.period_end || '-' %></div>
+      <div><span class="meta text-sm">Target completion:</span> <%= engagement.target_completion_date || '-' %></div>
+      <div><span class="meta text-sm">Created:</span> <%= engagement.created_at %></div>
     </div>
   </div>
 
@@ -61,17 +61,17 @@
   <div class="panel">
     <div class="panel-head">
       <h2>Team</h2>
-      <span class="meta" style="font-size:11.5px;"><%= assignments.length %> assignments</span>
+      <span class="meta text-sm"><%= assignments.length %> assignments</span>
     </div>
     <% if (assignments.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12.5px;">No assignments yet.</div>
+      <div class="panel-pad meta text-md">No assignments yet.</div>
     <% } else { %>
       <table class="t">
         <thead><tr><th>Person</th><th style="width:170px;">Role</th><th style="width:50px;"></th></tr></thead>
         <tbody>
           <% assignments.forEach(a => { %>
             <tr>
-              <td style="font-size:12.5px;"><%= a.user_name %><% if (a.email) { %><div class="meta" style="font-size:11px;"><%= a.email %></div><% } %></td>
+              <td class="text-md"><%= a.user_name %><% if (a.email) { %><div class="meta text-xs"><%= a.email %></div><% } %></td>
               <td>
                 <span class="mono" style="font-size:11px;background:var(--bg-subtle);padding:2px 6px;border-radius:4px;border:1px solid var(--border);"><%= a.role_on_engagement %></span>
               </td>
@@ -90,13 +90,13 @@
 
     <% if (canAssign) { %>
       <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assign" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 170px auto;gap:8px;">
-        <select class="select" name="user_id" required style="font-size:12px;">
+        <select class="select text-base" name="user_id" required>
           <option value="">- pick a person -</option>
           <% assignableUsers.forEach(u => { %>
             <option value="<%= u.id %>"><%= u.name %></option>
           <% }) %>
         </select>
-        <select class="select" name="role_on_engagement" required style="font-size:12px;">
+        <select class="select text-base" name="role_on_engagement" required>
           <% engagementRoles.forEach(r => { %>
             <option value="<%= r %>" <%= r === 'CONSULTANT' ? 'selected' : '' %>><%= r %></option>
           <% }) %>
@@ -149,7 +149,7 @@
 
 <!-- Score distribution -->
 <div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head"><h2>Score distribution (current)</h2><span class="meta" style="font-size:11.5px;"><%= scoredSubs %> scored</span></div>
+  <div class="panel-head"><h2>Score distribution (current)</h2><span class="meta text-sm"><%= scoredSubs %> scored</span></div>
   <div class="panel-pad" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
     <% const maxC = Math.max(1, ...distribution.map(d => d.count)); %>
     <% distribution.forEach(d => { %>
@@ -186,14 +186,14 @@
         <div class="meta" style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;color:#a16207;">Unresolved reviewer comments (<%= unresolvedComments.length %>)</div>
         <% unresolvedComments.slice(0, 5).forEach(c => { %>
           <div style="font-size:12px;padding:4px 0;line-height:1.5;">
-            <% if (c.requires_revision) { %><span class="tag tag-warn" style="font-size:10px;">needs revision</span><% } %>
-            <strong style="font-size:12px;"><%= c.commenter_name %>:</strong>
+            <% if (c.requires_revision) { %><span class="tag tag-warn text-xxs">needs revision</span><% } %>
+            <strong class="text-base"><%= c.commenter_name %>:</strong>
             <%= c.text.length > 100 ? c.text.slice(0, 100) + '...' : c.text %>
             <% if (c.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= c.subcategory_id %>" class="mono" style="color:var(--accent);text-decoration:none;font-size:11px;">&rarr; <%= c.sub_code %></a><% } %>
-            <% if (c.finding_title) { %><span class="meta" style="font-size:11px;">on finding: <%= c.finding_title.slice(0, 40) %></span><% } %>
+            <% if (c.finding_title) { %><span class="meta text-xs">on finding: <%= c.finding_title.slice(0, 40) %></span><% } %>
           </div>
         <% }) %>
-        <% if (unresolvedComments.length > 5) { %><div class="meta" style="font-size:11px;">+<%= unresolvedComments.length - 5 %> more</div><% } %>
+        <% if (unresolvedComments.length > 5) { %><div class="meta text-xs">+<%= unresolvedComments.length - 5 %> more</div><% } %>
       </div>
     <% } %>
 
@@ -207,26 +207,26 @@
             <% if (f.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= f.subcategory_id %>" class="mono" style="color:var(--accent);text-decoration:none;font-size:11px;"><%= f.sub_code %></a><% } %>
           </div>
         <% }) %>
-        <% if (findingsNoRecs.length > 8) { %><div class="meta" style="font-size:11px;">+<%= findingsNoRecs.length - 8 %> more</div><% } %>
+        <% if (findingsNoRecs.length > 8) { %><div class="meta text-xs">+<%= findingsNoRecs.length - 8 %> more</div><% } %>
       </div>
     <% } %>
 
     <% if (!subsWithScoreNoEvidence.length && !unresolvedComments.length && !findingsNoRecs.length) { %>
-      <div class="panel-pad meta" style="font-size:12.5px;">Nothing outstanding. Either nothing's been worked on yet, or every flagged item has been resolved.</div>
+      <div class="panel-pad meta text-md">Nothing outstanding. Either nothing's been worked on yet, or every flagged item has been resolved.</div>
     <% } %>
   </div>
 
   <div class="panel">
-    <div class="panel-head"><h2>Activity</h2><span class="meta" style="font-size:11.5px;">last <%= activity.length %></span></div>
+    <div class="panel-head"><h2>Activity</h2><span class="meta text-sm">last <%= activity.length %></span></div>
     <% if (activity.length === 0) { %>
-      <div class="panel-pad meta" style="font-size:12px;">No activity yet on this workspace's CSF module.</div>
+      <div class="panel-pad meta text-base">No activity yet on this workspace's CSF module.</div>
     <% } else { %>
       <div class="divide-row" style="max-height:380px;overflow-y:auto;">
         <% activity.forEach(a => { %>
           <div style="padding:6px 14px;font-size:12px;line-height:1.5;">
             <div style="display:flex;gap:6px;align-items:baseline;">
               <span class="meta" style="font-size:10.5px;flex-shrink:0;width:90px;"><%= a.created_at %></span>
-              <span style="flex:1;"><strong><%= a.actor || '-' %></strong> <span class="meta" style="font-size:11.5px;"><%= a.action.replace(/^csf_/, '').replace(/_/g, ' ') %></span></span>
+              <span style="flex:1;"><strong><%= a.actor || '-' %></strong> <span class="meta text-sm"><%= a.action.replace(/^csf_/, '').replace(/_/g, ' ') %></span></span>
             </div>
           </div>
         <% }) %>

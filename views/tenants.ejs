@@ -65,11 +65,11 @@
             </form>
           </td>
           <td class="num meta"><%= f.workspace_count %></td>
-          <td class="meta" style="font-size:11.5px;"><%= f.created_at ? f.created_at.slice(0,10) : '-' %></td>
+          <td class="meta text-sm"><%= f.created_at ? f.created_at.slice(0,10) : '-' %></td>
           <td style="text-align:right;">
             <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
               <% if (f.id === activeFirmId) { %>
-                <span class="tag tag-success" style="font-size:10.5px;">active</span>
+                <span class="tag tag-success text-eyebrow">active</span>
               <% } else { %>
                 <form method="POST" action="/tenants/<%= f.id %>/switch" style="display:inline;">
                   <button class="btn btn-secondary btn-xs">Switch →</button>
@@ -82,7 +82,7 @@
                     <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--danger,#b91c1c);">Permanently delete "<%= f.name %>"</div>
                     <div class="meta" style="font-size:11px;line-height:1.45;margin-bottom:8px;">Removes all workspaces, evidence files, users, audit log, and the <code>uploads/firm_<%= f.id %>/</code> directory. Cannot be undone.</div>
                     <form method="POST" action="/tenants/<%= f.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete tenant &quot;<%= f.name %>&quot; and everything under it?');">
-                      <label class="label" style="font-size:11px;">Type <strong><%= f.name %></strong> to confirm</label>
+                      <label class="label text-xs">Type <strong><%= f.name %></strong> to confirm</label>
                       <input class="input" name="confirm_name" required style="font-size:12px;margin-bottom:8px;" autocomplete="off">
                       <button class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete tenant</button>
                     </form>

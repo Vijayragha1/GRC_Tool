@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: inc.title, user, ws, active: 'incidents' }) %>
 
-<a href="/workspaces/<%= ws.id %>/incidents" class="link-muted" style="font-size:12px;">← All incidents</a>
+<a href="/workspaces/<%= ws.id %>/incidents" class="link-muted text-base">← All incidents</a>
 
 <div class="panel" style="margin-top:12px">
   <div class="panel-pad" style="border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -119,9 +119,9 @@
   <div class="panel-head"><h2>Timeline</h2><span class="meta"><%= events.length %> events</span></div>
   <% events.forEach(ev => { %>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:130px 100px 1fr;gap:10px;align-items:start;">
-      <div class="meta mono" style="font-size:11.5px;"><%= ev.event_at %></div>
+      <div class="meta mono text-sm"><%= ev.event_at %></div>
       <div><span class="tag <%= ev.phase === 'detect' ? 'tag-info' : ev.phase === 'contain' ? 'tag-warn' : ev.phase === 'eradicate' ? 'tag-warn' : ev.phase === 'recover' ? 'tag-success' : 'tag-neutral' %>" style="font-size:10.5px;text-transform:uppercase;"><%= ev.phase %></span></div>
-      <div style="font-size:13px;"><%= ev.description %><% if (ev.actor) { %><div class="meta">by <%= ev.actor %></div><% } %></div>
+      <div class="text-lg"><%= ev.description %><% if (ev.actor) { %><div class="meta">by <%= ev.actor %></div><% } %></div>
     </div>
   <% }) %>
   <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/events" class="panel-pad" style="display:grid;grid-template-columns:120px 130px 1fr 130px auto;gap:6px;align-items:end;">

@@ -27,9 +27,9 @@
         <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:<%= dotColor %>;"></span>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:500;"><%= c.title %></div>
-          <% if (c.detail) { %><div class="meta" style="font-size:11.5px;"><%= c.detail %></div><% } %>
+          <% if (c.detail) { %><div class="meta text-sm"><%= c.detail %></div><% } %>
         </div>
-        <span class="tag tag-neutral" style="font-size:10px;"><%= c.category %></span>
+        <span class="tag tag-neutral text-xxs"><%= c.category %></span>
         <a href="<%= c.link %>" class="btn btn-secondary btn-xs">Open →</a>
       </div>
     <% }) %>
@@ -54,7 +54,7 @@
           </div>
           <% if (n.body) { %><div class="meta" style="margin-top:2px;font-size:12.5px;color:var(--text-secondary);"><%= n.body %></div><% } %>
           <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
-            <span class="tag tag-neutral" style="font-size:10.5px;"><%= n.category %></span>
+            <span class="tag tag-neutral text-eyebrow"><%= n.category %></span>
             <% if (n.link) { %><a href="<%= n.link %>" class="link-muted" style="font-size:12px;color:var(--accent);">Open →</a><% } %>
             <span style="flex:1"></span>
             <% if (!n.read_at) { %>

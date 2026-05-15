@@ -2,7 +2,7 @@
 
 <%- include('partials/audit_tabs', { ws, tab: 'audits' }) %>
 
-<a href="/workspaces/<%= ws.id %>/audits" class="link-muted" style="font-size:12px;">← All audits</a>
+<a href="/workspaces/<%= ws.id %>/audits" class="link-muted text-base">← All audits</a>
 
 <%
   // Tier 1.4 - Internal audit lifecycle stages
@@ -100,7 +100,7 @@
                 <span class="tag <%= f.severity === 'high' ? 'tag-danger' : f.severity === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= f.severity %></span>
                 <% if (f.iso_title) { %><span class="meta"><%= f.iso_title %></span><% } %>
               </div>
-              <div style="font-size:13px;"><%= f.description %></div>
+              <div class="text-lg"><%= f.description %></div>
             </div>
             <% if (f.nonconformity_id) { %>
               <a href="/workspaces/<%= ws.id %>/nonconformities/<%= f.nonconformity_id %>" class="btn btn-secondary btn-xs">→ NC #<%= f.nonconformity_id %></a>
@@ -168,11 +168,11 @@
       <tbody>
         <% samples.forEach(s => { %>
           <tr>
-            <td class="mono meta" style="font-size:11.5px;"><%= s.iso_item_id ? s.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() : '-' %></td>
-            <td style="font-size:12.5px;"><%= s.description %></td>
-            <td class="meta" style="font-size:11.5px;"><%= s.sample_taken_at || '-' %></td>
-            <td class="num meta" style="font-size:11.5px;"><%= s.population_size || '-' %> / <%= s.sample_size || '-' %></td>
-            <td style="font-size:12px;"><%= s.finding || '-' %></td>
+            <td class="mono meta text-sm"><%= s.iso_item_id ? s.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() : '-' %></td>
+            <td class="text-md"><%= s.description %></td>
+            <td class="meta text-sm"><%= s.sample_taken_at || '-' %></td>
+            <td class="num meta text-sm"><%= s.population_size || '-' %> / <%= s.sample_size || '-' %></td>
+            <td class="text-base"><%= s.finding || '-' %></td>
             <td>
               <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples/<%= s.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete sample?')" style="display:inline;">
                 <button class="btn btn-ghost btn-xs text-secondary">×</button>
@@ -187,16 +187,16 @@
   <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:160px 1fr 110px 80px 80px 1fr auto;gap:6px;align-items:end;">
     <div>
       <label class="label">Control / clause</label>
-      <select name="iso_item_id" class="select" style="font-size:12px;">
+      <select name="iso_item_id" class="select text-base">
         <option value="">- optional -</option>
         <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.id.replace('annex-','').replace('clause-','').toUpperCase() %></option><% }) %>
       </select>
     </div>
-    <div><label class="label">What was sampled</label><input class="input" name="description" required placeholder="e.g., 5 of 28 access reviews from Q1" style="font-size:12px;"></div>
-    <div><label class="label">Date</label><input class="input" type="date" name="sample_taken_at" style="font-size:12px;"></div>
-    <div><label class="label">Pop</label><input class="input" type="number" name="population_size" style="font-size:12px;"></div>
-    <div><label class="label">Sample</label><input class="input" type="number" name="sample_size" style="font-size:12px;"></div>
-    <div><label class="label">Finding</label><input class="input" name="finding" placeholder="OK / minor NC / major NC" style="font-size:12px;"></div>
+    <div><label class="label">What was sampled</label><input class="input text-base" name="description" required placeholder="e.g., 5 of 28 access reviews from Q1"></div>
+    <div><label class="label">Date</label><input class="input text-base" type="date" name="sample_taken_at"></div>
+    <div><label class="label">Pop</label><input class="input text-base" type="number" name="population_size"></div>
+    <div><label class="label">Sample</label><input class="input text-base" type="number" name="sample_size"></div>
+    <div><label class="label">Finding</label><input class="input text-base" name="finding" placeholder="OK / minor NC / major NC"></div>
     <div><button class="btn btn-primary btn-xs">Add</button></div>
   </form>
 </div>

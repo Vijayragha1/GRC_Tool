@@ -22,10 +22,10 @@
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </summary>
       <div style="position:absolute;right:0;top:calc(100% + 4px);background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);min-width:180px;z-index:50;overflow:hidden;">
-        <a href="/workspaces/<%= ws.id %>/export/soa.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">SoA <span class="meta" style="font-size:10.5px;">.csv</span></a>
-        <a href="/workspaces/<%= ws.id %>/export/risks.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Risks <span class="meta" style="font-size:10.5px;">.csv</span></a>
-        <a href="/workspaces/<%= ws.id %>/export/assets.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Assets <span class="meta" style="font-size:10.5px;">.csv</span></a>
-        <a href="/workspaces/<%= ws.id %>/reports" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);background:var(--bg-subtle);" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='var(--bg-subtle)'">All deliverables <span class="meta" style="font-size:10.5px;">+ markdown templates</span></a>
+        <a href="/workspaces/<%= ws.id %>/export/soa.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">SoA <span class="meta text-eyebrow">.csv</span></a>
+        <a href="/workspaces/<%= ws.id %>/export/risks.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Risks <span class="meta text-eyebrow">.csv</span></a>
+        <a href="/workspaces/<%= ws.id %>/export/assets.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Assets <span class="meta text-eyebrow">.csv</span></a>
+        <a href="/workspaces/<%= ws.id %>/reports" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:13px;text-decoration:none;color:var(--text);background:var(--bg-subtle);" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='var(--bg-subtle)'">All deliverables <span class="meta text-eyebrow">+ markdown templates</span></a>
       </div>
     </details>
   </div>
@@ -106,14 +106,14 @@
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
   <div class="panel">
-    <div class="panel-head"><h2>Top open risks</h2><a href="/workspaces/<%= ws.id %>/risks" class="link-muted" style="font-size:12px">View all →</a></div>
+    <div class="panel-head"><h2>Top open risks</h2><a href="/workspaces/<%= ws.id %>/risks" class="link-muted text-base">View all →</a></div>
     <% if (openRisks.length === 0) { %>
       <div class="t-empty">No open risks yet.</div>
     <% } else { %>
       <div class="divide-row">
         <% openRisks.forEach(r => { %>
           <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;">
-            <span style="font-size:13px"><%= r.title %></span>
+            <span class="text-lg"><%= r.title %></span>
             <span class="tag <%= (r.likelihood * r.impact) >= 15 ? 'tag-danger' : (r.likelihood * r.impact) >= 8 ? 'tag-warn' : 'tag-success' %> num">L<%= r.likelihood %>·I<%= r.impact %> = <%= r.likelihood*r.impact %></span>
           </a>
         <% }) %>
@@ -122,7 +122,7 @@
   </div>
 
   <div class="panel">
-    <div class="panel-head"><h2>Open tasks</h2><a href="/workspaces/<%= ws.id %>/tasks" class="link-muted" style="font-size:12px">View all →</a></div>
+    <div class="panel-head"><h2>Open tasks</h2><a href="/workspaces/<%= ws.id %>/tasks" class="link-muted text-base">View all →</a></div>
     <% if (openTasks.length === 0) { %>
       <div class="t-empty">No open tasks.</div>
     <% } else { %>
@@ -216,7 +216,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       </svg>
       <span class="meta">30-day events</span>
     </div>
-    <a href="/workspaces/<%= ws.id %>/activity" class="link-muted" style="font-size:12px">Full audit log →</a>
+    <a href="/workspaces/<%= ws.id %>/activity" class="link-muted text-base">Full audit log →</a>
   </div>
   <% if (recentActivity.length === 0) { %>
     <div class="t-empty">No activity yet.</div>
@@ -233,7 +233,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
 </div>
 
 <details id="workspace-settings" style="margin-top:24px">
-  <summary class="link-muted" style="font-size:13px;">Workspace settings</summary>
+  <summary class="link-muted text-lg">Workspace settings</summary>
   <div class="panel panel-pad" style="margin-top:8px">
     <form method="POST" action="/workspaces/<%= ws.id %>/update" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
@@ -281,7 +281,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
             Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (on disk and in DB), audits, MRMs, NCs, incidents, suppliers, documents, registers. Cannot be undone.
           </div>
           <form method="POST" action="/workspaces/<%= ws.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete &quot;<%= ws.client_name %>&quot; and everything under it?');">
-            <label class="label" style="font-size:12px;">Type <strong><%= ws.client_name %></strong> to confirm</label>
+            <label class="label text-base">Type <strong><%= ws.client_name %></strong> to confirm</label>
             <input class="input" name="confirm_name" required autocomplete="off" style="max-width:320px;margin-bottom:10px;">
             <div><button class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete client engagement</button></div>
           </form>

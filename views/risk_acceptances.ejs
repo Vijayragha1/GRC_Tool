@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Risk acceptances - ' + risk.title, user, ws, active: 'risks' }) %>
 
-<a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="link-muted" style="font-size:12px;">← Back to risk</a>
+<a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="link-muted text-base">← Back to risk</a>
 
 <div class="page-head" style="margin-top:8px">
   <div><h1 class="page-title">Acceptances - <%= risk.title %></h1>
@@ -37,7 +37,7 @@
         <td class="meta num"><%= a.expires_at || 'no expiry' %></td>
         <td class="meta"><%= a.signed_at %></td>
         <td class="mono meta"><%= a.ip_address || '-' %></td>
-        <td class="mono meta" style="font-size:10.5px;"><%= a.signature.slice(0,16) %>…</td>
+        <td class="mono meta text-eyebrow"><%= a.signature.slice(0,16) %>…</td>
         <td>
           <% if (a.revoked_at) { %><span class="tag tag-danger">revoked</span>
           <% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= a.id %>/revoke"><button class="btn btn-danger btn-xs">Revoke</button></form><% } %>

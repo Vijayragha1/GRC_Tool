@@ -107,7 +107,7 @@
     <h3>Pass history (<%= passes.length %>)</h3>
     <% if (passes.length >= 2) { %>
       <form method="GET" action="/workspaces/<%= ws.id %>/gap-assessment/diff" style="display:flex;gap:6px;align-items:center;">
-        <span class="meta" style="font-size:11.5px;">Diff:</span>
+        <span class="meta text-sm">Diff:</span>
         <select name="from" class="select" style="font-size:12px;padding:3px 22px 3px 8px;">
           <% passes.forEach(p => { %><option value="<%= p.id %>">Pass <%= p.pass_number %><%= p.label ? ' · ' + p.label : '' %></option><% }) %>
         </select>
@@ -137,9 +137,9 @@
                 <span style="font-size:14px;font-weight:600;color:var(--ink);">Pass <%= p.pass_number %></span>
                 <% if (p.label) { %><span style="font-size:13px;color:var(--text);"><%= p.label %></span><% } %>
                 <% if (p.status === 'in_progress') { %>
-                  <span class="tag tag-accent" style="font-size:10px;">IN PROGRESS</span>
+                  <span class="tag tag-accent text-xxs">IN PROGRESS</span>
                 <% } else { %>
-                  <span class="tag tag-success" style="font-size:10px;">COMPLETED</span>
+                  <span class="tag tag-success text-xxs">COMPLETED</span>
                 <% } %>
               </div>
               <div class="meta" style="font-size:11.5px;margin-top:3px;">
@@ -163,12 +163,12 @@
               </details>
               <% if (p.status === 'in_progress') { %>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/complete" onsubmit="return appConfirmForm(event, 'Mark Pass <%= p.pass_number %> as completed?')">
-                  <button class="btn btn-ghost btn-xs" style="font-size:11px;">Complete</button>
+                  <button class="btn btn-ghost btn-xs text-xs">Complete</button>
                 </form>
               <% } else { %>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/reopen"
                       onsubmit="return appConfirmForm(event, '<%= activePass ? 'This will complete the currently-active Pass ' + activePass.pass_number + ' and reopen Pass ' + p.pass_number + '. Continue?' : 'Reopen Pass ' + p.pass_number + '?' %>')">
-                  <button class="btn btn-ghost btn-xs" style="font-size:11px;">Reopen</button>
+                  <button class="btn btn-ghost btn-xs text-xs">Reopen</button>
                 </form>
               <% } %>
             </div>
@@ -198,7 +198,7 @@
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
               <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> - <%= themeName %></span>
               <% if (hasData && points[points.length-1].val !== null) { %>
-                <span class="num meta" style="font-size:11.5px;">latest <%= points[points.length-1].val.toFixed(2) %></span>
+                <span class="num meta text-sm">latest <%= points[points.length-1].val.toFixed(2) %></span>
               <% } %>
             </div>
             <% if (!hasData) { %>
@@ -255,7 +255,7 @@
         <div style="margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
             <span style="font-weight:600;font-size:12px;color:<%= themeColors[k] %>;text-transform:uppercase;letter-spacing:0.04em;">A.<%= k %> - <%= themeNames[k] %></span>
-            <span class="num meta" style="font-size:11.5px;"><%= impl %> / <%= total %> implemented · <%= pct %>%</span>
+            <span class="num meta text-sm"><%= impl %> / <%= total %> implemented · <%= pct %>%</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(22px, 1fr));gap:2px;">
             <% items.forEach(r => {

@@ -27,7 +27,7 @@
         <tbody>
           <% b.items.forEach(it => { %>
             <tr>
-              <td class="mono meta" style="font-size:11px;">
+              <td class="mono meta text-xs">
                 <% if (it.id && String(it.id).startsWith('ai-')) { %>
                   <%= it.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.') %>
                 <% } else { %>#<%= it.id %><% } %>

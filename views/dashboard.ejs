@@ -124,7 +124,7 @@
           <% thisWeek.dueThisWeek.slice(0, 10).forEach(it => { %>
             <a href="<%= it.href %>" class="link-muted" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;font-size:12.5px;align-items:center;">
               <span class="tag tag-warn" style="font-size:10px;justify-self:start;"><%= it.kind %></span>
-              <span class="meta num" style="font-size:11px;"><%= it.due_date %></span>
+              <span class="meta num text-xs"><%= it.due_date %></span>
               <span><%= it.title %></span>
               <span class="meta" style="font-size:11px;text-align:right;"><%= it.client %></span>
             </a>
@@ -147,8 +147,8 @@
             <a href="/workspaces/<%= c.ws_id %>" class="link-muted" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-size:12px;">
               <span style="font-weight:500;"><%= c.name %></span>
               <span style="display:flex;gap:4px;">
-                <% if (c.overdue) { %><span class="tag tag-danger" style="font-size:10px;"><%= c.overdue %> late</span><% } %>
-                <% if (c.thisWeek) { %><span class="tag tag-warn" style="font-size:10px;"><%= c.thisWeek %> wk</span><% } %>
+                <% if (c.overdue) { %><span class="tag tag-danger text-xxs"><%= c.overdue %> late</span><% } %>
+                <% if (c.thisWeek) { %><span class="tag tag-warn text-xxs"><%= c.thisWeek %> wk</span><% } %>
               </span>
             </a>
           <% }) %>
@@ -186,14 +186,14 @@
             <td>
               <div style="display:flex;align-items:center;gap:8px;">
                 <span style="width:8px;height:8px;border-radius:50%;background:<%= sevColor %>;flex-shrink:0;"></span>
-                <strong style="font-size:13px;"><%= r.client_name %></strong>
-                <% if (r.industry) { %><span class="meta" style="font-size:11px;"><%= r.industry %></span><% } %>
+                <strong class="text-lg"><%= r.client_name %></strong>
+                <% if (r.industry) { %><span class="meta text-xs"><%= r.industry %></span><% } %>
               </div>
             </td>
-            <td style="font-size:11.5px;">
+            <td class="text-sm">
               <% if (r.lastPass) { %>
                 Pass <%= r.lastPass.pass_number %><br>
-                <span class="meta" style="font-size:10.5px;">
+                <span class="meta text-eyebrow">
                   <%= r.lastPass.status === 'in_progress' ? 'in progress' : ('done ' + (r.lastPass.completed_at || '').slice(0,10)) %>
                 </span>
               <% } else { %>
@@ -201,7 +201,7 @@
               <% } %>
             </td>
             <td><span class="num" style="font-weight:500;color:<%= r.readiness.stage1 >= 80 ? '#15803d' : r.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>;"><%= r.readiness.stage1 %>%</span></td>
-            <td style="font-size:11.5px;">
+            <td class="text-sm">
               <% if (r.target_cert_date) { %>
                 <%= r.target_cert_date %><br>
                 <span class="meta" style="font-size:10.5px;<%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'color:#b91c1c;font-weight:600;' : '' %>">
@@ -265,7 +265,7 @@
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<%= w.brand_primary_color %>;flex-shrink:0;"></span>
               <% } %>
               <span style="font-weight:500"><%= w.brand_display_name || w.client_name %></span>
-              <% if (w.sector) { %><span class="tag tag-info" style="font-size:10px;"><%= w.sector %></span><% } %>
+              <% if (w.sector) { %><span class="tag tag-info text-xxs"><%= w.sector %></span><% } %>
             </div>
             <% if (w.industry) { %><div class="meta" style="margin-top:2px"><%= w.industry %></div><% } %>
           </td>
@@ -360,7 +360,7 @@
         <div class="meta" style="font-size:12.5px;line-height:1.5;margin-bottom:14px;">
           Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (DB and disk), audits, MRMs, NCs, incidents, suppliers, documents, registers. <strong>Cannot be undone.</strong>
         </div>
-        <label class="label" style="font-size:12px;">Type <strong id="dcmExpected"></strong> to confirm</label>
+        <label class="label text-base">Type <strong id="dcmExpected"></strong> to confirm</label>
         <input id="dcmInput" class="input" name="confirm_name" autocomplete="off" required>
         <div id="dcmError" style="font-size:11.5px;color:var(--danger,#b91c1c);margin-top:6px;display:none;">Name did not match.</div>
       </div>

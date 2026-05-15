@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: doc.name + ' - versions', user, ws, active: 'documents' }) %>
 
-<a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" class="link-muted" style="font-size:12px;">← Back to <%= doc.name %></a>
+<a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" class="link-muted text-base">← Back to <%= doc.name %></a>
 
 <div class="page-head" style="margin-top:8px">
   <div>
@@ -27,7 +27,7 @@
           <% if (v.change_summary) { %> · <%= v.change_summary %><% } %>
         </div>
       </div>
-      <div class="meta mono" style="font-size:10.5px;">SHA-256: <%= v.content_hash.slice(0,16) %>…</div>
+      <div class="meta mono text-eyebrow">SHA-256: <%= v.content_hash.slice(0,16) %>…</div>
     </div>
 
     <% if (v.approvers.length) { %>
@@ -74,7 +74,7 @@
                 <td class="meta"><%= s.intent %></td>
                 <td class="meta"><%= s.signed_at %></td>
                 <td class="meta mono"><%= s.ip_address || '-' %></td>
-                <td class="meta mono" style="font-size:10.5px;"><%= s.signature.slice(0,16) %>…</td>
+                <td class="meta mono text-eyebrow"><%= s.signature.slice(0,16) %>…</td>
               </tr>
             <% }) %>
           </tbody>

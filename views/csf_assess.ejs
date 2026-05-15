@@ -100,7 +100,7 @@
             <% if (canBulkTransition || canBulkScore) { %>
               <td><input type="checkbox" name="assessment_id" value="<%= r.assessment_id %>" class="bulkSel"></td>
             <% } %>
-            <td class="mono" style="font-size:11.5px;"><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= r.subcategory_id %>" style="color:var(--accent);text-decoration:none;"><%= r.sub_code %></a></td>
+            <td class="mono text-sm"><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= r.subcategory_id %>" style="color:var(--accent);text-decoration:none;"><%= r.sub_code %></a></td>
             <td style="font-size:12.5px;line-height:1.4;"><%= r.sub_description %><% if (r.excluded_from_scope) { %> <span class="tag" style="background:rgba(0,0,0,0.06);font-size:10px;">excluded</span><% } %></td>
             <td>
               <% const statusColor = { 'Not Started':'var(--text-tertiary)', 'In Progress':'#1d4ed8', 'Evidence Collected':'#a16207', 'Draft Complete':'#1d4ed8', 'Reviewed':'#a16207', 'Approved':'#15803d' }[r.status] || 'var(--text)' ; %>

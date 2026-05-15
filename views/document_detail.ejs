@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: doc.name, user, ws, active: 'documents' }) %>
 
-<a href="/workspaces/<%= ws.id %>/documents" class="link-muted" style="font-size:12px;">← All documents</a>
+<a href="/workspaces/<%= ws.id %>/documents" class="link-muted text-base">← All documents</a>
 
 <%
   const can = p => userPerms && userPerms.has && userPerms.has(p);
@@ -25,7 +25,7 @@
         <tbody>
           <% linkedControls.forEach(lc => { %>
             <tr>
-              <td><code style="font-size:11.5px;"><%= lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code></td>
+              <td><code class="text-sm"><%= lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code></td>
               <td><%= (lc.title || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '') %></td>
               <td class="meta" style="text-transform:capitalize;"><%= lc.type %><% if (lc.category) { %> · <%= lc.category %><% } %></td>
               <td class="meta"><%= lc.section_ref || '-' %></td>
@@ -56,7 +56,7 @@
           <label class="label">Link a single control / clause</label>
           <div class="combo" data-combo style="position:relative;">
             <input type="hidden" name="iso_item_id" data-combo-value required>
-            <input type="text" data-combo-input class="input" placeholder="Click or type to search - e.g. access control, A.5.15, monitoring…" autocomplete="off" style="font-size:12.5px;">
+            <input type="text" data-combo-input class="input text-md" placeholder="Click or type to search - e.g. access control, A.5.15, monitoring…" autocomplete="off">
             <div data-combo-panel style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow-lg);max-height:280px;overflow-y:auto;">
               <% Object.keys(grp).forEach(t => {
                    const available = grp[t].filter(c => !linkedIds.has(c.id));
@@ -332,7 +332,7 @@
         </div>
         <label class="meta" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin-bottom:10px;">
           <input type="checkbox" name="attestation" value="1" required>
-          <span>I attest that I am <strong><%= user.name %></strong> and intend my electronic signature to be the legally binding equivalent of my handwritten signature on the document content as it stands at SHA-256: <code style="font-size:10.5px;"><%= currentVersion.content_hash.slice(0,16) %>…</code></span>
+          <span>I attest that I am <strong><%= user.name %></strong> and intend my electronic signature to be the legally binding equivalent of my handwritten signature on the document content as it stands at SHA-256: <code class="text-eyebrow"><%= currentVersion.content_hash.slice(0,16) %>…</code></span>
         </label>
         <button class="btn btn-primary btn-xs">Sign now</button>
       </form>

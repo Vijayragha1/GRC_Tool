@@ -11,7 +11,7 @@
 
 <div class="page-head">
   <div>
-    <a href="/playbooks" class="link-muted no-print" style="font-size:12px;">← All playbooks</a>
+    <a href="/playbooks" class="link-muted no-print text-base">← All playbooks</a>
     <h1 class="page-title" style="margin-top:6px;"><%= playbook.title %></h1>
     <div class="page-subtitle"><%= playbook.blurb %></div>
   </div>
@@ -38,7 +38,7 @@
   <% playbook.segments.forEach((seg, idx) => { %>
     <div style="padding:18px 20px;<%= idx > 0 ? 'border-top:1px solid var(--border);' : '' %>">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
-        <span class="tag tag-accent" style="font-size:10.5px;"><%= seg.time %></span>
+        <span class="tag tag-accent text-eyebrow"><%= seg.time %></span>
         <h3 style="margin:0;font-size:14px;"><%= seg.title %></h3>
       </div>
       <ul style="margin:0;padding:0 0 0 22px;font-size:13.5px;line-height:1.55;">

@@ -55,12 +55,12 @@
              const overdue = r.next_review && r.next_review < today;
         %>
           <tr style="<%= overdue ? 'background:rgba(185,28,28,0.04);' : '' %>">
-            <td><strong style="font-size:13px;"><%= r.party %></strong></td>
-            <td><% if (r.party_type) { %><span class="tag tag-neutral" style="font-size:11px;"><%= r.party_type %></span><% } %></td>
+            <td><strong class="text-lg"><%= r.party %></strong></td>
+            <td><% if (r.party_type) { %><span class="tag tag-neutral text-xs"><%= r.party_type %></span><% } %></td>
             <td style="font-size:12.5px;line-height:1.45;"><%= r.needs || '' %></td>
             <td style="font-size:12.5px;line-height:1.45;"><%= r.how_addressed || '' %></td>
-            <td style="font-size:12px;"><%= r.owner || '' %></td>
-            <td style="font-size:11.5px;">
+            <td class="text-base"><%= r.owner || '' %></td>
+            <td class="text-sm">
               <% if (r.next_review) { %>
                 <span class="<%= overdue ? '' : '' %>" style="<%= overdue ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= r.next_review %><% if (overdue) { %> · overdue<% } %></span>
               <% } else { %><span class="meta">-</span><% } %>
@@ -70,18 +70,18 @@
                 <summary class="btn btn-ghost btn-xs" style="font-size:11px;list-style:none;cursor:pointer;">Edit</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/interested-parties/<%= r.id %>" style="position:absolute;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);width:380px;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">
                   <input type="text" name="party" value="<%= r.party %>" class="input" style="font-size:12px;grid-column:1/-1;">
-                  <select class="select" name="party_type" style="font-size:12px;">
+                  <select class="select text-base" name="party_type">
                     <option value="">-</option>
                     <% ['Customer','Regulator','Employee','Supplier','Investor','Partner','Auditor','Public','Other'].forEach(t => { %><option value="<%= t %>" <%= r.party_type === t ? 'selected' : '' %>><%= t %></option><% }) %>
                   </select>
-                  <input type="text" name="owner" value="<%= r.owner || '' %>" placeholder="Owner" class="input" style="font-size:12px;">
+                  <input type="text" name="owner" value="<%= r.owner || '' %>" placeholder="Owner" class="input text-base">
                   <textarea name="needs" rows="2" class="textarea" placeholder="Needs" style="font-size:12px;grid-column:1/-1;"><%= r.needs || '' %></textarea>
                   <textarea name="how_addressed" rows="2" class="textarea" placeholder="How addressed" style="font-size:12px;grid-column:1/-1;"><%= r.how_addressed || '' %></textarea>
-                  <select class="select" name="review_cadence" style="font-size:12px;">
+                  <select class="select text-base" name="review_cadence">
                     <option value="">cadence</option>
                     <% ['monthly','quarterly','semi-annual','annual','biennial'].forEach(c => { %><option value="<%= c %>" <%= r.review_cadence === c ? 'selected' : '' %>><%= c %></option><% }) %>
                   </select>
-                  <input type="date" name="last_reviewed" value="<%= r.last_reviewed || '' %>" class="input" style="font-size:12px;">
+                  <input type="date" name="last_reviewed" value="<%= r.last_reviewed || '' %>" class="input text-base">
                   <input type="date" name="next_review" value="<%= r.next_review || '' %>" class="input" style="font-size:12px;grid-column:1/-1;">
                   <button class="btn btn-primary btn-xs col-full">Save</button>
                 </form>

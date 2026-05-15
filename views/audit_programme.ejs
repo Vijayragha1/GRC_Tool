@@ -52,7 +52,7 @@
       <% monthAudits.forEach(a => { %>
         <a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted" style="display:block;font-size:11.5px;margin-top:6px;padding:5px 7px;border-radius:4px;border-left:3px solid <%= statusColor(a.status) %>;background:<%= statusBg(a.status) %>;color:var(--text);">
           <strong style="font-weight:500;"><%= a.title %></strong>
-          <div class="meta" style="font-size:10.5px;"><%= a.audit_date %> · <%= (a.status || 'planned').replace('_',' ') %></div>
+          <div class="meta text-eyebrow"><%= a.audit_date %> · <%= (a.status || 'planned').replace('_',' ') %></div>
         </a>
       <% }) %>
     </div>

@@ -11,7 +11,7 @@
   <% playbooks.forEach(p => { %>
     <a href="/playbooks/<%= p.id %>" class="panel" style="display:block;padding:18px 20px;text-decoration:none;color:var(--text);position:relative;overflow:hidden;transition:all 0.15s;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <span class="tag tag-info" style="font-size:10px;"><%= p.when %></span>
+        <span class="tag tag-info text-xxs"><%= p.when %></span>
       </div>
       <div style="font-size:15px;font-weight:600;margin-bottom:6px;letter-spacing:-0.005em;"><%= p.title %></div>
       <div class="meta" style="font-size:12.5px;line-height:1.5;"><%= p.blurb %></div>

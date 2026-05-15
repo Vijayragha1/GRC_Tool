@@ -58,7 +58,7 @@
         <tbody>
           <% diff.changes.forEach(c => { %>
             <tr>
-              <td class="mono meta" style="font-size:11px;"><%= c.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %></td>
+              <td class="mono meta text-xs"><%= c.id.replace('ai-annex-', '').toUpperCase().replace(/-/g, '.') %></td>
               <td><%= c.title.replace(/^A\.[0-9.]+ /, '') %></td>
               <td style="font-size:11.5px;line-height:1.45;color:var(--text-secondary);">
                 <% if (!c.before) { %><em>(not in A)</em><% } else { %>

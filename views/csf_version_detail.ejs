@@ -94,9 +94,9 @@
 
 <!-- Findings snapshot list -->
 <div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head"><h2>Findings at publish</h2><span class="meta" style="font-size:11.5px;"><%= findingSnaps.length %></span></div>
+  <div class="panel-head"><h2>Findings at publish</h2><span class="meta text-sm"><%= findingSnaps.length %></span></div>
   <% if (findingSnaps.length === 0) { %>
-    <div class="panel-pad meta" style="font-size:12.5px;">No findings in this version.</div>
+    <div class="panel-pad meta text-md">No findings in this version.</div>
   <% } else { %>
     <% const sevColor = { 'CRITICAL':'#b91c1c', 'HIGH':'#dc2626', 'MEDIUM':'#a16207', 'LOW':'var(--text-tertiary)' }; %>
     <table class="t">
@@ -112,9 +112,9 @@
         <% findingSnaps.forEach(f => { %>
           <tr>
             <td><span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:11px;font-weight:600;"><%= f.severity %></span></td>
-            <td style="font-size:12.5px;"><%= f.title %></td>
-            <td class="mono" style="font-size:11.5px;"><%= f.sub_code || (f.promoted_to_engagement_theme ? '(theme)' : '-') %></td>
-            <td class="meta" style="font-size:11.5px;"><%= f.status %></td>
+            <td class="text-md"><%= f.title %></td>
+            <td class="mono text-sm"><%= f.sub_code || (f.promoted_to_engagement_theme ? '(theme)' : '-') %></td>
+            <td class="meta text-sm"><%= f.status %></td>
           </tr>
         <% }) %>
       </tbody>

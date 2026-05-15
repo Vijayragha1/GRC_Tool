@@ -6,7 +6,7 @@
     <div class="page-subtitle">25 questions you'd ask at a kickoff workshop. Auto-drafts the clause 4.3 scope statement and seeds the interested-parties register from your answers.</div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <span class="meta" style="font-size:12px;"><strong><%= answered %></strong> / <%= total %> answered</span>
+    <span class="meta text-base"><strong><%= answered %></strong> / <%= total %> answered</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/intake/apply" onsubmit="return appConfirmForm(event, 'Apply scope statement to workspace settings and seed interested parties from the answers above? Existing parties are not duplicated.');">
       <button class="btn btn-accent btn-xs" <%= answered === 0 ? 'disabled' : '' %>>Apply to workspace</button>
     </form>
@@ -41,7 +41,7 @@
           <div>
             <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
               <span><%= q.text %><%= q.required ? ' *' : '' %></span>
-              <span class="tag tag-neutral" style="font-size:10px;">clause <%= q.clause %></span>
+              <span class="tag tag-neutral text-xxs">clause <%= q.clause %></span>
             </label>
             <% if (q.hint) { %>
               <div class="meta" style="font-size:11.5px;margin-bottom:6px;color:var(--text-tertiary);"><%= q.hint %></div>
@@ -63,14 +63,14 @@
 
   <div style="display:flex;gap:10px;align-items:center;">
     <button type="submit" class="btn btn-primary">Save intake</button>
-    <span class="meta" style="font-size:11.5px;">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to workspace</strong> at the top.</span>
+    <span class="meta text-sm">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to workspace</strong> at the top.</span>
   </div>
 </form>
 
 <div class="panel" style="margin-top:22px;">
   <div class="panel-head">
     <h2 style="margin:0;">Draft scope statement (clause 4.3)</h2>
-    <span class="meta" style="font-size:11.5px;">Generated from your answers. Re-renders on save.</span>
+    <span class="meta text-sm">Generated from your answers. Re-renders on save.</span>
   </div>
   <div class="panel-pad">
     <pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.55;color:var(--text);margin:0;"><%= draftScope %></pre>

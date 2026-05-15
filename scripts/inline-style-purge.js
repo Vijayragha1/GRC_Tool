@@ -24,7 +24,18 @@ const STYLE_TO_CLASS = {
   // don't add a class.
   'color:var(--text)':           null,
   'grid-column:1/-1':            'col-full',
-  'grid-column:1 / -1':          'col-full'
+  'grid-column:1 / -1':          'col-full',
+  // Type scale - eight named sizes covering every pixel value in the
+  // codebase. Half-step pixel values (10.5/11.5/12.5) get explicit names
+  // so it's obvious they're off the standard 6-step scale.
+  'font-size:10px':              'text-xxs',
+  'font-size:10.5px':            'text-eyebrow',
+  'font-size:11px':              'text-xs',
+  'font-size:11.5px':            'text-sm',
+  'font-size:12px':              'text-base',
+  'font-size:12.5px':            'text-md',
+  'font-size:13px':              'text-lg',
+  'font-size:14px':              'text-xl'
 };
 
 // Build a regex that matches the start of any HTML opening tag. We don't

@@ -30,22 +30,22 @@
     const aleCls = residualAle > 1000000 ? 'kpi-bad' : residualAle > 250000 ? 'kpi-warn' : 'kpi-good';
   %>
   <div class="panel kpi <%= s1Cls %>" style="padding:12px 14px;">
-    <div class="kpi-label" style="font-size:10.5px;">Stage 1 readiness</div>
+    <div class="kpi-label text-eyebrow">Stage 1 readiness</div>
     <div class="kpi-num exec-num"><%= readiness.stage1 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
     <div class="kpi-meta">target ≥ 80% before Stage 1 audit</div>
   </div>
   <div class="panel kpi <%= s2Cls %>" style="padding:12px 14px;">
-    <div class="kpi-label" style="font-size:10.5px;">Stage 2 readiness</div>
+    <div class="kpi-label text-eyebrow">Stage 2 readiness</div>
     <div class="kpi-num exec-num"><%= readiness.stage2 %><span style="font-size:14px;color:var(--text-tertiary);font-weight:400;">%</span></div>
     <div class="kpi-meta">3 months operational evidence required</div>
   </div>
   <div class="panel kpi <%= velCls %>" style="padding:12px 14px;">
-    <div class="kpi-label" style="font-size:10.5px;">Velocity (last 30d)</div>
+    <div class="kpi-label text-eyebrow">Velocity (last 30d)</div>
     <div class="kpi-num exec-num"><%= velocityNow %><span style="font-size:13px;color:var(--text-tertiary);font-weight:400;"> closed</span></div>
     <div class="kpi-meta">prev 30d: <%= velocityPrior %> · <%= velocityDelta >= 0 ? '+' : '' %><%= velocityDelta %> change</div>
   </div>
   <div class="panel kpi <%= aleCls %>" style="padding:12px 14px;">
-    <div class="kpi-label" style="font-size:10.5px;">Residual annual loss</div>
+    <div class="kpi-label text-eyebrow">Residual annual loss</div>
     <div class="kpi-num exec-num">$<%= residualAle.toLocaleString() %></div>
     <div class="kpi-meta">ALE = Σ (likelihood/5 × impact × $50k) over <%= openRiskCount %> open risks</div>
   </div>
@@ -87,7 +87,7 @@
     <% if (topRisks.length === 0) { %>
       <div class="t-empty" style="padding:20px;font-size:12px;">No open risks.</div>
     <% } else { %>
-      <table class="t" style="font-size:11.5px;">
+      <table class="t text-sm">
         <thead><tr><th style="padding:6px 14px;">Risk</th><th style="width:70px;text-align:right;padding:6px 14px;">L×I</th><th style="width:90px;padding:6px 14px;">Owner</th></tr></thead>
         <tbody>
           <% topRisks.forEach(r => { %>
@@ -106,13 +106,13 @@
     <% if (topNCs.length === 0) { %>
       <div class="t-empty" style="padding:20px;font-size:12px;">No open NCs - clean bill of health.</div>
     <% } else { %>
-      <table class="t" style="font-size:11.5px;">
+      <table class="t text-sm">
         <thead><tr><th style="padding:6px 14px;">Finding</th><th style="width:60px;padding:6px 14px;">Sev</th><th style="width:85px;text-align:right;padding:6px 14px;">Due</th></tr></thead>
         <tbody>
           <% topNCs.forEach(n => { %>
             <tr>
               <td style="padding:6px 14px;"><%= n.title %></td>
-              <td style="padding:6px 14px;"><span class="status s-<%= n.severity %>" style="font-size:10px;"><%= n.severity %></span></td>
+              <td style="padding:6px 14px;"><span class="status s-<%= n.severity %> text-xxs"><%= n.severity %></span></td>
               <td class="num meta" style="text-align:right;padding:6px 14px;font-size:10.5px;color:<%= n.due_date && n.due_date < new Date().toISOString().slice(0,10) ? '#b91c1c' : 'var(--text-tertiary)' %>;"><%= n.due_date || '-' %></td>
             </tr>
           <% }) %>

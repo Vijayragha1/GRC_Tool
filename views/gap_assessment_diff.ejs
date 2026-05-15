@@ -72,9 +72,9 @@
         <tr class="diff-row" data-change="<%= r.change %>">
           <td class="mono meta"><%= code %></td>
           <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted"><%= cleanTitle %></a></td>
-          <td><span class="status s-<%= fa.toLowerCase().replace(/\s+/g,'-') %>" style="font-size:12px;"><%= fa %></span></td>
-          <td><span class="status s-<%= tb.toLowerCase().replace(/\s+/g,'-') %>" style="font-size:12px;"><%= tb %></span></td>
-          <td class="num meta" style="font-size:12px;"><%= fmm %> → <%= tmm %></td>
+          <td><span class="status s-<%= fa.toLowerCase().replace(/\s+/g,'-') %> text-base"><%= fa %></span></td>
+          <td><span class="status s-<%= tb.toLowerCase().replace(/\s+/g,'-') %> text-base"><%= tb %></span></td>
+          <td class="num meta text-base"><%= fmm %> → <%= tmm %></td>
           <td><span style="font-size:12px;font-weight:500;color:<%= changeColor %>;"><%= changeLabel %></span></td>
         </tr>
       <% }) %>

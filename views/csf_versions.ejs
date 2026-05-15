@@ -23,7 +23,7 @@
     <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);+ Republish (creates a new minor version)</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/republish" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);" onsubmit="return appConfirmForm(event, 'Republish this engagement? A new version is added; prior versions remain visible. Required: change summary explaining what changed since the last publish.')">
       <label class="label">Change summary <span class="text-danger">*</span></label>
-      <textarea class="textarea" name="change_summary" required rows="3" placeholder="What changed since the last published version? This is shown on the new version's detail page and appears in the deliverable's 'what changed' appendix." style="font-size:12.5px;"></textarea>
+      <textarea class="textarea text-md" name="change_summary" required rows="3" placeholder="What changed since the last published version? This is shown on the new version's detail page and appears in the deliverable's 'what changed' appendix."></textarea>
       <div style="margin-top:8px;text-align:right;">
         <button class="btn btn-primary btn-xs">Republish</button>
       </div>
@@ -62,9 +62,9 @@
               <% if (v.is_current) { %><span class="tag" style="background:rgba(21,128,61,0.08);color:#15803d;font-size:10px;margin-left:6px;">current</span><% } %>
             </td>
             <td style="font-size:12.5px;line-height:1.5;"><%= v.change_summary || '-' %></td>
-            <td class="meta" style="font-size:11.5px;"><%= v.published_at %><div style="font-size:11px;color:var(--text-tertiary);">by <%= v.publisher_name || '-' %></div></td>
-            <td class="num" style="font-size:12.5px;"><%= v.sub_count %></td>
-            <td class="num" style="font-size:12.5px;"><%= v.finding_count %></td>
+            <td class="meta text-sm"><%= v.published_at %><div style="font-size:11px;color:var(--text-tertiary);">by <%= v.publisher_name || '-' %></div></td>
+            <td class="num text-md"><%= v.sub_count %></td>
+            <td class="num text-md"><%= v.finding_count %></td>
             <td style="text-align:right;">
               <% if (versions.length > 1) { %>
                 <form method="GET" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions/<%= v.id %>/diff/0" onsubmit="this.action=this.action.replace(/diff\/0$/, 'diff/' + this.against.value); return true;">
@@ -73,7 +73,7 @@
                       <option value="<%= other.id %>">v<%= other.version_number %></option>
                     <% }) %>
                   </select>
-                  <button class="btn btn-ghost btn-xs" style="font-size:11px;">Diff</button>
+                  <button class="btn btn-ghost btn-xs text-xs">Diff</button>
                 </form>
               <% } %>
             </td>

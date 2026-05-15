@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Task templates', user, ws, active: 'tasks' }) %>
 
-<a href="/workspaces/<%= ws.id %>/tasks" class="link-muted" style="font-size:12px;">← Tasks</a>
+<a href="/workspaces/<%= ws.id %>/tasks" class="link-muted text-base">← Tasks</a>
 
 <div class="page-head" style="margin-top:8px">
   <div><h1 class="page-title">Task templates</h1>
@@ -16,7 +16,7 @@
       <tr>
         <td>
           <strong><%= t.name %></strong>
-          <% if (t.is_system) { %><span class="tag tag-info" style="font-size:10.5px;">system</span><% } %>
+          <% if (t.is_system) { %><span class="tag tag-info text-eyebrow">system</span><% } %>
           <% if (t.description) { %><div class="meta" style="margin-top:2px;"><%= t.description %></div><% } %>
         </td>
         <td class="meta"><%= t.category %></td>
