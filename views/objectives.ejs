@@ -10,8 +10,8 @@
 <details class="panel" style="margin-bottom:14px;" <%= rows.length === 0 ? 'open' : '' %>>
   <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;">+ Add objective</summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/objectives" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-    <div style="grid-column:1/-1;"><label class="label">Title <span class="meta">required - concrete, measurable</span></label><input class="input" name="title" required placeholder="e.g., Reduce mean time to patch critical vulnerabilities from 14 to 7 days"></div>
-    <div style="grid-column:1/-1;"><label class="label">Description</label><textarea class="textarea" name="description" rows="2" placeholder="Why this objective exists; how it ties to policy / risk / customer commitment."></textarea></div>
+    <div class="col-full"><label class="label">Title <span class="meta">required - concrete, measurable</span></label><input class="input" name="title" required placeholder="e.g., Reduce mean time to patch critical vulnerabilities from 14 to 7 days"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2" placeholder="Why this objective exists; how it ties to policy / risk / customer commitment."></textarea></div>
     <div><label class="label">Measurement <span class="meta">how progress is gauged</span></label><input class="input" name="measurement" placeholder="e.g., Monthly patching report, % within SLA"></div>
     <div><label class="label">Owner</label><input class="input" name="owner" placeholder="e.g., VP Engineering"></div>
     <div><label class="label">Target value</label><input class="input" name="target_value" placeholder="e.g., ≥ 95% within 7 days"></div>
@@ -26,7 +26,7 @@
         <option value="paused">Paused</option>
       </select>
     </div>
-    <div style="grid-column:1/-1;"><button class="btn btn-primary">Add objective</button></div>
+    <div class="col-full"><button class="btn btn-primary">Add objective</button></div>
   </form>
 </details>
 
@@ -79,7 +79,7 @@
                   <select name="status" class="select" style="font-size:12px;grid-column:1/-1;">
                     <% ['on_track','at_risk','off_track','achieved','paused'].forEach(s => { %><option value="<%= s %>" <%= r.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
                   </select>
-                  <button class="btn btn-primary btn-xs" style="grid-column:1/-1;">Save</button>
+                  <button class="btn btn-primary btn-xs col-full">Save</button>
                 </form>
               </details>
               <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this objective?')">

@@ -17,8 +17,8 @@
         <% ['Customer','Regulator','Employee','Supplier','Investor','Partner','Auditor','Public','Other'].forEach(t => { %><option value="<%= t %>"><%= t %></option><% }) %>
       </select>
     </div>
-    <div style="grid-column:1/-1;"><label class="label">Needs / expectations</label><textarea class="textarea" name="needs" rows="2" placeholder="What this party needs from the ISMS - confidentiality of personal data, contractual security clauses, regulatory compliance, etc."></textarea></div>
-    <div style="grid-column:1/-1;"><label class="label">How addressed</label><textarea class="textarea" name="how_addressed" rows="2" placeholder="Reference the controls, policies, or processes that meet the need - e.g., 'Encryption at rest A.8.24, Privacy Notice v1.2, contractual DPAs'."></textarea></div>
+    <div class="col-full"><label class="label">Needs / expectations</label><textarea class="textarea" name="needs" rows="2" placeholder="What this party needs from the ISMS - confidentiality of personal data, contractual security clauses, regulatory compliance, etc."></textarea></div>
+    <div class="col-full"><label class="label">How addressed</label><textarea class="textarea" name="how_addressed" rows="2" placeholder="Reference the controls, policies, or processes that meet the need - e.g., 'Encryption at rest A.8.24, Privacy Notice v1.2, contractual DPAs'."></textarea></div>
     <div><label class="label">Owner</label><input class="input" name="owner" placeholder="e.g., DPO, Legal, CISO"></div>
     <div><label class="label">Review cadence</label>
       <select class="select" name="review_cadence">
@@ -28,7 +28,7 @@
     </div>
     <div><label class="label">Last reviewed</label><input type="date" class="input" name="last_reviewed"></div>
     <div><label class="label">Next review</label><input type="date" class="input" name="next_review"></div>
-    <div style="grid-column:1/-1;"><button class="btn btn-primary">Add</button></div>
+    <div class="col-full"><button class="btn btn-primary">Add</button></div>
   </form>
 </details>
 
@@ -83,7 +83,7 @@
                   </select>
                   <input type="date" name="last_reviewed" value="<%= r.last_reviewed || '' %>" class="input" style="font-size:12px;">
                   <input type="date" name="next_review" value="<%= r.next_review || '' %>" class="input" style="font-size:12px;grid-column:1/-1;">
-                  <button class="btn btn-primary btn-xs" style="grid-column:1/-1;">Save</button>
+                  <button class="btn btn-primary btn-xs col-full">Save</button>
                 </form>
               </details>
               <form method="POST" action="/workspaces/<%= ws.id %>/interested-parties/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this party?')">

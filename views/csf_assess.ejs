@@ -14,12 +14,12 @@
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-pad" style="display:grid;grid-template-columns:repeat(8,1fr);gap:12px;font-size:12px;">
     <div><div class="kpi-num num"><%= stats.total %></div><div class="kpi-meta">Total</div></div>
-    <div><div class="kpi-num num" style="color:var(--text-tertiary);"><%= stats.not_started %></div><div class="kpi-meta">Not started</div></div>
+    <div><div class="kpi-num num text-tertiary"><%= stats.not_started %></div><div class="kpi-meta">Not started</div></div>
     <div><div class="kpi-num num" style="color:#1d4ed8;"><%= stats.in_progress %></div><div class="kpi-meta">In progress</div></div>
-    <div><div class="kpi-num num" style="color:#a16207;"><%= stats.evidence_collected %></div><div class="kpi-meta">Evidence done</div></div>
+    <div><div class="kpi-num num text-warn"><%= stats.evidence_collected %></div><div class="kpi-meta">Evidence done</div></div>
     <div><div class="kpi-num num" style="color:#1d4ed8;"><%= stats.draft_complete %></div><div class="kpi-meta">Draft complete</div></div>
-    <div><div class="kpi-num num" style="color:#a16207;"><%= stats.reviewed %></div><div class="kpi-meta">Reviewed</div></div>
-    <div><div class="kpi-num num" style="color:#15803d;"><%= stats.approved %></div><div class="kpi-meta">Approved</div></div>
+    <div><div class="kpi-num num text-warn"><%= stats.reviewed %></div><div class="kpi-meta">Reviewed</div></div>
+    <div><div class="kpi-num num text-success"><%= stats.approved %></div><div class="kpi-meta">Approved</div></div>
     <div><div class="kpi-num num"><%= stats.scored %></div><div class="kpi-meta">Scored</div></div>
   </div>
 </div>

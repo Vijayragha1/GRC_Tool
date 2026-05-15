@@ -144,7 +144,7 @@
               </summary>
               <div style="padding:0 18px 16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:13px;line-height:1.55;color:var(--text);">
                 <% if (e.definition) { %>
-                  <div style="grid-column:1/-1;">
+                  <div class="col-full">
                     <div class="sec-label">Formal definition</div>
                     <div><%= e.definition %></div>
                   </div>
@@ -152,7 +152,7 @@
                 <% if (e.example) { %>
                   <div>
                     <div class="sec-label">Example</div>
-                    <div style="color:var(--text-secondary);"><%= e.example %></div>
+                    <div class="text-secondary"><%= e.example %></div>
                   </div>
                 <% } %>
                 <% if (e.notToConfuseWith && e.notToConfuseWith.length) { %>
@@ -160,13 +160,13 @@
                     <div class="sec-label">Not to be confused with</div>
                     <% e.notToConfuseWith.forEach(n => { %>
                       <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:4px;line-height:1.5;">
-                        <strong style="color:var(--text);"><%= n.term %></strong> - <%= n.why %>
+                        <strong><%= n.term %></strong> - <%= n.why %>
                       </div>
                     <% }) %>
                   </div>
                 <% } %>
                 <% if (relatedEntries.length) { %>
-                  <div style="grid-column:1/-1;">
+                  <div class="col-full">
                     <div class="sec-label">Related</div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
                       <% relatedEntries.forEach(r => { %>

@@ -14,11 +14,11 @@
   <details class="panel" style="margin-bottom:14px;">
     <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);">+ New engagement-level finding</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:2fr 1fr;gap:10px;">
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Title</label>
         <input class="input" name="title" required placeholder="One-line summary of the finding">
       </div>
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Description</label>
         <textarea class="textarea" name="description" rows="3" placeholder="Detail. What was observed; why it matters; any cross-cutting context."></textarea>
       </div>

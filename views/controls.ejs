@@ -25,7 +25,7 @@
 <form method="POST" action="/workspaces/<%= ws.id %>/bulk-controls" id="bulkForm">
   <div id="bulkBar" class="hidden panel" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;font-size:13px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
     <span><span id="bulkCount">0</span> selected</span>
-    <span style="color:var(--text-tertiary);">·</span>
+    <span class="text-tertiary">·</span>
     <select name="status" class="select" style="width:200px;font-size:12px;padding:4px 8px;">
       <option value="">Set status…</option>
       <% ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'].forEach(s => { %>
@@ -58,9 +58,9 @@
           <tr>
             <td style="padding-right:0"><input type="checkbox" name="ids" value="<%= r.id %>" class="bulkChk" onclick="updBulk()"></td>
             <td><span class="mono" style="font-size:11px;color:var(--text-tertiary);"><%= r.id.startsWith('clause') ? '§' + r.id.replace('clause-', '') : r.id.replace('annex-', '').toUpperCase() %></span></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></a></td>
             <td><span class="status s-<%= r.status.toLowerCase().replace(/ /g,'-') %>"><%= r.status %></span></td>
-            <td class="num" style="color:var(--text-secondary);"><%= r.maturity || 0 %>/5</td>
+            <td class="num text-secondary"><%= r.maturity || 0 %>/5</td>
             <td style="color:var(--text-secondary);font-size:12px;"><%= r.owner_name || '-' %></td>
             <td class="num meta"><%= r.due_date || '-' %></td>
           </tr>

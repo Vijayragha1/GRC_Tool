@@ -35,8 +35,8 @@
           <td class="meta"><%= s.created_at %></td>
           <td class="meta"><%= s.author %></td>
           <td class="num"><%= s.control_count %></td>
-          <td class="num" style="color:#16a34a;"><%= s.included_count %></td>
-          <td class="num" style="color:#b91c1c;"><%= s.excluded_count %></td>
+          <td class="num text-success"><%= s.included_count %></td>
+          <td class="num text-danger"><%= s.excluded_count %></td>
           <td class="meta mono" style="font-size:10.5px;"><%= s.payload_hash.slice(0,12) %>…</td>
         </tr>
       <% }) %>

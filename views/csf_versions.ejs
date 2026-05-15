@@ -22,7 +22,7 @@
   <details class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);">
     <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);+ Republish (creates a new minor version)</summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/republish" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);" onsubmit="return appConfirmForm(event, 'Republish this engagement? A new version is added; prior versions remain visible. Required: change summary explaining what changed since the last publish.')">
-      <label class="label">Change summary <span style="color:#b91c1c;">*</span></label>
+      <label class="label">Change summary <span class="text-danger">*</span></label>
       <textarea class="textarea" name="change_summary" required rows="3" placeholder="What changed since the last published version? This is shown on the new version's detail page and appears in the deliverable's 'what changed' appendix." style="font-size:12.5px;"></textarea>
       <div style="margin-top:8px;text-align:right;">
         <button class="btn btn-primary btn-xs">Republish</button>

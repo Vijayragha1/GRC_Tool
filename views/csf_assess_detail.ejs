@@ -30,7 +30,7 @@
         font-size:11px;font-weight:<%= i === curIdx ? '600' : '500' %>;
         border:1px solid <%= i <= curIdx ? '#1d4ed8' : 'var(--border)' %>;
       "><%= s %></span>
-      <% if (i < stateOrder.length - 1) { %><span style="color:var(--text-tertiary);">&rarr;</span><% } %>
+      <% if (i < stateOrder.length - 1) { %><span class="text-tertiary">&rarr;</span><% } %>
     <% }) %>
     <div style="margin-left:auto;display:flex;gap:6px;">
       <% allowedNextStates.forEach(ns => { %>
@@ -46,7 +46,7 @@
 <% if (warnings && warnings.length) { %>
   <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
     <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
-      <strong style="color:#a16207;">Soft warnings (not blocking):</strong>
+      <strong class="text-warn">Soft warnings (not blocking):</strong>
       <ul style="margin:6px 0 0 0;padding-left:18px;">
         <% warnings.forEach(w => { %><li><%= w %></li><% }) %>
       </ul>

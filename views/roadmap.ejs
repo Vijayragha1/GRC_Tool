@@ -16,8 +16,8 @@
     <div class="panel-head">
       <h2>Needs your attention <span class="meta" style="font-weight:400;font-size:13px;">· live from data</span></h2>
       <span class="meta">
-        <% if (naHigh > 0) { %><strong style="color:#b91c1c;"><%= naHigh %></strong> high · <% } %>
-        <% if (naMedium > 0) { %><strong style="color:#a16207;"><%= naMedium %></strong> medium · <% } %>
+        <% if (naHigh > 0) { %><strong class="text-danger"><%= naHigh %></strong> high · <% } %>
+        <% if (naMedium > 0) { %><strong class="text-warn"><%= naMedium %></strong> medium · <% } %>
         <a href="/workspaces/<%= ws.id %>/notifications" style="color:var(--accent);">view all in inbox →</a>
       </span>
     </div>
@@ -51,7 +51,7 @@
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-head">
     <h2>Implementation roadmap <span class="meta" style="font-weight:400;font-size:13px;">· PDCA</span></h2>
-    <span class="meta"><strong style="color:var(--text);"><%= completed %></strong> / <%= roadmap.length %> done<% if (partials) { %> · <%= partials %> in progress<% } %></span>
+    <span class="meta"><strong><%= completed %></strong> / <%= roadmap.length %> done<% if (partials) { %> · <%= partials %> in progress<% } %></span>
   </div>
 
   <!-- Phase progress strip -->

@@ -22,7 +22,7 @@
   </div>
 
   <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= inc.title %>" required></div>
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= inc.title %>" required></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">
         <% ['malware','phishing','breach','dos','physical','insider','supplier','other'].forEach(c => { %>
@@ -47,16 +47,16 @@
       </select>
     </div>
     <div><label class="label">Affected assets</label><input class="input" name="affected_assets" value="<%= inc.affected_assets || '' %>" placeholder="comma-separated"></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= inc.description || '' %></textarea></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= inc.description || '' %></textarea></div>
 
     <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;">
       <div class="sec-label">Response timeline (A.5.26)</div>
     </div>
-    <div style="grid-column:1/-1"><label class="label">Containment actions</label><textarea class="textarea" name="containment_actions" rows="2"><%= inc.containment_actions || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Eradication actions</label><textarea class="textarea" name="eradication_actions" rows="2"><%= inc.eradication_actions || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Recovery actions</label><textarea class="textarea" name="recovery_actions" rows="2"><%= inc.recovery_actions || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">External notification (regulators, customers, law enforcement)</label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Lessons learned (A.5.27)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
+    <div class="col-full"><label class="label">Containment actions</label><textarea class="textarea" name="containment_actions" rows="2"><%= inc.containment_actions || '' %></textarea></div>
+    <div class="col-full"><label class="label">Eradication actions</label><textarea class="textarea" name="eradication_actions" rows="2"><%= inc.eradication_actions || '' %></textarea></div>
+    <div class="col-full"><label class="label">Recovery actions</label><textarea class="textarea" name="recovery_actions" rows="2"><%= inc.recovery_actions || '' %></textarea></div>
+    <div class="col-full"><label class="label">External notification (regulators, customers, law enforcement)</label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
+    <div class="col-full"><label class="label">Lessons learned (A.5.27)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
 
     <div style="grid-column:1/-1;display:flex;gap:6px;">
       <button class="btn btn-primary">Save</button>

@@ -20,7 +20,7 @@
           <td><span class="tag tag-neutral"><%= m.role.replace(/_/g, ' ') %></span></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/members/<%= m.id %>/remove" onsubmit="return appConfirmForm(event, 'Remove?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Remove</button>
+              <button class="btn btn-ghost btn-xs text-danger">Remove</button>
             </form>
           </td>
         </tr>
@@ -59,7 +59,7 @@
         <option value="reviewer">Reviewer (read-only)</option>
       </select>
     </div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Invite</button></div>
+    <div class="col-full"><button class="btn btn-primary">Invite</button></div>
   </form>
 </div>
 

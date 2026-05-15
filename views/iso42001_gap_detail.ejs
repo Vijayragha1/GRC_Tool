@@ -68,7 +68,7 @@
   <div>
     <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
       <span class="meta" style="font-weight:500;">Clauses (4-10)</span>
-      <span class="meta"><strong style="color:var(--text);"><%= totals.clausesAssessed||0 %></strong> / <%= totals.clausesTotal||0 %></span>
+      <span class="meta"><strong><%= totals.clausesAssessed||0 %></strong> / <%= totals.clausesTotal||0 %></span>
     </div>
     <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
       <div style="height:100%;width:<%= totals.clausesTotal ? Math.round((totals.clausesAssessed||0) / totals.clausesTotal * 100) : 0 %>%;background:#0891b2;transition:width 0.2s;"></div>
@@ -77,14 +77,14 @@
   <div>
     <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
       <span class="meta" style="font-weight:500;">Annex A controls</span>
-      <span class="meta"><strong style="color:var(--text);"><%= totals.controlsAssessed||0 %></strong> / <%= totals.controlsTotal||0 %></span>
+      <span class="meta"><strong><%= totals.controlsAssessed||0 %></strong> / <%= totals.controlsTotal||0 %></span>
     </div>
     <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
       <div style="height:100%;width:<%= totals.controlsTotal ? Math.round((totals.controlsAssessed||0) / totals.controlsTotal * 100) : 0 %>%;background:var(--accent);transition:width 0.2s;"></div>
     </div>
   </div>
   <div style="display:flex;gap:4px;align-items:center;">
-    <span class="meta" style="font-size:12px;margin-right:6px;"><strong style="color:var(--text);"><%= overallAssessed %></strong> / <%= overallTotal %> &middot; <%= pct %>%</span>
+    <span class="meta" style="font-size:12px;margin-right:6px;"><strong><%= overallAssessed %></strong> / <%= overallTotal %> &middot; <%= pct %>%</span>
     <% if (prev) { %><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= prev.id %>" class="btn btn-secondary btn-xs" title="Previous">←</a><% } %>
     <% if (next) { %><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= next.id %>" class="btn btn-secondary btn-xs" title="Next">→</a><% } %>
   </div>
@@ -247,7 +247,7 @@
             <div class="meta" style="font-size:11.5px;line-height:1.45;">Answer based on evidence you can show an auditor. The status hint below is a heuristic; <strong>you</strong> set the final status.</div>
           </div>
           <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>;display:flex;gap:8px;align-items:center;">
-            <span>Heuristic hint: <strong id="suggestedStatusText" style="color:var(--text-secondary);"><%= suggestedStatus || '' %></strong></span>
+            <span>Heuristic hint: <strong class="text-secondary" id="suggestedStatusText"><%= suggestedStatus || '' %></strong></span>
             <a href="#" id="applySuggestedLink" onclick="applySuggested(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;<%= suggestedStatus ? '' : 'display:none;' %>" title="Copy the hint into the status dropdown - review before saving">Use as draft</a>
             <a href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;">Pre-fill notes from gaps</a>
           </div>
@@ -331,7 +331,7 @@
           <details <%= i === 0 ? 'open' : '' %> style="border-bottom:<%= i < priorPassNotes.length - 1 ? '1px dashed var(--border)' : 'none' %>;">
             <summary style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px;">
               <span style="font-weight:600;color:var(--text);">Pass <%= p.pass_number %></span>
-              <% if (p.label) { %><span style="color:var(--text);"><%= p.label %></span><% } %>
+              <% if (p.label) { %><span><%= p.label %></span><% } %>
               <% if (p.pass_status === 'completed' && p.completed_at) { %>
                 <span class="meta" style="font-size:10.5px;">completed <%= p.completed_at.slice(0,10) %></span>
               <% } else if (p.pass_status === 'open') { %>
@@ -376,7 +376,7 @@
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <input type="hidden" name="iso_item_id" value="<%= item.id %>">
     <input type="hidden" name="redirect_to" value="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>">
-    <div style="grid-column:1/-1;"><input type="file" name="file" required style="font-size:12px;width:100%;"></div>
+    <div class="col-full"><input type="file" name="file" required style="font-size:12px;width:100%;"></div>
     <div><label class="label" style="font-size:10px;">Period (e.g., Q1 2026)</label><input type="text" name="period_label" class="input" style="font-size:12px;" placeholder="Q1 2026"></div>
     <div><label class="label" style="font-size:10px;">Sub-clause / section</label><input type="text" name="clause_section" class="input" style="font-size:12px;" placeholder="e.g., A.6.2.4.b"></div>
     <div></div>

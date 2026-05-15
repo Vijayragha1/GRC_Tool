@@ -31,8 +31,8 @@
     </div>
   </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" value="<%= risk.title %>" required></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= risk.description || '' %></textarea></div>
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= risk.title %>" required></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= risk.description || '' %></textarea></div>
     <div><label class="label">Asset</label>
       <select class="select" name="asset_id">
         <option value="">- none -</option>
@@ -119,10 +119,10 @@
     <div class="divide-row">
       <% linked.forEach(c => { %>
         <div style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
-          <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted" style="color:var(--text);"><%= c.title %></a>
+          <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted"><%= c.title %></a>
           <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/unlink">
             <input type="hidden" name="iso_item_id" value="<%= c.id %>">
-            <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Unlink</button>
+            <button class="btn btn-ghost btn-xs text-danger">Unlink</button>
           </form>
         </div>
       <% }) %>
@@ -148,7 +148,7 @@
 <div class="panel" style="margin-top:18px;">
   <div class="panel-head">
     <h2>Treatment plan actions <span class="meta" style="font-weight:400;font-size:13px;">· Clause 6.1.3</span></h2>
-    <span class="meta"><strong style="color:var(--text);"><%= openActions %></strong> open · <%= doneActions %> done · <%= acts.length %> total</span>
+    <span class="meta"><strong><%= openActions %></strong> open · <%= doneActions %> done · <%= acts.length %> total</span>
   </div>
 
   <% if (acts.length === 0) { %>
@@ -236,7 +236,7 @@
       <div style="margin-top:10px;display:flex;gap:6px;">
         <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances" class="btn btn-secondary btn-xs">View acceptance history →</a>
         <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= acc.id %>/revoke" onsubmit="return appConfirmForm(event, 'Revoke this acceptance? Risk will return to open.')" style="display:inline;">
-          <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Revoke</button>
+          <button class="btn btn-ghost btn-xs text-danger">Revoke</button>
         </form>
       </div>
     </div>
@@ -256,7 +256,7 @@
         <label class="label">Expires on <span class="meta">re-accept by this date</span></label>
         <input class="input" type="date" name="expires_at" required style="font-size:12.5px;">
       </div>
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Rationale <span class="meta">why is this residual risk acceptable</span></label>
         <textarea class="textarea" name="rationale" rows="3" required placeholder="Why is the residual risk acceptable to the business? What compensating factors? When and why will it be re-evaluated?" style="font-size:12.5px;"></textarea>
       </div>

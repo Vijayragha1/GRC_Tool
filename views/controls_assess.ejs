@@ -57,7 +57,7 @@
   <div>
     <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
       <span class="meta" style="font-weight:500;">Clauses (4–10)</span>
-      <span class="meta"><strong style="color:var(--text);"><%= totals.clausesAssessed %></strong> / <%= totals.clausesTotal %></span>
+      <span class="meta"><strong><%= totals.clausesAssessed %></strong> / <%= totals.clausesTotal %></span>
     </div>
     <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
       <div style="height:100%;width:<%= totals.clausesTotal ? Math.round(totals.clausesAssessed / totals.clausesTotal * 100) : 0 %>%;background:#0891b2;transition:width 0.2s;"></div>
@@ -66,14 +66,14 @@
   <div>
     <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px;">
       <span class="meta" style="font-weight:500;">Annex A controls</span>
-      <span class="meta"><strong style="color:var(--text);"><%= totals.controlsAssessed %></strong> / <%= totals.controlsTotal %></span>
+      <span class="meta"><strong><%= totals.controlsAssessed %></strong> / <%= totals.controlsTotal %></span>
     </div>
     <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
       <div style="height:100%;width:<%= totals.controlsTotal ? Math.round(totals.controlsAssessed / totals.controlsTotal * 100) : 0 %>%;background:var(--accent);transition:width 0.2s;"></div>
     </div>
   </div>
   <div style="display:flex;gap:4px;align-items:center;">
-    <span class="meta" style="font-size:12px;margin-right:6px;"><strong style="color:var(--text);"><%= overallAssessed %></strong> / <%= overallTotal %> · <%= pct %>%</span>
+    <span class="meta" style="font-size:12px;margin-right:6px;"><strong><%= overallAssessed %></strong> / <%= overallTotal %> · <%= pct %>%</span>
     <% if (prevId) { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= prevId %>" class="btn btn-secondary btn-xs" title="Previous">←</a><% } %>
     <% if (nextId) { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= nextId %>" class="btn btn-secondary btn-xs" title="Next">→</a><% } %>
   </div>
@@ -274,7 +274,7 @@
             <div class="meta" style="font-size:11.5px;line-height:1.45;">Answer based on evidence you can show an auditor - not on what you intend to do. The status hint below is a rough heuristic; <strong>you</strong> set the final status based on your judgement and the evidence available.</div>
           </div>
           <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>;display:flex;gap:8px;align-items:center;" title="A heuristic from your answers. Always override with your own judgement.">
-            <span>Heuristic hint: <strong id="suggestedStatusText" style="color:var(--text-secondary);"><%= suggestedStatus || '' %></strong></span>
+            <span>Heuristic hint: <strong class="text-secondary" id="suggestedStatusText"><%= suggestedStatus || '' %></strong></span>
             <a href="#" id="applySuggestedLink" onclick="applySuggested(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;<%= suggestedStatus ? '' : 'display:none;' %>" title="Copies the hint into the status dropdown - review before saving">Use as draft</a>
             <a href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;">Pre-fill notes from gaps</a>
           </div>
@@ -366,7 +366,7 @@
           <details <%= isCollapsed ? '' : 'open' %> style="border-bottom:<%= i < priorPassNotes.length - 1 ? '1px dashed var(--border)' : 'none' %>;">
             <summary style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px;">
               <span style="font-weight:600;color:var(--ink);">Pass <%= p.pass_number %></span>
-              <% if (p.label) { %><span style="color:var(--text);"><%= p.label %></span><% } %>
+              <% if (p.label) { %><span><%= p.label %></span><% } %>
               <% if (p.pass_status === 'completed' && p.completed_at) { %>
                 <span class="meta" style="font-size:10.5px;">completed <%= p.completed_at.slice(0,10) %></span>
               <% } else if (p.pass_status === 'in_progress') { %>
@@ -414,7 +414,7 @@
     </div>
     <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
       <input type="hidden" name="iso_item_id" value="<%= item.id %>">
-      <div style="grid-column:1/-1;"><input type="file" name="file" required style="font-size:12px;width:100%;"></div>
+      <div class="col-full"><input type="file" name="file" required style="font-size:12px;width:100%;"></div>
       <div><label class="label" style="font-size:10px;">Period (e.g., Q1 2026) - optional</label><input type="text" name="period_label" class="input" style="font-size:12px;" placeholder="Q1 2026"></div>
       <div><label class="label" style="font-size:10px;">Sub-clause / section</label><input type="text" name="clause_section" class="input" style="font-size:12px;" placeholder="e.g., A.5.18.b"></div>
       <div></div>

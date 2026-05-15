@@ -40,7 +40,7 @@
     <div><label class="label">Availability</label>
       <select class="select" name="cia_a"><option value="1">1 Low</option><option value="2" selected>2 Med</option><option value="3">3 High</option></select>
     </div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
 
     <%# Tier 3.8 - Business impact analysis (BIA): how critical is this asset
         to operations, and how fast must it recover? Drives A.5.30, A.8.13,
@@ -59,9 +59,9 @@
     </div>
     <div><label class="label">RTO (hours) <span class="meta">recovery time</span></label><input class="input" type="number" min="0" name="rto_hours" placeholder="e.g., 4"></div>
     <div><label class="label">RPO (hours) <span class="meta">data loss tolerance</span></label><input class="input" type="number" min="0" name="rpo_hours" placeholder="e.g., 1"></div>
-    <div style="grid-column:1/-1"><label class="label">BIA notes</label><textarea class="textarea" name="bia_notes" rows="2" placeholder="What breaks if this asset is down? Who depends on it?"></textarea></div>
+    <div class="col-full"><label class="label">BIA notes</label><textarea class="textarea" name="bia_notes" rows="2" placeholder="What breaks if this asset is down? Who depends on it?"></textarea></div>
 
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Save asset</button></div>
+    <div class="col-full"><button class="btn btn-primary">Save asset</button></div>
   </form>
 </div>
 
@@ -91,7 +91,7 @@
           <td class="num meta" style="font-size:11.5px;"><%= a.rto_hours != null ? a.rto_hours + 'h' : '-' %> / <%= a.rpo_hours != null ? a.rpo_hours + 'h' : '-' %></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+              <button class="btn btn-ghost btn-xs text-danger">Delete</button>
             </form>
           </td>
         </tr>

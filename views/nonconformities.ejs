@@ -18,8 +18,8 @@
 <div id="newNc" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New nonconformity</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"></textarea></div>
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"></textarea></div>
     <div><label class="label">Source</label>
       <select class="select" name="source">
         <option value="internal_audit">Internal audit</option><option value="external_audit">External audit</option>
@@ -30,7 +30,7 @@
     <div><label class="label">Severity</label>
       <select class="select" name="severity"><option value="major">Major</option><option value="minor" selected>Minor</option><option value="observation">Observation</option></select>
     </div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+    <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
 

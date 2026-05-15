@@ -26,7 +26,7 @@
       <div class="kpi-meta">Overall current</div>
       <div style="font-size:18px;font-weight:500;display:flex;gap:8px;align-items:baseline;">
         <%= diff.scoreDeltas.overall.from == null ? '-' : r1(diff.scoreDeltas.overall.from) %>
-        <span style="color:var(--text-tertiary);">&rarr;</span>
+        <span class="text-tertiary">&rarr;</span>
         <%= diff.scoreDeltas.overall.to == null ? '-' : r1(diff.scoreDeltas.overall.to) %>
         <%- deltaBadge(diff.scoreDeltas.overall.delta) %>
       </div>
@@ -97,7 +97,7 @@
           <strong style="font-size:12.5px;"><%= f.title %></strong>
           <ul style="margin:4px 0 0 0;padding-left:16px;color:var(--text-secondary);">
             <% Object.entries(f.changes).forEach(([k, c]) => { %>
-              <li><strong><%= k %>:</strong> <span style="text-decoration:line-through;color:var(--text-tertiary);"><%= c.from || '-' %></span> &rarr; <span style="color:var(--text);"><%= c.to || '-' %></span></li>
+              <li><strong><%= k %>:</strong> <span style="text-decoration:line-through;color:var(--text-tertiary);"><%= c.from || '-' %></span> &rarr; <span><%= c.to || '-' %></span></li>
             <% }) %>
           </ul>
         </div>

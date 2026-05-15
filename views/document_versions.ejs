@@ -56,7 +56,7 @@
         <div class="sec-label">E-signatures</div>
         <% if (v.signatureIssues.length) { %>
           <div class="callout" style="background:rgba(220,38,38,0.08);border-color:#dc2626;color:#b91c1c;margin-bottom:12px;">
-            <div class="callout-title" style="color:#b91c1c;">Integrity warning</div>
+            <div class="callout-title text-danger">Integrity warning</div>
             <ul style="margin:6px 0 0 18px;">
               <% v.signatureIssues.forEach(issue => { %><li><%= issue %></li><% }) %>
             </ul>

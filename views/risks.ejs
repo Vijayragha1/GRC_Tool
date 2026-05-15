@@ -29,8 +29,8 @@
 <div id="newRisk" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New risk</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/risks" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Unauthorized access to customer data via stolen credentials"></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Unauthorized access to customer data via stolen credentials"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
     <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %>
       <div><label class="label">Entity</label>
         <select class="select" name="entity_id">
@@ -67,7 +67,7 @@
       </select>
     </div>
     <div></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create</button></div>
+    <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
 

@@ -33,7 +33,7 @@
     <div class="kpi-num num"><%= docs.length %></div>
     <div class="kpi-label">Attestations & contracts</div>
     <% const expDocs = docs.filter(d => d.expiry_date && d.expiry_date < new Date(Date.now()+30*86400000).toISOString().split('T')[0]).length; %>
-    <% if (expDocs > 0) { %><div class="kpi-meta" style="color:#b91c1c;"><%= expDocs %> expiring soon</div><% } %>
+    <% if (expDocs > 0) { %><div class="kpi-meta text-danger"><%= expDocs %> expiring soon</div><% } %>
   </div>
   <div class="panel kpi">
     <% const presentClauses = clauses.filter(c => c.status === 'present').length; const totalClauses = clauses.length; %>
@@ -61,7 +61,7 @@
         <% }) %>
       </select>
     </div>
-    <div style="grid-column:1/-1"><label class="label">Service provided</label><input class="input" name="service_provided" value="<%= v.service_provided || '' %>"></div>
+    <div class="col-full"><label class="label">Service provided</label><input class="input" name="service_provided" value="<%= v.service_provided || '' %>"></div>
 
     <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Risk drivers (recompute on save)</div></div>
     <div><label class="label">Business criticality</label>
@@ -118,7 +118,7 @@
     <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date" value="<%= v.next_review_date || '' %>"></div>
     <div><label class="label">Attestations summary</label><input class="input" name="attestations" value="<%= v.attestations || '' %>" placeholder="ISO 27001, SOC 2…"></div>
 
-    <div style="grid-column:1/-1"><label class="label">Internal notes</label><textarea class="textarea" name="notes" rows="3"><%= v.notes || '' %></textarea></div>
+    <div class="col-full"><label class="label">Internal notes</label><textarea class="textarea" name="notes" rows="3"><%= v.notes || '' %></textarea></div>
 
     <div style="grid-column:1/-1;display:flex;gap:6px;">
       <button class="btn btn-primary">Save changes</button>
@@ -149,9 +149,9 @@
     <div><label class="label">Document name</label><input class="input" name="name" required placeholder="e.g., SOC 2 Type II - FY2026"></div>
     <div><label class="label">Effective date</label><input class="input" type="date" name="effective_date"></div>
     <div><label class="label">Expiry date</label><input class="input" type="date" name="expiry_date"></div>
-    <div style="grid-column:1/-1"><label class="label">File</label><input class="input" type="file" name="file"></div>
-    <div style="grid-column:1/-1"><label class="label">Notes</label><input class="input" name="notes" placeholder="Optional: scope, opinion, exceptions noted"></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Upload</button></div>
+    <div class="col-full"><label class="label">File</label><input class="input" type="file" name="file"></div>
+    <div class="col-full"><label class="label">Notes</label><input class="input" name="notes" placeholder="Optional: scope, opinion, exceptions noted"></div>
+    <div class="col-full"><button class="btn btn-primary">Upload</button></div>
   </form>
 </div>
 
@@ -183,7 +183,7 @@
           </td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents/<%= d.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">Delete</button>
+              <button class="btn btn-ghost btn-xs text-danger">Delete</button>
             </form>
           </td>
         </tr>
@@ -280,7 +280,7 @@
         <% supplierControls.forEach(sc => { %>
           <tr>
             <td class="mono meta"><%= sc.iso_item_id.replace('annex-','').toUpperCase() %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= sc.iso_item_id %>" class="link-muted" style="color:var(--text);"><%= sc.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= sc.iso_item_id %>" class="link-muted"><%= sc.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
             <td class="meta"><%= sc.notes || '-' %></td>
             <td style="text-align:right;">
               <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/controls/<%= sc.link_id %>/delete" onsubmit="return appConfirmForm(event, 'Remove?')" style="display:inline;">
@@ -338,7 +338,7 @@
           <td><% if (s.approved) { %><span class="status s-done">approved</span><% } else { %><span class="status s-open">pending</span><% } %></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/subprocessors/<%= s.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">×</button>
+              <button class="btn btn-ghost btn-xs text-danger">×</button>
             </form>
           </td>
         </tr>
@@ -364,9 +364,9 @@
       </select>
     </div>
     <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date"></div>
-    <div style="grid-column:1/-1"><label class="label">Findings</label><textarea class="textarea" name="findings" rows="3" placeholder="What did the review identify?"></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2" placeholder="Required follow-ups, owners, dates"></textarea></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Log review</button></div>
+    <div class="col-full"><label class="label">Findings</label><textarea class="textarea" name="findings" rows="3" placeholder="What did the review identify?"></textarea></div>
+    <div class="col-full"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2" placeholder="Required follow-ups, owners, dates"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Log review</button></div>
   </form>
 </div>
 
@@ -484,7 +484,7 @@
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div class="meta"><%= n.user_name %> · <%= n.created_at %><% if (n.internal_only) { %> · <span style="color:#a16207;font-weight:500;">internal</span><% } %></div>
             <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/notes/<%= n.id %>/delete">
-              <button class="btn btn-ghost btn-xs" style="color:#b91c1c;">×</button>
+              <button class="btn btn-ghost btn-xs text-danger">×</button>
             </form>
           </div>
           <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;"><%= n.body %></div>

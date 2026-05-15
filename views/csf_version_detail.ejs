@@ -58,7 +58,7 @@
         <div class="kpi-label">Target (at publish)</div>
       </div>
       <div>
-        <div class="kpi-num" style="color:#a16207;"><%= rollup.overall.gap == null ? '-' : (rollup.overall.gap > 0 ? '+' : '') + r1(rollup.overall.gap) %></div>
+        <div class="kpi-num text-warn"><%= rollup.overall.gap == null ? '-' : (rollup.overall.gap > 0 ? '+' : '') + r1(rollup.overall.gap) %></div>
         <div class="kpi-label">Gap</div>
       </div>
     <% } %>

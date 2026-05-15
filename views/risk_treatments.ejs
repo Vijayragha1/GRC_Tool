@@ -12,16 +12,16 @@
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Add treatment action</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Enable MFA on all admin accounts"></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Enable MFA on all admin accounts"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
     <div><label class="label">Owner</label><input class="input" name="owner_name"></div>
     <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
     <div><label class="label">Status</label><select class="select" name="status"><option>planned</option><option>in_progress</option><option>done</option><option>blocked</option></select></div>
     <div><label class="label">Cost estimate</label><input class="input" name="cost_estimate" placeholder="€"></div>
     <div><label class="label">Expected residual L</label><input class="input num" name="expected_residual_l" type="number" min="1" max="9"></div>
     <div><label class="label">Expected residual I</label><input class="input num" name="expected_residual_i" type="number" min="1" max="9"></div>
-    <div style="grid-column:1/-1"><label class="label">Implementing control</label><select class="select" name="iso_item_id"><option value="">- none -</option><% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %></select></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Add action</button></div>
+    <div class="col-full"><label class="label">Implementing control</label><select class="select" name="iso_item_id"><option value="">- none -</option><% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %></select></div>
+    <div class="col-full"><button class="btn btn-primary">Add action</button></div>
   </form>
 </div>
 

@@ -93,8 +93,8 @@
     <div class="panel-head">
       <h2>This week <span class="meta" style="font-weight:400;font-size:13px;">- what's due across all engagements</span></h2>
       <span class="meta">
-        <% if (thisWeek.overdue.length) { %><strong style="color:#b91c1c;"><%= thisWeek.overdue.length %></strong> overdue · <% } %>
-        <% if (thisWeek.dueThisWeek.length) { %><strong style="color:#a16207;"><%= thisWeek.dueThisWeek.length %></strong> due this week<% } %>
+        <% if (thisWeek.overdue.length) { %><strong class="text-danger"><%= thisWeek.overdue.length %></strong> overdue · <% } %>
+        <% if (thisWeek.dueThisWeek.length) { %><strong class="text-warn"><%= thisWeek.dueThisWeek.length %></strong> due this week<% } %>
       </span>
     </div>
 
@@ -165,8 +165,8 @@
       <h2>At-risk engagements <span class="meta" style="font-weight:400;font-size:13px;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
       <span class="meta">
         <% const high = atRisk.filter(r => r.severity === 'high').length; const med = atRisk.filter(r => r.severity === 'medium').length; %>
-        <% if (high) { %><strong style="color:#b91c1c;"><%= high %></strong> high · <% } %>
-        <% if (med) { %><strong style="color:#a16207;"><%= med %></strong> medium<% } %>
+        <% if (high) { %><strong class="text-danger"><%= high %></strong> high · <% } %>
+        <% if (med) { %><strong class="text-warn"><%= med %></strong> medium<% } %>
       </span>
     </div>
     <table class="t">
@@ -240,10 +240,10 @@
   <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
     <div><label class="label">Client name</label><input class="input" name="client_name" required></div>
     <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
-    <div style="grid-column:1/-1"><label class="label">ISMS scope</label><input class="input" name="scope" placeholder="Production SaaS platform and supporting infrastructure"></div>
+    <div class="col-full"><label class="label">ISMS scope</label><input class="input" name="scope" placeholder="Production SaaS platform and supporting infrastructure"></div>
     <div><label class="label">Target certification date</label><input class="input" name="target_cert_date" type="date"></div>
     <div></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create workspace</button></div>
+    <div class="col-full"><button class="btn btn-primary">Create workspace</button></div>
   </form>
 </div>
 <% } %>
@@ -333,12 +333,12 @@
       <% firmUsers.forEach(u => { %>
         <tr>
           <td><%= u.name %></td>
-          <td style="color:var(--text-secondary);"><%= u.email %></td>
+          <td class="text-secondary"><%= u.email %></td>
           <td><span class="tag tag-neutral"><%= u.firm_role %></span></td>
           <td style="text-align:right">
             <% if (u.id !== user.id) { %>
               <form method="POST" action="/firm/users/<%= u.id %>/deactivate" onsubmit="return appConfirmForm(event, 'Deactivate this user?')">
-                <button class="btn btn-ghost btn-xs" style="color:#b91c1c">Deactivate</button>
+                <button class="btn btn-ghost btn-xs text-danger">Deactivate</button>
               </form>
             <% } %>
           </td>

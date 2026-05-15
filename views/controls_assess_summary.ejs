@@ -15,11 +15,11 @@
 
 <!-- Status distribution -->
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;">
-  <div class="panel kpi"><div class="kpi-num num" style="color:#16a34a;"><%= dist.Implemented %></div><div class="kpi-label" style="font-size:11px;">Implemented</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:#a16207;"><%= dist['Partially Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Partial</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-success"><%= dist.Implemented %></div><div class="kpi-label" style="font-size:11px;">Implemented</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-warn"><%= dist['Partially Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Partial</div></div>
   <div class="panel kpi"><div class="kpi-num num" style="color:#ea580c;"><%= dist['Work In Progress'] %></div><div class="kpi-label" style="font-size:11px;">In progress</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:#b91c1c;"><%= dist['Not Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Not implemented</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:var(--text-secondary);"><%= dist['Not Applicable'] %></div><div class="kpi-label" style="font-size:11px;">Not applicable</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-danger"><%= dist['Not Implemented'] %></div><div class="kpi-label" style="font-size:11px;">Not implemented</div></div>
+  <div class="panel kpi"><div class="kpi-num num text-secondary"><%= dist['Not Applicable'] %></div><div class="kpi-label" style="font-size:11px;">Not applicable</div></div>
   <div class="panel kpi"><div class="kpi-num num" style="color:<%= notAssessedCount > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;"><%= notAssessedCount %></div><div class="kpi-label" style="font-size:11px;">Not assessed</div></div>
 </div>
 
@@ -74,7 +74,7 @@
             <tr>
               <td><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
               <td class="mono meta"><%= refCode %></td>
-              <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info" style="font-size:10px;">clause</span><% } %></td>
+              <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info" style="font-size:10px;">clause</span><% } %></td>
               <td><span class="tag" style="background:<%= sevColor %>;color:white;font-size:10.5px;"><%= g.status %></span></td>
               <td><span style="font-size:10.5px;font-weight:600;color:<%= prioColor %>;text-transform:uppercase;"><%= prio %></span></td>
               <td class="meta"><%= g.maturity != null ? g.maturity : '-' %></td>
@@ -105,7 +105,7 @@
         %>
           <tr>
             <td class="mono meta"><%= refCode %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>" class="link-muted" style="color:var(--text);"><%= cleanTitle %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>" class="link-muted"><%= cleanTitle %></a></td>
             <td class="meta"><%= g.status %></td>
             <td style="text-align:right;"><a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">Pick template →</a></td>
           </tr>
@@ -160,7 +160,7 @@
              });
         %>
           <tr>
-            <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title %></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted"><%= r.title %></a></td>
             <td style="font-size:12px;">
               <% blocks.forEach((b, idx) => {
                    const color = b.st === 'Not Implemented' ? '#b91c1c' : b.st === 'Partially Implemented' ? '#a16207' : '#ea580c';

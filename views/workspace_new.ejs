@@ -10,7 +10,7 @@
 
 <div class="panel">
   <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-    <div style="grid-column:1/-1;">
+    <div class="col-full">
       <label class="label">Client / engagement name <span class="meta">required</span></label>
       <input class="input" name="client_name" required autofocus placeholder="e.g., Acme HealthTech">
     </div>
@@ -22,7 +22,7 @@
       <label class="label">Target certification date <span class="meta">optional</span></label>
       <input class="input" type="date" name="target_cert_date">
     </div>
-    <div style="grid-column:1/-1;">
+    <div class="col-full">
       <label class="label">ISMS scope statement <span class="meta">can be edited later</span></label>
       <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units, technology are in scope of the ISMS? What's explicitly excluded and why?"></textarea>
     </div>

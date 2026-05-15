@@ -17,7 +17,7 @@
 <div id="newInc" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Log new incident</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/incidents" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-    <div style="grid-column:1/-1"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Phishing campaign targeting finance team"></div>
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Phishing campaign targeting finance team"></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">
         <option value="malware">Malware</option><option value="phishing">Phishing / social engineering</option>
@@ -34,8 +34,8 @@
     </div>
     <div><label class="label">Detected at</label><input class="input" type="datetime-local" name="detected_at"></div>
     <div><label class="label">Reported by</label><input class="input" name="reported_by"></div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" placeholder="What happened, what was observed, initial impact assessment…"></textarea></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Log incident</button></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" placeholder="What happened, what was observed, initial impact assessment…"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Log incident</button></div>
   </form>
 </div>
 

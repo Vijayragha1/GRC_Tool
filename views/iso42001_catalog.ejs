@@ -47,7 +47,7 @@
           </span></td>
           <td>
             <% if (r.type === 'control') { %>
-              <a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted" style="color:var(--text);">
+              <a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted">
                 <%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %>
               </a>
             <% } else { %>

@@ -284,6 +284,20 @@
   .hidden { display: none !important; }
   .contents { display: contents; }
 
+  /* Semantic text colors - replace the inline color overrides scattered
+     across views. Each one matches the exact pixel value it replaces so
+     the codemod-driven swap is visually a no-op. */
+  .text-secondary { color: var(--text-secondary); }
+  .text-tertiary  { color: var(--text-tertiary);  }
+  .text-ink       { color: var(--ink);            }
+  .text-danger    { color: #b91c1c; }
+  .text-warn      { color: #a16207; }
+  .text-success   { color: #15803d; }
+
+  /* Layout - the only spans/grids we use enough to deserve a class.
+     col-full means "stretch across all grid columns of the parent". */
+  .col-full       { grid-column: 1 / -1; }
+
   /* Misc */
   details > summary { cursor: pointer; list-style: none; }
   details > summary::-webkit-details-marker { display: none; }

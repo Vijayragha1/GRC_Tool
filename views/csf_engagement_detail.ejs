@@ -40,7 +40,7 @@
 
 <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
   <div class="panel-pad" style="font-size:12.5px;color:var(--text-secondary);">
-    <strong style="color:#a16207;">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
+    <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
     Stage 2 of the CSF module. Engagement overview + assignments. Assessment workspace, scoring, findings, and reporting come in subsequent stages.
   </div>
 </div>
@@ -131,7 +131,7 @@
       <div class="meta" style="font-size:11px;margin-top:2px;">In progress + Evidence + Draft</div>
     </div>
     <div>
-      <div class="kpi-num num" style="color:#15803d;"><%= (statusCounts['Reviewed'] || 0) + (statusCounts['Approved'] || 0) %></div>
+      <div class="kpi-num num text-success"><%= (statusCounts['Reviewed'] || 0) + (statusCounts['Approved'] || 0) %></div>
       <div class="kpi-label">Reviewed/Approved</div>
     </div>
     <div>
@@ -140,7 +140,7 @@
         <div class="kpi-label"><%= daysOverdue ? 'Days overdue' : 'Days to target' %></div>
         <div class="meta" style="font-size:11px;margin-top:2px;"><%= engagement.target_completion_date %></div>
       <% } else { %>
-        <div class="kpi-num num" style="color:var(--text-tertiary);">-</div>
+        <div class="kpi-num num text-tertiary">-</div>
         <div class="kpi-label">No target date</div>
       <% } %>
     </div>

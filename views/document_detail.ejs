@@ -241,7 +241,7 @@
 
   <% if (signatureIssues && signatureIssues.length) { %>
     <div class="panel-pad" style="background:rgba(220,38,38,0.06);border-bottom:1px solid var(--border);">
-      <div class="callout-title" style="color:#b91c1c;">Signature integrity warning</div>
+      <div class="callout-title text-danger">Signature integrity warning</div>
       <ul style="font-size:13px;color:#b91c1c;margin:6px 0 0 18px;">
         <% signatureIssues.forEach(i => { %><li><%= i %></li><% }) %>
       </ul>
@@ -282,7 +282,7 @@
     <% } %>
     <span style="flex:1"></span>
     <% if (signatures && signatures.length) { %>
-      <span class="meta" style="color:#15803d;">✓ <%= signatures.length %> signature<%= signatures.length === 1 ? '' : 's' %> on v<%= currentVersion ? currentVersion.version : doc.version %></span>
+      <span class="meta text-success">✓ <%= signatures.length %> signature<%= signatures.length === 1 ? '' : 's' %> on v<%= currentVersion ? currentVersion.version : doc.version %></span>
     <% } %>
   </div>
 
@@ -357,7 +357,7 @@
   <% } %>
 
   <div style="padding:16px 20px;">
-    <div class="meta" style="margin-bottom:6px;">Document body <% if (doc.locked) { %>· <span style="color:#b91c1c;">locked</span><% } %><span id="autosaveBadge" class="meta" style="margin-left:8px;color:#16a34a;display:none;">saved</span></div>
+    <div class="meta" style="margin-bottom:6px;">Document body <% if (doc.locked) { %>· <span class="text-danger">locked</span><% } %><span id="autosaveBadge" class="meta" style="margin-left:8px;color:#16a34a;display:none;">saved</span></div>
     <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>" id="docForm">
       <textarea name="content" id="docContent" <%= doc.locked ? 'readonly' : '' %>><%= doc.content %></textarea>
       <% if (!doc.locked && can('document.edit')) { %>

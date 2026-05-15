@@ -18,7 +18,7 @@
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-head">
       <h2>Needs your attention <span class="meta" style="font-weight:400;font-size:13px;">· live from data</span></h2>
-      <span class="meta"><strong style="color:#b91c1c;"><%= computedItems.filter(i => i.severity === 'high').length %></strong> high · <strong style="color:#a16207;"><%= computedItems.filter(i => i.severity === 'medium').length %></strong> medium</span>
+      <span class="meta"><strong class="text-danger"><%= computedItems.filter(i => i.severity === 'high').length %></strong> high · <strong class="text-warn"><%= computedItems.filter(i => i.severity === 'medium').length %></strong> medium</span>
     </div>
     <% computedItems.forEach(c => {
          const dotColor = c.severity === 'high' ? '#dc2626' : c.severity === 'medium' ? '#ca8a04' : 'var(--accent)';

@@ -42,12 +42,12 @@
     <!-- Single upload -->
     <form id="singleUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data"
           class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">File <span class="meta">required</span></label>
         <input type="file" name="file" required style="font-size:13px;width:100%;">
       </div>
 
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Link to controls / clauses</label>
         <input type="text" class="input upload-filter" placeholder="Filter… e.g., A.8.20, network, access" style="font-size:12.5px;margin-bottom:6px;" oninput="filterPicker(this)">
         <div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
@@ -73,27 +73,27 @@
       <div><label class="label">Sub-clause / section (optional)</label><input type="text" name="clause_section" class="input" placeholder="e.g., A.5.18.b"></div>
       <div><label class="label">Valid from (optional)</label><input type="date" name="valid_from" class="input"></div>
       <div><label class="label">Valid until (optional)</label><input type="date" name="valid_until" class="input"></div>
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Tags (comma-separated, optional)</label>
         <input type="text" name="tags" class="input" placeholder="e.g., stage-2, q1-2026, audit-pack" list="evTagSuggestions">
         <datalist id="evTagSuggestions">
           <% (tagList || []).forEach(([t]) => { %><option value="<%= t %>"><% }) %>
         </datalist>
       </div>
-      <div style="grid-column:1/-1;"><label class="label">Description (optional)</label><input type="text" name="description" class="input" placeholder="What does this evidence - e.g., 'Production network topology, signed by Head of Platform'"></div>
-      <div style="grid-column:1/-1;"><button class="btn btn-primary">Upload evidence</button></div>
+      <div class="col-full"><label class="label">Description (optional)</label><input type="text" name="description" class="input" placeholder="What does this evidence - e.g., 'Production network topology, signed by Head of Platform'"></div>
+      <div class="col-full"><button class="btn btn-primary">Upload evidence</button></div>
     </form>
 
     <!-- Bulk upload - hidden by default -->
     <form id="bulkUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence/bulk" enctype="multipart/form-data"
           class="panel-pad" style="display:none;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Files (up to 50) <span class="meta">required - every selected file gets the same metadata and links</span></label>
         <input type="file" name="files" multiple required style="font-size:13px;width:100%;">
         <div class="meta" style="font-size:11px;margin-top:3px;">Tip: select multiple files in your file picker (Cmd-click / Ctrl-click). Hash-based dedupe is applied per file.</div>
       </div>
 
-      <div style="grid-column:1/-1;">
+      <div class="col-full">
         <label class="label">Link all of them to:</label>
         <input type="text" class="input upload-filter" placeholder="Filter… e.g., A.8.20, network" style="font-size:12.5px;margin-bottom:6px;" oninput="filterPicker(this)">
         <div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
@@ -119,8 +119,8 @@
       <div><label class="label">Tags (shared)</label><input type="text" name="tags" class="input" placeholder="e.g., stage-2, audit-pack" list="evTagSuggestions"></div>
       <div><label class="label">Valid from (shared)</label><input type="date" name="valid_from" class="input"></div>
       <div><label class="label">Valid until (shared)</label><input type="date" name="valid_until" class="input"></div>
-      <div style="grid-column:1/-1;"><label class="label">Description (shared)</label><input type="text" name="description" class="input" placeholder="Optional shared note for all files"></div>
-      <div style="grid-column:1/-1;"><button class="btn btn-primary">Upload all</button></div>
+      <div class="col-full"><label class="label">Description (shared)</label><input type="text" name="description" class="input" placeholder="Optional shared note for all files"></div>
+      <div class="col-full"><button class="btn btn-primary">Upload all</button></div>
     </form>
   </div>
 </details>

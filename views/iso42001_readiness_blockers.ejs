@@ -34,9 +34,9 @@
               </td>
               <td>
                 <% if (it.id && String(it.id).startsWith('ai-')) { %>
-                  <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= it.id %>" class="link-muted" style="color:var(--text);"><%= it.title %></a>
+                  <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= it.id %>" class="link-muted"><%= it.title %></a>
                 <% } else if (b.kind === 'open_ncs') { %>
-                  <a href="/workspaces/<%= ws.id %>/nonconformities/<%= it.id %>" class="link-muted" style="color:var(--text);"><%= it.title %></a>
+                  <a href="/workspaces/<%= ws.id %>/nonconformities/<%= it.id %>" class="link-muted"><%= it.title %></a>
                 <% } else { %><%= it.title %><% } %>
               </td>
               <td>

@@ -224,7 +224,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
     <div class="divide-row">
       <% recentActivity.forEach(a => { %>
         <div style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;">
-          <span><span style="font-weight:500"><%= a.user_name %></span> <span style="color:var(--text-secondary);"><%= a.action.replace(/_/g, ' ') %></span> <span class="meta"><%= a.entity_type || '' %></span></span>
+          <span><span style="font-weight:500"><%= a.user_name %></span> <span class="text-secondary"><%= a.action.replace(/_/g, ' ') %></span> <span class="meta"><%= a.entity_type || '' %></span></span>
           <span class="meta num"><%= a.created_at %></span>
         </div>
       <% }) %>
@@ -238,7 +238,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
     <form method="POST" action="/workspaces/<%= ws.id %>/update" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
       <div><label class="label">Industry</label><input class="input" name="industry" value="<%= ws.industry || '' %>"></div>
-      <div style="grid-column:1/-1"><label class="label">Scope</label><input class="input" id="scope-input" name="scope" value="<%= ws.scope || '' %>"></div>
+      <div class="col-full"><label class="label">Scope</label><input class="input" id="scope-input" name="scope" value="<%= ws.scope || '' %>"></div>
       <div><label class="label">Target cert date</label><input class="input" name="target_cert_date" type="date" value="<%= ws.target_cert_date || '' %>"></div>
       <div><label class="label">Stage</label>
         <select class="select" name="stage">
@@ -270,7 +270,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       </div>
       <div><label class="label">Logo URL (path or full URL)</label><input class="input" name="brand_logo_path" value="<%= ws.brand_logo_path || '' %>" placeholder="https://…/logo.png"></div>
 
-      <div style="grid-column:1/-1"><button class="btn btn-primary">Save</button></div>
+      <div class="col-full"><button class="btn btn-primary">Save</button></div>
     </form>
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>

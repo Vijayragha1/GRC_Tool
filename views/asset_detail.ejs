@@ -18,7 +18,7 @@
     <% if (parents.length) { %>
       <% parents.forEach(p => { %>
         <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-          <a href="/workspaces/<%= ws.id %>/assets/<%= p.parent_asset_id %>" class="link-muted" style="color:var(--text);"><%= p.asset_name %></a>
+          <a href="/workspaces/<%= ws.id %>/assets/<%= p.parent_asset_id %>" class="link-muted"><%= p.asset_name %></a>
           <span class="meta"><%= p.relation %></span>
         </div>
       <% }) %>
@@ -30,7 +30,7 @@
     <% if (children.length) { %>
       <% children.forEach(c => { %>
         <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-          <a href="/workspaces/<%= ws.id %>/assets/<%= c.child_asset_id %>" class="link-muted" style="color:var(--text);"><%= c.asset_name %></a>
+          <a href="/workspaces/<%= ws.id %>/assets/<%= c.child_asset_id %>" class="link-muted"><%= c.asset_name %></a>
           <span class="meta"><%= c.relation %></span>
           <form method="POST" action="/workspaces/<%= ws.id %>/assets/relationships/<%= c.id %>/delete" style="display:inline"><button class="btn btn-ghost btn-xs">×</button></form>
         </div>
@@ -79,7 +79,7 @@
 <div class="panel" style="margin-top:14px">
   <div class="panel-head"><h2>Linked risks</h2></div>
   <% linkedRisks.forEach(r => { %>
-    <div style="padding:8px 16px;border-bottom:1px solid var(--border);"><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="color:var(--text);"><%= r.title %></a> <span class="meta">L<%= r.likelihood %> × I<%= r.impact %></span></div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);"><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted"><%= r.title %></a> <span class="meta">L<%= r.likelihood %> × I<%= r.impact %></span></div>
   <% }) %>
 </div>
 <% } %>
@@ -93,7 +93,7 @@
       <% controlsInScope.forEach(c => { %>
         <tr>
           <td class="mono meta"><%= c.id.replace('annex-','').toUpperCase() %></td>
-          <td><a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted" style="color:var(--text);"><%= c.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted"><%= c.title.replace(/^A\.[0-9.]+ /,'') %></a></td>
           <td class="meta" style="text-transform:capitalize;"><%= c.applicability %></td>
           <td class="meta"><%= c.status %></td>
           <td><% if (c.doc_count > 0) { %><span class="tag tag-info num"><%= c.doc_count %></span><% } else { %><span class="meta">-</span><% } %></td>

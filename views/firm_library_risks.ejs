@@ -34,7 +34,7 @@
 <div id="addRisk" class="panel hidden" style="margin-bottom:14px;">
   <div class="panel-head"><h2 style="margin:0;">Add risk to firm library</h2></div>
   <form method="POST" action="/firm/library/risks" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-    <div style="grid-column:1/-1"><label class="label">Title *</label><input class="input" name="title" required></div>
+    <div class="col-full"><label class="label">Title *</label><input class="input" name="title" required></div>
     <div><label class="label">Domain</label><input class="input" name="domain" placeholder="Access & identity, Data protection..."></div>
     <div><label class="label">Sector (optional)</label>
       <select class="select" name="sector">
@@ -42,15 +42,15 @@
         <% ['SaaS','Fintech','Healthcare','Manufacturing','Public sector','MSP','Retail','Education'].forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
       </select>
     </div>
-    <div style="grid-column:1/-1"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
     <div><label class="label">Threat</label><textarea class="textarea" name="threat" rows="2"></textarea></div>
     <div><label class="label">Vulnerability</label><textarea class="textarea" name="vulnerability" rows="2"></textarea></div>
     <div><label class="label">Suggested likelihood (1–5)</label><input class="input" type="number" name="suggested_likelihood" min="1" max="5" value="3"></div>
     <div><label class="label">Suggested impact (1–5)</label><input class="input" type="number" name="suggested_impact" min="1" max="5" value="3"></div>
-    <div style="grid-column:1/-1"><label class="label">Suggested treatment</label><textarea class="textarea" name="suggested_treatment" rows="2" placeholder="Mitigate via … / Transfer via … / Accept because …"></textarea></div>
-    <div style="grid-column:1/-1"><label class="label">Suggested controls (Annex A ids, comma-separated)</label><input class="input" name="suggested_controls" placeholder="annex-a.5.16, annex-a.8.5"></div>
-    <div style="grid-column:1/-1"><label class="label">Tags</label><input class="input" name="tags" placeholder="cloud, byod, fintech-only"></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Save</button></div>
+    <div class="col-full"><label class="label">Suggested treatment</label><textarea class="textarea" name="suggested_treatment" rows="2" placeholder="Mitigate via … / Transfer via … / Accept because …"></textarea></div>
+    <div class="col-full"><label class="label">Suggested controls (Annex A ids, comma-separated)</label><input class="input" name="suggested_controls" placeholder="annex-a.5.16, annex-a.8.5"></div>
+    <div class="col-full"><label class="label">Tags</label><input class="input" name="tags" placeholder="cloud, byod, fintech-only"></div>
+    <div class="col-full"><button class="btn btn-primary">Save</button></div>
   </form>
 </div>
 

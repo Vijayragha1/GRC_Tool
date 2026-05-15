@@ -9,7 +9,7 @@
 
 <form method="POST" action="/workspaces/<%= ws.id %>/csf" class="panel">
   <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-    <div style="grid-column:1/-1;">
+    <div class="col-full">
       <label class="label">Engagement name</label>
       <input class="input" name="name" required placeholder="e.g., 2026 baseline CSF assessment">
     </div>
@@ -37,7 +37,7 @@
       </select>
     </div>
 
-    <div style="grid-column:1/-1;">
+    <div class="col-full">
       <label class="label">Scope mode</label>
       <div style="display:flex;gap:18px;font-size:13px;">
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
