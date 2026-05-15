@@ -1781,6 +1781,13 @@ function init() {
 
   // Workspaces - locale + retention defaults
   addColumnIfMissing('workspaces', 'locale', "TEXT DEFAULT 'en'");
+  // Per-workspace framework scope. Stored as a JSON array of identifiers
+  // ('iso27001', 'iso42001', 'csf'). Defaulting to all three preserves the
+  // existing behaviour for workspaces created before this column existed -
+  // they kept seeing all three framework nav groups, so they still do.
+  // New workspaces choose at creation time via the framework picker.
+  addColumnIfMissing('workspaces', 'frameworks',
+    `TEXT DEFAULT '["iso27001","iso42001","csf"]'`);
 
   // Comments - threading, mentions
   addColumnIfMissing('comments', 'parent_comment_id', 'INTEGER REFERENCES comments(id) ON DELETE CASCADE');

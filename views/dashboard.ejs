@@ -243,6 +243,28 @@
     <div class="col-full"><label class="label">ISMS scope</label><input class="input" name="scope" placeholder="Production SaaS platform and supporting infrastructure"></div>
     <div><label class="label">Target certification date</label><input class="input" name="target_cert_date" type="date"></div>
     <div></div>
+    <div class="col-full">
+      <label class="label">Frameworks in scope</label>
+      <div class="row text-sm" style="gap:18px;flex-wrap:wrap;padding:8px 0;">
+        <%# ISO 27001 is the spine - Risks / Assets / Documents / Evidence all
+            anchor against the Annex A control register, so this stays always-on.
+            The hidden input keeps it in the submission; the visible label tells
+            the user it's not optional. %>
+        <input type="hidden" name="frameworks" value="iso27001">
+        <span class="row-center" style="gap:8px;color:var(--text-secondary);">
+          <input type="checkbox" checked disabled>
+          <span><strong>ISO 27001:2022</strong> <span class="meta">always included</span></span>
+        </span>
+        <label class="row-center" style="gap:8px;cursor:pointer;">
+          <input type="checkbox" name="frameworks" value="iso42001">
+          <span><strong>ISO 42001:2023</strong> <span class="meta">AI management system</span></span>
+        </label>
+        <label class="row-center" style="gap:8px;cursor:pointer;">
+          <input type="checkbox" name="frameworks" value="csf">
+          <span><strong>NIST CSF 2.0</strong> <span class="meta">Cybersecurity Framework</span></span>
+        </label>
+      </div>
+    </div>
     <div class="col-full"><button class="btn btn-primary">Create workspace</button></div>
   </form>
 </div>

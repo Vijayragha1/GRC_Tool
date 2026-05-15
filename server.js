@@ -164,9 +164,27 @@ function getWorkspace(workspaceId, user) {
   return { ...ws, role: m.role, _userRole: m.role };
 }
 
+// Allowed framework identifiers. Treated as a closed set so a malformed
+// workspace.frameworks value can't introduce phantom nav groups.
+const ALLOWED_FRAMEWORKS = ['iso27001', 'iso42001', 'csf'];
+
+// Parse the workspace.frameworks JSON column into an Array. Falls back to
+// "all three" so a workspace created before the column existed (or one
+// whose value got corrupted) still renders something useful.
+function parseWorkspaceFrameworks(raw) {
+  if (!raw) return ALLOWED_FRAMEWORKS.slice();
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return ALLOWED_FRAMEWORKS.slice();
+    const cleaned = arr.filter(x => ALLOWED_FRAMEWORKS.includes(x));
+    return cleaned.length ? cleaned : ALLOWED_FRAMEWORKS.slice();
+  } catch (_) { return ALLOWED_FRAMEWORKS.slice(); }
+}
+
 function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
+  ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
   req.workspace = ws;
   // Remember the workspace they were last in, so firm-level pages (Glossary,
   // Playbooks, Firm library, Tenants) can offer a "← Back to {client}"
@@ -695,11 +713,22 @@ app.post('/workspaces', requireAuth, (req, res) => {
   if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
   const { client_name, industry, scope, target_cert_date } = req.body;
   if (!client_name) return res.redirect('/dashboard');
-  const id = db.prepare(`INSERT INTO workspaces (firm_id, client_name, industry, scope, target_cert_date, lead_consultant_id)
-                         VALUES (?, ?, ?, ?, ?, ?)`)
+  // Framework picker. Form sends `frameworks` as either a string (one box
+  // checked) or an array (two or more). An empty list falls back to all
+  // three - a workspace with zero frameworks would be useless.
+  const submitted = req.body.frameworks;
+  let frameworks;
+  if (Array.isArray(submitted))      frameworks = submitted;
+  else if (typeof submitted === 'string') frameworks = [submitted];
+  else                                frameworks = [];
+  frameworks = frameworks.filter(f => ALLOWED_FRAMEWORKS.includes(f));
+  if (!frameworks.length) frameworks = ALLOWED_FRAMEWORKS.slice();
+  const id = db.prepare(`INSERT INTO workspaces (firm_id, client_name, industry, scope, target_cert_date, lead_consultant_id, frameworks)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(req.user.firm_id, client_name.trim(), industry || null,
-         scope || null, target_cert_date || null, req.user.id).lastInsertRowid;
-  logAction(req.user.id, id, 'create_workspace', 'workspace', id, { client_name });
+         scope || null, target_cert_date || null, req.user.id,
+         JSON.stringify(frameworks)).lastInsertRowid;
+  logAction(req.user.id, id, 'create_workspace', 'workspace', id, { client_name, frameworks });
   // Redirect into the intake page rather than the workspace overview. The
   // overview is meaningful only once the engagement has real context;
   // intake is the obvious next step (scope sign-off, stakeholders, crown

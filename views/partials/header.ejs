@@ -486,6 +486,7 @@
           <span class="nav-item-text">Evidence library</span>
         </a>
 
+        <% if (ws.frameworks && ws.frameworks.includes('csf')) { %>
         <div class="nav-group-label">NIST CSF</div>
         <a href="/workspaces/<%= ws.id %>/csf" class="nav-item <%= (typeof active !== 'undefined' && (active === 'csf' || active === 'csf-catalog')) ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
@@ -495,7 +496,9 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           <span class="nav-item-text">CSF Learn</span>
         </a>
+        <% } %>
 
+        <% if (ws.frameworks && ws.frameworks.includes('iso42001')) { %>
         <div class="nav-group-label">ISO 42001 (AI MS)</div>
         <a href="/workspaces/<%= ws.id %>/iso42001/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-intake') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -537,6 +540,7 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="nav-item-text">Cert cycle</span>
         </a>
+        <% } %>
 
         <div class="nav-group-label">Operations</div>
         <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
