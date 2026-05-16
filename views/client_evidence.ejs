@@ -1,0 +1,64 @@
+<%- include('partials/client_header', { active: 'evidence', shareToken, ws, title }) %>
+
+<h1 class="page-title">Evidence shared with you</h1>
+<div class="page-subtitle">
+  Files your consultant has marked visible to your team. Click a filename to download.
+</div>
+
+<% if (items.length === 0) { %>
+  <div class="panel">
+    <div class="empty-state">
+      <div class="empty-title">No evidence shared yet</div>
+      <div class="empty-sub">Your consultant hasn't released any evidence files to this portal. Files will appear here as they're approved for sharing.</div>
+    </div>
+  </div>
+<% } else { %>
+  <div class="panel" style="overflow:hidden;">
+    <table class="t">
+      <thead><tr>
+        <th>File</th>
+        <th style="width:170px;">Period / validity</th>
+        <th style="width:130px;">Uploaded</th>
+        <th style="width:90px;text-align:right;">Size</th>
+      </tr></thead>
+      <tbody>
+        <% items.forEach(it => {
+             const sizeKb = it.size_bytes ? Math.round(it.size_bytes / 1024) : null;
+             const today = new Date().toISOString().slice(0,10);
+             const expired = it.valid_until && it.valid_until < today;
+        %>
+          <tr>
+            <td>
+              <a href="/client/<%= shareToken %>/evidence/<%= it.id %>/download" style="color:var(--ink);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border-strong);">
+                <%= it.filename %>
+              </a>
+              <% if (it.description) { %>
+                <div class="meta text-sm" style="margin-top:3px;line-height:1.4;"><%= it.description %></div>
+              <% } %>
+              <% if (it.sha256) { %>
+                <div class="mono text-eyebrow text-tertiary" style="margin-top:2px;">sha256 <%= it.sha256.slice(0, 16) %>&hellip;</div>
+              <% } %>
+            </td>
+            <td class="text-sm">
+              <% if (it.period_label) { %><strong><%= it.period_label %></strong><br><% } %>
+              <% if (it.valid_from || it.valid_until) { %>
+                <span class="meta text-eyebrow">
+                  <% if (it.valid_from) { %>from <%= it.valid_from %><br><% } %>
+                  <% if (it.valid_until) { %>
+                    <span class="<%= expired ? 'text-danger' : '' %>">until <%= it.valid_until %><%= expired ? ' (expired)' : '' %></span>
+                  <% } %>
+                </span>
+              <% } else if (!it.period_label) { %>
+                <span class="meta">—</span>
+              <% } %>
+            </td>
+            <td class="text-eyebrow meta"><%= it.uploaded_at ? it.uploaded_at.slice(0, 10) : '—' %></td>
+            <td class="num meta" style="text-align:right;"><%= sizeKb !== null ? sizeKb + ' kB' : '—' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('partials/client_footer') %>

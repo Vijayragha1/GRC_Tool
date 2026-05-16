@@ -274,6 +274,39 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
 
       <div class="col-full"><button class="btn btn-primary">Save</button></div>
     </form>
+
+    <!-- Client portal: a token-gated read-only URL the consultant emails to
+         the client. The client sees readiness scores, open findings, and
+         evidence marked visible_to_client - nothing else. Rotate to
+         invalidate an existing link without recreating the workspace. -->
+    <div id="client-portal" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent);margin-bottom:8px;">Client portal</div>
+      <div class="meta text-base" style="line-height:1.55;margin-bottom:12px;max-width:680px;">
+        A read-only URL the client opens directly &mdash; no login. They see readiness scores per framework, your open high/medium findings, and any evidence you've flagged as visible. Internal notes, risk register, audit log, and unreleased evidence stay private.
+      </div>
+      <% if (ws.client_share_token) { %>
+        <%
+          const portalUrl = '/client/' + ws.client_share_token + '/overview';
+        %>
+        <div class="row-center" style="gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <a href="<%= portalUrl %>" target="_blank" class="btn btn-secondary btn-xs">Open portal in new tab ↗</a>
+          <code class="mono text-sm" style="display:inline-block;padding:6px 10px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:4px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= portalUrl %></code>
+        </div>
+        <div class="row-center" style="gap:6px;">
+          <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/rotate" onsubmit="return appConfirmForm(event, 'Rotate the share link? The current URL stops working immediately. Re-send the new link to the client.');">
+            <button class="btn btn-secondary btn-xs">Rotate link</button>
+          </form>
+          <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/revoke" onsubmit="return appConfirmForm(event, 'Revoke the share link? The portal will be inaccessible until you generate a new one.');">
+            <button class="btn btn-secondary btn-xs text-danger">Revoke</button>
+          </form>
+        </div>
+      <% } else { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/rotate">
+          <button class="btn btn-primary btn-xs">Generate share link</button>
+        </form>
+      <% } %>
+    </div>
+
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
       <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
       <details>

@@ -228,6 +228,16 @@
               <% } %>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+              <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/visibility" style="margin:0;">
+                <button type="submit" class="btn btn-ghost btn-xs text-xs"
+                        title="<%= e.visible_to_client ? 'Visible in the client portal - click to hide' : 'Hidden from the client portal - click to share' %>">
+                  <% if (e.visible_to_client) { %>
+                    <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16a34a;margin-right:5px;"></span>shared
+                  <% } else { %>
+                    <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#9c9ca5;margin-right:5px;"></span>internal
+                  <% } %>
+                </button>
+              </form>
               <details style="position:relative;">
                 <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Replace…</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/supersede" enctype="multipart/form-data"

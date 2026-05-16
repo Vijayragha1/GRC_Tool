@@ -210,6 +210,39 @@ function requireWorkspace(req, res, next) {
 function isFirmUser(user) { return user.user_type === 'firm'; }
 function isFirmOwner(user) { return user.user_type === 'firm' && user.firm_role === 'owner'; }
 
+// Client portal middleware - looks a workspace up by its share token, sets
+// req.workspace and a couple of marker locals so the rendered template
+// knows it's in client-portal mode. Deliberately does NOT use requireAuth
+// or requireWorkspace; the token IS the credential. Token comparison uses
+// timingSafeEqual to deflect pseudo-side-channel guessing even though the
+// surface is small.
+function requireClientToken(req, res, next) {
+  const raw = (req.params.token || '').toString();
+  if (!/^[0-9a-f]{32,128}$/i.test(raw)) {
+    return res.status(404).render('error', { user: null, message: 'Share link not found.' });
+  }
+  // Pull every workspace with a non-null token (tiny set in practice; even
+  // for a 100-client firm that's a 100-row table scan). Compare in constant
+  // time to avoid leaking which token is closest to a probe.
+  const candidates = db.prepare(
+    `SELECT * FROM workspaces WHERE client_share_token IS NOT NULL`
+  ).all();
+  const rawBuf = Buffer.from(raw, 'utf8');
+  let match = null;
+  for (const ws of candidates) {
+    const tokBuf = Buffer.from(ws.client_share_token, 'utf8');
+    if (rawBuf.length !== tokBuf.length) continue;
+    if (crypto.timingSafeEqual(rawBuf, tokBuf)) { match = ws; break; }
+  }
+  if (!match) return res.status(404).render('error', { user: null, message: 'Share link not found or has been rotated.' });
+  match.frameworks = parseWorkspaceFrameworks(match.frameworks);
+  req.workspace = match;
+  req.clientPortal = true;
+  res.locals.clientPortal = true;
+  res.locals.shareToken = raw;
+  next();
+}
+
 function listWorkspaces(user) {
   if (user.user_type === 'firm') {
     return db.prepare(`SELECT w.*,
@@ -853,6 +886,127 @@ app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) =
     );
   logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, null);
   res.redirect('/workspaces/' + req.workspace.id);
+});
+
+// Generate / rotate / revoke the client-portal share token. Generate +
+// rotate are the same action: produce a new 32-byte hex string and store
+// it. Revoke wipes the field so the URL stops working.
+app.post('/workspaces/:wsId/client-portal/rotate', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') {
+    return res.status(403).send('Forbidden');
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare(`UPDATE workspaces SET client_share_token=? WHERE id=?`).run(token, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'client_portal_rotate', 'workspace', req.workspace.id,
+            { revoked_prior: !!req.workspace.client_share_token }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}#client-portal`);
+});
+
+app.post('/workspaces/:wsId/client-portal/revoke', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') {
+    return res.status(403).send('Forbidden');
+  }
+  db.prepare(`UPDATE workspaces SET client_share_token=NULL WHERE id=?`).run(req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'client_portal_revoke', 'workspace', req.workspace.id, {}, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}#client-portal`);
+});
+
+// Toggle per-evidence "visible to client" flag. Consultant-only.
+app.post('/workspaces/:wsId/evidence/:id/visibility', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare(`SELECT id, visible_to_client FROM evidence WHERE id=? AND workspace_id=?`)
+              .get(req.params.id, req.workspace.id);
+  if (!ev) return res.status(404).send('Not found');
+  const next = ev.visible_to_client ? 0 : 1;
+  db.prepare(`UPDATE evidence SET visible_to_client=? WHERE id=?`).run(next, ev.id);
+  logAction(req.user.id, req.workspace.id, 'evidence_visibility_toggle', 'evidence', ev.id, { visible_to_client: next }, auditCtx(req));
+  redirectBack(req, res);
+});
+
+// ==================== CLIENT PORTAL (read-only, token-gated) ====================
+// No auth - the share token IS the credential. The portal renders a curated
+// subset of the workspace state: readiness across enabled frameworks, the
+// list of open high/medium-severity findings, and any evidence the
+// consultant has marked visible_to_client. Consultant-internal data
+// (risk register, audit log, raw control_states with internal_notes,
+// nonconformity comments, etc.) never reaches a client portal template.
+
+app.get('/client/:token', requireClientToken, (req, res) => {
+  res.redirect(`/client/${req.params.token}/overview`);
+});
+
+app.get('/client/:token/overview', requireClientToken, (req, res) => {
+  const ws = req.workspace;
+  const tiles = [];
+  if (ws.frameworks.includes('iso27001')) {
+    const r = computeReadiness(ws);
+    tiles.push({ key: 'iso27001', label: 'ISO 27001:2022', sub: 'Information security', score: r.stage1, color: '#4F46E5' });
+  }
+  if (ws.frameworks.includes('iso42001')) {
+    const r = computeIso42001Readiness(ws.id);
+    tiles.push({ key: 'iso42001', label: 'ISO 42001:2023', sub: 'AI management system', score: r.stage1, color: '#0891B2' });
+  }
+  if (ws.frameworks.includes('csf')) {
+    const eng = db.prepare(`SELECT * FROM csf_engagements WHERE workspace_id=? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1`).get(ws.id);
+    let score = 0;
+    if (eng) {
+      const counts = db.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) AS approved FROM csf_subcategory_assessments WHERE engagement_id=?`).get(eng.id);
+      score = counts.total ? Math.round((counts.approved || 0) / counts.total * 100) : 0;
+    }
+    tiles.push({ key: 'csf', label: 'NIST CSF 2.0', sub: 'Cybersecurity Framework', score, color: '#7C3AED' });
+  }
+  // Open high+medium findings, scrubbed of consultant-internal description
+  // fields. Title only - the rich description often carries internal notes.
+  const allFindings = findingsLib.getUnifiedFindings(ws.id, { status: 'open' });
+  const headlines = allFindings
+    .filter(f => f.severity === 'high' || f.severity === 'medium')
+    .map(f => ({
+      title: f.title,
+      severity: f.severity,
+      framework: f.framework,
+      item_ref: f.item_ref,
+      item_title: f.item_title,
+      due_date: f.due_date
+    }))
+    .slice(0, 25);
+  let daysToTarget = null;
+  if (ws.target_cert_date) {
+    daysToTarget = Math.round((new Date(ws.target_cert_date).getTime() - Date.now()) / 86400000);
+  }
+  res.render('client_overview', {
+    ws, tiles, headlines, daysToTarget,
+    title: `${ws.brand_display_name || ws.client_name} · Readiness`
+  });
+});
+
+app.get('/client/:token/evidence', requireClientToken, (req, res) => {
+  const ws = req.workspace;
+  // Only evidence the consultant explicitly flagged. No consultant tags,
+  // no clause section refs (those are internal mapping); just filename,
+  // description, period label, dates.
+  const items = db.prepare(`
+    SELECT e.id, e.filename, e.description, e.period_label,
+           e.valid_from, e.valid_until, e.uploaded_at,
+           e.sha256, e.size_bytes
+    FROM evidence e
+    WHERE e.workspace_id=? AND e.superseded_at IS NULL AND e.visible_to_client=1
+    ORDER BY e.uploaded_at DESC
+  `).all(ws.id);
+  res.render('client_evidence', {
+    ws, items,
+    title: `${ws.brand_display_name || ws.client_name} · Evidence`
+  });
+});
+
+// Evidence download via the client portal. Token-gated; resolves only files
+// linked to the matched workspace AND marked visible_to_client.
+app.get('/client/:token/evidence/:id/download', requireClientToken, (req, res) => {
+  const ws = req.workspace;
+  const ev = db.prepare(`SELECT id, filename, stored_path, visible_to_client FROM evidence
+    WHERE id=? AND workspace_id=? AND superseded_at IS NULL`).get(req.params.id, ws.id);
+  if (!ev || !ev.visible_to_client) return res.status(404).send('Not found');
+  const resolved = resolveUploadPath(ev.stored_path, ws.firm_id);
+  if (!resolved || !fs.existsSync(resolved)) return res.status(404).send('File missing on disk');
+  res.download(resolved, ev.filename);
 });
 
 // Destructive: delete a workspace (= one client engagement) and everything

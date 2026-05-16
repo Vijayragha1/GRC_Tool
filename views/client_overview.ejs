@@ -1,0 +1,81 @@
+<%- include('partials/client_header', { active: 'overview', shareToken, ws, title }) %>
+
+<h1 class="page-title"><%= ws.brand_display_name || ws.client_name %></h1>
+<div class="page-subtitle">
+  Engagement readiness across the frameworks in scope<% if (daysToTarget !== null) { %>
+    &middot; <strong class="<%= daysToTarget < 30 ? 'text-danger' : daysToTarget < 90 ? 'text-warn' : 'text-success' %>"><%= daysToTarget %> days</strong>
+    to target certification (<%= ws.target_cert_date %>)
+  <% } %>
+</div>
+
+<% if (tiles.length === 0) { %>
+  <div class="panel">
+    <div class="empty-state">
+      <div class="empty-title">No frameworks in scope yet</div>
+      <div class="empty-sub">Your consultant hasn't selected any frameworks for this engagement. Check back once they have.</div>
+    </div>
+  </div>
+<% } else { %>
+  <div style="display:grid;grid-template-columns:repeat(<%= tiles.length %>,1fr);gap:14px;margin-bottom:24px;">
+    <% tiles.forEach(t => {
+         const band = t.score >= 80 ? 'good' : t.score >= 50 ? 'warn' : 'bad';
+         const cls = 'kpi-' + band;
+         const textCls = band === 'good' ? 'text-success' : band === 'warn' ? 'text-warn' : 'text-danger';
+    %>
+      <div class="panel kpi <%= cls %>">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:<%= t.color %>;flex-shrink:0;"></span>
+          <div class="kpi-label"><%= t.label %></div>
+        </div>
+        <div class="kpi-num num <%= textCls %>">
+          <%= t.score %><span class="text-tertiary" style="font-size:16px;font-weight:400;margin-left:2px;">%</span>
+        </div>
+        <div class="kpi-meta"><%= t.sub %></div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head">
+    <h2>Open items needing attention</h2>
+    <span class="meta"><%= headlines.length %> shown <%= headlines.length >= 25 ? '(top 25)' : '' %></span>
+  </div>
+  <% if (headlines.length === 0) { %>
+    <div class="empty-state">
+      <div class="empty-title">Nothing open</div>
+      <div class="empty-sub">No high or medium severity items are currently open. Either we're in good shape or your consultant hasn't logged findings yet.</div>
+    </div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:90px;">Severity</th>
+        <th>Item</th>
+        <th style="width:140px;">Control</th>
+        <th style="width:110px;">Due</th>
+      </tr></thead>
+      <tbody>
+        <% headlines.forEach(f => {
+             const code = f.item_ref ? f.item_ref.replace(/^annex-/, '').replace(/^clause-/, '').replace(/^ai-clause-/, '').replace(/^ai-/, '').toUpperCase() : '';
+             const sevCls = f.severity === 'high' ? 'tag-danger' : 'tag-warn';
+        %>
+          <tr>
+            <td><span class="tag <%= sevCls %> text-eyebrow"><%= f.severity %></span></td>
+            <td>
+              <strong><%= f.title %></strong>
+              <% if (f.item_title) { %><div class="meta text-eyebrow" style="margin-top:2px;"><%= f.item_title.slice(0, 80) %></div><% } %>
+            </td>
+            <td class="text-sm">
+              <% if (code) { %><span class="mono meta"><%= code %></span><% } else { %><span class="meta">—</span><% } %>
+            </td>
+            <td class="text-eyebrow meta">
+              <% if (f.due_date) { %><%= f.due_date %><% } else { %>—<% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%- include('partials/client_footer') %>

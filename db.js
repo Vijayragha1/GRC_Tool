@@ -1850,6 +1850,22 @@ function init() {
   addColumnIfMissing('workspaces', 'frameworks',
     `TEXT DEFAULT '["iso27001","iso42001","csf"]'`);
 
+  // Read-only client portal share token. NULL = no portal exposed for this
+  // workspace. A 32-byte hex token serves as the credential when auth is
+  // disabled (single-user-per-tenant mode); when auth is wired up later
+  // this becomes the "magic link" the consultant emails the client.
+  // Resetting the token = rotate share URL.
+  addColumnIfMissing('workspaces', 'client_share_token', 'TEXT');
+  // The exec-brief markdown a consultant wants the client to see in the
+  // portal. NULL means "no curated brief yet"; the portal falls back to a
+  // skeleton from the workspace metadata when this is missing.
+  addColumnIfMissing('workspaces', 'client_brief_md', 'TEXT');
+
+  // Per-evidence "visible to client" flag. Default 0 - evidence is
+  // consultant-internal until the consultant explicitly chooses to expose
+  // it. Mirrors the same flag CSF already uses on csf_evidence_items.
+  addColumnIfMissing('evidence', 'visible_to_client', 'INTEGER DEFAULT 0');
+
   // Comments - threading, mentions
   addColumnIfMissing('comments', 'parent_comment_id', 'INTEGER REFERENCES comments(id) ON DELETE CASCADE');
   addColumnIfMissing('comments', 'has_mentions', 'INTEGER DEFAULT 0');

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= typeof title !== 'undefined' ? title : 'Client portal' %></title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/inter.css">
+<%
+  // Reuse the brand color a consultant set on the workspace as the portal's
+  // accent. Defaults to the app indigo when none is set.
+  const accent = (typeof ws !== 'undefined' && ws.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(ws.brand_primary_color))
+    ? ws.brand_primary_color : '#4F46E5';
+  const initials = (function () {
+    const n = (ws.brand_display_name || ws.client_name || 'C').trim();
+    const parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return n.slice(0, 2).toUpperCase();
+  })();
+%>
+<style>
+  :root {
+    --bg: #ffffff; --bg-subtle: #fafafa; --bg-muted: #f4f4f5; --bg-deep: #f7f7f8;
+    --border: #ececef; --border-strong: #d6d6db;
+    --text: #0a0a0a; --text-secondary: #51525c; --text-tertiary: #9c9ca5;
+    --accent: <%= accent %>;
+    --ink: #0f0f12;
+    --shadow-sm: 0 1px 2px rgba(15,15,18,0.04);
+    --shadow-md: 0 1px 3px rgba(15,15,18,0.05), 0 1px 2px rgba(15,15,18,0.03);
+    --shadow-lg: 0 4px 12px rgba(15,15,18,0.06), 0 1px 3px rgba(15,15,18,0.04);
+    --radius: 8px; --radius-sm: 6px;
+  }
+  html, body { margin: 0; padding: 0; }
+  html { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  @supports (font-variation-settings: normal) { html { font-family: 'Inter var', system-ui, sans-serif; } }
+  body { background: var(--bg-deep); color: var(--text); font-size: 14px; line-height: 1.5; font-feature-settings: "ss01","cv11"; }
+  *, *::before, *::after { box-sizing: border-box; }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+  .meta { font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+  .text-secondary { color: var(--text-secondary); }
+  .text-tertiary  { color: var(--text-tertiary); }
+  .text-eyebrow   { font-size: 10.5px; }
+  .text-xs        { font-size: 11px; }
+  .text-sm        { font-size: 11.5px; }
+  .text-base      { font-size: 12px; }
+  .text-lg        { font-size: 13px; }
+  .text-xl        { font-size: 14px; }
+  .text-success   { color: #15803d; }
+  .text-warn      { color: #a16207; }
+  .text-danger    { color: #b91c1c; }
+
+  .portal-bar {
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 14px 28px; display: flex; align-items: center; gap: 14px;
+    box-shadow: var(--shadow-sm);
+  }
+  .portal-mark {
+    width: 32px; height: 32px; border-radius: 8px; background: var(--accent);
+    color: #fff; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; letter-spacing: -0.02em; flex-shrink: 0;
+  }
+  .portal-title { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; color: var(--ink); }
+  .portal-sub   { font-size: 11.5px; color: var(--text-tertiary); margin-top: 1px; }
+  .portal-nav { display: flex; gap: 4px; margin-left: auto; }
+  .portal-tab {
+    padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    color: var(--text-secondary); text-decoration: none; transition: all 0.12s;
+  }
+  .portal-tab:hover { background: var(--bg-subtle); color: var(--text); }
+  .portal-tab.active { background: var(--accent); color: #fff; }
+  .portal-badge {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    background: var(--bg-muted); color: var(--text-secondary);
+    padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);
+  }
+
+  .portal-inner { max-width: 1080px; margin: 0 auto; padding: 28px 28px 96px; }
+
+  .panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+  .panel-pad  { padding: 20px; }
+  .panel-head { padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .panel-head h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--ink); }
+
+  h1.page-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; color: var(--ink); }
+  .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; }
+
+  .kpi { padding: 16px 18px 16px 20px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--border); }
+  .kpi-good::before { background: #16a34a; }
+  .kpi-warn::before { background: #ca8a04; }
+  .kpi-bad::before  { background: #dc2626; }
+  .kpi-label { font-size: 11.5px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .kpi-num   { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kpi-meta  { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t thead th { text-align: left; padding: 9px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+  table.t tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.t tbody tr:last-child td { border-bottom: none; }
+
+  .tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+  .tag-danger { background: rgba(220,38,38,0.10); color: #b91c1c; border-color: rgba(220,38,38,0.25); }
+  .tag-warn   { background: rgba(202,138,4,0.10); color: #b45309; border-color: rgba(202,138,4,0.25); }
+  .tag-info   { background: rgba(79,70,229,0.10); color: #3730a3; border-color: rgba(79,70,229,0.25); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px;
+    border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+    border: 1px solid transparent; text-decoration: none; cursor: pointer;
+  }
+  .btn-secondary { background: var(--bg); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .btn-secondary:hover { background: var(--bg-subtle); }
+
+  .empty-state { padding: 56px 24px; text-align: center; }
+  .empty-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .empty-sub   { font-size: 13px; color: var(--text-secondary); max-width: 380px; margin: 0 auto; line-height: 1.5; }
+
+  @media print {
+    .portal-bar { display: none; }
+    .portal-inner { padding-top: 0; }
+  }
+</style>
+</head>
+<body>
+<header class="portal-bar">
+  <span class="portal-mark"><%= initials %></span>
+  <div>
+    <div class="portal-title"><%= ws.brand_display_name || ws.client_name %></div>
+    <div class="portal-sub">Readiness portal &middot; read-only view</div>
+  </div>
+  <nav class="portal-nav">
+    <a class="portal-tab <%= typeof active !== 'undefined' && active === 'overview' ? 'active' : '' %>" href="/client/<%= shareToken %>/overview">Overview</a>
+    <a class="portal-tab <%= typeof active !== 'undefined' && active === 'evidence' ? 'active' : '' %>" href="/client/<%= shareToken %>/evidence">Evidence</a>
+  </nav>
+  <span class="portal-badge">Read-only</span>
+</header>
+<main class="portal-inner">
