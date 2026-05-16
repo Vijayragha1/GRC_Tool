@@ -2846,6 +2846,32 @@ app.get('/workspaces/:wsId/activity', requireAuth, requireWorkspace, (req, res) 
 });
 
 // ==================== EXPORTS ====================
+
+// ---- OSCAL JSON exports -----------------------------------------------------
+// Two NIST OSCAL documents per workspace:
+//   - component-definition.json  : the SoA as OSCAL components
+//   - assessment-results.json    : unified findings as OSCAL findings +
+//                                  observations
+// Read-only, deterministic UUIDs - re-exporting the same workspace produces
+// the same UUIDs so an auditor can diff two exports meaningfully.
+const oscal = require('./lib/oscal');
+
+app.get('/workspaces/:wsId/export/oscal/component-definition.json', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const { _summary, ...doc } = oscal.buildComponentDefinition(req.workspace);
+  const fn = `oscal-soa-${req.workspace.id}-${new Date().toISOString().slice(0,10)}.json`;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fn}"`);
+  res.send(JSON.stringify(doc, null, 2));
+});
+
+app.get('/workspaces/:wsId/export/oscal/assessment-results.json', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const { _summary, ...doc } = oscal.buildAssessmentResults(req.workspace);
+  const fn = `oscal-assessment-${req.workspace.id}-${new Date().toISOString().slice(0,10)}.json`;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fn}"`);
+  res.send(JSON.stringify(doc, null, 2));
+});
+
 app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
   const rows = db.prepare(`SELECT i.id, i.title, i.category,
     COALESCE(cs.applicability,'undecided') AS applicability,
