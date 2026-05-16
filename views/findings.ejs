@@ -1,0 +1,184 @@
+<%- include('partials/header', { title: 'Findings', user, ws, active: 'findings' }) %>
+
+<%
+  const SOURCE_LABEL = {
+    nonconformity:     'Nonconformity',
+    audit_finding:     'Audit finding',
+    audit_observation: 'Audit observation',
+    gap_assessment:    'Gap assessment'
+  };
+  const SEVERITY_TAG = {
+    high:        'tag-danger',
+    medium:      'tag-warn',
+    low:         'tag-info',
+    observation: 'tag-neutral'
+  };
+  const FRAMEWORK_LABEL = {
+    iso27001: 'ISO 27001',
+    iso42001: 'ISO 42001',
+    csf:      'NIST CSF'
+  };
+%>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Findings</h1>
+    <div class="page-subtitle">
+      Everything that needs attention across this engagement, unified across nonconformities (clause 10.2),
+      audit findings, audit observations, and the gap-assessment register. Filterable by source, framework,
+      severity, and status.
+    </div>
+  </div>
+  <div class="row-center">
+    <a href="/workspaces/<%= ws.id %>/export/oscal/assessment-results.json" class="btn btn-secondary btn-xs" title="Download an OSCAL Assessment Results JSON containing every finding here.">OSCAL ↓</a>
+  </div>
+</div>
+
+<!-- Headline counts - computed from the unfiltered set in the route, so KPIs
+     stay stable while the user filters the table below. -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+  <a href="?status=open" class="panel kpi <%= summary.open > 0 ? 'kpi-bad' : 'kpi-good' %>" style="text-decoration:none;">
+    <div class="kpi-head"><div class="kpi-label">Open</div></div>
+    <div class="kpi-num num"><%= summary.open %></div>
+    <div class="kpi-meta">across all sources</div>
+  </a>
+  <a href="?status=open&severity=high" class="panel kpi <%= openBySeverity.high > 0 ? 'kpi-bad' : 'kpi-good' %>" style="text-decoration:none;">
+    <div class="kpi-head"><div class="kpi-label">High severity, open</div></div>
+    <div class="kpi-num num"><%= openBySeverity.high %></div>
+    <div class="kpi-meta">block Stage 1 readiness</div>
+  </a>
+  <a href="?status=open&severity=medium" class="panel kpi <%= openBySeverity.medium > 0 ? 'kpi-warn' : 'kpi-good' %>" style="text-decoration:none;">
+    <div class="kpi-head"><div class="kpi-label">Medium, open</div></div>
+    <div class="kpi-num num"><%= openBySeverity.medium %></div>
+    <div class="kpi-meta">addressable during cert cycle</div>
+  </a>
+  <a href="?status=closed" class="panel kpi kpi-good" style="text-decoration:none;">
+    <div class="kpi-head"><div class="kpi-label">Closed</div></div>
+    <div class="kpi-num num"><%= summary.closed %></div>
+    <div class="kpi-meta">historical / verified</div>
+  </a>
+</div>
+
+<!-- Filter bar -->
+<form method="GET" class="panel panel-pad" style="margin-bottom:14px;display:grid;grid-template-columns:repeat(4,1fr) auto;gap:10px;align-items:end;">
+  <div>
+    <label class="label">Status</label>
+    <select class="select" name="status">
+      <option value="open"   <%= filters.status === 'open'   ? 'selected' : '' %>>Open (<%= summary.open %>)</option>
+      <option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>>Closed (<%= summary.closed %>)</option>
+      <option value="all"    <%= filters.status === 'all'    ? 'selected' : '' %>>All (<%= summary.total %>)</option>
+    </select>
+  </div>
+  <div>
+    <label class="label">Source</label>
+    <select class="select" name="source">
+      <option value="">All sources</option>
+      <% Object.keys(SOURCE_LABEL).forEach(k => { %>
+        <option value="<%= k %>" <%= filters.source === k ? 'selected' : '' %>><%= SOURCE_LABEL[k] %> (<%= summary.bySource[k] || 0 %>)</option>
+      <% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="label">Framework</label>
+    <select class="select" name="framework">
+      <option value="">All frameworks</option>
+      <% Object.keys(FRAMEWORK_LABEL).forEach(k => { %>
+        <% if ((summary.byFramework[k] || 0) === 0) return; %>
+        <option value="<%= k %>" <%= filters.framework === k ? 'selected' : '' %>><%= FRAMEWORK_LABEL[k] %> (<%= summary.byFramework[k] %>)</option>
+      <% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="label">Severity</label>
+    <select class="select" name="severity">
+      <option value="">All severities</option>
+      <option value="high"        <%= filters.severity === 'high'        ? 'selected' : '' %>>High (<%= summary.bySeverity.high        || 0 %>)</option>
+      <option value="medium"      <%= filters.severity === 'medium'      ? 'selected' : '' %>>Medium (<%= summary.bySeverity.medium      || 0 %>)</option>
+      <option value="low"         <%= filters.severity === 'low'         ? 'selected' : '' %>>Low (<%= summary.bySeverity.low         || 0 %>)</option>
+      <option value="observation" <%= filters.severity === 'observation' ? 'selected' : '' %>>Observation (<%= summary.bySeverity.observation || 0 %>)</option>
+    </select>
+  </div>
+  <div class="row">
+    <button class="btn btn-primary btn-xs" type="submit">Apply</button>
+    <a class="btn btn-ghost btn-xs" href="/workspaces/<%= ws.id %>/findings">Reset</a>
+  </div>
+</form>
+
+<div class="meta text-base" style="margin-bottom:10px;">
+  Showing <strong><%= findings.length %></strong> of <%= summary.total %> finding<%= summary.total === 1 ? '' : 's' %>.
+</div>
+
+<% if (findings.length === 0) { %>
+  <div class="panel">
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="empty-title">No findings match</div>
+      <div class="empty-sub">Either nothing's been recorded yet or your filters narrowed everything out.</div>
+      <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/findings">Reset filters</a>
+    </div>
+  </div>
+<% } else { %>
+  <div class="panel" style="overflow:hidden;">
+    <table class="t">
+      <thead><tr>
+        <th style="width:70px;">ID</th>
+        <th style="width:130px;">Source</th>
+        <th style="width:90px;">Severity</th>
+        <th>Finding</th>
+        <th style="width:160px;">Item</th>
+        <th style="width:80px;">Status</th>
+        <th style="width:100px;">Due / created</th>
+      </tr></thead>
+      <tbody>
+        <% findings.forEach(f => {
+             const sevTag = SEVERITY_TAG[f.severity] || 'tag-neutral';
+             const code = f.item_ref ? f.item_ref.replace(/^annex-/, '').replace(/^clause-/, '').replace(/^ai-clause-/, '').replace(/^ai-/, '').toUpperCase() : '';
+        %>
+          <tr>
+            <td class="mono meta text-eyebrow"><%= f.id %></td>
+            <td>
+              <a href="<%= f.source_href %>" class="link-muted text-sm" title="<%= f.source_label %>">
+                <%= SOURCE_LABEL[f.source] || f.source %>
+              </a>
+            </td>
+            <td><span class="tag <%= sevTag %> text-eyebrow"><%= f.severity %></span></td>
+            <td>
+              <a href="<%= f.source_href %>" class="link-muted">
+                <strong><%= f.title %></strong>
+              </a>
+              <% if (f.description) { %>
+                <div class="meta text-sm" style="margin-top:2px;line-height:1.4;"><%= (f.description || '').slice(0, 180) %><%= f.description && f.description.length > 180 ? '…' : '' %></div>
+              <% } %>
+            </td>
+            <td class="text-sm">
+              <% if (code) { %>
+                <span class="mono meta"><%= code %></span>
+                <% if (f.item_title) { %><div class="meta text-eyebrow" style="line-height:1.3;"><%= f.item_title.slice(0, 40) %></div><% } %>
+              <% } else { %>
+                <span class="meta">—</span>
+              <% } %>
+            </td>
+            <td>
+              <% if (f.status === 'open') { %>
+                <span class="tag tag-danger text-eyebrow">open</span>
+              <% } else { %>
+                <span class="tag tag-success text-eyebrow">closed</span>
+              <% } %>
+            </td>
+            <td class="text-eyebrow meta">
+              <% if (f.due_date) { %>
+                due <%= f.due_date %>
+              <% } else if (f.created_at) { %>
+                <%= f.created_at.slice(0, 10) %>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

@@ -3312,6 +3312,44 @@ app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, re
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
 });
 
+// ==================== UNIFIED FINDINGS ====================
+// One view across the four sources that produce findings in this codebase:
+// nonconformities, audit findings, audit observations, and gap-assessment
+// statuses. lib/findings.js does the heavy lifting; this route just wires
+// it into a filterable index page.
+const findingsLib = require('./lib/findings');
+
+app.get('/workspaces/:wsId/findings', requireAuth, requireWorkspace, (req, res) => {
+  const status    = (req.query.status    || 'open').toString();
+  const framework = (req.query.framework || '').toString();
+  const source    = (req.query.source    || '').toString();
+  const severity  = (req.query.severity  || '').toString();
+  const opts = {};
+  if (status !== 'all') opts.status = status;
+  if (framework)        opts.framework = framework;
+  if (source)           opts.source = source;
+  if (severity)         opts.severity = severity;
+
+  const findings = findingsLib.getUnifiedFindings(req.workspace.id, opts);
+  // Also build an unfiltered summary so the header KPIs don't dance when
+  // filters narrow the rows shown. Compute the per-severity-open counts the
+  // header tiles need - simpler than re-walking the array in the template.
+  const allFindings = findingsLib.getUnifiedFindings(req.workspace.id, {});
+  const summary = findingsLib.summarise(allFindings);
+  const openBySeverity = { high: 0, medium: 0, low: 0, observation: 0 };
+  for (const f of allFindings) {
+    if (f.status === 'open') openBySeverity[f.severity] = (openBySeverity[f.severity] || 0) + 1;
+  }
+
+  res.render('findings', {
+    user: req.user, ws: req.workspace,
+    title: 'Findings',
+    active: 'findings',
+    findings, summary, openBySeverity,
+    filters: { status, framework, source, severity }
+  });
+});
+
 // ==================== TIER C.10 - CONTINUAL IMPROVEMENT REGISTER ====================
 // Improvements driven by data (audit findings, MRM outputs, monitoring),
 // distinct from corrective actions on NCs (10.2). Required by clause 10.1.
