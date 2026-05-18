@@ -75,7 +75,7 @@
                               : ['not implemented','not-implemented','not assessed','not_assessed'].includes(statusS) ? 'bad' : 'neutral';
         %>
           <tr>
-            <td class="mono meta"><%= String(r.id || '').replace('annex-','').toUpperCase() %></td>
+            <td><span class="iso-ref"><%= String(r.id || '').replace('annex-','').toUpperCase() %></span></td>
             <td><%= r.title %></td>
             <td><span class="chip chip-<%= appKind %>"><%= r.applicability %></span></td>
             <td><span class="chip chip-<%= statusKind %>"><%= r.status %></span></td>

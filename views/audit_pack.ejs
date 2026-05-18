@@ -48,6 +48,17 @@
   .num { font-variant-numeric: tabular-nums; }
   .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
 
+  /* ISO control / clause reference — dotted-underline in oxblood. The product's
+     typographic fingerprint, applied wherever an A.X.Y or Cl.X.Y appears. */
+  .iso-ref {
+    font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+    font-size: 9pt; font-weight: 600;
+    color: var(--brand);
+    text-decoration: underline dotted var(--brand);
+    text-underline-offset: 2pt;
+    text-decoration-thickness: 0.3pt;
+  }
+
   /* Display serif for the cover + section titles. Body, KPIs, and tables stay
      on Inter. The mix of serif display + sans body is the signature of every
      professional-services report (McKinsey, Carta, Bain). */
@@ -332,7 +343,7 @@
              const justification = r.applicability === 'excluded' ? r.exclusion_justification : r.inclusion_justification;
         %>
           <tr>
-            <td class="mono"><%= String(r.id || '').replace('annex-','').toUpperCase() %></td>
+            <td><span class="iso-ref"><%= String(r.id || '').replace('annex-','').toUpperCase() %></span></td>
             <td><%= r.title %></td>
             <td><%- chip(r.applicability, appChipKind(r.applicability)) %></td>
             <td><%- chip(r.status, statusChipKind(r.status)) %></td>

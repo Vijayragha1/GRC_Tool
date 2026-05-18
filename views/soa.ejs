@@ -75,7 +75,7 @@
       %>
         <form method="POST" action="/workspaces/<%= ws.id %>/soa/<%= r.id %>" class="contents">
           <tr>
-            <td class="mono meta"><%= r.id.replace('annex-', '').toUpperCase() %></td>
+            <td><span class="iso-ref"><%= r.id.replace('annex-', '').toUpperCase() %></span></td>
             <td><a href="/workspaces/<%= ws.id %>/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a><% if (r.systemic_count >= 3) { %> <span class="tag tag-danger text-xxs" title="<%= r.systemic_count %> findings in last 12 months">SYSTEMIC</span><% } %><% if (r.last_verified_at) { %><div class="meta text-eyebrow">verified <%= r.last_verified_at.slice(0,10) %></div><% } %></td>
             <td class="text-sm" style="line-height:1.4;">
               <% if (linkedRisks.length === 0) { %>

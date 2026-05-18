@@ -85,6 +85,23 @@
   .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-feature-settings: "ss01"; }
   .num { font-variant-numeric: tabular-nums; }
 
+  /* The product's visual fingerprint. ISO clause + Annex A references get a
+     dotted underline in the accent colour. Reads as a properly-annotated
+     audit-firm document; signals "we care about the standard, not just the
+     dashboard." Quiet on its own, distinctive across the product. */
+  .iso-ref {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-feature-settings: "ss01";
+    font-size: 0.92em;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: underline dotted var(--accent);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+  a.iso-ref { text-decoration: underline dotted var(--accent); }
+  a.iso-ref:hover { color: var(--accent-deep); text-decoration-style: solid; }
+
   /* Layout */
   /* Lock body scroll. Main content scrolls in its own viewport so the sidebar
      genuinely never moves and a sidebar click doesn't feel like the whole
@@ -153,8 +170,8 @@
   }
 
   .main { flex: 1; min-width: 0; background: var(--bg-deep); height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
-  .main-inner { max-width: 1280px; margin: 0 auto; padding: 28px 36px 96px; }
-  @media (max-width: 600px) { .main-inner { padding: 20px 16px 60px; } }
+  .main-inner { max-width: 1280px; margin: 0 auto; padding: 22px 28px 72px; }
+  @media (max-width: 600px) { .main-inner { padding: 16px 14px 48px; } }
 
   .topbar { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
   .topbar-spacer { flex: 1; }
@@ -169,16 +186,18 @@
   .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border-strong); color: var(--text-secondary); cursor: pointer; transition: all 0.12s; box-shadow: var(--shadow-sm); }
   .icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
 
-  .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
   /* Page title uses serif now via the .serif rule above; size + weight stay. */
   .page-title { font-size: 26px; font-weight: 600; line-height: 1.2; color: var(--ink); }
   .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 6px; max-width: 720px; }
 
-  /* Surfaces */
+  /* Surfaces. Density pass: panel padding 20→16, head padding 12→10. Pages
+     used to feel "Vercel airy"; they now feel "Bloomberg dense" — which is
+     what professional-services tools should feel like. */
   .panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
-  .panel-pad { padding: 20px; }
-  .panel-tight { padding: 14px 18px; }
-  .panel-head { padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .panel-pad { padding: 16px; }
+  .panel-tight { padding: 12px 16px; }
+  .panel-head { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .panel-head h2, .panel-head h3 { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; color: var(--ink); }
   .divide-row > * + * { border-top: 1px solid var(--border); }
 
@@ -248,37 +267,55 @@
   input[type="file"]::file-selector-button { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; margin-right: 10px; transition: all 0.12s; font-family: inherit; }
   input[type="file"]::file-selector-button:hover { background: var(--bg-subtle); border-color: var(--text-tertiary); }
 
-  /* Status - filled chip with semantic background, dot kept for legacy contexts */
-  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; white-space: nowrap; padding: 3px 9px 3px 8px; border-radius: 999px; line-height: 1.5; border: 1px solid transparent; }
-  .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: 0.85; }
+  /* Status - QUIET TEXT, not a chip. Bold-weight semantic colour in the row,
+     no pill chrome, no dot. Removes ~80% of the chip noise that LLM-generated
+     SaaS reflexively scatters across every table. Where a true categorical
+     badge is needed (applicability "excluded", severity "major"), use .tag. */
+  .status {
+    display: inline; font-size: 12px; font-weight: 600;
+    white-space: nowrap; letter-spacing: 0.005em;
+    text-transform: capitalize;
+  }
   /* GREEN - done/good */
-  .s-implemented, .s-included, .s-done, .s-closed, .s-verified { color: #15803d; background: rgba(22,163,74,0.10); border-color: rgba(22,163,74,0.22); }
+  .s-implemented, .s-included, .s-done, .s-closed, .s-verified { color: #15803d; }
   /* AMBER - partial/in-review */
-  .s-partial, .s-partially-implemented, .s-in_review, .s-accepted, .s-minor { color: #b45309; background: rgba(202,138,4,0.10); border-color: rgba(202,138,4,0.25); }
+  .s-partial, .s-partially-implemented, .s-in_review, .s-accepted, .s-minor { color: #b45309; }
   /* BLUE - in-progress/treated */
-  .s-progress, .s-work-in-progress, .s-in_progress, .s-treated { color: #1d4ed8; background: rgba(37,99,235,0.10); border-color: rgba(37,99,235,0.25); }
+  .s-progress, .s-work-in-progress, .s-in_progress, .s-treated { color: #1d4ed8; }
   /* RED - open/blocked/major/excluded/not-implemented */
-  .s-not-impl, .s-not-implemented, .s-excluded, .s-blocked, .s-open, .s-major { color: #b91c1c; background: rgba(220,38,38,0.10); border-color: rgba(220,38,38,0.25); }
+  .s-not-impl, .s-not-implemented, .s-excluded, .s-blocked, .s-open, .s-major { color: #b91c1c; }
   /* GREY - neutral/na/undecided/todo */
-  .s-na, .s-not-applicable, .s-not-assessed, .s-undecided, .s-todo, .s-observation { color: #52525b; background: rgba(113,113,122,0.10); border-color: rgba(113,113,122,0.20); }
+  .s-na, .s-not-applicable, .s-not-assessed, .s-undecided, .s-todo, .s-observation { color: #52525b; }
 
-  /* Tags - filled chip variants used heavily as status pills */
-  .tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; letter-spacing: 0.005em; border: 1px solid transparent; }
-  .tag-neutral { background: rgba(113,113,122,0.10); color: #52525b; border-color: rgba(113,113,122,0.20); }
-  .tag-success { background: rgba(22,163,74,0.10); color: #15803d; border-color: rgba(22,163,74,0.22); }
-  .tag-warn { background: rgba(202,138,4,0.10); color: #b45309; border-color: rgba(202,138,4,0.25); }
-  .tag-danger { background: rgba(220,38,38,0.10); color: #b91c1c; border-color: rgba(220,38,38,0.25); }
-  .tag-info { background: var(--accent-soft); color: var(--accent-deep); border-color: rgba(79,70,229,0.25); }
-  .tag-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+  /* Tag chips kept for categorical badges (applicability, severity, finding
+     type) where a real visual chip is warranted. Refined to outlined style,
+     not filled — quieter than the original "background fill + border" combo. */
+  .tag {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 3px;
+    font-size: 11px; font-weight: 600; line-height: 1.5;
+    letter-spacing: 0.02em; text-transform: uppercase;
+    background: transparent;
+    border: 1px solid currentColor;
+  }
+  .tag-neutral { color: #52525b; }
+  .tag-success { color: #15803d; }
+  .tag-warn    { color: #b45309; }
+  .tag-danger  { color: #b91c1c; }
+  .tag-info    { color: var(--accent-deep); }
+  .tag-accent  { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-  /* Tables */
+  /* Tables. Density pass: rows from 11×16 to 8×14 — ~25% more rows per
+     screen, matches the density Bloomberg / Carta / Big-4 audit dashboards
+     use. The table is the primary surface of an audit tool; let it breathe
+     less and earn more screen. */
   table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.t thead th { text-align: left; padding: 9px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
-  table.t tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.t thead th { text-align: left; padding: 7px 14px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+  table.t tbody td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
   table.t tbody tr:last-child td { border-bottom: none; }
   table.t tbody tr { transition: background 0.08s; }
   table.t tbody tr:hover { background: var(--bg-subtle); }
-  .t-empty { padding: 48px 16px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+  .t-empty { padding: 40px 14px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
 
   /* Empty state */
   .empty-state { padding: 56px 24px; text-align: center; }

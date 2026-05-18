@@ -113,7 +113,7 @@
           <tbody>
             <% data.soa.changes.forEach(c => { %>
               <tr>
-                <td class="mono meta"><%= String(c.id).replace('annex-','').toUpperCase() %></td>
+                <td><span class="iso-ref"><%= String(c.id).replace('annex-','').toUpperCase() %></span></td>
                 <td><%= c.title %></td>
                 <td>
                   <% c.changes.forEach(ch => {

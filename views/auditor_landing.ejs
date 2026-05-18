@@ -1,95 +1,130 @@
 <%- include('partials/auditor_header', { title: 'Overview', token, share, workspace, active: 'overview' }) %>
 
+<style>
+  /* Prose-led landing: matches the cover letter of an audit-firm deliverable
+     rather than a SaaS dashboard. No KPI grid. No numbered tile list. The
+     audit pack is the primary deliverable; the tabs above are the drill-
+     through. Engagement details live at the bottom as a colophon. */
+  .a-letter {
+    max-width: 720px;
+    font-size: 14.5px; line-height: 1.7; color: var(--text);
+    margin-bottom: 26px;
+  }
+  .a-letter p { margin: 0 0 14px; }
+  .a-letter p:last-of-type { margin-bottom: 0; }
+  .a-letter strong { font-weight: 600; color: var(--ink); }
+
+  .a-pack-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px;
+    background: var(--accent); color: #fff;
+    text-decoration: none; border-radius: 4px;
+    font-size: 13px; font-weight: 500;
+    transition: background 0.12s;
+  }
+  .a-pack-cta:hover { background: var(--accent-deep); color: #fff; }
+
+  .a-toc {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 0;
+    max-width: 720px;
+    margin: 28px 0;
+  }
+  .a-toc-item {
+    display: grid; grid-template-columns: 34px 1fr auto;
+    align-items: baseline;
+    padding: 10px 0;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px dotted var(--border);
+  }
+  .a-toc-item:last-child { border-bottom: none; }
+  .a-toc-num {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-variation-settings: "opsz" 18;
+    font-size: 15px; color: var(--accent);
+    font-weight: 500;
+  }
+  .a-toc-title {
+    font-size: 14px; color: var(--ink); font-weight: 500;
+  }
+  .a-toc-meta {
+    font-size: 11.5px; color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  .a-toc-item:hover .a-toc-title { color: var(--accent); }
+
+  .a-colophon {
+    max-width: 720px;
+    font-size: 12px; color: var(--text-secondary);
+    line-height: 1.65;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .a-colophon dl { display: grid; grid-template-columns: 110px 1fr; gap: 4px 18px; margin: 0; }
+  .a-colophon dt { color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; font-size: 10.5px; font-weight: 600; padding-top: 2px; }
+  .a-colophon dd { margin: 0; color: var(--text); }
+</style>
+
 <div class="a-page-head">
-  <h1 class="a-page-title"><%= workspace.client_name %> — ISMS</h1>
-  <div class="a-page-sub">ISO/IEC 27001:2022 · prepared by <%= firm.name || 'the consulting firm of record' %><% if (workspace.scope) { %> · <%= workspace.scope %><% } %></div>
+  <h1 class="a-page-title"><%= workspace.client_name %> — Information Security Management System</h1>
 </div>
 
-<%# Pack download as the headline CTA - it's the single thing most auditors want first %>
-<div class="panel" style="margin-bottom:20px;background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);">
-  <div class="panel-pad" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
-    <div style="flex:1;min-width:280px;">
-      <div class="text-eyebrow" style="color:var(--accent-deep);margin-bottom:4px;">RECOMMENDED FIRST STEP</div>
-      <div style="font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;">Download the full audit pack</div>
-      <div class="text-md" style="color:var(--text-secondary);line-height:1.55;">
-        A single branded PDF bundling the SoA snapshot, risk register + heatmap, evidence index with SHA-256 hashes, internal audit findings, nonconformities, MRMs, and improvement log. Take it offline; come back to the portal for evidence file downloads.
-      </div>
-    </div>
-    <a href="/auditor/<%= token %>/audit-pack" class="btn btn-primary" download>
+<div class="a-letter">
+  <p>
+    Welcome.  This portal presents the documented information for <strong><%= workspace.client_name %></strong>'s
+    Information Security Management System,
+    prepared by <strong><%= firm.name || 'the consulting firm of record' %></strong>
+    in accordance with <strong>ISO/IEC&nbsp;27001:2022</strong>.
+  </p>
+  <p>
+    The complete engagement record is available as a single branded PDF — the audit pack —
+    bundling the Statement of Applicability with its SHA-256 hash, the risk register and inherent-risk heatmap,
+    the full evidence index with file hashes, internal audit findings, nonconformities,
+    management reviews, and the improvement log.  We recommend downloading it first,
+    then returning here for targeted drill-through and individual evidence files.
+  </p>
+  <p>
+    Every access to this portal is timestamped and logged.  If you need anything that isn't here,
+    contact <%= firm.name || 'the consulting firm' %> directly.
+  </p>
+  <p style="margin-top:18px;">
+    <a href="/auditor/<%= token %>/audit-pack" class="a-pack-cta" download>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Generate audit pack PDF
     </a>
-  </div>
+  </p>
 </div>
 
-<%# KPI tiles - scope of the ISMS at a glance %>
-<div class="kpi-row">
-  <div class="kpi brand">
-    <div class="kpi-label">SoA</div>
-    <div class="kpi-num"><%= counts.soa_total %></div>
-    <div class="kpi-meta">controls assessed · <%= counts.soa_snapshots %> snapshot<%= counts.soa_snapshots === 1 ? '' : 's' %></div>
-  </div>
-  <div class="kpi <%= counts.risks_open > 0 ? 'warn' : 'good' %>">
-    <div class="kpi-label">Risk register</div>
-    <div class="kpi-num"><%= counts.risks_open %> <span class="meta">/ <%= counts.risks %></span></div>
-    <div class="kpi-meta">open risks · register total</div>
-  </div>
-  <div class="kpi brand">
-    <div class="kpi-label">Evidence on file</div>
-    <div class="kpi-num"><%= counts.evidence %></div>
-    <div class="kpi-meta">SHA-256 verified · downloadable</div>
-  </div>
-  <div class="kpi brand">
-    <div class="kpi-label">Policies & procedures</div>
-    <div class="kpi-num"><%= counts.documents %></div>
-    <div class="kpi-meta">currently in force</div>
-  </div>
-  <div class="kpi <%= counts.ncs_open > 0 ? 'warn' : 'good' %>">
-    <div class="kpi-label">Nonconformities open</div>
-    <div class="kpi-num"><%= counts.ncs_open %> <span class="meta">/ <%= counts.ncs_total %></span></div>
-    <div class="kpi-meta">all-time total</div>
-  </div>
-  <div class="kpi <%= counts.audits > 0 ? 'good' : 'warn' %>">
-    <div class="kpi-label">Internal audits</div>
-    <div class="kpi-num"><%= counts.audits %></div>
-    <div class="kpi-meta">conducted to date</div>
-  </div>
-  <div class="kpi <%= counts.mrms > 0 ? 'good' : 'warn' %>">
-    <div class="kpi-label">Management reviews</div>
-    <div class="kpi-num"><%= counts.mrms %></div>
-    <div class="kpi-meta">held to date</div>
-  </div>
-  <div class="kpi brand">
-    <div class="kpi-label">Prepared by</div>
-    <div class="kpi-num" style="font-size:14px;letter-spacing:-0.01em;padding-top:4px;"><%= firm.name || 'ISMS consultancy' %></div>
-    <div class="kpi-meta">consulting firm of record</div>
-  </div>
+<div class="a-toc">
+  <%
+    const tocItems = [
+      { num: 'I',   href: 'soa',       title: 'Statement of Applicability',     meta: `${counts.soa_total} controls · ${counts.soa_snapshots} snapshot${counts.soa_snapshots === 1 ? '' : 's'}` },
+      { num: 'II',  href: 'risks',     title: 'Risk register and heatmap',      meta: `${counts.risks} risk${counts.risks === 1 ? '' : 's'} · ${counts.risks_open} open` },
+      { num: 'III', href: 'evidence',  title: 'Evidence index',                 meta: `${counts.evidence} file${counts.evidence === 1 ? '' : 's'} on record` },
+      { num: 'IV',  href: 'documents', title: 'Policies and procedures',        meta: `${counts.documents} document${counts.documents === 1 ? '' : 's'} in force` },
+      { num: 'V',   href: 'audits',    title: 'Internal audits and nonconformities', meta: `${counts.audits} audit${counts.audits === 1 ? '' : 's'} · ${counts.ncs_open} open NC${counts.ncs_open === 1 ? '' : 's'}` }
+    ];
+  %>
+  <% tocItems.forEach(t => { %>
+    <a href="/auditor/<%= token %>/<%= t.href %>" class="a-toc-item">
+      <span class="a-toc-num"><%= t.num %></span>
+      <span class="a-toc-title"><%= t.title %></span>
+      <span class="a-toc-meta"><%= t.meta %></span>
+    </a>
+  <% }) %>
 </div>
 
-<%# Section tiles - explicit next-clicks for auditors who skip the tab bar %>
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head"><h2>What you can do here</h2></div>
-  <div class="panel-pad">
-    <%
-      const tiles = [
-        { href: 'soa',       title: 'Statement of Applicability', sub: 'Every Annex A control: applicability, status, justification. The most recent snapshot is shown with its SHA-256 hash.' },
-        { href: 'risks',     title: 'Risk register + heatmap',     sub: 'Identified risks scored against the active methodology, with treatments and owners.' },
-        { href: 'evidence',  title: 'Evidence index',              sub: 'Every uploaded evidence file with SHA-256. Click to download — every download is logged.' },
-        { href: 'documents', title: 'Policies and procedures',     sub: 'Current ISMS documents — each linked to the Annex A controls it covers.' },
-        { href: 'audits',    title: 'Internal audits + NCs',       sub: 'Audit programme history, findings, and nonconformity log with corrective actions.' }
-      ];
-    %>
-    <% tiles.forEach((t, i) => { %>
-      <a href="/auditor/<%= token %>/<%= t.href %>" style="display:grid;grid-template-columns:24px 1fr 14px;gap:14px;align-items:center;padding:14px 0;<%= i < tiles.length - 1 ? 'border-bottom:1px solid var(--border);' : '' %>text-decoration:none;color:inherit;">
-        <span class="chip chip-accent" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;font-size:11px;padding:0;border-radius:5px;"><%= i + 1 %></span>
-        <div>
-          <div style="font-size:13.5px;font-weight:500;color:var(--ink);"><%= t.title %></div>
-          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;"><%= t.sub %></div>
-        </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-      </a>
-    <% }) %>
-  </div>
+<div class="a-colophon">
+  <dl>
+    <dt>Standard</dt><dd>ISO/IEC&nbsp;27001:2022</dd>
+    <% if (workspace.scope) { %><dt>Scope</dt><dd><%= workspace.scope %></dd><% } %>
+    <dt>Prepared by</dt><dd><%= firm.name || 'ISMS consultancy' %></dd>
+    <dt>Report date</dt><dd><%= new Date().toISOString().slice(0,10) %></dd>
+    <% if (counts.mrms > 0) { %><dt>Last MRM</dt><dd><%= counts.mrms %> management review<%= counts.mrms === 1 ? '' : 's' %> held to date</dd><% } %>
+  </dl>
 </div>
 
 <%- include('partials/auditor_footer') %>
