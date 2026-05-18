@@ -1770,8 +1770,12 @@ function init() {
   CREATE INDEX IF NOT EXISTS idx_evlinks_fw_item ON evidence_links(framework, item_ref);`);
 
   // Backfill: every existing evidence_controls row becomes an iso27001 link.
+  // Skip rows whose evidence_id no longer references a real evidence row
+  // (pre-existing data hygiene issue from rows inserted with FKs off).
   db.exec(`INSERT OR IGNORE INTO evidence_links (evidence_id, framework, item_ref, section_ref)
-    SELECT evidence_id, 'iso27001', iso_item_id, section_ref FROM evidence_controls`);
+    SELECT ec.evidence_id, 'iso27001', ec.iso_item_id, ec.section_ref
+    FROM evidence_controls ec
+    INNER JOIN evidence e ON e.id = ec.evidence_id`);
 
   // Sync triggers keep evidence_links in lock-step with evidence_controls so
   // existing ISO 27001 link routes don't have to know about the new table.
