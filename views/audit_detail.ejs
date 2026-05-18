@@ -68,21 +68,46 @@
 </div>
 
 <div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head"><h2>Generate audit checklist</h2><span class="meta">Pre-populates observations with starter questions for every control in the chosen scope</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist" class="panel-pad" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
-    <div style="flex:1;min-width:240px;">
-      <label class="label">Audit scope</label>
-      <select class="select" name="category" required>
-        <option value="">- pick a section -</option>
-        <option value="org">A.5 Organisational controls (37)</option>
-        <option value="people">A.6 People controls (8)</option>
-        <option value="physical">A.7 Physical controls (14)</option>
-        <option value="tech">A.8 Technological controls (34)</option>
-        <option value="clauses">Main body clauses (4–10)</option>
-      </select>
+  <div class="panel-head"><h2>Generate audit checklist</h2><span class="meta">Pre-populates observations with starter questions, sample-size hints, and finding templates</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+    <%# Recommended: SoA-driven. Generates one observation per applicable+
+        included control with evidence-linkage counts and sample-size hints. %>
+    <div style="padding:14px 16px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:8px;">
+      <div class="text-eyebrow" style="color:var(--accent-deep);margin-bottom:6px;">RECOMMENDED</div>
+      <div style="font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:4px;">From the Statement of Applicability</div>
+      <div class="meta text-sm" style="line-height:1.5;margin-bottom:10px;">
+        One observation per applicable + included control. Each item pre-fills the linked-policy count, linked-evidence count, a sample-size suggestion based on the control family, and a finding wording template.
+      </div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist-from-soa" onsubmit="return appConfirmForm(event, 'Generate one observation per included Annex A control? Existing observations are kept.');">
+        <button class="btn btn-primary btn-xs">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Generate from SoA
+        </button>
+      </form>
     </div>
-    <button class="btn btn-primary btn-xs" onclick="return appConfirmClick(event, 'This adds one observation per control. Continue?')">Generate</button>
-  </form>
+
+    <%# Power-user: category-based. Generates for every control in a section
+        regardless of applicability — useful when scoping the audit broadly. %>
+    <div style="padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
+      <div class="text-eyebrow text-tertiary" style="margin-bottom:6px;">BY CATEGORY</div>
+      <div style="font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:4px;">By Annex A section</div>
+      <div class="meta text-sm" style="line-height:1.5;margin-bottom:10px;">
+        Generates for every control in the chosen section, regardless of applicability. Use when scoping a broader sample.
+      </div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist" style="display:flex;gap:6px;align-items:end;flex-wrap:wrap;">
+        <select class="select" name="category" required style="flex:1;min-width:160px;font-size:12px;">
+          <option value="">- pick a section -</option>
+          <option value="org">A.5 Organisational (37)</option>
+          <option value="people">A.6 People (8)</option>
+          <option value="physical">A.7 Physical (14)</option>
+          <option value="tech">A.8 Technological (34)</option>
+          <option value="clauses">Main clauses 4–10</option>
+        </select>
+        <button class="btn btn-secondary btn-xs" onclick="return appConfirmClick(event, 'This adds one observation per control in this category. Continue?')">Generate</button>
+      </form>
+    </div>
+  </div>
 </div>
 
 <div class="panel">

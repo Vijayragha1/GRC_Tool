@@ -1,0 +1,399 @@
+<%- include('partials/header', { title: 'Changes since last audit', user, ws, active: 'changes-since' }) %>
+
+<style>
+  /* Section accordions feel calmer than full panels for a long scrollable
+     report. Closed by default for low-signal sections, open for high-signal. */
+  .cs-stat-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 20px; }
+  @media (max-width: 1100px) { .cs-stat-row { grid-template-columns: repeat(3, 1fr); } }
+  .cs-stat { padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; position: relative; overflow: hidden; }
+  .cs-stat::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--border-strong); }
+  .cs-stat.has::before  { background: var(--accent); }
+  .cs-stat.warn::before { background: #ca8a04; }
+  .cs-stat.good::before { background: #16a34a; }
+  .cs-stat-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+  .cs-stat-num { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 3px; }
+  .cs-stat-meta { font-size: 10.5px; color: var(--text-tertiary); margin-top: 2px; }
+
+  .cs-section { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
+  .cs-section-head { padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; user-select: none; }
+  .cs-section-head h2 { font-size: 13px; font-weight: 600; color: var(--ink); margin: 0; }
+  .cs-section-head .chev { transition: transform 0.18s; color: var(--text-tertiary); }
+  .cs-section[open] .cs-section-head .chev { transform: rotate(90deg); }
+  .cs-section-body { padding: 14px 18px; }
+
+  .cs-empty { padding: 18px; text-align: center; color: var(--text-tertiary); font-size: 12.5px; font-style: italic; }
+
+  .cs-anchor-bar { display: flex; gap: 10px; align-items: center; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+  .cs-change-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .cs-change-added       { background: rgba(22,163,74,0.10); color: #15803d; }
+  .cs-change-removed     { background: rgba(220,38,38,0.10); color: #b91c1c; }
+  .cs-change-applicability { background: rgba(37,99,235,0.10); color: #1d4ed8; }
+  .cs-change-status      { background: rgba(202,138,4,0.10); color: #b45309; }
+  .cs-change-justification { background: rgba(113,113,122,0.10); color: #52525b; }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Changes since</h1>
+    <div class="page-subtitle">Surveillance + recertification handoff. What's changed in the ISMS between <strong><%= data.since %></strong> and today. Pick a different anchor date below — your last audit, an SoA snapshot, or a custom date.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/audit-pack" class="btn btn-secondary btn-xs" title="Generate the branded PDF audit pack for the cert body">→ Audit pack</a>
+</div>
+
+<%# ===== anchor / date picker ===== %>
+<div class="cs-anchor-bar">
+  <span class="text-eyebrow text-secondary">Anchor date:</span>
+  <form method="GET" action="/workspaces/<%= ws.id %>/changes-since" class="row" style="gap:6px;align-items:center;">
+    <input type="date" name="since" value="<%= data.since %>" class="input mono" style="width:160px;font-size:13px;">
+    <button class="btn btn-secondary btn-xs">Apply</button>
+  </form>
+  <% if (anchors.audits.length) { %>
+    <span class="text-eyebrow text-secondary" style="margin-left:14px;">Pick an audit:</span>
+    <% anchors.audits.slice(0, 4).forEach(a => { %>
+      <a href="?since=<%= a.audit_date.slice(0,10) %>" class="tag tag-neutral" style="text-decoration:none;font-size:11px;<%= data.since === a.audit_date.slice(0,10) ? 'background:var(--accent-soft);color:var(--accent-deep);border-color:var(--accent);' : '' %>">
+        <%= a.title %> · <%= a.audit_date.slice(0,10) %>
+      </a>
+    <% }) %>
+  <% } %>
+  <% if (anchors.snapshots.length) { %>
+    <span class="text-eyebrow text-secondary" style="margin-left:14px;">Pick a snapshot:</span>
+    <% anchors.snapshots.slice(0, 3).forEach(s => { %>
+      <a href="?since=<%= s.created_at.slice(0,10) %>" class="tag tag-neutral" style="text-decoration:none;font-size:11px;<%= data.since === s.created_at.slice(0,10) ? 'background:var(--accent-soft);color:var(--accent-deep);border-color:var(--accent);' : '' %>">
+        <%= s.label || 'snapshot' %> · <%= s.created_at.slice(0,10) %>
+      </a>
+    <% }) %>
+  <% } %>
+</div>
+
+<%# ===== summary tiles ===== %>
+<%
+  function tile(label, n, meta, kind) {
+    const css = n > 0 ? (kind || 'has') : '';
+    return `<div class="cs-stat ${css}">
+      <div class="cs-stat-label">${label}</div>
+      <div class="cs-stat-num">${n}</div>
+      <div class="cs-stat-meta">${meta || ''}</div>
+    </div>`;
+  }
+%>
+<div class="cs-stat-row">
+  <%- tile('SoA changes', data.summary.soa_changes, 'control flips + edits', data.summary.soa_changes > 0 ? 'warn' : '') %>
+  <%- tile('Risks added', data.summary.risks_added, 'since anchor date') %>
+  <%- tile('Evidence added', data.summary.evidence_added, 'new uploads') %>
+  <%- tile('Docs new / bumped', data.summary.documents_new + data.summary.documents_bumped, `${data.summary.documents_new} new · ${data.summary.documents_bumped} versions`) %>
+  <%- tile('NCs opened', data.summary.ncs_opened, `${data.summary.ncs_closed} closed`, data.summary.ncs_opened > 0 ? 'warn' : 'good') %>
+  <%- tile('Audits + MRMs', data.summary.audits_conducted + data.summary.mrms_held, `${data.summary.audits_conducted} audits · ${data.summary.mrms_held} MRMs`) %>
+</div>
+
+<%# ===== SoA changes ===== %>
+<details class="cs-section" <%= data.summary.soa_changes > 0 ? 'open' : '' %>>
+  <summary class="cs-section-head">
+    <h2>Statement of Applicability — <%= data.summary.soa_changes %> change<%= data.summary.soa_changes === 1 ? '' : 's' %></h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (!data.soa.snapBefore || !data.soa.snapAfter || data.soa.snapBefore.id === data.soa.snapAfter.id) { %>
+      <div class="cs-empty">
+        <% if (!data.soa.snapBefore) { %>
+          No SoA snapshot exists at or before <%= data.since %>. Capture one to start tracking changes for the next cycle.
+        <% } else if (!data.soa.snapAfter || data.soa.snapBefore.id === data.soa.snapAfter.id) { %>
+          Only one SoA snapshot in this period — nothing to diff. Capture a new snapshot before your next audit.
+        <% } %>
+      </div>
+    <% } else { %>
+      <div class="meta text-sm" style="margin-bottom:10px;">
+        Comparing <strong><%= data.soa.snapBefore.label || 'unlabelled' %></strong> (<%= data.soa.snapBefore.created_at.slice(0,10) %>)
+        → <strong><%= data.soa.snapAfter.label || 'unlabelled' %></strong> (<%= data.soa.snapAfter.created_at.slice(0,10) %>).
+      </div>
+      <% if (data.soa.changes.length === 0) { %>
+        <div class="cs-empty">No SoA changes between these snapshots.</div>
+      <% } else { %>
+        <table class="t">
+          <thead><tr><th style="width:90px;">Control</th><th>Title</th><th>Changes</th></tr></thead>
+          <tbody>
+            <% data.soa.changes.forEach(c => { %>
+              <tr>
+                <td class="mono meta"><%= String(c.id).replace('annex-','').toUpperCase() %></td>
+                <td><%= c.title %></td>
+                <td>
+                  <% c.changes.forEach(ch => {
+                       const klass = 'cs-change-' + ch.kind;
+                       let txt = ch.kind;
+                       if (ch.kind === 'applicability') txt = `applicability: ${ch.from} → ${ch.to}`;
+                       else if (ch.kind === 'status') txt = `status: ${ch.from} → ${ch.to}`;
+                       else if (ch.kind === 'added') txt = 'added';
+                       else if (ch.kind === 'removed') txt = 'removed';
+                       else if (ch.kind === 'inclusion_justification') txt = 'inclusion justification edited';
+                       else if (ch.kind === 'exclusion_justification') txt = 'exclusion justification edited';
+                  %><span class="cs-change-pill <%= klass %>"><%= txt %></span><% }) %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    <% } %>
+  </div>
+</details>
+
+<%# ===== Risks added ===== %>
+<details class="cs-section" <%= data.summary.risks_added > 0 ? 'open' : '' %>>
+  <summary class="cs-section-head">
+    <h2>Risks added — <%= data.summary.risks_added %></h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (!data.risks.added.length) { %>
+      <div class="cs-empty">No new risks since <%= data.since %>.</div>
+    <% } else { %>
+      <table class="t">
+        <thead><tr>
+          <th style="width:64px;">ID</th>
+          <th>Title</th>
+          <th style="width:130px;">Asset</th>
+          <th class="num" style="width:60px;">L · I</th>
+          <th style="width:80px;">Status</th>
+          <th style="width:110px;">Added</th>
+        </tr></thead>
+        <tbody>
+          <% data.risks.added.forEach(r => { %>
+            <tr>
+              <td class="mono meta">R-<%= String(r.id).padStart(3,'0') %></td>
+              <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted"><%= r.title %></a></td>
+              <td class="meta"><%= r.asset_name || '-' %></td>
+              <td class="num meta"><%= r.likelihood %>·<%= r.impact %></td>
+              <td><span class="status s-<%= (r.status || '').toLowerCase() %>"><%= r.status %></span></td>
+              <td class="meta text-sm"><%= r.created_at.slice(0,10) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</details>
+
+<%# ===== Evidence added ===== %>
+<details class="cs-section" <%= data.summary.evidence_added > 0 ? 'open' : '' %>>
+  <summary class="cs-section-head">
+    <h2>Evidence added — <%= data.summary.evidence_added %></h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (!data.evidence.added.length) { %>
+      <div class="cs-empty">No new evidence since <%= data.since %>.</div>
+    <% } else { %>
+      <table class="t">
+        <thead><tr>
+          <th style="width:90px;">Control</th>
+          <th>Filename</th>
+          <th style="width:120px;">Uploader</th>
+          <th style="width:110px;">Date</th>
+        </tr></thead>
+        <tbody>
+          <% data.evidence.added.slice(0, 50).forEach(e => { %>
+            <tr>
+              <td class="mono meta"><%= e.iso_item_id ? String(e.iso_item_id).replace('annex-','').toUpperCase() : '-' %></td>
+              <td><%= e.filename %></td>
+              <td class="meta"><%= e.uploader || '-' %></td>
+              <td class="meta text-sm"><%= e.uploaded_at.slice(0,10) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (data.evidence.added.length > 50) { %>
+        <div class="meta text-sm" style="margin-top:6px;">+ <%= data.evidence.added.length - 50 %> more — see the full Evidence library for the complete list.</div>
+      <% } %>
+    <% } %>
+  </div>
+</details>
+
+<%# ===== Documents ===== %>
+<details class="cs-section" <%= (data.summary.documents_new + data.summary.documents_bumped + data.summary.documents_retired) > 0 ? 'open' : '' %>>
+  <summary class="cs-section-head">
+    <h2>Documents — <%= data.summary.documents_new %> new · <%= data.summary.documents_bumped %> version bumps · <%= data.summary.documents_retired %> retired</h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (!(data.documents.new.length || data.documents.bumped.length || data.documents.retired.length)) { %>
+      <div class="cs-empty">No document changes since <%= data.since %>.</div>
+    <% } else { %>
+      <% if (data.documents.new.length) { %>
+        <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">New documents</div>
+        <table class="t" style="margin-bottom:14px;">
+          <thead><tr><th>Name</th><th style="width:110px;">Category</th><th style="width:110px;">Created</th></tr></thead>
+          <tbody>
+            <% data.documents.new.forEach(d => { %>
+              <tr>
+                <td><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted"><%= d.name %></a></td>
+                <td class="meta" style="text-transform:capitalize;"><%= d.category %></td>
+                <td class="meta text-sm"><%= d.created_at.slice(0,10) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+      <% if (data.documents.bumped.length) { %>
+        <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Version-bumped</div>
+        <table class="t" style="margin-bottom:14px;">
+          <thead><tr><th>Name</th><th class="num" style="width:130px;">New versions</th><th style="width:130px;">Latest</th></tr></thead>
+          <tbody>
+            <% data.documents.bumped.forEach(d => { %>
+              <tr>
+                <td><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted"><%= d.name %></a></td>
+                <td class="num meta"><%= d.new_versions %></td>
+                <td class="meta text-sm"><%= d.latest_version_at.slice(0,10) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+      <% if (data.documents.retired.length) { %>
+        <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Retired</div>
+        <table class="t">
+          <thead><tr><th>Name</th><th style="width:110px;">Retired</th></tr></thead>
+          <tbody>
+            <% data.documents.retired.forEach(d => { %>
+              <tr><td><%= d.name %></td><td class="meta text-sm"><%= d.retired_at.slice(0,10) %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    <% } %>
+  </div>
+</details>
+
+<%# ===== Nonconformities ===== %>
+<details class="cs-section" <%= (data.summary.ncs_opened + data.summary.ncs_closed) > 0 ? 'open' : '' %>>
+  <summary class="cs-section-head">
+    <h2>Nonconformities — <%= data.summary.ncs_opened %> opened · <%= data.summary.ncs_closed %> closed · <%= data.ncs.stillOpen %> still open</h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (!(data.ncs.opened.length || data.ncs.closed.length)) { %>
+      <div class="cs-empty">No NC activity since <%= data.since %>.</div>
+    <% } else { %>
+      <% if (data.ncs.opened.length) { %>
+        <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Opened</div>
+        <table class="t" style="margin-bottom:14px;">
+          <thead><tr><th>Title</th><th style="width:80px;">Severity</th><th style="width:80px;">Status</th><th style="width:110px;">Opened</th></tr></thead>
+          <tbody>
+            <% data.ncs.opened.forEach(n => { %>
+              <tr>
+                <td><a href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" class="link-muted"><%= n.title %></a></td>
+                <td><span class="status s-<%= (n.severity||'').toLowerCase() %>"><%= n.severity %></span></td>
+                <td><span class="status s-<%= (n.status||'').toLowerCase() %>"><%= n.status %></span></td>
+                <td class="meta text-sm"><%= n.created_at.slice(0,10) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+      <% if (data.ncs.closed.length) { %>
+        <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Closed</div>
+        <table class="t">
+          <thead><tr><th>Title</th><th style="width:80px;">Severity</th><th style="width:110px;">Closed</th></tr></thead>
+          <tbody>
+            <% data.ncs.closed.forEach(n => { %>
+              <tr>
+                <td><%= n.title %></td>
+                <td><span class="status s-<%= (n.severity||'').toLowerCase() %>"><%= n.severity %></span></td>
+                <td class="meta text-sm"><%= n.closed_at.slice(0,10) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    <% } %>
+  </div>
+</details>
+
+<%# ===== Audits + MRMs + Improvements ===== %>
+<details class="cs-section" <%= (data.summary.audits_conducted + data.summary.mrms_held + data.summary.improvements_opened + data.summary.improvements_closed) > 0 ? 'open' : '' %>>
+  <summary class="cs-section-head">
+    <h2>Audits, MRMs &amp; improvements</h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (data.audits.length) { %>
+      <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Internal audits conducted (<%= data.audits.length %>)</div>
+      <table class="t" style="margin-bottom:14px;">
+        <thead><tr><th>Title</th><th style="width:120px;">Auditor</th><th style="width:100px;">Date</th><th style="width:100px;">Status</th></tr></thead>
+        <tbody>
+          <% data.audits.forEach(a => { %>
+            <tr>
+              <td><a href="/workspaces/<%= ws.id %>/audits/<%= a.id %>" class="link-muted"><%= a.title %></a></td>
+              <td class="meta"><%= a.auditor_name || '-' %></td>
+              <td class="meta text-sm"><%= a.audit_date.slice(0,10) %></td>
+              <td><span class="status s-<%= (a.status||'').toLowerCase() %>"><%= a.status %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } else { %>
+      <div class="cs-empty" style="margin-bottom:14px;">No internal audits since <%= data.since %>.</div>
+    <% } %>
+
+    <% if (data.mrms.length) { %>
+      <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Management reviews held (<%= data.mrms.length %>)</div>
+      <table class="t" style="margin-bottom:14px;">
+        <thead><tr><th style="width:100px;">Date</th><th>Attendees</th><th style="width:100px;">Status</th></tr></thead>
+        <tbody>
+          <% data.mrms.forEach(m => { %>
+            <tr>
+              <td class="meta text-sm"><%= m.meeting_date.slice(0,10) %></td>
+              <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="link-muted"><%= (m.attendees || '').slice(0,80) || '(none recorded)' %></a></td>
+              <td><span class="status s-<%= (m.status||'').toLowerCase() %>"><%= m.status %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } else { %>
+      <div class="cs-empty" style="margin-bottom:14px;">No MRMs held since <%= data.since %>.</div>
+    <% } %>
+
+    <% if (data.improvements.opened.length || data.improvements.closed.length) { %>
+      <div class="text-eyebrow text-secondary" style="margin-bottom:6px;">Improvements (<%= data.improvements.opened.length %> opened · <%= data.improvements.closed.length %> closed)</div>
+      <% if (data.improvements.opened.length) { %>
+        <table class="t" style="margin-bottom:14px;">
+          <thead><tr><th>Title</th><th style="width:120px;">Owner</th><th style="width:100px;">Opened</th></tr></thead>
+          <tbody>
+            <% data.improvements.opened.forEach(i => { %>
+              <tr>
+                <td><%= i.title %></td>
+                <td class="meta"><%= i.owner_name || '-' %></td>
+                <td class="meta text-sm"><%= i.created_at.slice(0,10) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    <% } else { %>
+      <div class="cs-empty">No improvement activity since <%= data.since %>.</div>
+    <% } %>
+  </div>
+</details>
+
+<%# ===== Activity roll-up ===== %>
+<details class="cs-section">
+  <summary class="cs-section-head">
+    <h2>Audit-log activity — <%= data.activity.total %> events across <%= data.activity.distinctActions %> action types</h2>
+    <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </summary>
+  <div class="cs-section-body">
+    <% if (!data.activity.byAction.length) { %>
+      <div class="cs-empty">No audit-log activity since <%= data.since %>. This engagement has gone quiet — likely needs attention.</div>
+    <% } else { %>
+      <table class="t">
+        <thead><tr><th>Action</th><th class="num" style="width:80px;">Events</th></tr></thead>
+        <tbody>
+          <% data.activity.byAction.forEach(a => { %>
+            <tr><td class="mono text-sm"><%= a.action %></td><td class="num meta"><%= a.n %></td></tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</details>
+
+<%- include('partials/footer') %>

@@ -29,6 +29,7 @@ const backup = require('./lib/backup');
 const keyrotation = require('./lib/keyrotation');
 const csvImport = require('./lib/csv-import');
 const auditPack = require('./lib/audit-pack');
+const changesSince = require('./lib/changes-since');
 
 init();
 // Force master key generation eagerly so first request doesn't block.
@@ -3826,6 +3827,8 @@ app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
 // (Tier A.4) so the saved values can be brought back in line with reality.
 function compute932InputPack(wsId) {
   const today = new Date().toISOString().slice(0,10);
+
+  // ---- existing 9.3.2 a / c / e numbers ----
   const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(wsId).c;
   const ncMajor = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(wsId).c;
   const ncOverdue = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < ?`).get(wsId, today).c;
@@ -3836,12 +3839,87 @@ function compute932InputPack(wsId) {
   const treatmentOpen = db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=? AND status NOT IN ('done','cancelled')`).get(wsId).c;
   const treatmentDone = db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=? AND status='done'`).get(wsId).c;
   const lastMrm = db.prepare(`SELECT meeting_date, action_items FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
+
+  // ---- 9.3.2.b context changes ----
+  // We don't have a formal "context changes log", so surface objective signals:
+  // new suppliers + entities + interested parties added since last MRM. The
+  // consultant adds narrative around regulatory/business changes.
+  const sinceLastMrm = lastMrm ? lastMrm.meeting_date : "date('now','-12 months')";
+  const sinceClause = lastMrm ? '?' : "date('now','-12 months')";
+  const lastMrmParams = lastMrm ? [wsId, lastMrm.meeting_date] : [wsId];
+  let newSuppliers = 0, newParties = 0, partiesOverdue = 0;
+  try {
+    newSuppliers = db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND date(created_at) > ${sinceClause}`).get(...lastMrmParams).c;
+  } catch (_) {}
+  try {
+    newParties = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND date(created_at) > ${sinceClause}`).get(...lastMrmParams).c;
+    partiesOverdue = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND next_review IS NOT NULL AND next_review < ?`).get(wsId, today).c;
+  } catch (_) {}
+
+  // ---- 9.3.2.d interested parties feedback ----
+  const partiesCount = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?`).get(wsId).c;
+  const recentReviews = db.prepare(`SELECT party, last_reviewed FROM interested_parties WHERE workspace_id=? AND last_reviewed IS NOT NULL ORDER BY last_reviewed DESC LIMIT 5`).all(wsId);
+
+  // Incident summary feeds both context (regulatory exposure) and performance.
+  let incidents = { total: 0, open: 0, last12m: 0 };
+  try {
+    const row = db.prepare(`SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status NOT IN ('closed','resolved') THEN 1 ELSE 0 END) AS open,
+      SUM(CASE WHEN created_at > datetime('now','-12 months') THEN 1 ELSE 0 END) AS last12m
+      FROM incidents WHERE workspace_id=?`).get(wsId);
+    if (row) incidents = { total: row.total || 0, open: row.open || 0, last12m: row.last12m || 0 };
+  } catch (_) {}
+
+  // ---- 9.3.2.f opportunities for improvement ----
+  const improvementsOpen = db.prepare(`SELECT COUNT(*) c FROM improvements WHERE workspace_id=? AND status IN ('open','in_progress')`).get(wsId).c;
+  const improvementsDone = db.prepare(`SELECT COUNT(*) c FROM improvements WHERE workspace_id=? AND status='done'`).get(wsId).c;
+  const recentImprovements = db.prepare(`SELECT title, source FROM improvements WHERE workspace_id=? AND status IN ('open','in_progress') ORDER BY created_at DESC LIMIT 5`).all(wsId);
+
+  // ---- supplier review status (feeds performance) ----
+  let supplierReview = { total: 0, overdue: 0 };
+  try {
+    const row = db.prepare(`SELECT
+      COUNT(DISTINCT s.id) AS total,
+      SUM(CASE WHEN s.next_review_date IS NULL OR s.next_review_date < date('now') THEN 1 ELSE 0 END) AS overdue
+      FROM suppliers s WHERE s.workspace_id=?`).get(wsId);
+    if (row) supplierReview = { total: row.total || 0, overdue: row.overdue || 0 };
+  } catch (_) {}
+
+  // ---- 9.3.2.e: risk register diff since last MRM ----
+  let risksAddedSinceLast = 0, risksClosedSinceLast = 0;
+  if (lastMrm) {
+    risksAddedSinceLast = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND date(created_at) > ?`).get(wsId, lastMrm.meeting_date).c;
+    risksClosedSinceLast = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status IN ('closed','treated')`).get(wsId).c;
+  }
+
   return {
+    // 9.3.2.a — prior MRM actions
     prior_actions_status: lastMrm
       ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
       : 'No prior management review on record. This is the first one.',
-    performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\n[Add commentary on KPIs, monitoring metrics (9.1), and trends.]`,
-    risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
+
+    // 9.3.2.b — context changes
+    context_changes: lastMrm
+      ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n  New interested parties registered: ${newParties}\n  Interested-party reviews overdue: ${partiesOverdue}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution.]`
+      : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n  Interested parties: ${partiesCount}\n\n[Document the external + internal context relevant to the ISMS — regulations, market, technology, organisation.]`,
+
+    // 9.3.2.c — performance review (extended with incidents + suppliers)
+    performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\nIncidents (last 12 months):\n  Total: ${incidents.last12m} (${incidents.open} still open)\n\nSupplier reviews:\n  ${supplierReview.total} suppliers · ${supplierReview.overdue} overdue review${supplierReview.overdue === 1 ? '' : 's'}\n\n[Add commentary on KPIs, monitoring metrics (9.1), trends, root-cause patterns.]`,
+
+    // 9.3.2.d — interested-party feedback
+    feedback_interested_parties: partiesCount === 0
+      ? 'No interested parties registered. Capture them in Interested parties before the next MRM (Clause 4.2).'
+      : `Interested parties register: ${partiesCount} entries.${recentReviews.length ? '\nRecently reviewed:\n' + recentReviews.map(r => `  - ${r.party} (${r.last_reviewed})`).join('\n') : ''}${partiesOverdue ? `\n\n${partiesOverdue} party review(s) overdue — refresh before the meeting.` : ''}\n\n[Summarise feedback received: customer concerns, regulator queries, employee survey results, supplier feedback.]`,
+
+    // 9.3.2.e — risk-treatment status (existing + register diff)
+    risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}${lastMrm ? `\n\nSince last MRM (${lastMrm.meeting_date}):\n  Risks added: ${risksAddedSinceLast}\n  Risks closed/treated: ${risksClosedSinceLast}` : ''}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
+
+    // 9.3.2.f — improvement opportunities
+    improvement_opportunities: improvementsOpen === 0 && improvementsDone === 0
+      ? 'No improvement actions recorded yet. Capture observations from audits, MRMs, incidents, and monitoring under Improvements (Clause 10.1).'
+      : `Improvement log:\n  Active: ${improvementsOpen}\n  Completed: ${improvementsDone}${recentImprovements.length ? '\n\nActive items:\n' + recentImprovements.map(i => `  - ${i.title}${i.source ? ' [' + i.source + ']' : ''}`).join('\n') : ''}\n\n[Identify themes from this period's data: recurring NCs, gaps surfaced by audits, technology refresh, training needs, control automation candidates.]`,
+
     refreshedAt: new Date().toISOString()
   };
 }
@@ -3851,11 +3929,14 @@ app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => 
   const { meeting_date, attendees } = req.body;
   const pack = compute932InputPack(req.workspace.id);
   const id = db.prepare(`INSERT INTO mrms
-    (workspace_id, meeting_date, attendees, prior_actions_status, performance_review,
-     risk_treatment_status, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    (workspace_id, meeting_date, attendees,
+     prior_actions_status, context_changes, performance_review, feedback_interested_parties,
+     risk_treatment_status, improvement_opportunities,
+     created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, meeting_date || null, attendees || null,
-         pack.prior_actions_status, pack.performance_review, pack.risk_treatment_status,
+         pack.prior_actions_status, pack.context_changes, pack.performance_review,
+         pack.feedback_interested_parties, pack.risk_treatment_status, pack.improvement_opportunities,
          req.user.id).lastInsertRowid;
   logAction(req.user.id, req.workspace.id, 'create_mrm', 'mrm', id, null);
   res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + id);
@@ -3869,9 +3950,12 @@ app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorksp
   const mrm = db.prepare('SELECT id, status FROM mrms WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!mrm) return res.status(404).send('Not found');
   const pack = compute932InputPack(req.workspace.id);
-  db.prepare(`UPDATE mrms SET prior_actions_status=?, performance_review=?, risk_treatment_status=?
-              WHERE id=? AND workspace_id=?`)
-    .run(pack.prior_actions_status, pack.performance_review, pack.risk_treatment_status,
+  db.prepare(`UPDATE mrms SET
+      prior_actions_status=?, context_changes=?, performance_review=?,
+      feedback_interested_parties=?, risk_treatment_status=?, improvement_opportunities=?
+    WHERE id=? AND workspace_id=?`)
+    .run(pack.prior_actions_status, pack.context_changes, pack.performance_review,
+         pack.feedback_interested_parties, pack.risk_treatment_status, pack.improvement_opportunities,
          mrm.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'refresh_mrm_inputs', 'mrm', mrm.id, null, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/mrms/${mrm.id}`, 'MRM inputs refreshed from current data'));
@@ -6314,6 +6398,24 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
   }
   logAction(req.user.id, req.workspace.id, 'soa_auto_justify', 'soa', null, { updated }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `Auto-justified ${updated} controls`));
+});
+
+// ==================== CHANGES SINCE LAST AUDIT ====================
+// Surveillance + recertification handoff: "what's changed since the last
+// audit?" Picks a sensible default "since" date (most recent audit, fallback
+// to most recent SoA snapshot, fallback to 365 days ago) and shows SoA diff,
+// new risks, new evidence, document changes, NCs, audits, MRMs, improvements.
+// The auditor sees the audit pack PDF; the consultant uses this page when
+// prepping the cycle.
+app.get('/workspaces/:wsId/changes-since', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const since = (req.query.since || '').toString().trim() || null;
+  const data = changesSince.gather({ db, enc }, req.workspace.id, since);
+  // Anchor options for the date picker: every internal audit + every SoA snapshot.
+  const anchors = {
+    audits: db.prepare(`SELECT id, title, audit_date, status FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL ORDER BY audit_date DESC`).all(req.workspace.id),
+    snapshots: db.prepare(`SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC`).all(req.workspace.id)
+  };
+  res.render('changes_since', { user: req.user, ws: req.workspace, data, anchors });
 });
 
 // ==================== AUDIT PACK ====================
@@ -9169,6 +9271,96 @@ app.post('/workspaces/:wsId/reports', requireAuth, requireWorkspace, requirePerm
 // Audit observations (lighter than findings)
 // Audit checklist generator - populates audit_observations with starter questions for
 // every Annex A control in the chosen category. Auditor fills in findings against each.
+// SoA-driven checklist generator: only generates observations for controls the
+// workspace has marked applicable + included on the SoA, with evidence-linkage
+// counts pulled in and sample-size suggestions based on the control family.
+// Mirrors the category-based generator below but is the right choice once the
+// SoA has been worked through — auditors shouldn't be testing excluded controls.
+
+// Sample-size heuristics keyed to Annex A control prefixes. Each entry returns
+// guidance the auditor pastes into the observation. Numbers are auditor-norms
+// (BSI / IRCA guidance) not standards-mandated.
+const SAMPLE_SIZE_HINTS = {
+  // Access control — clauses where "5 users" is the typical sample
+  'annex-a.5.15': 'Sample 10 users (mix of joiner / mover / leaver).',
+  'annex-a.5.16': 'Sample 10 user accounts created in the last 6 months.',
+  'annex-a.5.17': 'Sample 5 authentication records (MFA enrolment, password reset).',
+  'annex-a.5.18': 'Sample 10 access rights changes; verify approval evidence.',
+  'annex-a.8.2': 'Sample 5 privileged-access requests; verify approval + revocation.',
+  'annex-a.8.3': 'Sample 5 systems for least-privilege configuration.',
+  'annex-a.8.5': 'Sample 5 admin authentications; verify phishing-resistant MFA.',
+  // Logging + monitoring
+  'annex-a.8.15': 'Sample 10 consecutive days of logs; verify retention.',
+  'annex-a.8.16': 'Sample 3 alert investigations from the last 90 days.',
+  // Backups + BCP
+  'annex-a.8.13': 'Sample 3 restore tests; verify RTO/RPO met.',
+  'annex-a.5.29': 'Sample 1 BCP test conducted in the last 12 months.',
+  'annex-a.5.30': 'Sample evidence of ICT readiness for BC.',
+  // Suppliers
+  'annex-a.5.19': 'Sample 5 active suppliers; verify security clauses + review records.',
+  'annex-a.5.20': 'Sample 5 supplier contracts.',
+  'annex-a.5.21': 'Sample 5 ICT supply-chain risk assessments.',
+  'annex-a.5.22': 'Sample 5 supplier reviews from the last 12 months.',
+  // Incidents
+  'annex-a.5.24': 'Verify incident response procedure exists + has been exercised.',
+  'annex-a.5.25': 'Sample 5 incidents from the last 12 months.',
+  'annex-a.5.26': 'Sample 5 incident responses; verify lessons-learned captured.',
+  'annex-a.5.27': 'Sample 3 post-incident reviews.',
+  // Risk
+  'annex-a.6.3': 'Sample 5 training completion records.',
+  // Default
+  '_default': 'Sample 3–5 records or 1 process walkthrough.'
+};
+
+function sampleHintFor(controlId) {
+  return SAMPLE_SIZE_HINTS[controlId] || SAMPLE_SIZE_HINTS._default;
+}
+
+app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Not found');
+
+  // Pull every included control with its linkage counts so the auditor sees
+  // immediately which controls have evidence + a policy backing them.
+  const rows = db.prepare(`
+    SELECT i.id, i.title, i.category,
+      cs.status,
+      (SELECT COUNT(*) FROM document_controls dc INNER JOIN generated_docs gd
+        ON gd.id = dc.document_id WHERE dc.iso_item_id = i.id AND gd.workspace_id = ?
+        AND gd.retired_at IS NULL) AS doc_count,
+      (SELECT COUNT(*) FROM evidence_controls ec INNER JOIN evidence e
+        ON e.id = ec.evidence_id WHERE ec.iso_item_id = i.id AND e.workspace_id = ?) AS evi_count
+    FROM iso_items i
+    INNER JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    WHERE i.type='control' AND cs.applicability='included'
+    ORDER BY i.sort_order
+  `).all(req.workspace.id, req.workspace.id, req.workspace.id);
+
+  if (!rows.length) {
+    return res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`,
+      'No controls marked included on the SoA — decide applicability before generating an audit checklist', 'error'));
+  }
+
+  const ins = db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, status) VALUES (?, ?, ?, 'open')`);
+  const tx = db.transaction(() => {
+    rows.forEach(r => {
+      const code = r.id.replace('annex-', '').toUpperCase();
+      const cleanTitle = r.title.replace(/^A\.[0-9.]+ /, '');
+      const linkLine = `Linked policies: ${r.doc_count} · Linked evidence: ${r.evi_count}`;
+      const sampleLine = `Sample size suggestion: ${sampleHintFor(r.id)}`;
+      const testLine = `Test: (1) Is there a documented procedure? (2) Is it operating in practice — sample evidence below. (3) Has it been reviewed in the last 12 months?`;
+      const findingLine = `Finding template: [Conformance / Observation / Minor NC / Major NC] — [describe what was tested, what was seen, root cause if NC, evidence references]`;
+      const description = `${code} — ${cleanTitle}\n\n${testLine}\n\n${linkLine}\n${sampleLine}\n\n${findingLine}`;
+      ins.run(audit.id, r.id, description);
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'generate_audit_checklist_from_soa', 'audit', audit.id,
+    { count: rows.length }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`,
+    `Generated ${rows.length} checklist item${rows.length === 1 ? '' : 's'} from SoA · sample-size hints + linkage included`));
+});
+
 app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!audit) return res.status(404).send('Not found');
