@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <title>ISMS Audit Pack — <%= preparedFor %></title>
 <style>
+  <% if (typeof serifDataUri !== 'undefined' && serifDataUri) { %>
+  /* Source Serif 4 inlined as data URI — the PDF is rendered by Puppeteer's
+     setContent which doesn't resolve relative URLs, so the font must travel
+     with the markup. Falls back to system serif if the inline read failed. */
+  @font-face {
+    font-family: 'Source Serif 4';
+    font-style: normal;
+    font-weight: 400 700;
+    src: url(<%= serifDataUri %>) format('woff2');
+  }
+  <% } %>
+</style>
+<style>
   /*
    * Audit pack print stylesheet.
    *
@@ -35,10 +48,17 @@
   .num { font-variant-numeric: tabular-nums; }
   .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
 
-  h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.015em; margin: 0; }
-  h1 { font-size: 26pt; font-weight: 700; line-height: 1.1; }
+  /* Display serif for the cover + section titles. Body, KPIs, and tables stay
+     on Inter. The mix of serif display + sans body is the signature of every
+     professional-services report (McKinsey, Carta, Bain). */
+  h1, h2, .cover-title, .section-title {
+    font-family: 'Source Serif 4', 'Iowan Old Style', Charter, Georgia, serif;
+    font-variation-settings: "opsz" 40;
+    color: var(--ink); letter-spacing: -0.005em; margin: 0;
+  }
+  h1 { font-size: 26pt; font-weight: 600; line-height: 1.15; }
   h2 { font-size: 16pt; font-weight: 600; line-height: 1.2; }
-  h3 { font-size: 12pt; font-weight: 600; }
+  h3 { font-size: 12pt; font-weight: 600; color: var(--ink); margin: 0; }
   p { margin: 0 0 8pt 0; }
 
   /* Page-break primitives - every top-level section starts on a fresh page */
@@ -48,9 +68,20 @@
 
   /* COVER */
   .cover { height: calc(297mm - 22mm - 20mm); display: flex; flex-direction: column; padding-top: 4mm; }
-  .cover-rail { height: 6mm; background: var(--brand); border-radius: 3mm; margin-bottom: 22mm; }
-  .cover-eyebrow { font-size: 9.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--brand); margin-bottom: 10mm; }
-  .cover-title { font-size: 34pt; font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 4mm; max-width: 95%; }
+  /* Hairline rule under the firm wordmark — McKinsey-cover energy, not v0
+     gradient-bar energy. */
+  .cover-firm-wordmark {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-variation-settings: "opsz" 48;
+    font-size: 18pt; font-weight: 500;
+    color: var(--brand);
+    letter-spacing: -0.005em;
+    padding-bottom: 6mm;
+    margin-bottom: 18mm;
+    border-bottom: 0.4mm solid var(--brand);
+  }
+  .cover-eyebrow { font-size: 9pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-tertiary); margin-bottom: 6mm; }
+  .cover-title { font-size: 38pt; font-weight: 600; line-height: 1.05; letter-spacing: -0.01em; color: var(--ink); margin-bottom: 4mm; max-width: 95%; font-variation-settings: "opsz" 60; }
   .cover-subtitle { font-size: 13pt; color: var(--text-secondary); margin-bottom: 14mm; max-width: 80%; line-height: 1.45; }
   .cover-spacer { flex: 1; }
   .cover-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6mm 12mm; padding-top: 6mm; border-top: 0.4mm solid var(--border-strong); }
@@ -61,7 +92,7 @@
 
   /* Section headers */
   .section-eyebrow { font-size: 8.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--brand); margin-bottom: 2mm; }
-  .section-title { font-size: 22pt; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: var(--ink); margin-bottom: 2mm; }
+  .section-title { font-size: 24pt; font-weight: 600; letter-spacing: -0.005em; line-height: 1.15; color: var(--ink); margin-bottom: 2mm; }
   .section-subtitle { font-size: 10.5pt; color: var(--text-secondary); margin-bottom: 8mm; max-width: 75%; line-height: 1.5; }
   .section-rule { height: 1mm; background: var(--brand); width: 18mm; border-radius: 0.5mm; margin-bottom: 6mm; }
 
@@ -161,10 +192,10 @@
 <%# ============= COVER ============= %>
 <% if (sections.cover) { %>
 <div class="cover">
-  <div class="cover-rail"></div>
-  <div class="cover-eyebrow"><%= brand.displayName %></div>
+  <div class="cover-firm-wordmark"><%= brand.displayName %></div>
+  <div class="cover-eyebrow">An ISO/IEC 27001:2022 engagement deliverable</div>
   <div class="cover-title">ISMS Audit Pack</div>
-  <div class="cover-subtitle">Statement of Applicability · Risk register · Evidence index · Internal audit · Nonconformities · Management review · Improvement log</div>
+  <div class="cover-subtitle">Prepared for <%= preparedFor %><% if (workspace.scope) { %> · <%= workspace.scope %><% } %></div>
 
   <div class="cover-spacer"></div>
 

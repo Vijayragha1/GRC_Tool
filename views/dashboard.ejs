@@ -3,7 +3,6 @@
 <div class="page-head">
   <div>
     <h1 class="page-title"><%= user.user_type === 'firm' ? 'Portfolio' : 'My workspaces' %></h1>
-    <div class="page-subtitle"><%= user.user_type === 'firm' ? 'All client engagements your firm is managing.' : 'Engagements you have access to.' %></div>
   </div>
   <% if (user.user_type === 'firm') { %>
     <button onclick="document.getElementById('newWs').classList.toggle('hidden')" class="btn btn-primary">New client</button>

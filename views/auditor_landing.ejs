@@ -1,11 +1,8 @@
 <%- include('partials/auditor_header', { title: 'Overview', token, share, workspace, active: 'overview' }) %>
 
 <div class="a-page-head">
-  <h1 class="a-page-title">Welcome, auditor</h1>
-  <div class="a-page-sub">
-    You're looking at <strong><%= workspace.client_name %></strong>'s ISO/IEC 27001:2022 Information Security Management System.
-    Everything below is read-only. Use the tabs above to drill into the Statement of Applicability, risk register, evidence, policies, and internal-audit findings — or download the full audit pack as a single PDF.
-  </div>
+  <h1 class="a-page-title"><%= workspace.client_name %> — ISMS</h1>
+  <div class="a-page-sub">ISO/IEC 27001:2022 · prepared by <%= firm.name || 'the consulting firm of record' %><% if (workspace.scope) { %> · <%= workspace.scope %><% } %></div>
 </div>
 
 <%# Pack download as the headline CTA - it's the single thing most auditors want first %>

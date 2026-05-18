@@ -12,6 +12,7 @@
 <title><%= typeof title !== 'undefined' ? title : 'ISO 27001' %> · ISMS</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/fonts/inter.css">
+<link rel="stylesheet" href="/fonts/source-serif-4.css">
 <style>
   /* Cross-document view transitions on same-origin navigations. The browser
      animates a soft cross-fade between the old and new page so clicking a
@@ -31,9 +32,13 @@
     --text: #0a0a0a;
     --text-secondary: #51525c;
     --text-tertiary: #9c9ca5;
-    --accent: #4f46e5;
-    --accent-soft: #eef2ff;
-    --accent-deep: #3730a3;
+    /* Oxblood accent. Distinctive vs. the indigo every LLM-generated SaaS ships
+       with; reads as "professional services / audit firm" rather than "AI
+       startup demo." Accent-soft is an 8% tint for backgrounds; accent-deep is
+       the hover/pressed state (darker in light theme, lighter in dark). */
+    --accent: #5C0A0A;
+    --accent-soft: rgba(92,10,10,0.08);
+    --accent-deep: #3D0606;
     --ink: #0f0f12;
     --shadow-sm: 0 1px 2px rgba(15,15,18,0.04);
     --shadow-md: 0 1px 3px rgba(15,15,18,0.05), 0 1px 2px rgba(15,15,18,0.03);
@@ -52,9 +57,11 @@
     --text: #f4f4f5;
     --text-secondary: #a1a1aa;
     --text-tertiary: #71717a;
-    --accent: #818cf8;
-    --accent-soft: rgba(129,140,248,0.12);
-    --accent-deep: #c7d2fe;
+    /* Faded oxblood for dark mode — pure #5C0A0A goes invisible on dark bg.
+       D49595 reads as the same hue at sufficient contrast. */
+    --accent: #D49595;
+    --accent-soft: rgba(212,149,149,0.12);
+    --accent-deep: #ECCCCC;
     --ink: #fafafa;
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
     --shadow-md: 0 1px 3px rgba(0,0,0,0.4);
@@ -64,6 +71,16 @@
   html { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
   @supports (font-variation-settings: normal) { html { font-family: 'Inter var', system-ui, sans-serif; } }
   body { background: var(--bg-deep); color: var(--text); font-size: 14px; line-height: 1.5; font-feature-settings: "ss01","cv11"; transition: background 0.15s, color 0.15s; }
+
+  /* Display typography. Source Serif 4 on titles only — gives the product its
+     professional-services voice (think McKinsey / Carta) instead of the
+     Linear / Vercel / generic-SaaS look. Body and tables stay on Inter.
+     Variable font: opsz tuned higher for display sizes. */
+  .page-title, .empty-title, .a-page-title, h1.serif, h2.serif {
+    font-family: 'Source Serif 4', 'Iowan Old Style', Charter, Georgia, 'Times New Roman', serif;
+    font-variation-settings: "opsz" 32;
+    letter-spacing: -0.005em; /* serif needs less negative tracking than sans */
+  }
   *, *::before, *::after { box-sizing: border-box; }
   .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-feature-settings: "ss01"; }
   .num { font-variant-numeric: tabular-nums; }
@@ -100,7 +117,19 @@
   .nav-item.active .ico { opacity: 1; }
   .nav-item-text { transition: opacity 0.12s; }
 
-  .brand-mark { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%); display: inline-flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 11px; box-shadow: 0 1px 0 rgba(255,255,255,0.1) inset, 0 1px 3px rgba(0,0,0,0.2); flex-shrink: 0; }
+  /* Brand-mark is now a serif monogram on a quiet outlined square — no
+     gradient, no hard accent fill. Reads as a wordmark glyph rather than the
+     gradient letter-tile that screams "SaaS demo." */
+  .brand-mark {
+    width: 24px; height: 24px; border-radius: 3px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.22);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.85); font-weight: 500; font-size: 13px;
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-variation-settings: "opsz" 40;
+    flex-shrink: 0;
+  }
 
   /* Sidebar collapsed */
   .app.sidebar-collapsed .sidebar { width: 60px; }
@@ -141,7 +170,8 @@
   .icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
 
   .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-  .page-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink); }
+  /* Page title uses serif now via the .serif rule above; size + weight stay. */
+  .page-title { font-size: 26px; font-weight: 600; line-height: 1.2; color: var(--ink); }
   .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 6px; max-width: 720px; }
 
   /* Surfaces */
@@ -395,12 +425,9 @@
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-section">
-      <a href="/dashboard" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:#fff;">
-        <span class="brand-mark">I</span>
-        <div style="line-height:1.1">
-          <div class="text-xl" style="font-weight:600;letter-spacing:-0.01em;">ISMS</div>
-          <div class="text-eyebrow" style="color:rgba(255,255,255,0.4);font-weight:500;letter-spacing:0.04em;text-transform:uppercase;">ISO 27001</div>
-        </div>
+      <a href="/dashboard" style="display:flex;align-items:baseline;gap:8px;text-decoration:none;color:#fff;line-height:1.1;">
+        <span style="font-family:'Source Serif 4',Georgia,serif;font-variation-settings:'opsz' 40;font-size:22px;font-weight:500;color:#fff;letter-spacing:-0.005em;">ISMS</span>
+        <span style="font-size:10.5px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.45);">27001</span>
       </a>
     </div>
 
