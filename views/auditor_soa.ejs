@@ -1,0 +1,90 @@
+<%- include('partials/auditor_header', { title: 'Statement of Applicability', token, share, workspace, active: 'soa' }) %>
+
+<div class="a-page-head">
+  <h1 class="a-page-title">Statement of Applicability</h1>
+  <div class="a-page-sub">
+    <% if (from === 'snapshot' && snapshot) { %>
+      Frozen snapshot <strong><%= snapshot.label || '(unlabelled)' %></strong> captured <%= fmtDate(snapshot.created_at) %>. SHA-256 <span class="hash"><%= snapshot.payload_hash %></span>.
+    <% } else { %>
+      <strong>Live state</strong> — no snapshot has been captured yet, so this reflects the SoA at the moment of viewing.
+    <% } %>
+  </div>
+</div>
+
+<%# snapshot picker if multiple exist %>
+<% if (allSnaps.length > 1) { %>
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="panel-pad" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <span class="text-eyebrow" style="color:var(--text-secondary);">View another snapshot:</span>
+      <% allSnaps.forEach(s => {
+           const isCurrent = (snapshot && s.id === snapshot.id) || (!snapshot && false);
+      %>
+        <a href="/auditor/<%= token %>/soa/snapshots/<%= s.id %>" class="chip <%= isCurrent ? 'chip-accent' : 'chip-neutral' %>" style="text-decoration:none;font-weight:500;"><%= s.label || '(unlabelled)' %> · <%= fmtDate(s.created_at) %></a>
+      <% }) %>
+    </div>
+  </div>
+<% } %>
+
+<%# applicability counts %>
+<div class="kpi-row">
+  <div class="kpi brand">
+    <div class="kpi-label">Controls assessed</div>
+    <div class="kpi-num"><%= counts.total %></div>
+    <div class="kpi-meta">across Annex A</div>
+  </div>
+  <div class="kpi good">
+    <div class="kpi-label">Included</div>
+    <div class="kpi-num"><%= counts.included %></div>
+    <div class="kpi-meta"><%= counts.total ? Math.round(100 * counts.included / counts.total) : 0 %>% of catalogue</div>
+  </div>
+  <div class="kpi <%= counts.excluded > 0 ? 'warn' : '' %>">
+    <div class="kpi-label">Excluded</div>
+    <div class="kpi-num"><%= counts.excluded %></div>
+    <div class="kpi-meta">with justifications below</div>
+  </div>
+  <div class="kpi <%= counts.undecided > 0 ? 'bad' : 'good' %>">
+    <div class="kpi-label">Undecided</div>
+    <div class="kpi-num"><%= counts.undecided %></div>
+    <div class="kpi-meta">should be 0 by audit</div>
+  </div>
+</div>
+
+<%# main table %>
+<% if (!rows.length) { %>
+  <div class="empty-pane">
+    <div class="empty-pane-title">No controls assessed yet</div>
+    <div>The SoA is empty — the workspace has not yet started Annex A applicability decisions.</div>
+  </div>
+<% } else { %>
+  <div class="panel">
+    <table class="t">
+      <thead><tr>
+        <th style="width:90px;">Control</th>
+        <th>Title</th>
+        <th style="width:110px;">Applicability</th>
+        <th style="width:140px;">Status</th>
+        <th>Justification</th>
+      </tr></thead>
+      <tbody>
+        <% rows.forEach(r => {
+             const justification = r.applicability === 'excluded' ? r.exclusion_justification : r.inclusion_justification;
+             const appKind = r.applicability === 'included' ? 'good' : r.applicability === 'excluded' ? 'bad' : 'neutral';
+             const statusS = String(r.status || '').toLowerCase();
+             const statusKind = ['implemented','done','verified'].includes(statusS) ? 'good'
+                              : ['partial','partially implemented','partially-implemented','in review','in_review'].includes(statusS) ? 'warn'
+                              : ['not implemented','not-implemented','not assessed','not_assessed'].includes(statusS) ? 'bad' : 'neutral';
+        %>
+          <tr>
+            <td class="mono meta"><%= String(r.id || '').replace('annex-','').toUpperCase() %></td>
+            <td><%= r.title %></td>
+            <td><span class="chip chip-<%= appKind %>"><%= r.applicability %></span></td>
+            <td><span class="chip chip-<%= statusKind %>"><%= r.status %></span></td>
+            <td class="meta"><%= (justification || '').slice(0, 240) %><%= justification && justification.length > 240 ? '…' : '' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('partials/auditor_footer') %>

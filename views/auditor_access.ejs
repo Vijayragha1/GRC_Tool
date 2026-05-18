@@ -1,0 +1,188 @@
+<%- include('partials/header', { title: 'Auditor access', user, ws, active: 'auditor-access' }) %>
+
+<style>
+  .share-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
+  @media (max-width: 1100px) { .share-grid { grid-template-columns: 1fr; } }
+
+  .share-row {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  }
+  .share-row:last-child { border-bottom: none; }
+  .share-row.revoked { opacity: 0.55; background: var(--bg-subtle); }
+  .share-label { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 2px; }
+  .share-meta { font-size: 11.5px; color: var(--text-tertiary); }
+  .share-meta strong { color: var(--text-secondary); font-weight: 500; }
+
+  .share-url-row { display: flex; gap: 6px; margin-top: 8px; }
+  .share-url-input {
+    flex: 1; padding: 6px 9px;
+    border: 1px solid var(--border-strong); border-radius: 5px;
+    font-family: ui-monospace, monospace; font-size: 11.5px;
+    background: var(--bg-subtle); color: var(--text);
+  }
+  .copy-btn { font-size: 11.5px; padding: 5px 10px; }
+  .copy-btn.copied { background: rgba(22,163,74,0.10) !important; color: #15803d !important; border-color: rgba(22,163,74,0.30) !important; }
+
+  .log-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .log-row:last-child { border-bottom: none; }
+  .log-time { font-size: 10.5px; color: var(--text-tertiary); font-family: ui-monospace, monospace; }
+  .log-action { font-size: 12px; color: var(--text); margin-top: 2px; }
+  .log-detail { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Auditor access</h1>
+    <div class="page-subtitle">
+      Mint a time-bound magic link to share read-only access to this workspace with an external auditor. They see SoA, risks, evidence (with download), policies, audits, NCs, and can download the full PDF audit pack — nothing else, no edits. Every access is logged.
+    </div>
+  </div>
+</div>
+
+<div class="share-grid">
+  <%# ===== left: active + revoked shares ===== %>
+  <div>
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head">
+        <h2>Active shares</h2>
+        <span class="meta text-xs"><%= shares.filter(s => !s.revoked_at).length %> active · <%= shares.filter(s => s.revoked_at).length %> revoked</span>
+      </div>
+      <% if (!shares.length) { %>
+        <div class="empty-state">
+          <div class="empty-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div class="empty-title">No shares yet</div>
+          <div class="empty-sub">Create your first auditor link on the right. They expire after the duration you set and can be revoked at any time.</div>
+        </div>
+      <% } else { %>
+        <% shares.forEach(s => {
+             const url = `${baseUrl}/auditor/${s.token}`;
+             const isNew = typeof newShareId !== 'undefined' && Number(newShareId) === s.id;
+             const expired = !s.revoked_at && s.expires_at && new Date(s.expires_at) < new Date();
+        %>
+          <div class="share-row <%= s.revoked_at ? 'revoked' : '' %>" id="share-<%= s.id %>">
+            <div>
+              <div class="share-label"><%= s.label || '(unlabelled)' %></div>
+              <div class="share-meta">
+                Created <strong><%= s.created_at.slice(0,10) %></strong> by <strong><%= s.creator || '-' %></strong>
+                <% if (s.revoked_at) { %> · <span style="color:#b91c1c;font-weight:500;">revoked <%= s.revoked_at.slice(0,10) %></span>
+                <% } else if (expired) { %> · <span style="color:#b91c1c;font-weight:500;">expired <%= String(s.expires_at).slice(0,10) %></span>
+                <% } else if (s.expires_at) { %> · expires <strong><%= String(s.expires_at).slice(0,10) %></strong>
+                <% } %>
+                · <strong><%= s.access_count %></strong> access<%= s.access_count === 1 ? '' : 'es' %>
+                <% if (s.last_accessed_at) { %> · last <%= String(s.last_accessed_at).slice(0,16).replace('T',' ') %><% } %>
+              </div>
+              <% if (!s.revoked_at && !expired) { %>
+                <div class="share-url-row">
+                  <input type="text" readonly class="share-url-input" value="<%= url %>" onclick="this.select()">
+                  <button class="btn btn-secondary btn-xs copy-btn" type="button" data-clip="<%= url %>">Copy</button>
+                  <a href="<%= url %>" target="_blank" class="btn btn-secondary btn-xs">Open</a>
+                </div>
+                <% if (isNew) { %>
+                  <div style="font-size:11.5px;color:#15803d;margin-top:6px;font-weight:500;">
+                    ✓ Link created. Copy it and send to the auditor.
+                  </div>
+                <% } %>
+              <% } %>
+            </div>
+            <% if (!s.revoked_at) { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/auditor-access/<%= s.id %>/revoke" onsubmit="return appConfirmForm(event, 'Revoke this auditor link? They will lose access immediately. The link cannot be unrevoked - mint a new one if you need to share again.');">
+                <button class="btn btn-ghost btn-xs text-danger">Revoke</button>
+              </form>
+            <% } %>
+          </div>
+        <% }) %>
+      <% } %>
+    </div>
+
+    <%# Access log %>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Recent access log</h2>
+        <span class="meta text-xs">Last <%= recentLog.length %> auditor event<%= recentLog.length === 1 ? '' : 's' %></span>
+      </div>
+      <div class="panel-pad">
+        <% if (!recentLog.length) { %>
+          <div class="meta text-md">No auditor accesses logged yet.</div>
+        <% } else { %>
+          <% recentLog.forEach(ev => {
+               let detail = '';
+               try { detail = JSON.parse(ev.details || '{}'); } catch (_) { detail = {}; }
+               const actionLabel = {
+                 auditor_access:         'Page view',
+                 auditor_download_evidence: 'Evidence file downloaded',
+                 auditor_download_pack:  'Audit pack PDF downloaded',
+                 create_auditor_share:   'Share created (by you)',
+                 revoke_auditor_share:   'Share revoked (by you)'
+               }[ev.action] || ev.action;
+          %>
+            <div class="log-row">
+              <div class="log-time"><%= String(ev.created_at).slice(0,19).replace('T',' ') %></div>
+              <div class="log-action"><strong><%= actionLabel %></strong><% if (ev.entity_type === 'auditor_share' && ev.entity_id) { %> · share #<%= ev.entity_id %><% } %></div>
+              <% if (detail && (detail.path || detail.filename || detail.label)) { %>
+                <div class="log-detail">
+                  <% if (detail.path) { %><%= detail.path %><% } %>
+                  <% if (detail.filename) { %><%= detail.filename %><% } %>
+                  <% if (detail.label) { %><%= detail.label %><% } %>
+                  <% if (detail.ip) { %> · <%= detail.ip %><% } %>
+                </div>
+              <% } %>
+            </div>
+          <% }) %>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <%# ===== right: create share form ===== %>
+  <div style="position:sticky;top:20px;">
+    <div class="panel">
+      <div class="panel-head"><h2>Create new auditor link</h2></div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/auditor-access" class="panel-pad">
+        <div style="margin-bottom:12px;">
+          <label class="label">Label · for your records</label>
+          <input class="input" name="label" placeholder="e.g., Stage 2 audit · BSI · 2026-06" required maxlength="120">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="label">Expires after</label>
+          <select class="select" name="expires_days">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+            <option value="180">180 days</option>
+          </select>
+          <div class="meta text-xs" style="margin-top:4px;">Auditors typically need 30 days; you can revoke earlier.</div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Generate link
+        </button>
+      </form>
+    </div>
+
+    <div class="meta text-sm" style="margin-top:14px;line-height:1.55;padding:0 4px;">
+      <strong>What auditors see:</strong> SoA (current or any snapshot), risk register + heatmap, evidence index with SHA-256 hashes (and downloads), policies/procedures, internal audit findings, nonconformities, and the full PDF audit pack. They cannot edit anything.
+    </div>
+  </div>
+</div>
+
+<script>
+  // Copy-to-clipboard for share URLs. One-shot "Copied!" feedback for 1.5s.
+  document.querySelectorAll('.copy-btn[data-clip]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.clip);
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+      } catch (e) { /* fall back: the input is selectable */ }
+    });
+  });
+</script>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,260 @@
+<%- include('partials/header', { title: 'Policy templates', user, ws, active: 'templates' }) %>
+
+<style>
+  /* Three-stat header so the consultant sees adoption progress at a glance.
+     Visually plays the role the dashboard KPI tiles play - same health rails
+     so the look is consistent across the product. */
+  .lib-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+  .lib-stat { padding: 14px 18px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; position: relative; overflow: hidden; }
+  .lib-stat::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--border-strong); }
+  .lib-stat.good::before { background: #16a34a; }
+  .lib-stat.warn::before { background: #ca8a04; }
+  .lib-stat.brand::before { background: var(--accent); }
+  .lib-stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+  .lib-stat-num { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .lib-stat-meta { font-size: 11.5px; color: var(--text-tertiary); margin-top: 3px; }
+
+  /* Filter row: search + tier chips + category chips */
+  .lib-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
+  .lib-search { position: relative; flex: 1; min-width: 220px; }
+  .lib-search input { width: 100%; padding: 7px 11px 7px 32px; }
+  .lib-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; }
+  .chip-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--bg-muted); color: var(--text-secondary); border: 1px solid transparent; cursor: pointer; user-select: none; transition: all 0.12s; }
+  .chip-toggle:hover { background: var(--bg-subtle); color: var(--text); }
+  .chip-toggle.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  [data-theme="dark"] .chip-toggle.active { background: var(--bg); color: var(--ink); border-color: var(--bg); }
+
+  /* Tier headers above each group of cards */
+  .tier-head { display: flex; align-items: center; gap: 10px; margin: 24px 0 12px; }
+  .tier-icon { width: 22px; height: 22px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .tier-icon.mandatory { background: rgba(220,38,38,0.10); color: #b91c1c; }
+  .tier-icon.expected  { background: rgba(202,138,4,0.10); color: #b45309; }
+  .tier-icon.recommended { background: rgba(113,113,122,0.10); color: #52525b; }
+  .tier-head h2 { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .tier-head .tier-sub { font-size: 12px; color: var(--text-tertiary); margin-left: auto; }
+
+  /* Card grid */
+  .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .tpl-card { padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; transition: all 0.12s; position: relative; }
+  .tpl-card:hover { border-color: var(--text-tertiary); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .tpl-card.adopted { border-color: rgba(22,163,74,0.30); background: rgba(22,163,74,0.025); }
+  .tpl-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .tpl-card-cat { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); padding: 2px 7px; background: var(--bg-muted); border-radius: 4px; }
+  .tpl-card-tier { font-size: 12px; }
+  .tpl-card-name { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.35; letter-spacing: -0.005em; }
+  .tpl-card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .tpl-card-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tpl-card-control { font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 6px; background: var(--accent-soft); color: var(--accent-deep); border-radius: 3px; font-weight: 500; }
+  .tpl-card-control.more { background: var(--bg-muted); color: var(--text-tertiary); }
+  .tpl-card-control.empty { background: var(--bg-muted); color: var(--text-tertiary); font-style: italic; font-family: inherit; }
+  .tpl-card-actions { display: flex; gap: 6px; align-items: center; margin-top: auto; padding-top: 6px; }
+  .tpl-card-actions .preview-btn { flex: 1; }
+  .tpl-adopted-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(22,163,74,0.10); color: #15803d; border: 1px solid rgba(22,163,74,0.22); border-radius: 999px; font-size: 10.5px; font-weight: 600; }
+
+  .empty-pane { padding: 40px; text-align: center; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-tertiary); }
+  .empty-pane-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+
+  /* Bulk-adopt CTA: prominent for kickoff, dims after all mandatory adopted. */
+  .bulk-cta-btn .num { background: rgba(255,255,255,0.18); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-left: 4px; }
+  [data-theme="dark"] .bulk-cta-btn .num { background: rgba(0,0,0,0.18); }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Policy template library</h1>
+    <div class="page-subtitle">Curated, ISO 27001:2022-aligned policy and procedure starters. Adopt one and the relevant Annex A controls auto-link to the new document. Edit + approve from the Documents page.</div>
+  </div>
+  <div class="row">
+    <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs" title="Go to the documents list">View documents</a>
+    <% const missingMandatory = counts.mandatory - counts.mandatoryAdopted; %>
+    <% if (missingMandatory > 0) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory" style="display:inline;" onsubmit="return appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this workspace? Each gets created as a draft document with Annex A controls auto-linked.');">
+        <button class="btn btn-primary bulk-cta-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Adopt all mandatory<span class="num"><%= missingMandatory %></span>
+        </button>
+      </form>
+    <% } else { %>
+      <span class="btn btn-ghost btn-xs" style="cursor:default;color:#15803d;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        All mandatory adopted
+      </span>
+    <% } %>
+  </div>
+</div>
+
+<%# ===== adoption stats ===== %>
+<div class="lib-stats">
+  <div class="lib-stat brand">
+    <div class="lib-stat-label">Templates in library</div>
+    <div class="lib-stat-num"><%= counts.total %></div>
+    <div class="lib-stat-meta">curated · ISO 27001:2022-aligned</div>
+  </div>
+  <div class="lib-stat <%= counts.mandatoryAdopted >= counts.mandatory ? 'good' : 'warn' %>">
+    <div class="lib-stat-label">Mandatory adopted</div>
+    <div class="lib-stat-num"><%= counts.mandatoryAdopted %> <span class="text-tertiary text-md">/ <%= counts.mandatory %></span></div>
+    <div class="lib-stat-meta"><%= counts.mandatory - counts.mandatoryAdopted %> remaining</div>
+  </div>
+  <div class="lib-stat <%= counts.adopted > 0 ? 'good' : '' %>">
+    <div class="lib-stat-label">Total adopted</div>
+    <div class="lib-stat-num"><%= counts.adopted %></div>
+    <div class="lib-stat-meta">across all tiers</div>
+  </div>
+  <div class="lib-stat">
+    <div class="lib-stat-label">Coverage of catalog</div>
+    <div class="lib-stat-num"><%= counts.total ? Math.round(100 * counts.adopted / counts.total) : 0 %>%</div>
+    <div class="lib-stat-meta">drives clause 7.5 compliance</div>
+  </div>
+</div>
+
+<%# ===== filter row ===== %>
+<div class="lib-filter">
+  <div class="lib-search">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="input" id="tplSearch" type="search" placeholder="Search by name or control - e.g. 'access', 'A.8.1', 'incident'">
+  </div>
+  <div class="row" style="gap:6px;">
+    <span class="chip-toggle active" data-filter-tier="all">All tiers</span>
+    <span class="chip-toggle" data-filter-tier="mandatory">★ Mandatory</span>
+    <span class="chip-toggle" data-filter-tier="expected">◆ Expected</span>
+    <span class="chip-toggle" data-filter-tier="recommended">· Recommended</span>
+  </div>
+  <div class="row" style="gap:6px;">
+    <span class="chip-toggle active" data-filter-cat="all">All types</span>
+    <% ['policy','procedure','plan','form','record'].forEach(c => { %>
+      <span class="chip-toggle" data-filter-cat="<%= c %>" style="text-transform:capitalize;"><%= c %></span>
+    <% }) %>
+  </div>
+  <span class="meta text-md" id="resultCount"><%= counts.total %> templates</span>
+</div>
+
+<%# ===== sections by tier ===== %>
+<% ['mandatory','expected','recommended'].forEach(tier => {
+     const rowsInTier = templates.filter(t => (t.tier || 'recommended') === tier);
+     if (!rowsInTier.length) return;
+     const adoptedInTier = rowsInTier.filter(t => t.adopted).length;
+%>
+  <div class="tier-head" data-tier-section="<%= tier %>">
+    <div class="tier-icon <%= tier %>"><%= tier === 'mandatory' ? '★' : tier === 'expected' ? '◆' : '·' %></div>
+    <h2 style="text-transform:capitalize;"><%= tier %></h2>
+    <span class="tier-sub"><%= adoptedInTier %> of <%= rowsInTier.length %> adopted<% if (tier === 'mandatory') { %> · required by ISO for certification<% } else if (tier === 'expected') { %> · auditors expect these<% } %></span>
+  </div>
+  <div class="tpl-grid" data-tier-grid="<%= tier %>">
+    <% rowsInTier.forEach(t => { %>
+      <div class="tpl-card <%= t.adopted ? 'adopted' : '' %>"
+           data-name="<%= t.name.toLowerCase() %>"
+           data-desc="<%= (t.description || '').toLowerCase() %>"
+           data-controls="<%= t.controls.join(' ').toLowerCase() %>"
+           data-tier="<%= t.tier || 'recommended' %>"
+           data-cat="<%= t.category || '' %>">
+        <div class="tpl-card-head">
+          <span class="tpl-card-cat"><%= t.category || '—' %></span>
+          <% if (t.adopted) { %>
+            <span class="tpl-adopted-pill">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+              Adopted
+            </span>
+          <% } else if (t.tier === 'mandatory') { %>
+            <span class="tpl-card-tier" style="color:#b91c1c;font-weight:700;" title="ISO 27001 mandates this document">★</span>
+          <% } else if (t.tier === 'expected') { %>
+            <span class="tpl-card-tier" style="color:#b45309;font-weight:700;" title="Auditors expect this document">◆</span>
+          <% } %>
+        </div>
+        <div class="tpl-card-name"><%= t.name %></div>
+        <div class="tpl-card-desc"><%= t.description || '(no description)' %></div>
+        <div class="tpl-card-controls">
+          <% if (t.controls.length === 0 && t.clauses.length === 0) { %>
+            <span class="tpl-card-control empty">No auto-link mappings — adopt and link manually</span>
+          <% } else { %>
+            <% (t.controls.slice(0, 5)).forEach(c => { %>
+              <span class="tpl-card-control"><%= c.replace('annex-a.','A.').toUpperCase() %></span>
+            <% }) %>
+            <% if (t.controls.length > 5) { %>
+              <span class="tpl-card-control more">+<%= t.controls.length - 5 %> more</span>
+            <% } %>
+            <% if (t.clauses.length) { %>
+              <% (t.clauses.slice(0, 2)).forEach(c => { %>
+                <span class="tpl-card-control" style="background:rgba(202,138,4,0.10);color:#b45309;"><%= c.replace('clause-','Cl. ') %></span>
+              <% }) %>
+            <% } %>
+          <% } %>
+        </div>
+        <div class="tpl-card-actions">
+          <a href="/workspaces/<%= ws.id %>/templates/<%= t.id %>" class="btn btn-secondary btn-xs preview-btn">Preview</a>
+          <% if (t.adopted) { %>
+            <a href="/workspaces/<%= ws.id %>/documents/<%= t.adopted.doc_id %>" class="btn btn-ghost btn-xs">Open doc →</a>
+          <% } else { %>
+            <form method="POST" action="/workspaces/<%= ws.id %>/templates/<%= t.id %>/adopt" style="display:inline;">
+              <button class="btn btn-primary btn-xs">Adopt</button>
+            </form>
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% }) %>
+
+<div class="empty-pane" id="emptyState" style="display:none;">
+  <div class="empty-pane-title">No templates match your filters</div>
+  <div>Try clearing the search box or selecting "All tiers" / "All types".</div>
+</div>
+
+<script>
+  // Client-side filter: search, tier, category. Snappy across 74 cards because
+  // we just toggle data-attrs and CSS display, no re-render.
+  (function() {
+    const search = document.getElementById('tplSearch');
+    const tierChips = document.querySelectorAll('[data-filter-tier]');
+    const catChips  = document.querySelectorAll('[data-filter-cat]');
+    const cards     = document.querySelectorAll('.tpl-card');
+    const sections  = document.querySelectorAll('[data-tier-section]');
+    const grids     = document.querySelectorAll('[data-tier-grid]');
+    const empty     = document.getElementById('emptyState');
+    const count     = document.getElementById('resultCount');
+
+    let activeTier = 'all', activeCat = 'all', activeSearch = '';
+
+    function apply() {
+      let visible = 0;
+      const visiblePerTier = { mandatory: 0, expected: 0, recommended: 0 };
+      cards.forEach(card => {
+        const tier = card.dataset.tier;
+        const cat = card.dataset.cat;
+        const hay = card.dataset.name + ' ' + card.dataset.desc + ' ' + card.dataset.controls;
+        const tierOk = activeTier === 'all' || tier === activeTier;
+        const catOk  = activeCat === 'all'  || cat === activeCat;
+        const searchOk = !activeSearch || hay.includes(activeSearch);
+        const show = tierOk && catOk && searchOk;
+        card.style.display = show ? '' : 'none';
+        if (show) { visible++; visiblePerTier[tier]++; }
+      });
+      // Hide entire tier headers if no cards in that tier are visible
+      sections.forEach(s => {
+        const tier = s.dataset.tierSection;
+        s.style.display = visiblePerTier[tier] > 0 ? '' : 'none';
+      });
+      grids.forEach(g => {
+        const tier = g.dataset.tierGrid;
+        g.style.display = visiblePerTier[tier] > 0 ? '' : 'none';
+      });
+      empty.style.display = visible === 0 ? '' : 'none';
+      count.textContent = visible + ' template' + (visible === 1 ? '' : 's');
+    }
+
+    search.addEventListener('input', () => { activeSearch = search.value.trim().toLowerCase(); apply(); });
+    tierChips.forEach(c => c.addEventListener('click', () => {
+      tierChips.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      activeTier = c.dataset.filterTier;
+      apply();
+    }));
+    catChips.forEach(c => c.addEventListener('click', () => {
+      catChips.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      activeCat = c.dataset.filterCat;
+      apply();
+    }));
+  })();
+</script>
+
+<%- include('partials/footer') %>

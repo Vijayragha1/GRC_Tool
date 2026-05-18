@@ -1332,6 +1332,42 @@ function init() {
   EXPECTED_PATTERNS.forEach(p => tagOne.run('expected', `%${p}%`));
   MANDATORY_PATTERNS.forEach(p => tagOne.run('mandatory', `%${p}%`));
 
+  // Auditor magic-link shares. The consultant mints a token, hands the URL to
+  // an external auditor, and revokes when done. Every access goes to audit_log
+  // (see entity_type='auditor_share') so we have a forensic trail.
+  db.exec(`CREATE TABLE IF NOT EXISTS auditor_shares (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    label TEXT,
+    expires_at DATETIME,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_accessed_at DATETIME,
+    access_count INTEGER DEFAULT 0,
+    revoked_at DATETIME,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_auditor_shares_ws ON auditor_shares(workspace_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_auditor_shares_token ON auditor_shares(token);`);
+
+  // Annex A / clause refs derived from each system template's description.
+  // Stored as JSON so the adoption flow can auto-link document_controls without
+  // re-parsing every adoption. Re-extracted on every boot so editing a
+  // template description propagates the mapping with zero migration work.
+  addColumnIfMissing('doc_templates', 'controls', 'TEXT');
+  addColumnIfMissing('doc_templates', 'clauses', 'TEXT');
+  const refsExtractor = require('./lib/template-refs');
+  const refsUpd = db.prepare(`UPDATE doc_templates SET controls=?, clauses=? WHERE id=?`);
+  const refsTx = db.transaction(() => {
+    db.prepare(`SELECT id, description FROM doc_templates WHERE is_system=1`).all().forEach(t => {
+      const { controls, clauses } = refsExtractor.extractRefs(t.description || '');
+      refsUpd.run(JSON.stringify(controls), JSON.stringify(clauses), t.id);
+    });
+  });
+  refsTx();
+
   // Audits - programme link, competence, independence
   ['programme_id INTEGER REFERENCES audit_programmes(id) ON DELETE SET NULL',
    'auditor_competence TEXT', 'auditor_independence TEXT',

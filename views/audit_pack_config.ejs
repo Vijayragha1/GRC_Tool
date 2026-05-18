@@ -1,0 +1,213 @@
+<%- include('partials/header', { title: 'Audit pack', user, ws, active: 'audit-pack' }) %>
+
+<style>
+  .pack-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+  @media (max-width: 1100px) { .pack-grid { grid-template-columns: 1fr; } }
+
+  /* Section toggle list - each section a card with what's inside + on/off */
+  .section-toggle { display: grid; grid-template-columns: 32px 1fr 44px; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .section-toggle:last-child { border-bottom: none; }
+  .section-toggle .ico { width: 30px; height: 30px; border-radius: 7px; background: var(--bg-muted); display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); }
+  .section-toggle.on .ico { background: var(--accent-soft); color: var(--accent); }
+  .section-toggle-title { font-size: 13.5px; font-weight: 500; color: var(--ink); }
+  .section-toggle-sub { font-size: 11.5px; color: var(--text-tertiary); margin-top: 2px; }
+
+  /* iOS-style switch */
+  .switch { position: relative; width: 36px; height: 20px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: var(--border-strong); transition: 0.18s; border-radius: 999px; }
+  .switch .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; top: 2px; background: white; transition: 0.18s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider:before { transform: translateX(16px); }
+
+  /* Sticky generate-pane on the right */
+  .gen-pane { position: sticky; top: 20px; }
+  .gen-pane .generate-btn {
+    width: 100%; padding: 12px 16px; font-size: 14px; font-weight: 600; letter-spacing: -0.005em;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .swatch { display: inline-block; width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); vertical-align: -4px; margin-right: 6px; }
+
+  /* Color picker row */
+  .color-row { display: grid; grid-template-columns: 48px 1fr; gap: 10px; align-items: center; }
+  .color-row input[type="color"] { width: 48px; height: 38px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); cursor: pointer; }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Audit pack</h1>
+    <div class="page-subtitle">One-click PDF bundle of every artefact an auditor expects. Pick what's included, set the cover branding, and generate. The same content that consultants typically hand-assemble in 8-15 hours per engagement.</div>
+  </div>
+</div>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/audit-pack/pdf" id="packForm">
+  <div class="pack-grid">
+
+    <%# ===== left column: sections + branding ===== %>
+    <div>
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="panel-head">
+          <h2>What to include</h2>
+          <span class="meta text-xs">Toggle sections off if the auditor doesn't need them</span>
+        </div>
+        <div>
+          <%
+            const sectionDefs = [
+              { key: 'cover',         title: 'Cover page',             sub: 'Firm brand, client name, date, SoA snapshot reference',                     icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' },
+              { key: 'summary',       title: 'Executive summary',      sub: 'KPI tiles: applicable controls, open risks, NCs, evidence count, MRMs',     icon: 'M3 3v18h18 M7 14l4-4 4 4 5-5' },
+              { key: 'soa',           title: 'Statement of Applicability', sub: 'Full SoA table from a frozen snapshot (or live state if no snapshot)', icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' },
+              { key: 'risks',         title: 'Risk register + heatmap', sub: 'Every risk with L·I, treatment, owner; inherent-risk heatmap',              icon: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01' },
+              { key: 'evidence',      title: 'Evidence index',         sub: 'Filename, linked control, SHA-256, size, uploader, date',                  icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3' },
+              { key: 'audits',        title: 'Internal audit programme', sub: 'Audits + findings table per audit',                                       icon: 'M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z M21 21l-4.35-4.35' },
+              { key: 'ncs',           title: 'Nonconformity log',      sub: 'Every NC with severity, status, root cause, corrective action',             icon: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z' },
+              { key: 'mrms',          title: 'Management review',      sub: 'Each MRM with attendees, decisions, action items',                          icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' },
+              { key: 'improvements',  title: 'Improvement log',        sub: 'Improvements with source, owner, due date, status',                         icon: 'M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01l-3-3' },
+              { key: 'audit_trail',   title: 'Audit trail · recent',   sub: 'Most-recent 50 events; full chain is verifiable in-tool',                   icon: 'M12 8v4l3 3 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z' }
+            ];
+          %>
+          <% sectionDefs.forEach(s => { %>
+            <label class="section-toggle on" data-key="<%= s.key %>">
+              <div class="ico">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="<%= s.icon %>"/></svg>
+              </div>
+              <div>
+                <div class="section-toggle-title"><%= s.title %></div>
+                <div class="section-toggle-sub"><%= s.sub %></div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" name="sections" value="<%= s.key %>" checked>
+                <span class="slider"></span>
+              </label>
+            </label>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="panel-head">
+          <h2>Statement of Applicability snapshot</h2>
+          <span class="meta text-xs">Pick the version to bundle</span>
+        </div>
+        <div class="panel-pad">
+          <% if (snapshots.length === 0) { %>
+            <div class="meta text-md" style="line-height:1.55;">
+              No SoA snapshots exist yet. The pack will include the <strong>live SoA state</strong> with a note explaining it isn't frozen.
+              <a href="/workspaces/<%= ws.id %>/soa/snapshots" class="link" style="margin-left:6px;">Capture one →</a>
+            </div>
+          <% } else { %>
+            <label class="label">Snapshot</label>
+            <select class="select" name="snapshotId">
+              <option value="">Most recent (<%= snapshots[0].label || snapshots[0].created_at.slice(0,10) %>)</option>
+              <% snapshots.forEach(s => { %>
+                <option value="<%= s.id %>"><%= s.label || '(unlabelled)' %> · <%= s.created_at.slice(0,10) %> · <%= s.included_count %> applicable</option>
+              <% }) %>
+            </select>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Branding</h2>
+          <span class="meta text-xs">Cover page · accent color</span>
+        </div>
+        <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label class="label">Firm / display name on cover</label>
+            <input class="input" name="brandDisplayName" value="<%= ws.brand_display_name || firmName || '' %>" placeholder="e.g., Smith Consulting">
+          </div>
+          <div>
+            <label class="label">Prepared for</label>
+            <input class="input" name="preparedFor" value="<%= ws.client_name || '' %>" placeholder="Client name">
+          </div>
+          <div>
+            <label class="label">Prepared by</label>
+            <input class="input" name="preparedBy" value="<%= firmName || '' %>" placeholder="Your firm name">
+          </div>
+          <div>
+            <label class="label">Cover accent color</label>
+            <div class="color-row">
+              <input type="color" name="brandPrimaryColor" value="<%= ws.brand_primary_color || '#4f46e5' %>" id="colorPicker">
+              <input class="input mono" name="brandPrimaryColorText" value="<%= ws.brand_primary_color || '#4f46e5' %>" placeholder="#4f46e5" id="colorText">
+            </div>
+          </div>
+          <div class="col-full">
+            <label class="label">Confidentiality footer line</label>
+            <input class="input" name="confidentialityLabel" value="CONFIDENTIAL · For audit and management review purposes only">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%# ===== right column: sticky generate pane ===== %>
+    <div class="gen-pane">
+      <div class="panel">
+        <div class="panel-head"><h2>Generate</h2></div>
+        <div class="panel-pad">
+          <div class="meta text-md" style="line-height:1.55;margin-bottom:14px;">
+            Builds a single, branded PDF. Typical generation time is 3-6 seconds for a populated workspace.
+          </div>
+          <button class="btn btn-primary generate-btn" type="submit">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Generate PDF
+          </button>
+          <a href="/workspaces/<%= ws.id %>/audit-pack/preview" target="_blank" class="btn btn-secondary btn-xs" style="width:100%;justify-content:center;margin-top:10px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Preview HTML
+          </a>
+          <a href="/workspaces/<%= ws.id %>/audit-pack/zip" class="btn btn-ghost btn-xs" style="width:100%;justify-content:center;margin-top:8px;" title="Companion ZIP: raw CSVs, DOCX policies, evidence files - for an auditor who wants to grep through the underlying data">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download companion ZIP
+          </a>
+
+          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+            <div class="text-eyebrow text-tertiary" style="margin-bottom:8px;">Pack contents</div>
+            <div class="meta text-sm" style="line-height:1.7;" id="contentList">
+              <div data-key="cover">✓ Cover page</div>
+              <div data-key="summary">✓ Executive summary</div>
+              <div data-key="soa">✓ SoA · <%= snapshots.length %> snapshot<%= snapshots.length === 1 ? '' : 's' %></div>
+              <div data-key="risks">✓ Risk register · <%= riskCount %> risk<%= riskCount === 1 ? '' : 's' %></div>
+              <div data-key="evidence">✓ Evidence index · <%= evidenceCount %> file<%= evidenceCount === 1 ? '' : 's' %></div>
+              <div data-key="audits">✓ Internal audit · <%= auditCount %></div>
+              <div data-key="ncs">✓ Nonconformities · <%= ncCount %></div>
+              <div data-key="mrms">✓ Management reviews · <%= mrmCount %></div>
+              <div data-key="improvements">✓ Improvements · <%= improvementCount %></div>
+              <div data-key="audit_trail">✓ Audit trail</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</form>
+
+<script>
+  // Keep the color text input synced with the picker, and gray out content-list
+  // rows whose section toggle is off so the user knows what'll actually print.
+  (function() {
+    const colorPicker = document.getElementById('colorPicker');
+    const colorText   = document.getElementById('colorText');
+    if (colorPicker && colorText) {
+      colorPicker.addEventListener('input', () => { colorText.value = colorPicker.value; });
+      colorText.addEventListener('change', () => {
+        const v = (colorText.value || '').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) colorPicker.value = v;
+      });
+    }
+    const toggles = document.querySelectorAll('input[name="sections"]');
+    const contentRows = document.querySelectorAll('#contentList > [data-key]');
+    function sync() {
+      toggles.forEach(t => {
+        const lbl = t.closest('.section-toggle');
+        if (lbl) lbl.classList.toggle('on', t.checked);
+        const row = document.querySelector('#contentList > [data-key="' + t.value + '"]');
+        if (row) { row.style.opacity = t.checked ? '1' : '0.35'; row.firstChild && (row.firstChild.textContent = (t.checked ? '✓' : '✕') + row.firstChild.textContent.slice(1)); }
+      });
+    }
+    toggles.forEach(t => t.addEventListener('change', sync));
+    sync();
+  })();
+</script>
+
+<%- include('partials/footer') %>

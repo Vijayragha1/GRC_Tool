@@ -27,6 +27,8 @@ const fts = require('./lib/fts');
 const reports = require('./lib/reports');
 const backup = require('./lib/backup');
 const keyrotation = require('./lib/keyrotation');
+const csvImport = require('./lib/csv-import');
+const auditPack = require('./lib/audit-pack');
 
 init();
 // Force master key generation eagerly so first request doesn't block.
@@ -100,6 +102,13 @@ const upload = multer({
     }
   }),
   limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+// CSV import uploader: memory-only, ~5MB cap, single file. Used by the
+// asset/risk CSV import preview routes. Parsed in-process; never persisted.
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 }
 });
 
 // Resolve a stored_path back to an absolute filesystem path. Tries the
@@ -419,6 +428,20 @@ require('./routes/tenants').register(app, {
 // (tenant + onboarding routes live in routes/tenants.js - see the require
 // above. Anything that needs to call them goes through HTTP, not internal
 // references.)
+
+// ==================== AUDITOR PORTAL ====================
+// Magic-link, token-authenticated read-only views for external auditors.
+// Registered up here (before /workspaces/* routes) so the path namespace is
+// cleanly separated. Lives in its own file to keep server.js from sprawling.
+require('./routes/auditor').register(app, {
+  db, enc, mdRenderer, logAction,
+  getActiveMethodology, methodologyBand,
+  auditPack,
+  resolveUploadPath,
+  fs, path,
+  escapeHtml,
+  requireAuth, requireWorkspace, requirePermission
+});
 
 // ==================== DASHBOARD ====================
 app.get('/dashboard', requireAuth, (req, res) => {
@@ -2170,6 +2193,95 @@ app.post('/workspaces/:wsId/assets/:id/delete', requireAuth, requireWorkspace, r
   res.redirect('/workspaces/' + req.workspace.id + '/assets');
 });
 
+// ==================== ASSETS: CSV IMPORT ====================
+// Three-step pipeline: GET shows the upload page, POST /preview parses +
+// validates without writing, POST /commit revalidates and inserts in a single
+// transaction so a partial failure leaves the register untouched.
+app.get('/workspaces/:wsId/assets/import', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
+  res.render('import', {
+    user: req.user, ws: req.workspace,
+    schema: csvImport.ASSET_SCHEMA, kind: 'assets',
+    mode: 'upload', result: null, csv: '', filename: '',
+    backUrl: `/workspaces/${req.workspace.id}/assets`,
+    listUrl: `/workspaces/${req.workspace.id}/assets`,
+    templateUrl: `/workspaces/${req.workspace.id}/assets/import/template`,
+    previewUrl: `/workspaces/${req.workspace.id}/assets/import/preview`,
+    commitUrl: `/workspaces/${req.workspace.id}/assets/import/commit`,
+    importUrl: `/workspaces/${req.workspace.id}/assets/import`
+  });
+});
+
+app.get('/workspaces/:wsId/assets/import/template', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="assets_template.csv"');
+  res.send(csvImport.buildTemplate(csvImport.ASSET_SCHEMA));
+});
+
+app.post('/workspaces/:wsId/assets/import/preview', requireAuth, requireWorkspace, requirePermission('asset.create'), csvUpload.single('file'), (req, res) => {
+  let csv = '';
+  let filename = '';
+  if (req.file && req.file.buffer) {
+    csv = req.file.buffer.toString('utf8');
+    filename = req.file.originalname || 'upload.csv';
+  } else if (req.body.csv) {
+    csv = String(req.body.csv);
+    filename = 'pasted.csv';
+  }
+  const result = csvImport.processFile(csv, csvImport.ASSET_SCHEMA, {});
+  res.render('import', {
+    user: req.user, ws: req.workspace,
+    schema: csvImport.ASSET_SCHEMA, kind: 'assets',
+    mode: 'preview', result, csv, filename,
+    backUrl: `/workspaces/${req.workspace.id}/assets`,
+    listUrl: `/workspaces/${req.workspace.id}/assets`,
+    templateUrl: `/workspaces/${req.workspace.id}/assets/import/template`,
+    previewUrl: `/workspaces/${req.workspace.id}/assets/import/preview`,
+    commitUrl: `/workspaces/${req.workspace.id}/assets/import/commit`,
+    importUrl: `/workspaces/${req.workspace.id}/assets/import`
+  });
+});
+
+app.post('/workspaces/:wsId/assets/import/commit', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
+  const csv = String(req.body.csv || '');
+  if (!csv.trim()) return res.redirect(`/workspaces/${req.workspace.id}/assets/import`);
+  const result = csvImport.processFile(csv, csvImport.ASSET_SCHEMA, {});
+  const valid = result.rows.filter(r => r.valid);
+  if (!valid.length) {
+    return res.redirect(withToast(`/workspaces/${req.workspace.id}/assets/import`, 'Nothing to import - all rows had errors', 'error'));
+  }
+  const ins = db.prepare(`INSERT INTO assets
+    (workspace_id, entity_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
+     business_criticality, rto_hours, rpo_hours, bia_notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const tx = db.transaction(() => {
+    valid.forEach(r => {
+      const p = r.parsed;
+      ins.run(
+        req.workspace.id,
+        req.entityScopeId || null,
+        p.name,
+        p.type || null,
+        p.classification || null,
+        p.owner_name || null,
+        p.cia_c == null ? 2 : p.cia_c,
+        p.cia_i == null ? 2 : p.cia_i,
+        p.cia_a == null ? 2 : p.cia_a,
+        p.description || null,
+        p.business_criticality || null,
+        p.rto_hours == null ? null : p.rto_hours,
+        p.rpo_hours == null ? null : p.rpo_hours,
+        p.bia_notes || null
+      );
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'import_assets_csv', 'asset', null, { count: valid.length, skipped: result.summary.invalid }, auditCtx(req));
+  const msg = result.summary.invalid
+    ? `Imported ${valid.length} asset${valid.length === 1 ? '' : 's'} - ${result.summary.invalid} row${result.summary.invalid === 1 ? '' : 's'} skipped`
+    : `Imported ${valid.length} asset${valid.length === 1 ? '' : 's'}`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/assets`, msg));
+});
+
 // ==================== RISKS ====================
 app.get('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
   const ef = activeEntityFilter(req, 'r');
@@ -2231,6 +2343,108 @@ app.post('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requi
   tx();
   logAction(req.user.id, req.workspace.id, 'add_risks_from_library', 'risk', null, { count: added }, auditCtx(req));
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/risks', `Added ${added} risk${added === 1 ? '' : 's'} from library - review and adjust scoring`));
+});
+
+// ==================== RISKS: CSV IMPORT ====================
+// Same upload → preview → commit pipeline as assets, with two extras:
+//  - likelihood/impact validated against the active risk methodology scale
+//  - the "asset" column resolves by name to an existing workspace asset; if
+//    no match, the row stays valid but a warning is recorded ("will be created
+//    without an asset link") so the importer doesn't silently swallow typos.
+function riskImportContext(wsId) {
+  const methodology = getActiveMethodology(wsId);
+  const assets = db.prepare('SELECT id, name FROM assets WHERE workspace_id = ?').all(wsId);
+  const assetsByName = new Map();
+  assets.forEach(a => assetsByName.set(a.name.toLowerCase(), a));
+  return { methodology, assetsByName };
+}
+
+app.get('/workspaces/:wsId/risks/import', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  res.render('import', {
+    user: req.user, ws: req.workspace,
+    schema: csvImport.RISK_SCHEMA, kind: 'risks',
+    mode: 'upload', result: null, csv: '', filename: '',
+    methodology: getActiveMethodology(req.workspace.id),
+    backUrl: `/workspaces/${req.workspace.id}/risks`,
+    listUrl: `/workspaces/${req.workspace.id}/risks`,
+    templateUrl: `/workspaces/${req.workspace.id}/risks/import/template`,
+    previewUrl: `/workspaces/${req.workspace.id}/risks/import/preview`,
+    commitUrl: `/workspaces/${req.workspace.id}/risks/import/commit`,
+    importUrl: `/workspaces/${req.workspace.id}/risks/import`
+  });
+});
+
+app.get('/workspaces/:wsId/risks/import/template', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="risks_template.csv"');
+  res.send(csvImport.buildTemplate(csvImport.RISK_SCHEMA));
+});
+
+app.post('/workspaces/:wsId/risks/import/preview', requireAuth, requireWorkspace, requirePermission('risk.create'), csvUpload.single('file'), (req, res) => {
+  let csv = '';
+  let filename = '';
+  if (req.file && req.file.buffer) {
+    csv = req.file.buffer.toString('utf8');
+    filename = req.file.originalname || 'upload.csv';
+  } else if (req.body.csv) {
+    csv = String(req.body.csv);
+    filename = 'pasted.csv';
+  }
+  const ctx = riskImportContext(req.workspace.id);
+  const result = csvImport.processFile(csv, csvImport.RISK_SCHEMA, ctx);
+  res.render('import', {
+    user: req.user, ws: req.workspace,
+    schema: csvImport.RISK_SCHEMA, kind: 'risks',
+    mode: 'preview', result, csv, filename,
+    methodology: ctx.methodology,
+    backUrl: `/workspaces/${req.workspace.id}/risks`,
+    listUrl: `/workspaces/${req.workspace.id}/risks`,
+    templateUrl: `/workspaces/${req.workspace.id}/risks/import/template`,
+    previewUrl: `/workspaces/${req.workspace.id}/risks/import/preview`,
+    commitUrl: `/workspaces/${req.workspace.id}/risks/import/commit`,
+    importUrl: `/workspaces/${req.workspace.id}/risks/import`
+  });
+});
+
+app.post('/workspaces/:wsId/risks/import/commit', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  const csv = String(req.body.csv || '');
+  if (!csv.trim()) return res.redirect(`/workspaces/${req.workspace.id}/risks/import`);
+  const ctx = riskImportContext(req.workspace.id);
+  const result = csvImport.processFile(csv, csvImport.RISK_SCHEMA, ctx);
+  const valid = result.rows.filter(r => r.valid);
+  if (!valid.length) {
+    return res.redirect(withToast(`/workspaces/${req.workspace.id}/risks/import`, 'Nothing to import - all rows had errors', 'error'));
+  }
+  const lMid = Math.ceil(ctx.methodology.likelihood_scale.length / 2);
+  const iMid = Math.ceil(ctx.methodology.impact_scale.length / 2);
+  const ins = db.prepare(`INSERT INTO risks
+    (workspace_id, entity_id, title, description, asset_id, threat, vulnerability,
+     likelihood, impact, treatment, owner_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const tx = db.transaction(() => {
+    valid.forEach(r => {
+      const p = r.parsed;
+      ins.run(
+        req.workspace.id,
+        req.entityScopeId || null,
+        p.title,
+        p.description || null,
+        p.asset || null,
+        p.threat || null,
+        p.vulnerability || null,
+        p.likelihood == null ? lMid : p.likelihood,
+        p.impact == null ? iMid : p.impact,
+        p.treatment || 'modify',
+        p.owner_name || null
+      );
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'import_risks_csv', 'risk', null, { count: valid.length, skipped: result.summary.invalid }, auditCtx(req));
+  const msg = result.summary.invalid
+    ? `Imported ${valid.length} risk${valid.length === 1 ? '' : 's'} - ${result.summary.invalid} row${result.summary.invalid === 1 ? '' : 's'} skipped`
+    : `Imported ${valid.length} risk${valid.length === 1 ? '' : 's'}`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, msg));
 });
 
 app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
@@ -2979,32 +3193,184 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   });
 });
 
+// ==================== TEMPLATE LIBRARY (Phase 6 gallery) ====================
+// Premium discoverable surface for the 74 system policy templates. The legacy
+// dropdown on /documents stays for power users; this gallery is the path that
+// makes the library feel like a paid product. Each card shows adoption state
+// (already in this workspace?) and the Annex A controls the template auto-
+// links on adopt.
+
+const TIER_RANK = { mandatory: 0, expected: 1, recommended: 2 };
+
+app.get('/workspaces/:wsId/templates', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  const templates = db.prepare(`SELECT id, name, category, description, tier, controls, clauses
+    FROM doc_templates
+    WHERE is_system=1 OR firm_id=?
+    ORDER BY name`).all(req.workspace.firm_id);
+
+  const adoptedRows = db.prepare(`SELECT template_id, MIN(id) AS doc_id, COUNT(*) AS n
+    FROM generated_docs WHERE workspace_id=? AND template_id IS NOT NULL
+    GROUP BY template_id`).all(req.workspace.id);
+  const adoptedByTpl = {};
+  adoptedRows.forEach(r => { adoptedByTpl[r.template_id] = r; });
+
+  // Parse refs and decorate. Sort: mandatory first, then alpha within tier.
+  const enriched = templates.map(t => {
+    let controls = []; try { controls = JSON.parse(t.controls || '[]'); } catch (_) {}
+    let clauses  = []; try { clauses  = JSON.parse(t.clauses  || '[]'); } catch (_) {}
+    return { ...t, controls, clauses, adopted: adoptedByTpl[t.id] || null };
+  }).sort((a, b) => {
+    const ta = TIER_RANK[a.tier || 'recommended'];
+    const tb = TIER_RANK[b.tier || 'recommended'];
+    return ta - tb || a.name.localeCompare(b.name);
+  });
+
+  const counts = {
+    total: enriched.length,
+    mandatory: enriched.filter(t => t.tier === 'mandatory').length,
+    expected:  enriched.filter(t => t.tier === 'expected').length,
+    recommended: enriched.filter(t => t.tier === 'recommended').length,
+    adopted: enriched.filter(t => t.adopted).length,
+    mandatoryAdopted: enriched.filter(t => t.tier === 'mandatory' && t.adopted).length
+  };
+
+  res.render('templates_library', {
+    user: req.user, ws: req.workspace,
+    templates: enriched, counts
+  });
+});
+
+app.get('/workspaces/:wsId/templates/:id(\\d+)', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  const tpl = db.prepare(`SELECT * FROM doc_templates WHERE id=? AND (is_system=1 OR firm_id=?)`)
+    .get(req.params.id, req.workspace.firm_id);
+  if (!tpl) return res.status(404).render('error', { user: req.user, message: 'Template not found.' });
+  let controls = []; try { controls = JSON.parse(tpl.controls || '[]'); } catch (_) {}
+  let clauses  = []; try { clauses  = JSON.parse(tpl.clauses  || '[]'); } catch (_) {}
+  const isoLookup = {};
+  if (controls.length || clauses.length) {
+    const refs = [...controls, ...clauses];
+    const placeholders = refs.map(() => '?').join(',');
+    db.prepare(`SELECT id, title FROM iso_items WHERE id IN (${placeholders})`)
+      .all(...refs).forEach(r => { isoLookup[r.id] = r.title; });
+  }
+  const existing = db.prepare(`SELECT id FROM generated_docs
+    WHERE workspace_id=? AND template_id=? ORDER BY id DESC LIMIT 1`)
+    .get(req.workspace.id, tpl.id);
+
+  // Render the template body with workspace context substituted, then pass the
+  // HTML to the view. EJS templates can't require() the markdown renderer, so
+  // we do the markdown → HTML pass here and ship the result through.
+  const sample = (tpl.content || '')
+    .replace(/{{client_name}}/g, req.workspace.client_name)
+    .replace(/{{scope}}/g, req.workspace.scope || (req.workspace.client_name + ' information assets'))
+    .replace(/{{date}}/g, new Date().toISOString().slice(0,10))
+    .replace(/{{firm_name}}/g, '[Firm name]')
+    .replace(/{{document_owner}}/g, 'CISO')
+    .replace(/{{approval_authority}}/g, 'Top Management')
+    .replace(/{{review_period}}/g, 'Annual')
+    .replace(/{{industry}}/g, req.workspace.industry || '');
+  const previewHtml = mdRenderer.render(sample);
+
+  res.render('template_detail', {
+    user: req.user, ws: req.workspace,
+    tpl, controls, clauses, isoLookup, existing, previewHtml
+  });
+});
+
+app.post('/workspaces/:wsId/templates/adopt-mandatory', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  // Bulk-adopt every mandatory template that isn't already in this workspace.
+  // Stops short of expected/recommended so the consultant isn't drowned in
+  // 74 documents to review.
+  const adopted = db.prepare(`SELECT template_id FROM generated_docs
+    WHERE workspace_id=? AND template_id IS NOT NULL`).all(req.workspace.id);
+  const adoptedSet = new Set(adopted.map(r => r.template_id));
+  const toAdopt = db.prepare(`SELECT * FROM doc_templates
+    WHERE is_system=1 AND tier='mandatory' ORDER BY name`).all()
+    .filter(t => !adoptedSet.has(t.id));
+  let totalDocs = 0, totalLinks = 0;
+  const tx = db.transaction(() => {
+    toAdopt.forEach(t => {
+      const r = adoptTemplateForWorkspace(t, req.workspace, req.user, req.entityScopeId, req.body);
+      totalDocs++;
+      totalLinks += r.linkedControls;
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'bulk_adopt_mandatory', 'document', null,
+    { adopted: totalDocs, linked_controls: totalLinks }, auditCtx(req));
+  const msg = totalDocs === 0
+    ? 'All mandatory templates already adopted in this workspace.'
+    : `Adopted ${totalDocs} mandatory template${totalDocs === 1 ? '' : 's'} · auto-linked ${totalLinks} control${totalLinks === 1 ? '' : 's'}`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/templates`, msg));
+});
+
+app.post('/workspaces/:wsId/templates/:id(\\d+)/adopt', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  const tpl = db.prepare(`SELECT * FROM doc_templates WHERE id=? AND (is_system=1 OR firm_id=?)`)
+    .get(req.params.id, req.workspace.firm_id);
+  if (!tpl) return res.status(404).render('error', { user: req.user, message: 'Template not found.' });
+  const r = adoptTemplateForWorkspace(tpl, req.workspace, req.user, req.entityScopeId, req.body);
+  const linkSuffix = r.linkedControls > 0 ? ` · auto-linked ${r.linkedControls} control${r.linkedControls === 1 ? '' : 's'}` : '';
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/documents/${r.docId}`, `${tpl.name} adopted${linkSuffix}`));
+});
+
 app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
   const { template_id, document_owner, approval_authority, review_period } = req.body;
   const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ?').get(template_id);
   if (!tpl) return redirectBack(req, res);
+  const result = adoptTemplateForWorkspace(tpl, req.workspace, req.user, req.entityScopeId, {
+    document_owner, approval_authority, review_period
+  });
+  const linkedSuffix = result.linkedControls > 0
+    ? ` · auto-linked ${result.linkedControls} control${result.linkedControls === 1 ? '' : 's'}`
+    : '';
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + result.docId, 'Document generated' + linkedSuffix));
+});
+
+// Shared adoption helper - used by the single from-template POST and by the
+// bulk-adopt-mandatory wizard. Inserts the document, snapshots v1, and links
+// every control referenced in the template's description (from the controls
+// JSON column populated at seed time).
+function adoptTemplateForWorkspace(tpl, workspace, user, entityScopeId, overrides) {
   const today = new Date().toISOString().split('T')[0];
-  const firm = db.prepare('SELECT name FROM firms WHERE id = ?').get(req.workspace.firm_id);
+  const firm = db.prepare('SELECT name FROM firms WHERE id = ?').get(workspace.firm_id);
   const vars = {
-    client_name: req.workspace.client_name,
-    scope: req.workspace.scope || `${req.workspace.client_name} information assets`,
+    client_name: workspace.client_name,
+    scope: workspace.scope || `${workspace.client_name} information assets`,
     date: today,
     firm_name: firm?.name || '',
-    document_owner: document_owner || 'CISO',
-    approval_authority: approval_authority || 'Top Management',
-    review_period: review_period || 'Annual',
-    industry: req.workspace.industry || ''
+    document_owner: (overrides && overrides.document_owner) || 'CISO',
+    approval_authority: (overrides && overrides.approval_authority) || 'Top Management',
+    review_period: (overrides && overrides.review_period) || 'Annual',
+    industry: workspace.industry || ''
   };
   const content = substitutePlaceholders(tpl.content, vars);
-  const encContent = enc.encryptIfNeeded(content, req.workspace.id, !!req.workspace.encryption_enabled);
-  const id = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, template_id, name, category, content, created_by)
+  const encContent = enc.encryptIfNeeded(content, workspace.id, !!workspace.encryption_enabled);
+  const docId = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, template_id, name, category, content, created_by)
                          VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(req.workspace.id, req.entityScopeId || null, tpl.id, tpl.name, tpl.category, encContent, req.user.id).lastInsertRowid;
-  // Snapshot v1
-  snapshotDocVersion(id, req.workspace.id, 'draft', req.user.id, 'Initial draft from template: ' + tpl.name);
-  logAction(req.user.id, req.workspace.id, 'create_document', 'document', id, { from_template: tpl.name }, auditCtx(req));
-  res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + id, 'Document generated'));
-});
+    .run(workspace.id, entityScopeId || null, tpl.id, tpl.name, tpl.category, encContent, user.id).lastInsertRowid;
+  snapshotDocVersion(docId, workspace.id, 'draft', user.id, 'Initial draft from template: ' + tpl.name);
+
+  // Auto-link every Annex A control referenced by the template (extracted at
+  // seed time from the description). UNION with the clauses column too - main
+  // clauses live in the same document_controls table via iso_item_id.
+  let linkedControls = 0;
+  const linkRefs = [];
+  try { (JSON.parse(tpl.controls || '[]')).forEach(c => linkRefs.push(c)); } catch (_) {}
+  try { (JSON.parse(tpl.clauses || '[]')).forEach(c => linkRefs.push(c)); } catch (_) {}
+  if (linkRefs.length) {
+    const exists = db.prepare(`SELECT 1 FROM iso_items WHERE id = ?`);
+    const linkIns = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id) VALUES (?, ?)`);
+    linkRefs.forEach(ref => {
+      if (exists.get(ref)) {
+        const r = linkIns.run(docId, ref);
+        if (r.changes) linkedControls++;
+      }
+    });
+  }
+  logAction(user.id, workspace.id, 'create_document', 'document', docId,
+    { from_template: tpl.name, auto_linked: linkedControls }, { ip: '', userAgent: '' });
+  return { docId, linkedControls };
+}
 
 app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
   const { name, category } = req.body;
@@ -4493,8 +4859,12 @@ app.get('/workspaces/:wsId/documents/:id/docx', requireAuth, requireWorkspace, r
   } catch (e) { console.error(e); res.status(500).send('Failed to generate .docx: ' + e.message); }
 });
 
-// ==================== AUDIT PACK EXPORT ====================
-app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace, async (req, res) => {
+// ==================== AUDIT PACK · ZIP ARCHIVE ====================
+// Companion to the polished PDF audit pack (see further below). This route
+// returns a raw ZIP of CSVs + DOCX + evidence files - exactly what an internal
+// auditor wants to grep through, but not what you hand a certification body
+// or the client. The config page at /audit-pack links to both deliverables.
+app.get('/workspaces/:wsId/audit-pack/zip', requireAuth, requireWorkspace, async (req, res) => {
   const ws = req.workspace;
   const safeName = ws.client_name.replace(/[^\w]+/g, '_');
   const today = new Date().toISOString().split('T')[0];
@@ -5944,6 +6314,100 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
   }
   logAction(req.user.id, req.workspace.id, 'soa_auto_justify', 'soa', null, { updated }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `Auto-justified ${updated} controls`));
+});
+
+// ==================== AUDIT PACK ====================
+// One-click branded PDF bundling SoA + risks + evidence + audits + NCs + MRMs
+// + improvements + audit-trail. Three routes: GET config UI, GET preview-as-
+// HTML (handy for iterating on layout), POST generate (renders HTML then prints
+// to PDF with Chromium). The lib lives in lib/audit-pack.js so it can be
+// unit-tested without spinning up Express.
+const AUDIT_PACK_SECTIONS = ['cover','summary','soa','risks','evidence','audits','ncs','mrms','improvements','audit_trail'];
+
+function parseSectionsFromBody(body) {
+  // express.urlencoded with extended:true gives us either string (one checked)
+  // or array (multiple). Anything not in the list is silently dropped.
+  let raw = body && body.sections;
+  if (!raw) return {};
+  if (!Array.isArray(raw)) raw = [raw];
+  const out = {};
+  AUDIT_PACK_SECTIONS.forEach(k => { out[k] = raw.includes(k); });
+  return out;
+}
+
+function buildAuditPackOpts(body) {
+  const opts = {
+    sections: Object.keys(body || {}).some(k => k === 'sections')
+      ? parseSectionsFromBody(body)
+      : undefined,
+    snapshotId: body && body.snapshotId ? parseInt(body.snapshotId, 10) || null : null,
+    preparedFor: body && body.preparedFor ? String(body.preparedFor).trim() : null,
+    preparedBy: body && body.preparedBy ? String(body.preparedBy).trim() : null,
+    brand: {
+      displayName: body && body.brandDisplayName ? String(body.brandDisplayName).trim() : null,
+      primaryColor: body && body.brandPrimaryColor ? String(body.brandPrimaryColor).trim() : null,
+      confidentialityLabel: body && body.confidentialityLabel ? String(body.confidentialityLabel).trim() : null
+    }
+  };
+  // Strip null/empty brand fields so defaults from gatherAuditPackData take over.
+  Object.keys(opts.brand).forEach(k => { if (!opts.brand[k]) delete opts.brand[k]; });
+  return opts;
+}
+
+async function renderAuditPackHTML(app, wsId, opts) {
+  const data = auditPack.gatherAuditPackData({ db, enc, methodologyBand, getActiveMethodology }, wsId, opts);
+  return new Promise((resolve, reject) => {
+    app.render('audit_pack', data, (err, html) => err ? reject(err) : resolve(html));
+  });
+}
+
+app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const snapshots = db.prepare(`SELECT id, label, created_at, included_count FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC`).all(req.workspace.id);
+  const firm = db.prepare(`SELECT name FROM firms WHERE id=?`).get(req.workspace.firm_id) || {};
+  const riskCount = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(req.workspace.id).c;
+  const evidenceCount = db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`).get(req.workspace.id).c;
+  const auditCount = db.prepare(`SELECT COUNT(*) c FROM audits WHERE workspace_id=?`).get(req.workspace.id).c;
+  const ncCount = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=?`).get(req.workspace.id).c;
+  const mrmCount = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=?`).get(req.workspace.id).c;
+  const improvementCount = db.prepare(`SELECT COUNT(*) c FROM improvements WHERE workspace_id=?`).get(req.workspace.id).c;
+  res.render('audit_pack_config', {
+    user: req.user, ws: req.workspace,
+    snapshots, firmName: firm.name || '',
+    riskCount, evidenceCount, auditCount, ncCount, mrmCount, improvementCount
+  });
+});
+
+app.get('/workspaces/:wsId/audit-pack/preview', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
+  try {
+    const opts = buildAuditPackOpts(req.query);
+    const html = await renderAuditPackHTML(app, req.workspace.id, opts);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (e) {
+    res.status(500).render('error', { user: req.user, message: 'Could not generate audit pack preview: ' + e.message });
+  }
+});
+
+app.post('/workspaces/:wsId/audit-pack/pdf', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
+  try {
+    const opts = buildAuditPackOpts(req.body);
+    const html = await renderAuditPackHTML(app, req.workspace.id, opts);
+    const headerLeft = opts.brand && opts.brand.displayName ? opts.brand.displayName : (db.prepare('SELECT name FROM firms WHERE id=?').get(req.workspace.firm_id) || {}).name || '';
+    const headerRight = `${req.workspace.client_name} · ISMS Audit Pack`;
+    const footerLeft = (opts.brand && opts.brand.confidentialityLabel) || 'Confidential · For audit and management review purposes only';
+    const pdfRaw = await auditPack.renderPDF(html, { headerLeft, headerRight, footerLeft });
+    // Puppeteer v22+ returns a Uint8Array, which Express's res.send would
+    // JSON-stringify. Wrap in Buffer so the raw PDF bytes hit the wire.
+    const pdf = Buffer.isBuffer(pdfRaw) ? pdfRaw : Buffer.from(pdfRaw);
+    logAction(req.user.id, req.workspace.id, 'generate_audit_pack', 'audit_pack', null, { bytes: pdf.length }, auditCtx(req));
+    const fname = `audit-pack-${req.workspace.client_name.replace(/[^\w-]+/g, '_')}-${new Date().toISOString().slice(0,10)}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.send(pdf);
+  } catch (e) {
+    console.error('audit-pack generate error:', e);
+    res.status(500).render('error', { user: req.user, message: 'Could not generate audit pack PDF: ' + e.message + '. The pack data is fine - this is a rendering glitch. Try again, or use Preview HTML to see the content.' });
+  }
 });
 
 // ==================== FIRM CONTENT LIBRARY ====================
@@ -8234,31 +8698,9 @@ app.get('/workspaces/:wsId/assets/:id', requireAuth, requireWorkspace, requirePe
   res.render('asset_detail', { user: req.user, ws: req.workspace, asset, parents, children, allAssets, linkedRisks, controlsInScope });
 });
 
-app.post('/workspaces/:wsId/assets/import', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
-  const csv = req.body.csv || '';
-  const lines = csv.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return redirectBack(req, res);
-  const header = lines.shift().split(',').map(s => s.trim().toLowerCase());
-  const ix = (k) => header.indexOf(k);
-  const ins = db.prepare(`INSERT INTO assets (workspace_id, entity_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  let count = 0;
-  for (const ln of lines) {
-    const parts = ln.split(',').map(s => s.trim());
-    if (!parts[ix('name')]) continue;
-    ins.run(req.workspace.id, req.entityScopeId || null,
-      parts[ix('name')],
-      ix('type') >= 0 ? parts[ix('type')] : null,
-      ix('classification') >= 0 ? parts[ix('classification')] : null,
-      ix('owner') >= 0 ? parts[ix('owner')] : (ix('owner_name') >= 0 ? parts[ix('owner_name')] : null),
-      parseInt(ix('c') >= 0 ? parts[ix('c')] : '1') || 1,
-      parseInt(ix('i') >= 0 ? parts[ix('i')] : '1') || 1,
-      parseInt(ix('a') >= 0 ? parts[ix('a')] : '1') || 1,
-      ix('description') >= 0 ? parts[ix('description')] : null);
-    count++;
-  }
-  logAction(req.user.id, req.workspace.id, 'import_assets', 'asset', null, { count }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/assets`, `Imported ${count} assets`));
-});
+// Legacy textarea-paste CSV importer superseded by the GET/POST pipeline at
+// /assets/import (preview + per-row validation + transactional commit).
+// Surviving as a redirect for any bookmarked links.
 
 // ==================== MEMBERS: BULK INVITE + STATS ====================
 app.post('/workspaces/:wsId/members/bulk', requireAuth, requireWorkspace, requirePermission('members.add'), (req, res) => {

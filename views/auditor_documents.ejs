@@ -1,0 +1,59 @@
+<%- include('partials/auditor_header', { title: 'Policies & procedures', token, share, workspace, active: 'documents' }) %>
+
+<div class="a-page-head">
+  <h1 class="a-page-title">Policies and procedures</h1>
+  <div class="a-page-sub">
+    The ISMS document set currently in force at <strong><%= workspace.client_name %></strong>. Each document lists the Annex A controls it covers. Click a row to open the document text — exit and approval dates are shown on the detail page.
+  </div>
+</div>
+
+<% if (!docs.length) { %>
+  <div class="empty-pane">
+    <div class="empty-pane-title">No documents in force</div>
+    <div>The workspace has not yet published any ISMS documents.</div>
+  </div>
+<% } else { %>
+  <%# group by category for readability %>
+  <%
+    const byCategory = {};
+    docs.forEach(d => { (byCategory[d.category || 'other'] = byCategory[d.category || 'other'] || []).push(d); });
+    const categoryOrder = ['policy','procedure','plan','record','form','other'];
+  %>
+  <% categoryOrder.forEach(cat => {
+       const list = byCategory[cat];
+       if (!list || !list.length) return;
+  %>
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head">
+        <h2 style="text-transform:capitalize;"><%= cat %><span class="meta" style="margin-left:8px;font-weight:400;text-transform:none;font-size:11.5px;"><%= list.length %> document<%= list.length === 1 ? '' : 's' %></span></h2>
+      </div>
+      <table class="t">
+        <thead><tr>
+          <th>Name</th>
+          <th style="width:80px;">Status</th>
+          <th class="num" style="width:64px;">v</th>
+          <th class="num" style="width:90px;">Controls</th>
+          <th style="width:120px;">Approver</th>
+          <th style="width:120px;">Next review</th>
+        </tr></thead>
+        <tbody>
+          <% list.forEach(d => {
+               const statusKind = ['published','approved'].includes(d.status) ? 'good'
+                                : ['in_review','draft'].includes(d.status) ? 'warn' : 'neutral';
+          %>
+            <tr style="cursor:pointer;" onclick="location='/auditor/<%= token %>/documents/<%= d.id %>'">
+              <td><a href="/auditor/<%= token %>/documents/<%= d.id %>" class="link-muted" style="font-weight:500;"><%= d.name %></a></td>
+              <td><span class="chip chip-<%= statusKind %>"><%= d.status %></span></td>
+              <td class="num meta">v<%= d.version %></td>
+              <td class="num meta"><%= d.control_count %></td>
+              <td class="meta"><%= d.approver || '-' %></td>
+              <td class="meta"><%= fmtDate(d.next_review_date) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% }) %>
+<% } %>
+
+<%- include('partials/auditor_footer') %>

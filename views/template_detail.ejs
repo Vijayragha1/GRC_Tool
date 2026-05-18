@@ -1,0 +1,132 @@
+<%- include('partials/header', { title: tpl.name, user, ws, active: 'templates' }) %>
+
+<style>
+  .preview-shell { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
+  @media (max-width: 1100px) { .preview-shell { grid-template-columns: 1fr; } }
+
+  /* Body preview - print-leaning typography so the consultant sees what the
+     adopted document will roughly look like. */
+  .doc-preview {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 32px 38px; font-size: 13px; line-height: 1.65; color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+  .doc-preview h1 { font-size: 22px; margin: 0 0 14px; letter-spacing: -0.02em; }
+  .doc-preview h2 { font-size: 15px; margin: 22px 0 6px; letter-spacing: -0.01em; }
+  .doc-preview h3 { font-size: 13px; margin: 16px 0 4px; }
+  .doc-preview p { margin: 0 0 8px; }
+  .doc-preview ul, .doc-preview ol { margin: 0 0 8px 24px; padding: 0; }
+  .doc-preview li { margin-bottom: 2px; }
+  .doc-preview code { font-family: ui-monospace, monospace; font-size: 12px; padding: 1px 4px; background: var(--bg-muted); border-radius: 3px; }
+  .doc-preview blockquote { margin: 0 0 8px 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 4px 4px 0; font-size: 12px; }
+  .doc-preview hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+  .doc-preview strong { font-weight: 600; }
+
+  .meta-side .panel { margin-bottom: 12px; }
+
+  /* Mapping section */
+  .map-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .map-row:last-child { border-bottom: none; }
+  .map-id { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 600; color: var(--accent-deep); background: var(--accent-soft); padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
+  .map-title { font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+
+  .tier-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+  .tier-badge.mandatory { background: rgba(220,38,38,0.10); color: #b91c1c; }
+  .tier-badge.expected  { background: rgba(202,138,4,0.10); color: #b45309; }
+  .tier-badge.recommended { background: rgba(113,113,122,0.10); color: #52525b; }
+</style>
+
+<div class="page-head">
+  <div>
+    <a href="/workspaces/<%= ws.id %>/templates" class="link-muted text-base">← Template library</a>
+    <h1 class="page-title" style="margin-top:6px;"><%= tpl.name %></h1>
+    <div class="page-subtitle" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+      <span class="tier-badge <%= tpl.tier || 'recommended' %>">
+        <%= tpl.tier === 'mandatory' ? '★ Mandatory' : tpl.tier === 'expected' ? '◆ Expected' : '· Recommended' %>
+      </span>
+      <span class="meta text-md" style="text-transform:capitalize;"><%= tpl.category %></span>
+      <% if (controls.length || clauses.length) { %>
+        <span class="meta text-md">· <%= controls.length %> Annex A control<%= controls.length === 1 ? '' : 's' %><%= clauses.length ? ' · ' + clauses.length + ' clause' + (clauses.length === 1 ? '' : 's') : '' %> auto-linked on adopt</span>
+      <% } else { %>
+        <span class="meta text-md">· no auto-link mapping — link manually after adoption</span>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="preview-shell">
+  <%# ===== LEFT: rendered body preview ===== %>
+  <div>
+    <div class="text-eyebrow text-tertiary" style="margin-bottom:6px;">Preview · {{client_name}} substituted as "<%= ws.client_name %>"</div>
+    <div class="doc-preview">
+      <%- previewHtml %>
+    </div>
+  </div>
+
+  <%# ===== RIGHT: sidebar with adoption + mappings ===== %>
+  <div class="meta-side">
+    <div class="panel">
+      <div class="panel-pad">
+        <div class="text-eyebrow text-tertiary" style="margin-bottom:8px;">Adoption</div>
+        <% if (existing) { %>
+          <div class="meta text-md" style="line-height:1.55;margin-bottom:10px;">
+            This template is already adopted in <strong><%= ws.client_name %></strong>.
+          </div>
+          <a href="/workspaces/<%= ws.id %>/documents/<%= existing.id %>" class="btn btn-primary" style="width:100%;justify-content:center;">Open the document →</a>
+          <form method="POST" action="/workspaces/<%= ws.id %>/templates/<%= tpl.id %>/adopt" style="margin-top:8px;" onsubmit="return appConfirmForm(event, 'Adopt this template again? You will end up with two documents from the same template.');">
+            <button class="btn btn-ghost btn-xs" style="width:100%;justify-content:center;">Adopt another copy</button>
+          </form>
+        <% } else { %>
+          <div class="meta text-md" style="line-height:1.55;margin-bottom:12px;">
+            Adopt this template to create a draft document in <strong><%= ws.client_name %></strong>. <%= controls.length || clauses.length ? 'Every mapped Annex A control will be auto-linked.' : '' %>
+          </div>
+          <form method="POST" action="/workspaces/<%= ws.id %>/templates/<%= tpl.id %>/adopt">
+            <button class="btn btn-primary" style="width:100%;justify-content:center;">Adopt this template</button>
+          </form>
+          <div class="meta text-xs" style="text-align:center;margin-top:8px;">creates a draft document · edit + approve afterwards</div>
+        <% } %>
+      </div>
+    </div>
+
+    <% if (controls.length) { %>
+      <div class="panel">
+        <div class="panel-head"><h2>Annex A controls</h2><span class="meta text-xs"><%= controls.length %></span></div>
+        <div class="panel-pad" style="padding-top:8px;padding-bottom:8px;">
+          <% controls.forEach(c => { %>
+            <div class="map-row">
+              <span class="map-id"><%= c.replace('annex-a.','A.').toUpperCase() %></span>
+              <span class="map-title"><%= isoLookup[c] ? isoLookup[c].replace(/^A\.[\d.]+\s+/, '') : '' %></span>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (clauses.length) { %>
+      <div class="panel">
+        <div class="panel-head"><h2>ISO clauses</h2><span class="meta text-xs"><%= clauses.length %></span></div>
+        <div class="panel-pad" style="padding-top:8px;padding-bottom:8px;">
+          <% clauses.forEach(c => { %>
+            <div class="map-row">
+              <span class="map-id" style="background:rgba(202,138,4,0.10);color:#b45309;"><%= c.replace('clause-','Cl. ') %></span>
+              <span class="map-title"><%= isoLookup[c] || '' %></span>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (!controls.length && !clauses.length) { %>
+      <div class="panel">
+        <div class="panel-pad">
+          <div class="text-eyebrow text-tertiary" style="margin-bottom:6px;">No mappings</div>
+          <div class="meta text-md" style="line-height:1.55;">
+            This template is cross-cutting — it doesn't tie to a specific Annex A control or clause. After adopting, link controls manually on the document detail page.
+          </div>
+        </div>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

@@ -5,7 +5,13 @@
     <h1 class="page-title">Asset inventory</h1>
     <div class="page-subtitle">Information, hardware, software, services, people - the assets your ISMS protects.</div>
   </div>
-  <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
+  <div class="row">
+    <a href="/workspaces/<%= ws.id %>/assets/import" class="btn btn-secondary" title="Bulk-load assets from a CSV - the fast way to start an engagement">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Import CSV
+    </a>
+    <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
+  </div>
 </div>
 
 <div id="newAsset" class="hidden panel" style="margin-bottom:16px">
@@ -104,7 +110,10 @@
             </div>
             <div class="empty-title">Build the asset inventory</div>
             <div class="empty-sub">A.5.9 requires identifying information and associated assets with owners. Add information, software, hardware, services, people, and intangibles in scope.</div>
-            <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
+            <div class="row" style="justify-content:center;">
+              <a href="/workspaces/<%= ws.id %>/assets/import" class="btn btn-secondary">Import from CSV</a>
+              <button onclick="document.getElementById('newAsset').classList.toggle('hidden')" class="btn btn-primary">Add asset</button>
+            </div>
           </div>
         </td></tr>
       <% } %>

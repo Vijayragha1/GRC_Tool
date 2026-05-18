@@ -1,0 +1,98 @@
+<%- include('partials/auditor_header', { title: 'Overview', token, share, workspace, active: 'overview' }) %>
+
+<div class="a-page-head">
+  <h1 class="a-page-title">Welcome, auditor</h1>
+  <div class="a-page-sub">
+    You're looking at <strong><%= workspace.client_name %></strong>'s ISO/IEC 27001:2022 Information Security Management System.
+    Everything below is read-only. Use the tabs above to drill into the Statement of Applicability, risk register, evidence, policies, and internal-audit findings — or download the full audit pack as a single PDF.
+  </div>
+</div>
+
+<%# Pack download as the headline CTA - it's the single thing most auditors want first %>
+<div class="panel" style="margin-bottom:20px;background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);">
+  <div class="panel-pad" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:280px;">
+      <div class="text-eyebrow" style="color:var(--accent-deep);margin-bottom:4px;">RECOMMENDED FIRST STEP</div>
+      <div style="font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px;">Download the full audit pack</div>
+      <div class="text-md" style="color:var(--text-secondary);line-height:1.55;">
+        A single branded PDF bundling the SoA snapshot, risk register + heatmap, evidence index with SHA-256 hashes, internal audit findings, nonconformities, MRMs, and improvement log. Take it offline; come back to the portal for evidence file downloads.
+      </div>
+    </div>
+    <a href="/auditor/<%= token %>/audit-pack" class="btn btn-primary" download>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Generate audit pack PDF
+    </a>
+  </div>
+</div>
+
+<%# KPI tiles - scope of the ISMS at a glance %>
+<div class="kpi-row">
+  <div class="kpi brand">
+    <div class="kpi-label">SoA</div>
+    <div class="kpi-num"><%= counts.soa_total %></div>
+    <div class="kpi-meta">controls assessed · <%= counts.soa_snapshots %> snapshot<%= counts.soa_snapshots === 1 ? '' : 's' %></div>
+  </div>
+  <div class="kpi <%= counts.risks_open > 0 ? 'warn' : 'good' %>">
+    <div class="kpi-label">Risk register</div>
+    <div class="kpi-num"><%= counts.risks_open %> <span class="meta">/ <%= counts.risks %></span></div>
+    <div class="kpi-meta">open risks · register total</div>
+  </div>
+  <div class="kpi brand">
+    <div class="kpi-label">Evidence on file</div>
+    <div class="kpi-num"><%= counts.evidence %></div>
+    <div class="kpi-meta">SHA-256 verified · downloadable</div>
+  </div>
+  <div class="kpi brand">
+    <div class="kpi-label">Policies & procedures</div>
+    <div class="kpi-num"><%= counts.documents %></div>
+    <div class="kpi-meta">currently in force</div>
+  </div>
+  <div class="kpi <%= counts.ncs_open > 0 ? 'warn' : 'good' %>">
+    <div class="kpi-label">Nonconformities open</div>
+    <div class="kpi-num"><%= counts.ncs_open %> <span class="meta">/ <%= counts.ncs_total %></span></div>
+    <div class="kpi-meta">all-time total</div>
+  </div>
+  <div class="kpi <%= counts.audits > 0 ? 'good' : 'warn' %>">
+    <div class="kpi-label">Internal audits</div>
+    <div class="kpi-num"><%= counts.audits %></div>
+    <div class="kpi-meta">conducted to date</div>
+  </div>
+  <div class="kpi <%= counts.mrms > 0 ? 'good' : 'warn' %>">
+    <div class="kpi-label">Management reviews</div>
+    <div class="kpi-num"><%= counts.mrms %></div>
+    <div class="kpi-meta">held to date</div>
+  </div>
+  <div class="kpi brand">
+    <div class="kpi-label">Prepared by</div>
+    <div class="kpi-num" style="font-size:14px;letter-spacing:-0.01em;padding-top:4px;"><%= firm.name || 'ISMS consultancy' %></div>
+    <div class="kpi-meta">consulting firm of record</div>
+  </div>
+</div>
+
+<%# Section tiles - explicit next-clicks for auditors who skip the tab bar %>
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head"><h2>What you can do here</h2></div>
+  <div class="panel-pad">
+    <%
+      const tiles = [
+        { href: 'soa',       title: 'Statement of Applicability', sub: 'Every Annex A control: applicability, status, justification. The most recent snapshot is shown with its SHA-256 hash.' },
+        { href: 'risks',     title: 'Risk register + heatmap',     sub: 'Identified risks scored against the active methodology, with treatments and owners.' },
+        { href: 'evidence',  title: 'Evidence index',              sub: 'Every uploaded evidence file with SHA-256. Click to download — every download is logged.' },
+        { href: 'documents', title: 'Policies and procedures',     sub: 'Current ISMS documents — each linked to the Annex A controls it covers.' },
+        { href: 'audits',    title: 'Internal audits + NCs',       sub: 'Audit programme history, findings, and nonconformity log with corrective actions.' }
+      ];
+    %>
+    <% tiles.forEach((t, i) => { %>
+      <a href="/auditor/<%= token %>/<%= t.href %>" style="display:grid;grid-template-columns:24px 1fr 14px;gap:14px;align-items:center;padding:14px 0;<%= i < tiles.length - 1 ? 'border-bottom:1px solid var(--border);' : '' %>text-decoration:none;color:inherit;">
+        <span class="chip chip-accent" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;font-size:11px;padding:0;border-radius:5px;"><%= i + 1 %></span>
+        <div>
+          <div style="font-size:13.5px;font-weight:500;color:var(--ink);"><%= t.title %></div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;"><%= t.sub %></div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    <% }) %>
+  </div>
+</div>
+
+<%- include('partials/auditor_footer') %>

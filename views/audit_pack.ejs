@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ISMS Audit Pack — <%= preparedFor %></title>
+<style>
+  /*
+   * Audit pack print stylesheet.
+   *
+   * Designed for A4 portrait at 14mm side margins; Puppeteer adds the page
+   * header/footer in the remaining 22mm/20mm bands. Everything inlines so
+   * setContent + networkidle0 settles in one tick (no external fonts/images).
+   * If you change the page size on the server side, update --pagew below to
+   * keep layouts from cropping.
+   */
+  @page { size: A4 portrait; margin: 22mm 14mm 20mm 14mm; }
+  :root {
+    --brand: <%= brand.primaryColor %>;
+    --brand-soft: <%= brand.primaryColor %>14;
+    --ink: #0f0f12;
+    --text: #18181b;
+    --text-secondary: #51525c;
+    --text-tertiary: #71717a;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+    --bg-subtle: #fafafa;
+    --good: #15803d; --good-soft: #16a34a14;
+    --warn: #b45309; --warn-soft: #ca8a0414;
+    --bad:  #b91c1c; --bad-soft:  #dc262614;
+    --info: #1d4ed8; --info-soft: #2563eb14;
+    --neutral: #52525b; --neutral-soft: #71717a14;
+  }
+  html, body { padding: 0; margin: 0; font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 10.5pt; color: var(--text); line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * { box-sizing: border-box; }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+
+  h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.015em; margin: 0; }
+  h1 { font-size: 26pt; font-weight: 700; line-height: 1.1; }
+  h2 { font-size: 16pt; font-weight: 600; line-height: 1.2; }
+  h3 { font-size: 12pt; font-weight: 600; }
+  p { margin: 0 0 8pt 0; }
+
+  /* Page-break primitives - every top-level section starts on a fresh page */
+  .section { page-break-before: always; padding-top: 4pt; }
+  .section:first-of-type { page-break-before: auto; }
+  .keep-together { page-break-inside: avoid; }
+
+  /* COVER */
+  .cover { height: calc(297mm - 22mm - 20mm); display: flex; flex-direction: column; padding-top: 4mm; }
+  .cover-rail { height: 6mm; background: var(--brand); border-radius: 3mm; margin-bottom: 22mm; }
+  .cover-eyebrow { font-size: 9.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--brand); margin-bottom: 10mm; }
+  .cover-title { font-size: 34pt; font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 4mm; max-width: 95%; }
+  .cover-subtitle { font-size: 13pt; color: var(--text-secondary); margin-bottom: 14mm; max-width: 80%; line-height: 1.45; }
+  .cover-spacer { flex: 1; }
+  .cover-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6mm 12mm; padding-top: 6mm; border-top: 0.4mm solid var(--border-strong); }
+  .cover-meta-label { font-size: 8pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); margin-bottom: 1.5mm; }
+  .cover-meta-value { font-size: 12pt; font-weight: 500; color: var(--ink); }
+  .cover-meta-sub { font-size: 9pt; color: var(--text-secondary); margin-top: 1mm; }
+  .cover-confidentiality { margin-top: 8mm; padding-top: 4mm; border-top: 0.2mm solid var(--border); font-size: 8pt; color: var(--text-tertiary); letter-spacing: 0.04em; text-transform: uppercase; }
+
+  /* Section headers */
+  .section-eyebrow { font-size: 8.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--brand); margin-bottom: 2mm; }
+  .section-title { font-size: 22pt; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: var(--ink); margin-bottom: 2mm; }
+  .section-subtitle { font-size: 10.5pt; color: var(--text-secondary); margin-bottom: 8mm; max-width: 75%; line-height: 1.5; }
+  .section-rule { height: 1mm; background: var(--brand); width: 18mm; border-radius: 0.5mm; margin-bottom: 6mm; }
+
+  /* KPI tiles for the executive summary */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-bottom: 6mm; }
+  .kpi { padding: 4mm; border: 0.2mm solid var(--border); border-radius: 2mm; background: white; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0.8mm; background: var(--border-strong); }
+  .kpi.good::before  { background: var(--good); }
+  .kpi.warn::before  { background: var(--warn); }
+  .kpi.bad::before   { background: var(--bad); }
+  .kpi.brand::before { background: var(--brand); }
+  .kpi-label { font-size: 7.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+  .kpi-num { font-size: 22pt; font-weight: 600; line-height: 1.05; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 2mm; }
+  .kpi-meta { font-size: 8pt; color: var(--text-tertiary); margin-top: 1.5mm; }
+  .kpi.good .kpi-num { color: var(--good); }
+  .kpi.warn .kpi-num { color: var(--warn); }
+  .kpi.bad  .kpi-num { color: var(--bad); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .grid-2 > div { padding: 4mm; border: 0.2mm solid var(--border); border-radius: 2mm; background: white; }
+  .grid-2 h3 { font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin-bottom: 3mm; }
+
+  /* Tables */
+  table.t { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 6mm; }
+  table.t thead th { text-align: left; padding: 3mm 3mm; font-size: 7.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); background: var(--bg-subtle); border-bottom: 0.3mm solid var(--border-strong); }
+  table.t tbody td { padding: 2.5mm 3mm; border-bottom: 0.15mm solid var(--border); vertical-align: top; }
+  table.t tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+  table.t tbody tr { page-break-inside: avoid; }
+  th.num, td.num { text-align: right; }
+
+  /* Chips (status + applicability) */
+  .chip { display: inline-block; padding: 0.5mm 2mm; border-radius: 999px; font-size: 7.5pt; font-weight: 600; line-height: 1.5; letter-spacing: 0.02em; border: 0.15mm solid transparent; }
+  .chip-good    { background: var(--good-soft);    color: var(--good);    border-color: var(--good); }
+  .chip-warn    { background: var(--warn-soft);    color: var(--warn);    border-color: var(--warn); }
+  .chip-bad     { background: var(--bad-soft);     color: var(--bad);     border-color: var(--bad); }
+  .chip-info    { background: var(--info-soft);    color: var(--info);    border-color: var(--info); }
+  .chip-neutral { background: var(--neutral-soft); color: var(--neutral); border-color: var(--neutral); }
+  .chip-brand   { background: var(--brand-soft);   color: var(--brand);   border-color: var(--brand); }
+
+  .truncate { max-width: 60mm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty { padding: 14mm 4mm; text-align: center; color: var(--text-tertiary); font-size: 9.5pt; border: 0.2mm dashed var(--border-strong); border-radius: 2mm; background: var(--bg-subtle); }
+
+  /* Risk heatmap (matrix) */
+  .heatmap { width: 100%; border-collapse: separate; border-spacing: 0.4mm; margin-bottom: 6mm; }
+  .heatmap th, .heatmap td { padding: 2mm; text-align: center; font-size: 8.5pt; }
+  .heatmap th { color: var(--text-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 7.5pt; }
+  .heatmap .label-row { font-weight: 600; color: var(--text); text-align: left; }
+  .heatmap-cell { color: var(--ink); font-weight: 600; border-radius: 1.5mm; min-width: 14mm; }
+  .heatmap-count { font-size: 13pt; font-weight: 700; }
+  .heatmap-band { font-size: 7pt; font-weight: 600; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Hash + numeric details */
+  .mini { font-size: 8pt; color: var(--text-tertiary); }
+  .hash { font-family: 'SF Mono', ui-monospace, monospace; font-size: 8pt; color: var(--text-secondary); word-break: break-all; }
+
+  /* Footnote callouts (e.g., "live state, not a snapshot") */
+  .callout { padding: 3mm 4mm; border-left: 0.6mm solid var(--brand); background: var(--brand-soft); font-size: 9pt; color: var(--text); margin-bottom: 4mm; border-radius: 0 1mm 1mm 0; }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+</style>
+</head>
+<body>
+
+<%
+  // Local helpers so the template stays readable without re-importing the lib's
+  // formatters into every print expression.
+  function fmt(d) { if (!d) return ''; return String(d).slice(0, 10); }
+  function bytes(n) { if (!n && n !== 0) return '-'; if (n < 1024) return n + ' B'; if (n < 1048576) return (n/1024).toFixed(1) + ' KB'; return (n/1048576).toFixed(2) + ' MB'; }
+  function chip(value, kind) {
+    if (!value) return '<span class="mini">-</span>';
+    const klass = kind || 'neutral';
+    return '<span class="chip chip-' + klass + '">' + escapeHtml(value) + '</span>';
+  }
+  function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  function statusChipKind(s) {
+    s = String(s || '').toLowerCase();
+    if (['implemented','included','done','closed','verified','held','completed'].includes(s)) return 'good';
+    if (['partial','partially-implemented','in_review','accepted','minor','in_progress'].includes(s)) return 'warn';
+    if (['progress','work-in-progress','treated'].includes(s)) return 'info';
+    if (['not-impl','not-implemented','excluded','blocked','open','major'].includes(s)) return 'bad';
+    return 'neutral';
+  }
+  function appChipKind(a) {
+    a = String(a || '').toLowerCase();
+    if (a === 'included') return 'good';
+    if (a === 'excluded') return 'bad';
+    return 'neutral';
+  }
+  function severityChipKind(s) {
+    s = String(s || '').toLowerCase();
+    if (s === 'major' || s === 'critical' || s === 'high') return 'bad';
+    if (s === 'minor' || s === 'medium') return 'warn';
+    return 'neutral';
+  }
+%>
+
+<%# ============= COVER ============= %>
+<% if (sections.cover) { %>
+<div class="cover">
+  <div class="cover-rail"></div>
+  <div class="cover-eyebrow"><%= brand.displayName %></div>
+  <div class="cover-title">ISMS Audit Pack</div>
+  <div class="cover-subtitle">Statement of Applicability · Risk register · Evidence index · Internal audit · Nonconformities · Management review · Improvement log</div>
+
+  <div class="cover-spacer"></div>
+
+  <div class="cover-meta">
+    <div>
+      <div class="cover-meta-label">Prepared for</div>
+      <div class="cover-meta-value"><%= preparedFor %></div>
+      <% if (workspace.scope) { %><div class="cover-meta-sub"><%= workspace.scope %></div><% } %>
+    </div>
+    <div>
+      <div class="cover-meta-label">Prepared by</div>
+      <div class="cover-meta-value"><%= preparedBy %></div>
+    </div>
+    <div>
+      <div class="cover-meta-label">Report date</div>
+      <div class="cover-meta-value"><%= generatedAt.toISOString().slice(0,10) %></div>
+    </div>
+    <div>
+      <div class="cover-meta-label">Standard</div>
+      <div class="cover-meta-value">ISO/IEC 27001:2022</div>
+      <% if (workspace.target_cert_date) { %><div class="cover-meta-sub">Target cert: <%= fmt(workspace.target_cert_date) %></div><% } %>
+    </div>
+    <% if (sections.soa && typeof soa !== 'undefined' && soa.snapshot) { %>
+    <div>
+      <div class="cover-meta-label">SoA snapshot</div>
+      <div class="cover-meta-value"><%= soa.snapshot.label || 'Untitled snapshot' %></div>
+      <div class="cover-meta-sub mono">SHA-256 <%= (soa.snapshot.payload_hash || '').slice(0,16) %>…</div>
+    </div>
+    <% } %>
+    <div>
+      <div class="cover-meta-label">Generated</div>
+      <div class="cover-meta-value"><%= generatedAt.toISOString().replace('T',' ').slice(0,19) %> UTC</div>
+    </div>
+  </div>
+
+  <div class="cover-confidentiality"><%= brand.confidentialityLabel %></div>
+</div>
+<% } %>
+
+<%# ============= EXECUTIVE SUMMARY ============= %>
+<% if (sections.summary) { %>
+<div class="section">
+  <div class="section-eyebrow">Section 1</div>
+  <h2 class="section-title">Executive summary</h2>
+  <div class="section-rule"></div>
+  <p>A snapshot of the management system as of <%= generatedAt.toISOString().slice(0,10) %>. Detail for each figure is in the sections that follow.</p>
+
+  <div class="kpi-grid">
+    <% if (typeof soa !== 'undefined') { %>
+      <div class="kpi brand">
+        <div class="kpi-label">SoA · Applicable controls</div>
+        <div class="kpi-num"><%= soa.counts.included %> <span class="mini">/ <%= soa.counts.total %></span></div>
+        <div class="kpi-meta"><%= soa.counts.excluded %> excluded · <%= soa.counts.undecided %> undecided</div>
+      </div>
+    <% } %>
+    <% if (typeof risks !== 'undefined') { %>
+      <div class="kpi <%= risks.open > 0 ? 'warn' : 'good' %>">
+        <div class="kpi-label">Risks · Open</div>
+        <div class="kpi-num"><%= risks.open %> <span class="mini">/ <%= risks.rows.length %></span></div>
+        <div class="kpi-meta"><%= risks.treated %> treated or closed</div>
+      </div>
+    <% } %>
+    <% if (typeof ncs !== 'undefined') { %>
+      <div class="kpi <%= ncs.majorOpen > 0 ? 'bad' : (ncs.open > 0 ? 'warn' : 'good') %>">
+        <div class="kpi-label">Nonconformities · Open</div>
+        <div class="kpi-num"><%= ncs.open %></div>
+        <div class="kpi-meta"><%= ncs.majorOpen %> major · <%= ncs.closed %> closed</div>
+      </div>
+    <% } %>
+    <% if (typeof evidence !== 'undefined') { %>
+      <div class="kpi brand">
+        <div class="kpi-label">Evidence on file</div>
+        <div class="kpi-num"><%= evidence.count %></div>
+        <div class="kpi-meta"><%= bytes(evidence.totalBytes) %> total</div>
+      </div>
+    <% } %>
+    <% if (typeof mrms !== 'undefined') { %>
+      <div class="kpi <%= mrms.held > 0 ? 'good' : 'warn' %>">
+        <div class="kpi-label">Management reviews</div>
+        <div class="kpi-num"><%= mrms.held %></div>
+        <div class="kpi-meta">Most recent: <%= mrms.lastMeetingDate ? fmt(mrms.lastMeetingDate) : 'none on record' %></div>
+      </div>
+    <% } %>
+    <% if (typeof audits !== 'undefined') { %>
+      <div class="kpi <%= audits.count > 0 ? 'good' : 'warn' %>">
+        <div class="kpi-label">Internal audits</div>
+        <div class="kpi-num"><%= audits.count %></div>
+        <div class="kpi-meta">Lifecycle status varies by audit</div>
+      </div>
+    <% } %>
+    <% if (typeof improvements !== 'undefined') { %>
+      <div class="kpi <%= improvements.open > 0 ? 'warn' : 'good' %>">
+        <div class="kpi-label">Improvements · Active</div>
+        <div class="kpi-num"><%= improvements.open %></div>
+        <div class="kpi-meta"><%= improvements.done %> completed</div>
+      </div>
+    <% } %>
+    <% if (typeof audit_trail !== 'undefined') { %>
+      <div class="kpi brand">
+        <div class="kpi-label">Audit-log events</div>
+        <div class="kpi-num"><%= audit_trail.total %></div>
+        <div class="kpi-meta">Most recent <%= Math.min(audit_trail.recent.length, 50) %> shown in the audit trail section</div>
+      </div>
+    <% } %>
+  </div>
+</div>
+<% } %>
+
+<%# ============= STATEMENT OF APPLICABILITY ============= %>
+<% if (sections.soa && typeof soa !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 2</div>
+  <h2 class="section-title">Statement of Applicability</h2>
+  <div class="section-rule"></div>
+  <% if (soa.snapshot) { %>
+    <p class="mini">Frozen snapshot · <strong><%= soa.snapshot.label || 'Untitled' %></strong> · captured <%= fmt(soa.snapshot.created_at) %> · SHA-256 <span class="hash"><%= soa.snapshot.payload_hash %></span></p>
+  <% } else { %>
+    <div class="callout warn">No SoA snapshot exists yet. The table below reflects the current live SoA state. Capture a snapshot from the SoA → Snapshots page to freeze a version for this audit.</div>
+  <% } %>
+
+  <% if (!soa.rows.length) { %>
+    <div class="empty">No controls in the Statement of Applicability yet.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:18mm;">Control</th>
+        <th>Title</th>
+        <th style="width:22mm;">Applicability</th>
+        <th style="width:24mm;">Status</th>
+        <th>Justification</th>
+      </tr></thead>
+      <tbody>
+        <% soa.rows.forEach(r => {
+             const justification = r.applicability === 'excluded' ? r.exclusion_justification : r.inclusion_justification;
+        %>
+          <tr>
+            <td class="mono"><%= String(r.id || '').replace('annex-','').toUpperCase() %></td>
+            <td><%= r.title %></td>
+            <td><%- chip(r.applicability, appChipKind(r.applicability)) %></td>
+            <td><%- chip(r.status, statusChipKind(r.status)) %></td>
+            <td class="mini"><%= (justification || '').slice(0, 220) %><%= (justification && justification.length > 220) ? '…' : '' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= RISK REGISTER ============= %>
+<% if (sections.risks && typeof risks !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 3</div>
+  <h2 class="section-title">Risk register</h2>
+  <div class="section-rule"></div>
+  <% if (risks.methodology) { %>
+    <p class="mini">Methodology: <strong><%= risks.methodology.name %></strong> · <%= risks.methodology.likelihood_scale.length %>×<%= risks.methodology.impact_scale.length %> matrix</p>
+  <% } %>
+
+  <% if (risks.methodology && risks.rows.length) {
+       const m = risks.methodology;
+       const lScale = m.likelihood_scale;
+       const iScale = m.impact_scale;
+       const bands = m.thresholds;
+  %>
+    <div class="keep-together">
+      <h3 style="margin-bottom:3mm;">Inherent risk heatmap</h3>
+      <table class="heatmap">
+        <thead>
+          <tr>
+            <th></th>
+            <% iScale.forEach(i => { %><th><%= i.label %></th><% }) %>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (let li = lScale.length - 1; li >= 0; li--) { const l = lScale[li]; %>
+            <tr>
+              <th class="label-row"><%= l.label %></th>
+              <% iScale.forEach((iL, ii) => {
+                   const band = m.matrix[li][ii];
+                   const color = bands[band] ? bands[band].color : '#a3a3a3';
+                   const count = risks.rows.filter(r => r.likelihood === l.value && r.impact === iL.value).length;
+              %>
+                <td class="heatmap-cell" style="background:<%= color %>1a;border:0.15mm solid <%= color %>40;color:<%= color %>;">
+                  <% if (count) { %>
+                    <div class="heatmap-count"><%= count %></div>
+                    <div class="heatmap-band"><%= band %></div>
+                  <% } else { %>
+                    <div class="heatmap-band" style="opacity:0.4;"><%= band %></div>
+                  <% } %>
+                </td>
+              <% }) %>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <% if (!risks.rows.length) { %>
+    <div class="empty">No risks recorded.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:14mm;">ID</th>
+        <th>Title</th>
+        <th style="width:30mm;">Asset</th>
+        <th class="num" style="width:12mm;">L·I</th>
+        <th style="width:20mm;">Band</th>
+        <th style="width:22mm;">Treatment</th>
+        <th style="width:22mm;">Status</th>
+        <th style="width:28mm;">Owner</th>
+      </tr></thead>
+      <tbody>
+        <% risks.rows.forEach(r => {
+             const bandColor = (risks.methodology && risks.methodology.thresholds[r.band])
+               ? risks.methodology.thresholds[r.band].color : '#52525b';
+        %>
+          <tr>
+            <td class="mono">R-<%= String(r.id).padStart(3,'0') %></td>
+            <td><%= r.title %><% if (r.description) { %><div class="mini" style="margin-top:1mm;"><%= r.description.slice(0,140) %><%= r.description.length > 140 ? '…' : '' %></div><% } %></td>
+            <td><%= r.asset_name || '-' %></td>
+            <td class="num"><%= r.likelihood %>·<%= r.impact %></td>
+            <td><% if (r.band) { %><span class="chip" style="background:<%= bandColor %>1a;color:<%= bandColor %>;border-color:<%= bandColor %>;text-transform:uppercase;"><%= r.band %></span><% } else { %>-<% } %></td>
+            <td style="text-transform:capitalize;"><%= r.treatment || '-' %></td>
+            <td><%- chip(r.status, statusChipKind(r.status)) %></td>
+            <td><%= r.owner_name || '-' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= EVIDENCE INDEX ============= %>
+<% if (sections.evidence && typeof evidence !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 4</div>
+  <h2 class="section-title">Evidence index</h2>
+  <div class="section-rule"></div>
+  <p class="mini"><strong><%= evidence.count %></strong> evidence files · <%= bytes(evidence.totalBytes) %> · each row carries a SHA-256 so an auditor can verify integrity offline.</p>
+
+  <% if (!evidence.rows.length) { %>
+    <div class="empty">No evidence has been uploaded yet.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:20mm;">Control</th>
+        <th>Filename</th>
+        <th style="width:36mm;">SHA-256</th>
+        <th style="width:18mm;" class="num">Size</th>
+        <th style="width:26mm;">Uploaded by</th>
+        <th style="width:24mm;">Date</th>
+      </tr></thead>
+      <tbody>
+        <% evidence.rows.forEach(e => { %>
+          <tr>
+            <td class="mono"><%= e.iso_item_id ? String(e.iso_item_id).replace('annex-','').toUpperCase() : '-' %></td>
+            <td><%= e.filename %><% if (e.description) { %><div class="mini" style="margin-top:1mm;"><%= e.description.slice(0,120) %></div><% } %></td>
+            <td class="hash"><%= (e.sha256 || '').slice(0, 32) %><%= e.sha256 && e.sha256.length > 32 ? '…' : '' %></td>
+            <td class="num"><%= bytes(e.size_bytes) %></td>
+            <td><%= e.uploader || '-' %></td>
+            <td class="mini"><%= fmt(e.uploaded_at) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= INTERNAL AUDIT ============= %>
+<% if (sections.audits && typeof audits !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 5</div>
+  <h2 class="section-title">Internal audit programme</h2>
+  <div class="section-rule"></div>
+
+  <% if (!audits.rows.length) { %>
+    <div class="empty">No internal audits recorded yet. Clause 9.2 requires at least one before certification.</div>
+  <% } else { %>
+    <% audits.rows.forEach(a => { %>
+      <div class="keep-together" style="margin-bottom:8mm;border:0.2mm solid var(--border);border-radius:2mm;padding:5mm;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;margin-bottom:3mm;">
+          <div>
+            <h3 style="margin-bottom:1.5mm;"><%= a.title %></h3>
+            <div class="mini"><%= fmt(a.audit_date) || 'No date' %> · Auditor: <%= a.auditor_name || '—' %> · <span style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '—' %></span></div>
+          </div>
+          <%- chip(a.lifecycle_stage || a.status, statusChipKind(a.lifecycle_stage || a.status)) %>
+        </div>
+        <% if (a.scope) { %><div class="mini" style="margin-bottom:2mm;"><strong>Scope:</strong> <%= a.scope %></div><% } %>
+        <% if (a.summary) { %><div class="mini" style="margin-bottom:3mm;"><strong>Summary:</strong> <%= a.summary %></div><% } %>
+
+        <% if (a.findings && a.findings.length) { %>
+          <table class="t" style="margin-bottom:0;">
+            <thead><tr>
+              <th style="width:20mm;">Type</th>
+              <th>Finding</th>
+              <th style="width:20mm;">Severity</th>
+              <th style="width:20mm;">Status</th>
+            </tr></thead>
+            <tbody>
+              <% a.findings.forEach(f => { %>
+                <tr>
+                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '—' %></span></td>
+                  <td><%= f.description %><% if (f.iso_item_id) { %><div class="mini" style="margin-top:1mm;"><%= String(f.iso_item_id).replace('annex-','').toUpperCase() %></div><% } %></td>
+                  <td><%- chip(f.severity, severityChipKind(f.severity)) %></td>
+                  <td><%- chip(f.status, statusChipKind(f.status)) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <div class="mini">No findings recorded for this audit.</div>
+        <% } %>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= NONCONFORMITIES ============= %>
+<% if (sections.ncs && typeof ncs !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 6</div>
+  <h2 class="section-title">Nonconformity log</h2>
+  <div class="section-rule"></div>
+  <p class="mini"><strong><%= ncs.open %></strong> open · <strong><%= ncs.closed %></strong> closed · <%= ncs.majorOpen %> major open</p>
+
+  <% if (!ncs.rows.length) { %>
+    <div class="empty">No nonconformities recorded.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th>Title</th>
+        <th style="width:18mm;">Severity</th>
+        <th style="width:18mm;">Status</th>
+        <th>Root cause</th>
+        <th>Corrective action</th>
+        <th style="width:22mm;">Responsible</th>
+        <th style="width:22mm;">Due</th>
+      </tr></thead>
+      <tbody>
+        <% ncs.rows.forEach(n => { %>
+          <tr>
+            <td><%= n.title %><% if (n.iso_item_id) { %><div class="mini mono" style="margin-top:1mm;"><%= String(n.iso_item_id).replace('annex-','').toUpperCase() %></div><% } %></td>
+            <td><%- chip(n.severity, severityChipKind(n.severity)) %></td>
+            <td><%- chip(n.status, statusChipKind(n.status)) %></td>
+            <td class="mini"><%= (n.root_cause || '').slice(0,160) %></td>
+            <td class="mini"><%= (n.corrective_action || '').slice(0,160) %></td>
+            <td><%= n.responsible || '-' %></td>
+            <td class="mini"><%= fmt(n.due_date) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= MRMS ============= %>
+<% if (sections.mrms && typeof mrms !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 7</div>
+  <h2 class="section-title">Management review</h2>
+  <div class="section-rule"></div>
+  <p class="mini"><strong><%= mrms.held %></strong> review<%= mrms.held === 1 ? '' : 's' %> held · last <%= mrms.lastMeetingDate ? fmt(mrms.lastMeetingDate) : 'none' %></p>
+
+  <% if (!mrms.rows.length) { %>
+    <div class="empty">No management reviews on record. Clause 9.3 requires reviews at planned intervals.</div>
+  <% } else { %>
+    <% mrms.rows.forEach(m => { %>
+      <div class="keep-together" style="margin-bottom:6mm;border:0.2mm solid var(--border);border-radius:2mm;padding:5mm;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;margin-bottom:2.5mm;">
+          <div>
+            <h3 style="margin-bottom:1.5mm;">Management review · <%= fmt(m.meeting_date) || 'date TBD' %></h3>
+            <% if (m.attendees) { %><div class="mini"><strong>Attendees:</strong> <%= m.attendees %></div><% } %>
+          </div>
+          <%- chip(m.status, statusChipKind(m.status)) %>
+        </div>
+        <div class="grid-2" style="margin-top:3mm;">
+          <% if (m.decisions) { %><div><h3>Decisions</h3><div class="mini"><%= m.decisions %></div></div><% } %>
+          <% if (m.action_items) { %><div><h3>Action items</h3><div class="mini"><%= m.action_items %></div></div><% } %>
+          <% if (m.performance_review) { %><div><h3>Performance</h3><div class="mini"><%= m.performance_review %></div></div><% } %>
+          <% if (m.improvement_opportunities) { %><div><h3>Improvement opportunities</h3><div class="mini"><%= m.improvement_opportunities %></div></div><% } %>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= IMPROVEMENTS ============= %>
+<% if (sections.improvements && typeof improvements !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 8</div>
+  <h2 class="section-title">Improvement log</h2>
+  <div class="section-rule"></div>
+  <p class="mini"><strong><%= improvements.open %></strong> active · <strong><%= improvements.done %></strong> completed</p>
+
+  <% if (!improvements.rows.length) { %>
+    <div class="empty">No improvement actions recorded.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th>Title</th>
+        <th style="width:20mm;">Source</th>
+        <th style="width:22mm;">Owner</th>
+        <th style="width:22mm;">Due</th>
+        <th style="width:20mm;">Status</th>
+      </tr></thead>
+      <tbody>
+        <% improvements.rows.forEach(im => { %>
+          <tr>
+            <td><%= im.title %><% if (im.description) { %><div class="mini" style="margin-top:1mm;"><%= im.description.slice(0,160) %></div><% } %></td>
+            <td class="mini" style="text-transform:capitalize;"><%= im.source || '-' %></td>
+            <td><%= im.owner_name || '-' %></td>
+            <td class="mini"><%= fmt(im.due_date) %></td>
+            <td><%- chip(im.status, statusChipKind(im.status)) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= AUDIT TRAIL ============= %>
+<% if (sections.audit_trail && typeof audit_trail !== 'undefined') { %>
+<div class="section">
+  <div class="section-eyebrow">Section 9</div>
+  <h2 class="section-title">Audit trail · recent activity</h2>
+  <div class="section-rule"></div>
+  <p class="mini"><strong><%= audit_trail.total %></strong> total events logged. The 50 most recent are shown below; the full chain is verifiable in-tool via the Activity → Verify chain workflow.</p>
+
+  <% if (!audit_trail.recent.length) { %>
+    <div class="empty">No audit-log events yet.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:34mm;">When</th>
+        <th style="width:28mm;">Actor</th>
+        <th>Action</th>
+        <th style="width:36mm;">Entity</th>
+      </tr></thead>
+      <tbody>
+        <% audit_trail.recent.forEach(ev => { %>
+          <tr>
+            <td class="mini"><%= String(ev.created_at).replace('T',' ').slice(0,19) %></td>
+            <td class="mini"><%= ev.actor || '-' %></td>
+            <td class="mini"><%= ev.action %></td>
+            <td class="mini"><%= ev.entity_type || '-' %><%= ev.entity_id ? ' · #' + ev.entity_id : '' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+</body>
+</html>

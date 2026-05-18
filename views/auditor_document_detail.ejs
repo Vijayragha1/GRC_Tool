@@ -1,0 +1,98 @@
+<%- include('partials/auditor_header', { title: doc.name, token, share, workspace, active: 'documents' }) %>
+
+<style>
+  .doc-shell { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
+  @media (max-width: 1100px) { .doc-shell { grid-template-columns: 1fr; } }
+
+  .doc-body {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 36px 44px; font-size: 14px; line-height: 1.7; color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+  .doc-body h1 { font-size: 22px; margin: 0 0 14px; letter-spacing: -0.02em; color: var(--ink); }
+  .doc-body h2 { font-size: 16px; margin: 24px 0 8px; letter-spacing: -0.01em; color: var(--ink); }
+  .doc-body h3 { font-size: 13.5px; margin: 18px 0 4px; color: var(--ink); }
+  .doc-body p { margin: 0 0 10px; }
+  .doc-body ul, .doc-body ol { margin: 0 0 10px 24px; padding: 0; }
+  .doc-body li { margin-bottom: 3px; }
+  .doc-body blockquote { margin: 0 0 10px 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 4px 4px 0; font-size: 13px; }
+  .doc-body code { font-family: ui-monospace, monospace; font-size: 12.5px; padding: 1px 4px; background: var(--bg-muted); border-radius: 3px; }
+  .doc-body hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+  .doc-body strong { font-weight: 600; }
+  .doc-body table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12.5px; }
+  .doc-body table th, .doc-body table td { padding: 8px 12px; border: 1px solid var(--border); text-align: left; }
+  .doc-body table thead th { background: var(--bg-subtle); font-weight: 600; }
+
+  .meta-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .meta-row:last-child { border-bottom: none; }
+  .meta-row-label { color: var(--text-tertiary); }
+  .meta-row-value { color: var(--text); font-weight: 500; text-align: right; }
+</style>
+
+<div class="a-page-head">
+  <a href="/auditor/<%= token %>/documents" class="link-muted text-sm">← All documents</a>
+  <h1 class="a-page-title" style="margin-top:6px;"><%= doc.name %></h1>
+  <div class="a-page-sub" style="text-transform:capitalize;"><%= doc.category %> · v<%= doc.version %><% if (doc.approved_at) { %> · approved <%= fmtDate(doc.approved_at) %><% } %></div>
+</div>
+
+<div class="doc-shell">
+  <div class="doc-body">
+    <%- html %>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:12px;">
+      <div class="panel-head"><h2>Document control</h2></div>
+      <div class="panel-pad">
+        <div class="meta-row">
+          <span class="meta-row-label">Status</span>
+          <span class="meta-row-value" style="text-transform:capitalize;"><%= doc.status %></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-row-label">Version</span>
+          <span class="meta-row-value">v<%= doc.version %></span>
+        </div>
+        <% if (doc.approver) { %>
+          <div class="meta-row">
+            <span class="meta-row-label">Approved by</span>
+            <span class="meta-row-value"><%= doc.approver %></span>
+          </div>
+        <% } %>
+        <% if (doc.approved_at) { %>
+          <div class="meta-row">
+            <span class="meta-row-label">Approved on</span>
+            <span class="meta-row-value"><%= fmtDate(doc.approved_at) %></span>
+          </div>
+        <% } %>
+        <% if (doc.published_at) { %>
+          <div class="meta-row">
+            <span class="meta-row-label">Published</span>
+            <span class="meta-row-value"><%= fmtDate(doc.published_at) %></span>
+          </div>
+        <% } %>
+        <% if (doc.next_review_date) { %>
+          <div class="meta-row">
+            <span class="meta-row-label">Next review</span>
+            <span class="meta-row-value"><%= fmtDate(doc.next_review_date) %></span>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <% if (links.length) { %>
+      <div class="panel">
+        <div class="panel-head"><h2>Annex A controls covered</h2><span class="meta"><%= links.length %></span></div>
+        <div class="panel-pad" style="padding:8px 14px;">
+          <% links.forEach(l => { %>
+            <div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
+              <span class="mono" style="font-size:11px;font-weight:600;color:var(--accent-deep);background:var(--accent-soft);padding:2px 6px;border-radius:3px;flex-shrink:0;"><%= String(l.iso_item_id).replace('annex-a.','A.').replace('clause-','Cl. ').toUpperCase() %></span>
+              <span class="meta text-sm" style="line-height:1.45;"><%= l.title.replace(/^A\.[\d.]+\s+/, '').replace(/^Clause [\d.]+\s+/, '') %></span>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<%- include('partials/auditor_footer') %>

@@ -1,0 +1,118 @@
+<%- include('partials/auditor_header', { title: 'Audits & nonconformities', token, share, workspace, active: 'audits' }) %>
+
+<div class="a-page-head">
+  <h1 class="a-page-title">Internal audits & nonconformities</h1>
+  <div class="a-page-sub">
+    Internal audit programme history with findings per audit, and the full nonconformity log with root-cause analysis and corrective actions.
+  </div>
+</div>
+
+<%# audits section %>
+<h2 style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 10px;">Internal audits</h2>
+<% if (!audits.length) { %>
+  <div class="empty-pane" style="margin-bottom:24px;">
+    <div class="empty-pane-title">No internal audits on record</div>
+    <div>Clause 9.2 requires at least one before certification.</div>
+  </div>
+<% } else { %>
+  <% audits.forEach(a => { %>
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head">
+        <h2><%= a.title %></h2>
+        <div class="meta" style="display:flex;gap:10px;align-items:center;">
+          <span><%= fmtDate(a.audit_date) || 'no date' %></span>
+          <% if (a.auditor_name) { %>· <span><%= a.auditor_name %></span><% } %>
+          <% const statusS = String(a.lifecycle_stage || a.status || '').toLowerCase();
+             const sk = ['closed','completed','reported'].includes(statusS) ? 'good'
+                      : ['fieldwork','draft_report','reporting'].includes(statusS) ? 'warn'
+                      : ['planned','scoping'].includes(statusS) ? 'neutral' : 'neutral';
+          %>
+          <span class="chip chip-<%= sk %>" style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '—' %></span>
+        </div>
+      </div>
+      <div class="panel-pad" style="padding-top:14px;padding-bottom:14px;">
+        <% if (a.scope) { %><div class="text-sm" style="margin-bottom:6px;"><strong>Scope:</strong> <%= a.scope %></div><% } %>
+        <% if (a.summary) { %><div class="text-sm meta" style="margin-bottom:10px;line-height:1.55;"><%= a.summary %></div><% } %>
+
+        <% if (a.findings && a.findings.length) { %>
+          <table class="t" style="margin-top:6px;">
+            <thead><tr>
+              <th style="width:100px;">Type</th>
+              <th>Finding</th>
+              <th style="width:90px;">Severity</th>
+              <th style="width:90px;">Status</th>
+            </tr></thead>
+            <tbody>
+              <% a.findings.forEach(f => {
+                   const sevS = String(f.severity || '').toLowerCase();
+                   const sevKind = ['major','critical','high'].includes(sevS) ? 'bad'
+                                 : ['minor','medium'].includes(sevS) ? 'warn' : 'neutral';
+                   const fstatusS = String(f.status || '').toLowerCase();
+                   const fsKind = ['closed','verified'].includes(fstatusS) ? 'good'
+                                : ['open'].includes(fstatusS) ? 'bad' : 'neutral';
+              %>
+                <tr>
+                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '—' %></span></td>
+                  <td>
+                    <%= f.description %>
+                    <% if (f.iso_item_id) { %><div class="meta text-sm" style="margin-top:2px;font-family:ui-monospace,monospace;"><%= String(f.iso_item_id).replace('annex-','').toUpperCase() %><% if (f.iso_title) { %> · <%= f.iso_title %><% } %></div><% } %>
+                  </td>
+                  <td><span class="chip chip-<%= sevKind %>"><%= f.severity %></span></td>
+                  <td><span class="chip chip-<%= fsKind %>"><%= f.status %></span></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <div class="meta text-sm">No findings recorded for this audit.</div>
+        <% } %>
+      </div>
+    </div>
+  <% }) %>
+<% } %>
+
+<%# NCs section %>
+<h2 style="font-size:14px;font-weight:600;color:var(--ink);margin:32px 0 10px;">Nonconformity log</h2>
+<% if (!ncs.length) { %>
+  <div class="empty-pane">
+    <div class="empty-pane-title">No nonconformities recorded</div>
+    <div>Either everything is operating as designed, or the consultant has not yet logged any.</div>
+  </div>
+<% } else { %>
+  <div class="panel">
+    <table class="t">
+      <thead><tr>
+        <th>Title</th>
+        <th style="width:80px;">Severity</th>
+        <th style="width:80px;">Status</th>
+        <th>Root cause</th>
+        <th>Corrective action</th>
+        <th style="width:110px;">Responsible</th>
+        <th style="width:96px;">Due</th>
+      </tr></thead>
+      <tbody>
+        <% ncs.forEach(n => {
+             const sevS = String(n.severity || '').toLowerCase();
+             const sevKind = ['major','critical'].includes(sevS) ? 'bad' : sevS === 'minor' ? 'warn' : 'neutral';
+             const fstatusS = String(n.status || '').toLowerCase();
+             const fsKind = ['closed','verified'].includes(fstatusS) ? 'good' : ['open'].includes(fstatusS) ? 'bad' : 'neutral';
+        %>
+          <tr>
+            <td>
+              <%= n.title %>
+              <% if (n.iso_item_id) { %><div class="meta text-sm mono" style="margin-top:2px;"><%= String(n.iso_item_id).replace('annex-','').toUpperCase() %></div><% } %>
+            </td>
+            <td><span class="chip chip-<%= sevKind %>"><%= n.severity %></span></td>
+            <td><span class="chip chip-<%= fsKind %>"><%= n.status %></span></td>
+            <td class="meta text-sm"><%= (n.root_cause || '').slice(0,160) %></td>
+            <td class="meta text-sm"><%= (n.corrective_action || '').slice(0,160) %></td>
+            <td class="meta"><%= n.responsible || '-' %></td>
+            <td class="meta"><%= fmtDate(n.due_date) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('partials/auditor_footer') %>
