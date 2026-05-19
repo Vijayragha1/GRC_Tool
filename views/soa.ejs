@@ -6,7 +6,8 @@
     <div class="page-subtitle">Mandatory ISO 27001 document (clause 6.1.3.d). Applicability and justification for all 93 Annex A controls, plus any non-Annex-A controls you've added.</div>
   </div>
   <div class="row">
-    <span class="text-xs" id="soaAutosaveStatus" style="line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing or change a dropdown.">All changes saved</span>
+    <button type="button" id="soaSaveAll" class="btn btn-primary btn-xs" style="display:none;" title="Flush every pending row change in one batched request. Useful at the end of a sweep — beats waiting for the per-row debounce to settle.">Save all changes <span id="soaSaveAllCount" class="num"></span></button>
+    <span class="text-xs" id="soaAutosaveStatus" style="line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing. Use Save all changes to flush immediately.">All changes saved</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'For every Annex A control that any open risk has selected as a treatment, mark it Included and pre-fill an inclusion justification of the form &quot;Treats {risk titles}&quot;. Existing justifications are not overwritten. This is the fastest way to a defensible first-pass SoA. You can edit each justification afterwards. Continue?')"><button class="btn btn-secondary btn-xs" title="For every control linked to a risk: mark Included + write justification of the form 'Treats X, Y, Z'. Existing justifications kept. Idempotent.">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs" title="Capture an immutable, hashed copy of the current SoA state. Auditors compare snapshots over time - capture before each MRM and before each audit.">Capture snapshot</button></form>
     <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
@@ -252,10 +253,74 @@
     }
   }
 
-  function schedule(form) {
-    clearTimeout(timers.get(form));
-    timers.set(form, setTimeout(() => submitRow(form), DEBOUNCE_MS));
+  // Dirty-row tracking. Each form that has a pending change goes into this
+  // Set; the Save-all button uses it to know what to flush. We clear an entry
+  // when its individual debounced submit succeeds OR when the batch flush
+  // succeeds. This way autosave and Save-all stay in sync.
+  const dirty = new Set();
+  const saveAllBtn = document.getElementById('soaSaveAll');
+  const saveAllCount = document.getElementById('soaSaveAllCount');
+  function paintSaveAll() {
+    if (!saveAllBtn) return;
+    const n = dirty.size;
+    if (n === 0) { saveAllBtn.style.display = 'none'; return; }
+    saveAllBtn.style.display = 'inline-flex';
+    saveAllCount.textContent = '(' + n + ')';
   }
+
+  function schedule(form) {
+    dirty.add(form);
+    paintSaveAll();
+    clearTimeout(timers.get(form));
+    timers.set(form, setTimeout(() => {
+      submitRow(form).then(() => {
+        if (!lastError) dirty.delete(form);
+        paintSaveAll();
+      });
+    }, DEBOUNCE_MS));
+  }
+
+  // Collect every dirty form into a single payload and POST to /soa/batch.
+  // Used by the "Save all changes" button: cancels pending debounced submits
+  // and applies the batch in one server round-trip + transaction. Falls back
+  // gracefully — on error, individual autosaves will retry.
+  async function saveAll() {
+    if (!saveAllBtn || dirty.size === 0) return;
+    const wsMatch = location.pathname.match(/\/workspaces\/(\d+)/);
+    if (!wsMatch) return;
+    // Cancel pending debounces — we're flushing now.
+    dirty.forEach(form => clearTimeout(timers.get(form)));
+    const rows = [];
+    dirty.forEach(form => {
+      const action = form.action || '';
+      const m = action.match(/\/soa\/([^?]+)/);
+      if (!m) return;
+      const iso_item_id = m[1];
+      const fd = new FormData(form);
+      rows.push({
+        iso_item_id,
+        applicability: fd.get('applicability') || '',
+        status: fd.get('status') || '',
+        inclusion_justification: fd.get('inclusion_justification') || '',
+        exclusion_justification: fd.get('exclusion_justification') || ''
+      });
+    });
+    const params = new URLSearchParams();
+    params.set('rows', JSON.stringify(rows));
+    if (window._csrfToken) params.set('_csrf', window._csrfToken);
+    inFlight++; setStatus(); saveAllBtn.disabled = true;
+    try {
+      const res = await fetch(`/workspaces/${wsMatch[1]}/soa/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params, credentials: 'same-origin'
+      });
+      if (res.ok) { dirty.clear(); lastError = null; }
+      else lastError = 'HTTP ' + res.status;
+    } catch (e) { lastError = String(e); }
+    finally { inFlight--; saveAllBtn.disabled = false; setStatus(); paintSaveAll(); }
+  }
+  if (saveAllBtn) saveAllBtn.addEventListener('click', saveAll);
 
   // <form> wrapping a <tr> inside <tbody> gets reparented by the HTML parser -
   // the form element ends up empty in the DOM and the inputs are no longer

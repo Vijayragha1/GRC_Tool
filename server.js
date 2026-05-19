@@ -2848,6 +2848,43 @@ app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, re
   res.redirect('/workspaces/' + req.workspace.id + '/soa');
 });
 
+// SoA batch save. Used by the "Save all changes" button on /soa to flush
+// every dirty row in one round-trip instead of one POST per row. Body shape:
+//   rows = JSON array of { iso_item_id, applicability, status,
+//                          inclusion_justification, exclusion_justification }
+// All updates run in a single transaction; the response is 200 with the count.
+app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, (req, res) => {
+  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+  let rows = [];
+  try { rows = JSON.parse(req.body.rows || '[]'); } catch (_) { rows = []; }
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ ok: false, message: 'No rows to save.' });
+  }
+  // Guard against junk: cap batch size; reject rows missing iso_item_id.
+  if (rows.length > 250) return res.status(400).json({ ok: false, message: 'Batch too large.' });
+  const valid = rows.filter(r => r && typeof r.iso_item_id === 'string' && r.iso_item_id);
+  const upsertState = db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id) VALUES (?, ?)`);
+  const update = db.prepare(`UPDATE control_states SET
+      applicability = ?, inclusion_justification = ?, exclusion_justification = ?,
+      status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+    WHERE workspace_id = ? AND iso_item_id = ?`);
+  const tx = db.transaction(() => {
+    valid.forEach(r => {
+      upsertState.run(req.workspace.id, r.iso_item_id);
+      update.run(
+        r.applicability || 'undecided',
+        r.inclusion_justification || null,
+        r.exclusion_justification || null,
+        r.status || null,
+        req.workspace.id, r.iso_item_id
+      );
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'soa_batch_save', 'soa', null, { count: valid.length }, auditCtx(req));
+  res.json({ ok: true, count: valid.length });
+});
+
 // Bulk SoA applicability + justification. Body shape:
 //   action       = 'include_all' | 'include_undecided' | 'apply_to_selected' | 'exclude_selected'
 //   iso_id       = repeated for 'apply_to_selected' / 'exclude_selected'
@@ -6442,6 +6479,14 @@ app.get('/workspaces/:wsId/changes-since', requireAuth, requireWorkspace, requir
     snapshots: db.prepare(`SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC`).all(req.workspace.id)
   };
   res.render('changes_since', { user: req.user, ws: req.workspace, data, anchors });
+});
+
+// ==================== DELIVERABLES INDEX ====================
+// One canonical home for every export this workspace produces. The catalogue
+// lives in views/deliverables.ejs (data-only), not here — adding a new export
+// to the product means adding a row there + linking the generator route.
+app.get('/workspaces/:wsId/deliverables', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  res.render('deliverables', { user: req.user, ws: req.workspace });
 });
 
 // ==================== AUDIT PACK ====================
