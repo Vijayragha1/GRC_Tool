@@ -1199,6 +1199,27 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   const prevId = position > 1 ? allOrder[position - 2].id : null;
   const nextById = position < allOrder.length ? allOrder[position].id : null;
 
+  // Theme-jump navigator data. A real consultant doesn't walk 118 items
+  // sequentially — they bounce between themes. The nav builds an index of
+  // every clause + control with its current assessment status, grouped into
+  // (a) main clauses by section, (b) Annex A by category.
+  const navRows = db.prepare(`SELECT i.id, i.type, i.category, i.title, i.sort_order,
+      COALESCE(cs.status, 'Not Assessed') AS status
+    FROM iso_items i
+    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    WHERE i.type IN ('clause','control')
+    ORDER BY i.sort_order`).all(req.workspace.id);
+  const navGroups = [
+    { key: 'clauses', label: 'Main clauses', items: navRows.filter(r => r.type === 'clause') },
+    { key: 'org',     label: 'A.5 Organisational', items: navRows.filter(r => r.type === 'control' && r.category === 'org') },
+    { key: 'people',  label: 'A.6 People',         items: navRows.filter(r => r.type === 'control' && r.category === 'people') },
+    { key: 'physical',label: 'A.7 Physical',       items: navRows.filter(r => r.type === 'control' && r.category === 'physical') },
+    { key: 'tech',    label: 'A.8 Technological',  items: navRows.filter(r => r.type === 'control' && r.category === 'tech') }
+  ].map(g => {
+    const done = g.items.filter(r => r.status !== 'Not Assessed').length;
+    return { ...g, done, total: g.items.length };
+  });
+
   // Position within own section (e.g., "Clause 5 of 25" or "Control 12 of 93")
   const sameType = allOrder.filter(r => r.type === item.type);
   const sectionPosition = sameType.findIndex(r => r.id === item.id) + 1;
@@ -1304,7 +1325,8 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     questions, savedAnswers, suggestedStatus,
     evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs,
     activePass, currentPassNotes, priorPassNotes,
-    crosswalksByFramework
+    crosswalksByFramework,
+    navGroups
   });
 });
 
@@ -3819,7 +3841,11 @@ app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, (
 app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
   const mrms = db.prepare(`SELECT * FROM mrms WHERE workspace_id = ?
                            ORDER BY meeting_date DESC, created_at DESC`).all(req.workspace.id);
-  res.render('mrms', { user: req.user, ws: req.workspace, mrms });
+  // Preview the 9.3.2 input pack so the consultant sees what will be auto-
+  // filled before submitting the create form. The same compute is then re-run
+  // server-side on POST — no risk of staleness.
+  const pack932Preview = compute932InputPack(req.workspace.id);
+  res.render('mrms', { user: req.user, ws: req.workspace, mrms, pack932Preview });
 });
 
 // Helper - compute the auto-fillable 9.3.2 input fields from current data.

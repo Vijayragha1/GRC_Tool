@@ -26,10 +26,17 @@
     : refCode + ' · ' + (item.category === 'org' ? 'Organisational' : item.category === 'people' ? 'People' : item.category === 'physical' ? 'Physical' : 'Technological');
 %>
 
+<style>
+  /* Two-column layout: theme-jump navigator on the left (220 px sticky),
+     assessment content on the right. The navigator is the answer to "walking
+     118 items linearly is painful" — consultants bounce between themes. */
+  .assess-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 1100px) { .assess-shell { grid-template-columns: 1fr; } .nav-jump { position: static !important; max-height: none !important; } }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Gap assessment</h1>
-    <div class="page-subtitle">Walks all 25 ISO 27001 main-body clauses (the "shall" requirements) plus 93 Annex A controls - one item at a time, with the prompts and evidence auditors expect.</div>
   </div>
   <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/controls/assess?start=clauses" class="btn btn-secondary btn-xs">Jump to clauses</a>
@@ -37,6 +44,10 @@
     <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-primary btn-xs">View summary →</a>
   </div>
 </div>
+
+<div class="assess-shell">
+  <%- include('partials/assess_navigator', { navGroups, item, ws }) %>
+  <div>
 
 <% if (doneFlag) { %>
   <div class="panel" style="margin-bottom:16px;border-color:#16a34a;background:rgba(22,163,74,0.04);">
@@ -629,5 +640,8 @@ function recomputeSuggested() {
   if (applyLink) applyLink.style.display = 'inline';
 }
 </script>
+
+  </div><%# /.assess-shell content column %>
+</div><%# /.assess-shell %>
 
 <%- include('partials/footer') %>
