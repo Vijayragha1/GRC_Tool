@@ -40,7 +40,7 @@
   </div>
 </div>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/audit-pack/pdf" id="packForm">
+<form method="POST" action="/workspaces/<%= ws.id %>/audit-pack/pdf" id="packForm" onsubmit="window._markBusy(this, 'Generating PDF…');">
   <div class="pack-grid">
 
     <%# ===== left column: sections + branding ===== %>

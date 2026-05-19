@@ -68,14 +68,14 @@
     <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs" title="Go to the documents list">View documents</a>
     <% const missingMandatory = counts.mandatory - counts.mandatoryAdopted; %>
     <% if (missingMandatory > 0) { %>
-      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory" style="display:inline;" onsubmit="return appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this workspace? Each gets created as a draft document with Annex A controls auto-linked.');">
+      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory" style="display:inline;" onsubmit="if (!appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this workspace? Each gets created as a draft document with Annex A controls auto-linked.')) return false; window._markBusy(this, 'Adopting…'); return true;">
         <button class="btn btn-primary bulk-cta-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
           Adopt all mandatory<span class="num"><%= missingMandatory %></span>
         </button>
       </form>
     <% } else { %>
-      <span class="btn btn-ghost btn-xs" style="cursor:default;color:#15803d;">
+      <span class="btn btn-ghost btn-xs text-success" style="cursor:default;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
         All mandatory adopted
       </span>
@@ -155,9 +155,9 @@
               Adopted
             </span>
           <% } else if (t.tier === 'mandatory') { %>
-            <span class="tpl-card-tier" style="color:#b91c1c;font-weight:700;" title="ISO 27001 mandates this document">★</span>
+            <span class="tpl-card-tier text-danger" style="font-weight:700;" title="ISO 27001 mandates this document">★</span>
           <% } else if (t.tier === 'expected') { %>
-            <span class="tpl-card-tier" style="color:#b45309;font-weight:700;" title="Auditors expect this document">◆</span>
+            <span class="tpl-card-tier text-warn" style="font-weight:700;" title="Auditors expect this document">◆</span>
           <% } %>
         </div>
         <div class="tpl-card-name"><%= t.name %></div>

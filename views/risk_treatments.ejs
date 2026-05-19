@@ -40,7 +40,7 @@
             <% if (t.iso_item_id) { %><div class="meta">→ <%= t.iso_item_id %></div><% } %>
           </td>
           <td class="meta"><%= t.owner_name || '-' %></td>
-          <td class="meta num" style="<%= t.due_date && t.due_date < new Date().toISOString().slice(0,10) && t.status !== 'done' ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.due_date || '-' %></td>
+          <td class="meta num <%= t.due_date && t.due_date < new Date().toISOString().slice(0,10) && t.status !== 'done' ? 'text-danger fw-bold' : '' %>"><%= t.due_date || '-' %></td>
           <td>
             <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments/<%= t.id %>" style="display:inline-flex;gap:4px;align-items:center;">
               <select class="select text-xs" name="status" onchange="this.form.submit()" style="padding:3px 22px 3px 6px;width:auto;">

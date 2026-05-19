@@ -236,7 +236,7 @@
   <% if (blockedByHeaders) { %>
     <div class="panel" style="margin-bottom:16px;border-left:3px solid #dc2626;background:rgba(220,38,38,0.04);">
       <div class="panel-pad">
-        <div style="font-size:13.5px;font-weight:600;color:#b91c1c;margin-bottom:8px;">Fix the header row before importing</div>
+        <div class="text-danger fw-bold" style="font-size:13.5px;margin-bottom:8px;">Fix the header row before importing</div>
         <% result.headerErrors.forEach(e => { %>
           <div class="row-issue err" style="margin-bottom:4px;"><span class="row-issue-dot"></span><span><%= e %></span></div>
         <% }) %>

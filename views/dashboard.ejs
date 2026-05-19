@@ -203,7 +203,7 @@
             <td class="text-sm">
               <% if (r.target_cert_date) { %>
                 <%= r.target_cert_date %><br>
-                <span class="meta" style="font-size:10.5px;<%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'color:#b91c1c;font-weight:600;' : '' %>">
+                <span class="meta text-xs <%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'text-danger fw-bold' : '' %>">
                   <% if (r.readiness.daysToTarget !== null) { %><%= r.readiness.daysToTarget %> days<% } else { %>-<% } %>
                 </span>
               <% } else { %><span class="meta">no target</span><% } %>

@@ -1,0 +1,33 @@
+<%
+  // Shared evidence → control/clause picker. Used by single-upload and bulk-
+  // upload forms on /evidence (and on the workspace evidence library). Was
+  // duplicated as ~12 lines of inline markup in both places. Now one source
+  // of truth — change the grid layout, the chip style, or the per-item code
+  // formatter here and both forms update.
+  //
+  // Locals required:
+  //   allIsoItems      — array of { id, title, type } pulled from iso_items
+  //   placeholderText  — search-filter placeholder, optional
+  //
+  // The form-level filter + counter helpers (filterPicker, updatePickCount,
+  // clearPicker) live in evidence_library.ejs scripts and bind to anything
+  // matching .upload-filter / .pick-count.
+%>
+<input type="text" class="input upload-filter text-md" placeholder="<%= (typeof placeholderText !== 'undefined' && placeholderText) ? placeholderText : 'Filter… e.g., A.8.20, network, access' %>" style="margin-bottom:6px;" oninput="filterPicker(this)">
+<div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
+  <% (allIsoItems || []).forEach(it => {
+       const code = it.id.replace(/^annex-/,'').replace(/^clause-/,'');
+       const label = it.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+       const isClause = it.type === 'clause';
+  %>
+    <label class="ev-pick" data-search="<%= (code + ' ' + label + ' ' + it.title).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:12px;">
+      <input type="checkbox" name="iso_item_id" value="<%= it.id %>" style="margin:0;flex-shrink:0;" onchange="updatePickCount(this.closest('form'))">
+      <span class="mono meta text-xs <%= isClause ? 'text-secondary' : '' %>" style="min-width:50px;"><%= code.toUpperCase() %></span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
+    </label>
+  <% }) %>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+  <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected</div>
+  <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
+</div>

@@ -63,7 +63,7 @@
             <td class="num text-base" style="font-weight:500;"><%= r.target_value || '-' %></td>
             <td class="num text-base"><%= r.current_value || '-' %></td>
             <td class="text-base"><%= r.owner || '-' %></td>
-            <td style="font-size:11.5px;<%= overdue ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= r.due_date || '-' %><% if (overdue) { %> · overdue<% } %></td>
+            <td class="text-sm <%= overdue ? 'text-danger fw-bold' : '' %>"><%= r.due_date || '-' %><% if (overdue) { %> · overdue<% } %></td>
             <td><span class="tag" style="font-size:10.5px;background:<%= statusColor[r.status] || '#71717a' %>;color:white;border:0;"><%= (r.status || 'on_track').replace('_',' ') %></span></td>
             <td>
               <details>

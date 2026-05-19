@@ -62,7 +62,7 @@
             <td class="text-base"><%= r.owner || '' %></td>
             <td class="text-sm">
               <% if (r.next_review) { %>
-                <span class="<%= overdue ? '' : '' %>" style="<%= overdue ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= r.next_review %><% if (overdue) { %> · overdue<% } %></span>
+                <span class="<%= overdue ? 'text-danger fw-bold' : '' %>"><%= r.next_review %><% if (overdue) { %> · overdue<% } %></span>
               <% } else { %><span class="meta">-</span><% } %>
             </td>
             <td>
