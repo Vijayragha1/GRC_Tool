@@ -29,8 +29,5 @@
     "pdf-parse": "^2.4.5",
     "puppeteer": "^25.0.4",
     "tinymce": "^6.8.6"
-  },
-  "devDependencies": {
-    "puppeteer-core": "^24.43.0"
   }
 }
