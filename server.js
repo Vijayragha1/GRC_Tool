@@ -6211,7 +6211,13 @@ app.post('/approve/:token', (req, res) => {
       extUser = { id: uid };
     }
     const ts = new Date().toISOString();
-    const payload = `${row.doc_id}|${row.version_id}|external:${row.id}|${row.content_hash}|${decisionVal}|${ts}`;
+    // Payload format must mirror verifyVersionSignatures() above, which
+    // reads back ${s.document_id}|${s.version_id}|${s.user_id}|... -
+    // use extUser.id (the sentinel's int) as the third slot, not the
+    // external_approvers row id. Mismatch here corrupts the HMAC and
+    // every doc page renders a SIGNATURE INTEGRITY WARNING for what
+    // is in fact a legitimate approval.
+    const payload = `${row.doc_id}|${row.version_id}|${extUser.id}|${row.content_hash}|${decisionVal}|${ts}`;
     const sig = enc.signHmac(payload, row.workspace_id);
     db.prepare(`INSERT INTO doc_signatures (workspace_id, document_id, version_id, user_id, user_name, signature_role, intent, content_hash, signature, ip_address, user_agent, signed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
