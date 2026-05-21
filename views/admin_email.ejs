@@ -1,0 +1,135 @@
+<%- include('partials/header', { title: 'Email settings', user, ws: null, active: 'admin-email' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Email</h1>
+    <div class="page-subtitle">Transactional mail for policy approval requests, decision notifications, and (Phase 2+) auditor invites, NC assignments, and review-due reminders. Settings here apply to every workspace under this firm.</div>
+  </div>
+</div>
+
+<%# Provider status strip - the first thing an admin should see is whether
+    the underlying transport is wired up. Without RESEND_API_KEY we fall
+    back to the dev outbox file; nothing actually leaves the server. %>
+<div class="panel" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid <%= providerConfigured ? '#15803d' : '#a16207' %>;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="flex:1;">
+      <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:4px;">Provider</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);">
+        <% if (providerConfigured) { %>
+          Resend — connected
+        <% } else { %>
+          Dev fallback — emails are written to <code style="font-size:12px;background:var(--bg-muted);padding:1px 5px;border-radius:3px;">data/email-dev-outbox.log</code>
+        <% } %>
+      </div>
+      <div class="meta text-sm" style="margin-top:4px;">
+        <% if (providerConfigured) { %>
+          Sends go through Resend's HTTP API using the <code>RESEND_API_KEY</code> set on the server.
+        <% } else { %>
+          Set <code>RESEND_API_KEY</code> in the server environment and restart to enable real delivery. The free tier covers 3,000 emails/month.
+        <% } %>
+      </div>
+    </div>
+    <div style="text-align:right;min-width:140px;">
+      <div class="text-eyebrow" style="color:var(--text-tertiary);">Last 7 days</div>
+      <div style="font-size:14px;color:var(--text);"><strong><%= counts.sent_7d %></strong> sent · <strong style="color:<%= counts.failed_7d > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;"><%= counts.failed_7d %></strong> failed</div>
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+  <%# Branded From + reply-to. Per-firm so a consulting practice can send
+      under their own domain ("Acme GRC <approvals@acmegrc.com>") rather
+      than the generic noreply@isms.local default. %>
+  <form method="POST" action="/admin/email/settings" class="panel" style="padding:18px 20px;">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:600;">Branded sender</div>
+      <div class="text-eyebrow" style="color:var(--text-tertiary);">Per firm</div>
+    </div>
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">From name</label>
+    <input class="input" name="from_name" value="<%= settings.from_name || '' %>" placeholder="e.g. Acme GRC" style="margin-bottom:12px;">
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">From email</label>
+    <input class="input" name="from_email" type="email" value="<%= settings.from_email || '' %>" placeholder="e.g. approvals@acmegrc.com" style="margin-bottom:6px;">
+    <div class="meta text-xs" style="margin-bottom:12px;">Domain must be verified in Resend before sends will deliver. If blank, falls back to <code><%= envFromDefault || 'ISMS <noreply@isms.local>' %></code>.</div>
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Reply-to (optional)</label>
+    <input class="input" name="reply_to" type="email" value="<%= settings.reply_to || '' %>" placeholder="e.g. team@acmegrc.com" style="margin-bottom:14px;">
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:14px;">
+      <input type="checkbox" name="enabled" value="1" <%= settings.enabled ? 'checked' : '' %>>
+      <span>Send transactional email</span>
+    </label>
+    <div class="meta text-xs" style="margin:-10px 0 14px;">Uncheck to silence all outbound mail for this firm without removing the configuration. In-app notifications still fire.</div>
+
+    <button type="submit" class="btn btn-primary">Save settings</button>
+  </form>
+
+  <%# Test-send box. A "did the wiring survive deploy" check separate from
+      kicking off a real approval flow. Lands in the outbox below either way. %>
+  <form method="POST" action="/admin/email/test" class="panel" style="padding:18px 20px;">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:600;">Send a test</div>
+      <div class="text-eyebrow" style="color:var(--text-tertiary);">Connectivity check</div>
+    </div>
+    <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">Sends a single test email to the address below using the current From settings. Use this after editing the From, after rotating <code>RESEND_API_KEY</code>, or after verifying a new sending domain.</p>
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">To</label>
+    <input class="input" name="to" type="email" value="<%= user.email %>" required style="margin-bottom:14px;">
+    <button type="submit" class="btn btn-secondary">Send test email</button>
+  </form>
+</div>
+
+<%# Outbox - last 50 sends. Triage surface when "the approver said they
+    didn't get my email." Status + provider + error_message are the
+    columns that actually matter; we omit the body to keep the row tight. %>
+<div class="panel" style="padding:0;overflow:hidden;">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+    <div style="font-size:14px;font-weight:600;">Recent activity</div>
+    <div class="text-eyebrow" style="color:var(--text-tertiary);">Last <%= outbox.length %> sends</div>
+  </div>
+  <% if (!outbox.length) { %>
+    <div class="t-empty" style="padding:32px 20px;">
+      No emails sent yet from this firm. As soon as a document is submitted for review (or you send a test above), entries will appear here.
+    </div>
+  <% } else { %>
+    <table class="t" style="margin:0;">
+      <thead>
+        <tr>
+          <th style="width:140px;">When</th>
+          <th>To</th>
+          <th>Subject</th>
+          <th style="width:120px;">Status</th>
+          <th style="width:90px;">Provider</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% outbox.forEach(o => { %>
+          <tr>
+            <td class="text-sm" style="color:var(--text-secondary);"><%= new Date(o.created_at + 'Z').toLocaleString() %></td>
+            <td class="text-sm"><%= o.to_email %></td>
+            <td class="text-sm">
+              <%= o.subject %>
+              <% if (o.status === 'failed' && o.error_message) { %>
+                <div class="text-xs" style="color:#b91c1c;margin-top:2px;"><%= o.error_message %></div>
+              <% } %>
+            </td>
+            <td>
+              <% if (o.status === 'sent') { %>
+                <span class="status" style="color:#15803d;font-weight:600;">Sent</span>
+              <% } else if (o.status === 'failed') { %>
+                <span class="status" style="color:#b91c1c;font-weight:600;">Failed</span>
+              <% } else { %>
+                <span class="status" style="color:var(--text-tertiary);font-weight:600;"><%= o.status %></span>
+              <% } %>
+            </td>
+            <td class="text-xs" style="color:var(--text-tertiary);"><%= o.provider || '-' %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

@@ -30,6 +30,7 @@ const keyrotation = require('./lib/keyrotation');
 const csvImport = require('./lib/csv-import');
 const auditPack = require('./lib/audit-pack');
 const changesSince = require('./lib/changes-since');
+const email = require('./lib/email');
 
 init();
 // Force master key generation eagerly so first request doesn't block.
@@ -5850,6 +5851,54 @@ app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWo
   });
   logAction(req.user.id, req.workspace.id, 'submit_for_review', 'document', doc.id,
     { version: v.version, approvers: approverIds.length, summary }, auditCtx(req));
+
+  // Notify each approver by email. Sequenced approvals only nudge the
+  // first approver - everyone else gets queued and emailed in turn as
+  // the chain advances. Failures are logged to email_outbox but don't
+  // block the submission (the in-app notification is still authoritative).
+  try {
+    const approverRows = db.prepare(`SELECT u.id, u.name, u.email
+      FROM doc_approvers a INNER JOIN users u ON u.id=a.user_id
+      WHERE a.version_id=? ORDER BY a.sequence`).all(v.id);
+    const docUrl = `${email.appBaseUrl()}/workspaces/${req.workspace.id}/documents/${doc.id}`;
+    const submitter = req.user.name;
+    const wsName = req.workspace.client_name;
+    approverRows.forEach((u, idx) => {
+      if (!u.email) return;
+      const isFirst = idx === 0;
+      const intro = isFirst
+        ? `${submitter} has submitted "${doc.name}" (v${v.version}) for your approval in the ${wsName} workspace.`
+        : `${submitter} has submitted "${doc.name}" (v${v.version}) for approval in the ${wsName} workspace. You are approver #${idx + 1} in the sequence - you'll be able to decide once the earlier approvers have signed off.`;
+      const bodyHtml = `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;border:1px solid #ececef;border-radius:6px;">
+          <tr><td style="padding:14px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">
+            <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin-bottom:6px;">Document</div>
+            <div style="font-size:15px;font-weight:600;color:#0a0a0a;margin-bottom:10px;">${email.escapeHtml(doc.name)} <span style="color:#9c9ca5;font-weight:400;">· v${v.version}</span></div>
+            ${summary ? `<div style="font-size:13px;line-height:1.5;color:#51525c;border-left:2px solid #5C0A0A;padding-left:10px;">${email.escapeHtml(summary)}</div>` : ''}
+          </td></tr>
+        </table>`;
+      email.sendEmail({
+        to: u.email,
+        subject: `[${wsName}] Approval requested: ${doc.name} (v${v.version})`,
+        html: email.renderEmailLayout({
+          headline: isFirst ? 'A document needs your approval' : 'You are in the approval queue',
+          intro,
+          bodyHtml,
+          ctaText: isFirst ? 'Review and approve' : 'View document',
+          ctaUrl: docUrl,
+          footnote: `You're receiving this because you were named as an approver on this document. Decisions are recorded with your signature and the workspace audit log.`,
+          fromName: wsName
+        }),
+        firmId: req.workspace.firm_id,
+        workspaceId: req.workspace.id,
+        relatedType: 'doc_approval_request',
+        relatedId: doc.id
+      }).catch(err => console.error('[email] approval-request send failed:', err.message));
+    });
+  } catch (e) {
+    console.error('[email] approval-request batch failed:', e.message);
+  }
+
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, 'Submitted for review'));
 });
 
@@ -5872,11 +5921,36 @@ app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace
   db.prepare(`UPDATE doc_approvers SET decision=?, decision_reason=?, decided_at=CURRENT_TIMESTAMP WHERE id=?`)
     .run(decision === 'approve' ? 'approved' : 'rejected', reason || null, pending.id);
 
+  const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(doc.current_version_id);
+  const submitter = version ? db.prepare('SELECT id, name, email FROM users WHERE id=?').get(version.created_by) : null;
+  const docUrl = `${email.appBaseUrl()}/workspaces/${req.workspace.id}/documents/${doc.id}`;
+  const wsName = req.workspace.client_name;
+
   if (decision === 'reject') {
     db.prepare(`UPDATE generated_docs SET status='draft', locked=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
     db.prepare(`UPDATE doc_versions SET status='rejected' WHERE id=?`).run(doc.current_version_id);
     logAction(req.user.id, req.workspace.id, 'reject_document', 'document', doc.id,
       { version_id: doc.current_version_id, reason }, auditCtx(req));
+    if (submitter && submitter.email && submitter.id !== req.user.id) {
+      const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>${email.escapeHtml(req.user.name)}</strong> rejected v${version.version} of "${email.escapeHtml(doc.name)}".</p>
+        ${reason ? `<div style="margin:12px 0;padding:12px 14px;background:#fafafa;border-left:2px solid #5C0A0A;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>Reason:</strong> ${email.escapeHtml(reason)}</div>` : ''}
+        <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">The document is back in draft so you can address the feedback and resubmit.</p>`;
+      email.sendEmail({
+        to: submitter.email,
+        subject: `[${wsName}] Rejected: ${doc.name} (v${version.version})`,
+        html: email.renderEmailLayout({
+          headline: 'Your document was rejected',
+          bodyHtml,
+          ctaText: 'Open document',
+          ctaUrl: docUrl,
+          fromName: wsName
+        }),
+        firmId: req.workspace.firm_id,
+        workspaceId: req.workspace.id,
+        relatedType: 'doc_approval_decision',
+        relatedId: doc.id
+      }).catch(err => console.error('[email] reject-notify failed:', err.message));
+    }
     return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, 'Document rejected', 'error'));
   }
 
@@ -5886,9 +5960,58 @@ app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace
     db.prepare(`UPDATE generated_docs SET status='approved', approved_by=?, approved_at=CURRENT_TIMESTAMP, locked=1 WHERE id=?`).run(req.user.id, doc.id);
     db.prepare(`UPDATE doc_versions SET status='approved', approved_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.current_version_id);
     logAction(req.user.id, req.workspace.id, 'approve_document', 'document', doc.id, { version_id: doc.current_version_id }, auditCtx(req));
+    if (submitter && submitter.email && submitter.id !== req.user.id) {
+      const approversList = db.prepare(`SELECT u.name, a.role_label, a.decided_at FROM doc_approvers a INNER JOIN users u ON u.id=a.user_id WHERE a.version_id=? ORDER BY a.sequence`).all(doc.current_version_id);
+      const listRows = approversList.map(a => `<li style="margin-bottom:4px;">${email.escapeHtml(a.name)}${a.role_label ? ` <span style="color:#9c9ca5;">(${email.escapeHtml(a.role_label)})</span>` : ''}</li>`).join('');
+      const bodyHtml = `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">All approvers have signed off on v${version.version} of "${email.escapeHtml(doc.name)}". The document is now locked as <strong>approved</strong> and ready for publication.</p>
+        <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin:16px 0 6px;">Approval chain</div>
+        <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">${listRows}</ul>`;
+      email.sendEmail({
+        to: submitter.email,
+        subject: `[${wsName}] Approved: ${doc.name} (v${version.version})`,
+        html: email.renderEmailLayout({
+          headline: 'Your document has been approved',
+          bodyHtml,
+          ctaText: 'Publish document',
+          ctaUrl: docUrl,
+          fromName: wsName
+        }),
+        firmId: req.workspace.firm_id,
+        workspaceId: req.workspace.id,
+        relatedType: 'doc_approval_decision',
+        relatedId: doc.id
+      }).catch(err => console.error('[email] approval-complete notify failed:', err.message));
+    }
   } else {
     logAction(req.user.id, req.workspace.id, 'partial_approve_document', 'document', doc.id,
       { version_id: doc.current_version_id, remaining }, auditCtx(req));
+    // Nudge the next approver in the sequence (sequenced flow - only one
+    // person is "current" at a time, so we don't spam the queue).
+    try {
+      const next = db.prepare(`SELECT a.id, a.sequence, a.role_label, u.name, u.email
+        FROM doc_approvers a INNER JOIN users u ON u.id=a.user_id
+        WHERE a.version_id=? AND a.decision IS NULL ORDER BY a.sequence LIMIT 1`).get(doc.current_version_id);
+      if (next && next.email) {
+        const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">The previous approver has signed off. "${email.escapeHtml(doc.name)}" (v${version.version}) is now waiting on your decision as approver #${next.sequence}${next.role_label ? ` (${email.escapeHtml(next.role_label)})` : ''}.</p>`;
+        email.sendEmail({
+          to: next.email,
+          subject: `[${wsName}] Your turn to approve: ${doc.name} (v${version.version})`,
+          html: email.renderEmailLayout({
+            headline: 'A document is waiting on you',
+            bodyHtml,
+            ctaText: 'Review and approve',
+            ctaUrl: docUrl,
+            fromName: wsName
+          }),
+          firmId: req.workspace.firm_id,
+          workspaceId: req.workspace.id,
+          relatedType: 'doc_approval_request',
+          relatedId: doc.id
+        }).catch(err => console.error('[email] next-approver notify failed:', err.message));
+      }
+    } catch (e) {
+      console.error('[email] next-approver lookup failed:', e.message);
+    }
   }
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
@@ -6719,6 +6842,76 @@ app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorks
   tx();
   logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, `Cloned ${added} risks from firm library`));
+});
+
+// ==================== ADMIN: EMAIL SETTINGS + OUTBOX ====================
+// Firm-level transactional email config. Lives at the firm scope (not the
+// workspace) because every client engagement under the firm sends from the
+// same branded address. Outbox shows the last 50 sends for auditing
+// (deliverability triage, "did the approver get the email", etc.).
+
+app.get('/admin/email', requireAuth, (req, res) => {
+  if (!isFirmOwner(req.user)) return res.status(403).render('error', { user: req.user, message: 'Only firm owners can manage email settings.' });
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const settings = email.getFirmEmailSettings(firmId);
+  const outbox = db.prepare(`SELECT * FROM email_outbox WHERE firm_id=? ORDER BY created_at DESC LIMIT 50`).all(firmId);
+  const counts = {
+    sent_7d: db.prepare(`SELECT COUNT(*) c FROM email_outbox WHERE firm_id=? AND status='sent' AND created_at >= datetime('now','-7 days')`).get(firmId).c,
+    failed_7d: db.prepare(`SELECT COUNT(*) c FROM email_outbox WHERE firm_id=? AND status='failed' AND created_at >= datetime('now','-7 days')`).get(firmId).c
+  };
+  res.render('admin_email', {
+    user: req.user,
+    ws: res.locals.lastWs || null,
+    settings,
+    outbox,
+    counts,
+    providerConfigured: !!process.env.RESEND_API_KEY,
+    envFromDefault: process.env.EMAIL_FROM_DEFAULT || null,
+    appBaseUrl: email.appBaseUrl()
+  });
+});
+
+app.post('/admin/email/settings', requireAuth, (req, res) => {
+  if (!isFirmOwner(req.user)) return res.status(403).send('Forbidden');
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  email.getFirmEmailSettings(firmId); // ensure row exists
+  const { from_name, from_email, reply_to, enabled } = req.body;
+  // Light validation: from_email and reply_to should look like emails if set.
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (from_email && !emailRe.test(from_email.trim())) {
+    return res.status(400).render('error', { user: req.user, message: '"From email" doesn\'t look like a valid address.' });
+  }
+  if (reply_to && !emailRe.test(reply_to.trim())) {
+    return res.status(400).render('error', { user: req.user, message: '"Reply-to" doesn\'t look like a valid address.' });
+  }
+  db.prepare(`UPDATE firm_email_settings SET from_name=?, from_email=?, reply_to=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE firm_id=?`)
+    .run(
+      (from_name || '').trim() || null,
+      (from_email || '').trim() || null,
+      (reply_to || '').trim() || null,
+      enabled === '1' || enabled === 'on' ? 1 : 0,
+      firmId
+    );
+  logAction(req.user.id, null, 'update_email_settings', 'firm', firmId, null);
+  res.redirect(withToast('/admin/email', 'Email settings saved'));
+});
+
+app.post('/admin/email/test', requireAuth, async (req, res) => {
+  if (!isFirmOwner(req.user)) return res.status(403).send('Forbidden');
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const to = (req.body.to || '').trim();
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(to)) {
+    return res.status(400).render('error', { user: req.user, message: 'Enter a valid email address to send the test to.' });
+  }
+  const result = await email.sendTestEmail(firmId, to);
+  const msg = result.ok
+    ? `Test email sent to ${to}` + (result.provider === 'devnull' ? ' (dev fallback - check data/email-dev-outbox.log)' : '')
+    : `Send failed: ${result.error}`;
+  res.redirect(withToast('/admin/email', msg, result.ok ? 'success' : 'error'));
 });
 
 // ==================== EXEC BRIEF (one-page CISO/board readout) ====================

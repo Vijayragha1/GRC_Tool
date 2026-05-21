@@ -27,6 +27,14 @@ VOLUME ["/app/data", "/app/uploads"]
 ENV DB_PATH=/app/data/iso27001.db
 ENV PORT=3000
 
+# Email integration (Phase 1). Optional - if RESEND_API_KEY is unset
+# the app writes outbound mail to /app/data/email-dev-outbox.log
+# instead of sending. Set APP_BASE_URL to the externally-reachable URL
+# so links in approval emails resolve to the right host.
+# ENV RESEND_API_KEY=
+# ENV EMAIL_FROM_DEFAULT="ISMS <noreply@example.com>"
+# ENV APP_BASE_URL=https://isms.example.com
+
 EXPOSE 3000
 
 CMD ["node", "server.js"]

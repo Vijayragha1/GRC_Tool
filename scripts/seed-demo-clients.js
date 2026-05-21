@@ -43,6 +43,12 @@ function wipeClient(clientName) {
   db.prepare(`DELETE FROM audit_findings WHERE audit_id IN (SELECT id FROM audits WHERE workspace_id = ?)`).run(ws.id);
   db.prepare(`DELETE FROM document_controls WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id = ?)`).run(ws.id);
   db.prepare(`DELETE FROM doc_versions WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id = ?)`).run(ws.id);
+  try { db.prepare(`DELETE FROM risk_treatment_actions WHERE workspace_id = ?`).run(ws.id); } catch (_) {}
+  try { db.prepare(`DELETE FROM tasks WHERE workspace_id = ?`).run(ws.id); } catch (_) {}
+  try { db.prepare(`DELETE FROM suppliers WHERE workspace_id = ?`).run(ws.id); } catch (_) {}
+  try { db.prepare(`DELETE FROM incidents WHERE workspace_id = ?`).run(ws.id); } catch (_) {}
+  try { db.prepare(`DELETE FROM engagement_intake WHERE workspace_id = ?`).run(ws.id); } catch (_) {}
+  try { db.prepare(`DELETE FROM assessment_passes WHERE workspace_id = ?`).run(ws.id); } catch (_) {}
   db.prepare(`DELETE FROM workspaces WHERE id = ?`).run(ws.id);
   console.log(`  cleared prior workspace #${ws.id} (${clientName})`);
 }

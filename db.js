@@ -1246,6 +1246,48 @@ CREATE TABLE IF NOT EXISTS onboarding_progress (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 
+-- ===== Per-firm email settings (Phase 1 email integration) =====
+-- One row per firm. Created lazily the first time an admin opens
+-- /admin/email; until then sendEmail() falls back to env defaults so
+-- transactional mail still works for firms that haven't configured a
+-- branded From: yet.
+CREATE TABLE IF NOT EXISTS firm_email_settings (
+  firm_id INTEGER PRIMARY KEY,
+  from_name TEXT,
+  from_email TEXT,
+  reply_to TEXT,
+  enabled INTEGER DEFAULT 1,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE CASCADE
+);
+
+-- ===== Email outbox (Phase 1 email integration) =====
+-- Every send (success, failure, dev-fallback) lands here so the admin
+-- page has an audit trail. status=queued is reserved for a future async
+-- worker; today everything is sent inline and resolves to sent|failed.
+CREATE TABLE IF NOT EXISTS email_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  firm_id INTEGER,
+  workspace_id INTEGER,
+  to_email TEXT NOT NULL,
+  from_email TEXT,
+  subject TEXT NOT NULL,
+  body_html TEXT,
+  body_text TEXT,
+  related_type TEXT,
+  related_id TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  provider TEXT,
+  provider_message_id TEXT,
+  error_message TEXT,
+  sent_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (firm_id) REFERENCES firms(id) ON DELETE SET NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_email_outbox_firm ON email_outbox(firm_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_outbox_workspace ON email_outbox(workspace_id, created_at DESC);
+
 -- ===== FTS5 virtual table for full-text search =====
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
   workspace_id UNINDEXED, entity_type UNINDEXED, entity_id UNINDEXED,

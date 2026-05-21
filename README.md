@@ -80,6 +80,10 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 `/workspaces/:id/deliverables`. One canonical home for every export this workspace produces, grouped semantically: for the certification body (audit pack PDF, companion ZIP, readiness pack), for internal stakeholders (gap report DOCX, RTP DOCX, recommendations DOCX, post-assessment summary DOCX), and raw data (SoA CSV, risks CSV, assets CSV, ISO 42001 SoA CSV if framework enabled). Each row has a format chip in semantic colour, a one-line description, and a single download button.
 
+### Email integration
+
+`/admin/email` (firm-owner only). Per-firm branded transactional mail — `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. Provider: Resend (3,000 emails/month free) via direct HTTP calls — no SDK dependency. Without `RESEND_API_KEY` the tool runs in dev-fallback: outbound mail is appended to `data/email-dev-outbox.log` and the audit row in `email_outbox` still gets written, so the flows are testable end-to-end without sending real mail. Phase 1 use cases wired in: policy submission emails each approver in turn, every sign-off advances the chain (next approver gets nudged), full approval or rejection emails the original submitter with the chain summary or the rejection reason. Configured via env: `RESEND_API_KEY`, `EMAIL_FROM_DEFAULT`, `APP_BASE_URL`.
+
 ### Registers (clauses 4.2, 6.2)
 
 Interested parties: party, type, needs, how addressed, owner, review cadence, next review. Information security objectives: title, measurement, target, current, owner, due, status. Both surface overdue rows in the inbox and feed the readiness pack.
