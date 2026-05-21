@@ -4,8 +4,14 @@
 
 <%
   const can = p => userPerms && userPerms.has && userPerms.has(p);
-  const pendingApprover = currentVersion && approvers.find(a => a.user_id === user.id && !a.decision);
-  const nextSeq = currentVersion ? approvers.filter(a => !a.decision).map(a => a.sequence).sort()[0] : null;
+  // approvers is the merged chain (internal + external) - each row has
+  // kind. Only internal rows can correspond to a logged-in user.
+  const pendingApprover = currentVersion && approvers.find(a => a.kind === 'internal' && a.user_id === user.id && !a.decision);
+  const activePending = currentVersion ? approvers.filter(a => {
+    if (a.kind === 'internal') return !a.decision;
+    return !a.decision && !a.revoked_at && (!a.expires_at || new Date(a.expires_at) >= new Date());
+  }) : [];
+  const nextSeq = activePending.map(a => a.sequence).sort((x, y) => x - y)[0];
   const isMyTurn = pendingApprover && pendingApprover.sequence === nextSeq;
 %>
 
@@ -289,15 +295,20 @@
   <% if ((doc.status === 'draft' || doc.status === 'rejected') && can('document.submit_review')) { %>
     <div id="reviewPanel" class="hidden panel-pad" style="background:var(--accent-soft);border-bottom:1px solid var(--border);">
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/submit-review" id="submitReviewForm">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
         <div class="sec-label">Submit for review</div>
         <div style="margin-bottom:10px;">
           <label class="label">Approver chain (in order)</label>
-          <div id="approverList" style="display:grid;gap:6px;"></div>
-          <button type="button" class="btn btn-secondary btn-xs" onclick="addApprover()" style="margin-top:6px;">+ Add approver</button>
+          <div class="meta text-xs" style="margin-bottom:8px;">Pick an existing workspace user, or invite an external approver by email - they'll get a one-time magic link, no account needed.</div>
+          <div id="approverList" style="display:grid;gap:8px;"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button type="button" class="btn btn-secondary btn-xs" onclick="addApprover('internal')">+ Internal user</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="addApprover('external')">+ External (magic link)</button>
+          </div>
         </div>
         <div style="margin-bottom:10px;"><label class="label">Change summary</label><textarea class="textarea" name="change_summary" rows="2" placeholder="What changed? Why submit now?"></textarea></div>
-        <input type="hidden" name="approver_ids" id="approverIdsField">
-        <button class="btn btn-primary btn-xs" onclick="serializeApprovers()">Submit for review</button>
+        <input type="hidden" name="approvers_json" id="approversJsonField">
+        <button class="btn btn-primary btn-xs" onclick="return serializeApprovers()">Submit for review</button>
       </form>
     </div>
   <% } %>
@@ -343,12 +354,40 @@
     <div class="panel-pad" style="border-bottom:1px solid var(--border);">
       <div class="sec-label">Approval chain · v<%= currentVersion.version %></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <% approvers.forEach((a, i) => { %>
-          <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;<%= a.decision === 'approved' ? 'background:rgba(22,163,74,0.06);' : a.decision === 'rejected' ? 'background:rgba(220,38,38,0.06);' : '' %>">
+        <% approvers.forEach((a, i) => {
+             const isExternalRevoked = a.kind === 'external' && a.revoked_at;
+             const isExternalExpired = a.kind === 'external' && !a.decision && !a.revoked_at && a.expires_at && (new Date(a.expires_at) < new Date());
+             const bg = a.decision === 'approved' ? 'rgba(22,163,74,0.06)' :
+                        a.decision === 'rejected' ? 'rgba(220,38,38,0.06)' :
+                        isExternalRevoked ? 'rgba(113,113,122,0.06)' :
+                        isExternalExpired ? 'rgba(161,98,7,0.06)' : 'transparent';
+             let statusLabel = a.decision || 'pending';
+             if (isExternalRevoked) statusLabel = 'revoked';
+             else if (isExternalExpired) statusLabel = 'expired';
+        %>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:<%= bg %>;">
             <span class="num text-xs" style="width:18px;height:18px;border-radius:9px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:600;"><%= a.sequence %></span>
             <div>
-              <div class="text-md" style="font-weight:500;"><%= a.user_name %><% if (a.role_label) { %> · <span class="meta"><%= a.role_label %></span><% } %></div>
-              <div class="meta"><%= a.decision || 'pending' %><% if (a.decided_at) { %> · <%= a.decided_at %><% } %></div>
+              <div class="text-md" style="font-weight:500;">
+                <%= a.person_name %><% if (a.role_label) { %> · <span class="meta"><%= a.role_label %></span><% } %>
+              </div>
+              <div class="meta">
+                <%= a.kind === 'external' ? 'external · ' : '' %><%= statusLabel %><% if (a.decided_at) { %> · <%= a.decided_at %><% } %>
+              </div>
+              <% if (a.kind === 'external' && !a.decision && !a.revoked_at) { %>
+                <div style="display:flex;gap:6px;margin-top:6px;">
+                  <% if (can('document.submit_review')) { %>
+                    <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/external-approvers/<%= a.id %>/resend" style="display:inline;">
+                      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                      <button class="btn btn-secondary btn-xs" title="Generate a fresh token and re-email the link to <%= a.person_email %>">Resend link</button>
+                    </form>
+                    <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/external-approvers/<%= a.id %>/revoke" style="display:inline;" onsubmit="return confirm('Revoke this approver? The magic link will stop working immediately.');">
+                      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                      <button class="btn btn-danger btn-xs">Revoke</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
             </div>
           </div>
         <% }) %>
@@ -396,19 +435,35 @@ const wsUsers = <%- JSON.stringify(wsUsers || []) %>;
 function renderApprovers() {
   const wrap = document.getElementById('approverList');
   if (!wrap) return;
-  if (!wrap.children.length) addApprover();
+  if (!wrap.children.length) addApprover('internal');
 }
 
-function addApprover() {
+function addApprover(kind) {
   const wrap = document.getElementById('approverList');
   const idx = wrap.children.length + 1;
   const div = document.createElement('div');
-  div.style.cssText = 'display:grid;grid-template-columns:30px 2fr 1.5fr auto;gap:6px;align-items:center;';
+  div.dataset.kind = kind;
+  div.style.cssText = 'display:grid;grid-template-columns:30px 1fr auto;gap:6px;align-items:start;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);';
+  const seqBadge = `<span class="num text-xs" style="width:22px;height:22px;border-radius:11px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:600;margin-top:4px;">${idx}</span>`;
+  const kindBadge = kind === 'external'
+    ? `<div class="text-eyebrow" style="color:var(--accent);font-weight:600;margin-bottom:4px;">External · magic link</div>`
+    : `<div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:4px;">Internal user</div>`;
+  const inner = kind === 'internal'
+    ? `${kindBadge}
+       <div style="display:grid;grid-template-columns:2fr 1.5fr;gap:6px;">
+         <select class="select approver-user"><option value="">-- pick user --</option>${wsUsers.map(u => `<option value="${u.id}">${u.name}</option>`).join('')}</select>
+         <input class="input approver-role" placeholder="Role label (e.g. CISO)">
+       </div>`
+    : `${kindBadge}
+       <div style="display:grid;grid-template-columns:1.2fr 1.6fr 1fr;gap:6px;">
+         <input class="input approver-name" placeholder="Name (e.g. Jane Smith)" required>
+         <input class="input approver-email" type="email" placeholder="email@example.com" required>
+         <input class="input approver-role" placeholder="Role (e.g. CISO)">
+       </div>`;
   div.innerHTML = `
-    <span class="num text-xs" style="width:22px;height:22px;border-radius:11px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">${idx}</span>
-    <select class="select approver-user"><option value="">-- pick approver --</option>${wsUsers.map(u => `<option value="${u.id}">${u.name}</option>`).join('')}</select>
-    <input class="input approver-role" placeholder="Role label (e.g. CISO)">
-    <button type="button" class="btn btn-danger btn-xs" onclick="this.parentElement.remove();renumberApprovers()">×</button>
+    ${seqBadge}
+    <div>${inner}</div>
+    <button type="button" class="btn btn-danger btn-xs" onclick="this.parentElement.remove();renumberApprovers()" style="margin-top:4px;">×</button>
   `;
   wrap.appendChild(div);
 }
@@ -422,21 +477,26 @@ function renumberApprovers() {
 
 function serializeApprovers() {
   const wrap = document.getElementById('approverList');
-  const ids = []; const roles = {};
-  Array.from(wrap.children).forEach(row => {
-    const u = row.querySelector('.approver-user').value;
-    const r = row.querySelector('.approver-role').value;
-    if (u) { ids.push(u); roles[u] = r; }
+  const out = [];
+  let invalid = null;
+  Array.from(wrap.children).forEach((row, i) => {
+    const kind = row.dataset.kind;
+    const role = (row.querySelector('.approver-role')?.value || '').trim();
+    if (kind === 'internal') {
+      const userId = row.querySelector('.approver-user')?.value;
+      if (!userId) { invalid = invalid || `Approver #${i + 1}: pick a user.`; return; }
+      out.push({ kind: 'internal', user_id: parseInt(userId, 10), role });
+    } else {
+      const name = (row.querySelector('.approver-name')?.value || '').trim();
+      const email = (row.querySelector('.approver-email')?.value || '').trim();
+      if (!name || !email) { invalid = invalid || `Approver #${i + 1}: name and email required.`; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { invalid = invalid || `Approver #${i + 1}: "${email}" doesn't look like an email.`; return; }
+      out.push({ kind: 'external', name, email, role });
+    }
   });
-  if (ids.length === 0) { appAlert('Add at least one approver.'); return false; }
-  document.getElementById('approverIdsField').value = ids.join(',');
-  // Inject role hidden fields too
-  const form = document.getElementById('submitReviewForm');
-  ids.forEach(uid => {
-    const inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'role_' + uid; inp.value = roles[uid] || '';
-    form.appendChild(inp);
-  });
+  if (invalid) { appAlert(invalid); return false; }
+  if (out.length === 0) { appAlert('Add at least one approver.'); return false; }
+  document.getElementById('approversJsonField').value = JSON.stringify(out);
   return true;
 }
 

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision recorded · <%= docName %></title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="stylesheet" href="/fonts/source-serif-4.css">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-subtle: #fafafa;
+    --border: #ececef;
+    --text: #18181b;
+    --text-secondary: #51525c;
+    --accent: <%= brandColor %>;
+    --serif: 'Source Serif 4', Georgia, serif;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  }
+  body { margin: 0; padding: 0; background: var(--bg-subtle); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 36px 40px; max-width: 520px; width: calc(100% - 32px); text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .icon { width: 56px; height: 56px; border-radius: 28px; margin: 0 auto 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 28px; color: #fff; font-weight: 600; }
+  .icon.ok { background: #15803d; }
+  .icon.rej { background: #b91c1c; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: <%= decision === 'approved' ? '#15803d' : '#b91c1c' %>; font-weight: 600; }
+  h1 { font-family: var(--serif); font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin: 8px 0 14px; }
+  p { color: var(--text-secondary); margin: 0 0 10px; line-height: 1.6; }
+  .doc-meta { margin-top: 22px; padding: 14px 16px; background: var(--bg-subtle); border-radius: 6px; font-size: 13px; color: var(--text-secondary); }
+  .doc-meta strong { color: var(--text); font-weight: 600; }
+  .footer { margin-top: 24px; font-size: 12px; color: #71717a; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <% if (decision === 'approved') { %>
+      <div class="icon ok">✓</div>
+      <div class="eyebrow">Approved</div>
+      <h1>Thank you, <%= approverName %></h1>
+      <p>Your approval is recorded. If you were the final approver, the document is now locked and the submitter has been notified by email.</p>
+    <% } else { %>
+      <div class="icon rej">✕</div>
+      <div class="eyebrow">Rejected</div>
+      <h1>Decision recorded, <%= approverName %></h1>
+      <p>The document is back in draft. The submitter has been notified by email with your reason, so they can address the feedback and resubmit.</p>
+    <% } %>
+    <div class="doc-meta">
+      <strong><%= docName %></strong> · v<%= docVersion %><br>
+      <%= workspaceName %>
+    </div>
+    <div class="footer">You can close this tab. The approval link is now spent — if you need to undo, contact the submitter directly.</div>
+  </div>
+</body>
+</html>

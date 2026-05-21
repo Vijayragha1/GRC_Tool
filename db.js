@@ -1246,6 +1246,41 @@ CREATE TABLE IF NOT EXISTS onboarding_progress (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 
+-- ===== External (magic-link) document approvers =====
+-- Mirrors doc_approvers but for approvers who don't have (and don't
+-- want) a user account in the tool. The raw token is shown once in
+-- the email link; only its SHA-256 hash is stored, so a DB leak
+-- doesn't expose a usable approval URL. Token expires after a default
+-- window; revoked_at lets the firm cancel a pending invite without
+-- waiting for natural expiry.
+CREATE TABLE IF NOT EXISTS external_approvers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
+  document_id INTEGER NOT NULL,
+  version_id INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role_label TEXT,
+  token_hash TEXT NOT NULL,
+  expires_at DATETIME NOT NULL,
+  decision TEXT,
+  decision_reason TEXT,
+  decided_at DATETIME,
+  ip_address TEXT,
+  user_agent TEXT,
+  notified_at DATETIME,
+  revoked_at DATETIME,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (document_id) REFERENCES generated_docs(id) ON DELETE CASCADE,
+  FOREIGN KEY (version_id) REFERENCES doc_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_external_approvers_token ON external_approvers(token_hash);
+CREATE INDEX IF NOT EXISTS idx_external_approvers_version ON external_approvers(version_id, sequence);
+
 -- ===== Per-firm email settings (Phase 1 email integration) =====
 -- One row per firm. Created lazily the first time an admin opens
 -- /admin/email; until then sendEmail() falls back to env defaults so
