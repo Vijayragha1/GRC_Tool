@@ -6,7 +6,7 @@ Stack: Node + SQLite + EJS. No cloud, no build step, single binary worth of movi
 
 ## Status
 
-Auth is off. The tool runs in single-user-per-tenant local mode. Fine for personal use and engagements you run on your own machine. Don't put it on the open internet until login is wired up.
+Email + password authentication is wired and enforced. The firm's first user is bootstrapped from `INITIAL_ADMIN_PASSWORD` in `.env`; every other firm consultant and client-side user is invited by email (one-time link, 7-day expiry) or admin-created with a temp password. Forgot-password, remember-me cookies, and Brute-force lockout (8 fails / 15 min / email) all included.
 
 Most of what's here exists because I needed it on a real engagement and it wasn't there.
 
@@ -14,11 +14,14 @@ Most of what's here exists because I needed it on a real engagement and it wasn'
 
 ```
 kickoff workshop          ← /playbooks/kickoff (60-min facilitator script)
-  → engagement intake     ← 25 Qs, auto-drafts clause 4.3 scope
-  → scoping workshop      ← /playbooks/scoping (90-min facilitator script)
+  → engagement intake     ← 25 Qs, auto-drafts clause 4.3 scope    [Setup · step 1]
+  → confirm scope         ← gate that locks in clause 4.3
+  → assemble engagement team ← /workspaces/:id/team               [Setup · step 2]
+                              · pick lead + senior + consultants
+                              · invite client owner, ISMS manager, contributors
   → 12-week plan started  ← /workspaces/:id/engagement-plan
   → risk workshop         ← /playbooks/risk-workshop (90-min script)
-  → Pass 1 gap assessment (every clause + Annex A control)
+  → Pass 1 gap assessment (every clause + Annex A control)         [Setup · step 3]
   → upload evidence as it comes in
   → generate Gap Assessment Report + Recommendations memo
   → hand off to client
@@ -82,7 +85,41 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 ### Email integration
 
-`/admin/email` (firm-owner only). Per-firm branded transactional mail — `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. Provider: Resend (3,000 emails/month free) via direct HTTP calls — no SDK dependency. Without `RESEND_API_KEY` the tool runs in dev-fallback: outbound mail is appended to `data/email-dev-outbox.log` and the audit row in `email_outbox` still gets written, so the flows are testable end-to-end without sending real mail. Phase 1 use cases wired in: policy submission emails each approver in turn, every sign-off advances the chain (next approver gets nudged), full approval or rejection emails the original submitter with the chain summary or the rejection reason. Configured via env: `RESEND_API_KEY`, `EMAIL_FROM_DEFAULT`, `APP_BASE_URL`.
+`/admin/email` (Manager-only). Per-firm branded transactional mail — `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. The status strip at the top reflects whichever provider is actually active.
+
+Three providers supported, picked in this order by the dispatcher:
+
+| Provider | Env vars | Free tier | When it fits |
+|---|---|---|---|
+| **Brevo** (HTTP API) | `BREVO_API_KEY`, optional `BREVO_SENDER_EMAIL` | 300/day, no domain verification | Best for testing real delivery — verify one sender email, done |
+| **Gmail SMTP** | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | ~500/day per personal account | Quickest for solo dev — 2FA + app password, then it works |
+| **Resend** (HTTP API) | `RESEND_API_KEY` | 3,000/month | Production fit once you verify your own sending domain |
+| Dev fallback | — | unlimited | Without any of the above, outbound mail is appended to `data/email-dev-outbox.log` and the `email_outbox` row still gets written so flows are testable end-to-end without sending real mail |
+
+Wired-in use cases: policy submission emails each approver in turn; every sign-off advances the chain (next approver gets nudged); approval or rejection emails the original submitter with the chain summary or rejection reason; invitations (firm + client users) send a one-time accept link; forgot-password sends a one-time reset link; admin-triggered password resets from the duplicate-detection inline action. Configured via env: provider keys above, plus `EMAIL_FROM_DEFAULT` and `APP_BASE_URL`.
+
+### Authentication & roles
+
+Six roles, three on the firm side, three on the client side. Defined in [lib/rbac.js](lib/rbac.js).
+
+| Side | Role | Default capability |
+|---|---|---|
+| Firm | **Manager** | All permissions, firm-wide. Billing, user provisioning, all clients. |
+| Firm | **Senior consultant** | Engagement lead. Reviews documents and forwards to client for approval; signs off assessments. |
+| Firm | **Consultant** | Does engagement work. No approvals, no workspace deletion. |
+| Client | **Client owner** | Executive sponsor. Final policy approver, signs off final assessments. |
+| Client | **ISMS manager** | Day-to-day operator. Full workspace access; can approve operational docs. |
+| Client | **Contributor** | Scoped SME (HR, IT, etc.). Uploads evidence + completes assigned items. |
+
+Per-user permission overrides live at `/workspaces/:id/access` — a Manager / Sr consultant / Client owner can grant or revoke any of the ~50 individual permissions on top of the role baseline, per workspace, with an audit-trail reason field.
+
+**Provisioning surfaces:**
+- `/admin/users` (Manager-only) — firm-wide. Invite or create firm consultants; invite client-side users scoped to a specific workspace.
+- `/workspaces/:id/team` (any firm user) — per-engagement. Pick the lead consultant, add other firm consultants on the engagement, invite client owner / ISMS manager / contributors.
+
+**Duplicate detection** on invites: an active account → inline "Send password reset instead" button; a deactivated account → inline "Reactivate" button; a pending invitation → silently revoked and replaced with a fresh one. No dead-end errors.
+
+**External approvers** (auditors, supplier reviewers) never get accounts — they use one-shot magic links (`/approve/:token`). Same pattern as the auditor portal.
 
 ### Registers (clauses 4.2, 6.2)
 
@@ -195,7 +232,19 @@ npm start
 
 ### After install
 
-Open http://localhost:3000. First boot creates the SQLite database, seeds the ISO content + document templates + glossary, and generates an encryption master key at `data/master.key`. A default tenant and workspace are seeded.
+Open http://localhost:3000. First boot creates the SQLite database, seeds the ISO content + document templates + glossary, and generates an encryption master key at `data/master.key`. A default tenant and a placeholder firm-owner account are seeded.
+
+**Bootstrap your real password.** Add to `.env`:
+
+```
+INITIAL_ADMIN_PASSWORD=pick-something-strong
+INITIAL_ADMIN_EMAIL=you@yourfirm.com           # optional, renames the placeholder local@local user
+INITIAL_ADMIN_NAME=Your Name                   # optional, sets display name
+SESSION_SECRET=a-random-32-char-string         # required in production; auto-generated dev fallback otherwise
+APP_BASE_URL=http://localhost:3000             # used in email links
+```
+
+Restart the server. The bootstrap promotes the `!noauth` placeholder to a real bcrypt hash and (optionally) renames the email. Sign in at `/login`.
 
 **Back up `data/master.key` immediately.** If you lose it, encrypted document content in the database is unrecoverable.
 
@@ -260,17 +309,20 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 
 ## What's still open
 
-- Real auth. Not blocking single-user local use; required for anything multi-user. CSRF is wired and tested; routes know how to enforce permissions but the auth gate is currently disabled.
-- Read-write **client portal** (the auditor portal's twin) — currently the client has no self-serve surface for evidence upload or policy review.
-- Cloud evidence integrations (AWS Config / GCP Asset Inventory / Azure Resource Graph). Today every piece of evidence is hand-uploaded.
-- AI-assisted editing (rewrite policy in $client's voice, draft a risk description from asset + threat keywords, suggest controls per risk). Gated on choosing an LLM provider + budget.
-- Continuous compliance flow - quarterly evidence re-attestation cadence with auto-spawned tasks.
-- Time tracking + billing per workspace.
-- More route extraction. `routes/tenants.js`, `routes/engagement.js`, and `routes/auditor.js` prove the pattern (`register(app, deps)`); the rest of `server.js` can follow incrementally.
+- **SSO** (SAML / OIDC) — table stakes above $8K/yr; corporate IT will reject the password-only path.
+- **REST API** — server-rendered only today. Procurement-grade buyers want to pull SoA / control state / evidence list out programmatically.
+- **Contributor row-level scoping** — the `member_scopes` table exists and the Contributor role implies "see only assigned items", but queries don't filter against it yet. Currently capability-restricted (no `risk.delete` etc.) but not row-restricted.
+- **Read-write client portal** (the auditor portal's twin) — currently the client has no self-serve surface for evidence upload or policy review.
+- **Cloud evidence integrations** (AWS Config / GCP Asset Inventory / Azure Resource Graph). Today every piece of evidence is hand-uploaded.
+- **AI-assisted editing** (rewrite policy in $client's voice, draft a risk description from asset + threat keywords, suggest controls per risk). Gated on choosing an LLM provider + budget.
+- **Real-time presence** — no "X is editing this" indicator anywhere. Optimistic-concurrency CAS catches conflicts on save, but the UI doesn't warn beforehand.
+- **Continuous compliance flow** — quarterly evidence re-attestation cadence with auto-spawned tasks.
+- **Time tracking + billing per workspace.**
+- **More route extraction.** `routes/tenants.js`, `routes/engagement.js`, and `routes/auditor.js` prove the pattern (`register(app, deps)`); the rest of `server.js` can follow incrementally.
 
 ## Stack
 
-Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired but disabled) · **puppeteer (bundled Chromium, ~170 MB) for the audit-pack PDF generator**. Tests use node:test plus puppeteer-core. Self-hosted typography: Inter variable + Source Serif 4 variable, both as woff2 in `public/fonts/`. No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
+Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired and enforced) · nodemailer (Gmail SMTP) + Brevo HTTP API + Resend HTTP API (provider auto-selected, dev-fallback writes to log) · **puppeteer (bundled Chromium, ~170 MB) for the audit-pack PDF generator**. Tests use node:test plus puppeteer-core. Self-hosted typography: Inter variable + Source Serif 4 variable, both as woff2 in `public/fonts/`. No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
 
 ## Folder structure
 
@@ -289,7 +341,7 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   └── policy-templates*.js        # ~70 document templates
 ├── routes/                         # Extracted route modules (register(app, deps))
 │   ├── tenants.js                  # Firm CRUD + onboarding wizard
-│   ├── engagement.js               # Intake + 12-week plan
+│   ├── engagement.js               # Intake + scope confirm + 12-week plan
 │   └── auditor.js                  # Magic-link auditor portal (token middleware + 8 read-only views)
 ├── lib/
 │   ├── encryption.js               # AES-256-GCM + HKDF
@@ -301,6 +353,13 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   ├── template-refs.js            # Extract Annex A + clause refs from template descriptions
 │   └── ...
 ├── views/                          # EJS templates
+│   ├── auth/                       # Login, forgot, reset, accept-invite (unauth pages)
+│   ├── admin_users.ejs             # Manager-only user provisioning
+│   ├── team_setup.ejs              # Per-engagement team kickoff (Setup step 2)
+│   ├── exec_brief.ejs              # Big-4 board pack (workpaper idiom)
+│   ├── readiness.ejs               # Stage-gate scorecard (workpaper idiom)
+│   ├── controls_assess_summary.ejs # Findings & worklist (workpaper idiom)
+│   └── … other operator + deliverable views
 ├── public/fonts/                   # Self-hosted Inter + Source Serif 4 (woff2)
 ├── scripts/backup.js               # Online backup
 ├── tests/
