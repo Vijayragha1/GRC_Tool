@@ -21,7 +21,8 @@ function bootApp() {
   // Force a deterministic session secret so cookie scoping is stable.
   process.env.SESSION_SECRET = 'test-secret-' + crypto.randomBytes(4).toString('hex');
   // Bust the require cache so each boot gets a fresh module + DB.
-  Object.keys(require.cache).filter(k => k.includes('/iso27001-tool/')).forEach(k => delete require.cache[k]);
+  const PROJECT_ROOT = path.resolve(__dirname, '..');
+  Object.keys(require.cache).filter(k => k.startsWith(PROJECT_ROOT)).forEach(k => delete require.cache[k]);
   const { app } = require('../server.js');
   return { app, tmpDir, dbPath };
 }

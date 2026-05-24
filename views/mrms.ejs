@@ -1,18 +1,80 @@
 <%- include('partials/header', { title: 'Management review', user, ws, active: 'mrms' }) %>
 
+<style>
+  /* Preview block on the MRM create form — shows what the 9.3.2 inputs will
+     contain once the meeting is scheduled. The textareas on the detail page
+     are then editable; this preview is read-only. */
+  .pre932 {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-subtle);
+    margin-top: 6px;
+  }
+  .pre932-row {
+    display: grid; grid-template-columns: 160px 1fr;
+    gap: 14px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    align-items: baseline;
+  }
+  .pre932-row:last-child { border-bottom: none; }
+  .pre932-label {
+    font-size: 11px; font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .pre932-label .clause {
+    display: block; font-size: 9.5px;
+    color: var(--text-tertiary); font-weight: 500;
+    letter-spacing: 0.06em; margin-top: 2px;
+  }
+  .pre932-value {
+    font-size: 12px; line-height: 1.55; color: var(--text);
+    white-space: pre-wrap; font-variant-numeric: tabular-nums;
+    max-height: 5.5em; overflow: hidden;
+    position: relative;
+  }
+  .pre932-value::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5em;
+    background: linear-gradient(to bottom, transparent, var(--bg-subtle));
+    pointer-events: none;
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Management review</h1>
-    <div class="page-subtitle">Top management ISMS review per Clause 9.3. Required at planned intervals.</div>
   </div>
   <button onclick="document.getElementById('newMrm').classList.toggle('hidden')" class="btn btn-primary">Schedule MRM</button>
 </div>
 
 <div id="newMrm" class="hidden panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>New review</h2></div>
+  <div class="panel-head"><h2>New review</h2><span class="meta text-xs">Clause 9.3.2 inputs auto-fill on submit · editable afterwards</span></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/mrms" class="panel-pad grid-2">
     <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date"></div>
     <div><label class="label">Attendees</label><input class="input" name="attendees" placeholder="CEO, CISO, CTO"></div>
+
+    <% if (typeof pack932Preview !== 'undefined' && pack932Preview) { %>
+      <div class="col-full">
+        <label class="label">Auto-filled from current client state</label>
+        <div class="pre932">
+          <% [
+               { key: 'prior_actions_status',        clause: '9.3.2 a)', label: 'Prior actions' },
+               { key: 'context_changes',             clause: '9.3.2 b)', label: 'Context changes' },
+               { key: 'performance_review',          clause: '9.3.2 c)', label: 'Performance' },
+               { key: 'feedback_interested_parties', clause: '9.3.2 d)', label: 'Interested-party feedback' },
+               { key: 'risk_treatment_status',       clause: '9.3.2 e)', label: 'Risk treatment' },
+               { key: 'improvement_opportunities',   clause: '9.3.2 f)', label: 'Improvements' }
+             ].forEach(f => { %>
+            <div class="pre932-row">
+              <div class="pre932-label"><%= f.label %><span class="clause"><%= f.clause %></span></div>
+              <div class="pre932-value"><%= (pack932Preview[f.key] || '').slice(0, 320) %></div>
+            </div>
+          <% }) %>
+        </div>
+        <div class="meta text-xs" style="margin-top:6px;">Refreshes on save. Edit any field on the MRM detail page after creation.</div>
+      </div>
+    <% } %>
+
     <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
@@ -33,7 +95,7 @@
           <div class="empty-state">
             <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
             <div class="empty-title">Schedule the first management review</div>
-            <div class="empty-sub">Clause 9.3 requires top management to review the ISMS at planned intervals. The review record auto-pulls live workspace state for required inputs.</div>
+            <div class="empty-sub">Clause 9.3 requires top management to review the ISMS at planned intervals. The review record auto-pulls live client state for required inputs.</div>
             <button onclick="document.getElementById('newMrm').classList.toggle('hidden')" class="btn btn-primary">Schedule MRM</button>
           </div>
         </td></tr>

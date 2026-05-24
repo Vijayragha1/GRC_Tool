@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Accept invitation &middot; ISMS Console</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    :root { color-scheme: light; }
+    body { background: #f4f3ee; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1a1a1a; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .auth-shell { width: 100%; max-width: 460px; }
+    .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+    .auth-brand .mark { width: 32px; height: 32px; background: #5C0A0A; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; font-style: italic; }
+    .auth-brand .name { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.005em; }
+    .auth-card { background: #fff; border: 1px solid #d6d3c9; padding: 28px 32px 28px; }
+    .auth-card h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 4px; color: #1a1a1a; }
+    .auth-card .sub { font-size: 13.5px; color: #6b6b6b; line-height: 1.5; margin: 0 0 20px; }
+
+    .inv-meta { background: #fafaf8; border-left: 3px solid #5C0A0A; padding: 12px 14px; margin-bottom: 22px; }
+    .inv-meta dl { margin: 0; display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 12.5px; }
+    .inv-meta dt { color: #8a8a8a; font-weight: 600; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; align-self: center; }
+    .inv-meta dd { margin: 0; color: #1a1a1a; font-weight: 500; }
+
+    .auth-card label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5a5a5a; margin-bottom: 6px; }
+    .auth-card input[type="text"], .auth-card input[type="email"], .auth-card input[type="password"] { width: 100%; padding: 10px 12px; border: 1px solid #c9c6bd; font-size: 14px; font-family: inherit; background: #fff; color: #1a1a1a; box-sizing: border-box; outline: none; }
+    .auth-card input[type="text"]:focus, .auth-card input[type="email"]:focus, .auth-card input[type="password"]:focus { border-color: #5C0A0A; }
+    .auth-card input[disabled] { background: #f4f3ee; color: #8a8a8a; cursor: not-allowed; }
+    .auth-card .field { margin-bottom: 14px; }
+    .auth-card .field .hint { display: block; font-size: 11px; color: #8a8a8a; font-weight: 500; letter-spacing: 0; text-transform: none; margin-top: 4px; }
+    .auth-card button[type="submit"] { width: 100%; padding: 11px 14px; background: #5C0A0A; color: #fff; border: 0; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .auth-card button[type="submit"]:hover { background: #4a0808; }
+    .auth-err { background: rgba(185, 28, 28, 0.06); border-left: 3px solid #b91c1c; color: #7a1010; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 18px; }
+    .auth-foot { text-align: center; font-size: 10.5px; color: #8a8a8a; margin-top: 22px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-brand">
+      <div class="mark">I</div>
+      <div class="name">ISMS Console</div>
+    </div>
+    <div class="auth-card">
+      <h1>Accept invitation</h1>
+      <p class="sub">Choose a password to finish setting up your account. You&rsquo;ll be signed in straight away.</p>
+
+      <div class="inv-meta">
+        <dl>
+          <dt>Firm</dt><dd><%= invitation.firm_name || '—' %></dd>
+          <dt>Role</dt>
+          <dd>
+            <%
+              const FIRM_LABELS = { manager: 'Manager', senior_consultant: 'Senior consultant', consultant: 'Consultant' };
+              const CLIENT_LABELS = { client_owner: 'Client owner', isms_manager: 'ISMS manager', contributor: 'Contributor' };
+            %>
+            <% if (invitation.user_type === 'firm') { %>
+              <%= FIRM_LABELS[invitation.firm_role] || 'Consultant' %>
+            <% } else { %>
+              <%= CLIENT_LABELS[invitation.workspace_role] || (invitation.workspace_role || 'member').replace('_', ' ') %>
+            <% } %>
+          </dd>
+          <% if (invitation.workspace_name) { %>
+            <dt>Workspace</dt><dd><%= invitation.workspace_name %></dd>
+          <% } %>
+          <dt>Email</dt><dd><%= invitation.email %></dd>
+        </dl>
+      </div>
+
+      <% if (typeof error !== 'undefined' && error) { %>
+        <div class="auth-err"><%= error %></div>
+      <% } %>
+
+      <form method="POST" action="/invite/<%= token %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field">
+          <label for="name">Your name</label>
+          <input type="text" id="name" name="name" required value="<%= invitation.name || '' %>" autocomplete="name" autofocus>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" value="<%= invitation.email %>" disabled>
+          <span class="hint">The invitation is tied to this address.</span>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+          <span class="hint">Minimum 8 characters.</span>
+        </div>
+        <div class="field">
+          <label for="password2">Confirm password</label>
+          <input type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
+        </div>
+        <button type="submit">Set password &amp; sign in →</button>
+      </form>
+    </div>
+    <div class="auth-foot">Authorised personnel only</div>
+  </div>
+</body>
+</html>

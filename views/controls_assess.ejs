@@ -26,10 +26,17 @@
     : refCode + ' · ' + (item.category === 'org' ? 'Organisational' : item.category === 'people' ? 'People' : item.category === 'physical' ? 'Physical' : 'Technological');
 %>
 
+<style>
+  /* Two-column layout: theme-jump navigator on the left (220 px sticky),
+     assessment content on the right. The navigator is the answer to "walking
+     118 items linearly is painful" — consultants bounce between themes. */
+  .assess-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 1100px) { .assess-shell { grid-template-columns: 1fr; } .nav-jump { position: static !important; max-height: none !important; } }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Gap assessment</h1>
-    <div class="page-subtitle">Walks all 25 ISO 27001 main-body clauses (the "shall" requirements) plus 93 Annex A controls - one item at a time, with the prompts and evidence auditors expect.</div>
   </div>
   <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/controls/assess?start=clauses" class="btn btn-secondary btn-xs">Jump to clauses</a>
@@ -37,6 +44,10 @@
     <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-primary btn-xs">View summary →</a>
   </div>
 </div>
+
+<div class="assess-shell">
+  <%- include('partials/assess_navigator', { navGroups, item, ws }) %>
+  <div>
 
 <% if (doneFlag) { %>
   <div class="panel" style="margin-bottom:16px;border-color:#16a34a;background:rgba(22,163,74,0.04);">
@@ -265,6 +276,10 @@
   <% } %>
 
   <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>" class="panel-pad" id="assessForm">
+    <%# Optimistic-concurrency snapshot: server rejects with 409 if another
+        consultant saved this control between this page load and form submit.
+        Stops silent overwrites without requiring real-time presence UI. %>
+    <input type="hidden" name="last_updated_snapshot" value="<%= (state && state.last_updated) || '' %>">
     <!-- Per-item diagnostic questions - specific to this clause/control -->
     <% if (questions && questions.length) { %>
       <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
@@ -299,25 +314,19 @@
       </div>
     <% } %>
 
-    <div style="display:grid;grid-template-columns:<%= isClause ? '1fr 1fr' : 'repeat(3,1fr)' %>;gap:14px;margin-bottom:14px;">
-      <% if (!isClause) { %>
-        <div>
-          <label class="label">Applicability</label>
-          <select class="select" name="applicability" id="applicabilityField" onchange="toggleExclusion()">
-            <option value="undecided" <%= state.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>
-            <option value="included" <%= state.applicability === 'included' ? 'selected' : '' %>>Included in SoA</option>
-            <option value="excluded" <%= state.applicability === 'excluded' ? 'selected' : '' %>>Excluded from SoA</option>
-          </select>
-        </div>
-      <% } %>
+    <%# Gap-assessment fields only: Implementation status + Maturity.
+        Applicability (Included/Excluded/Undecided) and the
+        inclusion/exclusion justifications used to live here too, but
+        they are SoA concerns - they belong AFTER the gap diagnosis,
+        once the consultant knows current state + risks. Surfaced here
+        only as a read-only indicator with a link to the SoA page. %>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div>
         <label class="label">Implementation status<% if (isClause) { %> <span class="meta" style="color:#0891b2;">required for cert</span><% } %></label>
         <select class="select" name="status">
           <% let statusOpts = isClause
                ? ['Not Assessed','Not Implemented','Work In Progress','Partially Implemented','Implemented']
                : ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'];
-             // If a previously saved value is no longer in the allowed set (e.g. legacy 'Not Applicable' on a clause),
-             // surface it so the user can change it.
              if (state.status && !statusOpts.includes(state.status)) statusOpts = [state.status, ...statusOpts]; %>
           <% statusOpts.forEach(s => { %>
             <option value="<%= s %>" <%= state.status === s ? 'selected' : '' %>><%= s %><%= (isClause && s === 'Not Applicable') ? ' - invalid for clauses, please change' : '' %></option>
@@ -339,15 +348,26 @@
       </div>
     </div>
 
-    <% if (!isClause) { %>
-      <div id="inclusionBlock" style="margin-bottom:14px;<%= isExcluded ? 'display:none;' : '' %>">
-        <label class="label">Inclusion justification <span class="meta">audit-defensible - why this control is in scope</span></label>
-        <textarea class="textarea" name="inclusion_justification" rows="2" placeholder="e.g., Required by risks R-12 and R-23 affecting customer data; mandated by client SLAs."><%= state.inclusion_justification || '' %></textarea>
-      </div>
-
-      <div id="exclusionBlock" style="margin-bottom:14px;<%= !isExcluded ? 'display:none;' : '' %>">
-        <label class="label">Exclusion justification <span class="meta">audit-defensible - why this control is NOT applicable</span></label>
-        <textarea class="textarea" name="exclusion_justification" rows="2" placeholder="e.g., No remote workers - all access from controlled office locations. Reviewed annually."><%= state.exclusion_justification || '' %></textarea>
+    <% if (!isClause) {
+         const appKey = state.applicability || 'undecided';
+         const appColor = appKey === 'included' ? '#15803d' : appKey === 'excluded' ? '#71717a' : '#b45309';
+         const appLabel = appKey === 'included' ? 'Included in SoA' : appKey === 'excluded' ? 'Excluded from SoA' : 'Undecided - set on the SoA page';
+    %>
+      <%# Read-only SoA state for context. Inclusion / exclusion
+          decisions + justifications live on the SoA page now. %>
+      <div style="margin-bottom:14px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);display:flex;align-items:center;gap:10px;">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:<%= appColor %>;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<%= appColor %>;"></span>
+          <%= appLabel %>
+        </span>
+        <% if (state.inclusion_justification && appKey === 'included') { %>
+          <span class="meta text-xs" style="font-style:italic;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">"<%= state.inclusion_justification %>"</span>
+        <% } else if (state.exclusion_justification && appKey === 'excluded') { %>
+          <span class="meta text-xs" style="font-style:italic;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">"<%= state.exclusion_justification %>"</span>
+        <% } else { %>
+          <span class="meta text-xs" style="flex:1;">Applicability + justification are decided on the SoA page once the gap and risk picture is in.</span>
+        <% } %>
+        <a href="/workspaces/<%= ws.id %>/soa#<%= item.id %>" class="link-muted text-xs" style="white-space:nowrap;">Open SoA →</a>
       </div>
     <% } %>
 
@@ -547,7 +567,7 @@
     <% } else if (linkedDocs && linkedDocs.length > 0) { %>
       <div class="meta panel-pad text-sm" style="border-top:1px solid var(--border);background:var(--bg-subtle);">All workspace documents are already linked. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate another →</a></div>
     <% } else { %>
-      <div class="meta panel-pad text-sm" style="border-top:1px solid var(--border);background:var(--bg-subtle);">This workspace has no documents yet. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate one from a template →</a></div>
+      <div class="meta panel-pad text-sm" style="border-top:1px solid var(--border);background:var(--bg-subtle);">This client has no documents yet. <a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);">Generate one from a template →</a></div>
     <% } %>
   </div>
 </div>
@@ -585,14 +605,10 @@ function prefillNotesFromGaps(e) {
   ta.focus();
 }
 
-function toggleExclusion() {
-  const f = document.getElementById('applicabilityField');
-  if (!f) return;
-  const incBlock = document.getElementById('inclusionBlock');
-  const excBlock = document.getElementById('exclusionBlock');
-  if (incBlock) incBlock.style.display = (f.value === 'excluded') ? 'none' : 'block';
-  if (excBlock) excBlock.style.display = (f.value === 'excluded') ? 'block' : 'none';
-}
+// toggleExclusion() was a helper for the applicability + inclusion/
+// exclusion fields that used to live on this page. Removed alongside
+// those fields - applicability is now set on the SoA page once the
+// gap + risk picture is in.
 
 // Live-update suggested status as the user answers.
 // (Pill visual state is now driven by CSS :has(input:checked), no JS needed.)
@@ -629,5 +645,8 @@ function recomputeSuggested() {
   if (applyLink) applyLink.style.display = 'inline';
 }
 </script>
+
+  </div><%# /.assess-shell content column %>
+</div><%# /.assess-shell %>
 
 <%- include('partials/footer') %>

@@ -2,62 +2,27 @@
 
 <div class="page-head">
   <div>
-    <h1 class="page-title"><%= user.user_type === 'firm' ? 'Portfolio' : 'My workspaces' %></h1>
+    <h1 class="page-title"><%= user.user_type === 'firm' ? 'Portfolio' : 'My clients' %></h1>
   </div>
   <% if (user.user_type === 'firm') { %>
-    <button onclick="document.getElementById('newWs').classList.toggle('hidden')" class="btn btn-primary">New client</button>
+    <button onclick="document.getElementById('newWs').showModal()" class="btn btn-primary">+ New client</button>
   <% } %>
 </div>
 
+<%# Compact portfolio strip - dropped the 5-card grid (the Avg Stage 1
+    average across heterogeneous engagements was meaningless; the rest
+    of the KPIs are simple counts that don't need card chrome). One
+    typographic data line instead, scanning friendly. Click-through to
+    the relevant cohort on the table below. %>
 <% if (workspaces.length > 0) { %>
-<%
-  // Health bands for the KPI rail color
-  const stage1Cls = totals.avgStage1 >= 80 ? 'kpi-good' : totals.avgStage1 >= 50 ? 'kpi-warn' : 'kpi-bad';
-  const nearCertCls = totals.nearCert > 0 ? 'kpi-warn' : '';
-  const redFlagsCls = totals.redFlags > 0 ? 'kpi-bad' : 'kpi-good';
-  const ncCls = totals.totalOpenNCs > 0 ? 'kpi-bad' : 'kpi-good';
-%>
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;">
-  <div class="panel kpi kpi-accent">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      <div class="kpi-label">Engagements</div>
-    </div>
-    <div class="kpi-num num"><%= totals.total %></div>
-    <div class="kpi-meta">active across the firm</div>
-  </div>
-  <div class="panel kpi <%= stage1Cls %>">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <div class="kpi-label">Avg Stage 1</div>
-    </div>
-    <div class="kpi-num num"><%= totals.avgStage1 %><span class="text-tertiary" style="font-size:15px;font-weight:400;margin-left:1px;">%</span></div>
-    <div class="kpi-meta">readiness across portfolio</div>
-  </div>
-  <div class="panel kpi <%= nearCertCls %>">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <div class="kpi-label">Near cert</div>
-    </div>
-    <div class="kpi-num num"><%= totals.nearCert %></div>
-    <div class="kpi-meta">&lt; 90 days to target</div>
-  </div>
-  <div class="panel kpi <%= redFlagsCls %>">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <div class="kpi-label">Needs attention</div>
-    </div>
-    <div class="kpi-num num"><%= totals.redFlags %></div>
-    <div class="kpi-meta">engagements flagged</div>
-  </div>
-  <div class="panel kpi <%= ncCls %>">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <div class="kpi-label">Open NCs</div>
-    </div>
-    <div class="kpi-num num"><%= totals.totalOpenNCs %></div>
-    <div class="kpi-meta">open / overdue total</div>
-  </div>
+<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 16px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
+  <span><strong style="color:var(--text);font-weight:600;font-size:14px;"><%= totals.total %></strong> active client<%= totals.total === 1 ? '' : 's' %></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= totals.nearCert > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight:600;"><%= totals.nearCert %></strong> near cert <span class="text-xs" style="color:var(--text-tertiary);">(&lt; 90d)</span></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= totals.redFlags > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:600;"><%= totals.redFlags %></strong> needing attention</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= totals.totalOpenNCs > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:600;"><%= totals.totalOpenNCs %></strong> open NC<%= totals.totalOpenNCs === 1 ? '' : 's' %> across the firm</span>
 </div>
 <% } %>
 
@@ -86,11 +51,11 @@
 
 <!-- This week across the portfolio - what to touch today, this week, what's late.
      The MSSP consultant's morning standup view: aggregates tasks, NCs, audits,
-     and MRMs across every engagement in the active firm. -->
+     and MRMs across every client in the active firm. -->
 <% if (typeof thisWeek !== 'undefined' && thisWeek.totalActionable > 0) { %>
   <div class="panel" style="margin-bottom:24px;">
     <div class="panel-head">
-      <h2>This week <span class="meta text-lg" style="font-weight:400;">- what's due across all engagements</span></h2>
+      <h2>This week <span class="meta text-lg" style="font-weight:400;">- what's due across all clients</span></h2>
       <span class="meta">
         <% if (thisWeek.overdue.length) { %><strong class="text-danger"><%= thisWeek.overdue.length %></strong> overdue · <% } %>
         <% if (thisWeek.dueThisWeek.length) { %><strong class="text-warn"><%= thisWeek.dueThisWeek.length %></strong> due this week<% } %>
@@ -157,11 +122,11 @@
   </div>
 <% } %>
 
-<!-- At-risk engagements - one row per workspace flagged across multiple signals -->
+<!-- At-risk clients - one row per client flagged across multiple signals -->
 <% if (typeof atRisk !== 'undefined' && atRisk.length > 0) { %>
   <div class="panel" style="margin-bottom:24px;border-left:3px solid <%= atRisk.some(r => r.severity === 'high') ? '#b91c1c' : '#a16207' %>;">
     <div class="panel-head">
-      <h2>At-risk engagements <span class="meta text-lg" style="font-weight:400;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
+      <h2>At-risk clients <span class="meta text-lg" style="font-weight:400;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
       <span class="meta">
         <% const high = atRisk.filter(r => r.severity === 'high').length; const med = atRisk.filter(r => r.severity === 'medium').length; %>
         <% if (high) { %><strong class="text-danger"><%= high %></strong> high · <% } %>
@@ -203,7 +168,7 @@
             <td class="text-sm">
               <% if (r.target_cert_date) { %>
                 <%= r.target_cert_date %><br>
-                <span class="meta" style="font-size:10.5px;<%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'color:#b91c1c;font-weight:600;' : '' %>">
+                <span class="meta text-xs <%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'text-danger fw-bold' : '' %>">
                   <% if (r.readiness.daysToTarget !== null) { %><%= r.readiness.daysToTarget %> days<% } else { %>-<% } %>
                 </span>
               <% } else { %><span class="meta">no target</span><% } %>
@@ -212,13 +177,12 @@
               <%
                 // Each reason chip links to the most relevant sub-page so a
                 // consultant can drill straight in instead of bouncing through
-                // the workspace overview.
+                // the client overview.
                 function reasonLink(reason, wsId) {
                   if (/NC/i.test(reason)) return `/workspaces/${wsId}/nonconformities`;
                   if (/cert target/i.test(reason)) return `/workspaces/${wsId}/cert-cycle`;
                   if (/objective/i.test(reason)) return `/workspaces/${wsId}/objectives`;
                   if (/stale controls/i.test(reason)) return `/workspaces/${wsId}/notifications?filter=unread`;
-                  if (/party review/i.test(reason)) return `/workspaces/${wsId}/interested-parties`;
                   if (/pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
                   return `/workspaces/${wsId}`;
                 }
@@ -234,39 +198,70 @@
 <% } %>
 
 <% if (user.user_type === 'firm') { %>
-<div id="newWs" class="panel hidden" style="margin-bottom:24px">
-  <div class="panel-head"><h2>New client engagement</h2></div>
-  <form method="POST" action="/workspaces" class="panel-pad grid-2">
-    <div><label class="label">Client name</label><input class="input" name="client_name" required></div>
-    <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
-    <div class="col-full"><label class="label">ISMS scope</label><input class="input" name="scope" placeholder="Production SaaS platform and supporting infrastructure"></div>
-    <div><label class="label">Target certification date</label><input class="input" name="target_cert_date" type="date"></div>
-    <div></div>
-    <div class="col-full">
-      <label class="label">Frameworks in scope</label>
-      <div class="row text-sm" style="gap:18px;flex-wrap:wrap;padding:8px 0;">
-        <%# ISO 27001 is the spine - Risks / Assets / Documents / Evidence all
-            anchor against the Annex A control register, so this stays always-on.
-            The hidden input keeps it in the submission; the visible label tells
-            the user it's not optional. %>
+<%# New-client form lives in a native <dialog>. The previous inline
+    expanding-panel pattern was invisible to a first-time user: they'd
+    click "New client," nothing visibly happened (the panel was further
+    down the page below the fold), and they'd give up. A modal makes the
+    open/close transition unmissable. Escape closes it; click-outside on
+    the backdrop closes it via the JS handler below. %>
+<dialog id="newWs" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(640px, 92vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
+  <form method="POST" action="/workspaces">
+    <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+      <div>
+        <h2 style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600;letter-spacing:-0.01em;">New client</h2>
+        <div class="meta text-sm" style="margin-top:2px;">Just the basics here — scope, stakeholders, and the rest of the 25 scoping questions come on the next page.</div>
+      </div>
+      <button type="button" onclick="document.getElementById('newWs').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">×</button>
+    </header>
+    <div class="grid-2" style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div><label class="label">Client name <span class="meta">required</span></label><input class="input" name="client_name" required autofocus placeholder="e.g. Northwind Financial Services"></div>
+      <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
+      <div class="col-full"><label class="label">Target certification date</label><input class="input" name="target_cert_date" type="date" style="max-width:240px;"></div>
+      <%# Scope intentionally NOT here - the next-step intake page auto-
+          drafts the full clause 4.3 scope statement from the 25 questions
+          and applies it on save. Asking for it twice meant people typed
+          a placeholder once and never came back to fix it. %>
+      <div class="col-full">
+        <%# ISO 27001 always-on; the extras are behind a disclosure. %>
         <input type="hidden" name="frameworks" value="iso27001">
-        <span class="row-center" style="gap:8px;color:var(--text-secondary);">
-          <input type="checkbox" checked disabled>
-          <span><strong>ISO 27001:2022</strong> <span class="meta">always included</span></span>
-        </span>
-        <label class="row-center" style="gap:8px;cursor:pointer;">
-          <input type="checkbox" name="frameworks" value="iso42001">
-          <span><strong>ISO 42001:2023</strong> <span class="meta">AI management system</span></span>
-        </label>
-        <label class="row-center" style="gap:8px;cursor:pointer;">
-          <input type="checkbox" name="frameworks" value="csf">
-          <span><strong>NIST CSF 2.0</strong> <span class="meta">Cybersecurity Framework</span></span>
-        </label>
+        <details>
+          <summary class="meta text-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;list-style:none;color:var(--text-secondary);">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>ISO 27001:2022 always included. Add another framework?</span>
+          </summary>
+          <div class="row text-sm" style="gap:18px;flex-wrap:wrap;padding:10px 0 0 17px;">
+            <label class="row-center" style="gap:8px;cursor:pointer;">
+              <input type="checkbox" name="frameworks" value="iso42001">
+              <span><strong>ISO 42001:2023</strong> <span class="meta">AI management system</span></span>
+            </label>
+            <label class="row-center" style="gap:8px;cursor:pointer;">
+              <input type="checkbox" name="frameworks" value="csf">
+              <span><strong>NIST CSF 2.0</strong> <span class="meta">Cybersecurity Framework</span></span>
+            </label>
+          </div>
+        </details>
       </div>
     </div>
-    <div class="col-full"><button class="btn btn-primary">Create workspace</button></div>
+    <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
+      <button type="button" onclick="document.getElementById('newWs').close()" class="btn btn-ghost">Cancel</button>
+      <button type="submit" class="btn btn-primary">Create client</button>
+    </footer>
   </form>
-</div>
+</dialog>
+<script>
+// Click-outside-to-close. The native <dialog> backdrop doesn't dismiss
+// by default; this adds the expected behaviour. Only triggers when the
+// click target IS the dialog element (the backdrop), not its children.
+(function () {
+  const dlg = document.getElementById('newWs');
+  if (!dlg) return;
+  dlg.addEventListener('click', e => {
+    const r = dlg.getBoundingClientRect();
+    const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    if (outside) dlg.close();
+  });
+})();
+</script>
 <% } %>
 
 <div class="panel" style="overflow:hidden">
@@ -290,7 +285,7 @@
             </div>
             <% if (w.industry) { %><div class="meta" style="margin-top:2px"><%= w.industry %></div><% } %>
           </td>
-          <td><span class="status s-<%= w.stage === 'certified' ? 'done' : 'in_progress' %>"><%= w.stage.replace(/_/g,' ') %></span></td>
+          <td><span class="status s-<%= w.derivedStage && (w.derivedStage.key === 'post_stage_2' || w.derivedStage.key === 'surveillance') ? 'done' : 'in_progress' %>"><%= w.derivedStage ? w.derivedStage.label : 'New' %></span></td>
           <td><span class="num" style="font-weight:500;color:<%= w.readiness.stage1 >= 80 ? '#15803d' : w.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= w.readiness.stage1 %>%</span></td>
           <td class="num meta" style="color:<%= w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30 ? '#b91c1c' : w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 90 ? '#a16207' : '' %>"><%= w.readiness.daysToTarget !== null ? w.readiness.daysToTarget + 'd' : '-' %></td>
           <td>
@@ -308,7 +303,7 @@
           <td onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
             <button type="button"
                     onclick="deleteClient(<%= w.id %>, '<%= w.client_name.replace(/'/g, "\\'") %>')"
-                    title="Delete this client engagement"
+                    title="Delete this client"
                     class="btn btn-ghost btn-xs"
                     style="color:var(--danger,#b91c1c);padding:4px 8px;">×</button>
           </td>
@@ -322,9 +317,9 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             </div>
             <div class="empty-title">No clients yet</div>
-            <div class="empty-sub">Create a workspace for each client engagement. Each workspace gets its own scope, risks, controls, and audit trail.</div>
+            <div class="empty-sub">Create a client for each client. Each client gets its own scope, risks, controls, and audit trail.</div>
             <% if (user.user_type === 'firm') { %>
-              <button onclick="document.getElementById('newWs').classList.toggle('hidden')" class="btn btn-primary">New client</button>
+              <button onclick="document.getElementById('newWs').showModal()" class="btn btn-primary">+ New client</button>
             <% } %>
           </div>
         </td></tr>
@@ -333,7 +328,7 @@
   </table>
 </div>
 
-<% if (user.user_type === 'firm' && user.firm_role === 'owner') { %>
+<% if (user.user_type === 'firm' && rbac.isManager(user.firm_role)) { %>
 <div class="panel" style="margin-top:32px;overflow:hidden">
   <div class="panel-head">
     <h2>Firm team</h2>
@@ -344,7 +339,7 @@
       <div><label class="label">Name</label><input class="input" name="name" required></div>
       <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
       <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>
-      <div><label class="label">Role</label><select class="select" name="firm_role"><option value="consultant">Consultant</option><option value="owner">Owner</option></select></div>
+      <div><label class="label">Role</label><select class="select" name="firm_role"><option value="consultant">Consultant</option><option value="senior_consultant">Senior consultant</option><option value="manager">Manager</option></select></div>
       <button class="btn btn-primary">Create</button>
     </form>
   </div>
@@ -355,7 +350,7 @@
         <tr>
           <td><%= u.name %></td>
           <td class="text-secondary"><%= u.email %></td>
-          <td><span class="tag tag-neutral"><%= u.firm_role %></span></td>
+          <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[rbac.normalizeRole(u.firm_role)] || u.firm_role %></span></td>
           <td style="text-align:right">
             <% if (u.id !== user.id) { %>
               <form method="POST" action="/firm/users/<%= u.id %>/deactivate" onsubmit="return appConfirmForm(event, 'Deactivate this user?')">
@@ -373,13 +368,13 @@
 <div id="deleteClientModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(185,28,28,0.06);">
-      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client engagement</div>
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client</div>
       <div id="dcmTitle" style="font-size:15px;font-weight:600;margin-top:4px;"></div>
     </div>
     <form id="deleteClientForm" method="POST" action="">
       <div style="padding:18px;">
         <div class="meta text-md" style="line-height:1.5;margin-bottom:14px;">
-          Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (DB and disk), audits, MRMs, NCs, incidents, suppliers, documents, registers. <strong>Cannot be undone.</strong>
+          Permanently removes this client and everything inside it: controls, gap-assessment passes, risks, evidence files (DB and disk), audits, MRMs, NCs, incidents, suppliers, documents, registers. <strong>Cannot be undone.</strong>
         </div>
         <label class="label text-base">Type <strong id="dcmExpected"></strong> to confirm</label>
         <input id="dcmInput" class="input" name="confirm_name" autocomplete="off" required>
@@ -429,5 +424,35 @@
     window.deleteClient = open;
   })();
 </script>
+
+<%# Cross-client activity feed (D-10). Last 25 events across every
+    client in the firm in the last 30 days. Lets a consultant skim
+    "what changed while I was in a meeting" without clicking into
+    each client. Filtered to actionable events; pure read events would
+    drown out the signal. %>
+<% if (typeof recentActivity !== 'undefined' && recentActivity.length > 0) { %>
+  <div class="panel" style="margin-top:24px;padding:0;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+      <h2 style="margin:0;font-size:14px;">Recent activity across clients</h2>
+      <span class="meta text-xs">last 30 days · most recent <%= recentActivity.length %> events</span>
+    </div>
+    <% recentActivity.forEach(a => {
+        // Hide read-only events that would be noise (login, dashboard views)
+        if (/^(login|logout|view_|page_)/.test(a.action)) return;
+        // Friendly action label
+        const actionLabel = (a.action || '').replace(/_/g, ' ');
+    %>
+      <a href="/workspaces/<%= a.workspace_id %>" style="display:grid;grid-template-columns:140px 1fr auto;gap:14px;padding:8px 18px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
+        <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:var(--text-tertiary);"><%= a.created_at %></span>
+        <span style="font-size:13px;color:var(--text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <strong style="font-weight:600;color:var(--text);"><%= a.user_name || 'system' %></strong>
+          <%= actionLabel %>
+          <% if (a.entity_type) { %><span class="meta"><%= a.entity_type %><% if (a.entity_id) { %> #<%= a.entity_id %><% } %></span><% } %>
+        </span>
+        <span class="text-xs" style="color:var(--text-tertiary);font-weight:500;"><%= a.client_name %></span>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
 
 <%- include('partials/footer') %>

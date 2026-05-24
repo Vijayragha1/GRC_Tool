@@ -8,7 +8,7 @@ const INTAKE = require('../data/intake-questions');
 const ENG_PLAN = require('../data/engagement-plan');
 
 function register(app, deps) {
-  const { db, requireAuth, requireWorkspace, withToast, logAction, auditCtx } = deps;
+  const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx } = deps;
 
   // ---------- INTAKE ----------
   app.get('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
@@ -19,14 +19,57 @@ function register(app, deps) {
     const flat = INTAKE.flatten();
     const total = flat.length;
     const answered = flat.filter(q => (answers[q.id] || '').trim().length > 0).length;
+    const requiredAnswered = flat.filter(q => q.required && (answers[q.id] || '').trim().length > 0).length;
+    const requiredTotal = flat.filter(q => q.required).length;
     const draftScope = INTAKE.draftScopeStatement(answers);
+    const summary = INTAKE.computeEngagementSummary(answers);
+    // Ready to confirm = all required answered. The consultant can
+    // also confirm earlier if they explicitly want to (the route just
+    // takes whatever's in the answers table) - this gates the banner
+    // visibility, not the action.
+    const readyToConfirm = requiredAnswered === requiredTotal && requiredTotal > 0;
+    const scopeConfirmedAt = req.workspace.scope_confirmed_at || null;
+    let scopeConfirmedBy = null;
+    if (req.workspace.scope_confirmed_by) {
+      try {
+        scopeConfirmedBy = db.prepare('SELECT name FROM users WHERE id=?').get(req.workspace.scope_confirmed_by);
+      } catch (_) {}
+    }
     res.render('intake', {
       user: req.user, ws: req.workspace,
-      sections: INTAKE.SECTIONS, answers, total, answered, draftScope,
+      sections: INTAKE.SECTIONS, answers, total, answered, draftScope, summary,
+      requiredAnswered, requiredTotal, readyToConfirm,
+      scopeConfirmedAt, scopeConfirmedBy
     });
   });
 
-  app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
+  // Helper - extracted so both /intake (save) and /intake/apply (legacy)
+  // and the per-field autosave endpoint all run the same scope-and-parties
+  // sync. Idempotent: existing parties are de-duped by name; the scope
+  // statement is regenerated each time from the latest answers.
+  function applyIntakeToClient(wsId) {
+    const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`).all(wsId);
+    const answers = {};
+    for (const r of rows) answers[r.question_id] = r.answer || '';
+    const scope = INTAKE.draftScopeStatement(answers);
+    db.prepare('UPDATE workspaces SET scope=? WHERE id=?').run(scope, wsId);
+    // Keep target_cert_date in sync with the cert-deadline intake answer.
+    // The two used to drift apart silently - the create dialog set one,
+    // the intake form set the other, neither knew about the other.
+    const certDeadline = (answers['cert-deadline'] || '').trim();
+    if (certDeadline) {
+      db.prepare('UPDATE workspaces SET target_cert_date=? WHERE id=?').run(certDeadline, wsId);
+    }
+    // Interested-parties auto-seed removed: parties get identified during
+    // the gap assessment / implementation work on clauses 4.2 + 9.3.2.d
+    // rather than as a discrete register populated from intake answers.
+    // The key-customers / key-regulators / key-suppliers questions stay
+    // in the intake because they're useful business context for the
+    // scoping summary - they just no longer write to a separate table.
+    return {};
+  }
+
+  app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const flat = INTAKE.flatten();
     const insert = db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -39,39 +82,67 @@ function register(app, deps) {
       }
     });
     tx();
-    logAction(req.user.id, req.workspace.id, 'intake_save', 'intake', null, null, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Intake saved'));
+    // Save now also applies - no more two-step UX. The "Apply to client"
+    // button was non-obvious; consultants would save, leave the page, and
+    // the scope field on the workspace stayed empty for weeks.
+    applyIntakeToClient(req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'intake_save_apply', 'intake', null, null, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Saved. Scope statement updated.'));
   });
 
-  // Apply: copy auto-drafted scope into workspaces.scope and seed interested
-  // parties from the customer / regulator / supplier answers. Idempotent.
-  app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, (req, res) => {
-    const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`)
-      .all(req.workspace.id);
-    const answers = {};
-    for (const r of rows) answers[r.question_id] = r.answer || '';
-    const scope = INTAKE.draftScopeStatement(answers);
-    db.prepare('UPDATE workspaces SET scope=? WHERE id=?').run(scope, req.workspace.id);
+  // Per-field autosave endpoint. Called from the intake form on field blur
+  // / after a short debounce. Persists one answer, no redirects, no parties
+  // sync (parties only refresh when the full Save runs). 200 JSON for the
+  // client-side fetch.
+  app.post('/workspaces/:wsId/intake/field', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const id = (req.body.question_id || '').trim();
+    const value = (req.body.answer || '').trim();
+    const known = INTAKE.flatten().some(q => q.id === id);
+    if (!known) return res.status(400).json({ ok: false, error: 'unknown question_id' });
+    db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(workspace_id, question_id) DO UPDATE SET
+        answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`)
+      .run(req.workspace.id, id, value, req.user.id);
+    res.json({ ok: true, savedAt: new Date().toISOString() });
+  });
 
-    let parties = 0;
-    const seedParty = (text, type) => {
-      if (!text || !text.trim()) return;
-      for (const line of text.split('\n').map(s => s.trim()).filter(Boolean)) {
-        const exists = db.prepare(`SELECT 1 FROM interested_parties WHERE workspace_id=? AND party=?`)
-          .get(req.workspace.id, line);
-        if (exists) continue;
-        db.prepare(`INSERT INTO interested_parties (workspace_id, party, party_type, needs, how_addressed)
-          VALUES (?, ?, ?, '', '')`).run(req.workspace.id, line, type);
-        parties++;
-      }
-    };
-    seedParty(answers['key-customers'], 'customer');
-    seedParty(answers['key-regulators'], 'regulator');
-    seedParty(answers['key-suppliers'], 'supplier');
+  // Legacy /apply route - keep for any old links / bookmarks; calls the
+  // same helper as Save now. Redirects back to the intake page.
+  app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    applyIntakeToClient(req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'intake_apply', 'intake', null, null, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Scope statement applied to client.'));
+  });
 
-    logAction(req.user.id, req.workspace.id, 'intake_apply', 'intake', null, { parties_seeded: parties }, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`,
-      `Scope applied; ${parties} interested part${parties === 1 ? 'y' : 'ies'} seeded`));
+  // Scope confirmation: explicit sign-off that the auto-drafted scope
+  // is good and the engagement is ready to start the gap assessment.
+  // Sets a timestamp on workspaces, which then drives the "ready for
+  // gap" gate and the "Scope confirmed on <date>" cue on the overview.
+  // Idempotent - re-confirming refreshes the timestamp + user.
+  app.post('/workspaces/:wsId/scope/confirm', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
+    // Ensure the latest answers are baked into workspaces.scope before
+    // we mark confirmed - otherwise the consultant could confirm an
+    // empty scope statement if they hadn't hit Save first.
+    applyIntakeToClient(req.workspace.id);
+    db.prepare(`UPDATE workspaces SET scope_confirmed_at=CURRENT_TIMESTAMP, scope_confirmed_by=? WHERE id=?`)
+      .run(req.user.id, req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'confirm_scope', 'workspace', req.workspace.id, null, auditCtx(req));
+    // Land on the team-setup screen first so the manager can assign
+    // consultants and invite client-side accounts before the gap assessment
+    // begins. From there a primary CTA continues to /gap-assessment.
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/team`,
+      'Scope confirmed. Now assign the firm consultants and invite the client-side accounts who will work on this engagement.'));
+  });
+
+  // Unconfirm - if you realise the scope was wrong and want to redo it
+  // before the gap assessment. Doesn't undo any gap-assessment work
+  // already done; just clears the sign-off so the banner re-appears.
+  app.post('/workspaces/:wsId/scope/unconfirm', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
+    db.prepare(`UPDATE workspaces SET scope_confirmed_at=NULL, scope_confirmed_by=NULL WHERE id=?`)
+      .run(req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'unconfirm_scope', 'workspace', req.workspace.id, null, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Scope un-confirmed. Edit the answers and re-confirm when ready.'));
   });
 
   // ---------- 12-WEEK ENGAGEMENT PLAN ----------
@@ -91,7 +162,7 @@ function register(app, deps) {
     });
   });
 
-  app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const mid = req.params.milestoneId;
     // Guard: only known milestone IDs from the template can be toggled. Stops
     // arbitrary upserts from crafted POST bodies.

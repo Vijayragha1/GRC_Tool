@@ -187,6 +187,20 @@
   .icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
 
   .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+
+  /* Subtab strip — shared by activity / audit / risk / soa / iso42001-soa
+     tab partials. Was duplicated as inline styles in five places; now one
+     class. Tabs sit on a 1px border-bottom; active tab gets the oxblood
+     2px underline + ink colour. */
+  .subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .subtab {
+    padding: 8px 16px; font-size: 13px; font-weight: 500;
+    color: var(--text-secondary); text-decoration: none;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .subtab:hover { color: var(--text); }
+  .subtab.is-active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
   /* Page title uses serif now via the .serif rule above; size + weight stay. */
   .page-title { font-size: 26px; font-weight: 600; line-height: 1.2; color: var(--ink); }
   .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 6px; max-width: 720px; }
@@ -317,11 +331,25 @@
   table.t tbody tr:hover { background: var(--bg-subtle); }
   .t-empty { padding: 40px 14px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
 
-  /* Empty state */
-  .empty-state { padding: 56px 24px; text-align: center; }
-  .empty-icon { width: 44px; height: 44px; margin: 0 auto 14px; border-radius: 10px; background: var(--bg-muted); display: inline-flex; align-items: center; justify-content: center; color: var(--text-tertiary); }
-  .empty-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
-  .empty-sub { font-size: 13px; color: var(--text-secondary); max-width: 380px; margin: 0 auto 16px; line-height: 1.5; }
+  /* Empty state. Refined from "centered icon + 380px copy block" (the
+     reflexive LLM/SaaS pattern) to a quieter typographic note: serif title,
+     no icon backplate, slightly more space for the explanation. Reads as a
+     deliberate note rather than a placeholder card. */
+  .empty-state { padding: 44px 24px; text-align: center; }
+  .empty-icon {
+    width: 28px; height: 28px; margin: 0 auto 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary);
+    /* The backplate tile is gone — the SVG sits on the page colour. */
+  }
+  .empty-title {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-variation-settings: "opsz" 24;
+    font-size: 17px; font-weight: 500;
+    color: var(--ink); margin-bottom: 6px;
+    letter-spacing: -0.005em;
+  }
+  .empty-sub { font-size: 13px; color: var(--text-secondary); max-width: 460px; margin: 0 auto 14px; line-height: 1.55; }
 
   /* KPI tile - left health-rail, icon slot, delta line */
   .kpi { padding: 16px 18px 16px 20px; position: relative; overflow: hidden; transition: all 0.15s; }
@@ -360,6 +388,9 @@
   .text-danger    { color: #b91c1c; }
   .text-warn      { color: #a16207; }
   .text-success   { color: #15803d; }
+  /* Weight utility — used in 25+ overdue/emphasis spots that previously
+     stamped font-weight:600 inline alongside a colour. */
+  .fw-bold        { font-weight: 600; }
 
   /* Layout - the only spans/grids we use enough to deserve a class.
      col-full means "stretch across all grid columns of the parent". */
@@ -466,17 +497,81 @@
         <span style="font-family:'Source Serif 4',Georgia,serif;font-variation-settings:'opsz' 40;font-size:22px;font-weight:500;color:#fff;letter-spacing:-0.005em;">ISMS</span>
         <span style="font-size:10.5px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.45);">27001</span>
       </a>
+      <%# Tenant switcher: shows the active firm name below the brand.
+          Static text when only one firm exists (the common case); a
+          dropdown when the user has access to multiple firms. Avoids
+          forcing the consultant to navigate to /tenants every time. %>
+      <% if (typeof activeFirm !== 'undefined' && activeFirm) { %>
+        <% const otherFirms = (typeof allFirms !== 'undefined' ? allFirms : []).filter(f => f.id !== activeFirm.id); %>
+        <% if (otherFirms.length === 0) { %>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,0.55);">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.7;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= activeFirm.name %></span>
+          </div>
+        <% } else { %>
+          <details class="tenant-switcher" style="margin-top:10px;">
+            <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,0.7);">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.7;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;"><%= activeFirm.name %></span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.6;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <div style="margin-top:6px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:6px;max-height:260px;overflow-y:auto;">
+              <% otherFirms.forEach(f => { %>
+                <form method="POST" action="/tenants/<%= f.id %>/switch" style="margin:0;">
+                  <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                  <button type="submit" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;background:transparent;border:0;text-align:left;color:rgba(255,255,255,0.85);font-size:12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);font-family:inherit;">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.5;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= f.name %></span>
+                    <span style="font-size:10px;color:rgba(255,255,255,0.4);flex-shrink:0;"><%= f.workspace_count %> client<%= f.workspace_count === 1 ? '' : 's' %></span>
+                  </button>
+                </form>
+              <% }) %>
+              <a href="/tenants" style="display:block;padding:8px 12px;font-size:11px;color:rgba(255,255,255,0.55);text-decoration:none;border-top:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);">Manage firms →</a>
+            </div>
+          </details>
+        <% } %>
+      <% } %>
     </div>
 
     <% if (typeof ws !== 'undefined' && ws) { %>
     <%
       // Per-client brand color powers the left-rail accent on the sidebar
-      // workspace context block. Falls back to the global accent.
+      // client context block. Falls back to the global accent.
       const brandColor = (ws.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(ws.brand_primary_color)) ? ws.brand_primary_color : null;
+      const otherWorkspaces = (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []).filter(w => w.id !== ws.id);
     %>
     <div class="sidebar-section ws-context" style="<%= brandColor ? 'border-left:3px solid ' + brandColor + ';padding-left:11px;' : '' %>">
       <a class="text-xs" href="/dashboard" style="color:rgba(255,255,255,0.5);text-decoration:none;">← All clients</a>
-      <div class="text-lg" style="margin-top:10px;font-weight:600;letter-spacing:-0.005em;line-height:1.3;color:#fff;"><%= ws.brand_display_name || ws.client_name %></div>
+      <%# Client name is now the trigger for the switcher dropdown.
+          On click expands a list of every other workspace in this firm so
+          a consultant can jump between engagements without bouncing back
+          to /dashboard first. Native <details>/<summary> = works with JS off. %>
+      <%# Client switcher (label says "client" not "workspace" - workspace
+          is the internal table name, never user-facing). The user is the
+          firm; what they switch between is the client they're
+          working on right now. %>
+      <details class="ws-switcher" style="margin-top:10px;">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;color:#fff;">
+          <span class="text-lg" style="font-weight:600;letter-spacing:-0.005em;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= ws.brand_display_name || ws.client_name %></span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.6;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div class="ws-switcher-menu" style="margin-top:8px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:6px;max-height:280px;overflow-y:auto;">
+          <% if (otherWorkspaces.length === 0) { %>
+            <div style="padding:10px 12px;font-size:12px;color:rgba(255,255,255,0.45);">No other clients yet.</div>
+          <% } else { %>
+            <% otherWorkspaces.forEach(w => {
+                 const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'rgba(255,255,255,0.25)';
+            %>
+              <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:rgba(255,255,255,0.85);font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= dot %>;flex-shrink:0;"></span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %></span>
+                <% if (w.sector) { %><span style="font-size:10px;color:rgba(255,255,255,0.4);flex-shrink:0;"><%= w.sector %></span><% } %>
+              </a>
+            <% }) %>
+          <% } %>
+          <a href="/dashboard" style="display:block;padding:8px 12px;font-size:12px;color:rgba(255,255,255,0.55);text-decoration:none;border-top:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);">All clients →</a>
+        </div>
+      </details>
       <div class="text-xs" style="margin-top:3px;color:rgba(255,255,255,0.45);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
         <% if (ws.sector) { %><span class="text-xxs" style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:999px;font-weight:500;"><%= ws.sector %></span><% } %>
         <span><%= ws.industry || ws.stage.replace(/_/g,' ') %></span>
@@ -486,7 +581,7 @@
 
     <nav class="sidebar-nav">
       <% if (typeof ws !== 'undefined' && ws) { %>
-        <div class="nav-group-label">Engagement</div>
+        <%# First group has no label - Overview is the obvious landing point; no need for an "Engagement" header above it %>
         <a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= (typeof active !== 'undefined' && active === 'overview') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="nav-item-text">Overview</span>
@@ -494,6 +589,10 @@
         <a href="/workspaces/<%= ws.id %>/readiness" data-shortcut="g e" class="nav-item <%= (typeof active !== 'undefined' && active === 'readiness') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14 9 11"/></svg>
           <span class="nav-item-text">Readiness</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/inbox" class="nav-item <%= (typeof active !== 'undefined' && active === 'inbox') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          <span class="nav-item-text">Inbox</span>
         </a>
         <%# Unified all-framework view - only meaningful when the engagement
             covers more than one framework. %>
@@ -504,26 +603,45 @@
           </a>
         <% } %>
 
+        <%# Setup group: scoping intake + gap-assessment diagnostic.
+            These come first in the engagement lifecycle - the consultant
+            does both before any controls / risk / SoA work - so they get
+            their own group above Implementation rather than being buried
+            inside it where consultants missed them. %>
+        <div class="nav-group-label">Setup</div>
+        <a href="/workspaces/<%= ws.id %>/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'intake') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H3v10h6V11zM21 3h-6v18h6V3zM15 7H9v14h6V7z"/></svg>
+          <span class="nav-item-text">Client setup</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/team" class="nav-item <%= (typeof active !== 'undefined' && active === 'team') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="nav-item-text">Team &amp; access</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span class="nav-item-text">Gap assessment</span>
+        </a>
+        <%# Post-assessment summary lives at /controls/assess/summary
+            (gaps, not-assessed count, doc gaps, controls missing
+            evidence). Surfacing here as a sub-item so it's reachable
+            without bouncing through the gap-assessment fieldwork page. %>
+        <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment-summary') ? 'active' : '' %>" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="nav-item-text">Findings &amp; worklist</span>
+        </a>
+
         <div class="nav-group-label">Implementation</div>
         <a href="/workspaces/<%= ws.id %>/templates" class="nav-item <%= (typeof active !== 'undefined' && active === 'templates') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
           <span class="nav-item-text">Policy templates</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'intake') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H3v10h6V11zM21 3h-6v18h6V3zM15 7H9v14h6V7z"/></svg>
-          <span class="nav-item-text">Intake</span>
-        </a>
         <a href="/workspaces/<%= ws.id %>/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'engagement-plan') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="11" cy="12" r="1.5" fill="currentColor"/><circle cx="17" cy="18" r="1.5" fill="currentColor"/></svg>
-          <span class="nav-item-text">Engagement plan</span>
+          <span class="nav-item-text">Client plan</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/exec-brief" class="nav-item <%= (typeof active !== 'undefined' && active === 'exec-brief') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <span class="nav-item-text">Exec brief</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span class="nav-item-text">Gap assessment</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/roadmap" class="nav-item <%= (typeof active !== 'undefined' && active === 'roadmap') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 9 12 3 18"/><polyline points="13 6 21 12 13 18"/></svg>
@@ -582,7 +700,7 @@
         </a>
         <a href="/workspaces/<%= ws.id %>/iso42001/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-engagement-plan') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7"/><path d="M21 8h-4a2 2 0 0 0-2 2v10"/><path d="M3 20h18"/><circle cx="12" cy="6" r="3"/></svg>
-          <span class="nav-item-text">Engagement plan</span>
+          <span class="nav-item-text">Client plan</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/iso42001" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-catalog') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
@@ -639,6 +757,10 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           <span class="nav-item-text">Audit pack</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/deliverables" class="nav-item <%= (typeof active !== 'undefined' && active === 'deliverables') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span class="nav-item-text">Deliverables</span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/auditor-access" class="nav-item <%= (typeof active !== 'undefined' && active === 'auditor-access') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span class="nav-item-text">Auditor access</span>
@@ -651,11 +773,19 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
           <span class="nav-item-text">Incidents</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/changes" class="nav-item <%= (typeof active !== 'undefined' && active === 'changes') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <span class="nav-item-text">Changes</span>
+        </a>
         <%# Improvements demoted from the sidebar - reachable as a tab on the
             Nonconformities page since clause 10 keeps both concepts adjacent. %>
         <a href="/workspaces/<%= ws.id %>/vendors" data-shortcut="g v" class="nav-item <%= (typeof active !== 'undefined' && active === 'vendors') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           <span class="nav-item-text">Suppliers</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/bcp" data-shortcut="g b" class="nav-item <%= (typeof active !== 'undefined' && active === 'bcp') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="nav-item-text">Business continuity</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -663,12 +793,12 @@
         </a>
         <%# Task templates / Calendar reachable from the Tasks page header. %>
 
-        <div class="nav-group-label">Workspace</div>
+        <div class="nav-group-label">Settings</div>
         <%# Search reachable via the Cmd-K palette in the topbar. Reports is a
             thin index of exports that already live next to each module. The
-            Glossary nav entry only renders outside a workspace context (the
-            else branch below) - inside a workspace it just adds noise. %>
-        <% if (user.firm_role === 'owner') { %>
+            Glossary nav entry only renders outside a client context (the
+            else branch below) - inside a client it just adds noise. %>
+        <% if (rbac.isManager(user.firm_role)) { %>
         <a href="/workspaces/<%= ws.id %>/system" class="nav-item">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span class="nav-item-text">System</span>
@@ -687,17 +817,36 @@
           <span class="nav-item-text">Activity log</span>
         </a>
       <% } else { %>
-        <% // If the user just came from a workspace, give them a one-click way
-           // back. Without this, Glossary / Playbooks / Firm library / Tenants
-           // feel like "exiting the workspace" - the sidebar redraws and there's
-           // no breadcrumb home. %>
-        <% if (typeof lastWs !== 'undefined' && lastWs) { %>
-          <a href="/workspaces/<%= lastWs.id %>" class="nav-item" style="background:rgba(255,255,255,0.04);border-left:2px solid var(--accent);">
-            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-            <span class="nav-item-text" style="font-weight:500;">Back to <%= lastWs.client_name %></span>
-          </a>
+        <%# Client switcher: on firm-level pages (Clients, Playbooks,
+            Firm library, Glossary, Admin Email), give the consultant a
+            one-click jump into any client. Replaces the old
+            sticky "Back to <last>" button which always pointed at the
+            same client forever - typically a stale demo. %>
+        <% const allWs = (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []); %>
+        <% if (allWs.length > 0) { %>
+          <details class="ws-switcher" style="margin:0 14px 12px;">
+            <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 11px;background:rgba(255,255,255,0.04);border-radius:6px;color:#fff;font-size:13px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.7;flex-shrink:0;"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;">Jump to a client</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.6;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <div class="ws-switcher-menu" style="margin-top:6px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:6px;max-height:340px;overflow-y:auto;">
+              <% allWs.forEach(w => {
+                   const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'rgba(255,255,255,0.25)';
+                   const isLast = (typeof lastWs !== 'undefined' && lastWs && lastWs.id === w.id);
+              %>
+                <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:rgba(255,255,255,0.85);font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);<%= isLast ? 'background:rgba(255,255,255,0.04);' : '' %>">
+                  <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= dot %>;flex-shrink:0;"></span>
+                  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %><% if (isLast) { %> <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:400;">· last viewed</span><% } %></span>
+                  <% if (w.sector) { %><span style="font-size:10px;color:rgba(255,255,255,0.4);flex-shrink:0;"><%= w.sector %></span><% } %>
+                </a>
+              <% }) %>
+            </div>
+          </details>
         <% } %>
-        <div class="nav-group-label">Firm</div>
+        <%# Dropped the "Firm" group label - the firm is implicit when
+            you're logged into it. Clients is the primary destination at
+            firm-level; doesn't need a header above it. %>
         <a href="/dashboard" class="nav-item <%= (typeof active === 'undefined' || active !== 'glossary') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="nav-item-text">Clients</span>
@@ -709,12 +858,23 @@
         </a>
         <a href="/firm/library" class="nav-item <%= (typeof active !== 'undefined' && active === 'firm-library') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-          <span class="nav-item-text">Firm library</span>
+          <span class="nav-item-text">Library</span>
         </a>
         <a href="/glossary" class="nav-item <%= (typeof active !== 'undefined' && active === 'glossary') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           <span class="nav-item-text">Glossary</span>
         </a>
+        <% if (user && rbac.isManager(user.firm_role)) { %>
+          <div class="nav-group-label">Admin</div>
+          <a href="/admin/users" class="nav-item <%= (typeof active !== 'undefined' && active === 'admin-users') ? 'active' : '' %>">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="nav-item-text">Users &amp; access</span>
+          </a>
+          <a href="/admin/email" class="nav-item <%= (typeof active !== 'undefined' && active === 'admin-email') ? 'active' : '' %>">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span class="nav-item-text">Email</span>
+          </a>
+        <% } %>
       <% } %>
     </nav>
 
@@ -722,11 +882,17 @@
       <div class="avatar text-xs" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;flex-shrink:0;"><%= user.name.charAt(0).toUpperCase() %></div>
       <div style="min-width:0;flex:1;">
         <div class="text-lg" style="font-weight:500;line-height:1.2;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= user.name %></div>
-        <div class="text-eyebrow" style="color:rgba(255,255,255,0.4);">local · no auth</div>
+        <div class="text-eyebrow" style="color:rgba(255,255,255,0.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= user.email %></div>
       </div>
       <button onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:rgba(255,255,255,0.5);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.color='rgba(255,255,255,0.5)';this.style.background='transparent'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
+      <form method="POST" action="/logout" style="margin:0;display:flex;">
+        <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+        <button type="submit" title="Sign out" aria-label="Sign out" style="background:transparent;border:0;color:rgba(255,255,255,0.5);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.color='rgba(255,255,255,0.5)';this.style.background='transparent'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </form>
     </div>
   </aside>
 
@@ -747,9 +913,9 @@
         <% // Tenant switcher - shows the active tenant (firm) and lets you switch.
            // Hidden if there's only one tenant and no point in cluttering the header. %>
         <% // Tenant switcher only matters when there is more than one firm. For
-           // a solo consultant with a single firm, the workspace dashboard already
+           // a solo consultant with a single firm, the client dashboard already
            // shows everything that matters - surfacing tenants here just invites
-           // confusion between "tenant" (firm) and "workspace" (client engagement). %>
+           // confusion between "tenant" (firm) and "workspace" (client). %>
         <% if (typeof allFirms !== 'undefined' && allFirms && allFirms.length > 1) { %>
           <div style="position:relative;" id="tenantSwitcher">
             <button type="button" class="palette-trigger text-base" onclick="document.getElementById('tenantMenu').style.display = (document.getElementById('tenantMenu').style.display === 'block' ? 'none' : 'block')" style="gap:6px;padding:5px 10px;" title="Switch tenant">

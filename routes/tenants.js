@@ -71,11 +71,11 @@ function resolveOnboardingHref(db, href, firmId) {
 }
 
 function register(app, deps) {
-  const { db, bcrypt, requireAuth, getActiveFirmId, listAllFirms, withToast, projectRoot } = deps;
+  const { db, bcrypt, requireAuth, getActiveFirmId, listUserFirms, withToast, projectRoot } = deps;
 
   // ---------- TENANTS ----------
   app.get('/tenants', requireAuth, (req, res) => {
-    const firms = listAllFirms();
+    const firms = listUserFirms(req.user);
     const activeFirmId = getActiveFirmId(req);
     res.render('tenants', { user: req.user, firms, activeFirmId });
   });
@@ -97,13 +97,31 @@ function register(app, deps) {
 
   app.post('/tenants/:id/switch', requireAuth, (req, res) => {
     const fid = parseInt(req.params.id, 10);
-    const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(fid);
-    if (exists) req.session.active_firm_id = fid;
+    // Tenant isolation: firm users can only switch to their own firm;
+    // client users can only switch to firms where they have workspace membership.
+    if (req.user.user_type === 'firm') {
+      if (req.user.firm_id !== fid) return res.status(403).send('Forbidden');
+    } else {
+      const hasMembership = db.prepare(
+        `SELECT 1 FROM workspace_members wm
+         INNER JOIN workspaces w ON w.id = wm.workspace_id
+         WHERE wm.user_id = ? AND w.firm_id = ?`
+      ).get(req.user.id, fid);
+      if (!hasMembership) return res.status(403).send('Forbidden');
+    }
+    req.session.active_firm_id = fid;
     res.redirect('/dashboard');
   });
 
   app.post('/tenants/:id/rename', requireAuth, (req, res) => {
     const fid = parseInt(req.params.id, 10);
+    // Tenant isolation: only firm-type managers of this specific firm can rename it.
+    if (req.user.user_type !== 'firm' || req.user.firm_id !== fid) {
+      return res.status(403).send('Forbidden');
+    }
+    if (req.user.firm_role !== 'manager' && req.user.firm_role !== 'owner') {
+      return res.status(403).send('Forbidden');
+    }
     const name = (req.body.name || '').trim();
     if (!name) return res.redirect('/tenants');
     db.prepare('UPDATE firms SET name=? WHERE id=?').run(name, fid);
@@ -114,6 +132,13 @@ function register(app, deps) {
   // pattern as workspace delete: enumerate firm_id-bearing tables and clear them.
   app.post('/tenants/:id/delete', requireAuth, (req, res) => {
     const fid = parseInt(req.params.id, 10);
+    // Tenant isolation: only firm-type managers of this specific firm can delete it.
+    if (req.user.user_type !== 'firm' || req.user.firm_id !== fid) {
+      return res.status(403).send('Forbidden');
+    }
+    if (req.user.firm_role !== 'manager' && req.user.firm_role !== 'owner') {
+      return res.status(403).send('Forbidden');
+    }
     const firm = db.prepare('SELECT id, name FROM firms WHERE id=?').get(fid);
     if (!firm) return res.redirect(withToast('/tenants', 'Tenant not found', 'error'));
 

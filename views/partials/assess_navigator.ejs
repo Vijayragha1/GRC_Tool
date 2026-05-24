@@ -1,0 +1,98 @@
+<%
+  // Theme-jump navigator for the assessment wizard. Replaces the prev/next-
+  // only walking pattern (118 items linear) with a collapsible index grouped
+  // by Annex A theme + main clauses. Each item has a completion dot:
+  //   • implemented / partial / not-assessed
+  //
+  // Locals required:
+  //   navGroups   — array of { key, label, items[], done, total }
+  //   item        — the currently-rendered item (so we can highlight)
+  //
+  // Status → dot colour mapping. Bound to the same semantic palette the rest
+  // of the product uses.
+%>
+<style>
+  .nav-jump { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
+  .nav-jump-group { border-bottom: 1px solid var(--border); }
+  .nav-jump-group:last-child { border-bottom: none; }
+  .nav-jump-summary {
+    list-style: none; cursor: pointer; padding: 10px 12px;
+    display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;
+    user-select: none;
+    transition: background 0.12s;
+  }
+  .nav-jump-summary::-webkit-details-marker { display: none; }
+  .nav-jump-summary:hover { background: var(--bg-subtle); }
+  .nav-jump-group[open] > .nav-jump-summary { background: var(--bg-subtle); }
+  .nav-jump-label { font-size: 11.5px; font-weight: 600; color: var(--ink); letter-spacing: -0.005em; }
+  .nav-jump-progress { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+  .nav-jump-chev { color: var(--text-tertiary); transition: transform 0.18s; }
+  .nav-jump-group[open] > .nav-jump-summary .nav-jump-chev { transform: rotate(90deg); }
+
+  .nav-jump-items { padding: 4px 0 8px; }
+  .nav-jump-item {
+    display: grid; grid-template-columns: 8px 64px 1fr; gap: 8px;
+    padding: 4px 12px 4px 18px;
+    font-size: 11.5px; text-decoration: none;
+    color: var(--text-secondary); align-items: center;
+    line-height: 1.4;
+  }
+  .nav-jump-item:hover { background: var(--bg-subtle); color: var(--text); }
+  .nav-jump-item.is-current { background: var(--accent-soft); color: var(--accent-deep); font-weight: 500; }
+  .nav-jump-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--border-strong);
+  }
+  .nav-jump-dot.s-done { background: #16a34a; }
+  .nav-jump-dot.s-partial { background: #d97706; }
+  .nav-jump-dot.s-notimpl { background: #b91c1c; }
+  .nav-jump-code { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--text-tertiary); }
+  .nav-jump-item.is-current .nav-jump-code { color: var(--accent); }
+  .nav-jump-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Mini progress meter on each group header */
+  .nav-jump-meter {
+    height: 3px; width: 38px; background: var(--bg-muted);
+    border-radius: 999px; overflow: hidden;
+  }
+  .nav-jump-meter > span { display: block; height: 100%; background: var(--accent); }
+</style>
+
+<aside class="nav-jump">
+  <%
+    function dotClass(status) {
+      const s = String(status || '').toLowerCase();
+      if (['implemented','done','verified'].includes(s)) return 's-done';
+      if (['partial','partially implemented','partially-implemented','in_review','accepted'].includes(s)) return 's-partial';
+      if (['not implemented','not-implemented'].includes(s)) return 's-notimpl';
+      return '';
+    }
+  %>
+  <% navGroups.forEach(g => {
+       const pct = g.total ? Math.round(100 * g.done / g.total) : 0;
+       // Open the group containing the current item by default; collapse others.
+       const containsCurrent = g.items.some(r => r.id === item.id);
+  %>
+    <details class="nav-jump-group" <%= containsCurrent ? 'open' : '' %>>
+      <summary class="nav-jump-summary">
+        <span class="nav-jump-label"><%= g.label %></span>
+        <span class="nav-jump-progress"><%= g.done %>/<%= g.total %></span>
+        <svg class="nav-jump-chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </summary>
+      <div style="padding:0 12px 6px;"><div class="nav-jump-meter"><span style="width:<%= pct %>%"></span></div></div>
+      <div class="nav-jump-items">
+        <% g.items.forEach(r => {
+             const code = r.id.replace(/^annex-a\./i, 'A.').replace(/^clause-/, '').toUpperCase();
+             const titleClean = r.title.replace(/^A\.[0-9.]+ /, '').replace(/^Clause [0-9.]+ /, '').replace(/^[0-9.]+\s+/, '');
+             const isCurrent = r.id === item.id;
+        %>
+          <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="nav-jump-item <%= isCurrent ? 'is-current' : '' %>" data-no-spa="1">
+            <span class="nav-jump-dot <%= dotClass(r.status) %>"></span>
+            <span class="nav-jump-code"><%= code %></span>
+            <span class="nav-jump-title" title="<%= r.title %>"><%= titleClean %></span>
+          </a>
+        <% }) %>
+      </div>
+    </details>
+  <% }) %>
+</aside>

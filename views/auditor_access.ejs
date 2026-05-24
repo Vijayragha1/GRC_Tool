@@ -65,8 +65,8 @@
               <div class="share-label"><%= s.label || '(unlabelled)' %></div>
               <div class="share-meta">
                 Created <strong><%= s.created_at.slice(0,10) %></strong> by <strong><%= s.creator || '-' %></strong>
-                <% if (s.revoked_at) { %> · <span style="color:#b91c1c;font-weight:500;">revoked <%= s.revoked_at.slice(0,10) %></span>
-                <% } else if (expired) { %> · <span style="color:#b91c1c;font-weight:500;">expired <%= String(s.expires_at).slice(0,10) %></span>
+                <% if (s.revoked_at) { %> · <span class="text-danger fw-bold">revoked <%= s.revoked_at.slice(0,10) %></span>
+                <% } else if (expired) { %> · <span class="text-danger fw-bold">expired <%= String(s.expires_at).slice(0,10) %></span>
                 <% } else if (s.expires_at) { %> · expires <strong><%= String(s.expires_at).slice(0,10) %></strong>
                 <% } %>
                 · <strong><%= s.access_count %></strong> access<%= s.access_count === 1 ? '' : 'es' %>
@@ -79,7 +79,7 @@
                   <a href="<%= url %>" target="_blank" class="btn btn-secondary btn-xs">Open</a>
                 </div>
                 <% if (isNew) { %>
-                  <div style="font-size:11.5px;color:#15803d;margin-top:6px;font-weight:500;">
+                  <div class="text-success fw-bold text-sm" style="margin-top:6px;">
                     ✓ Link created. Copy it and send to the auditor.
                   </div>
                 <% } %>

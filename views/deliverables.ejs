@@ -1,0 +1,139 @@
+<%- include('partials/header', { title: 'Deliverables', user, ws, active: 'deliverables' }) %>
+
+<style>
+  /* Deliverables page — one canonical home for every export. Three groups
+     (audit-body, internal-management, raw-data) so the consultant doesn't
+     have to remember which page hides which download. */
+  .deliv-section { margin-bottom: 26px; }
+  .deliv-section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  .deliv-section-title {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-variation-settings: "opsz" 24;
+    font-size: 17px; font-weight: 500; color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .deliv-section-sub { font-size: 11.5px; color: var(--text-tertiary); }
+
+  .deliv-card {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    gap: 14px; align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .deliv-card:last-child { border-bottom: none; }
+  .deliv-card:hover { background: var(--bg-subtle); }
+
+  .deliv-fmt {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 48px; height: 36px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px; font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .deliv-fmt.pdf  { color: var(--accent); border-color: var(--accent); }
+  .deliv-fmt.zip  { color: var(--accent); border-color: var(--accent); }
+  .deliv-fmt.docx { color: #1d4ed8; border-color: rgba(37,99,235,0.4); }
+  .deliv-fmt.csv  { color: #15803d; border-color: rgba(22,163,74,0.4); }
+
+  .deliv-name { font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 3px; letter-spacing: -0.005em; }
+  .deliv-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; max-width: 640px; }
+  .deliv-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
+
+  .deliv-actions { display: flex; gap: 6px; align-items: center; }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Deliverables</h1>
+    <div class="page-subtitle">Every export this client produces — for auditors, leadership, and raw-data handoffs. Each row links to the canonical generator; if a deliverable has configuration, the link opens its config page first.</div>
+  </div>
+</div>
+
+<%
+  // Deliverable catalogue. Keep this list authoritative — adding a new export
+  // to the product means adding a row here.
+  const sections = [
+    {
+      key: 'auditor',
+      title: 'For the certification body',
+      sub: 'Stage 1 / Stage 2 / surveillance audits',
+      items: [
+        { name: 'ISMS Audit Pack', fmt: 'PDF', desc: 'Branded single-PDF bundle: SoA snapshot, risk register + heatmap, evidence index with SHA-256 hashes, internal audit findings, nonconformities, MRMs, improvement log. The headline deliverable for cert body and management.', href: `/workspaces/${ws.id}/audit-pack`, hrefLabel: 'Configure & generate', external: false },
+        { name: 'Companion ZIP archive', fmt: 'ZIP', desc: 'Raw CSV + DOCX + evidence files for an auditor who wants to grep the underlying data. Generated alongside the PDF.', href: `/workspaces/${ws.id}/audit-pack/zip`, hrefLabel: 'Download ZIP', external: true },
+        { name: 'Readiness pack', fmt: 'ZIP', desc: 'Stage 1 + Stage 2 readiness ZIP with SoA, gap-assessment report, mandatory documents, evidence index. Hand this to internal stakeholders before booking the audit.', href: `/workspaces/${ws.id}/export/readiness-pack.zip?stage=1`, hrefLabel: 'Download', external: true }
+      ]
+    },
+    {
+      key: 'internal',
+      title: 'For internal stakeholders',
+      sub: 'Management briefings, gap analysis, treatment planning',
+      items: [
+        { name: 'Gap assessment report', fmt: 'DOCX', desc: 'Maturity scoring per clause + Annex A control, theme roll-ups, recommendations narrative. Use as the kickoff deliverable.', href: `/workspaces/${ws.id}/export/gap-report.docx`, hrefLabel: 'Download', external: true },
+        { name: 'Risk treatment plan', fmt: 'DOCX', desc: 'Clause 6.1.3 + 8.3 deliverable. Every risk above appetite with treatment decision, ownership, target date.', href: `/workspaces/${ws.id}/export/rtp.docx`, hrefLabel: 'Download', external: true },
+        { name: 'Recommendations brief', fmt: 'DOCX', desc: 'Top remediation actions ranked by maturity uplift × cost-to-fix. Maps to the gap assessment summary.', href: `/workspaces/${ws.id}/export/recommendations.docx`, hrefLabel: 'Download', external: true },
+        { name: 'Post-assessment summary', fmt: 'DOCX', desc: 'Output of the gap-assessment wizard — every clause + control with status, notes, and the next-action prompt for the consultant.', href: `/workspaces/${ws.id}/controls/assess/summary.docx`, hrefLabel: 'Download', external: true }
+      ]
+    },
+    {
+      key: 'raw',
+      title: 'Raw data',
+      sub: 'Spreadsheet handoffs for import into other tools',
+      items: [
+        { name: 'Statement of Applicability', fmt: 'CSV', desc: 'All 93+ Annex A controls + any custom controls: applicability, status, justifications.', href: `/workspaces/${ws.id}/export/soa.csv`, hrefLabel: 'Download', external: true },
+        { name: 'Risk register', fmt: 'CSV', desc: 'Every risk with asset link, L×I, treatment, owner, status, residual scores.', href: `/workspaces/${ws.id}/export/risks.csv`, hrefLabel: 'Download', external: true },
+        { name: 'Asset inventory', fmt: 'CSV', desc: 'Information, hardware, software, services, people, intangibles — with CIA scoring, owner, BIA fields.', href: `/workspaces/${ws.id}/export/assets.csv`, hrefLabel: 'Download', external: true }
+      ]
+    }
+  ];
+
+  // ISO 42001 frameworks bring their own SoA. Surface only if the client
+  // has the framework enabled.
+  let frameworks = [];
+  try { frameworks = JSON.parse(ws.frameworks || '[]'); } catch (_) { frameworks = []; }
+  if (frameworks.includes('iso42001')) {
+    sections[2].items.push({
+      name: 'ISO 42001 Statement of Applicability',
+      fmt: 'CSV',
+      desc: 'AI management system SoA — Annex A / B controls with applicability + status, separate from the ISO 27001 SoA.',
+      href: `/workspaces/${ws.id}/iso42001/export/soa.csv`,
+      hrefLabel: 'Download',
+      external: true
+    });
+  }
+%>
+
+<% sections.forEach(s => { %>
+  <div class="deliv-section">
+    <div class="deliv-section-head">
+      <div>
+        <span class="deliv-section-title"><%= s.title %></span>
+      </div>
+      <span class="deliv-section-sub"><%= s.sub %></span>
+    </div>
+    <div class="panel">
+      <% s.items.forEach(it => { %>
+        <div class="deliv-card">
+          <div class="deliv-fmt <%= it.fmt.toLowerCase() %>"><%= it.fmt %></div>
+          <div>
+            <div class="deliv-name"><%= it.name %></div>
+            <div class="deliv-desc"><%= it.desc %></div>
+          </div>
+          <div class="deliv-actions">
+            <a href="<%= it.href %>" class="btn btn-<%= it.fmt === 'PDF' ? 'primary' : 'secondary' %> btn-xs"<%= it.external ? ' download' : '' %>>
+              <% if (it.external) { %>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <% } %>
+              <%= it.hrefLabel %>
+            </a>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

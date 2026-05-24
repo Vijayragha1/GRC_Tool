@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Approve · <%= docName %></title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="stylesheet" href="/fonts/source-serif-4.css">
+<style>
+  /*
+   * Approval portal — minimal stripped-chrome view for external approvers
+   * arriving from a magic link. No sidebar, no nav, no edit affordances.
+   * One page, one decision, one button. Reads as "official document for
+   * sign-off" not "another SaaS dashboard."
+   */
+  :root {
+    --bg: #ffffff;
+    --bg-subtle: #fafafa;
+    --bg-muted: #f4f4f5;
+    --border: #ececef;
+    --text: #18181b;
+    --text-secondary: #51525c;
+    --text-tertiary: #71717a;
+    --accent: <%= brandColor %>;
+    --accent-soft: <%= brandColor + '14' %>;
+    --serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-subtle); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 48px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .brand-mark { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-family: var(--serif); font-weight: 600; font-size: 14px; }
+  .brand-text { font-family: var(--serif); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand-sub { color: var(--text-tertiary); font-size: 12px; margin-left: auto; }
+
+  .eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; }
+  .headline { font-family: var(--serif); font-size: 28px; line-height: 1.25; font-weight: 600; letter-spacing: -0.015em; margin: 8px 0 10px; }
+  .lede { font-size: 15px; color: var(--text-secondary); margin: 0 0 24px; line-height: 1.55; }
+
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; margin: 0 0 16px; }
+  .card-tight { padding: 14px 18px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .meta { color: var(--text-secondary); font-size: 13px; }
+
+  .doc-name { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); margin: 4px 0 0; }
+  .doc-version { color: var(--text-tertiary); font-weight: 400; font-family: var(--sans); font-size: 14px; }
+
+  .chain { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .chain-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+  .chain-row.is-me { border-color: var(--accent); background: var(--accent-soft); }
+  .chain-row.done { background: rgba(22,163,74,0.04); border-color: rgba(22,163,74,0.18); }
+  .chain-row.rejected { background: rgba(220,38,38,0.04); border-color: rgba(220,38,38,0.18); }
+  .seq { width: 22px; height: 22px; border-radius: 11px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; flex-shrink: 0; }
+  .chain-row.done .seq { background: #15803d; }
+  .chain-row.rejected .seq { background: #b91c1c; }
+  .chain-row .ident { flex: 1; min-width: 0; }
+  .chain-row .name { font-weight: 500; font-size: 14px; }
+  .chain-row .sub { color: var(--text-tertiary); font-size: 12px; margin-top: 2px; }
+  .chain-row .status { font-size: 12px; font-weight: 600; }
+  .chain-row.done .status { color: #15803d; }
+  .chain-row.rejected .status { color: #b91c1c; }
+
+  .doc-preview { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 28px 36px; margin: 0 0 16px; max-height: 600px; overflow-y: auto; }
+  .doc-preview h1, .doc-preview h2, .doc-preview h3 { font-family: var(--serif); letter-spacing: -0.01em; }
+  .doc-preview h1 { font-size: 22px; margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .doc-preview h2 { font-size: 18px; margin: 24px 0 10px; }
+  .doc-preview h3 { font-size: 15px; margin: 18px 0 8px; }
+  .doc-preview p { margin: 0 0 12px; line-height: 1.7; color: var(--text-secondary); }
+  .doc-preview ul, .doc-preview ol { margin: 0 0 12px; padding-left: 22px; color: var(--text-secondary); line-height: 1.7; }
+  .doc-preview code { background: var(--bg-muted); padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+  .doc-preview hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+
+  .decide-card { background: #fff; border: 2px solid var(--accent); border-radius: 8px; padding: 22px 24px; margin: 24px 0 16px; }
+  .decide-card .eyebrow { color: var(--accent); }
+  .decide-card .question { font-family: var(--serif); font-size: 18px; font-weight: 600; margin: 6px 0 16px; }
+  .decide-card label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+  .decide-card textarea { width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--sans); font-size: 14px; line-height: 1.5; color: var(--text); background: var(--bg); resize: vertical; }
+  .decide-card textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 6px; font-family: var(--sans); font-size: 14px; font-weight: 600; border: 0; cursor: pointer; transition: all 0.12s; text-decoration: none; }
+  .btn-approve { background: var(--accent); color: #fff; }
+  .btn-approve:hover { filter: brightness(1.1); }
+  .btn-reject { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
+  .btn-reject:hover { background: #fef2f2; }
+
+  .wait-card { background: var(--bg-muted); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; margin: 24px 0 16px; }
+  .wait-card .headline { font-size: 17px; margin: 0 0 8px; }
+  .wait-card p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+
+  .legal { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="brand-mark"><%= workspaceName.charAt(0).toUpperCase() %></div>
+      <div class="brand-text"><%= workspaceName %></div>
+      <div class="brand-sub">Document approval portal</div>
+    </div>
+
+    <div class="eyebrow">Approval request</div>
+    <h1 class="headline">A document is ready for your decision</h1>
+    <p class="lede"><%= submitterName || 'The ISMS team' %> has submitted this document and named you as approver #<%= row.sequence %><% if (row.role_label) { %> (<%= row.role_label %>)<% } %>. Read the document below, then approve or reject.</p>
+
+    <div class="card card-tight">
+      <div class="eyebrow">Document</div>
+      <div class="doc-name"><%= docName %> <span class="doc-version">· v<%= docVersion %></span></div>
+      <% if (row.change_summary) { %>
+        <div style="margin-top:10px;padding:10px 12px;background:var(--accent-soft);border-left:2px solid var(--accent);border-radius:4px;">
+          <div class="eyebrow" style="margin-bottom:4px;">Submitter's change summary</div>
+          <div style="font-size:13px;color:var(--text);line-height:1.5;"><%= row.change_summary %></div>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="card card-tight">
+      <div class="card-head"><div class="card-title">Approval chain</div></div>
+      <div class="chain">
+        <% chain.forEach(a => {
+             const isMe = a.kind === 'external' && a.id === row.id;
+             const statusClass = a.decision === 'approved' ? 'done' : (a.decision === 'rejected' ? 'rejected' : '');
+        %>
+          <div class="chain-row <%= statusClass %> <%= isMe ? 'is-me' : '' %>">
+            <span class="seq"><%= a.sequence %></span>
+            <div class="ident">
+              <div class="name"><%= a.person_name %><% if (isMe) { %> · <span style="color:var(--accent);font-weight:600;">you</span><% } %></div>
+              <div class="sub">
+                <%= a.kind === 'external' ? 'External (magic link)' : 'Internal user' %><% if (a.role_label) { %> · <%= a.role_label %><% } %>
+              </div>
+            </div>
+            <span class="status">
+              <% if (a.decision === 'approved') { %>Approved<% } else if (a.decision === 'rejected') { %>Rejected<% } else if (a.kind === 'external' && a.revoked_at) { %>Revoked<% } else { %>Pending<% } %>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">Document content</div>
+        <span class="meta">SHA-256: <%= row.content_hash.slice(0, 16) %>…</span>
+      </div>
+      <div class="doc-preview"><%- docContent %></div>
+    </div>
+
+    <% if (myTurn) { %>
+      <form method="POST" action="/approve/<%= token %>" class="decide-card">
+        <div class="eyebrow">Your decision</div>
+        <div class="question">Do you approve "<%= docName %>" v<%= docVersion %>?</div>
+        <label for="reason">Reason or comment (optional for approve, recommended for reject)</label>
+        <textarea name="reason" id="reason" placeholder="e.g. Approved — looks good / Reject because Section 4 needs the new vendor list"></textarea>
+        <div class="btn-row">
+          <button name="decision" value="approve" class="btn btn-approve">Approve this document</button>
+          <button name="decision" value="reject" class="btn btn-reject" onclick="return confirm('Reject and send back to draft?')">Reject</button>
+        </div>
+      </form>
+    <% } else { %>
+      <div class="wait-card">
+        <h2 class="headline">Waiting on an earlier approver</h2>
+        <p>You'll be able to decide on this document once approver(s) before you in the chain have signed off. You'll receive a fresh email link when it's your turn — no need to revisit this page until then.</p>
+      </div>
+    <% } %>
+
+    <div class="legal">
+      Your decision is recorded with the IP address you're connecting from and the time of your action, and appears in the document's audit trail and signature manifest. This page does not require an account; the link in your email is what authorises the decision. Treat it like a password — do not forward.
+    </div>
+  </div>
+</body>
+</html>

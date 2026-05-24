@@ -30,8 +30,45 @@ const keyrotation = require('./lib/keyrotation');
 const csvImport = require('./lib/csv-import');
 const auditPack = require('./lib/audit-pack');
 const changesSince = require('./lib/changes-since');
+const email = require('./lib/email');
+const docApprovals = require('./lib/doc-approvals');
 
 init();
+
+// ---------------------------------------------------------------------------
+// Startup secret validation
+// ---------------------------------------------------------------------------
+(function validateSecrets() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowInsecure = process.env.ALLOW_INSECURE_DEFAULTS === '1';
+
+  // SESSION_SECRET check
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'change-me-in-production') {
+    if (isProd && !allowInsecure) {
+      console.error('FATAL: SESSION_SECRET must be set to a strong random value in production.');
+      console.error('       Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+      process.exit(1);
+    }
+    console.warn('WARNING: SESSION_SECRET is not set or is insecure. Set SESSION_SECRET env var before deploying.');
+  }
+
+  // ISMS_MASTER_KEY check – if no env var and no key file, the encryption
+  // module will auto-generate one, which is fine for dev but not explicit
+  // enough for production.
+  if (!process.env.ISMS_MASTER_KEY) {
+    const keyFile = process.env.ISMS_KEY_FILE || path.join(__dirname, 'data', 'master.key');
+    const hasKeyFile = fs.existsSync(keyFile);
+    if (isProd && !allowInsecure && !hasKeyFile) {
+      console.error('FATAL: ISMS_MASTER_KEY env var is not set and no key file exists at ' + keyFile + '.');
+      console.error('       Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+      process.exit(1);
+    }
+    if (!hasKeyFile) {
+      console.warn('WARNING: ISMS_MASTER_KEY is not set. A key file will be auto-generated at ' + keyFile + '. Set ISMS_MASTER_KEY env var before deploying.');
+    }
+  }
+})();
+
 // Force master key generation eagerly so first request doesn't block.
 enc.masterKey();
 // Start scheduled job runner - every 60 minutes by default.
@@ -130,24 +167,39 @@ function resolveUploadPath(storedPath, firmId) {
 // stored in the session; currentUser returns the firm-owner of that tenant so
 // every existing firm_id-based query naturally scopes to the active tenant.
 function getActiveFirmId(req) {
+  const user = req.user || currentUser(req);
+  if (!user) {
+    const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
+    return first ? first.id : null;
+  }
+  // Firm users always operate within their own firm — session value is ignored.
+  if (user.user_type === 'firm') return user.firm_id;
+  // Client users: honour session value only if they have workspace membership
+  // in that firm, otherwise fall back to the first firm they belong to.
   const sessId = parseInt((req.session && req.session.active_firm_id) || 0, 10);
   if (sessId) {
-    const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(sessId);
-    if (exists) return sessId;
+    const hasMembership = db.prepare(
+      `SELECT 1 FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+       WHERE wm.user_id = ? AND w.firm_id = ?`
+    ).get(user.id, sessId);
+    if (hasMembership) return sessId;
   }
-  // Fall back to the lowest-id firm (the one created at first boot).
-  const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
-  return first ? first.id : null;
+  const fallback = db.prepare(
+    `SELECT w.firm_id FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+     WHERE wm.user_id = ? LIMIT 1`
+  ).get(user.id);
+  return fallback ? fallback.firm_id : null;
 }
 
 function currentUser(req) {
+  // Session-bound user lookup. The firm-owner fallback that used to live here
+  // was the no-auth stub; once email/password login was enabled, this must
+  // return null for any unauthenticated request so requireAuth can challenge.
   if (req.session && req.session.userId) {
     const u = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(req.session.userId);
     if (u) return u;
   }
-  const firmId = getActiveFirmId(req);
-  if (!firmId) return null;
-  return db.prepare(`SELECT * FROM users WHERE user_type='firm' AND firm_id=? AND active=1 ORDER BY id LIMIT 1`).get(firmId);
+  return null;
 }
 
 function listAllFirms() {
@@ -156,9 +208,49 @@ function listAllFirms() {
     FROM firms f ORDER BY f.id`).all();
 }
 
+function listUserFirms(user) {
+  if (!user) return [];
+  if (user.user_type === 'firm') {
+    return db.prepare(`SELECT f.id, f.name, f.created_at,
+      (SELECT COUNT(*) FROM workspaces w WHERE w.firm_id=f.id) AS workspace_count
+      FROM firms f WHERE f.id = ?`).all(user.firm_id);
+  }
+  return db.prepare(`SELECT DISTINCT f.id, f.name, f.created_at,
+    (SELECT COUNT(*) FROM workspaces w2 WHERE w2.firm_id=f.id) AS workspace_count
+    FROM firms f
+    INNER JOIN workspaces w ON w.firm_id = f.id
+    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+    WHERE wm.user_id = ? ORDER BY f.id`).all(user.id);
+}
+
+// Paths that bypass requireAuth (login form, password-reset, accept-invite).
+// Magic-link approver routes are handled by their own token machinery and
+// don't pass through requireAuth at all, so they don't need to be listed here.
+const PUBLIC_AUTH_PATHS = [
+  /^\/login(\?|$|\/)/,
+  /^\/logout(\?|$)/,
+  /^\/forgot(\?|$|\/)/,
+  /^\/reset\//,
+  /^\/invite\//,
+];
+
 function requireAuth(req, res, next) {
+  // Reject unauthenticated requests. The no-auth firm-owner fallback was
+  // removed when real login was enabled — currentUser() now returns a user
+  // only when req.session.userId is set and that user is still active.
   req.user = currentUser(req);
-  if (!req.user) return res.status(500).render('error', { user: null, message: 'The active firm has no users. This usually means the database was created without seeding - restart the server (npm start) to re-run seeding, or delete data/iso27001.db to start completely fresh. Your evidence files in uploads/ are preserved.' });
+  if (!req.user) {
+    // Browsers visiting an HTML page get redirected to /login with a `next`
+    // hint so they bounce back after authenticating. XHR / fetch callers get
+    // a 401 so client-side code can detect session expiry without redirecting
+    // the whole page out from under itself.
+    const wantsHtml = (req.accepts(['html', 'json']) === 'html');
+    if (wantsHtml && req.method === 'GET') {
+      const nxt = encodeURIComponent(req.originalUrl || '/dashboard');
+      return res.redirect(`/login?next=${nxt}`);
+    }
+    return res.status(401).json({ error: 'auth_required' });
+  }
   next();
 }
 
@@ -166,7 +258,12 @@ function getWorkspace(workspaceId, user) {
   const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(workspaceId);
   if (!ws) return null;
   if (user.user_type === 'firm' && user.firm_id === ws.firm_id) {
-    return { ...ws, role: 'consultant', _userRole: user.firm_role === 'owner' ? 'owner' : 'consultant' };
+    // Firm-side access: role on the workspace record mirrors the user's firm
+    // role bucket. Manager / Senior consultant / Consultant all use the
+    // 'consultant' bundle for non-permission UI (e.g. who you can be assigned
+    // as) but _userRole keeps the precise role so RBAC can differentiate.
+    const fr = rbac.normalizeRole(user.firm_role) || 'consultant';
+    return { ...ws, role: 'consultant', _userRole: fr };
   }
   const m = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?')
     .get(workspaceId, user.id);
@@ -218,7 +315,9 @@ function requireWorkspace(req, res, next) {
 }
 
 function isFirmUser(user) { return user.user_type === 'firm'; }
-function isFirmOwner(user) { return user.user_type === 'firm' && user.firm_role === 'owner'; }
+// "Firm owner" was renamed to "Manager" in the role-naming pass. rbac.isManager
+// normalises old aliases ('owner' → 'manager') so unmigrated rows still resolve.
+function isFirmOwner(user) { return user.user_type === 'firm' && rbac.isManager(user.firm_role); }
 
 function listWorkspaces(user) {
   if (user.user_type === 'firm') {
@@ -239,6 +338,61 @@ function workspaceProgress(wsId) {
   const assessed = db.prepare(`SELECT COUNT(*) AS c FROM control_states
     WHERE workspace_id = ? AND status != 'Not Assessed'`).get(wsId).c;
   return { total, assessed, percent: total ? Math.round((assessed / total) * 100) : 0 };
+}
+
+// Derive a client's lifecycle stage from real signals rather than the
+// manual `stage` column (which nobody ever updated). Each stage is the
+// FIRST one for which its threshold passes, evaluated in order. This
+// powers the sidebar context pill, dashboard status column, and any
+// "what tools should this client see" gating we add later.
+//
+// Stages, latest-to-earliest:
+//   surveillance      - Stage 2 audit happened > 1 year ago (annual cycle)
+//   post_stage_2      - certified (Stage 2 audit completed)
+//   post_stage_1      - Stage 1 audit completed, not yet Stage 2
+//   stage_1_ready     - readiness >= 80% (ready to schedule Stage 1)
+//   internal_audit    - >= 1 internal audit completed
+//   implementing      - controls being assessed (>= 20 non-NotAssessed)
+//   documenting       - >= 8 documents in approved/published status
+//   scoping           - at least one intake answer recorded
+//   new               - no setup yet
+function computeClientStage(ws) {
+  const wsId = ws.id;
+  // audits has: title, scope, audit_date (planned), closed_at (when work
+  // finished), lifecycle_stage. We treat closed_at as "completed" and
+  // pattern-match the title/scope for which audit type it is.
+  const audits = db.prepare(`SELECT title, scope, lifecycle_stage, closed_at, audit_date FROM audits WHERE workspace_id=? ORDER BY COALESCE(closed_at, audit_date) DESC`).all(wsId);
+  const isDone = a => !!a.closed_at || a.lifecycle_stage === 'closed';
+  const matchType = (a, re) => re.test((a.title || '') + ' ' + (a.scope || ''));
+  const stage2 = audits.find(a => isDone(a) && matchType(a, /stage[\s_-]?2/i));
+  const stage1 = audits.find(a => isDone(a) && matchType(a, /stage[\s_-]?1/i));
+  const internal = audits.find(a => isDone(a) && matchType(a, /internal/i));
+
+  if (stage2 && stage2.closed_at) {
+    const daysSince = Math.round((Date.now() - new Date(stage2.closed_at).getTime()) / 86400000);
+    if (daysSince > 365) return { key: 'surveillance', label: 'Surveillance' };
+    return { key: 'post_stage_2', label: 'Certified' };
+  }
+  if (stage1) return { key: 'post_stage_1', label: 'Post Stage 1' };
+
+  // No external audit yet - look at readiness + internal audit + control progress
+  try {
+    const r = computeReadiness(ws);
+    if (r && r.stage1 >= 80) return { key: 'stage_1_ready', label: 'Stage 1 ready' };
+  } catch (_) {}
+
+  if (internal) return { key: 'internal_audit', label: 'Internal audit done' };
+
+  const assessed = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
+  if (assessed >= 20) return { key: 'implementing', label: 'Implementing' };
+
+  const approved = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(wsId).c;
+  if (approved >= 8) return { key: 'documenting', label: 'Documenting' };
+
+  const intake = db.prepare(`SELECT COUNT(*) c FROM engagement_intake WHERE workspace_id=? AND answer IS NOT NULL AND length(trim(answer)) > 0`).get(wsId).c;
+  if (intake > 0) return { key: 'scoping', label: 'Scoping' };
+
+  return { key: 'new', label: 'New' };
 }
 
 function getOrCreateState(wsId, isoId) {
@@ -295,8 +449,9 @@ app.locals.rbac = rbac;
 // Resolve a user's effective permissions in a workspace, including overrides.
 function permissionsFor(user, ws) {
   if (!user || !ws) return new Set();
-  // Firm owner of the firm that owns the workspace = all perms.
-  if (user.user_type === 'firm' && user.firm_role === 'owner' && user.firm_id === ws.firm_id) {
+  // Manager (formerly "Firm owner") of the firm that owns the workspace
+  // implicitly holds every permission, including new ones added after deploy.
+  if (user.user_type === 'firm' && rbac.isManager(user.firm_role) && user.firm_id === ws.firm_id) {
     return new Set(Object.keys(rbac.PERMISSIONS).concat(['*']));
   }
   let role;
@@ -304,7 +459,10 @@ function permissionsFor(user, ws) {
     role = ws._userRole || 'consultant';
   } else {
     const m = db.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').get(ws.id, user.id);
-    role = m?.role || 'read_only';
+    // A client user without a workspace_members row gets the narrowest role
+    // (contributor) by default. Previously 'read_only' which has been dropped;
+    // rbac.normalizeRole maps the old name to contributor too.
+    role = m?.role || 'contributor';
   }
   const overrides = db.prepare(`SELECT permission, granted FROM workspace_role_overrides WHERE workspace_id=? AND user_id=?`).all(ws.id, user.id);
   return rbac.effectivePermissions(role, overrides);
@@ -372,7 +530,8 @@ app.use((req, res, next) => {
   try {
     const firmId = getActiveFirmId(req);
     res.locals.activeFirm = firmId ? db.prepare('SELECT id, name FROM firms WHERE id=?').get(firmId) : null;
-    res.locals.allFirms = listAllFirms();
+    const u = req.user || currentUser(req);
+    res.locals.allFirms = listUserFirms(u);
   } catch (_) {
     res.locals.activeFirm = null;
     res.locals.allFirms = [];
@@ -382,11 +541,23 @@ app.use((req, res, next) => {
   // sidebar still in place. requireAuth hasn't run yet at this middleware
   // tier, so resolve the current user inline before the access check.
   res.locals.lastWs = null;
+  // List of workspaces in the active firm - powers the workspace
+  // switcher dropdown in the sidebar. Cheap query (small set, indexed
+  // on firm_id). Exposed to every view so the switcher renders on
+  // workspace pages and firm-level pages alike.
+  res.locals.firmWorkspaces = [];
   try {
-    const lastId = req.session && req.session.last_ws_id;
-    if (lastId) {
-      const u = currentUser(req);
-      if (u) {
+    const u = currentUser(req);
+    if (u) {
+      const firmId = getActiveFirmId(req);
+      if (firmId) {
+        res.locals.firmWorkspaces = db.prepare(
+          `SELECT id, client_name, brand_display_name, brand_primary_color, sector, industry
+           FROM workspaces WHERE firm_id=? ORDER BY created_at DESC, client_name`
+        ).all(firmId);
+      }
+      const lastId = req.session && req.session.last_ws_id;
+      if (lastId) {
         const ws = getWorkspace(lastId, u);
         // Pass the full workspace record so the workspace sidebar can render
         // brand colour, sector chip, display name etc.
@@ -405,13 +576,556 @@ app.use((req, res, next) => {
   next();
 });
 
-// Auth disabled - all auth routes redirect to /dashboard.
-app.get('/', (req, res) => res.redirect('/dashboard'));
-app.get('/login', (req, res) => res.redirect('/dashboard'));
-app.post('/login', (req, res) => res.redirect('/dashboard'));
-app.get('/register', (req, res) => res.redirect('/dashboard'));
-app.post('/register', (req, res) => res.redirect('/dashboard'));
-app.post('/logout', (req, res) => res.redirect('/dashboard'));
+// ==================== AUTH ROUTES ====================
+// Session-cookie login. Default session is the 7-day cookie configured on
+// session(); the "remember me" path extends to 30d on success and a non-
+// remember login is shortened to an 8h cookie so a shared browser doesn't
+// leave the next user logged in to whatever yesterday's session was.
+const SESSION_DEFAULT_MAX_AGE  = 1000 * 60 * 60 * 8;       // 8 hours
+const SESSION_REMEMBER_MAX_AGE = 1000 * 60 * 60 * 24 * 30; // 30 days
+
+// Login throttle on hot misses. Uses an in-process Map keyed by lower-cased
+// email; capped at 8 failures over a 15-minute window. Process-restart wipes
+// it, which is acceptable for a single-server deployment and is the right
+// trade-off given the user explicitly skipped brute-force protection in scope.
+const LOGIN_BAD = new Map(); // email -> { count, firstAt }
+const LOGIN_BAD_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_BAD_LIMIT = 8;
+function recordBadLogin(email) {
+  const key = (email || '').toLowerCase();
+  const now = Date.now();
+  const rec = LOGIN_BAD.get(key);
+  if (!rec || (now - rec.firstAt) > LOGIN_BAD_WINDOW_MS) {
+    LOGIN_BAD.set(key, { count: 1, firstAt: now });
+  } else {
+    rec.count++;
+  }
+}
+function isLockedOut(email) {
+  const rec = LOGIN_BAD.get((email || '').toLowerCase());
+  if (!rec) return false;
+  if ((Date.now() - rec.firstAt) > LOGIN_BAD_WINDOW_MS) { LOGIN_BAD.delete((email||'').toLowerCase()); return false; }
+  return rec.count >= LOGIN_BAD_LIMIT;
+}
+function clearBadLogin(email) { LOGIN_BAD.delete((email || '').toLowerCase()); }
+
+app.get('/', (req, res) => {
+  if (req.session && req.session.userId) return res.redirect('/dashboard');
+  return res.redirect('/login');
+});
+
+app.get('/login', (req, res) => {
+  if (req.session && req.session.userId) return res.redirect(typeof req.query.next === 'string' && req.query.next.startsWith('/') ? req.query.next : '/dashboard');
+  res.render('auth/login', {
+    error: null,
+    notice: req.query.signed_out ? 'You have been signed out.' : (req.query.reset_ok ? 'Password updated. Sign in to continue.' : null),
+    next_url: typeof req.query.next === 'string' && req.query.next.startsWith('/') ? req.query.next : '',
+    prefillEmail: '',
+    csrfToken: res.locals.csrfToken
+  });
+});
+
+app.post('/login', (req, res) => {
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  const password = String((req.body && req.body.password) || '');
+  const remember = !!(req.body && req.body.remember);
+  const nextUrl = (typeof req.body.next === 'string' && req.body.next.startsWith('/')) ? req.body.next : '/dashboard';
+
+  const renderFail = (msg) => res.status(401).render('auth/login', {
+    error: msg, notice: null, next_url: nextUrl === '/dashboard' ? '' : nextUrl,
+    prefillEmail: email, csrfToken: res.locals.csrfToken
+  });
+
+  if (!email || !password) return renderFail('Email and password are required.');
+  if (isLockedOut(email)) return renderFail('Too many failed attempts. Wait 15 minutes and try again, or reset your password.');
+
+  const user = db.prepare(`SELECT id, email, password_hash, active FROM users WHERE email = ?`).get(email);
+  // Constant-ish-time response: always run a bcrypt compare even if user is
+  // missing, so a probe can't distinguish "no such email" from "wrong password"
+  // by timing alone.
+  const hashToCheck = (user && user.password_hash && user.password_hash !== '!noauth')
+    ? user.password_hash
+    : '$2b$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalid.';
+  const ok = bcrypt.compareSync(password, hashToCheck);
+
+  if (!user || !user.active || user.password_hash === '!noauth' || !ok) {
+    recordBadLogin(email);
+    return renderFail('Email or password is incorrect.');
+  }
+
+  clearBadLogin(email);
+  // Regenerate the session id on privilege change to defeat session fixation.
+  req.session.regenerate((err) => {
+    if (err) return renderFail('Could not start a session. Please try again.');
+    req.session.userId = user.id;
+    req.session.cookie.maxAge = remember ? SESSION_REMEMBER_MAX_AGE : SESSION_DEFAULT_MAX_AGE;
+    // Touch last_active_at for the activity-feed and any "last seen" UX.
+    try { db.prepare(`UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?`).run(user.id); } catch (_) {}
+    res.redirect(nextUrl);
+  });
+});
+
+app.post('/logout', (req, res) => {
+  // Destroy the whole session, not just userId, so csrfToken + last_ws_id +
+  // active_firm_id all go too. Cookie is cleared explicitly for clients that
+  // don't honour session.destroy's Set-Cookie max-age=0.
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.redirect('/login?signed_out=1');
+  });
+});
+
+// GET fallback so a bare /logout link works without a form.
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.redirect('/login?signed_out=1');
+  });
+});
+
+// /register stays redirected — user provisioning is admin-driven (Phase 3)
+// rather than self-signup. Anything posted here goes back to login.
+app.get('/register', (_req, res) => res.redirect('/login'));
+app.post('/register', (_req, res) => res.redirect('/login'));
+
+// -------- User invitations (Phase 3) --------
+// Owner-only management surface. Lists firm users, client-side users this
+// firm has provisioned (via workspace_members), outstanding invitations, and
+// hosts the two provisioning forms (invite-by-email + create-with-temp-pw).
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// "Firm owner" was renamed Manager. Keep the helper local to this section so
+// other callers can adopt isFirmOwner / rbac.isManager directly.
+function isFirmOwnerLocal(u) {
+  return u && u.user_type === 'firm' && rbac.isManager(u.firm_role);
+}
+
+app.get('/admin/users', requireAuth, (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) {
+    return res.status(403).render('error', { user: req.user, message: 'Only Managers can manage users.' });
+  }
+  const firmUsers = db.prepare(`
+    SELECT id, name, email, firm_role, active, last_active_at, created_at
+      FROM users WHERE firm_id = ? AND user_type = 'firm' ORDER BY active DESC, name`).all(req.user.firm_id);
+  const clientUsers = db.prepare(`
+    SELECT u.id, u.name, u.email, u.active, u.last_active_at, u.created_at,
+           GROUP_CONCAT(w.client_name || ' (' || wm.role || ')', ' · ') AS workspaces
+      FROM users u
+      INNER JOIN workspace_members wm ON wm.user_id = u.id
+      INNER JOIN workspaces w ON w.id = wm.workspace_id
+     WHERE u.user_type = 'client' AND w.firm_id = ?
+     GROUP BY u.id ORDER BY u.active DESC, u.name`).all(req.user.firm_id);
+  const outstanding = db.prepare(`
+    SELECT inv.id, inv.email, inv.name, inv.user_type, inv.firm_role, inv.workspace_role,
+           inv.expires_at, inv.created_at, w.client_name AS workspace_name, u.name AS invited_by_name
+      FROM user_invitations inv
+      LEFT JOIN workspaces w ON w.id = inv.workspace_id
+      LEFT JOIN users u ON u.id = inv.invited_by
+     WHERE inv.firm_id = ? AND inv.accepted_at IS NULL AND inv.revoked_at IS NULL AND inv.expires_at > CURRENT_TIMESTAMP
+     ORDER BY inv.created_at DESC`).all(req.user.firm_id);
+  const workspaces = db.prepare(`SELECT id, client_name FROM workspaces WHERE firm_id = ? ORDER BY client_name`).all(req.user.firm_id);
+  res.render('admin_users', {
+    user: req.user, ws: null, active: 'admin-users',
+    firmUsers, clientUsers, outstanding, workspaces,
+    notice: req.query.notice || null,
+    error: req.query.error || null,
+    // Optional structured-error fields. When the invite route hits a
+    // collision (active account exists / deactivated account exists) it sets
+    // these so the view can render an inline action button rather than
+    // leaving the admin at a dead-end "already exists" error.
+    errorAction: req.query.error_action || null,
+    errorEmail: req.query.error_email || null,
+    errorUserId: req.query.error_user_id || null
+  });
+});
+
+app.post('/admin/users/invite', requireAuth, async (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const b = req.body || {};
+  const email = String(b.email || '').trim().toLowerCase();
+  const name = (b.name || '').trim() || null;
+  const userType = b.user_type === 'client' ? 'client' : 'firm';
+  // Firm role accepts the new names; everything else (including the old
+  // 'owner') normalises down to 'consultant' as a safe default so a stale
+  // form value can't silently elevate an invite to Manager.
+  const firmRole = userType === 'firm'
+    ? (rbac.FIRM_ROLES.includes(b.firm_role) ? b.firm_role : 'consultant')
+    : null;
+  const workspaceId = userType === 'client' ? parseInt(b.workspace_id, 10) || null : null;
+  const workspaceRole = userType === 'client'
+    ? (rbac.CLIENT_ROLES.includes(b.workspace_role) ? b.workspace_role : 'isms_manager')
+    : null;
+
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent('A valid email is required.'));
+  }
+
+  // ---- Duplicate-account detection ----
+  // Three distinct collision states get distinct flash params so the admin
+  // page can render inline action buttons (reset / reactivate) instead of
+  // a dead-end error. error_action is the trigger; email or user_id give
+  // the action target.
+  const existing = db.prepare(`SELECT id, email, active, name FROM users WHERE email = ?`).get(email);
+  if (existing) {
+    if (existing.active) {
+      return res.redirect('/admin/users?'
+        + 'error=' + encodeURIComponent(`An active account already exists for ${email}.`)
+        + '&error_action=offer_reset'
+        + '&error_email=' + encodeURIComponent(email));
+    } else {
+      return res.redirect('/admin/users?'
+        + 'error=' + encodeURIComponent(`${email} previously had an account that was deactivated.`)
+        + '&error_action=offer_reactivate'
+        + '&error_user_id=' + existing.id
+        + '&error_email=' + encodeURIComponent(email));
+    }
+  }
+
+  if (userType === 'client') {
+    if (!workspaceId) return res.redirect('/admin/users?error=' + encodeURIComponent('Pick a client workspace for the client-side user.'));
+    const ws = db.prepare(`SELECT id FROM workspaces WHERE id = ? AND firm_id = ?`).get(workspaceId, req.user.firm_id);
+    if (!ws) return res.redirect('/admin/users?error=' + encodeURIComponent('That workspace doesn\'t belong to this firm.'));
+    // Already validated above via rbac.CLIENT_ROLES; defensive check kept in
+    // case the constant set drifts from this list in the future.
+    if (!rbac.CLIENT_ROLES.includes(workspaceRole)) {
+      return res.redirect('/admin/users?error=' + encodeURIComponent('Invalid workspace role.'));
+    }
+  }
+
+  // ---- Pending-invitation replacement ----
+  // If an unaccepted, unrevoked, unexpired invitation already exists for this
+  // email, revoke it before creating a new one. Keeps the outstanding-list
+  // tidy and avoids "which link should I click?" confusion for the recipient.
+  const pendingCount = db.prepare(`UPDATE user_invitations
+       SET revoked_at = CURRENT_TIMESTAMP
+     WHERE firm_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL
+       AND expires_at > CURRENT_TIMESTAMP`).run(req.user.firm_id, email).changes;
+
+  const raw = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(raw);
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+  db.prepare(`INSERT INTO user_invitations
+      (email, name, firm_id, user_type, firm_role, workspace_id, workspace_role,
+       token_hash, expires_at, invited_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(email, name, req.user.firm_id, userType, firmRole, workspaceId, workspaceRole,
+         tokenHash, expiresAt, req.user.id);
+
+  const firmRow = db.prepare(`SELECT name FROM firms WHERE id = ?`).get(req.user.firm_id);
+  const roleLabel = userType === 'firm'
+    ? (rbac.ROLE_LABELS[firmRole] || 'Consultant')
+    : `Client-side — ${rbac.ROLE_LABELS[workspaceRole] || workspaceRole}`;
+
+  let sendError = null;
+  try {
+    const emailLib = require('./lib/email');
+    const r = await emailLib.sendInviteEmail({
+      toEmail: email, toName: name, inviterName: req.user.name,
+      firmName: firmRow && firmRow.name, role: roleLabel,
+      token: raw, expiresAt, firmId: req.user.firm_id
+    });
+    if (!r.ok) sendError = r.error || 'Email delivery failed';
+  } catch (e) { sendError = e && e.message; }
+
+  if (sendError) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent(`Invitation created but email failed (${sendError}). Share the link manually: /invite/${raw}`));
+  }
+  const replacedNote = pendingCount > 0 ? ' (replaced an earlier pending invitation)' : '';
+  res.redirect('/admin/users?notice=' + encodeURIComponent(`Invitation sent to ${email}. Link expires in 7 days.${replacedNote}`));
+});
+
+app.post('/admin/users/create', requireAuth, (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const b = req.body || {};
+  const email = String(b.email || '').trim().toLowerCase();
+  const name = (b.name || '').trim();
+  const password = String(b.password || '');
+  const firmRole = rbac.FIRM_ROLES.includes(b.firm_role) ? b.firm_role : 'consultant';
+
+  if (!email || !name) return res.redirect('/admin/users?error=' + encodeURIComponent('Name and email are required.'));
+  if (password.length < 8) return res.redirect('/admin/users?error=' + encodeURIComponent('Temp password must be at least 8 characters.'));
+  if (db.prepare(`SELECT id FROM users WHERE email = ?`).get(email)) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent('A user with that email already exists.'));
+  }
+  const hash = bcrypt.hashSync(password, 12);
+  const id = db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role)
+                         VALUES (?, ?, ?, 'firm', ?, ?)`)
+    .run(email, hash, name, req.user.firm_id, firmRole).lastInsertRowid;
+  try { logAction(req.user.id, null, 'create_consultant', 'user', id, { email, role: firmRole }); } catch (_) {}
+  res.redirect('/admin/users?notice=' + encodeURIComponent(`Created ${email}. Share the temp password with them — they should change it on first sign-in.`));
+});
+
+app.post('/admin/users/:id/deactivate', requireAuth, (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const target = db.prepare(`SELECT id, firm_id, user_type FROM users WHERE id = ?`).get(req.params.id);
+  if (!target) return res.redirect('/admin/users');
+  if (target.id === req.user.id) return res.redirect('/admin/users?error=' + encodeURIComponent('You cannot deactivate your own account.'));
+  // Firm users: must be in same firm. Client users: must be a member of a workspace owned by this firm.
+  let ok = false;
+  if (target.user_type === 'firm') {
+    ok = target.firm_id === req.user.firm_id;
+  } else {
+    ok = !!db.prepare(`SELECT 1 FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+                       WHERE wm.user_id = ? AND w.firm_id = ?`).get(target.id, req.user.firm_id);
+  }
+  if (!ok) return res.redirect('/admin/users?error=' + encodeURIComponent('Not allowed.'));
+  db.prepare(`UPDATE users SET active = 0 WHERE id = ?`).run(target.id);
+  res.redirect('/admin/users?notice=' + encodeURIComponent('User deactivated.'));
+});
+
+// Admin-triggered password reset. Same machinery as /forgot but driven from
+// the duplicate-detection inline action — the admin sees "account exists" on
+// the invite form, clicks "send reset link", and we generate a fresh token
+// and email it. Always reports success (mirrors /forgot's no-leakage stance).
+app.post('/admin/users/send-reset', requireAuth, async (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!email) return res.redirect('/admin/users?error=' + encodeURIComponent('Missing email.'));
+
+  // Only reset users this firm has a reason to touch — firm users in the same
+  // firm, or client users who hold at least one workspace_member row in a
+  // workspace owned by this firm. Prevents a manager from poking strangers'
+  // accounts via crafted form data.
+  const target = db.prepare(`SELECT id, email, name, active, user_type, firm_id FROM users WHERE email = ?`).get(email);
+  if (!target) {
+    return res.redirect('/admin/users?notice=' + encodeURIComponent(`If an account exists for ${email}, a reset link is on its way.`));
+  }
+  let allowed = false;
+  if (target.user_type === 'firm') allowed = target.firm_id === req.user.firm_id;
+  else allowed = !!db.prepare(`SELECT 1 FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+                                WHERE wm.user_id = ? AND w.firm_id = ?`).get(target.id, req.user.firm_id);
+  if (!allowed || !target.active) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent('Cannot reset that account from here.'));
+  }
+
+  const raw = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(raw);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
+  let sendError = null;
+  try {
+    db.prepare(`INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, requested_ip) VALUES (?, ?, ?, ?)`)
+      .run(target.id, tokenHash, expiresAt, req.ip || null);
+    const emailLib = require('./lib/email');
+    const r = await emailLib.sendPasswordResetEmail({
+      toEmail: target.email, toName: target.name, token: raw, expiresAt, firmId: req.user.firm_id
+    });
+    if (!r.ok) sendError = r.error || 'Email delivery failed';
+  } catch (e) { sendError = e && e.message; }
+
+  if (sendError) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent(`Reset token created but email failed (${sendError}). Share the link manually: /reset/${raw}`));
+  }
+  res.redirect('/admin/users?notice=' + encodeURIComponent(`Password-reset link sent to ${email}. Expires in 1 hour.`));
+});
+
+// Reactivate a previously-deactivated user. Mirror of /deactivate with the
+// same firm-scoped permission check. Doesn't issue a reset email — admin can
+// trigger that separately if the user has forgotten their password.
+app.post('/admin/users/:id/reactivate', requireAuth, (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const target = db.prepare(`SELECT id, firm_id, user_type, email, active FROM users WHERE id = ?`).get(req.params.id);
+  if (!target) return res.redirect('/admin/users');
+  if (target.active) return res.redirect('/admin/users?error=' + encodeURIComponent('That account is already active.'));
+  let ok = false;
+  if (target.user_type === 'firm') ok = target.firm_id === req.user.firm_id;
+  else ok = !!db.prepare(`SELECT 1 FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+                          WHERE wm.user_id = ? AND w.firm_id = ?`).get(target.id, req.user.firm_id);
+  if (!ok) return res.redirect('/admin/users?error=' + encodeURIComponent('Not allowed.'));
+  db.prepare(`UPDATE users SET active = 1 WHERE id = ?`).run(target.id);
+  res.redirect('/admin/users?notice=' + encodeURIComponent(`Reactivated ${target.email}. They can now sign in with their existing password (or use Forgot password if they don't remember it).`));
+});
+
+app.post('/admin/invitations/:id/revoke', requireAuth, (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const inv = db.prepare(`SELECT id, firm_id FROM user_invitations WHERE id = ?`).get(req.params.id);
+  if (!inv || inv.firm_id !== req.user.firm_id) return res.redirect('/admin/users');
+  db.prepare(`UPDATE user_invitations SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?`).run(inv.id);
+  res.redirect('/admin/users?notice=' + encodeURIComponent('Invitation revoked.'));
+});
+
+// -------- Accept invitation (public, token-authenticated) --------
+function lookupInvitation(rawToken) {
+  if (!rawToken || typeof rawToken !== 'string' || rawToken.length !== 64) return null;
+  const tokenHash = hashToken(rawToken);
+  const row = db.prepare(`
+    SELECT inv.*, f.name AS firm_name, w.client_name AS workspace_name
+      FROM user_invitations inv
+      LEFT JOIN firms f ON f.id = inv.firm_id
+      LEFT JOIN workspaces w ON w.id = inv.workspace_id
+     WHERE inv.token_hash = ?`).get(tokenHash);
+  if (!row) return null;
+  if (row.accepted_at || row.revoked_at) return null;
+  if (new Date(row.expires_at) < new Date()) return null;
+  if (db.prepare(`SELECT id FROM users WHERE email = ?`).get(row.email)) return null;
+  return row;
+}
+
+app.get('/invite/:token', (req, res) => {
+  const inv = lookupInvitation(req.params.token);
+  if (!inv) {
+    return res.status(400).render('auth/login', {
+      error: 'That invitation link is invalid, has expired, or has already been used. Ask the person who invited you for a new one.',
+      notice: null, next_url: '', prefillEmail: '', csrfToken: res.locals.csrfToken
+    });
+  }
+  res.render('auth/accept_invite', {
+    token: req.params.token, invitation: inv, error: null,
+    csrfToken: res.locals.csrfToken
+  });
+});
+
+app.post('/invite/:token', (req, res) => {
+  const inv = lookupInvitation(req.params.token);
+  if (!inv) {
+    return res.status(400).render('auth/login', {
+      error: 'That invitation link is invalid, has expired, or has already been used.',
+      notice: null, next_url: '', prefillEmail: '', csrfToken: res.locals.csrfToken
+    });
+  }
+  const b = req.body || {};
+  const name = (b.name || inv.name || '').trim();
+  const pw  = String(b.password  || '');
+  const pw2 = String(b.password2 || '');
+  const renderFail = (msg) => res.status(400).render('auth/accept_invite', {
+    token: req.params.token, invitation: inv, error: msg, csrfToken: res.locals.csrfToken
+  });
+  if (!name) return renderFail('Your name is required.');
+  if (pw.length < 8) return renderFail('Password must be at least 8 characters.');
+  if (pw !== pw2)    return renderFail('Passwords do not match.');
+
+  const hash = bcrypt.hashSync(pw, 12);
+  let newUserId = null;
+  const tx = db.transaction(() => {
+    const insertCols = inv.user_type === 'firm'
+      ? `email, password_hash, name, user_type, firm_id, firm_role`
+      : `email, password_hash, name, user_type, firm_id`;
+    const insertVals = inv.user_type === 'firm'
+      ? [inv.email, hash, name, 'firm', inv.firm_id, inv.firm_role || 'consultant']
+      : [inv.email, hash, name, 'client', inv.firm_id];
+    newUserId = db.prepare(`INSERT INTO users (${insertCols}) VALUES (${insertVals.map(() => '?').join(',')})`)
+      .run(...insertVals).lastInsertRowid;
+    if (inv.workspace_id && inv.workspace_role) {
+      db.prepare(`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)`)
+        .run(inv.workspace_id, newUserId, inv.workspace_role);
+    }
+    db.prepare(`UPDATE user_invitations SET accepted_at = CURRENT_TIMESTAMP, accepted_user_id = ? WHERE id = ?`)
+      .run(newUserId, inv.id);
+  });
+  tx();
+
+  req.session.regenerate((err) => {
+    if (err) return res.redirect('/login?invited=1');
+    req.session.userId = newUserId;
+    req.session.cookie.maxAge = SESSION_DEFAULT_MAX_AGE;
+    res.redirect('/dashboard');
+  });
+});
+
+// -------- Forgot-password (request a reset link) --------
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const hashToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
+
+app.get('/forgot', (req, res) => {
+  res.render('auth/forgot', {
+    error: null, notice: null, submitted: false,
+    prefillEmail: '', csrfToken: res.locals.csrfToken
+  });
+});
+
+app.post('/forgot', async (req, res) => {
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  // Generic response — never confirm or deny whether an account exists.
+  const genericNotice = 'If an account exists for that email, a reset link is on its way. It expires in 1 hour.';
+  if (!email) {
+    return res.status(400).render('auth/forgot', {
+      error: 'Email is required.', notice: null, submitted: false,
+      prefillEmail: '', csrfToken: res.locals.csrfToken
+    });
+  }
+  const user = db.prepare(`SELECT id, email, name, active FROM users WHERE email = ?`).get(email);
+  if (user && user.active) {
+    const raw = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashToken(raw);
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
+    try {
+      db.prepare(`INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, requested_ip) VALUES (?, ?, ?, ?)`)
+        .run(user.id, tokenHash, expiresAt, req.ip || null);
+      const emailLib = require('./lib/email');
+      await emailLib.sendPasswordResetEmail({
+        toEmail: user.email, toName: user.name, token: raw, expiresAt
+      });
+    } catch (e) {
+      console.error('[auth] password reset issue', e && e.message);
+    }
+  }
+  res.render('auth/forgot', {
+    error: null, notice: genericNotice, submitted: true,
+    prefillEmail: email, csrfToken: res.locals.csrfToken
+  });
+});
+
+// -------- Reset-password (consume token, set new password) --------
+function lookupResetToken(rawToken) {
+  if (!rawToken || typeof rawToken !== 'string' || rawToken.length !== 64) return null;
+  const tokenHash = hashToken(rawToken);
+  const row = db.prepare(`
+    SELECT t.id, t.user_id, t.expires_at, t.used_at, u.email, u.name, u.active
+      FROM password_reset_tokens t
+      INNER JOIN users u ON u.id = t.user_id
+     WHERE t.token_hash = ?`).get(tokenHash);
+  if (!row) return null;
+  if (row.used_at) return null;
+  if (!row.active) return null;
+  if (new Date(row.expires_at) < new Date()) return null;
+  return row;
+}
+
+app.get('/reset/:token', (req, res) => {
+  const row = lookupResetToken(req.params.token);
+  if (!row) {
+    return res.status(400).render('auth/forgot', {
+      error: 'That reset link is invalid or has expired. Request a new one below.',
+      notice: null, submitted: false, prefillEmail: '', csrfToken: res.locals.csrfToken
+    });
+  }
+  res.render('auth/reset', { token: req.params.token, error: null, csrfToken: res.locals.csrfToken });
+});
+
+app.post('/reset/:token', (req, res) => {
+  const row = lookupResetToken(req.params.token);
+  if (!row) {
+    return res.status(400).render('auth/forgot', {
+      error: 'That reset link is invalid or has expired. Request a new one below.',
+      notice: null, submitted: false, prefillEmail: '', csrfToken: res.locals.csrfToken
+    });
+  }
+  const pw  = String((req.body && req.body.password)  || '');
+  const pw2 = String((req.body && req.body.password2) || '');
+  const renderFail = (msg) => res.status(400).render('auth/reset', {
+    token: req.params.token, error: msg, csrfToken: res.locals.csrfToken
+  });
+  if (pw.length < 8) return renderFail('Password must be at least 8 characters.');
+  if (pw !== pw2)    return renderFail('Passwords do not match.');
+
+  const hash = bcrypt.hashSync(pw, 12);
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hash, row.user_id);
+    db.prepare(`UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?`).run(row.id);
+    // Invalidate any other outstanding reset tokens for the same user
+    db.prepare(`UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL`).run(row.user_id);
+  });
+  tx();
+  clearBadLogin(row.email);
+
+  // Auto-sign-in once the password is set. Same session-fixation regenerate
+  // pattern as the login route.
+  req.session.regenerate((err) => {
+    if (err) return res.redirect('/login?reset_ok=1');
+    req.session.userId = row.user_id;
+    req.session.cookie.maxAge = SESSION_DEFAULT_MAX_AGE;
+    res.redirect('/dashboard');
+  });
+});
 
 // ==================== TENANTS + ONBOARDING ====================
 // Extracted to routes/tenants.js - first slice of server.js modularization.
@@ -421,7 +1135,7 @@ require('./routes/tenants').register(app, {
   db, bcrypt,
   requireAuth,
   getActiveFirmId,
-  listAllFirms,
+  listUserFirms,
   withToast,
   projectRoot: __dirname,
 });
@@ -452,7 +1166,8 @@ app.get('/dashboard', requireAuth, (req, res) => {
     const readiness = computeReadiness(w);
     const openMajorNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(w.id).c;
     const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < date('now')`).get(w.id).c;
-    return { ...w, progress, readiness, openMajorNCs, overdueNCs };
+    const derivedStage = computeClientStage(w);
+    return { ...w, progress, readiness, openMajorNCs, overdueNCs, derivedStage };
   });
 
   // Portfolio aggregates
@@ -483,8 +1198,6 @@ app.get('/dashboard', requireAuth, (req, res) => {
     const overdueNCs = w.overdueNCs || 0;
     const overdueObj = db.prepare(`SELECT COUNT(*) c FROM security_objectives
       WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < date('now') AND status NOT IN ('achieved','paused')`).get(w.id).c;
-    const overdueParty = db.prepare(`SELECT COUNT(*) c FROM interested_parties
-      WHERE workspace_id=? AND next_review IS NOT NULL AND next_review < date('now')`).get(w.id).c;
     const noPassFor90 = lastPass && lastPass.completed_at
       && lastPass.completed_at < new Date(Date.now() - 90 * 86400000).toISOString().slice(0,10);
     const reasons = [];
@@ -494,12 +1207,11 @@ app.get('/dashboard', requireAuth, (req, res) => {
     if (w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30) { reasons.push('cert target < 30 days'); severity = 'high'; }
     if (overdueObj > 0) { reasons.push(`${overdueObj} overdue objective`); if (severity !== 'high') severity = 'medium'; }
     if (staleControls > 5) { reasons.push(`${staleControls} stale controls`); if (severity !== 'high') severity = 'medium'; }
-    if (overdueParty > 0) { reasons.push(`${overdueParty} overdue party review`); if (severity !== 'high') severity = 'medium'; }
     if (noPassFor90 && (!lastPass || lastPass.status !== 'in_progress')) {
       reasons.push('no active pass · last completed > 90d'); if (severity !== 'high') severity = 'medium';
     }
     if (!lastPass) { reasons.push('no gap assessment ever started'); if (severity !== 'high') severity = 'medium'; }
-    return { ...w, lastPass, staleControls, overdueObj, overdueParty, severity, reasons };
+    return { ...w, lastPass, staleControls, overdueObj, severity, reasons };
   });
   const atRisk = portfolioRisk.filter(r => r.severity !== 'ok')
     .sort((a, b) => (a.severity === 'high' && b.severity !== 'high' ? -1 : a.severity !== 'high' && b.severity === 'high' ? 1 : 0));
@@ -565,19 +1277,50 @@ app.get('/dashboard', requireAuth, (req, res) => {
     }
   }
 
-  // Onboarding nudge - show "Resume setup" on the dashboard when not all
-  // steps are complete, even if the user previously skipped the wizard.
-  // Reviewer feedback: "the onboarding wizard exists but disappears once
-  // skipped" - this puts it back without being intrusive.
+  // Onboarding nudge - "Resume setup" banner is for first-time firms only.
+  // Suppressed once:
+  //   - all steps are done,
+  //   - the firm has 2+ workspaces (they're past first-engagement setup;
+  //     wizard nags an established firm forever otherwise),
+  //   - the wizard was explicitly skipped or completed (tenant_onboarding flags).
+  // The /onboarding page itself stays reachable for those who want to find it.
   let onboarding = null;
   try {
     const tenantsModule = require('./routes/tenants');
     onboarding = tenantsModule.getOnboardingProgress(db, req.user.firm_id);
-    // Hide the nudge entirely once everything's done; otherwise always show.
-    if (onboarding && onboarding.done >= onboarding.total) onboarding = null;
+    if (onboarding) {
+      const wsCount = db.prepare('SELECT COUNT(*) AS c FROM workspaces WHERE firm_id=?').get(req.user.firm_id).c;
+      const onb = db.prepare('SELECT skipped, completed_at FROM tenant_onboarding WHERE firm_id=?').get(req.user.firm_id);
+      const skipped = !!(onb && (onb.skipped || onb.completed_at));
+      const stillFirstTime = wsCount < 2;
+      if (onboarding.done >= onboarding.total) onboarding = null;
+      else if (!stillFirstTime || skipped) onboarding = null;
+    }
   } catch (_) {}
 
-  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek, onboarding });
+  // Cross-client activity feed (D-10) - what happened across every
+  // client in the firm in the last 30 days. Last 25 events. Joins
+  // workspaces so we can show "<consultant> updated <thing> on
+  // <client>" rather than orphan log lines.
+  let recentActivity = [];
+  try {
+    const wsIds = workspacesWithProgress.map(w => w.id);
+    if (wsIds.length > 0) {
+      const placeholders = wsIds.map(() => '?').join(',');
+      recentActivity = db.prepare(
+        `SELECT a.created_at, a.action, a.entity_type, a.entity_id, a.workspace_id,
+                u.name AS user_name, w.client_name
+         FROM audit_log a
+         LEFT JOIN users u ON u.id = a.user_id
+         INNER JOIN workspaces w ON w.id = a.workspace_id
+         WHERE a.workspace_id IN (${placeholders})
+           AND a.created_at >= date('now','-30 days')
+         ORDER BY a.created_at DESC LIMIT 25`
+      ).all(...wsIds);
+    }
+  } catch (_) {}
+
+  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek, onboarding, recentActivity });
 });
 
 // ==================== FIRM TEAM MANAGEMENT ====================
@@ -591,7 +1334,7 @@ app.post('/firm/users', requireAuth, (req, res) => {
   if (db.prepare('SELECT id FROM users WHERE email = ?').get(e)) {
     return res.redirect('/dashboard');
   }
-  const role = firm_role === 'owner' ? 'owner' : 'consultant';
+  const role = rbac.FIRM_ROLES.includes(firm_role) ? firm_role : 'consultant';
   const hash = bcrypt.hashSync(password, 10);
   const id = db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role)
                          VALUES (?, ?, ?, 'firm', ?, ?)`)
@@ -752,6 +1495,18 @@ app.post('/workspaces', requireAuth, (req, res) => {
     .run(req.user.firm_id, client_name.trim(), industry || null,
          scope || null, target_cert_date || null, req.user.id,
          JSON.stringify(frameworks)).lastInsertRowid;
+  // Seed the intake's cert-deadline answer from the create-dialog value
+  // so the engagement-summary panel on /intake picks it up immediately
+  // (otherwise the deadline-pressure tile stays blank until the user
+  // re-enters the same date in the cert-deadline question).
+  if (target_cert_date) {
+    try {
+      db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
+        VALUES (?, 'cert-deadline', ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(workspace_id, question_id) DO UPDATE SET answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`)
+        .run(id, target_cert_date, req.user.id);
+    } catch (e) { console.error('[create-client] seed cert-deadline failed:', e.message); }
+  }
   logAction(req.user.id, id, 'create_workspace', 'workspace', id, { client_name, frameworks });
   // Redirect into the intake page rather than the workspace overview. The
   // overview is meaningful only once the engagement has real context;
@@ -763,6 +1518,24 @@ app.post('/workspaces', requireAuth, (req, res) => {
 
 app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const ws = req.workspace;
+
+  // Split-brain fix: if the client setup has never been started AND the
+  // scope field is empty, the overview's readiness/charts are mostly
+  // zeros - send the consultant to setup instead. Once they've answered
+  // even one intake question (or pasted in a scope manually), the
+  // overview becomes the home and we stop redirecting.
+  const intakeAnswered = db.prepare(`SELECT COUNT(*) AS c FROM engagement_intake WHERE workspace_id=? AND answer IS NOT NULL AND length(trim(answer)) > 0`).get(ws.id).c;
+  const hasScope = !!(ws.scope && ws.scope.trim().length > 0);
+  if (intakeAnswered === 0 && !hasScope && !req.query.skipSetupRedirect) {
+    return res.redirect(`/workspaces/${ws.id}/intake`);
+  }
+  // Partial setup signal - render overview with a banner. Threshold of
+  // 8 matches "roughly the first two sections of the 25-question intake."
+  // Once the scope is confirmed, the consultant has explicitly moved
+  // past setup, so suppress the banner even if the answer count is low
+  // (they signed off knowing what was captured).
+  const setupIncomplete = intakeAnswered > 0 && intakeAnswered < 8 && !ws.scope_confirmed_at;
+
   const progress = workspaceProgress(ws.id);
 
   // Status breakdown
@@ -822,11 +1595,13 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   // Tier B.6 - top "needs your attention" items for the overview
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
   const nextStep = computeNextStep(ws);
+  const derivedStage = computeClientStage(ws);
   res.render('workspace', {
     user: req.user, ws, progress, breakdown, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
     roadmap, needsAttention, nextStep,
+    setupIncomplete, intakeAnswered, derivedStage
   });
 });
 
@@ -850,31 +1625,51 @@ app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) =
   });
 });
 
-app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') {
-    return res.status(403).send('Forbidden');
-  }
+app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
   const {
     client_name, industry, scope, target_cert_date, stage, lead_consultant_id,
     brand_display_name, brand_primary_color, brand_logo_path, sector,
+    updated_at_snapshot,
   } = req.body;
   // Validate brand color is a hex literal - anything else gets stored as null so
   // a malformed value can't break the page CSS.
   const safeColor = (typeof brand_primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(brand_primary_color.trim()))
     ? brand_primary_color.trim() : null;
-  db.prepare(`UPDATE workspaces
-              SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?,
-                  brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?
-              WHERE id=?`)
-    .run(
-      client_name, industry || null, scope || null, target_cert_date || null,
-      stage || 'gap_assessment', lead_consultant_id || null,
-      (brand_display_name || '').trim() || null,
-      safeColor,
-      (brand_logo_path || '').trim() || null,
-      (sector || '').trim() || null,
-      req.workspace.id
-    );
+  // Optimistic concurrency: client roundtrips workspaces.updated_at as a
+  // hidden field. The UPDATE WHERE updated_at = ? guarantees only one of
+  // two simultaneous edits wins; the loser is redirected to a conflict page
+  // that surfaces the new state so they can re-apply their edit deliberately.
+  // Forms rendered before this fix won't include the field; treat missing
+  // snapshot as "skip the check" so the migration doesn't break old tabs.
+  const usingCAS = !!updated_at_snapshot;
+  const sql = usingCAS
+    ? `UPDATE workspaces
+         SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?,
+             brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?,
+             updated_at=CURRENT_TIMESTAMP
+       WHERE id=? AND updated_at=?`
+    : `UPDATE workspaces
+         SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?,
+             brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?,
+             updated_at=CURRENT_TIMESTAMP
+       WHERE id=?`;
+  const args = [
+    client_name, industry || null, scope || null, target_cert_date || null,
+    stage || 'gap_assessment', lead_consultant_id || null,
+    (brand_display_name || '').trim() || null,
+    safeColor,
+    (brand_logo_path || '').trim() || null,
+    (sector || '').trim() || null,
+    req.workspace.id,
+  ];
+  if (usingCAS) args.push(updated_at_snapshot);
+  const result = db.prepare(sql).run(...args);
+  if (usingCAS && result.changes === 0) {
+    return res.status(409).render('error', {
+      user: req.user,
+      message: 'Another consultant updated this client\'s settings while you were editing. Reload the workspace settings page to see the latest values, then re-apply your changes.'
+    });
+  }
   logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, null);
   res.redirect('/workspaces/' + req.workspace.id);
 });
@@ -941,13 +1736,11 @@ app.get('/workspaces/:wsId/members', requireAuth, requireWorkspace, (req, res) =
   res.render('members', { user: req.user, ws: req.workspace, members, firmConsultants });
 });
 
-app.post('/workspaces/:wsId/members/client', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/members/client', requireAuth, requireWorkspace, requirePermission('members.add'), (req, res) => {
   const { name, email, password, role } = req.body;
   if (!name || !email || !password || password.length < 8) return res.redirect('/workspaces/' + req.workspace.id + '/members');
   const e = email.toLowerCase().trim();
-  const allowedRoles = ['client_admin','contributor','reviewer'];
-  const r = allowedRoles.includes(role) ? role : 'contributor';
+  const r = rbac.CLIENT_ROLES.includes(role) ? role : 'contributor';
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(e);
   if (!user) {
@@ -967,7 +1760,9 @@ app.post('/workspaces/:wsId/members/client', requireAuth, requireWorkspace, (req
 app.post('/workspaces/:wsId/members/firm', requireAuth, requireWorkspace, (req, res) => {
   if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
   const { user_id, role } = req.body;
-  const allowedRoles = ['lead_consultant','consultant'];
+  // Firm-side workspace members map to firm-side roles. Senior consultant is
+  // the highest a firm member can hold here; Manager is firm-wide, not per-ws.
+  const allowedRoles = ['senior_consultant','consultant'];
   const r = allowedRoles.includes(role) ? role : 'consultant';
   try {
     db.prepare('INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)')
@@ -976,11 +1771,151 @@ app.post('/workspaces/:wsId/members/firm', requireAuth, requireWorkspace, (req, 
   res.redirect('/workspaces/' + req.workspace.id + '/members');
 });
 
-app.post('/workspaces/:wsId/members/:memberId/remove', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/members/:memberId/remove', requireAuth, requireWorkspace, requirePermission('members.remove'), (req, res) => {
   db.prepare('DELETE FROM workspace_members WHERE id = ? AND workspace_id = ?')
     .run(req.params.memberId, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/members');
+});
+
+// ==================== TEAM SETUP (engagement kickoff) ====================
+// Inserted between "scoping confirmed" and "start gap assessment." A manager
+// fills the scoping questionnaire, picks the firm consultants on the
+// engagement, and either invites client-side accounts (Client owner, ISMS
+// manager, Contributors) or skips to do that later. The same screen also
+// lives in the sidebar's Setup group so managers can revisit it after
+// kickoff to add or remove people.
+
+app.get('/workspaces/:wsId/team', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user)) {
+    return res.status(403).render('error', { user: req.user, message: 'Only firm consultants can manage the engagement team.' });
+  }
+  const ws = req.workspace;
+  // Firm users who could be on this engagement — all active firm members of
+  // the firm that owns this workspace.
+  const firmPool = db.prepare(`SELECT id, name, email, firm_role FROM users
+     WHERE firm_id = ? AND user_type = 'firm' AND active = 1
+     ORDER BY (firm_role = 'manager') DESC, name`).all(ws.firm_id);
+  const leadConsultant = ws.lead_consultant_id
+    ? db.prepare(`SELECT id, name, email, firm_role FROM users WHERE id = ?`).get(ws.lead_consultant_id)
+    : null;
+  // workspace_members on the firm side, excluding the lead (which is rendered
+  // separately above).
+  const firmMembers = db.prepare(`SELECT wm.id AS member_id, wm.role, u.id AS user_id, u.name, u.email, u.firm_role
+     FROM workspace_members wm INNER JOIN users u ON u.id = wm.user_id
+     WHERE wm.workspace_id = ? AND u.user_type = 'firm' AND u.active = 1
+     ORDER BY (wm.role = 'senior_consultant') DESC, u.name`).all(ws.id);
+  const clientMembers = db.prepare(`SELECT wm.id AS member_id, wm.role, u.id AS user_id, u.name, u.email, u.last_active_at
+     FROM workspace_members wm INNER JOIN users u ON u.id = wm.user_id
+     WHERE wm.workspace_id = ? AND u.user_type = 'client'
+     ORDER BY CASE wm.role WHEN 'client_owner' THEN 1 WHEN 'isms_manager' THEN 2 ELSE 3 END, u.name`).all(ws.id);
+  const pendingInvites = db.prepare(`SELECT id, email, name, workspace_role, expires_at, created_at
+     FROM user_invitations
+     WHERE workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+     ORDER BY created_at DESC`).all(ws.id);
+
+  res.render('team_setup', {
+    user: req.user, ws, active: 'team',
+    firmPool, leadConsultant, firmMembers, clientMembers, pendingInvites,
+    scopeConfirmed: !!ws.scope_confirmed_at,
+    notice: req.query.notice || null,
+    error: req.query.error || null
+  });
+});
+
+app.post('/workspaces/:wsId/team/set-lead', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  const leadId = parseInt(req.body.lead_consultant_id, 10) || null;
+  // Validate the chosen lead is in this firm; null is allowed to clear.
+  if (leadId) {
+    const exists = db.prepare(`SELECT id FROM users WHERE id = ? AND firm_id = ? AND user_type = 'firm' AND active = 1`).get(leadId, req.workspace.firm_id);
+    if (!exists) return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('That user is not in your firm.'));
+  }
+  db.prepare(`UPDATE workspaces SET lead_consultant_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(leadId, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'set_lead_consultant', 'workspace', req.workspace.id, { lead_consultant_id: leadId }, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Lead consultant updated.'));
+});
+
+app.post('/workspaces/:wsId/team/add-firm-member', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  const userId = parseInt(req.body.user_id, 10);
+  const role = ['senior_consultant', 'consultant'].includes(req.body.role) ? req.body.role : 'consultant';
+  if (!userId) return res.redirect('/workspaces/' + req.workspace.id + '/team');
+  // Same-firm check; prevents adding someone from another firm via crafted form.
+  const exists = db.prepare(`SELECT id FROM users WHERE id = ? AND firm_id = ? AND user_type = 'firm' AND active = 1`).get(userId, req.workspace.firm_id);
+  if (!exists) return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('Pick a firm consultant.'));
+  try {
+    db.prepare('INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)').run(req.workspace.id, userId, role);
+  } catch (_) { /* already a member — ignore */ }
+  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Consultant added to engagement.'));
+});
+
+app.post('/workspaces/:wsId/team/remove-firm-member/:memberId', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  db.prepare('DELETE FROM workspace_members WHERE id = ? AND workspace_id = ?').run(req.params.memberId, req.workspace.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Consultant removed from engagement.'));
+});
+
+app.post('/workspaces/:wsId/team/invite-client', requireAuth, requireWorkspace, async (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  const b = req.body || {};
+  const email = String(b.email || '').trim().toLowerCase();
+  const name = (b.name || '').trim() || null;
+  const role = ['client_owner', 'isms_manager', 'contributor'].includes(b.workspace_role) ? b.workspace_role : 'isms_manager';
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('A valid email is required.'));
+  }
+  // Reuse the duplicate-detection from /admin/users/invite. An active account
+  // gets an inline reset offer on /admin/users — for the team kickoff page we
+  // keep things simple and just redirect there so the manager handles it once.
+  const existing = db.prepare(`SELECT id, active FROM users WHERE email = ?`).get(email);
+  if (existing) {
+    const which = existing.active ? 'active' : 'deactivated';
+    return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent(
+      `An ${which} account already exists for ${email}. Open Admin → Users & access to reactivate, reset password, or add them to this workspace.`));
+  }
+  // Replace any pending invitation for the same email + workspace, same shape
+  // as /admin/users/invite — keeps outstanding list tidy.
+  db.prepare(`UPDATE user_invitations SET revoked_at = CURRENT_TIMESTAMP
+     WHERE firm_id = ? AND workspace_id = ? AND email = ?
+       AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP`)
+    .run(req.user.firm_id, req.workspace.id, email);
+
+  const raw = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(raw);
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+  db.prepare(`INSERT INTO user_invitations
+      (email, name, firm_id, user_type, workspace_id, workspace_role, token_hash, expires_at, invited_by)
+      VALUES (?, ?, ?, 'client', ?, ?, ?, ?, ?)`)
+    .run(email, name, req.user.firm_id, req.workspace.id, role, tokenHash, expiresAt, req.user.id);
+
+  let sendError = null;
+  try {
+    const emailLib = require('./lib/email');
+    const firmRow = db.prepare(`SELECT name FROM firms WHERE id = ?`).get(req.user.firm_id);
+    const r = await emailLib.sendInviteEmail({
+      toEmail: email, toName: name, inviterName: req.user.name,
+      firmName: firmRow && firmRow.name,
+      role: `Client-side — ${rbac.ROLE_LABELS[role] || role}`,
+      token: raw, expiresAt, firmId: req.user.firm_id
+    });
+    if (!r.ok) sendError = r.error || 'Email delivery failed';
+  } catch (e) { sendError = e && e.message; }
+
+  if (sendError) {
+    return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' +
+      encodeURIComponent(`Invitation created but email failed (${sendError}). Share the link manually: /invite/${raw}`));
+  }
+  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' +
+    encodeURIComponent(`Invitation sent to ${email}. Link expires in 7 days.`));
+});
+
+app.post('/workspaces/:wsId/team/revoke-invite/:invId', requireAuth, requireWorkspace, (req, res) => {
+  if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  const inv = db.prepare(`SELECT id, workspace_id FROM user_invitations WHERE id = ?`).get(req.params.invId);
+  if (!inv || inv.workspace_id !== req.workspace.id) return res.redirect('/workspaces/' + req.workspace.id + '/team');
+  db.prepare(`UPDATE user_invitations SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?`).run(inv.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Invitation revoked.'));
 });
 
 // ==================== CONTROLS LIST + DETAIL ====================
@@ -1103,7 +2038,8 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
 
   res.render('controls_assess_summary', {
     user: req.user, ws: req.workspace, gaps, docGaps, evidenceAsks, untreatedLinkedRisks,
-    notAssessedCount, dist
+    notAssessedCount, dist,
+    active: 'gap-assessment-summary'
   });
 });
 
@@ -1120,9 +2056,18 @@ app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, r
   const due = req.body.due_date || null;
   const ins = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, due_date, status, priority, created_by)
                           VALUES (?, ?, ?, ?, ?, 'todo', ?, ?)`);
-  let added = 0;
+  // Re-check open-task existence inside the transaction. The post-assessment
+  // summary view filters with `has_open_task` at render time, but two
+  // consultants both looking at the same list and both clicking "Spawn" would
+  // each INSERT — duplicate "Remediate A.5.15…" tasks for the same control.
+  // This statement is run per id at commit time, so it catches concurrent
+  // spawns no matter when the render happened.
+  const hasOpen = db.prepare(`SELECT 1 FROM tasks
+     WHERE workspace_id = ? AND iso_item_id = ? AND status NOT IN ('done','closed','cancelled') LIMIT 1`);
+  let added = 0, skipped = 0;
   const tx = db.transaction(() => {
     for (const id of ids) {
+      if (hasOpen.get(req.workspace.id, id)) { skipped++; continue; }
       const item = db.prepare(`SELECT i.id, i.type, i.title, cs.status, cs.notes,
         (SELECT MAX(r.likelihood * r.impact) FROM risk_controls rc
          INNER JOIN risks r ON r.id = rc.risk_id
@@ -1145,8 +2090,9 @@ app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, r
     }
   });
   tx();
-  logAction(req.user.id, req.workspace.id, 'spawn_remediation_tasks', 'task', null, { count: added }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/controls/assess/summary`, `Spawned ${added} remediation task${added === 1 ? '' : 's'} with auto-priority`));
+  logAction(req.user.id, req.workspace.id, 'spawn_remediation_tasks', 'task', null, { count: added, skipped }, auditCtx(req));
+  const skippedNote = skipped > 0 ? ` (skipped ${skipped} item${skipped === 1 ? '' : 's'} that already had an open task)` : '';
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/controls/assess/summary`, `Spawned ${added} remediation task${added === 1 ? '' : 's'} with auto-priority${skippedNote}`));
 });
 
 app.get('/workspaces/:wsId/controls/assess', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
@@ -1198,6 +2144,27 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   const position = allOrder.findIndex(r => r.id === item.id) + 1;
   const prevId = position > 1 ? allOrder[position - 2].id : null;
   const nextById = position < allOrder.length ? allOrder[position].id : null;
+
+  // Theme-jump navigator data. A real consultant doesn't walk 118 items
+  // sequentially — they bounce between themes. The nav builds an index of
+  // every clause + control with its current assessment status, grouped into
+  // (a) main clauses by section, (b) Annex A by category.
+  const navRows = db.prepare(`SELECT i.id, i.type, i.category, i.title, i.sort_order,
+      COALESCE(cs.status, 'Not Assessed') AS status
+    FROM iso_items i
+    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    WHERE i.type IN ('clause','control')
+    ORDER BY i.sort_order`).all(req.workspace.id);
+  const navGroups = [
+    { key: 'clauses', label: 'Main clauses', items: navRows.filter(r => r.type === 'clause') },
+    { key: 'org',     label: 'A.5 Organisational', items: navRows.filter(r => r.type === 'control' && r.category === 'org') },
+    { key: 'people',  label: 'A.6 People',         items: navRows.filter(r => r.type === 'control' && r.category === 'people') },
+    { key: 'physical',label: 'A.7 Physical',       items: navRows.filter(r => r.type === 'control' && r.category === 'physical') },
+    { key: 'tech',    label: 'A.8 Technological',  items: navRows.filter(r => r.type === 'control' && r.category === 'tech') }
+  ].map(g => {
+    const done = g.items.filter(r => r.status !== 'Not Assessed').length;
+    return { ...g, done, total: g.items.length };
+  });
 
   // Position within own section (e.g., "Clause 5 of 25" or "Control 12 of 93")
   const sameType = allOrder.filter(r => r.type === item.type);
@@ -1281,6 +2248,13 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
       ORDER BY snapshot_at DESC, id DESC LIMIT 1`).get(req.workspace.id, item.id, activePass.id);
     if (cur && cur.notes) currentPassNotes = cur.notes;
   }
+  // Fallback to the live state notes when no history row exists for the
+  // active pass yet. Without this, anything written via autosave (which
+  // writes only to control_states.notes, not to control_state_history) is
+  // invisible until someone clicks the explicit Save button. That meant
+  // consultant B opened a control after consultant A had typed notes and saw
+  // an empty textarea, even though the data was sitting in the live state.
+  if (!currentPassNotes && state && state.notes) currentPassNotes = state.notes;
   // Latest snapshot per prior pass (one row per pass that touched this item).
   // Excludes the active pass; ordered most recent prior pass first.
   const priorPassNotes = db.prepare(`
@@ -1304,7 +2278,8 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     questions, savedAnswers, suggestedStatus,
     evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs,
     activePass, currentPassNotes, priorPassNotes,
-    crosswalksByFramework
+    crosswalksByFramework,
+    navGroups
   });
 });
 
@@ -1313,7 +2288,7 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   if (!item) return res.status(404).send('Not found');
   getOrCreateState(req.workspace.id, item.id);
 
-  const { applicability, status, maturity, inclusion_justification, exclusion_justification, notes, scope_pct } = req.body;
+  const { applicability, status, maturity, inclusion_justification, exclusion_justification, notes, scope_pct, last_updated_snapshot } = req.body;
   const sets = [], vals = [];
   // Clauses are not subject to SoA applicability - every certified ISMS must satisfy them.
   if (item.type === 'control' && applicability !== undefined) { sets.push('applicability=?'); vals.push(applicability); }
@@ -1343,8 +2318,26 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   if (status && status !== 'Not Assessed') {
     sets.push('last_verified_at=CURRENT_TIMESTAMP');
   }
+  // Optimistic-concurrency: gap-assessment forms include the last_updated
+  // value they were rendered with. UPDATE WHERE last_updated = ? catches the
+  // case where another consultant already saved this control after the form
+  // was loaded; the loser gets a friendly conflict page rather than silently
+  // overwriting the new state. Pre-CAS form posts (no hidden field) fall
+  // through to the old last-writer-wins behaviour for backwards compat.
+  const usingCAS = !!last_updated_snapshot;
+  let updateSQL = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
   vals.push(req.workspace.id, item.id);
-  db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+  if (usingCAS) {
+    updateSQL += ` AND last_updated = ?`;
+    vals.push(last_updated_snapshot);
+  }
+  const result = db.prepare(updateSQL).run(...vals);
+  if (usingCAS && result.changes === 0) {
+    return res.status(409).render('error', {
+      user: req.user,
+      message: `Another consultant updated ${req.params.isoId.replace('annex-','').replace('clause-','').toUpperCase()} while you were assessing it. Refresh the page to see their changes, then re-apply yours.`
+    });
+  }
 
   // Append-only history snapshot - written after the UPDATE so it captures the new
   // values exactly. An auditor can later request the timeline for any control.
@@ -1395,16 +2388,35 @@ function getActivePass(wsId) {
 }
 
 function ensureActivePassId(wsId, userId) {
-  const active = getActivePass(wsId);
-  if (active) return active.id;
-  // Lazy auto-start Pass 1 on the very first wizard save.
-  const lastNum = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n
-    FROM assessment_passes WHERE workspace_id=?`).get(wsId).n;
-  const nextNum = lastNum + 1;
-  return db.prepare(`INSERT INTO assessment_passes
-    (workspace_id, pass_number, label, status, started_by)
-    VALUES (?, ?, ?, 'in_progress', ?)`)
-    .run(wsId, nextNum, nextNum === 1 ? 'Initial gap assessment' : `Re-assessment ${nextNum - 1}`, userId).lastInsertRowid;
+  // Race-safe lazy auto-start. Two consultants saving the first wizard answer
+  // in a fresh workspace can both observe no-active-pass and both try to
+  // INSERT pass_number=1; the UNIQUE INDEX idx_passes_ws_num catches the
+  // second one. We catch SQLITE_CONSTRAINT_UNIQUE and re-read instead of
+  // surfacing a 500. The transaction is per-call (no big lock); the only
+  // contention is the brief window between MAX read and INSERT.
+  const tryCreate = () => {
+    const active = getActivePass(wsId);
+    if (active) return active.id;
+    const lastNum = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n
+      FROM assessment_passes WHERE workspace_id=?`).get(wsId).n;
+    const nextNum = lastNum + 1;
+    return db.prepare(`INSERT INTO assessment_passes
+      (workspace_id, pass_number, label, status, started_by)
+      VALUES (?, ?, ?, 'in_progress', ?)`)
+      .run(wsId, nextNum, nextNum === 1 ? 'Initial gap assessment' : `Re-assessment ${nextNum - 1}`, userId).lastInsertRowid;
+  };
+  try {
+    return tryCreate();
+  } catch (e) {
+    // SqliteError.code is SQLITE_CONSTRAINT_UNIQUE on the duplicate
+    // pass_number. Any other error rethrows. On a unique-collision the other
+    // request just won; re-read and return its id.
+    if (e && e.code && e.code.startsWith('SQLITE_CONSTRAINT')) {
+      const active = getActivePass(wsId);
+      if (active) return active.id;
+    }
+    throw e;
+  }
 }
 
 app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req, res) => {
@@ -1546,9 +2558,18 @@ app.post('/workspaces/:wsId/gap-assessment/:passId/complete', requireAuth, requi
   const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
   if (!p) return res.status(404).send('Not found');
   if (p.status === 'completed') return res.redirect(`/workspaces/${wsId}/gap-assessment`);
-  db.prepare(`UPDATE assessment_passes
+  // Conditional UPDATE: only commit if the pass is still in_progress. Two
+  // consultants clicking "Complete pass" simultaneously: the first UPDATE
+  // matches and writes completed_by; the second sees changes=0 and is told
+  // it was already completed. Replaces the previous LWW behaviour where both
+  // writes succeeded and the audit trail recorded two different completers.
+  const result = db.prepare(`UPDATE assessment_passes
     SET status='completed', completed_at=datetime('now'), completed_by=?
-    WHERE id=?`).run(req.user.id, p.id);
+    WHERE id=? AND status='in_progress'`).run(req.user.id, p.id);
+  if (result.changes === 0) {
+    return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+      `Pass ${p.pass_number} was just completed by another consultant.`, 'info'));
+  }
   logAction(req.user.id, wsId, 'complete_assessment_pass', 'pass', p.id, { pass_number: p.pass_number });
   res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`, `Completed Pass ${p.pass_number}: ${p.label}`));
 });
@@ -1843,8 +2864,7 @@ function normaliseTags(raw) {
     .join(', ');
 }
 
-app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
   if (!req.file) return redirectBack(req, res, 'Pick a file to upload', 'error');
   // Accept either a single iso_item_id (legacy: control wizard upload) OR
   // multiple iso_item_id values (new: evidence library multi-link upload).
@@ -1894,8 +2914,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
 // Bulk upload - multiple files at once with shared metadata. Each file becomes
 // an independent evidence row; all share the same period / valid_from / valid_until
 // and link to the same set of selected controls.
-app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, upload.array('files', 50), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.array('files', 50), (req, res) => {
   if (!req.files || !req.files.length) return redirectBack(req, res, 'Pick at least one file', 'error');
   const isoIds = parseFormArray(req.body.iso_item_id);
   const primaryId = isoIds[0] || null;
@@ -1939,8 +2958,7 @@ app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, uploa
 // Supersede an existing evidence file with a new version. Old row is kept
 // for audit trail (superseded_at + superseded_by_id), all links are copied
 // to the new row, and the new row records its predecessor in supersedes_id.
-app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
   const old = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!old) return res.status(404).send('Not found');
   if (!req.file) return redirectBack(req, res, 'Pick the new version of the file', 'error');
@@ -2043,7 +3061,7 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
 // item_ref values, writes them into evidence_links directly. The existing
 // /controls endpoint stays for ISO 27001 (it writes to evidence_controls and
 // the sync trigger mirrors into evidence_links).
-app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const framework = (req.body.framework || '').toString();
@@ -2077,7 +3095,7 @@ app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, 
 });
 
 // Delete a single cross-framework link.
-app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   // Don't touch iso27001 rows from this route - those belong to the legacy
@@ -2092,7 +3110,7 @@ app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, req
   redirectBack(req, res);
 });
 
-app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const ids = parseFormArray(req.body.iso_item_id);
@@ -2113,7 +3131,7 @@ app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspac
 
 // Update the section_ref on an existing link (per-link, distinct from the
 // per-file clause_section). Posted from the chip on the library row.
-app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const newRef = (req.body.section_ref || '').toString().trim() || null;
@@ -2122,7 +3140,7 @@ app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth,
   redirectBack(req, res);
 });
 
-app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare(`SELECT id, iso_item_id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const link = db.prepare(`SELECT * FROM evidence_controls WHERE id=? AND evidence_id=?`).get(req.params.linkId, ev.id);
@@ -2146,8 +3164,7 @@ app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace
   res.download(fp, ev.filename);
 });
 
-app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
     .get(req.params.id, req.workspace.id);
   if (ev) {
@@ -2474,6 +3491,8 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
 
 // Tier 1.1 - Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
 app.post('/workspaces/:wsId/risks/:id/actions', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const { title, description, owner_name, due_date } = req.body;
   if (!title || !title.trim()) return redirectBack(req, res);
   db.prepare(`INSERT INTO risk_treatment_actions
@@ -2548,7 +3567,7 @@ app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res
   res.render('cert_cycle', { user: req.user, ws: req.workspace, events, suggestions, eventTypes: CERT_EVENT_TYPES });
 });
 
-app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { event_type, planned_date, certification_body, notes } = req.body;
   if (!event_type || !CERT_EVENT_TYPES.find(t => t.key === event_type)) return redirectBack(req, res);
   db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date, certification_body, notes)
@@ -2559,7 +3578,7 @@ app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, re
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   // Insert all five suggested events from the no-events fallback above.
   const today = new Date();
   const s1 = new Date(today); s1.setDate(s1.getDate() + 60);
@@ -2580,7 +3599,7 @@ app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, (re
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { planned_date, actual_date, status, certification_body, notes } = req.body;
   db.prepare(`UPDATE cert_cycle_events SET
     planned_date=?, actual_date=?, status=?, certification_body=?, notes=?
@@ -2592,7 +3611,7 @@ app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, (req
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
@@ -2697,8 +3716,7 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
   res.send(buf);
 });
 
-app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
   const { title, description, asset_id, threat, vulnerability, likelihood, impact,
           treatment, owner_name, status, residual_likelihood, residual_impact } = req.body;
   db.prepare(`UPDATE risks SET title=?, description=?, asset_id=?, threat=?, vulnerability=?,
@@ -2715,8 +3733,9 @@ app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, (req, res
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const { iso_item_id } = req.body;
   if (iso_item_id) {
     try {
@@ -2732,15 +3751,15 @@ app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, (req
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   db.prepare('DELETE FROM risk_controls WHERE risk_id = ? AND iso_item_id = ?')
     .run(req.params.id, req.body.iso_item_id);
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, requirePermission('risk.delete'), (req, res) => {
   db.prepare('DELETE FROM risks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/risks');
 });
@@ -2799,19 +3818,28 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   // latest snapshot. If no snapshot exists, the form lets the user kick one
   // off; saving via /soa/metadata captures one automatically.
   const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, created_at
-    FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1`).get(req.workspace.id);
+    FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(req.workspace.id);
+
+  // Counts to power the preview text on the bulk-decide buttons - lets
+  // the consultant see "this will flip 47 rows" before confirming,
+  // instead of a generic "are you sure?" dialog.
+  const soaCounts = {
+    included:  rows.filter(r => r.applicability === 'included').length,
+    excluded:  rows.filter(r => r.applicability === 'excluded').length,
+    undecided: rows.filter(r => !r.applicability || r.applicability === 'undecided').length,
+    total:     rows.length
+  };
 
   res.render('soa', {
     user: req.user, ws: req.workspace, rows, docsByControl, risksByControl,
-    customControls, soaMeta: latestSnap || {}
+    customControls, soaMeta: latestSnap || {}, soaCounts
   });
 });
 
-app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
+app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
   // Reserved literal sub-routes (snapshot, auto-justify, bulk, custom-controls, metadata)
   // must fall through to their own handlers.
   if (['snapshot','auto-justify','snapshots','bulk','custom-controls','metadata'].includes(req.params.isoId)) return nextMw();
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   getOrCreateState(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
   db.prepare(`UPDATE control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
@@ -2824,6 +3852,42 @@ app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, re
   // Autosave fetches use ?ajax=1 so they don't follow a redirect they don't need.
   if (req.query.ajax === '1') return res.status(204).end();
   res.redirect('/workspaces/' + req.workspace.id + '/soa');
+});
+
+// SoA batch save. Used by the "Save all changes" button on /soa to flush
+// every dirty row in one round-trip instead of one POST per row. Body shape:
+//   rows = JSON array of { iso_item_id, applicability, status,
+//                          inclusion_justification, exclusion_justification }
+// All updates run in a single transaction; the response is 200 with the count.
+app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  let rows = [];
+  try { rows = JSON.parse(req.body.rows || '[]'); } catch (_) { rows = []; }
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ ok: false, message: 'No rows to save.' });
+  }
+  // Guard against junk: cap batch size; reject rows missing iso_item_id.
+  if (rows.length > 250) return res.status(400).json({ ok: false, message: 'Batch too large.' });
+  const valid = rows.filter(r => r && typeof r.iso_item_id === 'string' && r.iso_item_id);
+  const upsertState = db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id) VALUES (?, ?)`);
+  const update = db.prepare(`UPDATE control_states SET
+      applicability = ?, inclusion_justification = ?, exclusion_justification = ?,
+      status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+    WHERE workspace_id = ? AND iso_item_id = ?`);
+  const tx = db.transaction(() => {
+    valid.forEach(r => {
+      upsertState.run(req.workspace.id, r.iso_item_id);
+      update.run(
+        r.applicability || 'undecided',
+        r.inclusion_justification || null,
+        r.exclusion_justification || null,
+        r.status || null,
+        req.workspace.id, r.iso_item_id
+      );
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'soa_batch_save', 'soa', null, { count: valid.length }, auditCtx(req));
+  res.json({ ok: true, count: valid.length });
 });
 
 // Bulk SoA applicability + justification. Body shape:
@@ -2984,8 +4048,7 @@ app.get('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => 
   res.render('tasks', { user: req.user, ws: req.workspace, tasks, filter, wsUsers });
 });
 
-app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const { title, description, iso_item_id, assignee_id, due_date } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, assignee_id, due_date, created_by)
@@ -2996,8 +4059,7 @@ app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) =>
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/tasks', 'Task created'));
 });
 
-app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const { status, assignee_id, due_date, title, description } = req.body;
   const sets = []; const vals = [];
   if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
@@ -3013,8 +4075,7 @@ app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, (req, res
   redirectBack(req, res);
 });
 
-app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/tasks');
 });
@@ -3163,30 +4224,10 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   const templates = db.prepare(`SELECT * FROM doc_templates
     WHERE is_system = 1 OR firm_id = ? ORDER BY category, name`).all(req.workspace.firm_id);
 
-  // Registers — structured datasets that count as ISO documents but live in
-  // their own tables (interested parties register today; more will follow).
-  // Surfaced here so the documents page is the single home for "what needs
-  // annual review", and so the side nav doesn't need a separate entry.
-  const ipStats = db.prepare(`SELECT COUNT(*) AS total,
-      MAX(last_reviewed) AS last_reviewed,
-      MIN(next_review)   AS next_review,
-      SUM(CASE WHEN next_review IS NOT NULL AND next_review < date('now') THEN 1 ELSE 0 END) AS overdue
-    FROM interested_parties WHERE workspace_id=?`).get(req.workspace.id);
-  const soonCutoff = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
-  const registers = [{
-    key: 'interested-parties',
-    name: 'Interested parties register',
-    clause: '4.2',
-    href: `/workspaces/${req.workspace.id}/interested-parties`,
-    total: ipStats.total || 0,
-    last_reviewed: ipStats.last_reviewed,
-    next_review: ipStats.next_review,
-    overdue_count: ipStats.overdue || 0,
-    review_status:
-      ipStats.overdue > 0 ? 'overdue'
-      : (ipStats.next_review && ipStats.next_review < soonCutoff) ? 'due_soon'
-      : (ipStats.next_review ? 'current' : null),
-  }];
+  // Registers row used to surface "interested parties register" here;
+  // removed alongside the dedicated parties module. Left as an empty
+  // array so the view's <% registers.forEach %> stays harmless.
+  const registers = [];
 
   res.render('documents', {
     user: req.user, ws: req.workspace, docs, templates,
@@ -3316,7 +4357,7 @@ app.post('/workspaces/:wsId/templates/:id(\\d+)/adopt', requireAuth, requireWork
 
 app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
   const { template_id, document_owner, approval_authority, review_period } = req.body;
-  const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ?').get(template_id);
+  const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ? AND (is_system=1 OR firm_id=?)').get(template_id, req.workspace.firm_id);
   if (!tpl) return redirectBack(req, res);
   const result = adoptTemplateForWorkspace(tpl, req.workspace, req.user, req.entityScopeId, {
     document_owner, approval_authority, review_period
@@ -3483,10 +4524,11 @@ app.get('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requir
   const decryptedComments = comments.map(c => ({ ...c, body: enc.decryptIfNeeded(c.body, req.workspace.id) }));
   const filtered = isFirmUser(req.user) ? decryptedComments : decryptedComments.filter(c => !c.internal_only);
 
-  // Approval / signature context
+  // Approval / signature context. approvers is the merged chain
+  // (internal + external) ordered by sequence; each row has `kind`.
   const versions = listVersions(doc.id);
   const currentVersion = doc.current_version_id ? db.prepare('SELECT * FROM doc_versions WHERE id=?').get(doc.current_version_id) : null;
-  const approvers = currentVersion ? listApprovers(doc.id, currentVersion.id) : [];
+  const approvers = currentVersion ? docApprovals.listChain(db, currentVersion.id) : [];
   const signatures = currentVersion ? listSignatures(doc.id, currentVersion.id) : [];
   const signatureIssues = currentVersion ? verifyVersionSignatures(currentVersion, signatures, req.workspace.id) : [];
   const wsUsers = db.prepare(`SELECT DISTINCT u.id, u.name, u.email FROM users u
@@ -3628,8 +4670,7 @@ app.get('/workspaces/:wsId/documents/:id/download', requireAuth, requireWorkspac
   res.send(enc.decryptIfNeeded(doc.content, req.workspace.id));
 });
 
-app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, requirePermission('document.delete'), (req, res) => {
   db.prepare('DELETE FROM generated_docs WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/documents');
 });
@@ -3643,8 +4684,7 @@ app.get('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) =>
   res.render('audits', { user: req.user, ws: req.workspace, audits });
 });
 
-app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { title, scope, audit_date, auditor_name } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO audits (workspace_id, title, scope, audit_date, auditor_name, created_by)
@@ -3669,8 +4709,7 @@ app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res
   res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples });
 });
 
-app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { title, scope, audit_date, auditor_name, status, summary } = req.body;
   db.prepare(`UPDATE audits SET title=?, scope=?, audit_date=?, auditor_name=?, status=?, summary=?
               WHERE id=? AND workspace_id=?`)
@@ -3691,7 +4730,7 @@ app.get('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, r
   res.render('improvements', { user: req.user, ws: req.workspace, items, filter });
 });
 
-app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const { title, description, source, source_ref, owner_name, due_date } = req.body;
   if (!title || !title.trim()) return redirectBack(req, res);
   db.prepare(`INSERT INTO improvements (workspace_id, title, description, source, source_ref, owner_name, due_date, created_by)
@@ -3703,7 +4742,7 @@ app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, 
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
 
-app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const { title, description, source, source_ref, owner_name, due_date, status, impact_notes } = req.body;
   db.prepare(`UPDATE improvements SET
     title=?, description=?, source=?, source_ref=?, owner_name=?, due_date=?, status=?, impact_notes=?,
@@ -3718,7 +4757,7 @@ app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, (r
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
 
-app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   db.prepare(`DELETE FROM improvements WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
@@ -3746,12 +4785,14 @@ app.post('/workspaces/:wsId/audits/:id/sampling', requireAuth, requireWorkspace,
 });
 
 app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const { iso_item_id, description, sample_taken_at, population_size, sample_size, finding } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_samples
     (audit_id, iso_item_id, description, sample_taken_at, population_size, sample_size, finding)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    req.params.id, iso_item_id || null, description.trim(),
+    audit.id, iso_item_id || null, description.trim(),
     sample_taken_at || null,
     population_size ? parseInt(population_size, 10) : null,
     sample_size ? parseInt(sample_size, 10) : null,
@@ -3761,7 +4802,9 @@ app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, 
 });
 
 app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
-  db.prepare(`DELETE FROM audit_samples WHERE id=? AND audit_id=?`).run(req.params.sid, req.params.id);
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
+  db.prepare(`DELETE FROM audit_samples WHERE id=? AND audit_id=?`).run(req.params.sid, audit.id);
   res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
 });
 
@@ -3783,21 +4826,23 @@ app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace
   res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
 });
 
-app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const { iso_item_id, finding_type, description, severity } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_findings (audit_id, iso_item_id, finding_type, description, severity)
               VALUES (?, ?, ?, ?, ?)`)
-    .run(req.params.id, iso_item_id || null, finding_type || 'observation',
+    .run(audit.id, iso_item_id || null, finding_type || 'observation',
          description, severity || 'medium');
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const f = db.prepare('SELECT * FROM audit_findings WHERE id = ? AND audit_id = ?')
-    .get(req.params.fId, req.params.id);
+    .get(req.params.fId, audit.id);
   if (!f) return redirectBack(req, res);
   if (f.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + f.nonconformity_id);
   const sev = f.finding_type === 'major_nc' ? 'major' : 'minor';
@@ -3809,8 +4854,7 @@ app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requ
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
-app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   db.prepare('DELETE FROM audits WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/audits');
 });
@@ -3819,7 +4863,11 @@ app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, (
 app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
   const mrms = db.prepare(`SELECT * FROM mrms WHERE workspace_id = ?
                            ORDER BY meeting_date DESC, created_at DESC`).all(req.workspace.id);
-  res.render('mrms', { user: req.user, ws: req.workspace, mrms });
+  // Preview the 9.3.2 input pack so the consultant sees what will be auto-
+  // filled before submitting the create form. The same compute is then re-run
+  // server-side on POST — no risk of staleness.
+  const pack932Preview = compute932InputPack(req.workspace.id);
+  res.render('mrms', { user: req.user, ws: req.workspace, mrms, pack932Preview });
 });
 
 // Helper - compute the auto-fillable 9.3.2 input fields from current data.
@@ -3841,24 +4889,15 @@ function compute932InputPack(wsId) {
   const lastMrm = db.prepare(`SELECT meeting_date, action_items FROM mrms WHERE workspace_id=? AND status='complete' ORDER BY meeting_date DESC LIMIT 1`).get(wsId);
 
   // ---- 9.3.2.b context changes ----
-  // We don't have a formal "context changes log", so surface objective signals:
-  // new suppliers + entities + interested parties added since last MRM. The
-  // consultant adds narrative around regulatory/business changes.
-  const sinceLastMrm = lastMrm ? lastMrm.meeting_date : "date('now','-12 months')";
+  // Objective signal for context changes: new suppliers since last MRM.
+  // (Previously also counted new / overdue interested parties; removed
+  // alongside the dedicated parties module.)
   const sinceClause = lastMrm ? '?' : "date('now','-12 months')";
   const lastMrmParams = lastMrm ? [wsId, lastMrm.meeting_date] : [wsId];
-  let newSuppliers = 0, newParties = 0, partiesOverdue = 0;
+  let newSuppliers = 0;
   try {
     newSuppliers = db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND date(created_at) > ${sinceClause}`).get(...lastMrmParams).c;
   } catch (_) {}
-  try {
-    newParties = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND date(created_at) > ${sinceClause}`).get(...lastMrmParams).c;
-    partiesOverdue = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND next_review IS NOT NULL AND next_review < ?`).get(wsId, today).c;
-  } catch (_) {}
-
-  // ---- 9.3.2.d interested parties feedback ----
-  const partiesCount = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?`).get(wsId).c;
-  const recentReviews = db.prepare(`SELECT party, last_reviewed FROM interested_parties WHERE workspace_id=? AND last_reviewed IS NOT NULL ORDER BY last_reviewed DESC LIMIT 5`).all(wsId);
 
   // Incident summary feeds both context (regulatory exposure) and performance.
   let incidents = { total: 0, open: 0, last12m: 0 };
@@ -3901,16 +4940,17 @@ function compute932InputPack(wsId) {
 
     // 9.3.2.b — context changes
     context_changes: lastMrm
-      ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n  New interested parties registered: ${newParties}\n  Interested-party reviews overdue: ${partiesOverdue}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution.]`
-      : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n  Interested parties: ${partiesCount}\n\n[Document the external + internal context relevant to the ISMS — regulations, market, technology, organisation.]`,
+      ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution, and changes in the needs / expectations of interested parties identified during gap assessment.]`
+      : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ISMS — regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
 
     // 9.3.2.c — performance review (extended with incidents + suppliers)
     performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\nIncidents (last 12 months):\n  Total: ${incidents.last12m} (${incidents.open} still open)\n\nSupplier reviews:\n  ${supplierReview.total} suppliers · ${supplierReview.overdue} overdue review${supplierReview.overdue === 1 ? '' : 's'}\n\n[Add commentary on KPIs, monitoring metrics (9.1), trends, root-cause patterns.]`,
 
-    // 9.3.2.d — interested-party feedback
-    feedback_interested_parties: partiesCount === 0
-      ? 'No interested parties registered. Capture them in Interested parties before the next MRM (Clause 4.2).'
-      : `Interested parties register: ${partiesCount} entries.${recentReviews.length ? '\nRecently reviewed:\n' + recentReviews.map(r => `  - ${r.party} (${r.last_reviewed})`).join('\n') : ''}${partiesOverdue ? `\n\n${partiesOverdue} party review(s) overdue — refresh before the meeting.` : ''}\n\n[Summarise feedback received: customer concerns, regulator queries, employee survey results, supplier feedback.]`,
+    // 9.3.2.d — interested-party feedback. Parties are now captured
+    // during the gap assessment + clause 4.2 work rather than a
+    // dedicated register, so the auto-pack just hands the consultant
+    // a structured prompt to fill in.
+    feedback_interested_parties: `[Summarise feedback received in the period from interested parties identified in clause 4.2 - customer concerns / contractual security asks, regulator queries, employee survey results, supplier feedback, board observations. Quantify where possible (NPS, audit findings against customer SoWs, complaint volumes).]`,
 
     // 9.3.2.e — risk-treatment status (existing + register diff)
     risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}${lastMrm ? `\n\nSince last MRM (${lastMrm.meeting_date}):\n  Risks added: ${risksAddedSinceLast}\n  Risks closed/treated: ${risksClosedSinceLast}` : ''}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
@@ -3924,8 +4964,7 @@ function compute932InputPack(wsId) {
   };
 }
 
-app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   const { meeting_date, attendees } = req.body;
   const pack = compute932InputPack(req.workspace.id);
   const id = db.prepare(`INSERT INTO mrms
@@ -3946,7 +4985,7 @@ app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => 
 // Useful when a saved MRM has gone stale (e.g., NCs closed since the meeting
 // was scheduled, new audit findings recorded). Re-saves the three auto-pack
 // fields from a fresh compute.
-app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   const mrm = db.prepare('SELECT id, status FROM mrms WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!mrm) return res.status(404).send('Not found');
   const pack = compute932InputPack(req.workspace.id);
@@ -4008,8 +5047,7 @@ app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) 
   });
 });
 
-app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   const f = ['meeting_date','attendees','status','context_changes','prior_actions_status',
              'performance_review','feedback_interested_parties','risk_treatment_status',
              'improvement_opportunities','decisions','action_items'];
@@ -4023,8 +5061,7 @@ app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res)
   res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   db.prepare('DELETE FROM mrms WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/mrms');
 });
@@ -4041,8 +5078,7 @@ app.get('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req
   res.render('nonconformities', { user: req.user, ws: req.workspace, ncs, filter });
 });
 
-app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const { title, source, description, severity, iso_item_id } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, description, severity, iso_item_id)
@@ -4064,8 +5100,7 @@ app.get('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, 
   res.render('nonconformity_detail', { user: req.user, ws: req.workspace, nc, allItems, correctiveTasks });
 });
 
-app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const f = ['title','source','source_ref','description','severity','iso_item_id',
              'root_cause','corrective_action','responsible','due_date','effectiveness_check','status'];
   const set = []; const vals = [];
@@ -4094,8 +5129,7 @@ app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace,
 });
 
 // Phase C: spawn a corrective-action Task from a Nonconformity (closes audit -> NC -> task -> control loop)
-app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const nc = db.prepare('SELECT * FROM nonconformities WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!nc) return res.status(404).send('Not found');
   const title = `Corrective action: ${nc.title}`;
@@ -4108,15 +5142,13 @@ app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requir
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + nc.id);
 });
 
-app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_admin') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   db.prepare('DELETE FROM nonconformities WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities');
 });
 
 // ==================== BULK CONTROL UPDATE ====================
-app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const { ids, status, applicability, owner_id } = req.body;
   const idList = Array.isArray(ids) ? ids : (ids ? [ids] : []);
   let count = 0;
@@ -4138,8 +5170,7 @@ app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, (req,
 });
 
 // ==================== AUTOSAVE (control fields) ====================
-app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorkspace, express.json(), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).json({ ok: false });
+app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorkspace, requirePermission('control.update'), express.json(), (req, res) => {
   getOrCreateState(req.workspace.id, req.params.isoId);
   const allowed = ['status','applicability','inclusion_justification','exclusion_justification',
                    'maturity','notes','owner_id','due_date'];
@@ -4148,12 +5179,32 @@ app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorks
   Object.keys(req.body).forEach(k => {
     if (allowed.includes(k)) { sets.push(`${k}=?`); vals.push(req.body[k] || null); }
   });
-  if (sets.length) {
-    sets.push('last_updated=CURRENT_TIMESTAMP');
-    vals.push(req.workspace.id, req.params.isoId);
-    db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+  if (!sets.length) return res.json({ ok: true, saved_at: new Date().toISOString() });
+
+  // Optimistic-concurrency: if the client passes the last_updated value it
+  // last received, we refuse the write when the row has moved on (another
+  // consultant's autosave or explicit save changed it). The client should
+  // re-read the page state and either merge or re-fetch. Clients that don't
+  // pass last_updated (legacy callers, e.g. older kanban) fall through to
+  // the old last-writer-wins path so this change doesn't break them.
+  const clientStamp = req.body.last_updated || null;
+  sets.push('last_updated=CURRENT_TIMESTAMP');
+  vals.push(req.workspace.id, req.params.isoId);
+  let sql = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
+  if (clientStamp) { sql += ` AND last_updated = ?`; vals.push(clientStamp); }
+  const result = db.prepare(sql).run(...vals);
+  if (clientStamp && result.changes === 0) {
+    const current = db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`)
+      .get(req.workspace.id, req.params.isoId);
+    return res.status(409).json({
+      ok: false, conflict: true,
+      message: 'Another consultant updated this control. Reload to see their changes.',
+      current_last_updated: current ? current.last_updated : null
+    });
   }
-  res.json({ ok: true, saved_at: new Date().toISOString() });
+  const cur = db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`)
+    .get(req.workspace.id, req.params.isoId);
+  res.json({ ok: true, saved_at: new Date().toISOString(), last_updated: cur ? cur.last_updated : null });
 });
 
 // ==================== FRAMEWORK MAPPINGS API (lookup for control_detail) ====================
@@ -4761,7 +5812,6 @@ app.get('/api/search', requireAuth, (req, res) => {
         ['Controls', '/controls', 'annex a clauses wizard'],
         ['Assets', '/assets', 'inventory asset register'],
         ['Risks', '/risks', 'risk register'],
-        ['Interested parties', '/interested-parties', 'clause 4.2 stakeholders parties'],
         ['Objectives', '/objectives', 'clause 6.2 information security objectives kpi'],
         ['Risk methodology', '/risk-methodology', 'risk criteria scales'],
         ['Risk acceptances', '/risk-acceptances', 'accepted risks'],
@@ -5075,8 +6125,7 @@ app.get('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res)
   res.render('incidents', { user: req.user, ws: req.workspace, incidents, filter });
 });
 
-app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const { title, category, severity, detected_at, reported_by, description } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO incidents (workspace_id, title, category, severity, detected_at, reported_by, description)
@@ -5099,8 +6148,7 @@ app.get('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req, 
   res.render('incident_detail', { user: req.user, ws: req.workspace, inc, events, runbooks, runbook });
 });
 
-app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const f = ['title','category','severity','detected_at','reported_by','status','description','affected_assets',
             'containment_actions','eradication_actions','recovery_actions','lessons_learned','external_notification'];
   const set = []; const vals = [];
@@ -5114,21 +6162,341 @@ app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req,
   res.redirect('/workspaces/' + req.workspace.id + '/incidents/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const inc = db.prepare(`SELECT * FROM incidents WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!inc) return redirectBack(req, res);
   if (inc.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + inc.nonconformity_id);
   const sev = inc.severity === 'critical' || inc.severity === 'high' ? 'major' : 'minor';
   const ncId = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, source_ref, description, severity)
     VALUES (?, ?, 'incident', ?, ?, ?)`).run(req.workspace.id, inc.title, 'Incident #' + inc.id, inc.description, sev).lastInsertRowid;
-  db.prepare(`UPDATE incidents SET nonconformity_id=? WHERE id=?`).run(ncId, inc.id);
+  db.prepare(`UPDATE incidents SET nonconformity_id=? WHERE id=? AND workspace_id=?`).run(ncId, inc.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
-app.post('/workspaces/:wsId/incidents/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/incidents/:id/delete', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   db.prepare(`DELETE FROM incidents WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/incidents');
+});
+
+// ==================== BUSINESS CONTINUITY / BIA (A.5.29, A.5.30) ====================
+
+app.get('/workspaces/:wsId/bcp', requireAuth, requireWorkspace, (req, res) => {
+  const wsId = req.workspace.id;
+  const processes = db.prepare(`SELECT * FROM bcp_processes WHERE workspace_id=? ORDER BY
+    CASE criticality WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END, name`).all(wsId);
+  const plans = db.prepare(`SELECT p.*,
+    (SELECT COUNT(*) FROM bcp_plan_processes pp WHERE pp.plan_id=p.id) AS linked_count,
+    (SELECT MAX(t.test_date) FROM bcp_tests t WHERE t.plan_id=p.id) AS last_tested,
+    (SELECT COUNT(*) FROM bcp_tests t WHERE t.plan_id=p.id AND t.pass=1) AS tests_pass,
+    (SELECT COUNT(*) FROM bcp_tests t WHERE t.plan_id=p.id AND (t.pass=0 OR t.pass IS NULL)) AS tests_fail
+    FROM bcp_plans p WHERE p.workspace_id=? ORDER BY p.name`).all(wsId);
+  // Summary stats
+  const totalProcesses = processes.length;
+  const criticalProcesses = processes.filter(p => p.criticality === 'critical').length;
+  // Critical processes with no linked plan
+  const linkedProcessIds = new Set(db.prepare(`SELECT DISTINCT process_id FROM bcp_plan_processes pp
+    JOIN bcp_plans pl ON pl.id=pp.plan_id WHERE pl.workspace_id=?`).all(wsId).map(r => r.process_id));
+  const criticalUnlinked = processes.filter(p => p.criticality === 'critical' && !linkedProcessIds.has(p.id));
+  const today = new Date().toISOString().split('T')[0];
+  const overdueReview = plans.filter(p => p.next_review_date && p.next_review_date < today).length;
+  const lastTestRow = db.prepare(`SELECT MAX(test_date) AS d FROM bcp_tests WHERE workspace_id=?`).get(wsId);
+  const lastTestDate = lastTestRow ? lastTestRow.d : null;
+  const summary = { totalProcesses, criticalProcesses, criticalUnlinked: criticalUnlinked.length, overdueReview, lastTestDate };
+  res.render('bcp', { user: req.user, ws: req.workspace, processes, plans, summary, criticalUnlinked, today });
+});
+
+// BCP Processes CRUD
+app.post('/workspaces/:wsId/bcp/processes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { name, description, owner_name, criticality, max_tolerable_downtime_hours, rto_hours, rpo_hours, dependencies, peak_periods, status } = req.body;
+  if (!name) return redirectBack(req, res);
+  const id = db.prepare(`INSERT INTO bcp_processes (workspace_id, name, description, owner_name, criticality,
+    max_tolerable_downtime_hours, rto_hours, rpo_hours, dependencies, peak_periods, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    req.workspace.id, name, description || null, owner_name || null, criticality || 'medium',
+    max_tolerable_downtime_hours || null, rto_hours || null, rpo_hours || null,
+    dependencies || null, peak_periods || null, status || 'active'
+  ).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'create_bcp_process', 'bcp_process', id, { name }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/bcp', 'Process added'));
+});
+
+app.post('/workspaces/:wsId/bcp/processes/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const f = ['name','description','owner_name','criticality','max_tolerable_downtime_hours','rto_hours','rpo_hours','dependencies','peak_periods','status'];
+  const set = []; const vals = [];
+  f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+  if (set.length) {
+    vals.push(req.params.id, req.workspace.id);
+    db.prepare(`UPDATE bcp_processes SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+    logAction(req.user.id, req.workspace.id, 'update_bcp_process', 'bcp_process', req.params.id, null, auditCtx(req));
+  }
+  redirectBack(req, res);
+});
+
+app.post('/workspaces/:wsId/bcp/processes/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM bcp_processes WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'delete_bcp_process', 'bcp_process', req.params.id, null, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/bcp', 'Process deleted'));
+});
+
+// BCP Plans CRUD
+app.post('/workspaces/:wsId/bcp/plans', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { name, description, plan_type, recovery_steps, key_contacts, alternate_site, status, next_review_date } = req.body;
+  if (!name) return redirectBack(req, res);
+  const id = db.prepare(`INSERT INTO bcp_plans (workspace_id, name, description, plan_type, recovery_steps,
+    key_contacts, alternate_site, status, next_review_date, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    req.workspace.id, name, description || null, plan_type || 'bcp', recovery_steps || null,
+    key_contacts || null, alternate_site || null, status || 'draft', next_review_date || null, req.user.id
+  ).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'create_bcp_plan', 'bcp_plan', id, { name }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/bcp/plans/' + id, 'Plan created'));
+});
+
+app.get('/workspaces/:wsId/bcp/plans/:id', requireAuth, requireWorkspace, (req, res) => {
+  const plan = db.prepare(`SELECT * FROM bcp_plans WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!plan) return res.status(404).send('Not found');
+  const linkedProcesses = db.prepare(`SELECT p.*, pp.id AS link_id FROM bcp_processes p
+    JOIN bcp_plan_processes pp ON pp.process_id=p.id WHERE pp.plan_id=? AND p.workspace_id=?`).all(plan.id, req.workspace.id);
+  const tests = db.prepare(`SELECT * FROM bcp_tests WHERE plan_id=? AND workspace_id=? ORDER BY test_date DESC`).all(plan.id, req.workspace.id);
+  const allProcesses = db.prepare(`SELECT * FROM bcp_processes WHERE workspace_id=? ORDER BY name`).all(req.workspace.id);
+  const linkedIds = new Set(linkedProcesses.map(p => p.id));
+  const unlinkableProcesses = allProcesses.filter(p => !linkedIds.has(p.id));
+  res.render('bcp_plan', { user: req.user, ws: req.workspace, plan, linkedProcesses, tests, allProcesses, unlinkableProcesses });
+});
+
+app.post('/workspaces/:wsId/bcp/plans/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const f = ['name','description','plan_type','recovery_steps','key_contacts','alternate_site','status','next_review_date'];
+  const set = []; const vals = [];
+  f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+  if (req.body.mark_reviewed) {
+    set.push('last_reviewed_at=CURRENT_TIMESTAMP');
+  }
+  if (set.length) {
+    vals.push(req.params.id, req.workspace.id);
+    db.prepare(`UPDATE bcp_plans SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+    logAction(req.user.id, req.workspace.id, 'update_bcp_plan', 'bcp_plan', req.params.id, null, auditCtx(req));
+  }
+  res.redirect('/workspaces/' + req.workspace.id + '/bcp/plans/' + req.params.id);
+});
+
+app.post('/workspaces/:wsId/bcp/plans/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM bcp_plans WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'delete_bcp_plan', 'bcp_plan', req.params.id, null, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/bcp', 'Plan deleted'));
+});
+
+// Link/unlink processes to a plan
+app.post('/workspaces/:wsId/bcp/plans/:id/processes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const planId = req.params.id;
+  const plan = db.prepare(`SELECT id FROM bcp_plans WHERE id=? AND workspace_id=?`).get(planId, req.workspace.id);
+  if (!plan) return res.status(404).send('Not found');
+  if (req.body.action === 'link' && req.body.process_id) {
+    const proc = db.prepare(`SELECT id FROM bcp_processes WHERE id=? AND workspace_id=?`).get(req.body.process_id, req.workspace.id);
+    if (proc) {
+      db.prepare(`INSERT OR IGNORE INTO bcp_plan_processes (plan_id, process_id) VALUES (?, ?)`).run(planId, proc.id);
+      logAction(req.user.id, req.workspace.id, 'link_bcp_process', 'bcp_plan', planId, { process_id: proc.id }, auditCtx(req));
+    }
+  } else if (req.body.action === 'unlink' && req.body.process_id) {
+    db.prepare(`DELETE FROM bcp_plan_processes WHERE plan_id=? AND process_id=?`).run(planId, req.body.process_id);
+    logAction(req.user.id, req.workspace.id, 'unlink_bcp_process', 'bcp_plan', planId, { process_id: req.body.process_id }, auditCtx(req));
+  }
+  res.redirect('/workspaces/' + req.workspace.id + '/bcp/plans/' + planId);
+});
+
+// BCP Tests CRUD
+app.post('/workspaces/:wsId/bcp/plans/:id/tests', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const planId = req.params.id;
+  const plan = db.prepare(`SELECT id FROM bcp_plans WHERE id=? AND workspace_id=?`).get(planId, req.workspace.id);
+  if (!plan) return res.status(404).send('Not found');
+  const { test_type, test_date, participants, scenario_description, results, lessons_learned,
+    rto_achieved_hours, rpo_achieved_hours, pass, action_items, next_test_date } = req.body;
+  const id = db.prepare(`INSERT INTO bcp_tests (workspace_id, plan_id, test_type, test_date, participants,
+    scenario_description, results, lessons_learned, rto_achieved_hours, rpo_achieved_hours, pass,
+    action_items, next_test_date, conducted_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    req.workspace.id, planId, test_type || 'tabletop', test_date || null, participants || null,
+    scenario_description || null, results || null, lessons_learned || null,
+    rto_achieved_hours || null, rpo_achieved_hours || null,
+    pass === '1' ? 1 : (pass === '0' ? 0 : null),
+    action_items || null, next_test_date || null, req.user.id
+  ).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'create_bcp_test', 'bcp_test', id, { plan_id: planId, test_type }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/bcp/plans/' + planId, 'Test recorded'));
+});
+
+app.post('/workspaces/:wsId/bcp/tests/:testId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const test = db.prepare(`SELECT * FROM bcp_tests WHERE id=? AND workspace_id=?`).get(req.params.testId, req.workspace.id);
+  if (!test) return res.status(404).send('Not found');
+  const f = ['test_type','test_date','participants','scenario_description','results','lessons_learned',
+    'rto_achieved_hours','rpo_achieved_hours','action_items','next_test_date'];
+  const set = []; const vals = [];
+  f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+  if (req.body.pass !== undefined) { set.push('pass=?'); vals.push(req.body.pass === '1' ? 1 : (req.body.pass === '0' ? 0 : null)); }
+  if (set.length) {
+    vals.push(req.params.testId, req.workspace.id);
+    db.prepare(`UPDATE bcp_tests SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+    logAction(req.user.id, req.workspace.id, 'update_bcp_test', 'bcp_test', req.params.testId, null, auditCtx(req));
+  }
+  res.redirect('/workspaces/' + req.workspace.id + '/bcp/plans/' + test.plan_id);
+});
+
+app.post('/workspaces/:wsId/bcp/tests/:testId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const test = db.prepare(`SELECT plan_id FROM bcp_tests WHERE id=? AND workspace_id=?`).get(req.params.testId, req.workspace.id);
+  if (!test) return res.status(404).send('Not found');
+  db.prepare(`DELETE FROM bcp_tests WHERE id=? AND workspace_id=?`).run(req.params.testId, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'delete_bcp_test', 'bcp_test', req.params.testId, null, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/bcp/plans/' + test.plan_id, 'Test deleted'));
+});
+
+// ==================== CHANGE MANAGEMENT REGISTER (A.8.32) ====================
+app.get('/workspaces/:wsId/changes', requireAuth, requireWorkspace, (req, res) => {
+  const { status, change_type, risk_level } = req.query;
+  let q = `SELECT * FROM changes WHERE workspace_id=?`;
+  const params = [req.workspace.id];
+  if (status && status !== 'all') { q += ` AND status=?`; params.push(status); }
+  if (change_type && change_type !== 'all') { q += ` AND change_type=?`; params.push(change_type); }
+  if (risk_level && risk_level !== 'all') { q += ` AND risk_level=?`; params.push(risk_level); }
+  q += ` ORDER BY created_at DESC`;
+  const changes = db.prepare(q).all(...params);
+
+  // Summary stats
+  const total = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=?`).get(req.workspace.id).c;
+  const openCount = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=? AND status NOT IN ('closed')`).get(req.workspace.id).c;
+  const emergencyCount = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=? AND change_type='emergency'`).get(req.workspace.id).c;
+  const pendingApproval = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=? AND status='submitted'`).get(req.workspace.id).c;
+  const implemented = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=? AND status IN ('implemented','closed')`).get(req.workspace.id).c;
+  const closed = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=? AND status='closed'`).get(req.workspace.id).c;
+  const pirPct = implemented > 0 ? Math.round((closed / implemented) * 100) : 0;
+
+  res.render('changes', {
+    user: req.user, ws: req.workspace, changes,
+    filters: { status: status || 'all', change_type: change_type || 'all', risk_level: risk_level || 'all' },
+    stats: { total, openCount, emergencyCount, pendingApproval, pirPct }
+  });
+});
+
+app.get('/workspaces/:wsId/changes/:id', requireAuth, requireWorkspace, (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!change) return res.status(404).render('error', { user: req.user, message: 'Change request not found.' });
+  const approvals = db.prepare(`SELECT * FROM change_approvals WHERE change_id=? AND workspace_id=? ORDER BY sequence, id`).all(change.id, req.workspace.id);
+  res.render('change_detail', { user: req.user, ws: req.workspace, change, approvals });
+});
+
+app.post('/workspaces/:wsId/changes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { title, description, change_type, category, risk_assessment, risk_level, impact_assessment, rollback_plan, requester_name } = req.body;
+  if (!title || !title.trim()) return redirectBack(req, res);
+  const id = db.prepare(`INSERT INTO changes (workspace_id, title, description, change_type, category, requester_name, requester_id, risk_assessment, risk_level, impact_assessment, rollback_plan, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    req.workspace.id, title.trim(), description || null, change_type || 'normal', category || null,
+    requester_name || req.user.name || req.user.email, req.user.id,
+    risk_assessment || null, risk_level || 'medium', impact_assessment || null, rollback_plan || null,
+    req.user.id
+  ).lastInsertRowid;
+  logAction(req.user.id, req.workspace.id, 'create_change', 'change', id, { title: title.trim() }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + id, 'Change request created'));
+});
+
+app.post('/workspaces/:wsId/changes/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!change) return redirectBack(req, res);
+  const { title, description, change_type, category, risk_assessment, risk_level, impact_assessment, rollback_plan, requester_name, implementation_notes, test_results } = req.body;
+  db.prepare(`UPDATE changes SET title=?, description=?, change_type=?, category=?, risk_assessment=?, risk_level=?, impact_assessment=?, rollback_plan=?, requester_name=?, implementation_notes=?, test_results=?
+    WHERE id=? AND workspace_id=?`).run(
+    title || change.title, description || null, change_type || change.change_type, category || null,
+    risk_assessment || null, risk_level || change.risk_level, impact_assessment || null, rollback_plan || null,
+    requester_name || change.requester_name, implementation_notes || null, test_results || null,
+    req.params.id, req.workspace.id
+  );
+  logAction(req.user.id, req.workspace.id, 'update_change', 'change', req.params.id, null, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/changes/' + req.params.id);
+});
+
+app.post('/workspaces/:wsId/changes/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM change_approvals WHERE change_id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  db.prepare(`DELETE FROM changes WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'delete_change', 'change', req.params.id, null, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes', 'Change request deleted'));
+});
+
+app.post('/workspaces/:wsId/changes/:id/submit', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=? AND status='draft'`).get(req.params.id, req.workspace.id);
+  if (!change) return redirectBack(req, res, 'Change must be in draft status to submit', 'warn');
+  db.prepare(`UPDATE changes SET status='submitted', submitted_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'submit_change', 'change', req.params.id, { from: 'draft', to: 'submitted' }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + req.params.id, 'Change submitted for approval'));
+});
+
+app.post('/workspaces/:wsId/changes/:id/approve', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!change) return redirectBack(req, res);
+  // Allow approval on submitted changes or retrospective approval on implemented emergency changes
+  if (change.status !== 'submitted' && !(change.change_type === 'emergency' && change.status === 'implemented')) {
+    return redirectBack(req, res, 'Change is not awaiting approval', 'warn');
+  }
+  const reason = req.body.reason || null;
+  db.prepare(`INSERT INTO change_approvals (change_id, workspace_id, approver_id, approver_name, decision, reason, decided_at)
+    VALUES (?, ?, ?, ?, 'approved', ?, CURRENT_TIMESTAMP)`).run(
+    change.id, req.workspace.id, req.user.id, req.user.name || req.user.email, reason
+  );
+  // Update status to approved (for submitted changes)
+  if (change.status === 'submitted') {
+    db.prepare(`UPDATE changes SET status='approved', approved_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`).run(change.id, req.workspace.id);
+  }
+  logAction(req.user.id, req.workspace.id, 'approve_change', 'change', change.id, { decision: 'approved', reason }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + change.id, 'Change approved'));
+});
+
+app.post('/workspaces/:wsId/changes/:id/reject', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=? AND status='submitted'`).get(req.params.id, req.workspace.id);
+  if (!change) return redirectBack(req, res, 'Change is not awaiting approval', 'warn');
+  const reason = req.body.reason || null;
+  db.prepare(`INSERT INTO change_approvals (change_id, workspace_id, approver_id, approver_name, decision, reason, decided_at)
+    VALUES (?, ?, ?, ?, 'rejected', ?, CURRENT_TIMESTAMP)`).run(
+    change.id, req.workspace.id, req.user.id, req.user.name || req.user.email, reason
+  );
+  db.prepare(`UPDATE changes SET status='rejected' WHERE id=? AND workspace_id=?`).run(change.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'reject_change', 'change', change.id, { decision: 'rejected', reason }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + change.id, 'Change rejected'));
+});
+
+app.post('/workspaces/:wsId/changes/:id/implement', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!change) return redirectBack(req, res);
+  // Normal/standard: must be approved. Emergency: can go from draft directly.
+  const allowedStatuses = change.change_type === 'emergency' ? ['draft', 'approved'] : ['approved'];
+  if (!allowedStatuses.includes(change.status)) {
+    return redirectBack(req, res, 'Change must be approved before implementation' + (change.change_type === 'emergency' ? ' (or draft for emergency)' : ''), 'warn');
+  }
+  const { implementation_notes, test_results } = req.body;
+  db.prepare(`UPDATE changes SET status='implemented', implemented_at=CURRENT_TIMESTAMP, implementation_notes=?, test_results=?
+    WHERE id=? AND workspace_id=?`).run(
+    implementation_notes || change.implementation_notes || null,
+    test_results || change.test_results || null,
+    change.id, req.workspace.id
+  );
+  logAction(req.user.id, req.workspace.id, 'implement_change', 'change', change.id, { from: change.status, to: 'implemented' }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + change.id, 'Change marked as implemented'));
+});
+
+app.post('/workspaces/:wsId/changes/:id/close', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!change) return redirectBack(req, res);
+  if (change.status !== 'implemented') return redirectBack(req, res, 'Change must be implemented before closing', 'warn');
+  // Emergency changes need retrospective approval before closing
+  if (change.change_type === 'emergency') {
+    const hasApproval = db.prepare(`SELECT COUNT(*) c FROM change_approvals WHERE change_id=? AND workspace_id=? AND decision='approved'`).get(change.id, req.workspace.id).c;
+    if (!hasApproval) return redirectBack(req, res, 'Emergency changes require retrospective approval before closing', 'warn');
+  }
+  const { post_implementation_review, success, pir_date } = req.body;
+  db.prepare(`UPDATE changes SET status='closed', closed_at=CURRENT_TIMESTAMP, post_implementation_review=?, success=?, pir_date=?
+    WHERE id=? AND workspace_id=?`).run(
+    post_implementation_review || null,
+    success === 'yes' || success === '1' ? 1 : 0,
+    pir_date || new Date().toISOString().split('T')[0],
+    change.id, req.workspace.id
+  );
+  logAction(req.user.id, req.workspace.id, 'close_change', 'change', change.id, { success: success === 'yes' || success === '1' ? 1 : 0 }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + change.id, 'Change closed with PIR'));
 });
 
 // ==================== VENDORS / SUPPLIERS - TPRM ====================
@@ -5200,7 +6568,7 @@ function recomputeSupplierRisk(supplierId, wsId) {
   if (!s) return;
   const inherent = computeInherentRisk(s);
   const residual = computeResidualRisk(supplierId, inherent);
-  db.prepare(`UPDATE suppliers SET inherent_risk_score=?, residual_risk_score=? WHERE id=?`).run(inherent, residual, supplierId);
+  db.prepare(`UPDATE suppliers SET inherent_risk_score=?, residual_risk_score=? WHERE id=? AND workspace_id=?`).run(inherent, residual, supplierId, wsId);
 }
 
 function tierFromRisk(score) {
@@ -5248,8 +6616,7 @@ app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermi
   res.render('vendors', { user: req.user, ws: req.workspace, vendors, filter, summary, concentration, renewals });
 });
 
-app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure } = req.body;
   if (!name) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO suppliers (workspace_id, name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure, lifecycle_stage)
@@ -5265,8 +6632,8 @@ app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, (req, res) 
 
   recomputeSupplierRisk(id, req.workspace.id);
   // Auto-tier from inherent risk
-  const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=?`).get(id);
-  db.prepare(`UPDATE suppliers SET tier=? WHERE id=?`).run(tierFromRisk(cur.inherent_risk_score), id);
+  const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(id, req.workspace.id);
+  db.prepare(`UPDATE suppliers SET tier=? WHERE id=? AND workspace_id=?`).run(tierFromRisk(cur.inherent_risk_score), id, req.workspace.id);
 
   logAction(req.user.id, req.workspace.id, 'create_supplier', 'supplier', id, { name });
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/vendors/' + id, 'Supplier added'));
@@ -5280,7 +6647,7 @@ app.get('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, re
   const docs = db.prepare(`SELECT * FROM supplier_documents WHERE supplier_id=? ORDER BY uploaded_at DESC`).all(v.id);
   const subprocessors = db.prepare(`SELECT * FROM supplier_subprocessors WHERE supplier_id=? ORDER BY name`).all(v.id);
   const reviews = db.prepare(`SELECT * FROM supplier_reviews WHERE supplier_id=? ORDER BY review_date DESC, created_at DESC`).all(v.id);
-  const notesRaw = db.prepare(`SELECT * FROM supplier_notes WHERE supplier_id=? ORDER BY created_at DESC`).all(v.id);
+  const notesRaw = db.prepare(`SELECT * FROM supplier_notes WHERE supplier_id=? ORDER BY created_at DESC, id DESC`).all(v.id);
   const notes = notesRaw.map(n => ({ ...n, body: enc.decryptIfNeeded(n.body, req.workspace.id) }));
   const clauses = db.prepare(`SELECT * FROM supplier_clauses WHERE supplier_id=? ORDER BY id`).all(v.id);
   const supplierControls = db.prepare(`
@@ -5303,8 +6670,7 @@ app.get('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, re
   });
 });
 
-app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const f = ['name','service_provided','tier','data_access','data_volume','business_criticality','dependency_type',
             'lifecycle_stage','contract_start','contract_end','next_review_date','attestations','contact','website',
             'industry','location','parent_company','regulatory_exposure','annual_spend','renewal_notice_days',
@@ -5326,14 +6692,13 @@ app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, r
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   db.prepare(`DELETE FROM suppliers WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors');
 });
 
 // Documents
-app.post('/workspaces/:wsId/vendors/:id/documents', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/documents', requireAuth, requireWorkspace, requirePermission('supplier.manage'), upload.single('file'), (req, res) => {
   const { doc_type, name, effective_date, expiry_date, notes } = req.body;
   if (!name) return redirectBack(req, res);
   let storedPath = null, sha = null, size = null, filename = null;
@@ -5361,19 +6726,18 @@ app.get('/workspaces/:wsId/vendors/:id/documents/:docId/download', requireAuth, 
   res.download(fp, d.filename);
 });
 
-app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, requireWorkspace, (req, res) => {
-  const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=?`).get(req.params.docId, req.params.id);
+app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=? AND workspace_id=?`).get(req.params.docId, req.params.id, req.workspace.id);
   if (d) {
     if (d.stored_path) { const fp = resolveUploadPath(d.stored_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); }
-    db.prepare(`DELETE FROM supplier_documents WHERE id=?`).run(d.id);
+    db.prepare(`DELETE FROM supplier_documents WHERE id=? AND workspace_id=?`).run(d.id, req.workspace.id);
     recomputeSupplierRisk(req.params.id, req.workspace.id);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=documents');
 });
 
 // Sub-processors
-app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { name, service_provided, data_access, location, approved } = req.body;
   if (!name) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_subprocessors (workspace_id, supplier_id, name, service_provided, data_access, location, approved, approved_at)
@@ -5384,16 +6748,16 @@ app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWork
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=subprocessors');
 });
 
-app.post('/workspaces/:wsId/vendors/:id/subprocessors/:spId/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`DELETE FROM supplier_subprocessors WHERE id=? AND supplier_id=?`).run(req.params.spId, req.params.id);
+app.post('/workspaces/:wsId/vendors/:id/subprocessors/:spId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`DELETE FROM supplier_subprocessors WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.spId, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=subprocessors');
 });
 
 // Reviews
-app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { review_date, reviewer, outcome, findings, action_items, next_review_date } = req.body;
-  const supplier = db.prepare(`SELECT inherent_risk_score, residual_risk_score FROM suppliers WHERE id=?`).get(req.params.id);
+  const supplier = db.prepare(`SELECT inherent_risk_score, residual_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!supplier) return res.status(404).send('Supplier not found');
   db.prepare(`INSERT INTO supplier_reviews (workspace_id, supplier_id, review_date, reviewer, outcome, inherent_risk, residual_risk, findings, action_items, next_review_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, review_date || null, reviewer || null,
@@ -5402,13 +6766,13 @@ app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace,
   );
   // Update supplier next_review_date and last_assessed
   if (next_review_date) {
-    db.prepare(`UPDATE suppliers SET next_review_date=?, last_assessed=? WHERE id=?`).run(next_review_date, review_date || new Date().toISOString().split('T')[0], req.params.id);
+    db.prepare(`UPDATE suppliers SET next_review_date=?, last_assessed=? WHERE id=? AND workspace_id=?`).run(next_review_date, review_date || new Date().toISOString().split('T')[0], req.params.id, req.workspace.id);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=reviews');
 });
 
 // Notes
-app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { body, internal_only } = req.body;
   if (!body) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_notes (workspace_id, supplier_id, user_name, body, internal_only)
@@ -5421,24 +6785,22 @@ app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, (
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=notes');
 });
 
-app.post('/workspaces/:wsId/vendors/:id/notes/:noteId/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`DELETE FROM supplier_notes WHERE id=? AND supplier_id=?`).run(req.params.noteId, req.params.id);
+app.post('/workspaces/:wsId/vendors/:id/notes/:noteId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`DELETE FROM supplier_notes WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.noteId, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=notes');
 });
 
 // Clauses
-app.post('/workspaces/:wsId/vendors/:id/clauses/:clauseId', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/clauses/:clauseId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { status, notes } = req.body;
-  db.prepare(`UPDATE supplier_clauses SET status=?, notes=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND supplier_id=?`)
-    .run(status, notes || null, req.params.clauseId, req.params.id);
+  db.prepare(`UPDATE supplier_clauses SET status=?, notes=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND supplier_id=? AND workspace_id=?`)
+    .run(status, notes || null, req.params.clauseId, req.params.id, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=clauses');
 });
 
 // Phase B: declare which Annex A controls a supplier handles on our behalf (A.5.19-A.5.23)
-app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const v = db.prepare('SELECT id FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!v) return res.status(404).send('Not found');
   const { iso_item_id, notes } = req.body;
@@ -5451,8 +6813,7 @@ app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + v.id + '?tab=controls');
 });
 
-app.post('/workspaces/:wsId/vendors/:id/controls/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const v = db.prepare('SELECT id FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!v) return res.status(404).send('Not found');
   const link = db.prepare('SELECT * FROM supplier_controls WHERE id=? AND supplier_id=?').get(req.params.linkId, v.id);
@@ -5464,10 +6825,9 @@ app.post('/workspaces/:wsId/vendors/:id/controls/:linkId/delete', requireAuth, r
 });
 
 // Questionnaires
-app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { template_id } = req.body;
-  const tpl = db.prepare(`SELECT * FROM questionnaire_templates WHERE id=?`).get(template_id);
+  const tpl = db.prepare(`SELECT * FROM questionnaire_templates WHERE id=? AND (is_system=1 OR firm_id=?)`).get(template_id, req.workspace.firm_id);
   if (!tpl) return redirectBack(req, res);
   const qCount = db.prepare(`SELECT COUNT(*) c FROM questionnaire_questions WHERE template_id=?`).get(template_id).c;
   const qid = db.prepare(`INSERT INTO supplier_questionnaires (workspace_id, supplier_id, template_id, template_name, status, sent_at, total_questions)
@@ -5493,10 +6853,11 @@ app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requir
   res.render('vendor_questionnaire', { user: req.user, ws: req.workspace, q, sections, respMap });
 });
 
-app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const ws = req.workspace;
   const qid = req.params.qId;
+  const questionnaire = db.prepare('SELECT id FROM supplier_questionnaires WHERE id=? AND workspace_id=?').get(qid, ws.id);
+  if (!questionnaire) return res.status(404).send('Questionnaire not found');
 
   // Save responses for any question_X_answer fields
   const qIds = Object.keys(req.body).filter(k => k.startsWith('answer_')).map(k => parseInt(k.replace('answer_',''),10));
@@ -5529,14 +6890,14 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
     responded_at=COALESCE(responded_at, CASE WHEN ?='responded' OR ?='reviewed' THEN CURRENT_TIMESTAMP END),
     reviewed_at=CASE WHEN ?='reviewed' THEN CURRENT_TIMESTAMP ELSE reviewed_at END,
     reviewer=COALESCE(?, reviewer), reviewer_comments=COALESCE(?, reviewer_comments)
-    WHERE id=?`).run(allQ.filter(q => q.answer).length, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid);
+    WHERE id=? AND workspace_id=?`).run(allQ.filter(q => q.answer).length, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   logAction(req.user.id, ws.id, 'update_questionnaire', 'questionnaire', qid, { status, score: finalScore });
   res.redirect('/workspaces/' + ws.id + '/vendors/' + req.params.id + '/questionnaires/' + qid);
 });
 
-app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`DELETE FROM supplier_questionnaires WHERE id=? AND supplier_id=?`).run(req.params.qId, req.params.id);
+app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`DELETE FROM supplier_questionnaires WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.qId, req.params.id, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=questionnaires');
 });
@@ -5668,20 +7029,47 @@ app.post('/workspaces/:wsId/risk-methodology/reset', requireAuth, requireWorkspa
 });
 
 // ==================== DOCUMENT VERSIONING + APPROVAL + E-SIG ====================
+// Race-safe: MAX(version) → INSERT → UPDATE current_version_id all run in
+// one transaction so two consultants clicking "Submit for review" at the
+// same time can't end up with two version=N rows (which the UNIQUE
+// (document_id, version) constraint would catch as an unhandled 500).
+// On a constraint collision (the other transaction beat us), retry once;
+// after the second failure surface a clean error rather than a 500.
 function snapshotDocVersion(docId, wsId, status, userId, summary) {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(docId, wsId);
   if (!doc) return null;
   const decryptedContent = enc.decryptIfNeeded(doc.content, wsId);
   const hash = enc.sha256(decryptedContent || '');
-  const next = (db.prepare('SELECT MAX(version) AS v FROM doc_versions WHERE document_id=?').get(docId).v || 0) + 1;
-  const id = db.prepare(`INSERT INTO doc_versions (workspace_id, document_id, version, name, content, content_hash, status, change_summary, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    wsId, docId, next, doc.name,
-    enc.encryptIfNeeded(decryptedContent, wsId, true),
-    hash, status || 'draft', summary || null, userId
-  ).lastInsertRowid;
-  db.prepare(`UPDATE generated_docs SET current_version_id=?, version=? WHERE id=?`).run(id, next, docId);
-  return { id, version: next, hash, content: decryptedContent };
+  const encryptedContent = enc.encryptIfNeeded(decryptedContent, wsId, true);
+
+  const attempt = () => {
+    return db.transaction(() => {
+      const next = (db.prepare('SELECT MAX(version) AS v FROM doc_versions WHERE document_id=?').get(docId).v || 0) + 1;
+      const id = db.prepare(`INSERT INTO doc_versions (workspace_id, document_id, version, name, content, content_hash, status, change_summary, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        wsId, docId, next, doc.name, encryptedContent,
+        hash, status || 'draft', summary || null, userId
+      ).lastInsertRowid;
+      db.prepare(`UPDATE generated_docs SET current_version_id=?, version=? WHERE id=?`).run(id, next, docId);
+      return { id, version: next, hash, content: decryptedContent };
+    })();
+  };
+
+  try { return attempt(); }
+  catch (e) {
+    if (e && e.code && e.code.startsWith('SQLITE_CONSTRAINT')) {
+      // Concurrent snapshot won the version=N slot. Re-read MAX and retry
+      // once — almost always succeeds because the colliding transaction has
+      // committed by now.
+      try { return attempt(); }
+      catch (e2) {
+        const wrapped = new Error('Could not save document version — another consultant submitted at the same time. Refresh and try again.');
+        wrapped.cause = e2; wrapped.code = 'DOC_VERSION_CONFLICT';
+        throw wrapped;
+      }
+    }
+    throw e;
+  }
 }
 
 function listVersions(docId) {
@@ -5768,67 +7156,539 @@ function simpleLineDiff(a, b) {
 }
 
 // Submit current draft for review - snapshots a new version, sets approver chain.
+// The chain can mix internal (user-account) approvers and external (magic-link)
+// approvers. Form sends approvers_json containing the ordered chain.
 app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return redirectBack(req, res);
   if (doc.locked) return res.status(400).render('error', { user: req.user, message: 'Document is locked. Create a new version first.' });
-  const approverIds = (req.body.approver_ids || '').split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
-  const summary = req.body.change_summary || null;
-  if (approverIds.length === 0) {
+
+  let chain;
+  try {
+    chain = JSON.parse(req.body.approvers_json || '[]');
+  } catch (_) {
+    return res.status(400).render('error', { user: req.user, message: 'Could not parse approver chain. Try resubmitting from the form.' });
+  }
+  if (!Array.isArray(chain) || chain.length === 0) {
     return res.status(400).render('error', { user: req.user, message: 'Add at least one approver before submitting for review.' });
   }
-  const v = snapshotDocVersion(doc.id, req.workspace.id, 'in_review', req.user.id, summary);
+  // Validate each row
+  for (let i = 0; i < chain.length; i++) {
+    const r = chain[i];
+    if (r.kind === 'internal') {
+      if (!r.user_id || isNaN(parseInt(r.user_id, 10))) {
+        return res.status(400).render('error', { user: req.user, message: `Approver #${i + 1}: pick a user.` });
+      }
+    } else if (r.kind === 'external') {
+      if (!r.name || !r.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) {
+        return res.status(400).render('error', { user: req.user, message: `Approver #${i + 1}: name and a valid email are required for magic-link approvers.` });
+      }
+    } else {
+      return res.status(400).render('error', { user: req.user, message: `Approver #${i + 1}: unknown kind "${r.kind}".` });
+    }
+  }
+
+  const summary = req.body.change_summary || null;
+  let v;
+  try {
+    v = snapshotDocVersion(doc.id, req.workspace.id, 'in_review', req.user.id, summary);
+  } catch (e) {
+    if (e && e.code === 'DOC_VERSION_CONFLICT') {
+      return res.status(409).render('error', { user: req.user,
+        message: 'Another consultant submitted this document for review at the same time. Open the document, review the new version, and decide whether to add another reviewer.' });
+    }
+    throw e;
+  }
   db.prepare(`UPDATE generated_docs SET status='in_review', locked=1, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
   db.prepare(`UPDATE doc_versions SET submitted_at=CURRENT_TIMESTAMP WHERE id=?`).run(v.id);
-  const insApp = db.prepare(`INSERT INTO doc_approvers (workspace_id, document_id, version_id, sequence, user_id, role_label, notified_at)
+
+  const insInternal = db.prepare(`INSERT INTO doc_approvers (workspace_id, document_id, version_id, sequence, user_id, role_label, notified_at)
     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`);
-  approverIds.forEach((uid, idx) => {
-    insApp.run(req.workspace.id, doc.id, v.id, idx + 1, uid, req.body['role_' + uid] || null);
+  const insExternal = db.prepare(`INSERT INTO external_approvers
+    (workspace_id, document_id, version_id, sequence, email, name, role_label, token_hash, expires_at, notified_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`);
+
+  // Per-row token storage - we keep the raw tokens in memory just long
+  // enough to send the emails after the transaction commits. They're
+  // never written to the DB in raw form.
+  const rawTokens = {};
+  const tx = db.transaction(() => {
+    chain.forEach((r, idx) => {
+      const seq = idx + 1;
+      if (r.kind === 'internal') {
+        insInternal.run(req.workspace.id, doc.id, v.id, seq, parseInt(r.user_id, 10), r.role || null);
+      } else {
+        const token = docApprovals.generateToken();
+        const hash = docApprovals.hashToken(token);
+        const expires = docApprovals.expiryFromNow();
+        insExternal.run(req.workspace.id, doc.id, v.id, seq, r.email.trim(), r.name.trim(), r.role || null, hash, expires, req.user.id);
+        rawTokens[seq] = token;
+      }
+    });
   });
+  tx();
+
   logAction(req.user.id, req.workspace.id, 'submit_for_review', 'document', doc.id,
-    { version: v.version, approvers: approverIds.length, summary }, auditCtx(req));
+    { version: v.version, approvers: chain.length, internal: chain.filter(c => c.kind === 'internal').length, external: chain.filter(c => c.kind === 'external').length, summary }, auditCtx(req));
+
+  // Notify only the first approver in sequence (the one whose turn it
+  // is right now); later approvers get nudged as the chain advances in
+  // the /decide and /approve routes. Internal approvers get a "view
+  // document" link; external approvers get the magic-link URL.
+  try {
+    const merged = docApprovals.listChain(db, v.id);
+    const wsName = req.workspace.client_name;
+    const submitter = req.user.name;
+    const docUrl = `${email.appBaseUrl()}/workspaces/${req.workspace.id}/documents/${doc.id}`;
+    const total = merged.length;
+
+    merged.forEach((row, idx) => {
+      const isFirst = idx === 0;
+      if (row.kind === 'internal') {
+        if (!row.person_email) return;
+        const intro = isFirst
+          ? `${submitter} has submitted "${doc.name}" (v${v.version}) for your approval in the ${wsName} workspace.`
+          : `${submitter} has submitted "${doc.name}" (v${v.version}) for approval in the ${wsName} workspace. You are approver #${idx + 1} - you'll be able to decide once the earlier approvers have signed off.`;
+        const bodyHtml = `
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;border:1px solid #ececef;border-radius:6px;">
+            <tr><td style="padding:14px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">
+              <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin-bottom:6px;">Document</div>
+              <div style="font-size:15px;font-weight:600;color:#0a0a0a;margin-bottom:10px;">${email.escapeHtml(doc.name)} <span style="color:#9c9ca5;font-weight:400;">· v${v.version}</span></div>
+              ${summary ? `<div style="font-size:13px;line-height:1.5;color:#51525c;border-left:2px solid #5C0A0A;padding-left:10px;">${email.escapeHtml(summary)}</div>` : ''}
+            </td></tr>
+          </table>`;
+        email.sendEmail({
+          to: row.person_email,
+          subject: `[${wsName}] Approval requested: ${doc.name} (v${v.version})`,
+          html: email.renderEmailLayout({
+            headline: isFirst ? 'A document needs your approval' : 'You are in the approval queue',
+            intro, bodyHtml,
+            ctaText: isFirst ? 'Review and approve' : 'View document',
+            ctaUrl: docUrl,
+            footnote: `You're receiving this because you were named as an approver on this document. Decisions are recorded with your signature and the workspace audit log.`,
+            fromName: wsName
+          }),
+          firmId: req.workspace.firm_id, workspaceId: req.workspace.id,
+          relatedType: 'doc_approval_request', relatedId: doc.id
+        }).catch(err => console.error('[email] internal-approver send failed:', err.message));
+      } else {
+        // External - send the magic link only on the first approver's
+        // turn. Later external approvers get nudged when their turn
+        // arrives so the token doesn't sit in their inbox unused.
+        if (!isFirst) return;
+        const expiresAt = db.prepare('SELECT expires_at FROM external_approvers WHERE id=?').get(row.id).expires_at;
+        email.sendMagicLinkApprovalEmail({
+          toEmail: row.person_email, toName: row.person_name,
+          docName: doc.name, docVersion: v.version,
+          workspaceName: wsName, workspaceId: req.workspace.id, firmId: req.workspace.firm_id,
+          submitterName: submitter, token: rawTokens[row.sequence],
+          sequence: row.sequence, totalApprovers: total, roleLabel: row.role_label,
+          expiresAt, changeSummary: summary, relatedDocId: doc.id
+        }).catch(err => console.error('[email] external-approver send failed:', err.message));
+      }
+    });
+  } catch (e) {
+    console.error('[email] approval-request batch failed:', e.message);
+  }
+
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, 'Submitted for review'));
 });
 
 // Approver makes a decision (approve / reject) on the current version.
+// Shared post-decision helpers - called from both the internal decide
+// route (POST /workspaces/.../decide) and the external token route
+// (POST /approve/:token). Keep these here so server.js owns the
+// chain-advance + completion side-effects in one place.
+
+function notifyChainAdvanced(versionId, doc, workspace, decidedByDisplay) {
+  const next = docApprovals.nextPending(db, versionId);
+  if (!next) return; // chain complete - completion handler runs separately
+  const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
+  const wsName = workspace.client_name;
+  const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
+
+  if (next.kind === 'internal') {
+    if (!next.row.person_email) return;
+    const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">${email.escapeHtml(decidedByDisplay)} has signed off. "${email.escapeHtml(doc.name)}" (v${version.version}) is now waiting on your decision as approver #${next.row.sequence}${next.row.role_label ? ` (${email.escapeHtml(next.row.role_label)})` : ''}.</p>`;
+    email.sendEmail({
+      to: next.row.person_email,
+      subject: `[${wsName}] Your turn to approve: ${doc.name} (v${version.version})`,
+      html: email.renderEmailLayout({
+        headline: 'A document is waiting on you',
+        bodyHtml, ctaText: 'Review and approve', ctaUrl: docUrl, fromName: wsName
+      }),
+      firmId: workspace.firm_id, workspaceId: workspace.id,
+      relatedType: 'doc_approval_request', relatedId: doc.id
+    }).catch(err => console.error('[email] next-internal notify failed:', err.message));
+  } else {
+    // External next - rotate the token (the old one was either never
+    // delivered or has been sitting in their inbox for days) and send
+    // a fresh magic link. Old hash is overwritten so the previous URL
+    // immediately becomes invalid.
+    const token = docApprovals.generateToken();
+    const hash = docApprovals.hashToken(token);
+    const expires = docApprovals.expiryFromNow();
+    db.prepare(`UPDATE external_approvers SET token_hash=?, expires_at=?, notified_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .run(hash, expires, next.row.id);
+    const totalApprovers = docApprovals.listChain(db, versionId).length;
+    email.sendMagicLinkApprovalEmail({
+      toEmail: next.row.person_email, toName: next.row.person_name,
+      docName: doc.name, docVersion: version.version,
+      workspaceName: wsName, workspaceId: workspace.id, firmId: workspace.firm_id,
+      submitterName: decidedByDisplay, token,
+      sequence: next.row.sequence, totalApprovers, roleLabel: next.row.role_label,
+      expiresAt: expires, changeSummary: version.change_summary, relatedDocId: doc.id
+    }).catch(err => console.error('[email] next-external notify failed:', err.message));
+  }
+}
+
+function notifyChainComplete(versionId, doc, workspace, decidedByDisplay) {
+  const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
+  const submitter = version ? db.prepare('SELECT id, name, email FROM users WHERE id=?').get(version.created_by) : null;
+  if (!submitter || !submitter.email) return;
+  const wsName = workspace.client_name;
+  const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
+  const chain = docApprovals.listChain(db, versionId);
+  const listRows = chain.map(a =>
+    `<li style="margin-bottom:4px;">${email.escapeHtml(a.person_name)}${a.role_label ? ` <span style="color:#9c9ca5;">(${email.escapeHtml(a.role_label)})</span>` : ''}${a.kind === 'external' ? ` <span style="color:#9c9ca5;">· external</span>` : ''}</li>`
+  ).join('');
+  const bodyHtml = `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">All approvers have signed off on v${version.version} of "${email.escapeHtml(doc.name)}". The document is now locked as <strong>approved</strong> and ready for publication.</p>
+    <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin:16px 0 6px;">Approval chain</div>
+    <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">${listRows}</ul>`;
+  email.sendEmail({
+    to: submitter.email,
+    subject: `[${wsName}] Approved: ${doc.name} (v${version.version})`,
+    html: email.renderEmailLayout({
+      headline: 'Your document has been approved',
+      bodyHtml, ctaText: 'Publish document', ctaUrl: docUrl, fromName: wsName
+    }),
+    firmId: workspace.firm_id, workspaceId: workspace.id,
+    relatedType: 'doc_approval_decision', relatedId: doc.id
+  }).catch(err => console.error('[email] approval-complete notify failed:', err.message));
+}
+
+function notifyRejection(versionId, doc, workspace, rejectorDisplay, reason) {
+  const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
+  const submitter = version ? db.prepare('SELECT id, name, email FROM users WHERE id=?').get(version.created_by) : null;
+  if (!submitter || !submitter.email) return;
+  const wsName = workspace.client_name;
+  const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
+  const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>${email.escapeHtml(rejectorDisplay)}</strong> rejected v${version.version} of "${email.escapeHtml(doc.name)}".</p>
+    ${reason ? `<div style="margin:12px 0;padding:12px 14px;background:#fafafa;border-left:2px solid #5C0A0A;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>Reason:</strong> ${email.escapeHtml(reason)}</div>` : ''}
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">The document is back in draft so you can address the feedback and resubmit.</p>`;
+  email.sendEmail({
+    to: submitter.email,
+    subject: `[${wsName}] Rejected: ${doc.name} (v${version.version})`,
+    html: email.renderEmailLayout({
+      headline: 'Your document was rejected',
+      bodyHtml, ctaText: 'Open document', ctaUrl: docUrl, fromName: wsName
+    }),
+    firmId: workspace.firm_id, workspaceId: workspace.id,
+    relatedType: 'doc_approval_decision', relatedId: doc.id
+  }).catch(err => console.error('[email] reject-notify failed:', err.message));
+}
+
+// Mark the version + document as approved (called from both decide
+// routes when countPending hits zero). Keep this side-effect in one
+// place so we can't drift between the internal and external paths.
+//
+// CAS on doc_versions.status: only the first call whose UPDATE matches
+// status='in_review' succeeds. Returns true if this call was the one that
+// finalised, false if another concurrent decision beat us. Callers should
+// only fire chain-complete notifications / log entries when this returns
+// true, otherwise two simultaneous final approvers double-send the emails
+// and double-log "approve_document".
+function finaliseApprovedDocument(versionId, doc, workspaceId, byUserId) {
+  const r = db.prepare(`UPDATE doc_versions SET status='approved', approved_at=CURRENT_TIMESTAMP
+    WHERE id=? AND status='in_review'`).run(versionId);
+  if (r.changes === 0) return false;
+  db.prepare(`UPDATE generated_docs SET status='approved', approved_by=?, approved_at=CURRENT_TIMESTAMP, locked=1 WHERE id=?`)
+    .run(byUserId, doc.id);
+  return true;
+}
+
+function finaliseRejectedDocument(versionId, doc) {
+  const r = db.prepare(`UPDATE doc_versions SET status='rejected'
+    WHERE id=? AND status='in_review'`).run(versionId);
+  if (r.changes === 0) return false;
+  db.prepare(`UPDATE generated_docs SET status='draft', locked=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
+  return true;
+}
+
 app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace, requirePermission('document.review'), (req, res) => {
   const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc || !doc.current_version_id) return redirectBack(req, res);
   const { decision, reason } = req.body;
   if (!['approve','reject'].includes(decision)) return redirectBack(req, res);
 
-  // Find this user's pending slot for the current version (must respect sequence).
-  const pending = db.prepare(`SELECT a.*, (SELECT MIN(sequence) FROM doc_approvers WHERE version_id=? AND decision IS NULL) AS next_seq
-    FROM doc_approvers a WHERE a.version_id=? AND a.user_id=? AND a.decision IS NULL ORDER BY a.sequence LIMIT 1`)
-    .get(doc.current_version_id, doc.current_version_id, req.user.id);
-  if (!pending) return res.status(403).render('error', { user: req.user, message: 'You are not a pending approver on this version.' });
-  if (pending.sequence !== pending.next_seq) {
-    return res.status(400).render('error', { user: req.user, message: `Approver #${pending.next_seq} must decide first.` });
+  // The logged-in user must be the next pending approver (mixed-chain
+  // aware - they have to be at the front of the merged queue, not just
+  // the front of the internal queue).
+  const myRow = db.prepare(
+    `SELECT * FROM doc_approvers WHERE version_id=? AND user_id=? AND decision IS NULL ORDER BY sequence LIMIT 1`
+  ).get(doc.current_version_id, req.user.id);
+  if (!myRow) return res.status(403).render('error', { user: req.user, message: 'You are not a pending approver on this version.' });
+  const upNext = docApprovals.nextPending(db, doc.current_version_id);
+  if (!upNext || upNext.kind !== 'internal' || upNext.row.id !== myRow.id) {
+    return res.status(400).render('error', { user: req.user, message: `Approver #${upNext ? upNext.row.sequence : '?'} must decide first.` });
   }
 
-  db.prepare(`UPDATE doc_approvers SET decision=?, decision_reason=?, decided_at=CURRENT_TIMESTAMP WHERE id=?`)
-    .run(decision === 'approve' ? 'approved' : 'rejected', reason || null, pending.id);
+  // CAS the decision so re-submits (browser double-click, network retry)
+  // and concurrent decisions can't double-write. If 0 rows changed, someone
+  // else (or the user themselves) already decided on this row.
+  const decResult = db.prepare(`UPDATE doc_approvers
+    SET decision=?, decision_reason=?, decided_at=CURRENT_TIMESTAMP
+    WHERE id=? AND decision IS NULL`)
+    .run(decision === 'approve' ? 'approved' : 'rejected', reason || null, myRow.id);
+  if (decResult.changes === 0) {
+    return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id,
+      'Your decision was already recorded.', 'info'));
+  }
 
   if (decision === 'reject') {
-    db.prepare(`UPDATE generated_docs SET status='draft', locked=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
-    db.prepare(`UPDATE doc_versions SET status='rejected' WHERE id=?`).run(doc.current_version_id);
-    logAction(req.user.id, req.workspace.id, 'reject_document', 'document', doc.id,
-      { version_id: doc.current_version_id, reason }, auditCtx(req));
+    // finaliseRejectedDocument CAS-flips doc_versions.status from in_review
+    // to rejected. Only the first caller succeeds; the rest get false and
+    // skip the duplicate notification/log emission.
+    if (finaliseRejectedDocument(doc.current_version_id, doc)) {
+      logAction(req.user.id, req.workspace.id, 'reject_document', 'document', doc.id,
+        { version_id: doc.current_version_id, reason }, auditCtx(req));
+      notifyRejection(doc.current_version_id, doc, req.workspace, req.user.name, reason);
+    }
     return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, 'Document rejected', 'error'));
   }
 
-  // All approved?
-  const remaining = db.prepare(`SELECT COUNT(*) c FROM doc_approvers WHERE version_id=? AND decision IS NULL`).get(doc.current_version_id).c;
-  if (remaining === 0) {
-    db.prepare(`UPDATE generated_docs SET status='approved', approved_by=?, approved_at=CURRENT_TIMESTAMP, locked=1 WHERE id=?`).run(req.user.id, doc.id);
-    db.prepare(`UPDATE doc_versions SET status='approved', approved_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.current_version_id);
-    logAction(req.user.id, req.workspace.id, 'approve_document', 'document', doc.id, { version_id: doc.current_version_id }, auditCtx(req));
+  if (docApprovals.countPending(db, doc.current_version_id) === 0) {
+    // Two simultaneous final approvers could both see pending=0 here. Only
+    // the one whose finaliseApprovedDocument CAS succeeds fires the
+    // chain-complete side effects (email, audit log). The loser silently
+    // returns and the user sees a regular success page.
+    if (finaliseApprovedDocument(doc.current_version_id, doc, req.workspace.id, req.user.id)) {
+      logAction(req.user.id, req.workspace.id, 'approve_document', 'document', doc.id, { version_id: doc.current_version_id }, auditCtx(req));
+      notifyChainComplete(doc.current_version_id, doc, req.workspace, req.user.name);
+    }
   } else {
     logAction(req.user.id, req.workspace.id, 'partial_approve_document', 'document', doc.id,
-      { version_id: doc.current_version_id, remaining }, auditCtx(req));
+      { version_id: doc.current_version_id, remaining: docApprovals.countPending(db, doc.current_version_id) }, auditCtx(req));
+    notifyChainAdvanced(doc.current_version_id, doc, req.workspace, req.user.name);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
+
+// ==================== MAGIC-LINK APPROVAL PORTAL ====================
+// External approver clicks the link in their email -> arrives here.
+// No auth; the token IS the credential. Token is in the URL, not stored
+// raw in the DB; we look up by SHA-256 hash. All decisions audit-log
+// via the external sentinel user (id=0) which resolves to
+// external@isms.local in the activity stream.
+
+app.get('/approve/:token', (req, res) => {
+  const row = docApprovals.findByToken(db, req.params.token);
+  if (!row) {
+    return res.status(404).render('approve_error', {
+      title: 'Approval link not found',
+      message: 'This approval link is not valid. It may have been revoked or replaced. Ask the person who sent it to issue a new one.'
+    });
+  }
+  if (row.effective_status === 'revoked') {
+    return res.status(410).render('approve_error', {
+      title: 'Approval link revoked',
+      message: 'This approval link has been revoked by the workspace owner. Ask them to re-issue if you still need to decide.'
+    });
+  }
+  if (row.effective_status === 'expired') {
+    return res.status(410).render('approve_error', {
+      title: 'Approval link expired',
+      message: 'This approval link expired on ' + new Date(row.expires_at).toLocaleDateString() + '. Ask the sender to issue a new one.'
+    });
+  }
+  if (row.decision) {
+    return res.status(410).render('approve_error', {
+      title: 'Already decided',
+      message: 'You already ' + row.decision + ' this document on ' + new Date(row.decided_at + 'Z').toLocaleString() + '. The decision is recorded; the link is no longer active.'
+    });
+  }
+  // Verify it's actually their turn before showing the approve form.
+  // (If not, render a "waiting on earlier approver" state instead.)
+  const myTurn = docApprovals.isExternalRowMyTurn(db, row);
+  const chain = docApprovals.listChain(db, row.version_id);
+
+  // Document body may be stored as markdown or HTML; render markdown
+  // -> HTML so the view can drop it in with <%- %>. Decrypt first if
+  // the workspace has encryption enabled.
+  let bodyRaw = row.content;
+  try { bodyRaw = enc.decryptIfNeeded(bodyRaw, row.workspace_id); } catch (_) {}
+  const bodyHtml = looksLikeMarkdown(bodyRaw) ? mdRenderer.render(bodyRaw) : bodyRaw;
+
+  res.render('approve', {
+    row, chain, myTurn,
+    workspaceName: row.workspace_name,
+    docName: row.doc_name,
+    docVersion: row.version,
+    docContent: bodyHtml,
+    submitterName: row.submitter_name,
+    brandColor: row.brand_primary_color || '#5C0A0A',
+    token: req.params.token,
+    csrfToken: '' // route is CSRF-skipped (token is the credential)
+  });
+});
+
+app.post('/approve/:token', (req, res) => {
+  const row = docApprovals.findByToken(db, req.params.token);
+  if (!row || row.effective_status !== 'pending') {
+    return res.status(410).render('approve_error', {
+      title: 'Link no longer active',
+      message: 'This approval link is no longer valid (expired, revoked, or already decided).'
+    });
+  }
+  const { decision, reason } = req.body;
+  if (!['approve','reject'].includes(decision)) {
+    return res.status(400).render('approve_error', { title: 'Bad request', message: 'Pick approve or reject.' });
+  }
+  if (!docApprovals.isExternalRowMyTurn(db, row)) {
+    return res.status(400).render('approve_error', {
+      title: 'Not your turn yet',
+      message: 'An earlier approver in the chain has not decided yet. You will be able to approve once they do.'
+    });
+  }
+
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim() || null;
+  const ua = (req.get('user-agent') || '').slice(0, 500) || null;
+  const decisionVal = decision === 'approve' ? 'approved' : 'rejected';
+
+  // CAS: only the first attempt that finds decision IS NULL writes. Defends
+  // against double-clicks on the approve button (browser/network retries
+  // re-POSTing the same token) and against the rare case where two browser
+  // tabs of the same magic link decide simultaneously.
+  const decResult = db.prepare(`UPDATE external_approvers
+    SET decision=?, decision_reason=?, decided_at=CURRENT_TIMESTAMP, ip_address=?, user_agent=?
+    WHERE id=? AND decision IS NULL`).run(decisionVal, reason || null, ip, ua, row.id);
+  if (decResult.changes === 0) {
+    return res.status(410).render('approve_error', {
+      title: 'Already decided',
+      message: 'This approval was already recorded. Nothing further to do.'
+    });
+  }
+
+  // Capture a signature row for parity with internal approvers - same
+  // table, HMAC-signed, name shows as the external approver's display
+  // name. user_id has a FK to users; we resolve to the external@isms.local
+  // sentinel that logAction creates on demand. Re-using the same sentinel
+  // means the audit pack groups all external activity under one synthetic
+  // user instead of leaving orphan rows.
+  try {
+    let extUser = db.prepare(`SELECT id FROM users WHERE email='external@isms.local'`).get();
+    if (!extUser) {
+      const uid = db.prepare(`INSERT INTO users (email, password_hash, name, user_type, active)
+                              VALUES ('external@isms.local','!external','External signer','client',0)`).run().lastInsertRowid;
+      extUser = { id: uid };
+    }
+    const ts = new Date().toISOString();
+    // Payload format must mirror verifyVersionSignatures() above, which
+    // reads back ${s.document_id}|${s.version_id}|${s.user_id}|... -
+    // use extUser.id (the sentinel's int) as the third slot, not the
+    // external_approvers row id. Mismatch here corrupts the HMAC and
+    // every doc page renders a SIGNATURE INTEGRITY WARNING for what
+    // is in fact a legitimate approval.
+    const payload = `${row.doc_id}|${row.version_id}|${extUser.id}|${row.content_hash}|${decisionVal}|${ts}`;
+    const sig = enc.signHmac(payload, row.workspace_id);
+    db.prepare(`INSERT INTO doc_signatures (workspace_id, document_id, version_id, user_id, user_name, signature_role, intent, content_hash, signature, ip_address, user_agent, signed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      row.workspace_id, row.doc_id, row.version_id, extUser.id,
+      `${row.name} (external)`,
+      row.role_label || null, decisionVal, row.content_hash, sig,
+      ip, ua, ts
+    );
+  } catch (e) { console.error('[approve] signature insert failed:', e.message); }
+
+  logAction(0, row.workspace_id, decisionVal === 'approved' ? 'external_approve_document' : 'external_reject_document',
+    'document', row.doc_id, { version_id: row.version_id, external_approver: row.name, email: row.email, reason: reason || null },
+    { ip, userAgent: ua });
+
+  const doc = db.prepare('SELECT * FROM generated_docs WHERE id=?').get(row.doc_id);
+  const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(row.workspace_id);
+  const display = `${row.name} (external)`;
+
+  if (decision === 'reject') {
+    if (finaliseRejectedDocument(row.version_id, doc)) {
+      notifyRejection(row.version_id, doc, workspace, display, reason);
+    }
+  } else if (docApprovals.countPending(db, row.version_id) === 0) {
+    // No internal user is "responsible" - record approved_by as the
+    // version's submitter so the audit trail attributes the lock-down
+    // to the human who initiated review, not user 0.
+    // CAS via finaliseApprovedDocument: only the first finaliser fires
+    // the chain-complete notification.
+    const version = db.prepare('SELECT created_by FROM doc_versions WHERE id=?').get(row.version_id);
+    if (finaliseApprovedDocument(row.version_id, doc, row.workspace_id, version ? version.created_by : 0)) {
+      notifyChainComplete(row.version_id, doc, workspace, display);
+    }
+  } else {
+    notifyChainAdvanced(row.version_id, doc, workspace, display);
+  }
+
+  res.render('approve_done', {
+    decision: decisionVal,
+    docName: row.doc_name,
+    docVersion: row.version,
+    workspaceName: row.workspace_name,
+    brandColor: row.brand_primary_color || '#5C0A0A',
+    approverName: row.name
+  });
+});
+
+// Resend a magic link to an external approver. Rotates the token so
+// the previous link (if it's lying in the wrong inbox or a forgotten
+// browser tab) immediately stops working. Only the submitter / firm
+// can trigger this from the doc detail page.
+app.post('/workspaces/:wsId/documents/:id/external-approvers/:eaId/resend',
+  requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
+    const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!doc) return redirectBack(req, res);
+    const ea = db.prepare('SELECT * FROM external_approvers WHERE id=? AND workspace_id=? AND document_id=?').get(req.params.eaId, req.workspace.id, doc.id);
+    if (!ea) return redirectBack(req, res);
+    if (ea.decision) return res.status(400).render('error', { user: req.user, message: 'Approver has already decided - nothing to resend.' });
+    if (ea.revoked_at) return res.status(400).render('error', { user: req.user, message: 'Approver was revoked. Unrevoke is not supported - add them again as a new approver instead.' });
+
+    const token = docApprovals.generateToken();
+    const hash = docApprovals.hashToken(token);
+    const expires = docApprovals.expiryFromNow();
+    db.prepare(`UPDATE external_approvers SET token_hash=?, expires_at=?, notified_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .run(hash, expires, ea.id);
+
+    const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(ea.version_id);
+    const totalApprovers = docApprovals.listChain(db, ea.version_id).length;
+    email.sendMagicLinkApprovalEmail({
+      toEmail: ea.email, toName: ea.name,
+      docName: doc.name, docVersion: version.version,
+      workspaceName: req.workspace.client_name, workspaceId: req.workspace.id, firmId: req.workspace.firm_id,
+      submitterName: req.user.name, token,
+      sequence: ea.sequence, totalApprovers, roleLabel: ea.role_label,
+      expiresAt: expires, changeSummary: version.change_summary, relatedDocId: doc.id
+    }).catch(err => console.error('[email] resend magic link failed:', err.message));
+
+    logAction(req.user.id, req.workspace.id, 'resend_external_approver_link', 'document', doc.id,
+      { external_approver_id: ea.id, email: ea.email }, auditCtx(req));
+    res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, `Magic link resent to ${ea.email}`));
+  });
+
+// Revoke a pending external approver. Sets revoked_at; the next /approve
+// request with that (now-irrelevant) token will see effective_status =
+// 'revoked' and render an error. Does not remove the row - audit trail
+// requires we keep the history of who was invited.
+app.post('/workspaces/:wsId/documents/:id/external-approvers/:eaId/revoke',
+  requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
+    const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!doc) return redirectBack(req, res);
+    const ea = db.prepare('SELECT * FROM external_approvers WHERE id=? AND workspace_id=? AND document_id=?').get(req.params.eaId, req.workspace.id, doc.id);
+    if (!ea) return redirectBack(req, res);
+    if (ea.decision) return res.status(400).render('error', { user: req.user, message: 'Approver has already decided - cannot revoke.' });
+    if (ea.revoked_at) return redirectBack(req, res);
+
+    db.prepare(`UPDATE external_approvers SET revoked_at=CURRENT_TIMESTAMP WHERE id=?`).run(ea.id);
+    logAction(req.user.id, req.workspace.id, 'revoke_external_approver', 'document', doc.id,
+      { external_approver_id: ea.id, email: ea.email }, auditCtx(req));
+    res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, `Revoked ${ea.email} - link no longer works`));
+  });
 
 // E-signature endpoint. Captures user's identity, hashes content, generates HMAC, stores ip/UA.
 app.post('/workspaces/:wsId/documents/:id/sign', requireAuth, requireWorkspace, requirePermission('document.sign'), (req, res) => {
@@ -5929,60 +7789,91 @@ function computeNextStep(ws) {
   const intakeCount = cnt(`SELECT COUNT(*) c FROM engagement_intake WHERE workspace_id=? AND answer IS NOT NULL AND length(trim(answer)) > 0`);
   if (intakeCount === 0) {
     return {
-      kind: 'intake', title: 'Start the engagement intake',
-      why: 'A 25-question scoping questionnaire that auto-drafts the clause 4.3 scope statement and seeds the interested-parties register. Send it to the client 3 days before kickoff.',
-      cta: 'Open intake', href: `/workspaces/${wsId}/intake`,
+      kind: 'intake', title: 'Start the client setup',
+      why: 'A 25-question scoping questionnaire that auto-drafts the clause 4.3 scope statement. Captures the business context, scope, and crown-jewel assets so the rest of the engagement has something to anchor against.',
+      cta: 'Open setup', href: `/workspaces/${wsId}/intake`,
     };
   }
   if (intakeCount < 8) {
     return {
-      kind: 'intake-partial', title: `Finish the intake (${intakeCount}/25 answered)`,
+      kind: 'intake-partial', title: `Finish the client setup (${intakeCount}/25 answered)`,
       why: 'Get to at least the business-context + scope sections before the kickoff workshop.',
-      cta: 'Continue intake', href: `/workspaces/${wsId}/intake`,
+      cta: 'Continue setup', href: `/workspaces/${wsId}/intake`,
     };
   }
 
   // 2. Intake answered but scope not pushed to workspace yet.
   if (intakeCount >= 8 && (!ws.scope || ws.scope.length < 20)) {
     return {
-      kind: 'apply-intake', title: 'Apply the intake to the workspace',
-      why: 'Pushes the auto-drafted scope statement into clause 4.3 and seeds the interested-parties register from your customer / regulator / supplier answers.',
-      cta: 'Open intake → Apply', href: `/workspaces/${wsId}/intake`,
+      kind: 'apply-intake', title: 'Save the client setup to publish the scope',
+      why: 'Pushes the auto-drafted clause 4.3 scope statement onto the client. Open setup, click Save & refresh summary.',
+      cta: 'Open setup', href: `/workspaces/${wsId}/intake`,
     };
   }
 
-  // 3. Asset register too thin to do a meaningful risk assessment on.
-  const assets = cnt(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`);
-  if (assets < 5) {
+  // 2a. Scope drafted but not confirmed yet - the explicit sign-off
+  // that the engagement is ready to start. Sits between setup and gap
+  // assessment so the consultant has one clear "we're starting now"
+  // moment with the client.
+  if (intakeCount >= 8 && !ws.scope_confirmed_at) {
     return {
-      kind: 'assets', title: 'Build the asset register',
-      why: 'You need 30-50 entries to support the risk assessment. Run the scoping workshop playbook for a structured 90-min session.',
-      cta: 'Add assets', href: `/workspaces/${wsId}/assets`,
+      kind: 'confirm-scope', title: 'Confirm the scope to start the gap assessment',
+      why: 'Sign off on the clause 4.3 scope statement so the engagement is locked in. Open setup, click "Confirm scope & start gap assessment".',
+      cta: 'Review &amp; confirm', href: `/workspaces/${wsId}/intake`,
     };
   }
 
-  // 4. Risk register thin - risk workshop hasn't happened.
-  const risks = cnt(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted')`);
-  if (risks < 10) {
-    return {
-      kind: 'risks', title: 'Populate the risk register',
-      why: 'Use "+ Firm library" to clone your firm\'s curated risks, or run the 90-min risk workshop playbook with the client.',
-      cta: 'Open risks', href: `/workspaces/${wsId}/risks`,
-    };
-  }
-
-  // 5. No active gap-assessment pass.
+  // 3. Gap assessment - the diagnostic that surfaces current state vs
+  // the standard. Comes BEFORE the asset + risk registers because:
+  //   - You can't risk-assess what you don't understand
+  //   - Gap walking the 118 items establishes which areas need depth
+  //   - Findings inform what the asset and risk registers should cover
+  // (Earlier ordering put assets/risks first, which is theoretically
+  // closer to the standard's text but worked badly in practice - the
+  // consultant ended up risk-assessing in a vacuum.)
   const activePass = db.prepare(`SELECT id, pass_number FROM assessment_passes WHERE workspace_id=? AND status='in_progress' ORDER BY pass_number DESC LIMIT 1`).get(wsId);
   const lastPass = db.prepare(`SELECT id FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(wsId);
   if (!lastPass) {
     return {
       kind: 'pass-1', title: 'Start Pass 1 - initial gap assessment',
-      why: 'Walks every clause and Annex A control. Each item gets diagnostic Y/P/N questions, a status, and a maturity score. Assessment saves are tagged to this pass so you can diff against later passes.',
+      why: 'Walks every clause and Annex A control. Each item gets diagnostic Y/P/N questions, a status, and a maturity score. Findings feed the asset + risk register work next.',
       cta: 'Start gap assessment', href: `/workspaces/${wsId}/gap-assessment`,
     };
   }
 
-  // 6. SoA has many Undecided controls - auditor blocker.
+  // 4. Gap pass started but only partially complete (< 20 items assessed).
+  const passAssessed = cnt(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`);
+  if (passAssessed < 20) {
+    return {
+      kind: 'pass-1-partial', title: `Continue the gap assessment (${passAssessed}/118 assessed)`,
+      why: 'Get through the rest of the clauses + Annex A so you have a complete view of current state before the risk workshop.',
+      cta: 'Continue gap', href: `/workspaces/${wsId}/gap-assessment`,
+    };
+  }
+
+  // 5. Asset register too thin - now that the gap pass surfaced what's
+  // in scope and what controls are missing, build the inventory it'll
+  // anchor against.
+  const assets = cnt(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`);
+  if (assets < 5) {
+    return {
+      kind: 'assets', title: 'Build the asset register',
+      why: 'You need 30-50 entries to support the risk assessment. The gap-assessment findings give you a list of asset categories that need coverage; the scoping workshop playbook walks a structured 90-min session.',
+      cta: 'Add assets', href: `/workspaces/${wsId}/assets`,
+    };
+  }
+
+  // 6. Risk register thin - risk workshop hasn't happened.
+  const risks = cnt(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted')`);
+  if (risks < 10) {
+    return {
+      kind: 'risks', title: 'Populate the risk register',
+      why: 'With the gap assessment + asset register in hand, the risk workshop can focus on the gaps that actually matter. Use "+ Firm library" to clone curated risks, or run the 90-min risk workshop playbook with the client.',
+      cta: 'Open risks', href: `/workspaces/${wsId}/risks`,
+    };
+  }
+
+  // 7. SoA has many Undecided controls - auditor blocker.
   const undecided = cnt(`SELECT COUNT(*) c FROM control_states cs INNER JOIN iso_items i ON i.id=cs.iso_item_id WHERE cs.workspace_id=? AND i.id LIKE 'annex-a.%' AND (cs.applicability IS NULL OR cs.applicability='undecided')`);
   if (undecided > 30) {
     return {
@@ -6104,13 +7995,8 @@ function computeNeedsAttention(wsId) {
          `/workspaces/${wsId}/controls/assess/${s.iso_item_id}`, detail);
   }
 
-  // Overdue interested-party reviews + objective due dates.
-  db.prepare(`SELECT id, party, next_review FROM interested_parties
-    WHERE workspace_id=? AND next_review IS NOT NULL AND next_review < ?`)
-    .all(wsId, today).forEach(p => push('medium', 'party',
-      `Interested party review overdue: ${p.party}`,
-      `/workspaces/${wsId}/interested-parties`,
-      `Review was due ${p.next_review}`));
+  // Overdue objective due dates. (The matching "interested-party review
+  // overdue" check that lived here is gone with the parties module.)
   db.prepare(`SELECT id, title, due_date, status FROM security_objectives
     WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < ? AND status NOT IN ('achieved','paused')`)
     .all(wsId, today).forEach(o => push('high', 'objective',
@@ -6234,7 +8120,7 @@ app.post('/admin/jobs/run', requireAuth, (req, res) => {
 
 app.get('/workspaces/:wsId/activity-log.csv', requireAuth, requireWorkspace, requirePermission('audit_log.export'), (req, res) => {
   const log = db.prepare(`SELECT a.*, u.name AS user_name FROM audit_log a
-    INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY a.created_at DESC`).all(req.workspace.id);
+    INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY a.created_at DESC LIMIT 50000`).all(req.workspace.id);
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g,'""')}"`;
   const lines = ['When,User,Action,Entity Type,Entity ID,Details,Before,After,IP,User Agent,Request ID'];
   log.forEach(l => lines.push([l.created_at, l.user_name, l.action, l.entity_type, l.entity_id, l.details, l.before_state, l.after_state, l.ip_address, l.user_agent, l.request_id].map(esc).join(',')));
@@ -6254,6 +8140,8 @@ app.get('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace,
 });
 
 app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const { title, description, owner_name, due_date, status, cost_estimate, expected_residual_l, expected_residual_i, iso_item_id } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO risk_treatments (workspace_id, risk_id, title, description, owner_name, due_date, status, cost_estimate, expected_residual_l, expected_residual_i, iso_item_id)
@@ -6269,6 +8157,8 @@ app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/risks/:id/treatments/:tId', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const f = ['title','description','owner_name','due_date','completed_date','status','cost_estimate','expected_residual_l','expected_residual_i','iso_item_id'];
   const set = []; const vals = [];
   f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
@@ -6282,6 +8172,8 @@ app.post('/workspaces/:wsId/risks/:id/treatments/:tId', requireAuth, requireWork
 });
 
 app.post('/workspaces/:wsId/risks/:id/treatments/:tId/delete', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   db.prepare('DELETE FROM risk_treatments WHERE id=? AND risk_id=?').run(req.params.tId, req.params.id);
   res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}/treatments`);
 });
@@ -6331,7 +8223,7 @@ app.post('/workspaces/:wsId/soa/snapshot', requireAuth, requireWorkspace, requir
 app.get('/workspaces/:wsId/soa/snapshots', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   const list = db.prepare(`SELECT s.*, u.name AS author, e.name AS entity_name FROM soa_snapshots s
     LEFT JOIN users u ON u.id=s.created_by LEFT JOIN entities e ON e.id=s.entity_id
-    WHERE s.workspace_id=? ORDER BY s.created_at DESC`).all(req.workspace.id);
+    WHERE s.workspace_id=? ORDER BY s.created_at DESC, s.id DESC`).all(req.workspace.id);
   res.render('soa_snapshots', { user: req.user, ws: req.workspace, snapshots: list });
 });
 
@@ -6366,7 +8258,7 @@ app.get('/workspaces/:wsId/soa/snapshots/diff', requireAuth, requireWorkspace, r
       if (changes.length) diff.push({ id, title: (y || x).title, changes });
     }
   }
-  const all = db.prepare('SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC').all(req.workspace.id);
+  const all = db.prepare('SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC').all(req.workspace.id);
   res.render('soa_snapshot_diff', { user: req.user, ws: req.workspace, sa, sb, diff, all });
 });
 
@@ -6407,15 +8299,128 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
 // new risks, new evidence, document changes, NCs, audits, MRMs, improvements.
 // The auditor sees the audit pack PDF; the consultant uses this page when
 // prepping the cycle.
+// ==================== CLIENT INBOX (D-11 + D-13) ====================
+// Per-client surface combining auto-computed "deliverables due" (NCs,
+// doc reviews, audits/MRMs scheduled, tasks) with a free-text monthly
+// plan notepad. The consultant's "what do I owe THIS client this
+// month" view, not the firm-wide /dashboard.
+app.get('/workspaces/:wsId/inbox', requireAuth, requireWorkspace, (req, res) => {
+  const wsId = req.workspace.id;
+  // Window: next 30 days (and anything overdue). Captures the consultant's
+  // monthly planning horizon without picking up far-future noise.
+  const due = [];
+  const overdue = [];
+  const today = new Date().toISOString().split('T')[0];
+  const horizon = new Date(); horizon.setDate(horizon.getDate() + 30);
+  const horizonStr = horizon.toISOString().split('T')[0];
+
+  // Nonconformities with due_date
+  db.prepare(`SELECT id, title, due_date, severity, status FROM nonconformities
+    WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date <= ?
+    ORDER BY due_date`).all(wsId, horizonStr).forEach(r => {
+      const item = {
+        kind: 'nc', icon: 'alert', label: 'NC',
+        title: r.title, due: r.due_date,
+        href: `/workspaces/${wsId}/nonconformities/${r.id}`,
+        meta: r.severity || 'minor'
+      };
+      (r.due_date < today ? overdue : due).push(item);
+    });
+
+  // Tasks
+  db.prepare(`SELECT id, title, due_date, status FROM tasks
+    WHERE workspace_id=? AND status NOT IN ('done','cancelled') AND due_date IS NOT NULL AND due_date <= ?
+    ORDER BY due_date`).all(wsId, horizonStr).forEach(r => {
+      const item = {
+        kind: 'task', icon: 'check', label: 'Task',
+        title: r.title, due: r.due_date,
+        href: `/workspaces/${wsId}/tasks`, meta: r.status
+      };
+      (r.due_date < today ? overdue : due).push(item);
+    });
+
+  // Audits scheduled
+  db.prepare(`SELECT id, title, audit_date, lifecycle_stage FROM audits
+    WHERE workspace_id=? AND audit_date IS NOT NULL AND audit_date <= ? AND closed_at IS NULL
+    ORDER BY audit_date`).all(wsId, horizonStr).forEach(r => {
+      const item = {
+        kind: 'audit', icon: 'audit', label: 'Internal audit',
+        title: r.title, due: r.audit_date,
+        href: `/workspaces/${wsId}/audits/${r.id}`, meta: r.lifecycle_stage || 'planned'
+      };
+      (r.audit_date < today ? overdue : due).push(item);
+    });
+
+  // Management reviews scheduled
+  db.prepare(`SELECT id, meeting_date, status FROM mrms
+    WHERE workspace_id=? AND meeting_date IS NOT NULL AND meeting_date <= ? AND status != 'completed'
+    ORDER BY meeting_date`).all(wsId, horizonStr).forEach(r => {
+      const item = {
+        kind: 'mrm', icon: 'users', label: 'Management review',
+        title: `Management review (clause 9.3)`, due: r.meeting_date,
+        href: `/workspaces/${wsId}/mrms/${r.id}`, meta: r.status || 'planned'
+      };
+      (r.meeting_date < today ? overdue : due).push(item);
+    });
+
+  // Documents up for review
+  db.prepare(`SELECT id, name, next_review_date FROM generated_docs
+    WHERE workspace_id=? AND status IN ('approved','published') AND next_review_date IS NOT NULL AND next_review_date <= ?
+    ORDER BY next_review_date`).all(wsId, horizonStr).forEach(r => {
+      const item = {
+        kind: 'doc', icon: 'doc', label: 'Doc review',
+        title: r.name, due: r.next_review_date,
+        href: `/workspaces/${wsId}/documents/${r.id}`, meta: ''
+      };
+      (r.next_review_date < today ? overdue : due).push(item);
+    });
+
+  // Cert target date if within 30 days (not a "due deliverable" exactly
+  // but absolutely the most important date a consultant cares about)
+  if (req.workspace.target_cert_date && req.workspace.target_cert_date <= horizonStr) {
+    const item = {
+      kind: 'cert', icon: 'flag', label: 'Cert target',
+      title: 'Stage 1 / Stage 2 certification audit date',
+      due: req.workspace.target_cert_date,
+      href: `/workspaces/${wsId}`, meta: 'target'
+    };
+    (req.workspace.target_cert_date < today ? overdue : due).push(item);
+  }
+
+  overdue.sort((a, b) => (a.due || '').localeCompare(b.due || ''));
+  due.sort((a, b) => (a.due || '').localeCompare(b.due || ''));
+
+  res.render('client_inbox', {
+    user: req.user, ws: req.workspace,
+    overdue, due, today, horizonStr,
+    monthlyPlan: req.workspace.monthly_plan || ''
+  });
+});
+
+app.post('/workspaces/:wsId/inbox/plan', requireAuth, requireWorkspace, (req, res) => {
+  const plan = (req.body.monthly_plan || '').slice(0, 10000);
+  db.prepare(`UPDATE workspaces SET monthly_plan=? WHERE id=?`).run(plan, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'update_monthly_plan', 'workspace', req.workspace.id, null);
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/inbox`, 'Plan saved'));
+});
+
 app.get('/workspaces/:wsId/changes-since', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   const since = (req.query.since || '').toString().trim() || null;
   const data = changesSince.gather({ db, enc }, req.workspace.id, since);
   // Anchor options for the date picker: every internal audit + every SoA snapshot.
   const anchors = {
     audits: db.prepare(`SELECT id, title, audit_date, status FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL ORDER BY audit_date DESC`).all(req.workspace.id),
-    snapshots: db.prepare(`SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC`).all(req.workspace.id)
+    snapshots: db.prepare(`SELECT id, label, created_at FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC`).all(req.workspace.id)
   };
   res.render('changes_since', { user: req.user, ws: req.workspace, data, anchors });
+});
+
+// ==================== DELIVERABLES INDEX ====================
+// One canonical home for every export this workspace produces. The catalogue
+// lives in views/deliverables.ejs (data-only), not here — adding a new export
+// to the product means adding a row there + linking the generator route.
+app.get('/workspaces/:wsId/deliverables', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  res.render('deliverables', { user: req.user, ws: req.workspace });
 });
 
 // ==================== AUDIT PACK ====================
@@ -6464,7 +8469,7 @@ async function renderAuditPackHTML(app, wsId, opts) {
 }
 
 app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-  const snapshots = db.prepare(`SELECT id, label, created_at, included_count FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC`).all(req.workspace.id);
+  const snapshots = db.prepare(`SELECT id, label, created_at, included_count FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC`).all(req.workspace.id);
   const firm = db.prepare(`SELECT name FROM firms WHERE id=?`).get(req.workspace.firm_id) || {};
   const riskCount = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(req.workspace.id).c;
   const evidenceCount = db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`).get(req.workspace.id).c;
@@ -6650,6 +8655,77 @@ app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorks
   res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, `Cloned ${added} risks from firm library`));
 });
 
+// ==================== ADMIN: EMAIL SETTINGS + OUTBOX ====================
+// Firm-level transactional email config. Lives at the firm scope (not the
+// workspace) because every client engagement under the firm sends from the
+// same branded address. Outbox shows the last 50 sends for auditing
+// (deliverability triage, "did the approver get the email", etc.).
+
+app.get('/admin/email', requireAuth, (req, res) => {
+  if (!isFirmOwner(req.user)) return res.status(403).render('error', { user: req.user, message: 'Only firm owners can manage email settings.' });
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const settings = email.getFirmEmailSettings(firmId);
+  const outbox = db.prepare(`SELECT * FROM email_outbox WHERE firm_id=? ORDER BY created_at DESC LIMIT 50`).all(firmId);
+  const counts = {
+    sent_7d: db.prepare(`SELECT COUNT(*) c FROM email_outbox WHERE firm_id=? AND status='sent' AND created_at >= datetime('now','-7 days')`).get(firmId).c,
+    failed_7d: db.prepare(`SELECT COUNT(*) c FROM email_outbox WHERE firm_id=? AND status='failed' AND created_at >= datetime('now','-7 days')`).get(firmId).c
+  };
+  res.render('admin_email', {
+    user: req.user,
+    ws: res.locals.lastWs || null,
+    settings,
+    outbox,
+    counts,
+    provider: email.currentProvider(),
+    providerConfigured: email.currentProvider() !== 'devnull',
+    envFromDefault: process.env.EMAIL_FROM_DEFAULT || null,
+    appBaseUrl: email.appBaseUrl()
+  });
+});
+
+app.post('/admin/email/settings', requireAuth, (req, res) => {
+  if (!isFirmOwner(req.user)) return res.status(403).send('Forbidden');
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  email.getFirmEmailSettings(firmId); // ensure row exists
+  const { from_name, from_email, reply_to, enabled } = req.body;
+  // Light validation: from_email and reply_to should look like emails if set.
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (from_email && !emailRe.test(from_email.trim())) {
+    return res.status(400).render('error', { user: req.user, message: '"From email" doesn\'t look like a valid address.' });
+  }
+  if (reply_to && !emailRe.test(reply_to.trim())) {
+    return res.status(400).render('error', { user: req.user, message: '"Reply-to" doesn\'t look like a valid address.' });
+  }
+  db.prepare(`UPDATE firm_email_settings SET from_name=?, from_email=?, reply_to=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE firm_id=?`)
+    .run(
+      (from_name || '').trim() || null,
+      (from_email || '').trim() || null,
+      (reply_to || '').trim() || null,
+      enabled === '1' || enabled === 'on' ? 1 : 0,
+      firmId
+    );
+  logAction(req.user.id, null, 'update_email_settings', 'firm', firmId, null);
+  res.redirect(withToast('/admin/email', 'Email settings saved'));
+});
+
+app.post('/admin/email/test', requireAuth, async (req, res) => {
+  if (!isFirmOwner(req.user)) return res.status(403).send('Forbidden');
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const to = (req.body.to || '').trim();
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(to)) {
+    return res.status(400).render('error', { user: req.user, message: 'Enter a valid email address to send the test to.' });
+  }
+  const result = await email.sendTestEmail(firmId, to);
+  const msg = result.ok
+    ? `Test email sent to ${to}` + (result.provider === 'devnull' ? ' (dev fallback - check data/email-dev-outbox.log)' : '')
+    : `Send failed: ${result.error}`;
+  res.redirect(withToast('/admin/email', msg, result.ok ? 'success' : 'error'));
+});
+
 // ==================== EXEC BRIEF (one-page CISO/board readout) ====================
 // Single-page health summary that renders as one screen, prints to one A4
 // page. Built for the sponsor's monthly skim, not for the consultant's
@@ -6717,6 +8793,7 @@ app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res
     residualAle, openRiskCount: openRisks.length,
     topRisks, topNCs, ncTotals,
     planTotal, planDone, planPct: planTotal ? Math.round(planDone / planTotal * 100) : 0,
+    derivedStage: computeClientStage(ws),
   });
 });
 
@@ -6741,7 +8818,7 @@ app.get('/playbooks/:id', requireAuth, (req, res) => {
 // Extracted to routes/engagement.js. Same dependency-injection pattern as
 // routes/tenants.js - engagement routes get db + middleware via deps.
 require('./routes/engagement').register(app, {
-  db, requireAuth, requireWorkspace, withToast, logAction, auditCtx,
+  db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx,
 });
 
 // ==================== NIST CSF 2.0 ====================
@@ -7941,44 +10018,16 @@ app.post('/workspaces/:wsId/csf/:id(\\d+)/comments/:commentId(\\d+)/resolve', re
   res.redirect(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`);
 });
 
-// ==================== INTERESTED PARTIES (clause 4.2) ====================
-app.get('/workspaces/:wsId/interested-parties', requireAuth, requireWorkspace, (req, res) => {
-  const rows = db.prepare(`SELECT * FROM interested_parties WHERE workspace_id=? ORDER BY party_type, party`)
-    .all(req.workspace.id);
-  res.render('interested_parties', {
-    user: req.user, ws: req.workspace, title: 'Interested parties', active: 'interested-parties', rows
-  });
-});
-
-app.post('/workspaces/:wsId/interested-parties', requireAuth, requireWorkspace, (req, res) => {
-  const b = req.body;
-  if (!b.party || !b.party.trim()) return redirectBack(req, res, 'Party name is required', 'error');
-  db.prepare(`INSERT INTO interested_parties
-    (workspace_id, party, party_type, needs, how_addressed, owner, review_cadence, last_reviewed, next_review, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(req.workspace.id, b.party.trim(), b.party_type || null,
-         b.needs || null, b.how_addressed || null, b.owner || null,
-         b.review_cadence || null, b.last_reviewed || null, b.next_review || null, b.notes || null);
-  logAction(req.user.id, req.workspace.id, 'create_interested_party', 'interested_party', null, { party: b.party });
-  res.redirect(`/workspaces/${req.workspace.id}/interested-parties`);
-});
-
-app.post('/workspaces/:wsId/interested-parties/:id', requireAuth, requireWorkspace, (req, res) => {
-  const b = req.body;
-  db.prepare(`UPDATE interested_parties SET
-    party=?, party_type=?, needs=?, how_addressed=?, owner=?, review_cadence=?, last_reviewed=?, next_review=?, notes=?,
-    updated_at=datetime('now')
-    WHERE id=? AND workspace_id=?`)
-    .run(b.party, b.party_type || null, b.needs || null, b.how_addressed || null, b.owner || null,
-         b.review_cadence || null, b.last_reviewed || null, b.next_review || null, b.notes || null,
-         req.params.id, req.workspace.id);
-  res.redirect(`/workspaces/${req.workspace.id}/interested-parties`);
-});
-
-app.post('/workspaces/:wsId/interested-parties/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare('DELETE FROM interested_parties WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
-  res.redirect(`/workspaces/${req.workspace.id}/interested-parties`);
-});
+// Interested parties (clause 4.2) used to have a dedicated module here
+// (GET / POST / update / delete + views/interested_parties.ejs). Removed
+// because parties get identified naturally during the gap assessment +
+// implementation work on clauses 4.2 and 9.3.2.d - a separate "register
+// the parties" page was duplicative.
+//
+// The `interested_parties` table is kept as-is so the MRM auto-pack and
+// any existing rows continue to work; we just no longer surface a page
+// for creating new entries through the UI. If we ever need it back,
+// restore the four routes that lived here and re-list views/interested_parties.ejs.
 
 // ==================== INFORMATION SECURITY OBJECTIVES (clause 6.2) ====================
 app.get('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
@@ -7989,7 +10038,7 @@ app.get('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res
   });
 });
 
-app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const b = req.body;
   if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Objective title is required', 'error');
   db.prepare(`INSERT INTO security_objectives
@@ -8002,7 +10051,7 @@ app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, re
   res.redirect(`/workspaces/${req.workspace.id}/objectives`);
 });
 
-app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const b = req.body;
   db.prepare(`UPDATE security_objectives SET
     title=?, description=?, measurement=?, target_value=?, current_value=?, owner=?, due_date=?, status=?, notes=?,
@@ -8015,7 +10064,7 @@ app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, (req
   res.redirect(`/workspaces/${req.workspace.id}/objectives`);
 });
 
-app.post('/workspaces/:wsId/objectives/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/objectives/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare('DELETE FROM security_objectives WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/objectives`);
 });
@@ -8677,10 +10726,10 @@ app.post('/workspaces/:wsId/vendors/:id/termination/start', requireAuth, require
 
 app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const done = req.body.done === '1' ? 1 : 0;
-  db.prepare(`UPDATE supplier_termination_items SET done=?, done_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END, evidence=?, notes=? WHERE id=? AND supplier_id=?`)
-    .run(done, done, req.body.evidence || null, req.body.notes || null, req.params.itemId, req.params.id);
+  db.prepare(`UPDATE supplier_termination_items SET done=?, done_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END, evidence=?, notes=? WHERE id=? AND supplier_id=? AND workspace_id=?`)
+    .run(done, done, req.body.evidence || null, req.body.notes || null, req.params.itemId, req.params.id, req.workspace.id);
   // If all items done, mark terminated
-  const remaining = db.prepare('SELECT COUNT(*) c FROM supplier_termination_items WHERE supplier_id=? AND done=0').get(req.params.id).c;
+  const remaining = db.prepare('SELECT COUNT(*) c FROM supplier_termination_items WHERE supplier_id=? AND workspace_id=? AND done=0').get(req.params.id, req.workspace.id).c;
   if (remaining === 0) {
     db.prepare(`UPDATE suppliers SET lifecycle_stage='terminated', terminated_at=CURRENT_TIMESTAMP, data_return_completed=1 WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   }
@@ -8745,7 +10794,7 @@ app.get('/workspaces/:wsId/task-templates', requireAuth, requireWorkspace, requi
 });
 
 app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
-  const tpl = db.prepare('SELECT * FROM task_templates WHERE id=?').get(req.params.tplId);
+  const tpl = db.prepare('SELECT * FROM task_templates WHERE id=? AND (is_system=1 OR firm_id=? OR workspace_id=?)').get(req.params.tplId, req.workspace.firm_id, req.workspace.id);
   if (!tpl) return redirectBack(req, res);
   const steps = JSON.parse(tpl.steps || '[]');
   const baseDate = req.body.base_date ? new Date(req.body.base_date) : new Date();
@@ -8763,6 +10812,8 @@ app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWor
 
 // ==================== ASSET RELATIONSHIPS + BULK IMPORT ====================
 app.post('/workspaces/:wsId/assets/:id/relationships', requireAuth, requireWorkspace, requirePermission('asset.update'), (req, res) => {
+  const asset = db.prepare('SELECT id FROM assets WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!asset) return res.status(404).send('Asset not found');
   const { child_asset_id, relation, notes } = req.body;
   if (!child_asset_id || !relation) return redirectBack(req, res);
   try {
@@ -8813,7 +10864,7 @@ app.post('/workspaces/:wsId/members/bulk', requireAuth, requireWorkspace, requir
     const [name, email, role] = parts;
     if (!name || !email) continue;
     const e = email.toLowerCase();
-    const r = ['client_admin','contributor','reviewer','auditor','read_only'].includes(role) ? role : 'contributor';
+    const r = ['client_owner','contributor','reviewer','auditor','read_only'].includes(role) ? role : 'contributor';
     let user = db.prepare('SELECT * FROM users WHERE email=?').get(e);
     if (!user) {
       const hash = bcrypt.hashSync('temporary-' + crypto.randomBytes(8).toString('hex'), 10);
@@ -9075,8 +11126,8 @@ app.post('/workspaces/:wsId/risks/:id/accept', requireAuth, requireWorkspace, re
     req.workspace.id, risk.id, accepter_name, accepter_role || null, req.user.id,
     rationale, residual, expires_at || null, sig,
     auditCtx(req).ip, auditCtx(req).userAgent, ts).lastInsertRowid;
-  db.prepare(`UPDATE risks SET status='accepted', accepted_until=?, last_acceptance_id=? WHERE id=?`)
-    .run(expires_at || null, id, risk.id);
+  db.prepare(`UPDATE risks SET status='accepted', accepted_until=?, last_acceptance_id=? WHERE id=? AND workspace_id=?`)
+    .run(expires_at || null, id, risk.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'accept_risk', 'risk', risk.id, { acceptance_id: id, expires_at }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/risks/${risk.id}`, 'Risk acceptance recorded'));
 });
@@ -9089,10 +11140,12 @@ app.get('/workspaces/:wsId/risks/:id/acceptances', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/risks/:id/acceptances/:aid/revoke', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
-  db.prepare(`UPDATE risk_acceptances SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND risk_id=?`).run(req.params.aid, req.params.id);
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
+  db.prepare(`UPDATE risk_acceptances SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND risk_id=?`).run(req.params.aid, risk.id);
   // Reset risk to open if no other active acceptance
-  const remaining = db.prepare(`SELECT COUNT(*) c FROM risk_acceptances WHERE risk_id=? AND revoked_at IS NULL`).get(req.params.id).c;
-  if (remaining === 0) db.prepare(`UPDATE risks SET status='open', accepted_until=NULL WHERE id=?`).run(req.params.id);
+  const remaining = db.prepare(`SELECT COUNT(*) c FROM risk_acceptances WHERE risk_id=? AND revoked_at IS NULL`).get(risk.id).c;
+  if (remaining === 0) db.prepare(`UPDATE risks SET status='open', accepted_until=NULL WHERE id=? AND workspace_id=?`).run(risk.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'revoke_acceptance', 'risk', req.params.id, null, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}/acceptances`);
 });
@@ -9384,6 +11437,8 @@ app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const { iso_item_id, description, recommendation } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, recommendation) VALUES (?, ?, ?, ?)`)
@@ -9392,7 +11447,7 @@ app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorksp
 });
 
 app.post('/workspaces/:wsId/audits/observations/:obsId/close', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
-  db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=?`).run(req.params.obsId);
+  db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=? AND audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`).run(req.params.obsId, req.workspace.id);
   redirectBack(req, res);
 });
 
@@ -9571,15 +11626,14 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
 
   // SoA metadata from latest snapshot
   const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, created_at
-      FROM iso42001_soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC LIMIT 1`).get(req.workspace.id);
+      FROM iso42001_soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(req.workspace.id);
 
   res.render('iso42001_soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl,
     customControls, soaMeta: latestSnap || {} });
 });
 
 // SoA snapshot capture - immutable, hashed payload.
-app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification
@@ -9610,8 +11664,7 @@ app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspac
 });
 
 // SoA metadata - captures version/owner/approver and auto-snapshots if none exists yet.
-app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   // Always create a new snapshot with the metadata - that way metadata is versioned.
   const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
@@ -9639,8 +11692,7 @@ app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspac
 
 // Auto-justify SoA: for every Annex A control that any open risk treats, mark it
 // Included and pre-fill an inclusion justification of the form "Treats {risk titles}".
-app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
               SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
   // For each control with at least one open risk link, build "Treats R-1, R-2..." text and mark included.
@@ -9671,8 +11723,7 @@ app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWork
 });
 
 // Custom (non-Annex-A) controls
-app.post('/workspaces/:wsId/iso42001/soa/custom-controls', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/custom-controls', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { code, title, source_framework, applicability, description, inclusion_justification } = req.body;
   if (!code || !title) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   db.prepare(`INSERT INTO iso42001_soa_custom_controls
@@ -9684,8 +11735,7 @@ app.post('/workspaces/:wsId/iso42001/soa/custom-controls', requireAuth, requireW
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
 });
 
-app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { code, title, source_framework, applicability, status, inclusion_justification, exclusion_justification } = req.body;
   db.prepare(`UPDATE iso42001_soa_custom_controls
     SET code=COALESCE(?, code), title=COALESCE(?, title), source=COALESCE(?, source),
@@ -9700,8 +11750,7 @@ app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requ
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
 });
 
-app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM iso42001_soa_custom_controls WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
 });
@@ -9710,14 +11759,14 @@ app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id/delete', requireAut
 app.get('/workspaces/:wsId/iso42001/soa/snapshots', requireAuth, requireWorkspace, (req, res) => {
   const snapshots = db.prepare(`SELECT s.*, u.name AS created_by_name
     FROM iso42001_soa_snapshots s LEFT JOIN users u ON u.id = s.created_by
-    WHERE s.workspace_id=? ORDER BY s.created_at DESC`).all(req.workspace.id);
+    WHERE s.workspace_id=? ORDER BY s.created_at DESC, s.id DESC`).all(req.workspace.id);
   res.render('iso42001_soa_snapshots', { user: req.user, ws: req.workspace, snapshots });
 });
 
 // Snapshot diff - compare two snapshots row-by-row, surface applicability/status/justification changes.
 app.get('/workspaces/:wsId/iso42001/soa/snapshots/diff', requireAuth, requireWorkspace, (req, res) => {
   const snapshots = db.prepare(`SELECT id, label, version, created_at FROM iso42001_soa_snapshots
-    WHERE workspace_id=? ORDER BY created_at DESC`).all(req.workspace.id);
+    WHERE workspace_id=? ORDER BY created_at DESC, id DESC`).all(req.workspace.id);
   const aId = req.query.a ? parseInt(req.query.a, 10) : (snapshots[1] ? snapshots[1].id : null);
   const bId = req.query.b ? parseInt(req.query.b, 10) : (snapshots[0] ? snapshots[0].id : null);
   let diff = null;
@@ -9777,9 +11826,8 @@ app.get('/workspaces/:wsId/iso42001/export/soa.csv', requireAuth, requireWorkspa
 });
 
 // Per-row SoA update.
-app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
+app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
   if (['bulk'].includes(req.params.isoId)) return nextMw();
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   getOrCreate42State(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
   db.prepare(`UPDATE iso42001_control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
@@ -9961,8 +12009,7 @@ app.get('/workspaces/:wsId/iso42001/gap-assessment', requireAuth, requireWorkspa
   res.render('iso42001_gap_assessment', { user: req.user, ws: req.workspace, passes, counts });
 });
 
-app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const maxPass = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n FROM iso42001_assessment_passes WHERE workspace_id=?`).get(req.workspace.id).n;
   const passId = db.prepare(`INSERT INTO iso42001_assessment_passes (workspace_id, pass_number, name, started_by)
     VALUES (?, ?, ?, ?)`).run(req.workspace.id, maxPass + 1, `Pass ${maxPass + 1}`, req.user.id).lastInsertRowid;
@@ -9972,8 +12019,7 @@ app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, require
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`);
 });
 
-app.post('/workspaces/:wsId/iso42001/gap-assessment/:passId/complete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`UPDATE iso42001_assessment_passes SET status='completed', completed_at=CURRENT_TIMESTAMP
               WHERE id=? AND workspace_id=?`).run(req.params.passId, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'complete_iso42001_pass', 'iso42001_pass', req.params.passId, null);
@@ -10035,7 +12081,7 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
   const openNCs = db.prepare(`SELECT id, title, severity, status, due_date
     FROM nonconformities
     WHERE workspace_id=? AND iso_item_id=? AND status != 'closed'
-    ORDER BY created_at DESC`).all(req.workspace.id, item.id);
+    ORDER BY created_at DESC, id DESC`).all(req.workspace.id, item.id);
 
   // Linked risks - workspace risks that have been mapped to this control via
   // the parallel iso42001_risk_controls table.
@@ -10091,8 +12137,7 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
     priorPassNotes, activePass });
 });
 
-app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const item = db.prepare(`SELECT * FROM iso42001_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
   getOrCreate42State(req.workspace.id, item.id);
@@ -10154,8 +12199,7 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace,
 });
 
 // --- Linkage POST routes: connect risks/docs to ISO 42001 controls ---
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { document_id, section_ref } = req.body;
   if (!document_id) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
   // Sanity check the doc belongs to this workspace.
@@ -10167,14 +12211,18 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, re
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
-  db.prepare(`DELETE FROM iso42001_document_controls WHERE id=? AND iso_item_id=?`).run(req.params.linkId, req.params.isoId);
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  // Verify the link belongs to a doc in this workspace before deleting.
+  const link = db.prepare(`SELECT dc.* FROM iso42001_document_controls dc
+    INNER JOIN generated_docs d ON d.id = dc.document_id
+    WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+  if (link) {
+    db.prepare(`DELETE FROM iso42001_document_controls WHERE id=?`).run(link.id);
+  }
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { risk_id } = req.body;
   if (!risk_id) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
   // Sanity check the risk belongs to this workspace.
@@ -10186,8 +12234,7 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requir
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM iso42001_risk_controls WHERE risk_id=? AND iso_item_id=?`)
     .run(req.params.linkRiskId, req.params.isoId);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
@@ -10337,8 +12384,7 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
   res.render('iso42001_roadmap', { user: req.user, ws: req.workspace, grouped, phases, needsAttention, roadmap });
 });
 
-app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   getOrCreate42State(req.workspace.id, req.params.isoId);
   db.prepare(`UPDATE iso42001_control_states SET roadmap_phase = ?, last_updated = CURRENT_TIMESTAMP
               WHERE workspace_id=? AND iso_item_id=?`)
@@ -10654,8 +12700,7 @@ app.get('/workspaces/:wsId/iso42001/cert-cycle', requireAuth, requireWorkspace, 
 });
 
 // Seed default cycle - 5 standard events based on the target cert date or today + 60 days.
-app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const ws = db.prepare(`SELECT target_cert_date FROM workspaces WHERE id=?`).get(req.workspace.id);
   const stage1 = ws && ws.target_cert_date ? new Date(ws.target_cert_date) : new Date(Date.now() + 60 * 86400000);
   // Cert target -> Stage 2 date. Stage 1 = -30 days, surveillance +12mo, +24mo, recert +36mo.
@@ -10678,8 +12723,7 @@ app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorks
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { event_type, planned_date, notes } = req.body;
   if (!event_type) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
   db.prepare(`INSERT INTO iso42001_cert_cycle_events (workspace_id, event_type, planned_date, notes) VALUES (?, ?, ?, ?)`)
@@ -10688,8 +12732,7 @@ app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorksp
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { planned_date, actual_date, status, notes } = req.body;
   db.prepare(`UPDATE iso42001_cert_cycle_events
               SET planned_date=COALESCE(?,planned_date), actual_date=COALESCE(?,actual_date),
@@ -10699,8 +12742,7 @@ app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requir
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM iso42001_cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
@@ -10717,8 +12759,7 @@ app.get('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (req
     sections: ISO42001_INTAKE_SECTIONS, answers, total, answered, draftScope });
 });
 
-app.post('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const upsert = db.prepare(`INSERT INTO iso42001_intake_answers (workspace_id, question_key, answer, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(workspace_id, question_key) DO UPDATE SET answer=excluded.answer, updated_at=CURRENT_TIMESTAMP`);
@@ -10734,8 +12775,7 @@ app.post('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (re
 });
 
 // Apply intake to workspace - push draft scope into clause 4.3 notes and update target_cert_date.
-app.post('/workspaces/:wsId/iso42001/intake/apply', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/intake/apply', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const wsId = req.workspace.id;
   const rows = db.prepare(`SELECT question_key, answer FROM iso42001_intake_answers WHERE workspace_id=?`).all(wsId);
   const answers = {};
@@ -10794,8 +12834,7 @@ app.get('/workspaces/:wsId/iso42001/engagement-plan', requireAuth, requireWorksp
   res.render('iso42001_engagement_plan', { user: req.user, ws: req.workspace, phases: ISO42001_PLAN_PHASES, progress });
 });
 
-app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const phaseKey = req.params.phaseKey;
   if (!ISO42001_PLAN_PHASES.find(p => p.key === phaseKey)) return res.status(400).send('Bad phase');
   const existing = db.prepare(`SELECT completed_at FROM iso42001_engagement_plan_progress WHERE workspace_id=? AND phase_key=?`).get(req.workspace.id, phaseKey);
@@ -10809,8 +12848,7 @@ app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireA
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/engagement-plan`);
 });
 
-app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/notes', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/notes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const phaseKey = req.params.phaseKey;
   if (!ISO42001_PLAN_PHASES.find(p => p.key === phaseKey)) return res.status(400).send('Bad phase');
   db.prepare(`INSERT INTO iso42001_engagement_plan_progress (workspace_id, phase_key, notes)

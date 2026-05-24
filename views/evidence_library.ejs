@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Evidence library</h1>
-    <div class="page-subtitle">Workspace-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
+    <div class="page-subtitle">Client-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
   </div>
   <div class="row">
     <button class="btn btn-secondary btn-xs" type="button" onclick="document.getElementById('packDialog').showModal()">Auditor pack ↓</button>
@@ -14,7 +14,7 @@
 <dialog id="packDialog" style="border:1px solid var(--border);border-radius:8px;padding:0;max-width:440px;width:90vw;background:var(--bg);box-shadow:var(--shadow-xl);">
   <form method="GET" action="/workspaces/<%= ws.id %>/evidence/pack.zip" style="padding:18px;">
     <h3 style="font-size:15px;font-weight:600;margin:0 0 6px;">Export auditor evidence pack</h3>
-    <div class="meta text-base" style="line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the workspace, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
+    <div class="meta text-base" style="line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the client, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div><label class="label">From (optional)</label><input type="date" name="from" class="input"></div>
       <div><label class="label">To (optional)</label><input type="date" name="to" class="input"></div>
@@ -48,24 +48,7 @@
 
       <div class="col-full">
         <label class="label">Link to controls / clauses</label>
-        <input type="text" class="input upload-filter text-md" placeholder="Filter… e.g., A.8.20, network, access" style="margin-bottom:6px;" oninput="filterPicker(this)">
-        <div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
-          <% (allIsoItems || []).forEach(it => {
-               const code = it.id.replace(/^annex-/,'').replace(/^clause-/,'');
-               const label = it.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
-               const isClause = it.type === 'clause';
-          %>
-            <label class="ev-pick" data-search="<%= (code + ' ' + label + ' ' + it.title).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:12px;">
-              <input type="checkbox" name="iso_item_id" value="<%= it.id %>" style="margin:0;flex-shrink:0;" onchange="updatePickCount(this.closest('form'))">
-              <span class="mono meta" style="font-size:10.5px;min-width:50px;<%= isClause ? 'color:var(--text-secondary);' : '' %>"><%= code.toUpperCase() %></span>
-              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
-            </label>
-          <% }) %>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-          <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected</div>
-          <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
-        </div>
+        <%- include('partials/evidence_control_picker', { allIsoItems }) %>
       </div>
 
       <div><label class="label">Period (optional)</label><input type="text" name="period_label" class="input" placeholder="e.g., Q1 2026"></div>
@@ -94,24 +77,7 @@
 
       <div class="col-full">
         <label class="label">Link all of them to:</label>
-        <input type="text" class="input upload-filter text-md" placeholder="Filter… e.g., A.8.20, network" style="margin-bottom:6px;" oninput="filterPicker(this)">
-        <div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
-          <% (allIsoItems || []).forEach(it => {
-               const code = it.id.replace(/^annex-/,'').replace(/^clause-/,'');
-               const label = it.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
-               const isClause = it.type === 'clause';
-          %>
-            <label class="ev-pick" data-search="<%= (code + ' ' + label + ' ' + it.title).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:12px;">
-              <input type="checkbox" name="iso_item_id" value="<%= it.id %>" style="margin:0;flex-shrink:0;" onchange="updatePickCount(this.closest('form'))">
-              <span class="mono meta" style="font-size:10.5px;min-width:50px;<%= isClause ? 'color:var(--text-secondary);' : '' %>"><%= code.toUpperCase() %></span>
-              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
-            </label>
-          <% }) %>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-          <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected</div>
-          <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
-        </div>
+        <%- include('partials/evidence_control_picker', { allIsoItems, placeholderText: 'Filter… e.g., A.8.20, network' }) %>
       </div>
 
       <div><label class="label">Period (shared)</label><input type="text" name="period_label" class="input" placeholder="e.g., Q1 2026"></div>
