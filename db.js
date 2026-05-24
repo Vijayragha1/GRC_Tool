@@ -3132,6 +3132,79 @@ function init() {
   } catch (e) {
     if (e.code !== 'MODULE_NOT_FOUND') console.warn('[content] failed to sync ISO 42001:', e.message);
   }
+
+  // ==================== BUSINESS CONTINUITY / BIA (A.5.29, A.5.30) ====================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bcp_processes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      owner_name TEXT,
+      criticality TEXT DEFAULT 'medium',
+      max_tolerable_downtime_hours REAL,
+      rto_hours REAL,
+      rpo_hours REAL,
+      dependencies TEXT,
+      peak_periods TEXT,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_bcp_proc_ws ON bcp_processes(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS bcp_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      plan_type TEXT DEFAULT 'bcp',
+      recovery_steps TEXT,
+      key_contacts TEXT,
+      alternate_site TEXT,
+      status TEXT DEFAULT 'draft',
+      last_reviewed_at DATETIME,
+      next_review_date DATE,
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bcp_plan_ws ON bcp_plans(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS bcp_plan_processes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL,
+      process_id INTEGER NOT NULL,
+      UNIQUE(plan_id, process_id),
+      FOREIGN KEY (plan_id) REFERENCES bcp_plans(id) ON DELETE CASCADE,
+      FOREIGN KEY (process_id) REFERENCES bcp_processes(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS bcp_tests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      plan_id INTEGER NOT NULL,
+      test_type TEXT DEFAULT 'tabletop',
+      test_date DATE,
+      participants TEXT,
+      scenario_description TEXT,
+      results TEXT,
+      lessons_learned TEXT,
+      rto_achieved_hours REAL,
+      rpo_achieved_hours REAL,
+      pass INTEGER,
+      action_items TEXT,
+      next_test_date DATE,
+      conducted_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (plan_id) REFERENCES bcp_plans(id) ON DELETE CASCADE,
+      FOREIGN KEY (conducted_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bcp_test_ws ON bcp_tests(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_bcp_test_plan ON bcp_tests(plan_id);
+  `);
 }
 
 const crypto = require('crypto');
