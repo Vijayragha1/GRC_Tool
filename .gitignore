@@ -43,3 +43,4 @@ tests/design-shots/
 
 # Local CommandCode tooling cache
 .commandcode/
+.claude/
