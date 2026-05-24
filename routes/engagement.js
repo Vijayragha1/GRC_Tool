@@ -8,7 +8,7 @@ const INTAKE = require('../data/intake-questions');
 const ENG_PLAN = require('../data/engagement-plan');
 
 function register(app, deps) {
-  const { db, requireAuth, requireWorkspace, withToast, logAction, auditCtx } = deps;
+  const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx } = deps;
 
   // ---------- INTAKE ----------
   app.get('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
@@ -69,7 +69,7 @@ function register(app, deps) {
     return {};
   }
 
-  app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const flat = INTAKE.flatten();
     const insert = db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -94,7 +94,7 @@ function register(app, deps) {
   // / after a short debounce. Persists one answer, no redirects, no parties
   // sync (parties only refresh when the full Save runs). 200 JSON for the
   // client-side fetch.
-  app.post('/workspaces/:wsId/intake/field', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/intake/field', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const id = (req.body.question_id || '').trim();
     const value = (req.body.answer || '').trim();
     const known = INTAKE.flatten().some(q => q.id === id);
@@ -109,7 +109,7 @@ function register(app, deps) {
 
   // Legacy /apply route - keep for any old links / bookmarks; calls the
   // same helper as Save now. Redirects back to the intake page.
-  app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     applyIntakeToClient(req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'intake_apply', 'intake', null, null, auditCtx(req));
     res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Scope statement applied to client.'));
@@ -120,7 +120,7 @@ function register(app, deps) {
   // Sets a timestamp on workspaces, which then drives the "ready for
   // gap" gate and the "Scope confirmed on <date>" cue on the overview.
   // Idempotent - re-confirming refreshes the timestamp + user.
-  app.post('/workspaces/:wsId/scope/confirm', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/scope/confirm', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
     // Ensure the latest answers are baked into workspaces.scope before
     // we mark confirmed - otherwise the consultant could confirm an
     // empty scope statement if they hadn't hit Save first.
@@ -138,7 +138,7 @@ function register(app, deps) {
   // Unconfirm - if you realise the scope was wrong and want to redo it
   // before the gap assessment. Doesn't undo any gap-assessment work
   // already done; just clears the sign-off so the banner re-appears.
-  app.post('/workspaces/:wsId/scope/unconfirm', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/scope/unconfirm', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
     db.prepare(`UPDATE workspaces SET scope_confirmed_at=NULL, scope_confirmed_by=NULL WHERE id=?`)
       .run(req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'unconfirm_scope', 'workspace', req.workspace.id, null, auditCtx(req));
@@ -162,7 +162,7 @@ function register(app, deps) {
     });
   });
 
-  app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, (req, res) => {
+  app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const mid = req.params.milestoneId;
     // Guard: only known milestone IDs from the template can be toggled. Stops
     // arbitrary upserts from crafted POST bodies.

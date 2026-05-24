@@ -1625,10 +1625,7 @@ app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) =
   });
 });
 
-app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') {
-    return res.status(403).send('Forbidden');
-  }
+app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
   const {
     client_name, industry, scope, target_cert_date, stage, lead_consultant_id,
     brand_display_name, brand_primary_color, brand_logo_path, sector,
@@ -1739,8 +1736,7 @@ app.get('/workspaces/:wsId/members', requireAuth, requireWorkspace, (req, res) =
   res.render('members', { user: req.user, ws: req.workspace, members, firmConsultants });
 });
 
-app.post('/workspaces/:wsId/members/client', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/members/client', requireAuth, requireWorkspace, requirePermission('members.add'), (req, res) => {
   const { name, email, password, role } = req.body;
   if (!name || !email || !password || password.length < 8) return res.redirect('/workspaces/' + req.workspace.id + '/members');
   const e = email.toLowerCase().trim();
@@ -1775,8 +1771,7 @@ app.post('/workspaces/:wsId/members/firm', requireAuth, requireWorkspace, (req, 
   res.redirect('/workspaces/' + req.workspace.id + '/members');
 });
 
-app.post('/workspaces/:wsId/members/:memberId/remove', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/members/:memberId/remove', requireAuth, requireWorkspace, requirePermission('members.remove'), (req, res) => {
   db.prepare('DELETE FROM workspace_members WHERE id = ? AND workspace_id = ?')
     .run(req.params.memberId, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/members');
@@ -3066,7 +3061,7 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
 // item_ref values, writes them into evidence_links directly. The existing
 // /controls endpoint stays for ISO 27001 (it writes to evidence_controls and
 // the sync trigger mirrors into evidence_links).
-app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const framework = (req.body.framework || '').toString();
@@ -3100,7 +3095,7 @@ app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, 
 });
 
 // Delete a single cross-framework link.
-app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   // Don't touch iso27001 rows from this route - those belong to the legacy
@@ -3115,7 +3110,7 @@ app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, req
   redirectBack(req, res);
 });
 
-app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const ids = parseFormArray(req.body.iso_item_id);
@@ -3136,7 +3131,7 @@ app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspac
 
 // Update the section_ref on an existing link (per-link, distinct from the
 // per-file clause_section). Posted from the chip on the library row.
-app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const newRef = (req.body.section_ref || '').toString().trim() || null;
@@ -3145,7 +3140,7 @@ app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth,
   redirectBack(req, res);
 });
 
-app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare(`SELECT id, iso_item_id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const link = db.prepare(`SELECT * FROM evidence_controls WHERE id=? AND evidence_id=?`).get(req.params.linkId, ev.id);
@@ -3169,8 +3164,7 @@ app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace
   res.download(fp, ev.filename);
 });
 
-app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
     .get(req.params.id, req.workspace.id);
   if (ev) {
@@ -3573,7 +3567,7 @@ app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res
   res.render('cert_cycle', { user: req.user, ws: req.workspace, events, suggestions, eventTypes: CERT_EVENT_TYPES });
 });
 
-app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { event_type, planned_date, certification_body, notes } = req.body;
   if (!event_type || !CERT_EVENT_TYPES.find(t => t.key === event_type)) return redirectBack(req, res);
   db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date, certification_body, notes)
@@ -3584,7 +3578,7 @@ app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, re
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   // Insert all five suggested events from the no-events fallback above.
   const today = new Date();
   const s1 = new Date(today); s1.setDate(s1.getDate() + 60);
@@ -3605,7 +3599,7 @@ app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, (re
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { planned_date, actual_date, status, certification_body, notes } = req.body;
   db.prepare(`UPDATE cert_cycle_events SET
     planned_date=?, actual_date=?, status=?, certification_body=?, notes=?
@@ -3617,7 +3611,7 @@ app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, (req
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
 });
@@ -3765,8 +3759,7 @@ app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, re
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, requirePermission('risk.delete'), (req, res) => {
   db.prepare('DELETE FROM risks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/risks');
 });
@@ -4082,8 +4075,7 @@ app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, requirePe
   redirectBack(req, res);
 });
 
-app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/tasks');
 });
@@ -4678,8 +4670,7 @@ app.get('/workspaces/:wsId/documents/:id/download', requireAuth, requireWorkspac
   res.send(enc.decryptIfNeeded(doc.content, req.workspace.id));
 });
 
-app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, requirePermission('document.delete'), (req, res) => {
   db.prepare('DELETE FROM generated_docs WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/documents');
 });
@@ -4739,7 +4730,7 @@ app.get('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, r
   res.render('improvements', { user: req.user, ws: req.workspace, items, filter });
 });
 
-app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const { title, description, source, source_ref, owner_name, due_date } = req.body;
   if (!title || !title.trim()) return redirectBack(req, res);
   db.prepare(`INSERT INTO improvements (workspace_id, title, description, source, source_ref, owner_name, due_date, created_by)
@@ -4751,7 +4742,7 @@ app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, 
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
 
-app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const { title, description, source, source_ref, owner_name, due_date, status, impact_notes } = req.body;
   db.prepare(`UPDATE improvements SET
     title=?, description=?, source=?, source_ref=?, owner_name=?, due_date=?, status=?, impact_notes=?,
@@ -4766,7 +4757,7 @@ app.post('/workspaces/:wsId/improvements/:id', requireAuth, requireWorkspace, (r
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
 
-app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/improvements/:id/delete', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   db.prepare(`DELETE FROM improvements WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/improvements`);
 });
@@ -4794,12 +4785,14 @@ app.post('/workspaces/:wsId/audits/:id/sampling', requireAuth, requireWorkspace,
 });
 
 app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const { iso_item_id, description, sample_taken_at, population_size, sample_size, finding } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_samples
     (audit_id, iso_item_id, description, sample_taken_at, population_size, sample_size, finding)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    req.params.id, iso_item_id || null, description.trim(),
+    audit.id, iso_item_id || null, description.trim(),
     sample_taken_at || null,
     population_size ? parseInt(population_size, 10) : null,
     sample_size ? parseInt(sample_size, 10) : null,
@@ -4809,7 +4802,9 @@ app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, 
 });
 
 app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
-  db.prepare(`DELETE FROM audit_samples WHERE id=? AND audit_id=?`).run(req.params.sid, req.params.id);
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
+  db.prepare(`DELETE FROM audit_samples WHERE id=? AND audit_id=?`).run(req.params.sid, audit.id);
   res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
 });
 
@@ -4832,18 +4827,22 @@ app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const { iso_item_id, finding_type, description, severity } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_findings (audit_id, iso_item_id, finding_type, description, severity)
               VALUES (?, ?, ?, ?, ?)`)
-    .run(req.params.id, iso_item_id || null, finding_type || 'observation',
+    .run(audit.id, iso_item_id || null, finding_type || 'observation',
          description, severity || 'medium');
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
 });
 
 app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const f = db.prepare('SELECT * FROM audit_findings WHERE id = ? AND audit_id = ?')
-    .get(req.params.fId, req.params.id);
+    .get(req.params.fId, audit.id);
   if (!f) return redirectBack(req, res);
   if (f.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + f.nonconformity_id);
   const sev = f.finding_type === 'major_nc' ? 'major' : 'minor';
@@ -4855,8 +4854,7 @@ app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requ
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
-app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   db.prepare('DELETE FROM audits WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/audits');
 });
@@ -4987,7 +4985,7 @@ app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requirePermiss
 // Useful when a saved MRM has gone stale (e.g., NCs closed since the meeting
 // was scheduled, new audit findings recorded). Re-saves the three auto-pack
 // fields from a fresh compute.
-app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   const mrm = db.prepare('SELECT id, status FROM mrms WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!mrm) return res.status(404).send('Not found');
   const pack = compute932InputPack(req.workspace.id);
@@ -5063,8 +5061,7 @@ app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requirePer
   res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   db.prepare('DELETE FROM mrms WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/mrms');
 });
@@ -5081,8 +5078,7 @@ app.get('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req
   res.render('nonconformities', { user: req.user, ws: req.workspace, ncs, filter });
 });
 
-app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const { title, source, description, severity, iso_item_id } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, description, severity, iso_item_id)
@@ -5104,8 +5100,7 @@ app.get('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, 
   res.render('nonconformity_detail', { user: req.user, ws: req.workspace, nc, allItems, correctiveTasks });
 });
 
-app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const f = ['title','source','source_ref','description','severity','iso_item_id',
              'root_cause','corrective_action','responsible','due_date','effectiveness_check','status'];
   const set = []; const vals = [];
@@ -5134,8 +5129,7 @@ app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace,
 });
 
 // Phase C: spawn a corrective-action Task from a Nonconformity (closes audit -> NC -> task -> control loop)
-app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   const nc = db.prepare('SELECT * FROM nonconformities WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!nc) return res.status(404).send('Not found');
   const title = `Corrective action: ${nc.title}`;
@@ -5148,15 +5142,13 @@ app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requir
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + nc.id);
 });
 
-app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (!isFirmUser(req.user) && req.workspace.role !== 'client_owner') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   db.prepare('DELETE FROM nonconformities WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities');
 });
 
 // ==================== BULK CONTROL UPDATE ====================
-app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const { ids, status, applicability, owner_id } = req.body;
   const idList = Array.isArray(ids) ? ids : (ids ? [ids] : []);
   let count = 0;
@@ -5178,8 +5170,7 @@ app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, (req,
 });
 
 // ==================== AUTOSAVE (control fields) ====================
-app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorkspace, express.json(), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).json({ ok: false });
+app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorkspace, requirePermission('control.update'), express.json(), (req, res) => {
   getOrCreateState(req.workspace.id, req.params.isoId);
   const allowed = ['status','applicability','inclusion_justification','exclusion_justification',
                    'maturity','notes','owner_id','due_date'];
@@ -6134,8 +6125,7 @@ app.get('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res)
   res.render('incidents', { user: req.user, ws: req.workspace, incidents, filter });
 });
 
-app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const { title, category, severity, detected_at, reported_by, description } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO incidents (workspace_id, title, category, severity, detected_at, reported_by, description)
@@ -6158,8 +6148,7 @@ app.get('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req, 
   res.render('incident_detail', { user: req.user, ws: req.workspace, inc, events, runbooks, runbook });
 });
 
-app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const f = ['title','category','severity','detected_at','reported_by','status','description','affected_assets',
             'containment_actions','eradication_actions','recovery_actions','lessons_learned','external_notification'];
   const set = []; const vals = [];
@@ -6173,8 +6162,7 @@ app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req,
   res.redirect('/workspaces/' + req.workspace.id + '/incidents/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const inc = db.prepare(`SELECT * FROM incidents WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!inc) return redirectBack(req, res);
   if (inc.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + inc.nonconformity_id);
@@ -6185,7 +6173,7 @@ app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorks
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
-app.post('/workspaces/:wsId/incidents/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/incidents/:id/delete', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   db.prepare(`DELETE FROM incidents WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/incidents');
 });
@@ -6307,8 +6295,7 @@ app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermi
   res.render('vendors', { user: req.user, ws: req.workspace, vendors, filter, summary, concentration, renewals });
 });
 
-app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure } = req.body;
   if (!name) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO suppliers (workspace_id, name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure, lifecycle_stage)
@@ -6362,8 +6349,7 @@ app.get('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, re
   });
 });
 
-app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const f = ['name','service_provided','tier','data_access','data_volume','business_criticality','dependency_type',
             'lifecycle_stage','contract_start','contract_end','next_review_date','attestations','contact','website',
             'industry','location','parent_company','regulatory_exposure','annual_spend','renewal_notice_days',
@@ -6385,14 +6371,13 @@ app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, r
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   db.prepare(`DELETE FROM suppliers WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors');
 });
 
 // Documents
-app.post('/workspaces/:wsId/vendors/:id/documents', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/documents', requireAuth, requireWorkspace, requirePermission('supplier.manage'), upload.single('file'), (req, res) => {
   const { doc_type, name, effective_date, expiry_date, notes } = req.body;
   if (!name) return redirectBack(req, res);
   let storedPath = null, sha = null, size = null, filename = null;
@@ -6420,7 +6405,7 @@ app.get('/workspaces/:wsId/vendors/:id/documents/:docId/download', requireAuth, 
   res.download(fp, d.filename);
 });
 
-app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=? AND workspace_id=?`).get(req.params.docId, req.params.id, req.workspace.id);
   if (d) {
     if (d.stored_path) { const fp = resolveUploadPath(d.stored_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); }
@@ -6431,8 +6416,7 @@ app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, r
 });
 
 // Sub-processors
-app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { name, service_provided, data_access, location, approved } = req.body;
   if (!name) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_subprocessors (workspace_id, supplier_id, name, service_provided, data_access, location, approved, approved_at)
@@ -6443,14 +6427,13 @@ app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWork
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=subprocessors');
 });
 
-app.post('/workspaces/:wsId/vendors/:id/subprocessors/:spId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/subprocessors/:spId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   db.prepare(`DELETE FROM supplier_subprocessors WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.spId, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=subprocessors');
 });
 
 // Reviews
-app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { review_date, reviewer, outcome, findings, action_items, next_review_date } = req.body;
   const supplier = db.prepare(`SELECT inherent_risk_score, residual_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!supplier) return res.status(404).send('Supplier not found');
@@ -6468,7 +6451,7 @@ app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace,
 });
 
 // Notes
-app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { body, internal_only } = req.body;
   if (!body) return redirectBack(req, res);
   db.prepare(`INSERT INTO supplier_notes (workspace_id, supplier_id, user_name, body, internal_only)
@@ -6481,24 +6464,22 @@ app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, (
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=notes');
 });
 
-app.post('/workspaces/:wsId/vendors/:id/notes/:noteId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/notes/:noteId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   db.prepare(`DELETE FROM supplier_notes WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.noteId, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=notes');
 });
 
 // Clauses
-app.post('/workspaces/:wsId/vendors/:id/clauses/:clauseId', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/clauses/:clauseId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { status, notes } = req.body;
-  db.prepare(`UPDATE supplier_clauses SET status=?, notes=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND supplier_id=?`)
-    .run(status, notes || null, req.params.clauseId, req.params.id);
+  db.prepare(`UPDATE supplier_clauses SET status=?, notes=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND supplier_id=? AND workspace_id=?`)
+    .run(status, notes || null, req.params.clauseId, req.params.id, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=clauses');
 });
 
 // Phase B: declare which Annex A controls a supplier handles on our behalf (A.5.19-A.5.23)
-app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const v = db.prepare('SELECT id FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!v) return res.status(404).send('Not found');
   const { iso_item_id, notes } = req.body;
@@ -6511,8 +6492,7 @@ app.post('/workspaces/:wsId/vendors/:id/controls', requireAuth, requireWorkspace
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + v.id + '?tab=controls');
 });
 
-app.post('/workspaces/:wsId/vendors/:id/controls/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const v = db.prepare('SELECT id FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!v) return res.status(404).send('Not found');
   const link = db.prepare('SELECT * FROM supplier_controls WHERE id=? AND supplier_id=?').get(req.params.linkId, v.id);
@@ -6524,10 +6504,9 @@ app.post('/workspaces/:wsId/vendors/:id/controls/:linkId/delete', requireAuth, r
 });
 
 // Questionnaires
-app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { template_id } = req.body;
-  const tpl = db.prepare(`SELECT * FROM questionnaire_templates WHERE id=?`).get(template_id);
+  const tpl = db.prepare(`SELECT * FROM questionnaire_templates WHERE id=? AND (is_system=1 OR firm_id=?)`).get(template_id, req.workspace.firm_id);
   if (!tpl) return redirectBack(req, res);
   const qCount = db.prepare(`SELECT COUNT(*) c FROM questionnaire_questions WHERE template_id=?`).get(template_id).c;
   const qid = db.prepare(`INSERT INTO supplier_questionnaires (workspace_id, supplier_id, template_id, template_name, status, sent_at, total_questions)
@@ -6553,10 +6532,11 @@ app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requir
   res.render('vendor_questionnaire', { user: req.user, ws: req.workspace, q, sections, respMap });
 });
 
-app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const ws = req.workspace;
   const qid = req.params.qId;
+  const questionnaire = db.prepare('SELECT id FROM supplier_questionnaires WHERE id=? AND workspace_id=?').get(qid, ws.id);
+  if (!questionnaire) return res.status(404).send('Questionnaire not found');
 
   // Save responses for any question_X_answer fields
   const qIds = Object.keys(req.body).filter(k => k.startsWith('answer_')).map(k => parseInt(k.replace('answer_',''),10));
@@ -6589,13 +6569,13 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
     responded_at=COALESCE(responded_at, CASE WHEN ?='responded' OR ?='reviewed' THEN CURRENT_TIMESTAMP END),
     reviewed_at=CASE WHEN ?='reviewed' THEN CURRENT_TIMESTAMP ELSE reviewed_at END,
     reviewer=COALESCE(?, reviewer), reviewer_comments=COALESCE(?, reviewer_comments)
-    WHERE id=?`).run(allQ.filter(q => q.answer).length, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid);
+    WHERE id=? AND workspace_id=?`).run(allQ.filter(q => q.answer).length, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   logAction(req.user.id, ws.id, 'update_questionnaire', 'questionnaire', qid, { status, score: finalScore });
   res.redirect('/workspaces/' + ws.id + '/vendors/' + req.params.id + '/questionnaires/' + qid);
 });
 
-app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   db.prepare(`DELETE FROM supplier_questionnaires WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.qId, req.params.id, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=questionnaires');
@@ -7819,7 +7799,7 @@ app.post('/admin/jobs/run', requireAuth, (req, res) => {
 
 app.get('/workspaces/:wsId/activity-log.csv', requireAuth, requireWorkspace, requirePermission('audit_log.export'), (req, res) => {
   const log = db.prepare(`SELECT a.*, u.name AS user_name FROM audit_log a
-    INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY a.created_at DESC`).all(req.workspace.id);
+    INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY a.created_at DESC LIMIT 50000`).all(req.workspace.id);
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g,'""')}"`;
   const lines = ['When,User,Action,Entity Type,Entity ID,Details,Before,After,IP,User Agent,Request ID'];
   log.forEach(l => lines.push([l.created_at, l.user_name, l.action, l.entity_type, l.entity_id, l.details, l.before_state, l.after_state, l.ip_address, l.user_agent, l.request_id].map(esc).join(',')));
@@ -7839,6 +7819,8 @@ app.get('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace,
 });
 
 app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const { title, description, owner_name, due_date, status, cost_estimate, expected_residual_l, expected_residual_i, iso_item_id } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO risk_treatments (workspace_id, risk_id, title, description, owner_name, due_date, status, cost_estimate, expected_residual_l, expected_residual_i, iso_item_id)
@@ -8515,7 +8497,7 @@ app.get('/playbooks/:id', requireAuth, (req, res) => {
 // Extracted to routes/engagement.js. Same dependency-injection pattern as
 // routes/tenants.js - engagement routes get db + middleware via deps.
 require('./routes/engagement').register(app, {
-  db, requireAuth, requireWorkspace, withToast, logAction, auditCtx,
+  db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx,
 });
 
 // ==================== NIST CSF 2.0 ====================
@@ -9735,7 +9717,7 @@ app.get('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res
   });
 });
 
-app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const b = req.body;
   if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Objective title is required', 'error');
   db.prepare(`INSERT INTO security_objectives
@@ -9748,7 +9730,7 @@ app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, re
   res.redirect(`/workspaces/${req.workspace.id}/objectives`);
 });
 
-app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const b = req.body;
   db.prepare(`UPDATE security_objectives SET
     title=?, description=?, measurement=?, target_value=?, current_value=?, owner=?, due_date=?, status=?, notes=?,
@@ -9761,7 +9743,7 @@ app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, (req
   res.redirect(`/workspaces/${req.workspace.id}/objectives`);
 });
 
-app.post('/workspaces/:wsId/objectives/:id/delete', requireAuth, requireWorkspace, (req, res) => {
+app.post('/workspaces/:wsId/objectives/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare('DELETE FROM security_objectives WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/objectives`);
 });
@@ -10491,7 +10473,7 @@ app.get('/workspaces/:wsId/task-templates', requireAuth, requireWorkspace, requi
 });
 
 app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
-  const tpl = db.prepare('SELECT * FROM task_templates WHERE id=?').get(req.params.tplId);
+  const tpl = db.prepare('SELECT * FROM task_templates WHERE id=? AND (is_system=1 OR firm_id=? OR workspace_id=?)').get(req.params.tplId, req.workspace.firm_id, req.workspace.id);
   if (!tpl) return redirectBack(req, res);
   const steps = JSON.parse(tpl.steps || '[]');
   const baseDate = req.body.base_date ? new Date(req.body.base_date) : new Date();
@@ -10509,6 +10491,8 @@ app.post('/workspaces/:wsId/tasks/from-template/:tplId', requireAuth, requireWor
 
 // ==================== ASSET RELATIONSHIPS + BULK IMPORT ====================
 app.post('/workspaces/:wsId/assets/:id/relationships', requireAuth, requireWorkspace, requirePermission('asset.update'), (req, res) => {
+  const asset = db.prepare('SELECT id FROM assets WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!asset) return res.status(404).send('Asset not found');
   const { child_asset_id, relation, notes } = req.body;
   if (!child_asset_id || !relation) return redirectBack(req, res);
   try {
@@ -10821,8 +10805,8 @@ app.post('/workspaces/:wsId/risks/:id/accept', requireAuth, requireWorkspace, re
     req.workspace.id, risk.id, accepter_name, accepter_role || null, req.user.id,
     rationale, residual, expires_at || null, sig,
     auditCtx(req).ip, auditCtx(req).userAgent, ts).lastInsertRowid;
-  db.prepare(`UPDATE risks SET status='accepted', accepted_until=?, last_acceptance_id=? WHERE id=?`)
-    .run(expires_at || null, id, risk.id);
+  db.prepare(`UPDATE risks SET status='accepted', accepted_until=?, last_acceptance_id=? WHERE id=? AND workspace_id=?`)
+    .run(expires_at || null, id, risk.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'accept_risk', 'risk', risk.id, { acceptance_id: id, expires_at }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/risks/${risk.id}`, 'Risk acceptance recorded'));
 });
@@ -10835,10 +10819,12 @@ app.get('/workspaces/:wsId/risks/:id/acceptances', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/risks/:id/acceptances/:aid/revoke', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
-  db.prepare(`UPDATE risk_acceptances SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND risk_id=?`).run(req.params.aid, req.params.id);
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
+  db.prepare(`UPDATE risk_acceptances SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND risk_id=?`).run(req.params.aid, risk.id);
   // Reset risk to open if no other active acceptance
-  const remaining = db.prepare(`SELECT COUNT(*) c FROM risk_acceptances WHERE risk_id=? AND revoked_at IS NULL`).get(req.params.id).c;
-  if (remaining === 0) db.prepare(`UPDATE risks SET status='open', accepted_until=NULL WHERE id=?`).run(req.params.id);
+  const remaining = db.prepare(`SELECT COUNT(*) c FROM risk_acceptances WHERE risk_id=? AND revoked_at IS NULL`).get(risk.id).c;
+  if (remaining === 0) db.prepare(`UPDATE risks SET status='open', accepted_until=NULL WHERE id=? AND workspace_id=?`).run(risk.id, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'revoke_acceptance', 'risk', req.params.id, null, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}/acceptances`);
 });
@@ -11326,8 +11312,7 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
 });
 
 // SoA snapshot capture - immutable, hashed payload.
-app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification
@@ -11358,8 +11343,7 @@ app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspac
 });
 
 // SoA metadata - captures version/owner/approver and auto-snapshots if none exists yet.
-app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   // Always create a new snapshot with the metadata - that way metadata is versioned.
   const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
@@ -11387,8 +11371,7 @@ app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspac
 
 // Auto-justify SoA: for every Annex A control that any open risk treats, mark it
 // Included and pre-fill an inclusion justification of the form "Treats {risk titles}".
-app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
               SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
   // For each control with at least one open risk link, build "Treats R-1, R-2..." text and mark included.
@@ -11419,8 +11402,7 @@ app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWork
 });
 
 // Custom (non-Annex-A) controls
-app.post('/workspaces/:wsId/iso42001/soa/custom-controls', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/custom-controls', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { code, title, source_framework, applicability, description, inclusion_justification } = req.body;
   if (!code || !title) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   db.prepare(`INSERT INTO iso42001_soa_custom_controls
@@ -11432,8 +11414,7 @@ app.post('/workspaces/:wsId/iso42001/soa/custom-controls', requireAuth, requireW
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
 });
 
-app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { code, title, source_framework, applicability, status, inclusion_justification, exclusion_justification } = req.body;
   db.prepare(`UPDATE iso42001_soa_custom_controls
     SET code=COALESCE(?, code), title=COALESCE(?, title), source=COALESCE(?, source),
@@ -11448,8 +11429,7 @@ app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requ
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
 });
 
-app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM iso42001_soa_custom_controls WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
 });
@@ -11525,9 +11505,8 @@ app.get('/workspaces/:wsId/iso42001/export/soa.csv', requireAuth, requireWorkspa
 });
 
 // Per-row SoA update.
-app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
+app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
   if (['bulk'].includes(req.params.isoId)) return nextMw();
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   getOrCreate42State(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
   db.prepare(`UPDATE iso42001_control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
@@ -11709,8 +11688,7 @@ app.get('/workspaces/:wsId/iso42001/gap-assessment', requireAuth, requireWorkspa
   res.render('iso42001_gap_assessment', { user: req.user, ws: req.workspace, passes, counts });
 });
 
-app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const maxPass = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n FROM iso42001_assessment_passes WHERE workspace_id=?`).get(req.workspace.id).n;
   const passId = db.prepare(`INSERT INTO iso42001_assessment_passes (workspace_id, pass_number, name, started_by)
     VALUES (?, ?, ?, ?)`).run(req.workspace.id, maxPass + 1, `Pass ${maxPass + 1}`, req.user.id).lastInsertRowid;
@@ -11720,8 +11698,7 @@ app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, require
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`);
 });
 
-app.post('/workspaces/:wsId/iso42001/gap-assessment/:passId/complete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`UPDATE iso42001_assessment_passes SET status='completed', completed_at=CURRENT_TIMESTAMP
               WHERE id=? AND workspace_id=?`).run(req.params.passId, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'complete_iso42001_pass', 'iso42001_pass', req.params.passId, null);
@@ -11839,8 +11816,7 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
     priorPassNotes, activePass });
 });
 
-app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const item = db.prepare(`SELECT * FROM iso42001_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
   getOrCreate42State(req.workspace.id, item.id);
@@ -11902,8 +11878,7 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace,
 });
 
 // --- Linkage POST routes: connect risks/docs to ISO 42001 controls ---
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { document_id, section_ref } = req.body;
   if (!document_id) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
   // Sanity check the doc belongs to this workspace.
@@ -11915,14 +11890,18 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, re
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
-  db.prepare(`DELETE FROM iso42001_document_controls WHERE id=? AND iso_item_id=?`).run(req.params.linkId, req.params.isoId);
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  // Verify the link belongs to a doc in this workspace before deleting.
+  const link = db.prepare(`SELECT dc.* FROM iso42001_document_controls dc
+    INNER JOIN generated_docs d ON d.id = dc.document_id
+    WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+  if (link) {
+    db.prepare(`DELETE FROM iso42001_document_controls WHERE id=?`).run(link.id);
+  }
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { risk_id } = req.body;
   if (!risk_id) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
   // Sanity check the risk belongs to this workspace.
@@ -11934,8 +11913,7 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requir
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 
-app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM iso42001_risk_controls WHERE risk_id=? AND iso_item_id=?`)
     .run(req.params.linkRiskId, req.params.isoId);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
@@ -12085,8 +12063,7 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
   res.render('iso42001_roadmap', { user: req.user, ws: req.workspace, grouped, phases, needsAttention, roadmap });
 });
 
-app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   getOrCreate42State(req.workspace.id, req.params.isoId);
   db.prepare(`UPDATE iso42001_control_states SET roadmap_phase = ?, last_updated = CURRENT_TIMESTAMP
               WHERE workspace_id=? AND iso_item_id=?`)
@@ -12402,8 +12379,7 @@ app.get('/workspaces/:wsId/iso42001/cert-cycle', requireAuth, requireWorkspace, 
 });
 
 // Seed default cycle - 5 standard events based on the target cert date or today + 60 days.
-app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const ws = db.prepare(`SELECT target_cert_date FROM workspaces WHERE id=?`).get(req.workspace.id);
   const stage1 = ws && ws.target_cert_date ? new Date(ws.target_cert_date) : new Date(Date.now() + 60 * 86400000);
   // Cert target -> Stage 2 date. Stage 1 = -30 days, surveillance +12mo, +24mo, recert +36mo.
@@ -12426,8 +12402,7 @@ app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorks
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { event_type, planned_date, notes } = req.body;
   if (!event_type) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
   db.prepare(`INSERT INTO iso42001_cert_cycle_events (workspace_id, event_type, planned_date, notes) VALUES (?, ?, ?, ?)`)
@@ -12436,8 +12411,7 @@ app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorksp
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const { planned_date, actual_date, status, notes } = req.body;
   db.prepare(`UPDATE iso42001_cert_cycle_events
               SET planned_date=COALESCE(?,planned_date), actual_date=COALESCE(?,actual_date),
@@ -12447,8 +12421,7 @@ app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requir
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
 
-app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/delete', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   db.prepare(`DELETE FROM iso42001_cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
 });
@@ -12465,8 +12438,7 @@ app.get('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (req
     sections: ISO42001_INTAKE_SECTIONS, answers, total, answered, draftScope });
 });
 
-app.post('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const upsert = db.prepare(`INSERT INTO iso42001_intake_answers (workspace_id, question_key, answer, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(workspace_id, question_key) DO UPDATE SET answer=excluded.answer, updated_at=CURRENT_TIMESTAMP`);
@@ -12482,8 +12454,7 @@ app.post('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (re
 });
 
 // Apply intake to workspace - push draft scope into clause 4.3 notes and update target_cert_date.
-app.post('/workspaces/:wsId/iso42001/intake/apply', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/intake/apply', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const wsId = req.workspace.id;
   const rows = db.prepare(`SELECT question_key, answer FROM iso42001_intake_answers WHERE workspace_id=?`).all(wsId);
   const answers = {};
@@ -12542,8 +12513,7 @@ app.get('/workspaces/:wsId/iso42001/engagement-plan', requireAuth, requireWorksp
   res.render('iso42001_engagement_plan', { user: req.user, ws: req.workspace, phases: ISO42001_PLAN_PHASES, progress });
 });
 
-app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const phaseKey = req.params.phaseKey;
   if (!ISO42001_PLAN_PHASES.find(p => p.key === phaseKey)) return res.status(400).send('Bad phase');
   const existing = db.prepare(`SELECT completed_at FROM iso42001_engagement_plan_progress WHERE workspace_id=? AND phase_key=?`).get(req.workspace.id, phaseKey);
@@ -12557,8 +12527,7 @@ app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireA
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/engagement-plan`);
 });
 
-app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/notes', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/notes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const phaseKey = req.params.phaseKey;
   if (!ISO42001_PLAN_PHASES.find(p => p.key === phaseKey)) return res.status(400).send('Bad phase');
   db.prepare(`INSERT INTO iso42001_engagement_plan_progress (workspace_id, phase_key, notes)
