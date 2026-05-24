@@ -1,184 +1,570 @@
-<%- include('partials/header', { title: 'Post-assessment summary', user, ws, active: 'controls' }) %>
+<%- include('partials/header', { title: 'Post-assessment summary', user, ws, active: 'gap-assessment-summary' }) %>
 
-<div class="page-head">
-  <div>
-    <h1 class="page-title">Post-assessment summary</h1>
-    <div class="page-subtitle">Your gap walkthrough turned into a worklist. Spawn remediation tasks, generate missing policies, and surface evidence the auditor will ask for.</div>
+<style>
+  /* Post-assessment summary - styled in the same board-pack idiom as
+     the exec brief. Classification header, numbered sections, RAG
+     status distribution, formal tables. Reads as a workpaper output
+     of the gap diagnostic, not a SaaS dashboard. All interactive
+     bits (spawn-tasks form, checkboxes, JS handlers) preserved. */
+
+  .pack { max-width: 1000px; margin: 0 auto; background: #fff; color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+
+  .pack-classification { background: #1a1a1a; color: rgba(255,255,255,0.92); padding: 9px 28px; display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+  .pack-classification .right { color: rgba(255,255,255,0.55); font-weight: 500; letter-spacing: 0.06em; font-size: 10px; }
+
+  .pack-title { padding: 30px 32px 22px; border-bottom: 4px double var(--text); display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: flex-end; }
+  .pack-title-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .pack-title h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 32px; line-height: 1.05; font-weight: 600; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+  .pack-title h1 .sub { display: block; font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 400; font-style: italic; color: var(--text-secondary); margin-top: 8px; letter-spacing: -0.005em; }
+  .pack-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 200px; }
+  .pack-actions .btn { justify-content: center; white-space: nowrap; }
+
+  .pack-body { padding: 24px 32px 16px; }
+
+  .pack-section { margin-bottom: 32px; }
+  .pack-section-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 14px; }
+  .pack-section-num { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; }
+  .pack-section-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+  .pack-section-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* Inline alert for incomplete assessment */
+  .pack-alert { padding: 14px 18px; border-left: 4px solid #b91c1c; background: rgba(185,28,28,0.06); margin-bottom: 20px; font-size: 13px; line-height: 1.55; color: var(--text); display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+  .pack-alert strong { color: #b91c1c; font-weight: 700; }
+  .pack-alert a { color: #b91c1c; font-weight: 600; text-decoration: none; }
+  .pack-alert a:hover { text-decoration: underline; }
+
+  /* Workpaper-table styling — heavier rules, double-rule motifs picked up from
+     the title block, totals rows, footnoted text indicators rather than pills.
+     Reads as a Big-4 audit exhibit, not a SaaS list. */
+
+  .pack-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 0 0 6px; font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: -0.005em; }
+  .pack-caption .label { color: var(--text-tertiary); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  .pack-source { padding: 8px 0 0; font-size: 10.5px; color: var(--text-tertiary); line-height: 1.55; font-style: italic; border-top: 0; }
+  .pack-source strong { font-style: normal; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; color: var(--text-secondary); margin-right: 6px; }
+
+  /* Common workpaper table base */
+  .wp { width: 100%; border-collapse: collapse; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); }
+  .wp thead th { text-align: left; padding: 8px 12px 6px; color: var(--text); font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1px solid var(--text); background: transparent; vertical-align: bottom; }
+  .wp thead th.num { text-align: right; }
+  .wp thead th.pick { text-align: center; width: 28px; }
+  .wp thead th.center { text-align: center; }
+  .wp tbody td { padding: 8px 12px; vertical-align: middle; border-bottom: 1px dotted var(--border); }
+  .wp tbody tr:last-child td { border-bottom: 0; }
+  .wp tbody tr:hover { background: rgba(92, 10, 10, 0.025); }
+  .wp tbody tr.has-task td { color: var(--text-tertiary); }
+  .wp tbody tr.has-task td a { color: var(--text-tertiary); }
+  .wp tbody tr.group td { padding: 12px 12px 4px; border-bottom: 0; font-family: 'Source Serif 4', Georgia, serif; font-style: italic; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); letter-spacing: -0.005em; }
+  .wp tbody tr.totals td { padding-top: 10px; border-top: 1px solid var(--text); border-bottom: 0; font-weight: 700; color: var(--text); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .wp tbody tr.totals td.num { font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 13px; letter-spacing: 0; text-transform: none; }
+  .wp td.num { text-align: right; font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text); }
+  .wp td.num.dim { color: var(--text-tertiary); font-size: 11.5px; }
+  .wp td.ref { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--text-secondary); font-weight: 600; white-space: nowrap; letter-spacing: 0; }
+  .wp td.metric { color: var(--text); font-weight: 500; }
+  .wp td.metric .sub { display: block; font-weight: 400; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; font-style: italic; }
+  .wp td.title-cell a { color: var(--text); text-decoration: none; font-weight: 500; border-bottom: 1px solid transparent; }
+  .wp td.title-cell a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  .wp td.title-cell .type-tag { display: inline-block; margin-left: 6px; font-size: 9.5px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
+  .wp td.note { font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.04em; font-weight: 600; }
+  .wp td.center { text-align: center; }
+  .wp td.pick { text-align: center; padding: 8px 6px; }
+
+  /* Textual RAG indicators — workpapers use marks and footnotes, not coloured chips */
+  .mark { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; letter-spacing: 0; }
+  .mark .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .mark .dot.red    { background: #b91c1c; }
+  .mark .dot.orange { background: #c2410c; }
+  .mark .dot.amber  { background: #92400e; }
+  .mark .dot.green  { background: #166534; }
+  .mark .dot.grey   { background: transparent; border: 1.5px solid var(--text-tertiary); }
+  .mark .dot.hollow { background: transparent; border: 1.5px solid var(--text-secondary); }
+  .mark .lbl { color: var(--text-secondary); font-weight: 500; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .mark.subdued .lbl, .mark.subdued { color: var(--text-tertiary); font-weight: 500; }
+
+  .footref { font-size: 9.5px; vertical-align: super; color: var(--accent); font-weight: 700; margin-left: 2px; font-family: 'Source Serif 4', Georgia, serif; line-height: 0; }
+
+  /* Action toolbar for the spawn-tasks form — sits above the workpaper, looks like a worksheet header strip */
+  .pack-toolbar { display: flex; align-items: center; gap: 10px; padding: 9px 0 9px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--border); margin-bottom: 0; }
+  .pack-toolbar .spacer { flex: 1; }
+  .pack-toolbar .counter { color: var(--text-tertiary); font-weight: 500; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .pack-toolbar .counter strong { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .pack-toolbar label.due-lbl { font-size: 11px; color: var(--text-tertiary); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+  .pack-toolbar input[type="date"] { padding: 4px 6px; border: 1px solid var(--border); font-size: 11.5px; font-family: 'SF Mono', Menlo, monospace; background: #fff; }
+  .pack-toolbar .tlink { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; font-size: 11.5px; cursor: pointer; text-decoration: none; }
+  .pack-toolbar .tlink:hover { text-decoration: underline; }
+  .pack-toolbar .tdivider { color: var(--text-tertiary); }
+
+  .pack-empty { padding: 18px 14px; text-align: center; color: var(--text-tertiary); font-style: italic; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); }
+
+  /* Appendix — same workpaper idiom as the body, sits on a faint paper tint to
+     close the document. Two stacked exhibits: numbered notes (matching the
+     footnote refs in the body) and the priority-derivation rules. */
+  .pack-appendix { background: #fafaf8; border-top: 4px double var(--text); padding: 28px 32px 32px; }
+  .pack-appendix-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 18px; }
+  .pack-appendix-eyebrow { font-family: 'Inter', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+  .pack-appendix-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+  .pack-appendix-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pack-appendix-grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
+  .pack-appendix .wp { background: transparent; }
+  .pack-appendix .wp td.numref { width: 28px; text-align: center; vertical-align: top; padding-top: 9px; font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; font-weight: 700; color: var(--accent); }
+  .pack-appendix .wp td.term { width: 170px; vertical-align: top; padding-top: 8px; font-weight: 600; color: var(--text); font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; letter-spacing: -0.005em; }
+  .pack-appendix .wp td.term .meta { display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; color: var(--text-tertiary); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; }
+  .pack-appendix .wp td.def { vertical-align: top; padding-top: 9px; color: var(--text-secondary); line-height: 1.6; font-size: 12px; }
+  .pack-appendix .wp td.def code { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; background: rgba(92, 10, 10, 0.05); color: var(--accent); padding: 1px 5px; border-radius: 2px; letter-spacing: 0; }
+  .pack-appendix .pack-caption { color: var(--text); margin-bottom: 4px; }
+  .pack-appendix .pack-caption .label { color: var(--text-tertiary); }
+
+  .pack-foot { background: var(--bg-subtle); padding: 16px 32px; border-top: 1.5px solid var(--text); display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; font-size: 10px; color: var(--text-secondary); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+  .pack-foot .center { text-align: center; color: var(--text-tertiary); font-weight: 500; }
+  .pack-foot .right { text-align: right; }
+</style>
+
+<%
+  const today = new Date().toISOString().slice(0,10);
+  const clientName = ws.brand_display_name || ws.client_name;
+  const docId = 'ISMS-PAS-' + String(ws.id).padStart(4, '0') + '-' + today.replace(/-/g, '');
+
+  // Status totals - dist is passed from the route
+  const totalAll = (dist.Implemented || 0) + (dist['Partially Implemented'] || 0)
+    + (dist['Work In Progress'] || 0) + (dist['Not Implemented'] || 0)
+    + (dist['Not Applicable'] || 0) + (notAssessedCount || 0);
+  const totalGaps = (dist['Partially Implemented'] || 0) + (dist['Work In Progress'] || 0) + (dist['Not Implemented'] || 0);
+  const totalImplemented = dist.Implemented || 0;
+  const totalNA = dist['Not Applicable'] || 0;
+
+  const pct = (n) => totalAll > 0 ? Math.round((n / totalAll) * 100) : 0;
+%>
+
+<div class="pack">
+
+  <%# Classification header %>
+  <div class="pack-classification">
+    <span>Internal · Gap-assessment findings &amp; worklist</span>
+    <span class="right">Document <%= docId %></span>
   </div>
-  <div class="row">
-    <a href="/workspaces/<%= ws.id %>/controls/assess/summary.docx" class="btn btn-secondary btn-xs">Export report (DOCX)</a>
-    <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-secondary btn-xs">Re-open wizard</a>
-    <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-secondary btn-xs">Pre-cert blocker check →</a>
-    <a href="/workspaces/<%= ws.id %>/soa" class="btn btn-primary btn-xs">Go to SoA →</a>
-  </div>
-</div>
 
-<!-- Status distribution -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;">
-  <div class="panel kpi"><div class="kpi-num num text-success"><%= dist.Implemented %></div><div class="kpi-label text-xs">Implemented</div></div>
-  <div class="panel kpi"><div class="kpi-num num text-warn"><%= dist['Partially Implemented'] %></div><div class="kpi-label text-xs">Partial</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:#ea580c;"><%= dist['Work In Progress'] %></div><div class="kpi-label text-xs">In progress</div></div>
-  <div class="panel kpi"><div class="kpi-num num text-danger"><%= dist['Not Implemented'] %></div><div class="kpi-label text-xs">Not implemented</div></div>
-  <div class="panel kpi"><div class="kpi-num num text-secondary"><%= dist['Not Applicable'] %></div><div class="kpi-label text-xs">Not applicable</div></div>
-  <div class="panel kpi"><div class="kpi-num num" style="color:<%= notAssessedCount > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;"><%= notAssessedCount %></div><div class="kpi-label text-xs">Not assessed</div></div>
-</div>
-
-<% if (notAssessedCount > 0) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);">
-    <div class="panel-pad">
-      <div class="text-danger" style="font-weight:600;margin-bottom:4px;">⚠ <%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</div>
-      <div class="meta">The gap assessment is incomplete. Finish the wizard before treating this as a final view. <a href="/workspaces/<%= ws.id %>/controls/assess" style="color:var(--accent);">→ Re-open wizard</a></div>
+  <%# Title block + actions %>
+  <div class="pack-title">
+    <div>
+      <div class="pack-title-eyebrow"><%= clientName %> · ISO/IEC 27001:2022</div>
+      <h1>Findings &amp; worklist
+        <span class="sub">Gap-assessment output translated into remediation actions · as at <%= today %></span>
+      </h1>
+    </div>
+    <div class="pack-actions">
+      <a href="/workspaces/<%= ws.id %>/soa" class="btn btn-primary btn-xs">Continue to SoA →</a>
+      <a href="/workspaces/<%= ws.id %>/controls/assess/summary.docx" class="btn btn-secondary btn-xs">Export DOCX ↓</a>
+      <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-secondary btn-xs">Pre-cert blockers →</a>
+      <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-secondary btn-xs">Re-open wizard</a>
     </div>
   </div>
-<% } %>
 
-<!-- Section 1: Spawn remediation tasks for gaps -->
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head">
-    <h2>1. Remediation tasks (<%= gaps.length %> gap<%= gaps.length === 1 ? '' : 's' %>)</h2>
-    <span class="meta">Pick gaps below; one task per item. Pre-existing open tasks are flagged so you don't duplicate.</span>
-  </div>
-  <% if (gaps.length === 0) { %>
-    <div class="panel-pad meta">No gaps in `Not Implemented` / `Partially Implemented` / `Work In Progress` state. Nice.</div>
-  <% } else { %>
-    <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/summary/spawn-tasks">
-      <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
-        <button type="button" onclick="pickGaps(true)" class="btn btn-secondary btn-xs">Select all gaps without an open task</button>
-        <button type="button" onclick="pickGaps(false)" class="btn btn-secondary btn-xs">Clear</button>
-        <span class="meta text-base" style="margin-left:8px;"><span id="gapCount">0</span> selected</span>
-        <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
-          <label class="meta text-base">Default due:</label>
-          <input type="date" name="due_date" class="input text-base" style="width:140px;">
-          <button type="submit" class="btn btn-primary btn-xs">Spawn selected tasks</button>
-        </span>
+  <div class="pack-body">
+
+    <%# Incomplete-assessment alert %>
+    <% if (notAssessedCount > 0) { %>
+      <div class="pack-alert">
+        <div>
+          <strong><%= notAssessedCount %> item<%= notAssessedCount === 1 ? '' : 's' %> still "Not Assessed"</strong> &middot; the gap assessment is incomplete. Treat the findings below as provisional until every item has a status. The Not-Assessed count drops to zero only after every clause and Annex A control has been touched.
+        </div>
+        <a href="/workspaces/<%= ws.id %>/controls/assess">Re-open wizard →</a>
       </div>
-      <table class="t">
-        <thead><tr>
-          <th style="width:30px;"></th><th style="width:90px;">ID</th><th>Title</th>
-          <th style="width:140px;">Status</th><th style="width:90px;">Auto priority</th><th style="width:80px;">Maturity</th><th style="width:120px;">Existing task?</th>
-        </tr></thead>
+    <% } %>
+
+    <%# Section 1 — Status distribution %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">1</span>
+        <h2 class="pack-section-title">Status distribution</h2>
+        <span class="pack-section-meta"><%= totalAll %> items · clauses 4–10 + Annex A</span>
+      </div>
+      <div class="pack-caption"><span>Exhibit 1.1 &nbsp;·&nbsp; Posture of every assessed item</span><span class="label">All counts</span></div>
+      <table class="wp">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th>
+            <th>Status</th>
+            <th class="num" style="width:90px;">Count</th>
+            <th class="num" style="width:90px;">% of total</th>
+            <th class="num" style="width:120px;">Counted as gap?</th>
+            <th class="center" style="width:60px;">Note</th>
+          </tr>
+        </thead>
         <tbody>
-          <% gaps.forEach(g => {
-               const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
-               const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
-               const sevColor = g.status === 'Not Implemented' ? '#b91c1c' : g.status === 'Partially Implemented' ? '#a16207' : '#ea580c';
-               // Mirror the priority derivation on server.js spawn-tasks route.
-               let prio = 'normal';
-               if (g.status === 'Not Implemented') {
-                 if (g.type === 'clause') prio = 'critical';
-                 else if ((g.max_risk_score || 0) >= 16) prio = 'critical';
-                 else prio = 'high';
-               } else if (g.status === 'Work In Progress') prio = 'low';
-               const prioColor = prio === 'critical' ? '#b91c1c' : prio === 'high' ? '#ea580c' : prio === 'normal' ? '#a16207' : 'var(--text-secondary)';
-          %>
+          <% const STATUS_ROWS = [
+              { label: 'Implemented', sub: 'Control demonstrably in place and evidenced.', count: dist.Implemented || 0, dot: 'green', gap: 'No', note: '1' },
+              { label: 'Partially Implemented', sub: 'Control exists but coverage or consistency gaps remain.', count: dist['Partially Implemented'] || 0, dot: 'amber', gap: 'Yes', note: '2' },
+              { label: 'Work In Progress', sub: 'Implementation under way, not yet complete.', count: dist['Work In Progress'] || 0, dot: 'orange', gap: 'Yes', note: '2' },
+              { label: 'Not Implemented', sub: 'Control absent — gap requiring action.', count: dist['Not Implemented'] || 0, dot: 'red', gap: 'Yes', note: '2' },
+              { label: 'Not Applicable', sub: 'Scoped out with documented justification on the SoA.', count: dist['Not Applicable'] || 0, dot: 'hollow', gap: 'No', note: '3' },
+              { label: 'Not Assessed', sub: 'Wizard has not yet reached this item.', count: notAssessedCount || 0, dot: 'grey', gap: 'Excluded', note: '4' }
+            ]; %>
+          <% STATUS_ROWS.forEach(r => { const p = pct(r.count); %>
             <tr>
-              <td><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
-              <td class="mono meta"><%= refCode %></td>
-              <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>" class="link-muted"><%= cleanTitle %></a><% if (g.type === 'clause') { %> <span class="tag tag-info text-xxs">clause</span><% } %></td>
-              <td><span class="tag" style="background:<%= sevColor %>;color:white;font-size:10.5px;"><%= g.status %></span></td>
-              <td><span style="font-size:10.5px;font-weight:600;color:<%= prioColor %>;text-transform:uppercase;"><%= prio %></span></td>
-              <td class="meta"><%= g.maturity != null ? g.maturity : '-' %></td>
-              <td><% if (g.has_open_task) { %><span class="tag tag-warn text-xxs">open task exists</span><% } else { %><span class="meta">-</span><% } %></td>
+              <td class="center"><span class="mark"><span class="dot <%= r.dot %>"></span></span></td>
+              <td class="metric"><%= r.label %><span class="sub"><%= r.sub %></span></td>
+              <td class="num"><%= r.count %></td>
+              <td class="num dim"><%= p %>%</td>
+              <td class="num dim" style="text-align:right;font-family:inherit;font-size:11.5px;letter-spacing:0.02em;"><%= r.gap %></td>
+              <td class="center"><span class="footref"><%= r.note %></span></td>
             </tr>
           <% }) %>
+          <tr class="totals">
+            <td></td>
+            <td>Total assessed perimeter</td>
+            <td class="num"><%= totalAll %></td>
+            <td class="num">100%</td>
+            <td class="num" style="text-align:right;font-family:inherit;font-size:11.5px;letter-spacing:0.02em;font-weight:700;"><%= totalGaps %> gaps</td>
+            <td></td>
+          </tr>
         </tbody>
       </table>
-    </form>
-  <% } %>
-</div>
-
-<!-- Section 2: Missing documents -->
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head">
-    <h2>2. Items lacking a linked document (<%= docGaps.length %>)</h2>
-    <span class="meta">Gap-state items with no policy/procedure linked via the doc-control mapping</span>
-  </div>
-  <% if (docGaps.length === 0) { %>
-    <div class="panel-pad meta">Every gap-state item already has at least one document linked.</div>
-  <% } else { %>
-    <table class="t">
-      <thead><tr><th style="width:90px;">ID</th><th>Title</th><th style="width:140px;">Status</th><th style="width:200px;text-align:right;">Action</th></tr></thead>
-      <tbody>
-        <% docGaps.slice(0, 30).forEach(g => {
-             const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
-             const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
-        %>
-          <tr>
-            <td class="mono meta"><%= refCode %></td>
-            <td><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>" class="link-muted"><%= cleanTitle %></a></td>
-            <td class="meta"><%= g.status %></td>
-            <td style="text-align:right;"><a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">Pick template →</a></td>
-          </tr>
-        <% }) %>
-        <% if (docGaps.length > 30) { %>
-          <tr><td colspan="4" class="meta" style="text-align:center;padding:8px;">… and <%= docGaps.length - 30 %> more - open the document detail view and link controls one at a time</td></tr>
-        <% } %>
-      </tbody>
-    </table>
-  <% } %>
-</div>
-
-<!-- Section 3: Evidence asks -->
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head">
-    <h2>3. Evidence asks (<%= evidenceAsks.length %>)</h2>
-    <span class="meta">You marked these as "Implemented" but no evidence file is attached - the auditor's first question</span>
-  </div>
-  <% if (evidenceAsks.length === 0) { %>
-    <div class="panel-pad meta">Every "Implemented" item has at least one evidence file attached.</div>
-  <% } else { %>
-    <div style="max-height:320px;overflow-y:auto;">
-      <% evidenceAsks.forEach(e => {
-           const refCode = e.id.replace('annex-','').replace('clause-','').toUpperCase();
-           const cleanTitle = e.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
-      %>
-        <a class="text-lg" href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);text-decoration:none;">
-          <span><span class="mono meta" style="margin-right:8px;"><%= refCode %></span><%= cleanTitle %></span>
-          <span class="meta text-sm">→ Upload evidence</span>
-        </a>
-      <% }) %>
+      <div class="pack-source">
+        <strong>Notes</strong>
+        <sup style="color:var(--accent);font-weight:700;">1</sup> Implemented items still need evidence on file — see Section 4.&nbsp;
+        <sup style="color:var(--accent);font-weight:700;">2</sup> Gap items roll up into the remediation worklist (Section 2).&nbsp;
+        <sup style="color:var(--accent);font-weight:700;">3</sup> N/A determinations require justification on the Statement of Applicability.&nbsp;
+        <sup style="color:var(--accent);font-weight:700;">4</sup> Not-Assessed items are excluded from posture maths; complete the wizard to retire them.
+      </div>
     </div>
-  <% } %>
-</div>
 
-<!-- Section 4: Risks needing treatment update -->
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head">
-    <h2>4. Risks linked to gap controls (<%= untreatedLinkedRisks.length %>)</h2>
-    <span class="meta">Open risks whose treatment depends on a control still in gap state - re-evaluate residual risk</span>
+    <%# Section 2 — Remediation tasks (gap items) %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">2</span>
+        <h2 class="pack-section-title">Remediation tasks</h2>
+        <span class="pack-section-meta"><%= gaps.length %> open gap<%= gaps.length === 1 ? '' : 's' %> · one task per item, duplicates flagged</span>
+      </div>
+
+      <% if (gaps.length === 0) { %>
+        <div class="pack-empty">No items in Not Implemented / Partially Implemented / Work In Progress state. Clean diagnostic.</div>
+      <% } else {
+           const clauseGaps = gaps.filter(g => g.type === 'clause');
+           const annexGaps  = gaps.filter(g => g.type !== 'clause');
+           const statusMap = {
+             'Not Implemented':       { dot: 'red',    label: 'Not implemented' },
+             'Work In Progress':      { dot: 'orange', label: 'In progress' },
+             'Partially Implemented': { dot: 'amber',  label: 'Partial' }
+           };
+           const prioFor = (g) => {
+             if (g.status === 'Not Implemented') {
+               if (g.type === 'clause') return { lbl: 'Critical', dot: 'red' };
+               if ((g.max_risk_score || 0) >= 16) return { lbl: 'Critical', dot: 'red' };
+               return { lbl: 'High', dot: 'orange' };
+             }
+             if (g.status === 'Work In Progress') return { lbl: 'Low', dot: 'grey' };
+             return { lbl: 'Normal', dot: 'amber' };
+           };
+      %>
+        <div class="pack-caption"><span>Exhibit 2.1 &nbsp;·&nbsp; Open gaps ranked for remediation</span><span class="label"><%= gaps.length %> rows</span></div>
+        <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/summary/spawn-tasks">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <div class="pack-toolbar">
+            <button type="button" class="tlink" onclick="pickGaps(true)">Select all without an open task</button>
+            <span class="tdivider">·</span>
+            <button type="button" class="tlink" onclick="pickGaps(false)">Clear</button>
+            <span class="counter"><strong id="gapCount">0</strong> selected</span>
+            <span class="spacer"></span>
+            <label class="due-lbl" for="due_date">Default due:</label>
+            <input type="date" name="due_date" id="due_date">
+            <button type="submit" class="btn btn-primary btn-xs">Spawn selected tasks →</button>
+          </div>
+          <table class="wp">
+            <thead>
+              <tr>
+                <th class="pick"></th>
+                <th style="width:80px;">Ref</th>
+                <th>Item</th>
+                <th style="width:130px;">Status</th>
+                <th style="width:95px;">Priority</th>
+                <th style="width:72px;" class="num">Maturity</th>
+                <th style="width:78px;" class="center">Task</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (clauseGaps.length) { %>
+                <tr class="group"><td colspan="7">Clauses 4–10 &mdash; management-system requirements (<%= clauseGaps.length %>)</td></tr>
+                <% clauseGaps.forEach(g => {
+                     const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+                     const s = statusMap[g.status] || { dot: 'grey', label: g.status };
+                     const p = prioFor(g);
+                %>
+                  <tr class="<%= g.has_open_task ? 'has-task' : '' %>">
+                    <td class="pick"><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
+                    <td class="ref"><%= refCode %></td>
+                    <td class="title-cell"><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>"><%= cleanTitle %></a><span class="type-tag">Clause</span></td>
+                    <td><span class="mark"><span class="dot <%= s.dot %>"></span><span class="lbl"><%= s.label %></span></span></td>
+                    <td><span class="mark"><span class="dot <%= p.dot %>"></span><span class="lbl"><%= p.lbl %></span></span></td>
+                    <td class="num"><%= g.maturity != null ? g.maturity + ' / 4' : '—' %></td>
+                    <td class="center"><% if (g.has_open_task) { %><span class="mark subdued"><span class="dot hollow"></span><span class="lbl">Open</span></span><% } else { %><span style="color:var(--border-strong);">—</span><% } %></td>
+                  </tr>
+                <% }) %>
+              <% } %>
+              <% if (annexGaps.length) { %>
+                <tr class="group"><td colspan="7">Annex A &mdash; technical &amp; operational controls (<%= annexGaps.length %>)</td></tr>
+                <% annexGaps.forEach(g => {
+                     const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+                     const s = statusMap[g.status] || { dot: 'grey', label: g.status };
+                     const p = prioFor(g);
+                %>
+                  <tr class="<%= g.has_open_task ? 'has-task' : '' %>">
+                    <td class="pick"><input type="checkbox" name="iso_id" value="<%= g.id %>" data-has-task="<%= g.has_open_task ? '1' : '0' %>" onchange="updateGapCount()" class="gap-pick"></td>
+                    <td class="ref"><%= refCode %></td>
+                    <td class="title-cell"><a href="/workspaces/<%= ws.id %>/controls/assess/<%= g.id %>"><%= cleanTitle %></a></td>
+                    <td><span class="mark"><span class="dot <%= s.dot %>"></span><span class="lbl"><%= s.label %></span></span></td>
+                    <td><span class="mark"><span class="dot <%= p.dot %>"></span><span class="lbl"><%= p.lbl %></span></span></td>
+                    <td class="num"><%= g.maturity != null ? g.maturity + ' / 4' : '—' %></td>
+                    <td class="center"><% if (g.has_open_task) { %><span class="mark subdued"><span class="dot hollow"></span><span class="lbl">Open</span></span><% } else { %><span style="color:var(--border-strong);">—</span><% } %></td>
+                  </tr>
+                <% }) %>
+              <% } %>
+            </tbody>
+          </table>
+        </form>
+        <div class="pack-source"><strong>Source</strong> Gap-assessment wizard responses, item-level. Priority derived per the appendix below; tie-broken on maturity then ISO reference.</div>
+      <% } %>
+    </div>
+
+    <%# Section 3 — Documents to generate %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">3</span>
+        <h2 class="pack-section-title">Items missing a policy or procedure</h2>
+        <span class="pack-section-meta"><%= docGaps.length %> item<%= docGaps.length === 1 ? '' : 's' %> · gap-state with no linked document</span>
+      </div>
+      <% if (docGaps.length === 0) { %>
+        <div class="pack-empty">Every gap-state item already has at least one document linked via the doc-control mapping.</div>
+      <% } else {
+           const docStatusMap = {
+             'Not Implemented':       { dot: 'red',    label: 'Not implemented' },
+             'Work In Progress':      { dot: 'orange', label: 'In progress' },
+             'Partially Implemented': { dot: 'amber',  label: 'Partial' }
+           };
+      %>
+        <div class="pack-caption"><span>Exhibit 3.1 &nbsp;·&nbsp; Documentation gaps requiring a template selection</span><span class="label"><%= docGaps.length %> rows</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th style="width:80px;">Ref</th>
+              <th>Item</th>
+              <th style="width:135px;">Status</th>
+              <th style="width:160px;" class="num">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% docGaps.slice(0, 30).forEach(g => {
+                 const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
+                 const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+                 const s = docStatusMap[g.status] || { dot: 'grey', label: g.status };
+            %>
+              <tr>
+                <td class="ref"><%= refCode %></td>
+                <td class="title-cell"><a href="/workspaces/<%= ws.id %>/controls/<%= g.id %>"><%= cleanTitle %></a></td>
+                <td><span class="mark"><span class="dot <%= s.dot %>"></span><span class="lbl"><%= s.label %></span></span></td>
+                <td class="num" style="font-family:inherit;"><a href="/workspaces/<%= ws.id %>/documents" style="color:var(--accent);text-decoration:none;font-weight:600;font-size:11.5px;">Pick template →</a></td>
+              </tr>
+            <% }) %>
+            <% if (docGaps.length > 30) { %>
+              <tr><td colspan="4" style="text-align:center;padding:10px;color:var(--text-tertiary);font-style:italic;font-size:11.5px;">… and <%= docGaps.length - 30 %> further item<%= (docGaps.length - 30) === 1 ? '' : 's' %>. Open each control and link its governing document.</td></tr>
+            <% } %>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Source</strong> Doc-control mapping. An item is considered documented once a single policy or procedure is linked; coverage quality is assessed separately during readiness review.</div>
+      <% } %>
+    </div>
+
+    <%# Section 4 — Evidence asks %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">4</span>
+        <h2 class="pack-section-title">Evidence asks</h2>
+        <span class="pack-section-meta"><%= evidenceAsks.length %> item<%= evidenceAsks.length === 1 ? '' : 's' %> · Implemented but no evidence attached</span>
+      </div>
+      <% if (evidenceAsks.length === 0) { %>
+        <div class="pack-empty">Every Implemented item has at least one evidence file attached.</div>
+      <% } else { %>
+        <div class="pack-caption"><span>Exhibit 4.1 &nbsp;·&nbsp; Implemented items without evidence on file</span><span class="label"><%= evidenceAsks.length %> rows</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th style="width:80px;">Ref</th>
+              <th>Item</th>
+              <th style="width:135px;">Status</th>
+              <th style="width:160px;" class="num">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% evidenceAsks.slice(0, 40).forEach(e => {
+                 const refCode = e.id.replace('annex-','').replace('clause-','').toUpperCase();
+                 const cleanTitle = e.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+            %>
+              <tr>
+                <td class="ref"><%= refCode %></td>
+                <td class="title-cell"><a href="/workspaces/<%= ws.id %>/controls/<%= e.id %>"><%= cleanTitle %></a></td>
+                <td><span class="mark"><span class="dot green"></span><span class="lbl">Implemented</span></span></td>
+                <td class="num" style="font-family:inherit;"><a href="/workspaces/<%= ws.id %>/controls/<%= e.id %>" style="color:var(--accent);text-decoration:none;font-weight:600;font-size:11.5px;">Attach evidence →</a></td>
+              </tr>
+            <% }) %>
+            <% if (evidenceAsks.length > 40) { %>
+              <tr><td colspan="4" style="text-align:center;padding:10px;color:var(--text-tertiary);font-style:italic;font-size:11.5px;">… and <%= evidenceAsks.length - 40 %> further item<%= (evidenceAsks.length - 40) === 1 ? '' : 's' %>. First question an auditor will ask of any Implemented control.</td></tr>
+            <% } %>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Source</strong> Implemented items with zero rows in the evidence-attachment table.</div>
+      <% } %>
+    </div>
+
+    <%# Section 5 — Risks blocked by gap controls %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">5</span>
+        <h2 class="pack-section-title">Risks blocked by gap controls</h2>
+        <span class="pack-section-meta"><%= untreatedLinkedRisks.length %> open risk<%= untreatedLinkedRisks.length === 1 ? '' : 's' %> · re-evaluate residual</span>
+      </div>
+      <% if (untreatedLinkedRisks.length === 0) { %>
+        <div class="pack-empty">No open risks are blocked on gap controls. Risk-treatment posture is current.</div>
+      <% } else { %>
+        <div class="pack-caption"><span>Exhibit 5.1 &nbsp;·&nbsp; Risks whose treatment relies on an unmet control</span><span class="label"><%= untreatedLinkedRisks.length %> rows</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th>Blocking control(s)</th>
+              <th style="width:110px;" class="num">L × I</th>
+              <th style="width:120px;">Treatment</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% untreatedLinkedRisks.forEach(r => {
+                 const blocks = (r.blocking_controls || '').split(',').filter(Boolean).map(s => {
+                   const [id, st] = s.split('|');
+                   return { id, st, code: id.replace('annex-','').replace('clause-','').toUpperCase() };
+                 });
+                 const score = r.likelihood * r.impact;
+                 const scoreDot = score >= 15 ? 'red' : score >= 8 ? 'amber' : 'grey';
+            %>
+              <tr>
+                <td class="title-cell"><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><%= r.title %></a></td>
+                <td style="font-size:11.5px;line-height:1.7;">
+                  <% blocks.forEach((b, idx) => { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= b.id %>" style="font-family:'SF Mono',Menlo,monospace;color:var(--text);text-decoration:none;font-weight:600;border-bottom:1px solid var(--border-strong);"><%= b.code %></a><%= idx < blocks.length - 1 ? ', ' : '' %><% }) %>
+                </td>
+                <td class="num"><span class="mark" style="justify-content:flex-end;"><span class="dot <%= scoreDot %>"></span><span style="font-family:'SF Mono',Menlo,monospace;font-weight:600;color:var(--text);"><%= r.likelihood %>&times;<%= r.impact %>&nbsp;=&nbsp;<%= score %></span></span></td>
+                <td><span class="mark subdued"><span class="dot hollow"></span><span class="lbl" style="text-transform:capitalize;"><%= r.status %></span></span></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Source</strong> Risk register joined to control-treatment links where the linked control sits in a gap state. Residual scoring must be re-evaluated once the underlying control closes.</div>
+      <% } %>
+    </div>
+
   </div>
-  <% if (untreatedLinkedRisks.length === 0) { %>
-    <div class="panel-pad meta">No open risks are blocked on gap controls.</div>
-  <% } else { %>
-    <table class="t">
-      <thead><tr><th>Risk</th><th>Blocking control(s)</th><th style="width:80px;">L × I</th><th style="width:120px;">Status</th></tr></thead>
-      <tbody>
-        <% untreatedLinkedRisks.forEach(r => {
-             const blocks = (r.blocking_controls || '').split(',').filter(Boolean).map(s => {
-               const [id, st] = s.split('|');
-               return { id, st, code: id.replace('annex-','').replace('clause-','').toUpperCase() };
-             });
-        %>
-          <tr>
-            <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted"><%= r.title %></a></td>
-            <td class="text-base">
-              <% blocks.forEach((b, idx) => {
-                   const color = b.st === 'Not Implemented' ? '#b91c1c' : b.st === 'Partially Implemented' ? '#a16207' : '#ea580c';
-              %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= b.id %>" class="mono" style="color:<%= color %>;text-decoration:none;border-bottom:1px dotted <%= color %>;"><%= b.code %></a><%= idx < blocks.length - 1 ? ', ' : '' %><% }) %>
-            </td>
-            <td class="num meta"><%= r.likelihood %> × <%= r.impact %></td>
-            <td><span class="status s-<%= r.status %>"><%= r.status %></span></td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  <% } %>
+
+  <%# Appendix — workpaper-style notes + priority-derivation rules %>
+  <div class="pack-appendix">
+    <div class="pack-appendix-head">
+      <div class="pack-appendix-eyebrow">App. A</div>
+      <h3 class="pack-appendix-title">Methodology &amp; priority derivation</h3>
+      <span class="pack-appendix-meta">Reading notes for this pack</span>
+    </div>
+
+    <div class="pack-appendix-grid">
+
+      <%# A.1 — Notes that match the footnote refs in Exhibit 1.1 %>
+      <div>
+        <div class="pack-caption"><span>A.1 &nbsp;·&nbsp; Notes referenced in Exhibit 1.1</span><span class="label">4 notes</span></div>
+        <table class="wp">
+          <tbody>
+            <tr>
+              <td class="numref">1</td>
+              <td class="term">Implemented<span class="meta">Counted as in-place</span></td>
+              <td class="def">Control demonstrably in place and evidenced. These items still appear in Exhibit 4.1 if no evidence file is attached &mdash; an Implemented status without supporting artefacts is the first thing an auditor will challenge.</td>
+            </tr>
+            <tr>
+              <td class="numref">2</td>
+              <td class="term">Gap items<span class="meta">Counted as gap</span></td>
+              <td class="def">Items with status <code>Not Implemented</code>, <code>Partially Implemented</code>, or <code>Work In Progress</code>. These roll up into the remediation worklist (Exhibit 2.1) and are the sole source of auto-spawned tasks.</td>
+            </tr>
+            <tr>
+              <td class="numref">3</td>
+              <td class="term">Not Applicable<span class="meta">Counted as in-place</span></td>
+              <td class="def">Scoped-out items require a written justification on the Statement of Applicability before certification. They do not contribute to the gap count, but cannot be left blank on the SoA.</td>
+            </tr>
+            <tr>
+              <td class="numref">4</td>
+              <td class="term">Not Assessed<span class="meta">Excluded from maths</span></td>
+              <td class="def">Items the wizard has not yet reached. They are excluded from posture percentages and from the total assessed perimeter. Complete the wizard to retire them &mdash; until then, treat the findings as provisional.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <%# A.2 — Priority derivation rules used in Exhibit 2.1 %>
+      <div>
+        <div class="pack-caption"><span>A.2 &nbsp;·&nbsp; Priority derivation used in Exhibit 2.1</span><span class="label">5 rules</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th style="width:32px;" class="center">#</th>
+              <th style="width:280px;">Condition</th>
+              <th style="width:115px;">Priority</th>
+              <th>Rationale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="numref" style="font-size:11px;">i</td>
+              <td class="def" style="padding-top:9px;">Status = <code>Not Implemented</code> <em>and</em> item type = clause</td>
+              <td><span class="mark"><span class="dot red"></span><span class="lbl">Critical</span></span></td>
+              <td class="def">A mandatory <em>shall</em> requirement is unmet. The ISMS cannot be certified while any clause sits in this state.</td>
+            </tr>
+            <tr>
+              <td class="numref" style="font-size:11px;">ii</td>
+              <td class="def" style="padding-top:9px;">Status = <code>Not Implemented</code> <em>and</em> linked risk score (L &times; I) &ge; 16</td>
+              <td><span class="mark"><span class="dot red"></span><span class="lbl">Critical</span></span></td>
+              <td class="def">An absent Annex A control is the sole treatment for a high-impact risk. Residual exposure stays at inherent until the control closes.</td>
+            </tr>
+            <tr>
+              <td class="numref" style="font-size:11px;">iii</td>
+              <td class="def" style="padding-top:9px;">Status = <code>Not Implemented</code>, no clause and no high-impact risk link</td>
+              <td><span class="mark"><span class="dot orange"></span><span class="lbl">High</span></span></td>
+              <td class="def">Default for any absent Annex A control. Should clear before the Stage 2 audit.</td>
+            </tr>
+            <tr>
+              <td class="numref" style="font-size:11px;">iv</td>
+              <td class="def" style="padding-top:9px;">Status = <code>Partially Implemented</code></td>
+              <td><span class="mark"><span class="dot amber"></span><span class="lbl">Normal</span></span></td>
+              <td class="def">Coverage or consistency gap on a control that already exists. Typically a documentation or rollout task, not net-new build.</td>
+            </tr>
+            <tr>
+              <td class="numref" style="font-size:11px;">v</td>
+              <td class="def" style="padding-top:9px;">Status = <code>Work In Progress</code></td>
+              <td><span class="mark"><span class="dot grey"></span><span class="lbl">Low</span></span></td>
+              <td class="def">Implementation already under way. Track to completion, but do not create a duplicate task &mdash; rows with an open task are dimmed and skipped by <em>Select all</em>.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Tie-break</strong> within a priority band, rows are ordered by descending maturity then ascending ISO reference.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <%# Footer %>
+  <div class="pack-foot">
+    <span>Internal</span>
+    <span class="center">Document <%= docId %> &middot; Page 1 of 1</span>
+    <span class="right">Prepared <%= today %> by <%= user.name %></span>
+  </div>
+
 </div>
 
 <script>
 function updateGapCount() {
   const n = document.querySelectorAll('input.gap-pick:checked').length;
-  document.getElementById('gapCount').textContent = n;
+  const el = document.getElementById('gapCount');
+  if (el) el.textContent = n;
 }
 function pickGaps(state) {
   document.querySelectorAll('input.gap-pick').forEach(cb => {

@@ -2,8 +2,8 @@
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">Workspace members</h1>
-    <div class="page-subtitle">Consultants and client users with access to this engagement.</div>
+    <h1 class="page-title">Team</h1>
+    <div class="page-subtitle">Consultants and client users with access to this client.</div>
   </div>
 </div>
 
@@ -17,7 +17,7 @@
           <td style="font-weight:500"><%= m.name %></td>
           <td class="text-secondary text-base"><%= m.email %></td>
           <td><span class="tag <%= m.user_type === 'firm' ? 'tag-info' : 'tag-success' %>"><%= m.user_type %></span></td>
-          <td><span class="tag tag-neutral"><%= m.role.replace(/_/g, ' ') %></span></td>
+          <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[rbac.normalizeRole(m.role)] || m.role.replace(/_/g, ' ') %></span></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/members/<%= m.id %>/remove" onsubmit="return appConfirmForm(event, 'Remove?')">
               <button class="btn btn-ghost btn-xs text-danger">Remove</button>
@@ -39,7 +39,7 @@
     </select>
     <select name="role" class="select" style="width:200px">
       <option value="consultant">Consultant</option>
-      <option value="lead_consultant">Lead consultant</option>
+      <option value="senior_consultant">Senior consultant</option>
     </select>
     <button class="btn btn-primary" style="white-space:nowrap;">Add</button>
   </form>
@@ -47,16 +47,16 @@
 <% } %>
 
 <div class="panel">
-  <div class="panel-head"><h2>Invite a client user</h2><span class="meta">Creates an account scoped to this workspace</span></div>
+  <div class="panel-head"><h2>Invite a client user</h2><span class="meta">Creates an account scoped to this client</span></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/members/client" class="panel-pad grid-2">
     <div><label class="label">Name</label><input class="input" name="name" required></div>
     <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
     <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>
     <div><label class="label">Role</label>
       <select class="select" name="role">
-        <option value="client_admin">Client admin (CISO / ISMS owner)</option>
-        <option value="contributor" selected>Contributor</option>
-        <option value="reviewer">Reviewer (read-only)</option>
+        <option value="client_owner">Client owner (executive sponsor)</option>
+        <option value="isms_manager" selected>ISMS manager (day-to-day operator)</option>
+        <option value="contributor">Contributor (scoped SME)</option>
       </select>
     </div>
     <div class="col-full"><button class="btn btn-primary">Invite</button></div>

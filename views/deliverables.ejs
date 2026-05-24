@@ -49,7 +49,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Deliverables</h1>
-    <div class="page-subtitle">Every export this workspace produces — for auditors, leadership, and raw-data handoffs. Each row links to the canonical generator; if a deliverable has configuration, the link opens its config page first.</div>
+    <div class="page-subtitle">Every export this client produces — for auditors, leadership, and raw-data handoffs. Each row links to the canonical generator; if a deliverable has configuration, the link opens its config page first.</div>
   </div>
 </div>
 
@@ -90,7 +90,7 @@
     }
   ];
 
-  // ISO 42001 frameworks bring their own SoA. Surface only if the workspace
+  // ISO 42001 frameworks bring their own SoA. Surface only if the client
   // has the framework enabled.
   let frameworks = [];
   try { frameworks = JSON.parse(ws.frameworks || '[]'); } catch (_) { frameworks = []; }

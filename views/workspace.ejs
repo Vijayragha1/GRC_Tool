@@ -2,11 +2,19 @@
 
 <div class="page-head">
   <div>
-    <h1 class="page-title"><%= ws.client_name %></h1>
+    <h1 class="page-title">
+      <%= ws.client_name %>
+      <% if (ws.scope_confirmed_at) { %>
+        <span title="Scope confirmed on <%= ws.scope_confirmed_at %>" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#15803d;background:rgba(22,128,61,0.08);padding:3px 8px;border-radius:12px;vertical-align:middle;margin-left:8px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          Scope confirmed
+        </span>
+      <% } %>
+    </h1>
     <div class="page-subtitle">
       <%= ws.industry || 'Industry not set' %>
       <% if (ws.target_cert_date) { %> · target certification <%= ws.target_cert_date %><% } %>
-      · stage: <%= ws.stage.replace(/_/g, ' ') %>
+      · stage: <%= (typeof derivedStage !== 'undefined' && derivedStage) ? derivedStage.label : (ws.stage || 'new').replace(/_/g, ' ') %>
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:stretch;">
@@ -31,9 +39,26 @@
   </div>
 </div>
 
+<%# Setup-incomplete banner. Shown when intake has been started but
+    fewer than 8 questions are answered - the overview's readiness +
+    summary numbers won't make sense until basic scoping facts are in.
+    Drops away on its own once the setup gets enough answers. %>
+<% if (typeof setupIncomplete !== 'undefined' && setupIncomplete) { %>
+  <div class="panel" style="margin-bottom:18px;border-left:4px solid #b45309;background:rgba(180,83,9,0.06);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:14px 18px;">
+    <div style="width:42px;height:42px;border-radius:10px;background:#b45309;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+    <div style="min-width:0;">
+      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9a3412;margin-bottom:2px;">Client setup is incomplete</div>
+      <div class="text-ink" style="font-size:14px;font-weight:500;letter-spacing:-0.005em;">Only <%= intakeAnswered %> of 25 scoping questions answered. The numbers below will be more meaningful once basic scope, headcount, and crown-jewel assets are captured.</div>
+    </div>
+    <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary" style="white-space:nowrap;">Continue setup →</a>
+  </div>
+<% } %>
+
 <!-- Next-best-action banner. Reads engagement state and points at the single
      highest-leverage next step. Replaces the "where do I go from here?" gap
-     a new consultant lands on the workspace overview with. -->
+     a new consultant lands on the client overview with. -->
 <% if (typeof nextStep !== 'undefined' && nextStep) { %>
   <div class="panel" style="margin-bottom:18px;border-left:4px solid var(--accent);background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:18px 22px;">
     <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
@@ -48,61 +73,177 @@
   </div>
 <% } %>
 
-<!-- Headline KPIs -->
+<!-- Engagement status - "terminal" layout. Hero readout + sparkline of
+     readiness trend across the top, dense 6-cell metric strip below.
+     Higher information density than card grids; chart-led rather than
+     number-led. Reuses the /api/workspaces/:wsId/trends endpoint that
+     the 30-day-trends panel further down already calls. -->
 <%
-  const s1Cls = readiness.stage1 >= 80 ? 'kpi-good' : readiness.stage1 >= 50 ? 'kpi-warn' : 'kpi-bad';
-  const s2Cls = readiness.stage2 >= 80 ? 'kpi-good' : readiness.stage2 >= 50 ? 'kpi-warn' : 'kpi-bad';
-  const recRatio = readiness.records.total ? readiness.records.found / readiness.records.total : 0;
-  const recCls = recRatio >= 0.8 ? 'kpi-good' : recRatio >= 0.5 ? 'kpi-warn' : 'kpi-bad';
-  let daysCls = 'kpi-accent';
-  if (readiness.daysToTarget !== null) {
-    daysCls = readiness.daysToTarget < 30 ? 'kpi-bad' : readiness.daysToTarget < 90 ? 'kpi-warn' : 'kpi-good';
-  }
+  const highSev = readiness.flags.filter(f => f.severity === 'high').length;
+  const dtt = readiness.daysToTarget;
+  const targetDate = ws.target_cert_date;
+  // Pick the indicator colour for the hero number. Same thresholds the
+  // old kpi-good/warn/bad classes used, but applied to the number
+  // itself rather than as a left-border accent.
+  const heroColor = readiness.stage1 >= 80 ? '#15803d' : readiness.stage1 >= 50 ? '#b45309' : '#b91c1c';
+  const ncColor = ncOpen > 0 ? '#b91c1c' : '#15803d';
+  const recPct = readiness.records.total ? Math.round((readiness.records.found / readiness.records.total) * 100) : 0;
 %>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= s1Cls %>" style="text-decoration:none;">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <div class="kpi-label">Stage 1 readiness</div>
+
+<!-- HERO: readiness number + trend sparkline + status sidebar -->
+<div style="border:1px solid var(--border);background:var(--bg);margin-bottom:10px;display:grid;grid-template-columns:240px 1fr 220px;align-items:stretch;">
+  <!-- Left: big number -->
+  <a href="/workspaces/<%= ws.id %>/readiness" style="padding:18px 22px;text-decoration:none;color:inherit;border-right:1px solid var(--border);">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Stage 1 readiness</div>
+    <div style="display:flex;align-items:baseline;gap:4px;font-family:'Source Serif 4',Georgia,serif;line-height:0.95;">
+      <span style="font-size:54px;font-weight:600;letter-spacing:-0.02em;color:<%= heroColor %>;"><%= readiness.stage1 %></span>
+      <span style="font-size:22px;font-weight:400;color:var(--text-tertiary);">%</span>
     </div>
-    <div class="kpi-num num"><%= readiness.stage1 %><span class="text-tertiary" style="font-size:15px;font-weight:400;margin-left:1px;">%</span></div>
-    <div class="kpi-meta"><%= readiness.flags.filter(f => f.severity==='high').length %> high-severity gap<%= readiness.flags.filter(f => f.severity==='high').length === 1 ? '' : 's' %></div>
+    <div id="heroDelta" class="num" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);letter-spacing:0.02em;">&nbsp;</div>
   </a>
-  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= s2Cls %>" style="text-decoration:none;">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-      <div class="kpi-label">Stage 2 readiness</div>
+  <!-- Middle: 30-day sparkline of controls-implemented (proxy for readiness trend) -->
+  <div style="position:relative;padding:14px 18px 10px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);">30-day trajectory</div>
+      <div class="num" style="font-size:11px;color:var(--text-tertiary);">controls implemented</div>
     </div>
-    <div class="kpi-num num"><%= readiness.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-meta">operational evidence</div>
-  </a>
-  <a href="/workspaces/<%= ws.id %>/readiness" class="panel kpi <%= recCls %>" style="text-decoration:none;">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <div class="kpi-label">Mandatory docs</div>
+    <div id="heroSpark" style="height:96px;width:100%;"></div>
+  </div>
+  <!-- Right: status sidebar -->
+  <div style="padding:14px 18px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;font-family:'SF Mono','Menlo','Consolas',monospace;font-size:11px;">
+    <div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
+        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Target</span>
+        <span style="color:var(--text);font-weight:600;"><%= targetDate || '—' %></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
+        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Days left</span>
+        <span style="color:<%= dtt !== null && dtt < 90 ? '#b45309' : 'var(--text)' %>;font-weight:600;"><%= dtt !== null ? dtt : '—' %></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
+        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Stage 2</span>
+        <span style="color:var(--text);font-weight:600;"><%= readiness.stage2 %>%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;">
+        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">High-sev</span>
+        <span style="color:<%= highSev > 0 ? '#b91c1c' : '#15803d' %>;font-weight:600;"><%= highSev %><% if (highSev > 0) { %> ●<% } %></span>
+      </div>
     </div>
-    <div class="kpi-num num"><%= readiness.records.found %><span class="text-tertiary" style="font-weight:400;">/<%= readiness.records.total %></span></div>
-    <div class="kpi-meta">required by ISO 27001:2022</div>
-  </a>
-  <div class="panel kpi <%= daysCls %>">
-    <div class="kpi-head">
-      <svg class="kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <div class="kpi-label">Days to target</div>
-    </div>
-    <div class="kpi-num num"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %></div>
-    <div class="kpi-meta"><%= ws.target_cert_date || 'no target set' %></div>
   </div>
 </div>
 
-<!-- Secondary metrics -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px;">
-  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= progress.percent %>%</div><div class="kpi-meta">Assessed (<%= progress.assessed %>/<%= progress.total %>)</div></div>
-  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= assetCount %></div><div class="kpi-meta">Assets</div></div>
-  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= riskCount %></div><div class="kpi-meta">Risks</div></div>
-  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= docCount %></div><div class="kpi-meta">Documents</div></div>
-  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em" class="num"><%= auditCount %></div><div class="kpi-meta">Audits</div></div>
-  <div class="panel kpi" style="padding:12px 14px"><div style="font-size:18px;font-weight:600;letter-spacing:-0.01em;color:<%= ncOpen > 0 ? '#b91c1c' : 'var(--text)' %>" class="num"><%= ncOpen %></div><div class="kpi-meta">Open NCs</div></div>
+<!-- METRIC STRIP: 6 dense cells, each with label + number + mini-bar/sparkline -->
+<div style="display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--border);background:var(--bg);margin-bottom:24px;">
+  <!-- Mandatory docs - progress fill (no historical sparkline available) -->
+  <a href="/workspaces/<%= ws.id %>/documents" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
+    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Mandatory docs</div>
+    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= readiness.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= readiness.records.total %></span></div>
+    <div style="margin-top:8px;height:4px;background:var(--bg-muted);border-radius:0;overflow:hidden;">
+      <div style="height:100%;width:<%= recPct %>%;background:<%= recPct >= 80 ? '#15803d' : recPct >= 50 ? '#b45309' : '#b91c1c' %>;"></div>
+    </div>
+  </a>
+  <!-- Controls assessed - progress fill -->
+  <a href="/workspaces/<%= ws.id %>/controls" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
+    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assessed</div>
+    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= progress.assessed %><span style="color:var(--text-tertiary);font-weight:400;">/<%= progress.total %></span></div>
+    <div style="margin-top:8px;height:4px;background:var(--bg-muted);border-radius:0;overflow:hidden;">
+      <div style="height:100%;width:<%= progress.percent %>%;background:<%= progress.percent >= 80 ? '#15803d' : progress.percent >= 50 ? '#b45309' : '#b91c1c' %>;"></div>
+    </div>
+  </a>
+  <!-- Assets - count + sparkline (no historical data, blank track) -->
+  <a href="/workspaces/<%= ws.id %>/assets" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
+    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assets</div>
+    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= assetCount %></div>
+    <div style="margin-top:8px;font-size:10px;color:var(--text-tertiary);font-family:'SF Mono','Menlo','Consolas',monospace;">in scope</div>
+  </a>
+  <!-- Risks - count + 30d sparkline (created) -->
+  <a href="/workspaces/<%= ws.id %>/risks" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
+    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Risks</div>
+    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= riskCount %></div>
+    <div id="stripSparkRisks" style="margin-top:6px;height:18px;"></div>
+  </a>
+  <!-- Audits - count -->
+  <a href="/workspaces/<%= ws.id %>/audits" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
+    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Internal audits</div>
+    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= auditCount %></div>
+    <div style="margin-top:8px;font-size:10px;color:var(--text-tertiary);font-family:'SF Mono','Menlo','Consolas',monospace;">conducted</div>
+  </a>
+  <!-- Open NCs - count + 30d sparkline (opened) + status dot -->
+  <a href="/workspaces/<%= ws.id %>/nonconformities" style="padding:12px 14px;text-decoration:none;color:inherit;">
+    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Open NCs</div>
+    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:<%= ncColor %>;font-family:'SF Mono','Menlo','Consolas',monospace;display:flex;align-items:center;gap:8px;">
+      <%= ncOpen %>
+      <% if (ncOpen > 0) { %><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#b91c1c;"></span><% } %>
+    </div>
+    <div id="stripSparkNCs" style="margin-top:6px;height:18px;"></div>
+  </a>
 </div>
+
+<script>
+// Top hero sparkline + bottom strip mini-sparklines. Reuses the same
+// /api/workspaces/:wsId/trends endpoint as the existing 30-day trends
+// panel further down the page - one fetch, multiple consumers.
+fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
+  // Cumulative "controls implemented" curve - approximates a readiness
+  // trajectory without needing a dedicated server-side computation.
+  // The hero shows the cumulative path; strip mini-sparks show raw
+  // daily counts (intentionally noisier - that's the point of the
+  // weekly cadence visualisation).
+  const cumulative = (() => {
+    let acc = 0;
+    return data.controls.map(d => ({ d: d.d, c: (acc += d.c) }));
+  })();
+  const drawArea = (id, series, color, opts) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const w = el.clientWidth || 200;
+    const h = el.clientHeight || 48;
+    const max = Math.max(1, ...series.map(d => d.c));
+    const min = Math.min(...series.map(d => d.c));
+    const range = Math.max(1, max - min);
+    const step = w / Math.max(1, series.length - 1);
+    const padding = (opts && opts.padding) || 2;
+    const path = series.map((d, i) =>
+      `${i===0?'M':'L'}${(i*step).toFixed(1)},${(h - padding - ((d.c - min)/range)*(h - padding*2)).toFixed(1)}`
+    ).join(' ');
+    el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;display:block;">
+      <path d="${path} L${w},${h} L0,${h} Z" fill="${color}" opacity="0.10"/>
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="${(opts && opts.strokeWidth) || 1.5}" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  };
+  // Bar-style mini-sparkline for the strip (terminal aesthetic - bars
+  // not line, since we're showing discrete daily counts at small size).
+  const drawBars = (id, series, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const w = el.clientWidth || 100;
+    const h = el.clientHeight || 18;
+    const max = Math.max(1, ...series.map(d => d.c));
+    const barW = w / series.length;
+    const bars = series.map((d, i) => {
+      const barH = (d.c / max) * h;
+      const y = h - barH;
+      return `<rect x="${(i*barW).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, barW-1).toFixed(1)}" height="${barH.toFixed(1)}" fill="${color}" opacity="${d.c > 0 ? 0.85 : 0.15}"/>`;
+    }).join('');
+    el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;display:block;">${bars}</svg>`;
+  };
+
+  drawArea('heroSpark', cumulative, 'var(--accent)', { strokeWidth: 2, padding: 4 });
+  drawBars('stripSparkRisks', data.risks, '#71717a');
+  drawBars('stripSparkNCs', data.ncs_open, '#b91c1c');
+
+  // Hero delta - compare last 7 days vs prior 7 days of cumulative
+  const tail = cumulative.slice(-7).reduce((s,d) => s + d.c, 0);
+  const prev = cumulative.slice(-14, -7).reduce((s,d) => s + d.c, 0);
+  const delta = tail - prev;
+  const el = document.getElementById('heroDelta');
+  if (el && cumulative.some(d => d.c > 0)) {
+    const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '◆';
+    const color = delta > 0 ? '#15803d' : delta < 0 ? '#b91c1c' : 'var(--text-tertiary)';
+    el.innerHTML = `<span style="color:${color};font-weight:600;">${arrow}</span> ${Math.abs(delta)} controls past 7d`;
+  }
+});
+</script>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
   <div class="panel">
@@ -233,19 +374,27 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
 </div>
 
 <details id="workspace-settings" style="margin-top:24px">
-  <summary class="link-muted text-lg">Workspace settings</summary>
+  <summary class="link-muted text-lg">Client settings</summary>
   <div class="panel panel-pad" style="margin-top:8px">
     <form class="grid-2" method="POST" action="/workspaces/<%= ws.id %>/update">
+      <%# Optimistic-concurrency snapshot: server rejects with 409 if another
+          consultant updated the workspace settings between this page load and
+          form submit. Pre-CAS forms (without this field) fall through to the
+          old last-writer-wins path so a long-open tab still works. %>
+      <input type="hidden" name="updated_at_snapshot" value="<%= ws.updated_at || '' %>">
       <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
       <div><label class="label">Industry</label><input class="input" name="industry" value="<%= ws.industry || '' %>"></div>
       <div class="col-full"><label class="label">Scope</label><input class="input" id="scope-input" name="scope" value="<%= ws.scope || '' %>"></div>
       <div><label class="label">Target cert date</label><input class="input" name="target_cert_date" type="date" value="<%= ws.target_cert_date || '' %>"></div>
-      <div><label class="label">Stage</label>
-        <select class="select" name="stage">
-          <% ['gap_assessment','risk_assessment','implementation','internal_audit','stage_1','stage_2','certified','surveillance'].forEach(s => { %>
-            <option value="<%= s %>" <%= ws.stage === s ? 'selected' : '' %>><%= s.replace(/_/g, ' ') %></option>
-          <% }) %>
-        </select>
+      <%# Stage is now auto-derived from real signals (intake answers,
+          controls assessed, internal audits done, Stage 1/2 audits
+          completed) - no longer a manual field. Shown read-only as
+          a sanity check that the derivation matches the consultant's
+          intuition. %>
+      <div><label class="label">Stage <span class="meta">auto-derived</span></label>
+        <div style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-muted);font-size:13.5px;color:var(--text-secondary);">
+          <%= (typeof derivedStage !== 'undefined' && derivedStage) ? derivedStage.label : (ws.stage || 'New').replace(/_/g, ' ') %>
+        </div>
       </div>
 
       <div class="col-full" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--border);">
@@ -275,15 +424,15 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
       <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
       <details>
-        <summary class="text-lg" style="cursor:pointer;color:var(--danger,#b91c1c);">Delete this client engagement</summary>
+        <summary class="text-lg" style="cursor:pointer;color:var(--danger,#b91c1c);">Delete this client</summary>
         <div style="margin-top:10px;padding:12px;border:1px solid var(--danger,#b91c1c);border-radius:6px;background:rgba(185,28,28,0.04);">
           <div class="meta text-base" style="line-height:1.5;margin-bottom:10px;">
-            Permanently removes this workspace and everything inside it: controls, gap-assessment passes, risks, evidence files (on disk and in DB), audits, MRMs, NCs, incidents, suppliers, documents, registers. Cannot be undone.
+            Permanently removes this client and everything inside it: controls, gap-assessment passes, risks, evidence files (on disk and in DB), audits, MRMs, NCs, incidents, suppliers, documents, registers. Cannot be undone.
           </div>
           <form method="POST" action="/workspaces/<%= ws.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete &quot;<%= ws.client_name %>&quot; and everything under it?');">
             <label class="label text-base">Type <strong><%= ws.client_name %></strong> to confirm</label>
             <input class="input" name="confirm_name" required autocomplete="off" style="max-width:320px;margin-bottom:10px;">
-            <div><button class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete client engagement</button></div>
+            <div><button class="btn btn-xs" style="background:var(--danger,#b91c1c);color:#fff;border-color:var(--danger,#b91c1c);">Delete client</button></div>
           </form>
         </div>
       </details>

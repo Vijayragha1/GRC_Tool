@@ -61,9 +61,24 @@ function buildOnboardingSteps(db) {
   ];
 }
 
-function resolveOnboardingHref(db, href, firmId) {
+// Picks a target workspace for the "first-ws*" hrefs in the onboarding
+// wizard. Earlier this was always `ORDER BY id LIMIT 1` (lowest id),
+// which felt random to firms with multiple engagements - the wizard
+// would deep-link into whichever workspace had the smallest id, often
+// stale demo or test data. Resolution order is now:
+//   1. The workspace the user was last looking at (req.session.last_ws_id)
+//   2. The most recently CREATED workspace in this firm
+//   3. /dashboard if the firm has no workspaces at all
+// The caller passes lastWsId from req.session.last_ws_id (may be null).
+function resolveOnboardingHref(db, href, firmId, lastWsId) {
   if (!href.startsWith('first-ws')) return href;
-  const ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1`).get(firmId);
+  let ws = null;
+  if (lastWsId) {
+    ws = db.prepare(`SELECT id FROM workspaces WHERE id=? AND firm_id=?`).get(lastWsId, firmId);
+  }
+  if (!ws) {
+    ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(firmId);
+  }
   if (!ws) return '/dashboard';
   const subpath = href.replace('first-ws', '').replace(/^-/, '/');
   if (!subpath || subpath === '') return `/workspaces/${ws.id}#workspace-settings`;
@@ -87,7 +102,7 @@ function register(app, deps) {
     const placeholderEmail = `owner+firm${fid}@local`;
     const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
     db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
-                VALUES (?, ?, ?, 'firm', ?, 'owner', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, fid);
+                VALUES (?, ?, ?, 'firm', ?, 'manager', 1)`).run(placeholderEmail, placeholderHash, `${name} manager`, fid);
     const tenantDir = path.join(projectRoot, 'uploads', `firm_${fid}`);
     try { fs.mkdirSync(tenantDir, { recursive: true }); } catch (_) {}
     db.prepare(`INSERT INTO tenant_onboarding (firm_id, current_step) VALUES (?, 1)`).run(fid);
@@ -183,10 +198,11 @@ function register(app, deps) {
       db.prepare(`INSERT INTO tenant_onboarding (firm_id) VALUES (?)`).run(firmId);
       onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
     }
+    const lastWsId = (req.session && req.session.last_ws_id) || null;
     const stepStates = ONBOARDING_STEPS.map(s => ({
       ...s,
       done: !!s.isDone(firmId),
-      href: resolveOnboardingHref(db, s.href, firmId)
+      href: resolveOnboardingHref(db, s.href, firmId, lastWsId)
     }));
     const completedCount = stepStates.filter(s => s.done).length;
     res.render('onboarding', {

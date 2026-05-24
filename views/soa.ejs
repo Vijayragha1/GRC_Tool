@@ -42,19 +42,31 @@
   </form>
 </details>
 
-<!-- Bulk applicability bar - fast-path for large workspaces -->
+<!-- Bulk applicability bar - fast-path for large clients -->
+<%
+  // Counts surface "this will change N rows" in both the button label
+  // and the confirm dialog. Lets the consultant click bulk operations
+  // with eyes open instead of a generic "are you sure?" yes/no.
+  const cTot   = (typeof soaCounts !== 'undefined') ? soaCounts.total : 93;
+  const cInc   = (typeof soaCounts !== 'undefined') ? soaCounts.included : 0;
+  const cExc   = (typeof soaCounts !== 'undefined') ? soaCounts.excluded : 0;
+  const cUnd   = (typeof soaCounts !== 'undefined') ? soaCounts.undecided : 0;
+  const willFlipAll = cTot - cInc; // rows that aren't Included today
+  const incAllMsg = `Mark every Annex A control as Included? This will flip ${willFlipAll} row${willFlipAll === 1 ? '' : 's'} (${cUnd} undecided + ${cExc} excluded → included). The ${cInc} already-included rows are untouched. Existing per-row justifications are kept; the bulk justification only applies to rows it actually changes.`;
+  const incUndMsg = `Flip every Undecided Annex A control to Included? This will change ${cUnd} row${cUnd === 1 ? '' : 's'}. Existing Included / Excluded decisions are not touched.`;
+%>
 <details class="panel" style="margin-bottom:10px;">
-  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Bulk decide applicability <span class="meta" style="font-weight:400;">- include all, include undecided, or set selection in one shot</span></summary>
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Bulk decide applicability <span class="meta" style="font-weight:400;">- <strong><%= cInc %></strong> included · <strong><%= cExc %></strong> excluded · <strong><%= cUnd %></strong> undecided</span></summary>
   <div class="panel-pad text-base text-secondary" style="border-top:1px solid var(--border);background:var(--bg-subtle);line-height:1.55;">
     <strong>Use this for the first-pass sweep.</strong> "Include all" marks every Annex A control as <em>Included</em> in one shot - auditors expect most controls to be included for ISO 27001:2022, so it's a defensible default. "Include undecided" only flips controls still marked <em>Undecided</em> (existing Excluded decisions stay). Add a justification once and it's stamped on every row affected. Per-row dropdowns below let you override individual controls afterwards (e.g., explicitly exclude controls that genuinely don't apply, with their own justification - required by clause 6.1.3.d).
   </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/soa/bulk" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;">
     <div class="col-full">
       <label class="label">Justification (optional, applied to every affected row)</label>
-      <input class="input" name="justification" placeholder="e.g., Required by linked risks per workspace risk register">
+      <input class="input" name="justification" placeholder="e.g., Required by linked risks per client risk register">
     </div>
-    <button name="action" value="include_all" class="btn btn-secondary btn-xs" onclick="return appConfirmClick(event, 'Mark every Annex A control as Included? Existing Excluded decisions are kept; Undecided controls flip to Included.')">Include all (93)</button>
-    <button name="action" value="include_undecided" class="btn btn-secondary btn-xs" onclick="return appConfirmClick(event, 'Flip every Undecided Annex A control to Included? Existing Included / Excluded decisions are not touched.')">Include undecided</button>
+    <button name="action" value="include_all" class="btn btn-secondary btn-xs" <%= willFlipAll === 0 ? 'disabled title="All rows are already Included"' : '' %> onclick="return appConfirmClick(event, '<%= incAllMsg.replace(/'/g, "\\'") %>')">Include all <span class="meta">(flips <%= willFlipAll %>)</span></button>
+    <button name="action" value="include_undecided" class="btn btn-secondary btn-xs" <%= cUnd === 0 ? 'disabled title="No undecided rows"' : '' %> onclick="return appConfirmClick(event, '<%= incUndMsg.replace(/'/g, "\\'") %>')">Include undecided <span class="meta">(<%= cUnd %>)</span></button>
   </form>
 </details>
 
@@ -128,7 +140,7 @@
     <span class="meta"><%= customControls.length %> custom</span>
   </div>
   <% if (customControls.length === 0) { %>
-    <div class="panel-pad meta text-md">No custom controls. Most workspaces don't need any - Annex A covers the common ground. Add only if a real control exists outside Annex A.</div>
+    <div class="panel-pad meta text-md">No custom controls. Most clients don't need any - Annex A covers the common ground. Add only if a real control exists outside Annex A.</div>
   <% } else { %>
     <table class="t">
       <thead><tr>

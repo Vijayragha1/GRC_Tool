@@ -1,0 +1,263 @@
+<%- include('partials/header', { title: 'Users & access', user, ws: null, active: 'admin-users' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Users &amp; access</h1>
+    <div class="page-subtitle">Provision firm consultants and client-side users. Invite-by-email sends a one-time link; admin-creates issues a temp password the user can change on first sign-in.</div>
+  </div>
+</div>
+
+<% if (typeof notice !== 'undefined' && notice) { %>
+  <div class="panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid #15803d;background:rgba(21,128,61,0.04);font-size:13px;color:#0f5132;line-height:1.5;"><%= notice %></div>
+<% } %>
+<% if (typeof error !== 'undefined' && error) { %>
+  <div class="panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);font-size:13px;color:#7a1010;line-height:1.5;display:flex;align-items:center;gap:14px;">
+    <div style="flex:1;"><%= error %></div>
+    <% if (typeof errorAction !== 'undefined' && errorAction === 'offer_reset' && errorEmail) { %>
+      <form method="POST" action="/admin/users/send-reset" style="margin:0;flex-shrink:0;">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="email" value="<%= errorEmail %>">
+        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight:600;cursor:pointer;white-space:nowrap;">Send password-reset link instead →</button>
+      </form>
+    <% } else if (typeof errorAction !== 'undefined' && errorAction === 'offer_reactivate' && errorUserId) { %>
+      <form method="POST" action="/admin/users/<%= errorUserId %>/reactivate" style="margin:0;flex-shrink:0;" onsubmit="return confirm('Reactivate this account? They will be able to sign in with their previous password.');">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight:600;cursor:pointer;white-space:nowrap;">Reactivate account →</button>
+      </form>
+    <% } %>
+  </div>
+<% } %>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+
+  <%# ---------- Invite by email ---------- %>
+  <form method="POST" action="/admin/users/invite" class="panel" style="padding:18px 20px;">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:600;">Invite by email</div>
+      <div class="text-eyebrow" style="color:var(--text-tertiary);">Single-use, 7 days</div>
+    </div>
+    <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">User clicks the link, sets their own password, and lands on the dashboard. No temp password to share over chat.</p>
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Email</label>
+    <input class="input" name="email" type="email" required placeholder="person@company.com" style="margin-bottom:12px;">
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Name (optional)</label>
+    <input class="input" name="name" type="text" placeholder="Jane Reeves" style="margin-bottom:12px;">
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">User type</label>
+    <select class="input" name="user_type" id="invite_user_type" onchange="toggleInviteFields()" style="margin-bottom:12px;">
+      <option value="firm">Firm &mdash; consultant in your team</option>
+      <option value="client">Client-side &mdash; staff at one of your clients</option>
+    </select>
+
+    <div id="invite_firm_block">
+      <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Firm role</label>
+      <select class="input" name="firm_role" style="margin-bottom:12px;">
+        <option value="consultant">Consultant &mdash; engagement work; no approvals, no workspace delete</option>
+        <option value="senior_consultant">Senior consultant &mdash; engagement lead; reviews docs &amp; signs off assessments</option>
+        <option value="manager">Manager &mdash; firm-wide admin; billing, users, all clients</option>
+      </select>
+    </div>
+
+    <div id="invite_client_block" style="display:none;">
+      <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Client workspace</label>
+      <select class="input" name="workspace_id" style="margin-bottom:12px;">
+        <option value="">— choose a client —</option>
+        <% workspaces.forEach(w => { %>
+          <option value="<%= w.id %>"><%= w.client_name %></option>
+        <% }) %>
+      </select>
+
+      <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Workspace role</label>
+      <select class="input" name="workspace_role" style="margin-bottom:12px;">
+        <option value="client_owner">Client owner &mdash; executive sponsor; final policy approver</option>
+        <option value="isms_manager">ISMS manager &mdash; day-to-day operator; full workspace access</option>
+        <option value="contributor">Contributor &mdash; SME; uploads evidence on assigned items only</option>
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Send invitation</button>
+  </form>
+
+  <%# ---------- Admin-creates (temp password) ---------- %>
+  <form method="POST" action="/admin/users/create" class="panel" style="padding:18px 20px;">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:600;">Create with temp password</div>
+      <div class="text-eyebrow" style="color:var(--text-tertiary);">For firm consultants</div>
+    </div>
+    <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">Use when email isn&rsquo;t reliable or for self-onboarding a colleague you can hand the password to in person. They can change it later via Forgot password.</p>
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Email</label>
+    <input class="input" name="email" type="email" required placeholder="person@yourfirm.com" style="margin-bottom:12px;">
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Name</label>
+    <input class="input" name="name" type="text" required placeholder="Jane Reeves" style="margin-bottom:12px;">
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Temp password</label>
+    <input class="input" name="password" type="text" required minlength="8" placeholder="At least 8 characters" style="margin-bottom:6px;font-family:'SF Mono',Menlo,monospace;font-size:13px;">
+    <div class="meta text-xs" style="margin-bottom:12px;">Shown as plain text so you can copy it. Hand it to the user over a trusted channel.</div>
+
+    <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Firm role</label>
+    <select class="input" name="firm_role" style="margin-bottom:14px;">
+      <option value="consultant">Consultant</option>
+      <option value="senior_consultant">Senior consultant</option>
+      <option value="manager">Manager (firm-wide admin)</option>
+    </select>
+
+    <button type="submit" class="btn btn-secondary">Create user</button>
+  </form>
+</div>
+
+<%# ---------- Outstanding invitations ---------- %>
+<% if (outstanding.length) { %>
+<div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+    <div style="font-size:14px;font-weight:600;">Outstanding invitations</div>
+    <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= outstanding.length %> open</div>
+  </div>
+  <table class="t" style="margin:0;">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th style="width:130px;">User type</th>
+        <th>Assigned to</th>
+        <th style="width:130px;">Invited by</th>
+        <th style="width:130px;">Expires</th>
+        <th style="width:100px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% outstanding.forEach(inv => { %>
+        <tr>
+          <td><%= inv.email %><% if (inv.name) { %> <span class="meta">(<%= inv.name %>)</span><% } %></td>
+          <td>
+            <% if (inv.user_type === 'firm') { %>
+              Firm &middot; <%= (rbac.ROLE_LABELS[inv.firm_role] || inv.firm_role || 'consultant').toLowerCase() %>
+            <% } else { %>
+              Client &middot; <%= (rbac.ROLE_LABELS[inv.workspace_role] || inv.workspace_role || 'member').toLowerCase() %>
+            <% } %>
+          </td>
+          <td><%= inv.workspace_name || '—' %></td>
+          <td class="meta"><%= inv.invited_by_name || '—' %></td>
+          <td class="meta"><%= new Date(inv.expires_at).toLocaleDateString() %></td>
+          <td>
+            <form method="POST" action="/admin/invitations/<%= inv.id %>/revoke" style="margin:0;">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button type="submit" class="btn btn-xs btn-secondary" onclick="return confirm('Revoke this invitation? The recipient will no longer be able to use the link.')">Revoke</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<%# ---------- Firm users ---------- %>
+<div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+    <div style="font-size:14px;font-weight:600;">Firm users</div>
+    <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= firmUsers.length %> total &middot; <%= firmUsers.filter(u => u.active).length %> active</div>
+  </div>
+  <% if (!firmUsers.length) { %>
+    <div class="t-empty" style="padding:24px 18px;">No firm users provisioned yet.</div>
+  <% } else { %>
+    <table class="t" style="margin:0;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th style="width:110px;">Role</th>
+          <th style="width:130px;">Last active</th>
+          <th style="width:80px;">Status</th>
+          <th style="width:130px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% firmUsers.forEach(u => { %>
+          <tr style="<%= u.active ? '' : 'opacity:0.55;' %>">
+            <td><%= u.name %><% if (u.id === user.id) { %> <span class="meta">(you)</span><% } %></td>
+            <td class="meta"><%= u.email %></td>
+            <td><%= rbac.ROLE_LABELS[rbac.normalizeRole(u.firm_role)] || 'Consultant' %></td>
+            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
+            <td><%= u.active ? 'Active' : 'Disabled' %></td>
+            <td>
+              <% if (u.active && u.id !== user.id) { %>
+                <form method="POST" action="/admin/users/<%= u.id %>/deactivate" style="margin:0;">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button type="submit" class="btn btn-xs btn-secondary" onclick="return confirm('Deactivate <%= u.email %>? They will no longer be able to sign in.')">Deactivate</button>
+                </form>
+              <% } else if (!u.active) { %>
+                <form method="POST" action="/admin/users/<%= u.id %>/reactivate" style="margin:0;">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button type="submit" class="btn btn-xs btn-secondary" onclick="return confirm('Reactivate <%= u.email %>? They can sign in with their previous password.')">Reactivate</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%# ---------- Client users ---------- %>
+<div class="panel" style="padding:0;overflow:hidden;">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+    <div style="font-size:14px;font-weight:600;">Client-side users</div>
+    <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= clientUsers.length %> total</div>
+  </div>
+  <% if (!clientUsers.length) { %>
+    <div class="t-empty" style="padding:24px 18px;">No client-side users yet. Invite someone with user type <em>Client-side</em> above.</div>
+  <% } else { %>
+    <table class="t" style="margin:0;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Workspace access</th>
+          <th style="width:130px;">Last active</th>
+          <th style="width:80px;">Status</th>
+          <th style="width:130px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% clientUsers.forEach(u => { %>
+          <tr style="<%= u.active ? '' : 'opacity:0.55;' %>">
+            <td><%= u.name %></td>
+            <td class="meta"><%= u.email %></td>
+            <td class="meta"><%= u.workspaces %></td>
+            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
+            <td><%= u.active ? 'Active' : 'Disabled' %></td>
+            <td>
+              <% if (u.active) { %>
+                <form method="POST" action="/admin/users/<%= u.id %>/deactivate" style="margin:0;">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button type="submit" class="btn btn-xs btn-secondary" onclick="return confirm('Deactivate <%= u.email %>?')">Deactivate</button>
+                </form>
+              <% } else { %>
+                <form method="POST" action="/admin/users/<%= u.id %>/reactivate" style="margin:0;">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button type="submit" class="btn btn-xs btn-secondary" onclick="return confirm('Reactivate <%= u.email %>?')">Reactivate</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<script>
+function toggleInviteFields() {
+  const t = document.getElementById('invite_user_type').value;
+  document.getElementById('invite_firm_block').style.display = t === 'firm' ? '' : 'none';
+  document.getElementById('invite_client_block').style.display = t === 'client' ? '' : 'none';
+}
+toggleInviteFields();
+</script>
+
+<%- include('partials/footer') %>

@@ -1,131 +1,453 @@
 <%- include('partials/header', { title: 'Exec brief', user, ws, active: 'exec-brief' }) %>
 
 <style>
-  .exec-num { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  /* Exec brief - styled in the idiom of a Big-4 / MBB board pack:
+     classification header, formal title block, executive-summary
+     callout, RAG-scored status table, numbered sections, and a
+     footer band. Reads as a deliverable handed across a boardroom
+     table, not a SaaS dashboard or a literary essay. */
+
+  .pack { max-width: 920px; margin: 0 auto; padding: 0; background: #fff; color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+
+  /* === Classification header band === */
+  .pack-classification { background: #1a1a1a; color: rgba(255,255,255,0.92); padding: 9px 28px; display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+  .pack-classification .right { color: rgba(255,255,255,0.55); font-weight: 500; letter-spacing: 0.06em; font-size: 10px; }
+
+  /* === Title block === */
+  .pack-title { padding: 32px 32px 24px; border-bottom: 4px double var(--text); display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: flex-end; }
+  .pack-title-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .pack-title h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 38px; line-height: 1.05; font-weight: 600; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+  .pack-title h1 .sub { display: block; font-family: 'Source Serif 4', Georgia, serif; font-size: 16px; font-weight: 400; font-style: italic; color: var(--text-secondary); margin-top: 8px; letter-spacing: -0.005em; }
+  .pack-meta-stack { font-size: 11.5px; color: var(--text-secondary); line-height: 1.75; text-align: right; font-variant-numeric: tabular-nums; }
+  .pack-meta-stack .k { display: inline-block; min-width: 96px; color: var(--text-tertiary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 9.5px; }
+
+  /* === Body container === */
+  .pack-body { padding: 28px 32px 16px; }
+
+  /* === Section numbering === */
+  .pack-section { margin-bottom: 32px; }
+  .pack-section-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 14px; }
+  .pack-section-num { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; }
+  .pack-section-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+  .pack-section-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* === Executive summary callout === */
+  .pack-summary { background: var(--bg-subtle); border-left: 6px solid var(--accent); padding: 22px 26px; margin-bottom: 6px; }
+  .pack-summary-head { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .pack-summary-headline { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; line-height: 1.3; font-weight: 600; letter-spacing: -0.012em; color: var(--text); margin: 0 0 14px; }
+  .pack-summary-headline em { font-style: normal; color: var(--accent); }
+  .pack-summary-points { list-style: none; padding: 0; margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--text); }
+  .pack-summary-points li { display: grid; grid-template-columns: 16px 1fr; gap: 8px; padding: 4px 0; }
+  .pack-summary-points li::before { content: '■'; color: var(--accent); font-size: 9px; line-height: 1.7; }
+
+  /* === RAG scorecard table === */
+  .pack-scorecard { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .pack-scorecard thead th { text-align: left; padding: 10px 12px; background: #1a1a1a; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; border: 0; }
+  .pack-scorecard thead th.num { text-align: right; }
+  .pack-scorecard thead th.status { text-align: center; width: 88px; }
+  .pack-scorecard tbody tr { border-bottom: 1px solid var(--border); }
+  .pack-scorecard tbody tr:hover { background: var(--bg-subtle); }
+  .pack-scorecard tbody td { padding: 11px 12px; vertical-align: middle; }
+  .pack-scorecard tbody td.metric { font-weight: 600; color: var(--text); }
+  .pack-scorecard tbody td.metric .sub { display: block; font-weight: 400; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; letter-spacing: 0; text-transform: none; }
+  .pack-scorecard tbody td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); font-family: 'SF Mono', Menlo, monospace; font-size: 13px; }
+  .pack-scorecard tbody td.target { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-tertiary); font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  .pack-scorecard tbody td.trend { text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-tertiary); white-space: nowrap; }
+  .pack-scorecard tbody td.trend.up { color: #15803d; font-weight: 600; }
+  .pack-scorecard tbody td.trend.down { color: #b91c1c; font-weight: 600; }
+  .rag { display: inline-block; padding: 4px 10px; border-radius: 3px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; min-width: 56px; text-align: center; }
+  .rag-green  { background: #15803d; color: #fff; }
+  .rag-amber  { background: #b45309; color: #fff; }
+  .rag-red    { background: #b91c1c; color: #fff; }
+  .rag-grey   { background: var(--bg-muted); color: var(--text-secondary); }
+  .pack-scorecard tbody td.status-cell { text-align: center; }
+
+  /* === Board recommendation cards === */
+  .pack-asks { display: flex; flex-direction: column; gap: 10px; }
+  .pack-ask { display: grid; grid-template-columns: 64px 1fr 100px; gap: 16px; padding: 16px 20px; border: 1px solid var(--border); background: #fff; border-left: 4px solid; }
+  .pack-ask.high   { border-left-color: #b91c1c; }
+  .pack-ask.medium { border-left-color: #b45309; }
+  .pack-ask.low    { border-left-color: #15803d; }
+  .pack-ask-num { font-family: 'Source Serif 4', Georgia, serif; font-size: 30px; font-weight: 600; color: var(--text-tertiary); line-height: 1; letter-spacing: -0.02em; }
+  .pack-ask-body { font-size: 13px; line-height: 1.6; color: var(--text); }
+  .pack-ask-body .title { display: block; font-weight: 600; color: var(--text); margin-bottom: 4px; font-size: 13.5px; }
+  .pack-ask-body .detail { display: block; color: var(--text-secondary); font-size: 12.5px; }
+  .pack-ask-priority { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+
+  /* === Risk register table === */
+  .pack-rank { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .pack-rank thead th { text-align: left; padding: 9px 12px; background: var(--bg-subtle); color: var(--text); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1.5px solid var(--text); }
+  .pack-rank thead th.num { text-align: right; }
+  .pack-rank thead th.rank { text-align: center; width: 36px; }
+  .pack-rank tbody tr { border-bottom: 1px solid var(--border); }
+  .pack-rank tbody td { padding: 10px 12px; vertical-align: middle; }
+  .pack-rank tbody td.rank { text-align: center; font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; color: var(--text-tertiary); font-weight: 500; }
+  .pack-rank tbody td.title-cell { color: var(--text); }
+  .pack-rank tbody td.title-cell .sub { display: block; color: var(--text-tertiary); font-size: 11px; margin-top: 2px; }
+  .pack-rank tbody td.score { text-align: right; font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .pack-rank-empty { padding: 20px 12px; text-align: center; color: var(--text-tertiary); font-style: italic; font-size: 13px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+
+  /* === Footer band === */
+  .pack-foot { background: var(--bg-subtle); padding: 16px 32px; border-top: 1.5px solid var(--text); margin-top: 12px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; font-size: 10px; color: var(--text-secondary); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+  .pack-foot .center { text-align: center; color: var(--text-tertiary); font-weight: 500; }
+  .pack-foot .right { text-align: right; }
+  .pack-foot a { color: var(--accent); text-decoration: none; }
+
+  /* === Methodology appendix === */
+  .pack-methodology { background: #1a1a1a; color: rgba(255,255,255,0.78); padding: 20px 32px; font-size: 10.5px; line-height: 1.7; }
+  .pack-methodology h3 { font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.95); margin: 0 0 10px; letter-spacing: -0.005em; }
+  .pack-methodology dl { margin: 0; }
+  .pack-methodology dt { display: inline; font-weight: 600; color: rgba(255,255,255,0.92); }
+  .pack-methodology dt::before { content: '· '; color: rgba(255,255,255,0.4); margin-right: 2px; }
+  .pack-methodology dt:first-of-type::before { content: ''; }
+  .pack-methodology dd { display: inline; margin: 0; color: rgba(255,255,255,0.7); }
+  .pack-methodology dd + dt { margin-left: 8px; }
+
+  /* Hide app chrome on print */
   @media print {
     .sidebar, .topbar, .no-print { display: none !important; }
-    .main-inner { padding: 12mm !important; max-width: none !important; }
-    .panel { box-shadow: none !important; border: 1px solid #ccc !important; page-break-inside: avoid; margin-bottom: 8mm !important; }
+    .main-inner { padding: 0 !important; max-width: none !important; background: #fff !important; }
+    .pack { max-width: none; }
+    .pack-title { padding: 18mm 16mm 6mm; }
+    .pack-title h1 { font-size: 26px; }
+    .pack-body { padding: 8mm 16mm; }
+    .pack-section { margin-bottom: 14mm; page-break-inside: avoid; }
+    .pack-summary { padding: 14px 18px; }
+    .pack-summary-headline { font-size: 16px; }
+    .pack-foot, .pack-methodology { padding: 12px 16mm; }
     body { font-size: 10.5px; }
-    .exec-num { font-size: 22px !important; }
   }
 </style>
 
-<div class="page-head">
-  <div>
-    <h1 class="page-title"><%= ws.brand_display_name || ws.client_name %> - Executive brief</h1>
-    <div class="page-subtitle">One-page health summary for the sponsor / board. Prints to one A4. Generated <%= new Date().toISOString().slice(0, 10) %>.</div>
-  </div>
-  <button onclick="window.print()" class="btn btn-secondary btn-xs no-print">Print</button>
-</div>
+<%
+  const stage1 = readiness.stage1;
+  const stage2 = readiness.stage2;
+  const dtt = readiness.daysToTarget;
+  const ncMaj = ncTotals.major || 0;
+  const ncMin = ncTotals.minor || 0;
+  const ncOv  = ncTotals.overdue || 0;
+  const highSev = (readiness.flags || []).filter(f => f.severity === 'high').length;
+  const today = new Date().toISOString().slice(0, 10);
+  const clientName = ws.brand_display_name || ws.client_name;
+  const docId = 'ISMS-EB-' + String(ws.id).padStart(4, '0') + '-' + today.replace(/-/g, '');
 
-<!-- Top KPI band -->
-<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:14px;">
-  <%
-    const s1Cls = readiness.stage1 >= 80 ? 'kpi-good' : readiness.stage1 >= 50 ? 'kpi-warn' : 'kpi-bad';
-    const s2Cls = readiness.stage2 >= 80 ? 'kpi-good' : readiness.stage2 >= 50 ? 'kpi-warn' : 'kpi-bad';
-    let velCls = 'kpi-warn';
-    if (velocityNow > velocityPrior) velCls = 'kpi-good';
-    else if (velocityNow < velocityPrior && velocityNow < 3) velCls = 'kpi-bad';
-    const aleCls = residualAle > 1000000 ? 'kpi-bad' : residualAle > 250000 ? 'kpi-warn' : 'kpi-good';
-  %>
-  <div class="panel kpi <%= s1Cls %>" style="padding:12px 14px;">
-    <div class="kpi-label text-eyebrow">Stage 1 readiness</div>
-    <div class="kpi-num exec-num"><%= readiness.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-meta">target ≥ 80% before Stage 1 audit</div>
-  </div>
-  <div class="panel kpi <%= s2Cls %>" style="padding:12px 14px;">
-    <div class="kpi-label text-eyebrow">Stage 2 readiness</div>
-    <div class="kpi-num exec-num"><%= readiness.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-meta">3 months operational evidence required</div>
-  </div>
-  <div class="panel kpi <%= velCls %>" style="padding:12px 14px;">
-    <div class="kpi-label text-eyebrow">Velocity (last 30d)</div>
-    <div class="kpi-num exec-num"><%= velocityNow %><span class="text-lg text-tertiary" style="font-weight:400;"> closed</span></div>
-    <div class="kpi-meta">prev 30d: <%= velocityPrior %> · <%= velocityDelta >= 0 ? '+' : '' %><%= velocityDelta %> change</div>
-  </div>
-  <div class="panel kpi <%= aleCls %>" style="padding:12px 14px;">
-    <div class="kpi-label text-eyebrow">Residual annual loss</div>
-    <div class="kpi-num exec-num">$<%= residualAle.toLocaleString() %></div>
-    <div class="kpi-meta">ALE = Σ (likelihood/5 × impact × $50k) over <%= openRiskCount %> open risks</div>
-  </div>
-</div>
+  // RAG status per metric
+  const rag = (v, good, warn) => v >= good ? 'green' : v >= warn ? 'amber' : 'red';
+  const ragLabel = c => c === 'green' ? 'On track' : c === 'amber' ? 'Watch' : c === 'red' ? 'Action' : '—';
+  const stage1Rag = rag(stage1, 80, 50);
+  const stage2Rag = rag(stage2, 80, 50);
+  const ncRag = ncOv > 0 ? 'red' : (ncMaj > 0 ? 'amber' : 'green');
+  const planRag = planPct >= 75 ? 'green' : planPct >= 40 ? 'amber' : (planTotal > 0 ? 'red' : 'grey');
+  const scheduleRag = dtt === null ? 'grey' : dtt < 0 ? 'red' : (dtt < 30 ? 'red' : dtt < 90 ? 'amber' : 'green');
+  const flagsRag = highSev === 0 ? 'green' : highSev <= 2 ? 'amber' : 'red';
 
-<!-- Plan + days-to-target band -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-  <div class="panel" style="padding:12px 14px;">
-    <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">12-week engagement plan</div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
-      <div>
-        <div class="exec-num" style="font-size:22px;font-weight:600;"><%= planDone %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= planTotal %></span></div>
-        <div class="kpi-meta">milestones complete · <%= planPct %>%</div>
-      </div>
-      <div style="flex:1;height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
-        <div style="height:100%;background:var(--accent);width:<%= planPct %>%;"></div>
-      </div>
+  // Overall posture - worst of the key RAGs
+  const overallRag = [stage1Rag, scheduleRag, flagsRag].includes('red') ? 'red'
+                   : [stage1Rag, scheduleRag, flagsRag].includes('amber') ? 'amber'
+                   : 'green';
+  const overallLabel = overallRag === 'green' ? 'On track' : overallRag === 'amber' ? 'Manage closely' : 'Action required';
+
+  // Action-titled summary headline (MBB-style)
+  let actionTitle = '';
+  if (overallRag === 'green') {
+    actionTitle = `${clientName} is <em>on track</em> for Stage 1 certification${ws.target_cert_date ? ' on ' + ws.target_cert_date : ''}.`;
+  } else if (overallRag === 'amber') {
+    actionTitle = `${clientName} is on plan but needs <em>active management</em> to reach Stage 1${ws.target_cert_date ? ' on ' + ws.target_cert_date : ''}.`;
+  } else {
+    actionTitle = `${clientName}'s Stage 1 certification is <em>at risk</em>${ws.target_cert_date ? ' against the ' + ws.target_cert_date + ' target' : ''}.`;
+  }
+
+  // Summary bullets - 3-4 synthesised findings
+  const bullets = [];
+  bullets.push(`Stage 1 readiness ${stage1}% against the 80% audit-ready threshold` + (dtt !== null && dtt > 0 ? `; ${dtt} day${dtt === 1 ? '' : 's'} of runway to the target audit.` : '.'));
+  if (velocityNow !== velocityPrior) {
+    bullets.push(`Velocity ${velocityNow > velocityPrior ? 'accelerating' : 'slowing'} - ${velocityNow} control${velocityNow === 1 ? '' : 's'} moved to Implemented in the last 30 days versus ${velocityPrior} the prior period.`);
+  } else if (velocityNow > 0) {
+    bullets.push(`Implementation velocity steady at ${velocityNow} control${velocityNow === 1 ? '' : 's'} per 30-day window.`);
+  }
+  if (ncMaj + ncMin > 0) {
+    bullets.push(`${ncMaj + ncMin} open nonconformit${(ncMaj + ncMin) === 1 ? 'y' : 'ies'} on the register` + (ncOv > 0 ? `, with ${ncOv} now overdue.` : '.'));
+  } else {
+    bullets.push('Nonconformity register currently clean - no open items.');
+  }
+  if (highSev > 0) {
+    bullets.push(`${highSev} high-severity readiness flag${highSev === 1 ? '' : 's'} require${highSev === 1 ? 's' : ''} explicit remediation before Stage 1.`);
+  }
+
+  // Board asks (with priority chip)
+  const asks = [];
+  if (dtt !== null && dtt < 30 && stage1 < 80) {
+    asks.push({
+      priority: 'high',
+      title: `Decide whether to push the Stage 1 audit date past ${ws.target_cert_date}.`,
+      detail: `Current readiness ${stage1}% with ${dtt} days remaining means the audit will likely fail. Realistic recovery options: extend the audit date by four to six weeks, or descope a workstream to concentrate effort on Annex A controls.`
+    });
+  }
+  if (ncOv > 0) {
+    asks.push({
+      priority: 'high',
+      title: `Approve resourcing to close ${ncOv} overdue nonconformit${ncOv === 1 ? 'y' : 'ies'}.`,
+      detail: `Overdue NCs are an auditor red flag — they suggest the corrective-action process is not being run. Action owners need explicit time allocation, not "fit it in around BAU."`
+    });
+  }
+  if (highSev > 0) {
+    asks.push({
+      priority: 'high',
+      title: `Acknowledge ${highSev} high-severity readiness flag${highSev === 1 ? '' : 's'} and approve the remediation plan.`,
+      detail: `High-severity flags block Stage 1 by themselves regardless of overall readiness percentage. Each requires a named owner and a target close date.`
+    });
+  }
+  if (planTotal > 0 && planPct < 50 && dtt !== null && dtt < 90) {
+    asks.push({
+      priority: 'medium',
+      title: `Confirm the 12-week client plan is realistic for the certification timeline.`,
+      detail: `${planDone} of ${planTotal} milestones complete (${planPct}%) with ${dtt} days to audit. The remaining workstream may need either additional resourcing or a tighter scope.`
+    });
+  }
+  if (asks.length === 0) {
+    asks.push({ priority: 'low', title: 'No board action required this period.', detail: 'Engagement is operating within expected parameters; continue current cadence. Next executive review at the scheduled interval.' });
+  }
+%>
+
+<div class="pack">
+
+  <%# Classification header — Big-4 board pack always opens with this %>
+  <div class="pack-classification">
+    <span>Confidential · For Board / Audit-Committee use</span>
+    <span class="right">Document <%= docId %></span>
+  </div>
+
+  <%# Title block %>
+  <div class="pack-title">
+    <div>
+      <div class="pack-title-eyebrow"><%= clientName %> · ISO/IEC 27001:2022 engagement</div>
+      <h1>Executive brief
+        <span class="sub">Quarterly readiness review &mdash; period ending <%= today %></span>
+      </h1>
+    </div>
+    <div class="pack-meta-stack">
+      <div><span class="k">Status</span> <strong style="color:<%= overallRag === 'green' ? '#15803d' : overallRag === 'amber' ? '#b45309' : '#b91c1c' %>;text-transform:uppercase;letter-spacing:0.08em;font-size:10.5px;"><%= overallLabel %></strong></div>
+      <% if (ws.target_cert_date) { %><div><span class="k">Audit target</span> <%= ws.target_cert_date %></div><% } %>
+      <% if (dtt !== null) { %><div><span class="k">Runway</span> <%= dtt %> day<%= dtt === 1 ? '' : 's' %></div><% } %>
+      <div><span class="k">Prepared by</span> <%= user.name %></div>
+      <div style="margin-top:10px;"><button onclick="window.print()" class="btn btn-secondary btn-xs no-print">Print PDF</button></div>
     </div>
   </div>
-  <div class="panel" style="padding:12px 14px;">
-    <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Cert target</div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
-      <div>
-        <div class="exec-num" style="font-size:22px;font-weight:600;color:<%= readiness.daysToTarget !== null && readiness.daysToTarget < 30 ? '#b91c1c' : 'var(--text)' %>"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %><span class="text-xl text-tertiary" style="font-weight:400;"> days</span></div>
-        <div class="kpi-meta"><%= ws.target_cert_date || 'no target set' %></div>
+
+  <div class="pack-body">
+
+    <%# Section 1: Executive summary %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">1</span>
+        <h2 class="pack-section-title">Executive summary</h2>
+        <span class="pack-section-meta">As at <%= today %></span>
       </div>
-      <div class="text-xs text-secondary" style="text-align:right;line-height:1.5;">
-        Open NCs: <strong><%= ncTotals.major || 0 %></strong> major / <strong><%= ncTotals.minor || 0 %></strong> minor<br>
-        Overdue: <strong style="color:<%= ncTotals.overdue ? '#b91c1c' : 'var(--text)' %>;"><%= ncTotals.overdue || 0 %></strong>
+      <div class="pack-summary">
+        <div class="pack-summary-head">Bottom line</div>
+        <h3 class="pack-summary-headline"><%- actionTitle %></h3>
+        <ul class="pack-summary-points">
+          <% bullets.forEach(b => { %><li><span><%= b %></span></li><% }) %>
+        </ul>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- Top risks + top NCs side-by-side -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-  <div class="panel">
-    <div class="panel-head" style="padding:10px 14px;"><h2 class="text-lg" style="margin:0;">Top 5 open risks</h2></div>
-    <% if (topRisks.length === 0) { %>
-      <div class="t-empty text-base" style="padding:20px;">No open risks.</div>
-    <% } else { %>
-      <table class="t text-sm">
-        <thead><tr><th style="padding:6px 14px;">Risk</th><th style="width:70px;text-align:right;padding:6px 14px;">L×I</th><th style="width:90px;padding:6px 14px;">Owner</th></tr></thead>
+    <%# Section 2: Performance scorecard (RAG) %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">2</span>
+        <h2 class="pack-section-title">Performance against target</h2>
+        <span class="pack-section-meta">RAG scorecard</span>
+      </div>
+      <table class="pack-scorecard">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th class="num">Current</th>
+            <th class="num">Target</th>
+            <th>Trend</th>
+            <th class="status">Status</th>
+          </tr>
+        </thead>
         <tbody>
-          <% topRisks.forEach(r => { %>
-            <tr>
-              <td style="padding:6px 14px;"><%= r.title %></td>
-              <td class="num" style="text-align:right;padding:6px 14px;font-weight:600;color:<%= r.score >= 15 ? '#b91c1c' : r.score >= 8 ? '#a16207' : 'var(--text)' %>;"><%= r.likelihood %>×<%= r.impact %>=<%= r.score %></td>
-              <td class="meta text-eyebrow" style="padding:6px 14px;"><%= r.owner_name || '-' %></td>
-            </tr>
-          <% }) %>
+          <tr>
+            <td class="metric">Stage 1 readiness <span class="sub">composite — docs, controls, flags, MRM, audit</span></td>
+            <td class="num"><%= stage1 %>%</td>
+            <td class="target">≥ 80%</td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-<%= stage1Rag %>"><%= ragLabel(stage1Rag) %></span></td>
+          </tr>
+          <tr>
+            <td class="metric">Stage 2 readiness <span class="sub">Stage 1 plus 3 months operational evidence</span></td>
+            <td class="num"><%= stage2 %>%</td>
+            <td class="target">≥ 80%</td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-<%= stage2Rag %>"><%= ragLabel(stage2Rag) %></span></td>
+          </tr>
+          <tr>
+            <td class="metric">Implementation velocity <span class="sub">Annex A controls → Implemented, last 30 days</span></td>
+            <td class="num"><%= velocityNow %></td>
+            <td class="target">vs <%= velocityPrior %> prior</td>
+            <td class="trend <%= velocityNow > velocityPrior ? 'up' : velocityNow < velocityPrior ? 'down' : '' %>"><%= velocityNow > velocityPrior ? '▲' : velocityNow < velocityPrior ? '▼' : '●' %> <%= velocityDelta >= 0 ? '+' : '' %><%= velocityDelta %></td>
+            <td class="status-cell"><span class="rag rag-<%= velocityNow > velocityPrior ? 'green' : velocityNow < velocityPrior ? 'amber' : 'grey' %>"><%= velocityNow > velocityPrior ? 'Up' : velocityNow < velocityPrior ? 'Down' : 'Flat' %></span></td>
+          </tr>
+          <% if (planTotal > 0) { %>
+          <tr>
+            <td class="metric">12-week client plan <span class="sub">milestones complete vs total</span></td>
+            <td class="num"><%= planDone %>/<%= planTotal %></td>
+            <td class="target"><%= planPct %>%</td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-<%= planRag %>"><%= planRag === 'grey' ? '—' : ragLabel(planRag) %></span></td>
+          </tr>
+          <% } %>
+          <tr>
+            <td class="metric">Schedule pressure <span class="sub">days remaining to certification target</span></td>
+            <td class="num"><%= dtt !== null ? dtt : '—' %></td>
+            <td class="target"><%= ws.target_cert_date || 'not set' %></td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-<%= scheduleRag %>"><%= scheduleRag === 'grey' ? '—' : (scheduleRag === 'red' ? (dtt !== null && dtt < 0 ? 'Late' : 'Tight') : scheduleRag === 'amber' ? 'Tight' : 'Comfortable') %></span></td>
+          </tr>
+          <tr>
+            <td class="metric">Nonconformities <span class="sub">open against the register, including overdue</span></td>
+            <td class="num"><%= ncMaj %>m / <%= ncMin %>min</td>
+            <td class="target"><%= ncOv > 0 ? ncOv + ' overdue' : '—' %></td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-<%= ncRag %>"><%= ragLabel(ncRag) %></span></td>
+          </tr>
+          <tr>
+            <td class="metric">High-severity flags <span class="sub">audit-blocking issues against the readiness rubric</span></td>
+            <td class="num"><%= highSev %></td>
+            <td class="target">0</td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-<%= flagsRag %>"><%= ragLabel(flagsRag) %></span></td>
+          </tr>
+          <tr>
+            <td class="metric">Residual annual loss <span class="sub">heuristic across <%= openRiskCount %> open risk<%= openRiskCount === 1 ? '' : 's' %></span></td>
+            <td class="num">$<%= residualAle.toLocaleString() %></td>
+            <td class="target">—</td>
+            <td class="trend"></td>
+            <td class="status-cell"><span class="rag rag-grey">Info</span></td>
+          </tr>
         </tbody>
       </table>
-    <% } %>
-  </div>
-  <div class="panel">
-    <div class="panel-head" style="padding:10px 14px;"><h2 class="text-lg" style="margin:0;">Top open nonconformities</h2></div>
-    <% if (topNCs.length === 0) { %>
-      <div class="t-empty text-base" style="padding:20px;">No open NCs - clean bill of health.</div>
-    <% } else { %>
-      <table class="t text-sm">
-        <thead><tr><th style="padding:6px 14px;">Finding</th><th style="width:60px;padding:6px 14px;">Sev</th><th style="width:85px;text-align:right;padding:6px 14px;">Due</th></tr></thead>
-        <tbody>
-          <% topNCs.forEach(n => { %>
-            <tr>
-              <td style="padding:6px 14px;"><%= n.title %></td>
-              <td style="padding:6px 14px;"><span class="status s-<%= n.severity %> text-xxs"><%= n.severity %></span></td>
-              <td class="num meta" style="text-align:right;padding:6px 14px;font-size:10.5px;color:<%= n.due_date && n.due_date < new Date().toISOString().slice(0,10) ? '#b91c1c' : 'var(--text-tertiary)' %>;"><%= n.due_date || '-' %></td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    <% } %>
-  </div>
-</div>
+    </div>
 
-<!-- Footer note for the sponsor -->
-<div class="panel text-xs text-secondary" style="padding:10px 14px;background:var(--bg-subtle);line-height:1.5;">
-  <strong>Reading the numbers:</strong>
-  Stage 1 readiness blends mandatory documents (30%), Annex A controls implemented (35%), absence of high-severity flags (15%), MRM complete (10%), internal audit complete (10%). Stage 2 adds operational-evidence depth (10%). Velocity is the count of controls moved to "Implemented" in the last 30 days. Residual ALE is a heuristic - actuals depend on impact tiers your insurer assigns. Generated automatically; refresh by re-loading.
+    <%# Section 3: Board-required actions %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">3</span>
+        <h2 class="pack-section-title">Required board / sponsor action</h2>
+        <span class="pack-section-meta"><%= asks.length %> item<%= asks.length === 1 ? '' : 's' %> &middot; priority-ordered</span>
+      </div>
+      <div class="pack-asks">
+        <% asks.forEach((a, i) => { %>
+          <div class="pack-ask <%= a.priority %>">
+            <div class="pack-ask-num"><%= String(i + 1).padStart(2, '0') %></div>
+            <div class="pack-ask-body">
+              <span class="title"><%= a.title %></span>
+              <% if (a.detail) { %><span class="detail"><%= a.detail %></span><% } %>
+            </div>
+            <div class="pack-ask-priority">
+              <span class="rag rag-<%= a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'amber' : 'green' %>"><%= a.priority %></span>
+              <span style="color:var(--text-tertiary);">Priority</span>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <%# Section 4: Top open risks %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">4</span>
+        <h2 class="pack-section-title">Top open risks</h2>
+        <span class="pack-section-meta">Ranked by likelihood × impact</span>
+      </div>
+      <% if (topRisks.length === 0) { %>
+        <div class="pack-rank-empty">No open risks recorded against this client.</div>
+      <% } else { %>
+        <table class="pack-rank">
+          <thead>
+            <tr>
+              <th class="rank">#</th>
+              <th>Risk</th>
+              <th>Owner</th>
+              <th class="num">L × I</th>
+              <th class="num">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% topRisks.forEach((r, i) => { %>
+              <tr>
+                <td class="rank"><%= i + 1 %></td>
+                <td class="title-cell"><%= r.title %></td>
+                <td><%= r.owner_name || '—' %></td>
+                <td class="score" style="color:var(--text-tertiary);"><%= r.likelihood %> × <%= r.impact %></td>
+                <td class="score" style="color:<%= r.score >= 15 ? '#b91c1c' : r.score >= 8 ? '#b45309' : 'var(--text-secondary)' %>;"><%= r.score %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <%# Section 5: Top open NCs %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">5</span>
+        <h2 class="pack-section-title">Top open nonconformities</h2>
+        <span class="pack-section-meta">Soonest due first</span>
+      </div>
+      <% if (topNCs.length === 0) { %>
+        <div class="pack-rank-empty">No open nonconformities &mdash; clean bill of health on the NC register.</div>
+      <% } else { %>
+        <table class="pack-rank">
+          <thead>
+            <tr>
+              <th class="rank">#</th>
+              <th>Finding</th>
+              <th>Severity</th>
+              <th>Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% topNCs.forEach((n, i) => {
+                 const overdue = n.due_date && n.due_date < today;
+            %>
+              <tr>
+                <td class="rank"><%= i + 1 %></td>
+                <td class="title-cell"><%= n.title %></td>
+                <td><span class="rag rag-<%= n.severity === 'major' ? 'red' : 'amber' %>"><%= n.severity %></span></td>
+                <td style="<%= overdue ? 'color:#b91c1c;font-weight:600;' : 'color:var(--text-tertiary);' %>font-family:'SF Mono',Menlo,monospace;font-size:12px;font-variant-numeric:tabular-nums;"><%= n.due_date ? (overdue ? 'Overdue ' + n.due_date : n.due_date) : '—' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+  </div>
+
+  <%# Methodology appendix - dark band at the bottom %>
+  <div class="pack-methodology">
+    <h3>Appendix · methodology &amp; data sources</h3>
+    <dl>
+      <dt>Stage 1 readiness</dt><dd>weighted composite — mandatory documents (30 %), Annex A controls implemented (35 %), absence of high-severity flags (15 %), management review complete (10 %), internal audit complete (10 %).</dd>
+      <dt>Stage 2 readiness</dt><dd>Stage 1 composite plus operational-evidence depth (10 %).</dd>
+      <dt>Velocity</dt><dd>controls moved to <em>Implemented</em> in the last 30 days, against the prior 30-day window.</dd>
+      <dt>Residual annual loss</dt><dd>Σ ( likelihood ÷ 5 × impact × $50 000 ) across open risks. Heuristic; actuals depend on impact tiers your insurer assigns.</dd>
+      <dt>RAG thresholds</dt><dd>Readiness — green ≥ 80 %, amber 50–79 %, red &lt; 50 %. Schedule — green &gt; 90 days, amber 30–90, red &lt; 30. Nonconformities — green 0, amber any open, red any overdue. Trend up requires period-on-period growth.</dd>
+      <dt>Recommendations</dt><dd>derived from the live data above; the engagement lead may edit before formal circulation to the board.</dd>
+    </dl>
+  </div>
+
+  <%# Page footer band %>
+  <div class="pack-foot">
+    <span>Confidential</span>
+    <span class="center">Document <%= docId %> &middot; Page 1 of 1</span>
+    <span class="right">Prepared <%= today %> by <%= user.name %></span>
+  </div>
+
 </div>
 
 <%- include('partials/footer') %>

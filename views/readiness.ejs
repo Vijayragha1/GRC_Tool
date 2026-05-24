@@ -1,123 +1,511 @@
-<%- include('partials/header', { title: 'Readiness', user, ws, active: 'readiness' }) %>
+<%- include('partials/header', { title: 'Certification readiness', user, ws, active: 'readiness' }) %>
 
-<div class="page-head">
-  <div>
-    <h1 class="page-title">Certification readiness</h1>
-    <div class="page-subtitle">Live assessment against ISO 27001:2022 stage 1 and stage 2 audit requirements.</div>
-  </div>
-  <div style="display:flex;align-items:center;gap:14px;">
-    <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-primary btn-xs">Pre-cert blocker check →</a>
-    <% if (r.daysToTarget !== null) { %>
-      <div style="text-align:right">
-        <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span class="text-lg text-tertiary" style="font-weight:400;"> days</span></div>
-        <div class="meta">to target cert · <%= ws.target_cert_date %></div>
-      </div>
-    <% } %>
-  </div>
-</div>
+<style>
+  /* Reuse the workpaper idiom from controls_assess_summary.ejs. Same .pack-*
+     and .wp classes. Kept inline rather than promoted to a global stylesheet
+     because the readiness view has a few unique exhibits (verdict callout,
+     stage-gate scorecard) that don't appear elsewhere. */
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-  <div class="panel kpi">
-    <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-label">Stage 1 readiness</div>
-    <div class="kpi-meta">documentation & ISMS framework</div>
-  </div>
-  <div class="panel kpi">
-    <div class="kpi-num" style="color:<%= r.stage2 >= 80 ? '#15803d' : r.stage2 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-label">Stage 2 readiness</div>
-    <div class="kpi-meta">operational effectiveness</div>
-  </div>
-  <div class="panel kpi">
-    <div class="kpi-num"><%= r.records.found %><span class="text-tertiary" style="font-weight:400;">/<%= r.records.total %></span></div>
-    <div class="kpi-label">Mandatory documented information</div>
-    <div class="kpi-meta">explicitly required by ISO 27001:2022</div>
-  </div>
-  <div class="panel kpi">
-    <div class="kpi-num num"><%= r.metrics.avgMaturity %></div>
-    <div class="kpi-label">Average maturity</div>
-    <div class="kpi-meta">controls scored 0–5</div>
-  </div>
-</div>
+  .pack { max-width: 1000px; margin: 0 auto; background: #fff; color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-  <div class="panel">
-    <div class="panel-head"><h2>Detected gaps</h2><span class="meta"><%= r.flags.length %> total</span></div>
-    <% if (r.flags.length === 0) { %>
-      <div class="t-empty text-success">No gaps detected.</div>
-    <% } else { %>
-      <div class="divide-row">
-        <% r.flags.forEach(f => { %>
-          <div style="padding:12px 16px;">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-              <div style="flex:1;min-width:0;">
-                <div class="text-lg" style="font-weight:500;line-height:1.4;"><%= f.label %></div>
-                <% if (f.items.length) { %>
-                  <ul class="text-base text-secondary" style="margin-top:6px;list-style:none;padding:0;">
-                    <% f.items.slice(0, 5).forEach(it => { %>
-                      <li style="padding:1px 0;">·
-                        <% if (it.id && (String(it.id).startsWith('clause') || String(it.id).startsWith('annex'))) { %>
-                          <a href="/workspaces/<%= ws.id %>/controls/<%= it.id %>" class="link-muted"><%= it.title %></a>
-                        <% } else if (f.kind === 'overdue_ncs' || f.kind === 'open_major_ncs') { %>
-                          <a href="/workspaces/<%= ws.id %>/nonconformities/<%= it.id %>" class="link-muted"><%= it.title %></a>
-                        <% } else if (f.kind === 'orphan_risks' || f.kind === 'no_owner_risks') { %>
-                          <a href="/workspaces/<%= ws.id %>/risks/<%= it.id %>" class="link-muted"><%= it.title %></a>
-                        <% } else { %><%= it.title %><% } %>
-                      </li>
-                    <% }) %>
-                    <% if (f.items.length > 5) { %><li class="text-tertiary">… and <%= f.items.length - 5 %> more</li><% } %>
-                  </ul>
-                <% } %>
-              </div>
-              <span class="tag <%= f.severity === 'high' ? 'tag-danger' : 'tag-warn' %>"><%= f.severity %></span>
-            </div>
-          </div>
-        <% }) %>
-      </div>
-    <% } %>
+  .pack-classification { background: #1a1a1a; color: rgba(255,255,255,0.92); padding: 9px 28px; display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+  .pack-classification .right { color: rgba(255,255,255,0.55); font-weight: 500; letter-spacing: 0.06em; font-size: 10px; }
+
+  .pack-title { padding: 30px 32px 22px; border-bottom: 4px double var(--text); display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: flex-end; }
+  .pack-title-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .pack-title h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 32px; line-height: 1.05; font-weight: 600; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+  .pack-title h1 .sub { display: block; font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 400; font-style: italic; color: var(--text-secondary); margin-top: 8px; letter-spacing: -0.005em; }
+  .pack-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 200px; }
+  .pack-actions .btn { justify-content: center; white-space: nowrap; }
+
+  .pack-body { padding: 24px 32px 16px; }
+
+  .pack-section { margin-bottom: 32px; }
+  .pack-section-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 14px; }
+  .pack-section-num { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; }
+  .pack-section-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+  .pack-section-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* Captions + source line shared with body workpaper */
+  .pack-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 0 0 6px; font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: -0.005em; }
+  .pack-caption .label { color: var(--text-tertiary); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  .pack-source { padding: 8px 0 0; font-size: 10.5px; color: var(--text-tertiary); line-height: 1.55; font-style: italic; }
+  .pack-source strong { font-style: normal; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; color: var(--text-secondary); margin-right: 6px; }
+
+  /* Workpaper table */
+  .wp { width: 100%; border-collapse: collapse; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); }
+  .wp thead th { text-align: left; padding: 8px 12px 6px; color: var(--text); font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1px solid var(--text); background: transparent; vertical-align: bottom; }
+  .wp thead th.num { text-align: right; }
+  .wp thead th.center { text-align: center; }
+  .wp tbody td { padding: 8px 12px; vertical-align: middle; border-bottom: 1px dotted var(--border); }
+  .wp tbody tr:last-child td { border-bottom: 0; }
+  .wp tbody tr:hover { background: rgba(92, 10, 10, 0.025); }
+  .wp tbody tr.group td { padding: 12px 12px 4px; border-bottom: 0; font-family: 'Source Serif 4', Georgia, serif; font-style: italic; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); letter-spacing: -0.005em; }
+  .wp tbody tr.totals td { padding-top: 10px; border-top: 1px solid var(--text); border-bottom: 0; font-weight: 700; color: var(--text); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .wp tbody tr.totals td.num { font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 13px; letter-spacing: 0; text-transform: none; }
+  .wp td.num { text-align: right; font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text); }
+  .wp td.num.dim { color: var(--text-tertiary); font-size: 11.5px; }
+  .wp td.ref { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--text-secondary); font-weight: 600; white-space: nowrap; letter-spacing: 0; }
+  .wp td.metric { color: var(--text); font-weight: 500; }
+  .wp td.metric .sub { display: block; font-weight: 400; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; font-style: italic; }
+  .wp td.title-cell a { color: var(--text); text-decoration: none; font-weight: 500; border-bottom: 1px solid transparent; }
+  .wp td.title-cell a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  .wp td.note { font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.04em; font-weight: 600; }
+  .wp td.center { text-align: center; }
+
+  /* Textual indicators */
+  .mark { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; letter-spacing: 0; }
+  .mark .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .mark .dot.red    { background: #b91c1c; }
+  .mark .dot.orange { background: #c2410c; }
+  .mark .dot.amber  { background: #92400e; }
+  .mark .dot.green  { background: #166534; }
+  .mark .dot.grey   { background: transparent; border: 1.5px solid var(--text-tertiary); }
+  .mark .dot.hollow { background: transparent; border: 1.5px solid var(--text-secondary); }
+  .mark .lbl { color: var(--text-secondary); font-weight: 500; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .mark.subdued .lbl, .mark.subdued { color: var(--text-tertiary); font-weight: 500; }
+
+  .footref { font-size: 9.5px; vertical-align: super; color: var(--accent); font-weight: 700; margin-left: 2px; font-family: 'Source Serif 4', Georgia, serif; line-height: 0; }
+
+  /* Verdict callout — sits below the title, before the first section */
+  .pack-verdict { display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center; padding: 18px 22px; border: 1.5px solid var(--text); border-left-width: 5px; background: #fafaf8; margin-bottom: 26px; }
+  .pack-verdict.go { border-left-color: #166534; }
+  .pack-verdict.caution { border-left-color: #c2410c; }
+  .pack-verdict.stop { border-left-color: #b91c1c; }
+  .pack-verdict .stamp { font-family: 'Source Serif 4', Georgia, serif; font-style: italic; font-weight: 600; font-size: 22px; letter-spacing: -0.01em; color: var(--text); padding-right: 22px; border-right: 1px solid var(--border); }
+  .pack-verdict .stamp .label { display: block; font-family: 'Inter', sans-serif; font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
+  .pack-verdict .stamp .word { color: var(--text); }
+  .pack-verdict.go .stamp .word { color: #166534; }
+  .pack-verdict.caution .stamp .word { color: #c2410c; }
+  .pack-verdict.stop .stamp .word { color: #b91c1c; }
+  .pack-verdict .narrative { font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; line-height: 1.55; color: var(--text); letter-spacing: -0.005em; }
+  .pack-verdict .countdown { text-align: right; font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .pack-verdict .countdown .n { font-size: 26px; font-weight: 600; color: var(--text); display: block; line-height: 1; }
+  .pack-verdict .countdown .lbl { font-family: 'Inter', sans-serif; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; margin-top: 4px; display: block; }
+
+  /* Appendix block reused from summary */
+  .pack-appendix { background: #fafaf8; border-top: 4px double var(--text); padding: 28px 32px 32px; }
+  .pack-appendix-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 18px; }
+  .pack-appendix-eyebrow { font-family: 'Inter', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+  .pack-appendix-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+  .pack-appendix-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pack-appendix-grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
+  .pack-appendix .wp td.numref { width: 28px; text-align: center; vertical-align: top; padding-top: 9px; font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; font-weight: 700; color: var(--accent); }
+  .pack-appendix .wp td.term { width: 200px; vertical-align: top; padding-top: 8px; font-weight: 600; color: var(--text); font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; letter-spacing: -0.005em; }
+  .pack-appendix .wp td.term .meta { display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; color: var(--text-tertiary); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; }
+  .pack-appendix .wp td.def { vertical-align: top; padding-top: 9px; color: var(--text-secondary); line-height: 1.6; font-size: 12px; }
+  .pack-appendix .wp td.def code { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; background: rgba(92, 10, 10, 0.05); color: var(--accent); padding: 1px 5px; border-radius: 2px; letter-spacing: 0; }
+  .pack-appendix .pack-caption { color: var(--text); margin-bottom: 4px; }
+
+  /* Footer band */
+  .pack-foot { background: var(--bg-subtle); padding: 16px 32px; border-top: 1.5px solid var(--text); display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; font-size: 10px; color: var(--text-secondary); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+  .pack-foot .center { text-align: center; color: var(--text-tertiary); font-weight: 500; }
+  .pack-foot .right { text-align: right; }
+</style>
+
+<%
+  const today = new Date().toISOString().slice(0,10);
+  const clientName = ws.brand_display_name || ws.client_name;
+  const docId = 'ISMS-CRR-' + String(ws.id).padStart(4, '0') + '-' + today.replace(/-/g, '');
+
+  // Verdict logic — same thresholds as the appendix below
+  const stage1Pass = r.stage1 >= 80;
+  const stage2Pass = r.stage2 >= 80;
+  const highFlags = r.flags.filter(f => f.severity === 'high').length;
+  const medFlags  = r.flags.filter(f => f.severity === 'medium').length;
+  let verdict, verdictWord, narrative;
+  if (stage1Pass && stage2Pass && highFlags === 0) {
+    verdict = 'go'; verdictWord = 'Audit-ready';
+    narrative = 'Stage 1 and Stage 2 readiness both clear 80%, mandatory records are present, and no high-severity observations remain open. The ISMS is positioned to enter the certification audit.';
+  } else if (stage1Pass && highFlags <= 1) {
+    verdict = 'caution'; verdictWord = 'Stage 1 ready';
+    narrative = 'Documentation and management-system framework satisfy Stage 1 thresholds. Stage 2 operational evidence and the open observations below must close before a Stage 2 visit.';
+  } else if (highFlags > 2 || (r.daysToTarget !== null && r.daysToTarget < 30 && !stage2Pass)) {
+    verdict = 'stop'; verdictWord = 'Not ready';
+    narrative = 'Material observations remain open or the certification target date is at risk. The audit should be rescheduled or remediation accelerated before booking a registrar.';
+  } else {
+    verdict = 'caution'; verdictWord = 'In progress';
+    narrative = 'Build is on track but not yet at audit-ready posture. Work the observations and documentation gaps below in numbered order; each closes a specific Stage-gate prerequisite.';
+  }
+
+  // Stage-gate scorecard
+  const scorecard = [
+    { metric: 'Stage 1 readiness',        sub: 'Documentation + ISMS framework',         current: r.stage1 + '%',                            target: '≥ 80%',  pass: stage1Pass,                              dot: stage1Pass ? 'green' : (r.stage1 >= 50 ? 'amber' : 'red') },
+    { metric: 'Stage 2 readiness',        sub: 'Operational effectiveness + evidence',   current: r.stage2 + '%',                            target: '≥ 80%',  pass: stage2Pass,                              dot: stage2Pass ? 'green' : (r.stage2 >= 50 ? 'amber' : 'red') },
+    { metric: 'Mandatory documented information', sub: 'Required by Clauses 4–10',       current: r.records.mandatory.found + ' of ' + r.records.mandatory.total, target: 'Complete', pass: r.records.mandatory.found === r.records.mandatory.total, dot: r.records.mandatory.found === r.records.mandatory.total ? 'green' : (r.records.mandatory.found >= r.records.mandatory.total - 2 ? 'amber' : 'red') },
+    { metric: 'Control implementation',   sub: 'Implemented or N/A on the SoA',          current: ((r.metrics.implemented + r.metrics.na) + ' of ' + r.metrics.totalItems), target: '≥ 80%', pass: r.metrics.totalItems > 0 && ((r.metrics.implemented + r.metrics.na) / r.metrics.totalItems) >= 0.8, dot: r.metrics.totalItems > 0 && ((r.metrics.implemented + r.metrics.na) / r.metrics.totalItems) >= 0.8 ? 'green' : 'amber' },
+    { metric: 'Average control maturity', sub: 'Self-rated, 0–5 scale',                  current: r.metrics.avgMaturity + ' / 5',            target: '≥ 3.0',  pass: parseFloat(r.metrics.avgMaturity) >= 3.0, dot: parseFloat(r.metrics.avgMaturity) >= 3.0 ? 'green' : (parseFloat(r.metrics.avgMaturity) >= 2.0 ? 'amber' : 'red') },
+    { metric: 'High-severity observations', sub: 'Section 2 below',                      current: String(highFlags),                          target: '0',      pass: highFlags === 0,                          dot: highFlags === 0 ? 'green' : 'red' },
+    { metric: 'Medium-severity observations', sub: 'Section 2 below',                    current: String(medFlags),                           target: '≤ 3',    pass: medFlags <= 3,                            dot: medFlags <= 3 ? 'green' : 'amber' },
+    { metric: 'Evidence files on file',   sub: 'Across all control items',               current: String(r.metrics.evidenceCount),            target: '≥ ' + Math.round(r.metrics.totalItems * 0.6), pass: r.metrics.evidenceCount >= r.metrics.totalItems * 0.6, dot: r.metrics.evidenceCount >= r.metrics.totalItems * 0.6 ? 'green' : (r.metrics.evidenceCount >= r.metrics.totalItems * 0.3 ? 'amber' : 'red') }
+  ];
+
+  // Severity grouping for observations
+  const flagsHigh   = r.flags.filter(f => f.severity === 'high');
+  const flagsMedium = r.flags.filter(f => f.severity === 'medium');
+  const flagsLow    = r.flags.filter(f => f.severity !== 'high' && f.severity !== 'medium');
+
+  const flagDotFor = (sev) => sev === 'high' ? 'red' : sev === 'medium' ? 'amber' : 'grey';
+  const sevLabel   = (sev) => sev === 'high' ? 'High' : sev === 'medium' ? 'Medium' : 'Low';
+
+  // Control-implementation distribution
+  const totalControls = r.metrics.totalItems || 0;
+  const cpct = (n) => totalControls > 0 ? Math.round((n / totalControls) * 100) : 0;
+  const CTRL_ROWS = [
+    { label: 'Implemented',          sub: 'Counts toward audit-ready coverage',                count: r.metrics.implemented, dot: 'green',  evidence: 'Yes, when evidenced' },
+    { label: 'Partially Implemented', sub: 'Coverage gap on existing control',                 count: r.metrics.partial,     dot: 'amber',  evidence: 'No' },
+    { label: 'Work In Progress',     sub: 'Implementation under way',                          count: r.metrics.wip,         dot: 'orange', evidence: 'No' },
+    { label: 'Not Implemented',      sub: 'Absent — gap requiring action',                     count: r.metrics.notImpl,     dot: 'red',    evidence: 'No' },
+    { label: 'Not Applicable',       sub: 'Excluded with documented justification',            count: r.metrics.na,          dot: 'hollow', evidence: 'N/A' }
+  ];
+
+  // Days countdown formatting
+  const dtColor = r.daysToTarget === null ? 'var(--text-tertiary)'
+                : r.daysToTarget < 30  ? '#b91c1c'
+                : r.daysToTarget < 90  ? '#c2410c'
+                : 'var(--text)';
+%>
+
+<div class="pack">
+
+  <%# Classification %>
+  <div class="pack-classification">
+    <span>Internal · Certification-readiness review</span>
+    <span class="right">Document <%= docId %></span>
   </div>
 
-  <div class="panel">
-    <div class="panel-head"><h2>Documented information</h2><span class="meta">Heuristic detection - confirm manually</span></div>
-    <div class="panel-pad">
-      <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Explicitly required by ISO 27001:2022 (<%= r.records.mandatory.found %>/<%= r.records.mandatory.total %>)</div>
-      <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:16px;">
-        <% r.records.mandatory.checks.forEach(c => { %>
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : '#b91c1c' %>;"><%= c.found ? '✓' : '✗' %></span>
-            <div style="flex:1;">
-              <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text);font-weight:500' %>"><%= c.name %></span>
-              <span class="mono meta" style="margin-left:6px;">Cl. <%= c.clause %></span>
-            </div>
-          </div>
-        <% }) %>
-      </div>
-
-      <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Required if related Annex A control is included (<%= r.records.expected.found %>/<%= r.records.expected.total %>)</div>
-      <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;">
-        <% r.records.expected.checks.forEach(c => { %>
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : 'var(--text-tertiary)' %>;"><%= c.found ? '✓' : '○' %></span>
-            <div style="flex:1;">
-              <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text-secondary)' %>"><%= c.name %></span>
-              <span class="mono meta" style="margin-left:6px;"><%= c.clause %></span>
-            </div>
-          </div>
-        <% }) %>
-      </div>
+  <%# Title block %>
+  <div class="pack-title">
+    <div>
+      <div class="pack-title-eyebrow"><%= clientName %> · ISO/IEC 27001:2022</div>
+      <h1>Certification readiness
+        <span class="sub">Stage-gate verdict, observations, and documented-information posture · as at <%= today %></span>
+      </h1>
+    </div>
+    <div class="pack-actions">
+      <a href="/workspaces/<%= ws.id %>/readiness/blockers" class="btn btn-primary btn-xs">Pre-cert blockers →</a>
+      <a href="/workspaces/<%= ws.id %>/readiness/overview" class="btn btn-secondary btn-xs">Readiness overview →</a>
+      <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Gap findings →</a>
+      <a href="/workspaces/<%= ws.id %>/audits" class="btn btn-secondary btn-xs">Open audit log →</a>
     </div>
   </div>
-</div>
 
-<div class="panel">
-  <div class="panel-head"><h2>Control implementation status</h2></div>
-  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
-    <div><div class="kpi-num num text-success"><%= r.metrics.implemented %></div><div class="kpi-meta">Implemented</div></div>
-    <div><div class="kpi-num num text-warn"><%= r.metrics.partial %></div><div class="kpi-meta">Partial</div></div>
-    <div><div class="kpi-num num" style="color:#1d4ed8"><%= r.metrics.wip %></div><div class="kpi-meta">In progress</div></div>
-    <div><div class="kpi-num num text-danger"><%= r.metrics.notImpl %></div><div class="kpi-meta">Not implemented</div></div>
-    <div><div class="kpi-num num text-tertiary"><%= r.metrics.na %></div><div class="kpi-meta">N/A</div></div>
-    <div><div class="kpi-num num"><%= r.metrics.evidenceCount %></div><div class="kpi-meta">Evidence files</div></div>
+  <div class="pack-body">
+
+    <%# Verdict callout %>
+    <div class="pack-verdict <%= verdict %>">
+      <div class="stamp">
+        <span class="label">Reviewer verdict</span>
+        <span class="word"><%= verdictWord %></span>
+      </div>
+      <div class="narrative"><%= narrative %></div>
+      <% if (r.daysToTarget !== null) { %>
+        <div class="countdown">
+          <span class="n" style="color:<%= dtColor %>;"><%= r.daysToTarget %></span>
+          <span class="lbl">days to <%= ws.target_cert_date %></span>
+        </div>
+      <% } else { %>
+        <div class="countdown">
+          <span class="n" style="color:var(--text-tertiary);font-size:18px;">—</span>
+          <span class="lbl">No target date set</span>
+        </div>
+      <% } %>
+    </div>
+
+    <%# Section 1 — Stage-gate scorecard %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">1</span>
+        <h2 class="pack-section-title">Stage-gate scorecard</h2>
+        <span class="pack-section-meta">8 metrics · thresholds in Appendix A.1</span>
+      </div>
+      <div class="pack-caption"><span>Exhibit 1.1 &nbsp;·&nbsp; Posture against Stage 1 and Stage 2 gate criteria</span><span class="label">All thresholds</span></div>
+      <table class="wp">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th>
+            <th>Metric</th>
+            <th class="num" style="width:130px;">Current</th>
+            <th class="num" style="width:90px;">Threshold</th>
+            <th class="center" style="width:100px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% scorecard.forEach(row => { %>
+            <tr>
+              <td class="center"><span class="mark"><span class="dot <%= row.dot %>"></span></span></td>
+              <td class="metric"><%= row.metric %><span class="sub"><%= row.sub %></span></td>
+              <td class="num"><%= row.current %></td>
+              <td class="num dim"><%= row.target %></td>
+              <td class="center"><span class="mark"><span class="dot <%= row.pass ? 'green' : 'red' %>"></span><span class="lbl"><%= row.pass ? 'Pass' : 'Fail' %></span></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <div class="pack-source"><strong>Source</strong> Computed live from <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">computeReadiness(ws)</code>. Formula weights and pass thresholds are listed in Appendix A.1; mandatory-record detection caveats are in A.2.</div>
+    </div>
+
+    <%# Section 2 — Observations %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">2</span>
+        <h2 class="pack-section-title">Observations &amp; detected gaps</h2>
+        <span class="pack-section-meta"><%= r.flags.length %> open · grouped by severity</span>
+      </div>
+      <% if (r.flags.length === 0) { %>
+        <div class="pack-empty" style="padding: 18px 14px; text-align: center; color: var(--text-tertiary); font-style: italic; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text);">No observations open. Readiness posture is clean across all detection rules.</div>
+      <% } else {
+           const renderFlagRow = (f, idx) => {
+             const sample = (f.items || []).slice(0, 3).map(it => it.title).join(' · ');
+             return { f, idx, sample, more: Math.max(0, (f.items || []).length - 3) };
+           };
+      %>
+        <div class="pack-caption"><span>Exhibit 2.1 &nbsp;·&nbsp; Open observations requiring remediation before audit</span><span class="label"><%= r.flags.length %> rows</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th style="width:32px;" class="center">#</th>
+              <th style="width:95px;">Severity</th>
+              <th>Observation</th>
+              <th>Sampled items</th>
+              <th class="num" style="width:70px;">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% let rowNum = 0; %>
+            <% if (flagsHigh.length) { %>
+              <tr class="group"><td colspan="5">High severity &mdash; will be cited as a nonconformity (<%= flagsHigh.length %>)</td></tr>
+              <% flagsHigh.forEach(f => { rowNum++; const r = renderFlagRow(f, rowNum); %>
+                <tr>
+                  <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight:600;"><%= rowNum %></td>
+                  <td><span class="mark"><span class="dot <%= flagDotFor(f.severity) %>"></span><span class="lbl"><%= sevLabel(f.severity) %></span></span></td>
+                  <td style="color:var(--text);font-weight:500;"><%= f.label.replace(/^\d+\s+/, '') %></td>
+                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>—<% } %></td>
+                  <td class="num"><%= (f.items || []).length || '—' %></td>
+                </tr>
+              <% }) %>
+            <% } %>
+            <% if (flagsMedium.length) { %>
+              <tr class="group"><td colspan="5">Medium severity &mdash; tighten before Stage 2 (<%= flagsMedium.length %>)</td></tr>
+              <% flagsMedium.forEach(f => { rowNum++; const r = renderFlagRow(f, rowNum); %>
+                <tr>
+                  <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight:600;"><%= rowNum %></td>
+                  <td><span class="mark"><span class="dot <%= flagDotFor(f.severity) %>"></span><span class="lbl"><%= sevLabel(f.severity) %></span></span></td>
+                  <td style="color:var(--text);font-weight:500;"><%= f.label.replace(/^\d+\s+/, '') %></td>
+                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>—<% } %></td>
+                  <td class="num"><%= (f.items || []).length || '—' %></td>
+                </tr>
+              <% }) %>
+            <% } %>
+            <% if (flagsLow.length) { %>
+              <tr class="group"><td colspan="5">Low / informational (<%= flagsLow.length %>)</td></tr>
+              <% flagsLow.forEach(f => { rowNum++; const r = renderFlagRow(f, rowNum); %>
+                <tr>
+                  <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight:600;"><%= rowNum %></td>
+                  <td><span class="mark"><span class="dot <%= flagDotFor(f.severity) %>"></span><span class="lbl"><%= sevLabel(f.severity) %></span></span></td>
+                  <td style="color:var(--text);font-weight:500;"><%= f.label.replace(/^\d+\s+/, '') %></td>
+                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>—<% } %></td>
+                  <td class="num"><%= (f.items || []).length || '—' %></td>
+                </tr>
+              <% }) %>
+            <% } %>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Source</strong> Each observation is generated by a deterministic rule (e.g. <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">implemented_no_evidence</code>). Severity is fixed per rule; <em>Sampled items</em> shows the first three affected records.</div>
+      <% } %>
+    </div>
+
+    <%# Section 3 — Documented information register %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">3</span>
+        <h2 class="pack-section-title">Documented-information register</h2>
+        <span class="pack-section-meta"><%= r.records.mandatory.found %>/<%= r.records.mandatory.total %> mandatory · <%= r.records.expected.found %>/<%= r.records.expected.total %> expected</span>
+      </div>
+
+      <div class="pack-caption"><span>Exhibit 3.1 &nbsp;·&nbsp; Mandatory records (Clauses 4–10)</span><span class="label"><%= r.records.mandatory.total %> rows</span></div>
+      <table class="wp">
+        <thead>
+          <tr>
+            <th style="width:30px;" class="center"></th>
+            <th>Record / Item</th>
+            <th class="ref" style="width:130px;">ISO reference</th>
+            <th class="center" style="width:90px;">Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% r.records.mandatory.checks.forEach(c => { %>
+            <tr>
+              <td class="center"><span class="mark"><span class="dot <%= c.found ? 'green' : 'red' %>"></span></span></td>
+              <td class="metric"><%= c.name %></td>
+              <td class="ref">Cl. <%= c.clause %></td>
+              <td class="center"><span class="mark"><span class="dot <%= c.found ? 'green' : 'red' %>"></span><span class="lbl"><%= c.found ? 'Present' : 'Missing' %></span></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+
+      <div class="pack-caption" style="margin-top:22px;"><span>Exhibit 3.2 &nbsp;·&nbsp; Expected records (required if related Annex A control is included)</span><span class="label"><%= r.records.expected.total %> rows</span></div>
+      <table class="wp">
+        <thead>
+          <tr>
+            <th style="width:30px;" class="center"></th>
+            <th>Record / Item</th>
+            <th class="ref" style="width:130px;">ISO reference</th>
+            <th class="center" style="width:90px;">Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% r.records.expected.checks.forEach(c => { %>
+            <tr>
+              <td class="center"><span class="mark"><span class="dot <%= c.found ? 'green' : 'hollow' %>"></span></span></td>
+              <td class="metric"><%= c.name %></td>
+              <td class="ref"><%= c.clause %></td>
+              <td class="center"><span class="mark <%= c.found ? '' : 'subdued' %>"><span class="dot <%= c.found ? 'green' : 'hollow' %>"></span><span class="lbl"><%= c.found ? 'Present' : 'Not detected' %></span></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <div class="pack-source"><strong>Caveat</strong> Detection is heuristic &mdash; based on document type, naming patterns, and presence of linked records. Mark a record as present in the underlying register if the heuristic misses it.</div>
+    </div>
+
+    <%# Section 4 — Control implementation distribution %>
+    <div class="pack-section">
+      <div class="pack-section-head">
+        <span class="pack-section-num">4</span>
+        <h2 class="pack-section-title">Control implementation distribution</h2>
+        <span class="pack-section-meta"><%= totalControls %> items · clauses + Annex A</span>
+      </div>
+      <div class="pack-caption"><span>Exhibit 4.1 &nbsp;·&nbsp; Posture of every control on the SoA</span><span class="label">All counts</span></div>
+      <table class="wp">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th>
+            <th>Status</th>
+            <th class="num" style="width:90px;">Count</th>
+            <th class="num" style="width:90px;">% of total</th>
+            <th class="num" style="width:170px;">Evidence-ready?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% CTRL_ROWS.forEach(row => { %>
+            <tr>
+              <td class="center"><span class="mark"><span class="dot <%= row.dot %>"></span></span></td>
+              <td class="metric"><%= row.label %><span class="sub"><%= row.sub %></span></td>
+              <td class="num"><%= row.count %></td>
+              <td class="num dim"><%= cpct(row.count) %>%</td>
+              <td class="num dim" style="font-family:inherit;font-size:11.5px;letter-spacing:0.02em;text-align:right;"><%= row.evidence %></td>
+            </tr>
+          <% }) %>
+          <tr class="totals">
+            <td></td>
+            <td>Total controls on register</td>
+            <td class="num"><%= totalControls %></td>
+            <td class="num">100%</td>
+            <td class="num" style="font-family:inherit;font-size:11.5px;letter-spacing:0.02em;font-weight:700;text-align:right;"><%= r.metrics.evidenceCount %> evidence files</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pack-source"><strong>Source</strong> <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">control_states</code> + <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">evidence</code> tables. Implemented controls without an evidence file appear in Exhibit 4.1 of the gap-findings pack.</div>
+    </div>
+
   </div>
+
+  <%# Appendix %>
+  <div class="pack-appendix">
+    <div class="pack-appendix-head">
+      <div class="pack-appendix-eyebrow">App. A</div>
+      <h3 class="pack-appendix-title">Verdict thresholds &amp; scoring formulas</h3>
+      <span class="pack-appendix-meta">Reading notes for this pack</span>
+    </div>
+
+    <div class="pack-appendix-grid">
+
+      <%# A.1 — Verdict rules %>
+      <div>
+        <div class="pack-caption"><span>A.1 &nbsp;·&nbsp; Reviewer verdict logic</span><span class="label">3 outcomes</span></div>
+        <table class="wp">
+          <tbody>
+            <tr>
+              <td class="numref">i</td>
+              <td class="term"><span class="mark"><span class="dot green"></span><span class="lbl" style="color:#166534;font-weight:700;">Audit-ready</span></span><span class="meta">All conditions met</span></td>
+              <td class="def">Stage 1 &ge; <code>80%</code>, Stage 2 &ge; <code>80%</code>, and zero high-severity observations open. Recommend booking the registrar for Stage 1.</td>
+            </tr>
+            <tr>
+              <td class="numref">ii</td>
+              <td class="term"><span class="mark"><span class="dot orange"></span><span class="lbl" style="color:#c2410c;font-weight:700;">Stage 1 ready</span></span><span class="meta">Partial pass</span></td>
+              <td class="def">Stage 1 &ge; <code>80%</code> but Stage 2 below threshold, or at most one high-severity observation remains. Stage 1 visit can proceed; close Section 2 items and rebuild operational evidence before Stage 2.</td>
+            </tr>
+            <tr>
+              <td class="numref">iii</td>
+              <td class="term"><span class="mark"><span class="dot red"></span><span class="lbl" style="color:#b91c1c;font-weight:700;">Not ready</span></span><span class="meta">Material risk</span></td>
+              <td class="def">More than two high-severity observations open, <em>or</em> certification target &lt; 30 days away while Stage 2 below threshold. Reschedule the audit or accelerate remediation.</td>
+            </tr>
+            <tr>
+              <td class="numref">iv</td>
+              <td class="term">In progress<span class="meta">Default</span></td>
+              <td class="def">Used when none of the three definitive verdicts apply. Treat as a work-in-flight status; the scorecard above identifies which gate is the blocker.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <%# A.2 — Scoring formulas %>
+      <div>
+        <div class="pack-caption"><span>A.2 &nbsp;·&nbsp; Stage 1 and Stage 2 score composition</span><span class="label">2 formulas</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th style="width:32px;" class="center">#</th>
+              <th style="width:170px;">Component</th>
+              <th class="num" style="width:90px;">Stage 1 weight</th>
+              <th class="num" style="width:90px;">Stage 2 weight</th>
+              <th>What it measures</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="numref" style="font-size:11px;">a</td><td class="term">Mandatory records<span class="meta">Clause 4–10</span></td><td class="num">30%</td><td class="num">20%</td><td class="def">Share of mandatory documented information detected in the workspace (Exhibit 3.1).</td></tr>
+            <tr><td class="numref" style="font-size:11px;">b</td><td class="term">Control implementation<span class="meta">Implemented + N/A</span></td><td class="num">35%</td><td class="num">30%</td><td class="def">Share of all controls (clauses + Annex A) where status is Implemented or N/A.</td></tr>
+            <tr><td class="numref" style="font-size:11px;">c</td><td class="term">High-severity flags<span class="meta">Inverse</span></td><td class="num">15%</td><td class="num">20%</td><td class="def">Penalised at <code>max(0, 1 − highFlags / 5)</code>. Five high-severity flags = zero contribution.</td></tr>
+            <tr><td class="numref" style="font-size:11px;">d</td><td class="term">Management review<span class="meta">Status = complete</span></td><td class="num">10%</td><td class="num">10%</td><td class="def">At least one MRM marked complete in this workspace.</td></tr>
+            <tr><td class="numref" style="font-size:11px;">e</td><td class="term">Internal audit<span class="meta">Status = complete</span></td><td class="num">10%</td><td class="num">10%</td><td class="def">At least one internal audit marked complete in this workspace.</td></tr>
+            <tr><td class="numref" style="font-size:11px;">f</td><td class="term">Evidence coverage<span class="meta">Files / 0.6 × items</span></td><td class="num">—</td><td class="num">10%</td><td class="def">Capped at 1.0 once evidence count reaches 60% of total controls. Stage 2 only.</td></tr>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Note</strong> Stage 1 weights sum to 100%. Stage 2 weights also sum to 100% &mdash; the operational evidence component (f) is added at the cost of reduced weight on records and flags.</div>
+      </div>
+
+      <%# A.3 — Documented information detection %>
+      <div>
+        <div class="pack-caption"><span>A.3 &nbsp;·&nbsp; Documented-information detection caveat</span><span class="label">Heuristic basis</span></div>
+        <table class="wp">
+          <tbody>
+            <tr>
+              <td class="term" style="width:200px;">Detection method<span class="meta">How presence is inferred</span></td>
+              <td class="def">Each row in Exhibit 3.1 and 3.2 carries a deterministic <code>detect()</code> function. Most check for the presence of a typed record (e.g. an MRM, a risk-assessment iteration, a documented procedure) rather than searching prose. Detection is binary &mdash; quality of the record is assessed separately.</td>
+            </tr>
+            <tr>
+              <td class="term">False negatives<span class="meta">Heuristic misses</span></td>
+              <td class="def">A record may exist outside the typed registers (e.g. an externally-managed risk methodology). In that case the row will read <em>Missing</em>; the consultant should confirm manually and add the record to the workspace so the heuristic catches it next run.</td>
+            </tr>
+            <tr>
+              <td class="term">Expected vs Mandatory<span class="meta">Tiering</span></td>
+              <td class="def"><em>Mandatory</em> records are required by Clauses 4–10 regardless of scope. <em>Expected</em> records are only required if the related Annex A control is included on the SoA &mdash; if the linked control is excluded, the row is informational only.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <%# Footer %>
+  <div class="pack-foot">
+    <span>Internal</span>
+    <span class="center">Document <%= docId %> &middot; Page 1 of 1</span>
+    <span class="right">Prepared <%= today %> by <%= user.name %></span>
+  </div>
+
 </div>
 
 <%- include('partials/footer') %>

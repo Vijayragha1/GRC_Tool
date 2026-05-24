@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">NIST CSF assessments</h1>
-    <div class="page-subtitle">CSF 2.0 maturity assessments for <%= ws.client_name || 'this workspace' %>. Each engagement scores the 106 Subcategories on a CMMI 1-5 scale.</div>
+    <div class="page-subtitle">CSF 2.0 maturity assessments for <%= ws.client_name || 'this client' %>. Each engagement scores the 106 Subcategories on a CMMI 1-5 scale.</div>
   </div>
   <div class="row">
     <a href="/workspaces/<%= ws.id %>/csf/catalog" class="btn btn-secondary btn-xs">View catalog</a>
@@ -39,7 +39,7 @@
           <div class="empty-state">
             <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></div>
             <div class="empty-title">No CSF engagements yet</div>
-            <div class="empty-sub">Create an engagement to start a CSF 2.0 maturity assessment for this workspace. The first engagement seeds a default equal-weighting profile across all 106 Subcategories.</div>
+            <div class="empty-sub">Create an engagement to start a CSF 2.0 maturity assessment for this client. The first engagement seeds a default equal-weighting profile across all 106 Subcategories.</div>
             <% if (canCreate) { %>
               <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary">+ New engagement</a>
             <% } %>

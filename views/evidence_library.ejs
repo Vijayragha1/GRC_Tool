@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Evidence library</h1>
-    <div class="page-subtitle">Workspace-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
+    <div class="page-subtitle">Client-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
   </div>
   <div class="row">
     <button class="btn btn-secondary btn-xs" type="button" onclick="document.getElementById('packDialog').showModal()">Auditor pack ↓</button>
@@ -14,7 +14,7 @@
 <dialog id="packDialog" style="border:1px solid var(--border);border-radius:8px;padding:0;max-width:440px;width:90vw;background:var(--bg);box-shadow:var(--shadow-xl);">
   <form method="GET" action="/workspaces/<%= ws.id %>/evidence/pack.zip" style="padding:18px;">
     <h3 style="font-size:15px;font-weight:600;margin:0 0 6px;">Export auditor evidence pack</h3>
-    <div class="meta text-base" style="line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the workspace, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
+    <div class="meta text-base" style="line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the client, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div><label class="label">From (optional)</label><input type="date" name="from" class="input"></div>
       <div><label class="label">To (optional)</label><input type="date" name="to" class="input"></div>

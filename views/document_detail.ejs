@@ -293,13 +293,17 @@
   </div>
 
   <% if ((doc.status === 'draft' || doc.status === 'rejected') && can('document.submit_review')) { %>
-    <div id="reviewPanel" class="hidden panel-pad" style="background:var(--accent-soft);border-bottom:1px solid var(--border);">
+    <%# Default to OPEN when the doc is in draft - that's the most common
+        next action on a draft, and the previous "click button to reveal
+        the form" pattern hid it so consultants missed it entirely.
+        The toggle button above still collapses it if you don't need it. %>
+    <div id="reviewPanel" class="panel-pad" style="background:var(--accent-soft);border-bottom:1px solid var(--border);">
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/submit-review" id="submitReviewForm">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
         <div class="sec-label">Submit for review</div>
         <div style="margin-bottom:10px;">
           <label class="label">Approver chain (in order)</label>
-          <div class="meta text-xs" style="margin-bottom:8px;">Pick an existing workspace user, or invite an external approver by email - they'll get a one-time magic link, no account needed.</div>
+          <div class="meta text-xs" style="margin-bottom:8px;">Pick an existing client user, or invite an external approver by email - they'll get a one-time magic link, no account needed.</div>
           <div id="approverList" style="display:grid;gap:8px;"></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <button type="button" class="btn btn-secondary btn-xs" onclick="addApprover('internal')">+ Internal user</button>

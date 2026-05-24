@@ -15,7 +15,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       Import CSV
     </a>
-    <form method="POST" action="/workspaces/<%= ws.id %>/risks/clone-firm-library" style="display:inline;" onsubmit="return appConfirmForm(event, 'Clone the firm risk library into this workspace? Risks already in the register (matched by title) will not be duplicated.');">
+    <form method="POST" action="/workspaces/<%= ws.id %>/risks/clone-firm-library" style="display:inline;" onsubmit="return appConfirmForm(event, 'Clone the firm risk library into this client? Risks already in the register (matched by title) will not be duplicated.');">
       <button class="btn btn-secondary" title="Clone every entry from your firm's curated library">+ Firm library</button>
     </form>
     <a href="/workspaces/<%= ws.id %>/risks/library" class="btn btn-secondary">+ Starter library</a>
@@ -37,7 +37,7 @@
     <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %>
       <div><label class="label">Entity</label>
         <select class="select" name="entity_id">
-          <option value="">Workspace-wide</option>
+          <option value="">Client-wide</option>
           <% workspaceEntities.forEach(e => { %><option value="<%= e.id %>" <%= (typeof activeEntity !== 'undefined' && activeEntity && activeEntity.id === e.id) ? 'selected' : '' %>><%= e.name %></option><% }) %>
         </select>
       </div>

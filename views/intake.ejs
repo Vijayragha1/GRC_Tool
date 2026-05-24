@@ -1,80 +1,324 @@
-<%- include('partials/header', { title: 'Engagement intake', user, ws, active: 'intake' }) %>
+<%- include('partials/header', { title: 'Client setup', user, ws, active: 'intake' }) %>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">Engagement intake</h1>
-    <div class="page-subtitle">25 questions you'd ask at a kickoff workshop. Auto-drafts the clause 4.3 scope statement and seeds the interested-parties register from your answers.</div>
+    <h1 class="page-title">Client setup</h1>
+    <div class="page-subtitle">Captured during qualification or the kickoff call. Each answer auto-saves and feeds the scoping summary on the right (tier, effort, deadline pressure, red flags). The clause 4.3 scope statement updates automatically when you save.</div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div style="display:flex;gap:12px;align-items:center;">
     <span class="meta text-base"><strong><%= answered %></strong> / <%= total %> answered</span>
-    <form method="POST" action="/workspaces/<%= ws.id %>/intake/apply" onsubmit="return appConfirmForm(event, 'Apply scope statement to workspace settings and seed interested parties from the answers above? Existing parties are not duplicated.');">
-      <button class="btn btn-accent btn-xs" <%= answered === 0 ? 'disabled' : '' %>>Apply to workspace</button>
-    </form>
+    <span class="meta text-xs" id="autosaveBadge" style="color:var(--text-tertiary);min-width:80px;text-align:right;">&nbsp;</span>
   </div>
 </div>
 
-<% // Onboarding cue. When the workspace is brand new (no intake answers yet),
-   // the new-client form redirects here - frame it as "continue setup" and
-   // point at the kickoff playbook so the consultant has a script to run. %>
 <% if (answered === 0) { %>
   <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
-      <div style="font-size:13.5px;font-weight:600;color:var(--accent-deep);margin-bottom:3px;">Workspace created - let's finish setup</div>
-      <div class="meta text-base" style="line-height:1.5;">Send this intake to the client 3 days before kickoff (just the URL works). When they're done, hit <strong>Apply to workspace</strong> above to push the scope statement into clause 4.3 and seed the interested-parties register. To run the call itself, open the <a href="/playbooks/kickoff" style="color:var(--accent);">kickoff playbook</a>.</div>
+      <div style="font-size:13.5px;font-weight:600;color:var(--accent-deep);margin-bottom:3px;">New client - let's size it</div>
+      <div class="meta text-base" style="line-height:1.5;">Fill this in from the discovery / qualification call. Answers auto-save as you type; the scoping summary panel on the right updates after each save.</div>
     </div>
     <a href="/workspaces/<%= ws.id %>" class="btn btn-ghost btn-xs">Skip for now →</a>
   </div>
 <% } %>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/intake" id="intakeForm" style="display:flex;flex-direction:column;gap:18px;">
-  <% sections.forEach(sec => { %>
-    <div class="panel">
-      <div class="panel-head" style="border-bottom:1px solid var(--border);">
-        <div>
-          <h2 style="margin:0;"><%= sec.title %></h2>
-          <div class="meta text-base" style="margin-top:4px;"><%= sec.blurb %></div>
+<%# Scope-confirmed cue. Once the consultant has signed off on the
+    scope, swap the "ready to confirm" banner for a "scope is locked"
+    badge that links into the gap assessment as the obvious next step. %>
+<% if (typeof scopeConfirmedAt !== 'undefined' && scopeConfirmedAt) { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid #15803d;background:rgba(22,128,61,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto auto;gap:12px;align-items:center;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <div>
+      <div style="font-size:13.5px;font-weight:600;color:#15803d;margin-bottom:3px;">Scope confirmed</div>
+      <div class="meta text-base" style="line-height:1.5;">Confirmed on <%= scopeConfirmedAt %><% if (scopeConfirmedBy) { %> by <strong><%= scopeConfirmedBy.name %></strong><% } %>. Editing answers here will update the draft scope statement but won't un-confirm — use "Unconfirm" if the engagement scope materially changed.</div>
+    </div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/scope/unconfirm" style="margin:0;" onsubmit="return confirm('Un-confirm the scope? The auto-drafted text stays; you can re-confirm afterwards. This does not undo any gap-assessment work already done.');">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <button type="submit" class="btn btn-ghost btn-xs">Unconfirm</button>
+    </form>
+    <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary btn-xs">Continue to gap assessment →</a>
+  </div>
+<% } else if (typeof readyToConfirm !== 'undefined' && readyToConfirm) { %>
+  <%# Ready-to-confirm banner: all required intake questions answered.
+      Drives the consultant from setup → scope sign-off → gap assessment
+      explicitly rather than leaving the page hanging. %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <div>
+      <div style="font-size:13.5px;font-weight:600;color:var(--accent-deep);margin-bottom:3px;">All required scoping answered (<%= requiredAnswered %>/<%= requiredTotal %>)</div>
+      <div class="meta text-base" style="line-height:1.5;">Confirm the scope to lock the clause 4.3 statement on the client and unlock the gap assessment. You can keep editing answers afterwards — confirming just signals that the engagement is ready to start.</div>
+    </div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/scope/confirm" style="margin:0;">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <button type="submit" class="btn btn-primary btn-xs">Confirm scope &amp; start gap assessment →</button>
+    </form>
+  </div>
+<% } else if (answered > 0) { %>
+  <%# Partial-progress nudge: setup started but required questions
+      still missing. Shows what's left. %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid #b45309;background:rgba(180,83,9,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:center;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div>
+      <div style="font-size:13.5px;font-weight:600;color:#9a3412;margin-bottom:3px;"><%= requiredAnswered %> of <%= requiredTotal %> required questions answered</div>
+      <div class="meta text-base" style="line-height:1.5;">Answer the remaining <%= requiredTotal - requiredAnswered %> required question<%= (requiredTotal - requiredAnswered) === 1 ? '' : 's' %> (marked with *) to enable scope confirmation.</div>
+    </div>
+  </div>
+<% } %>
+
+<%# Tier/effort hero - the manager's first visible artifact. Default
+    `summary` to an empty-shape object so the template renders even
+    if a code path forgets to compute it (e.g. an old server still
+    running with the prior route handler that didn't pass summary). %>
+<%
+  // EJS injects `locals` containing every variable the route passed -
+  // it's always defined even when individual locals like `summary`
+  // weren't passed. Safe-default lets the page render gracefully if
+  // an old route handler is in memory and didn't include summary.
+  const summary = locals.summary || {
+    tier: '—', effort: { weeks: '—' }, pressure: null,
+    flags: [], readinessMarkers: [],
+    score: { total: 0 }, headcount: 0, cloudCount: 0, locCount: 0
+  };
+  const tierColor = summary.tier === 'Enterprise' ? '#7c2d12'
+                  : summary.tier === 'Large'       ? '#9a3412'
+                  : summary.tier === 'Medium'      ? '#b45309'
+                  : summary.tier === 'Small'       ? '#15803d'
+                  : '#9c9ca5';
+  const pressureColor = summary.pressure?.tone === 'bad'  ? '#b91c1c'
+                      : summary.pressure?.tone === 'warn' ? '#b45309'
+                      : '#15803d';
+  const readinessDone = summary.readinessMarkers.filter(m => m.got).length;
+  const readinessTotal = summary.readinessMarkers.length;
+%>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--border);background:var(--bg);margin-bottom:18px;">
+  <div style="padding:18px 22px;border-right:1px solid var(--border);">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Complexity tier</div>
+    <div style="display:flex;align-items:baseline;gap:10px;font-family:'Source Serif 4',Georgia,serif;">
+      <span style="font-size:34px;font-weight:600;letter-spacing:-0.01em;color:<%= tierColor %>;"><%= summary.tier %></span>
+      <span class="meta text-sm">score <%= summary.score.total.toFixed(1) %></span>
+    </div>
+    <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">
+      <%= summary.headcount %> headcount<% if (summary.cloudCount) { %> · <%= summary.cloudCount %> cloud provider<%= summary.cloudCount === 1 ? '' : 's' %><% } %><% if (summary.locCount) { %> · <%= summary.locCount %> location<%= summary.locCount === 1 ? '' : 's' %><% } %>
+      <% if (summary.infraModel) { %><br><span style="color:var(--text-tertiary);font-size:11.5px;">Infra: <%= summary.infraModel %></span><% } %>
+    </div>
+  </div>
+  <div style="padding:18px 22px;border-right:1px solid var(--border);">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Estimated effort</div>
+    <div style="font-family:'Source Serif 4',Georgia,serif;font-size:34px;font-weight:600;letter-spacing:-0.01em;color:var(--text);"><%= summary.effort.weeks %> <span style="font-size:18px;color:var(--text-tertiary);font-weight:400;">wks</span></div>
+    <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">to Stage 1 audit, based on firm benchmarks for <%= summary.tier.toLowerCase() %> clients</div>
+  </div>
+  <div style="padding:18px 22px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Deadline pressure</div>
+    <% if (summary.pressure) { %>
+      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.01em;color:<%= pressureColor %>;"><%= summary.pressure.label %></div>
+      <div class="meta text-sm" style="margin-top:8px;line-height:1.5;"><%= summary.pressure.days %></div>
+    <% } else { %>
+      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:500;color:var(--text-tertiary);font-style:italic;">No deadline set</div>
+      <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">Add a target date in the form below to see pressure</div>
+    <% } %>
+  </div>
+</div>
+
+<%# Two-column layout: form on the left, summary aside on the right %>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start;">
+  <div>
+    <%# Show / hide clause tags - managers don't need them; implementer flips them on later %>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+      <label class="meta text-sm" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="toggleClauses" style="margin:0;cursor:pointer;">
+        Show ISO clause mapping
+      </label>
+    </div>
+
+    <form method="POST" action="/workspaces/<%= ws.id %>/intake" id="intakeForm" style="display:flex;flex-direction:column;gap:18px;">
+      <% sections.forEach(sec => { %>
+        <div class="panel">
+          <div class="panel-head" style="border-bottom:1px solid var(--border);">
+            <div>
+              <h2 style="margin:0;"><%= sec.title %></h2>
+              <div class="meta text-base" style="margin-top:4px;"><%= sec.blurb %></div>
+            </div>
+          </div>
+          <div class="panel-pad" style="display:grid;gap:16px;">
+            <% sec.questions.forEach(q => { %>
+              <div>
+                <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
+                  <span><%= q.text %><%= q.required ? ' *' : '' %></span>
+                  <span class="clause-tag tag tag-neutral text-xxs" style="display:none;">clause <%= q.clause %></span>
+                </label>
+                <% if (q.hint) { %>
+                  <div class="meta text-sm text-tertiary" style="margin-bottom:6px;"><%= q.hint %></div>
+                <% } %>
+                <% if (q.type === 'textarea') { %>
+                  <textarea class="textarea" id="q-<%= q.id %>" name="<%= q.id %>" rows="3" <%= q.required ? 'required' : '' %>><%= answers[q.id] || '' %></textarea>
+                <% } else if (q.type === 'date') { %>
+                  <input class="input" type="date" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+                <% } else if (q.type === 'number') { %>
+                  <input class="input" type="number" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+                <% } else if (q.type === 'select') { %>
+                  <select class="select" id="q-<%= q.id %>" name="<%= q.id %>" <%= q.required ? 'required' : '' %>>
+                    <option value="">— Select —</option>
+                    <% (q.options || []).forEach(opt => { %>
+                      <option value="<%= opt %>" <%= (answers[q.id] === opt) ? 'selected' : '' %>><%= opt %></option>
+                    <% }) %>
+                  </select>
+                <% } else { %>
+                  <input class="input" type="text" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
         </div>
+      <% }) %>
+
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button type="submit" class="btn btn-primary">Save &amp; refresh summary</button>
+        <span class="meta text-sm">Each field auto-saves as you go. Click this to force-refresh the scoping summary and re-seed any new interested parties.</span>
       </div>
-      <div class="panel-pad" style="display:grid;gap:16px;">
-        <% sec.questions.forEach(q => { %>
-          <div>
-            <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
-              <span><%= q.text %><%= q.required ? ' *' : '' %></span>
-              <span class="tag tag-neutral text-xxs">clause <%= q.clause %></span>
-            </label>
-            <% if (q.hint) { %>
-              <div class="meta text-sm text-tertiary" style="margin-bottom:6px;"><%= q.hint %></div>
-            <% } %>
-            <% if (q.type === 'textarea') { %>
-              <textarea class="textarea" id="q-<%= q.id %>" name="<%= q.id %>" rows="3" <%= q.required ? 'required' : '' %>><%= answers[q.id] || '' %></textarea>
-            <% } else if (q.type === 'date') { %>
-              <input class="input" type="date" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
-            <% } else if (q.type === 'number') { %>
-              <input class="input" type="number" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
-            <% } else { %>
-              <input class="input" type="text" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
-            <% } %>
+    </form>
+  </div>
+
+  <%# Right column: scoping summary aside %>
+  <aside style="position:sticky;top:18px;display:flex;flex-direction:column;gap:14px;">
+    <%# Readiness markers - what's been captured that lets you proceed %>
+    <div class="panel" style="padding:0;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+        <h2 style="margin:0;font-size:13px;">Readiness markers</h2>
+        <span class="meta text-sm"><%= readinessDone %> / <%= readinessTotal %></span>
+      </div>
+      <div style="padding:8px 0;">
+        <% summary.readinessMarkers.forEach(m => { %>
+          <div style="padding:5px 16px;display:flex;align-items:center;gap:10px;font-size:13px;color:<%= m.got ? 'var(--text)' : 'var(--text-tertiary)' %>;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:<%= m.got ? '#15803d' : 'var(--bg-muted)' %>;color:#fff;font-size:9px;font-weight:700;">
+              <%= m.got ? '✓' : '' %>
+            </span>
+            <span><%= m.label %></span>
           </div>
         <% }) %>
       </div>
     </div>
-  <% }) %>
 
-  <div style="display:flex;gap:10px;align-items:center;">
-    <button type="submit" class="btn btn-primary">Save intake</button>
-    <span class="meta text-sm">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to workspace</strong> at the top.</span>
-  </div>
-</form>
+    <%# Red flags - presales risks worth flagging to the manager %>
+    <div class="panel" style="padding:0;">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+        <h2 style="margin:0;font-size:13px;">Risks to flag</h2>
+        <span class="meta text-sm"><%= summary.flags.length %></span>
+      </div>
+      <% if (summary.flags.length === 0) { %>
+        <div class="t-empty" style="padding:16px;font-size:13px;">No risks surfaced yet. As you answer more questions, this list will populate.</div>
+      <% } else { %>
+        <div style="padding:8px 0;">
+          <% summary.flags.forEach(f => {
+               const dot = f.severity === 'high' ? '#b91c1c' : f.severity === 'medium' ? '#b45309' : '#71717a';
+          %>
+            <div style="padding:8px 16px;display:flex;gap:10px;align-items:flex-start;font-size:12.5px;line-height:1.55;border-bottom:1px solid var(--border);">
+              <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:<%= dot %>;margin-top:6px;flex-shrink:0;"></span>
+              <span><%= f.text %></span>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
 
-<div class="panel" style="margin-top:22px;">
-  <div class="panel-head">
-    <h2 style="margin:0;">Draft scope statement (clause 4.3)</h2>
-    <span class="meta text-sm">Generated from your answers. Re-renders on save.</span>
-  </div>
-  <div class="panel-pad">
-    <pre class="text-lg" style="white-space:pre-wrap;font-family:inherit;line-height:1.55;margin:0;"><%= draftScope %></pre>
-  </div>
+    <%# Scope statement preview - secondary now, was the headline before %>
+    <details class="panel" style="padding:0;">
+      <summary style="padding:12px 16px;cursor:pointer;font-size:13px;font-weight:600;list-style:none;display:flex;align-items:center;justify-content:space-between;">
+        <span>Draft scope statement (clause 4.3)</span>
+        <span class="meta text-sm">expand</span>
+      </summary>
+      <div style="padding:0 16px 14px;">
+        <pre style="white-space:pre-wrap;font-family:inherit;font-size:12.5px;line-height:1.55;margin:0;color:var(--text-secondary);"><%= draftScope %></pre>
+      </div>
+    </details>
+  </aside>
 </div>
+
+<script>
+// Show / hide ISO clause tags. Manager view doesn't need them; implementer
+// reviewing later can flip them on. Persisted to localStorage so toggling
+// once survives a page refresh.
+(function () {
+  const cb = document.getElementById('toggleClauses');
+  if (!cb) return;
+  const saved = localStorage.getItem('intakeShowClauses') === '1';
+  cb.checked = saved;
+  const apply = () => {
+    document.querySelectorAll('.clause-tag').forEach(el => {
+      el.style.display = cb.checked ? 'inline-flex' : 'none';
+    });
+    localStorage.setItem('intakeShowClauses', cb.checked ? '1' : '0');
+  };
+  apply();
+  cb.addEventListener('change', apply);
+})();
+
+// Per-field auto-save for the intake form. Persists the answer on blur
+// or 1.5s after the user stops typing - whichever happens first. The
+// server's POST /workspaces/:wsId/intake/field endpoint upserts one row
+// per call. No redirect; just a small "Saved · 14:23:01" badge update.
+// The Save & refresh summary button is still there to force the full
+// scope-regen + parties-seeding pass (and gives an obvious recovery
+// path if autosave silently fails because of a network blip).
+(function () {
+  const form = document.getElementById('intakeForm');
+  const badge = document.getElementById('autosaveBadge');
+  if (!form || !badge) return;
+  const wsId = (form.getAttribute('action') || '').match(/\/workspaces\/(\d+)\//);
+  if (!wsId) return;
+  const endpoint = `/workspaces/${wsId[1]}/intake/field`;
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  let timers = new Map();
+  let inFlight = 0;
+  function setBadge(text, color) {
+    badge.textContent = text;
+    badge.style.color = color || 'var(--text-tertiary)';
+  }
+  async function saveField(name, value) {
+    inFlight++;
+    setBadge('Saving…');
+    try {
+      const body = new URLSearchParams();
+      body.append('question_id', name);
+      body.append('answer', value);
+      if (csrf) body.append('_csrf', csrf);
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrf },
+        body
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      setBadge(`Saved · ${hh}:${mm}:${ss}`, '#15803d');
+    } catch (e) {
+      setBadge('Save failed - retry by tabbing out', '#b91c1c');
+    } finally {
+      inFlight--;
+    }
+  }
+  function scheduleSave(field) {
+    const name = field.name;
+    if (!name) return;
+    clearTimeout(timers.get(name));
+    timers.set(name, setTimeout(() => saveField(name, field.value), 1500));
+  }
+  function flushSave(field) {
+    const name = field.name;
+    if (!name) return;
+    clearTimeout(timers.get(name));
+    saveField(name, field.value);
+  }
+
+  form.querySelectorAll('input[name], textarea[name], select[name]').forEach(field => {
+    // Skip the CSRF + sequencing-only hidden inputs
+    if (field.name === '_csrf' || field.type === 'hidden') return;
+    field.addEventListener('input', () => scheduleSave(field));
+    field.addEventListener('blur', () => flushSave(field));
+  });
+})();
+</script>
 
 <%- include('partials/footer') %>

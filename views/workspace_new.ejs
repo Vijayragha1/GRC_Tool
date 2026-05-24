@@ -1,9 +1,9 @@
-<%- include('partials/header', { title: 'New workspace', user, ws, active: 'dashboard' }) %>
+<%- include('partials/header', { title: 'New client', user, ws, active: 'dashboard' }) %>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">Create workspace</h1>
-    <div class="page-subtitle">A workspace represents one client engagement (one ISMS scope, one set of controls, one Statement of Applicability).</div>
+    <h1 class="page-title">Create client</h1>
+    <div class="page-subtitle">A client represents one client (one ISMS scope, one set of controls, one Statement of Applicability).</div>
   </div>
   <a href="/dashboard" class="btn btn-secondary btn-xs">Cancel</a>
 </div>
@@ -11,7 +11,7 @@
 <div class="panel">
   <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
     <div class="col-full">
-      <label class="label">Client / engagement name <span class="meta">required</span></label>
+      <label class="label">Client name <span class="meta">required</span></label>
       <input class="input" name="client_name" required autofocus placeholder="e.g., Acme HealthTech">
     </div>
     <div>
@@ -27,7 +27,7 @@
       <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units, technology are in scope of the ISMS? What's explicitly excluded and why?"></textarea>
     </div>
     <div class="col-full" style="display:flex;gap:8px;">
-      <button class="btn btn-primary">Create workspace</button>
+      <button class="btn btn-primary">Create client</button>
       <a href="/dashboard" class="btn btn-secondary">Cancel</a>
     </div>
   </form>

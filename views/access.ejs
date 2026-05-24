@@ -17,9 +17,9 @@
         <tr>
           <td><strong><%= u.name %></strong></td>
           <td class="meta"><%= u.email %></td>
-          <td><span class="tag tag-info">firm</span><% if (u.firm_role === 'owner') { %> <span class="tag tag-accent">owner</span><% } %></td>
-          <td class="meta"><%= u.firm_role === 'owner' ? 'Firm owner (all)' : 'Consultant' %></td>
-          <td class="meta"><%= u.firm_role === 'owner' ? 'All' : eff.length + ' / ' + Object.keys(permissions).length %></td>
+          <td><span class="tag tag-info">firm</span><% if (rbac.isManager(u.firm_role)) { %> <span class="tag tag-accent">manager</span><% } %></td>
+          <td class="meta"><%= rbac.ROLE_LABELS[rbac.normalizeRole(u.firm_role)] || 'Consultant' %><%= rbac.isManager(u.firm_role) ? ' (all)' : '' %></td>
+          <td class="meta"><%= rbac.isManager(u.firm_role) ? 'All' : eff.length + ' / ' + Object.keys(permissions).length %></td>
         </tr>
       <% }) %>
       <% members.forEach(m => { %>
@@ -32,10 +32,8 @@
             <form method="POST" action="/workspaces/<%= ws.id %>/access/role" style="display:inline-flex;gap:6px;align-items:center">
               <input type="hidden" name="user_id" value="<%= m.user_id %>">
               <select class="select text-base" name="role" style="width:auto;min-width:160px;padding:4px 28px 4px 8px;">
-                <% Object.entries(roles).forEach(([k, v]) => { %>
-                  <% if (['client_admin','contributor','reviewer','auditor','read_only'].includes(k)) { %>
-                    <option value="<%= k %>" <%= m.role === k ? 'selected' : '' %>><%= v %></option>
-                  <% } %>
+                <% rbac.CLIENT_ROLES.forEach(k => { %>
+                  <option value="<%= k %>" <%= rbac.normalizeRole(m.role) === k ? 'selected' : '' %>><%= rbac.ROLE_LABELS[k] %></option>
                 <% }) %>
               </select>
               <button class="btn btn-secondary btn-xs">Apply</button>
@@ -81,7 +79,7 @@
       <select class="select" name="user_id" required>
         <option value="">-</option>
         <% members.forEach(m => { %><option value="<%= m.user_id %>"><%= m.name %> (<%= m.role %>)</option><% }) %>
-        <% firmUsers.forEach(u => { if (u.firm_role !== 'owner') { %><option value="<%= u.id %>"><%= u.name %> (firm)</option><% } }) %>
+        <% firmUsers.forEach(u => { if (!rbac.isManager(u.firm_role)) { %><option value="<%= u.id %>"><%= u.name %> (firm)</option><% } }) %>
       </select>
     </div>
     <div>

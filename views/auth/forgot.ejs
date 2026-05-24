@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Forgot password &middot; ISMS Console</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    :root { color-scheme: light; }
+    body { background: #f4f3ee; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1a1a1a; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .auth-shell { width: 100%; max-width: 420px; }
+    .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+    .auth-brand .mark { width: 32px; height: 32px; background: #5C0A0A; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; font-style: italic; }
+    .auth-brand .name { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.005em; }
+    .auth-card { background: #fff; border: 1px solid #d6d3c9; padding: 32px 32px 28px; }
+    .auth-card h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 6px; color: #1a1a1a; }
+    .auth-card .sub { font-size: 13.5px; color: #6b6b6b; line-height: 1.5; margin: 0 0 22px; }
+    .auth-card label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5a5a5a; margin-bottom: 6px; }
+    .auth-card input[type="email"] { width: 100%; padding: 10px 12px; border: 1px solid #c9c6bd; font-size: 14px; font-family: inherit; background: #fff; color: #1a1a1a; box-sizing: border-box; outline: none; }
+    .auth-card input[type="email"]:focus { border-color: #5C0A0A; }
+    .auth-card .field { margin-bottom: 18px; }
+    .auth-card button[type="submit"] { width: 100%; padding: 11px 14px; background: #5C0A0A; color: #fff; border: 0; font-family: inherit; font-size: 14px; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; }
+    .auth-card button[type="submit"]:hover { background: #4a0808; }
+    .auth-card .back-row { text-align: center; margin-top: 16px; font-size: 13px; }
+    .auth-card .back-row a { color: #5C0A0A; text-decoration: none; font-weight: 600; }
+    .auth-card .back-row a:hover { text-decoration: underline; }
+    .auth-notice { background: rgba(21,128,61,0.06); border-left: 3px solid #15803d; color: #0f5132; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+    .auth-err { background: rgba(185, 28, 28, 0.06); border-left: 3px solid #b91c1c; color: #7a1010; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 18px; }
+    .auth-foot { text-align: center; font-size: 10.5px; color: #8a8a8a; margin-top: 22px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-brand">
+      <div class="mark">I</div>
+      <div class="name">ISMS Console</div>
+    </div>
+    <div class="auth-card">
+      <h1>Forgot password</h1>
+      <p class="sub">Enter the email on your account. We&rsquo;ll send you a single-use link to choose a new password.</p>
+
+      <% if (typeof notice !== 'undefined' && notice) { %>
+        <div class="auth-notice"><%= notice %></div>
+      <% } %>
+      <% if (typeof error !== 'undefined' && error) { %>
+        <div class="auth-err"><%= error %></div>
+      <% } %>
+
+      <% if (!(typeof submitted !== 'undefined' && submitted)) { %>
+        <form method="POST" action="/forgot">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" autocomplete="email" required autofocus value="<%= typeof prefillEmail !== 'undefined' ? prefillEmail : '' %>">
+          </div>
+          <button type="submit">Send reset link →</button>
+        </form>
+      <% } %>
+
+      <div class="back-row"><a href="/login">← Back to sign in</a></div>
+    </div>
+    <div class="auth-foot">Authorised personnel only</div>
+  </div>
+</body>
+</html>

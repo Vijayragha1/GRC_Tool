@@ -4,7 +4,7 @@
   <div>
     <h1 class="page-title">Readiness overview</h1>
     <div class="page-subtitle">
-      One score per framework in this engagement<% if (daysToTarget !== null) { %>
+      One score per framework for this client<% if (daysToTarget !== null) { %>
         &middot;
         <strong class="<%= daysToTarget < 30 ? 'text-danger' : daysToTarget < 90 ? 'text-warn' : 'text-success' %>"><%= daysToTarget %> days</strong>
         to target certification (<%= ws.target_cert_date %>)
@@ -23,7 +23,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       </div>
       <div class="empty-title">No frameworks in scope</div>
-      <div class="empty-sub">This workspace has zero frameworks selected. Re-pick frameworks from the workspace settings.</div>
+      <div class="empty-sub">This client has zero frameworks selected. Re-pick frameworks from the client settings.</div>
     </div>
   </div>
 <% } else { %>
@@ -61,15 +61,15 @@
     </div>
     <div class="panel-pad text-sm" style="line-height:1.6;">
       <p style="margin:0 0 10px 0;">
-        Each tile is the Stage 1 readiness % for that framework's items in this workspace. The bands match the per-framework readiness pages:
+        Each tile is the Stage 1 readiness % for that framework's items in this client. The bands match the per-framework readiness pages:
         <strong class="text-success">&ge; 80%</strong> ready,
         <strong class="text-warn">50&ndash;79%</strong> partially ready,
         <strong class="text-danger">&lt; 50%</strong> not yet ready.
         Click any tile to drill into the per-framework view with the full flag list, mandatory-records check, and Stage 1 / Stage 2 breakdown.
       </p>
       <p style="margin:0;">
-        Tiles are gated by the framework picker chosen at engagement creation. If a framework is missing here, it isn't part of this engagement &mdash;
-        edit the workspace settings to add it.
+        Tiles are gated by the framework picker chosen when this client was created. If a framework is missing here, it isn't part of this client &mdash;
+        edit the client settings to add it.
       </p>
     </div>
   </div>

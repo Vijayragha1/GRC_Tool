@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   user_type TEXT NOT NULL CHECK(user_type IN ('firm','client')),
   firm_id INTEGER,
-  firm_role TEXT CHECK(firm_role IN ('owner','consultant')),
+  firm_role TEXT,
   active INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (firm_id) REFERENCES firms(id)
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS workspace_members (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('lead_consultant','consultant','client_admin','contributor','reviewer')),
+  role TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(workspace_id, user_id),
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -1363,6 +1363,27 @@ function init() {
   // Migrations: encryption flag on workspaces (per-tenant opt-in)
   addColumnIfMissing('workspaces', 'encryption_enabled', 'INTEGER DEFAULT 1');
 
+  // Lightweight monthly-plan notepad per client (D-13). Free-text so
+  // the consultant can paste a checklist, copy from email, sketch out
+  // the week, whatever fits. Single column; no separate table because
+  // the use case is a notepad, not a structured task list.
+  addColumnIfMissing('workspaces', 'monthly_plan', 'TEXT');
+
+  // Scope confirmation: set when the consultant explicitly signs off on
+  // the auto-drafted clause 4.3 scope from the intake. Drives the "ready
+  // for gap assessment" gate and the visible "Scope confirmed on X" cue
+  // on the client overview.
+  addColumnIfMissing('workspaces', 'scope_confirmed_at', 'DATETIME');
+  addColumnIfMissing('workspaces', 'scope_confirmed_by', 'INTEGER REFERENCES users(id)');
+  // updated_at is the optimistic-concurrency token for /workspaces/:wsId/update.
+  // Forms include the current value as a hidden field; the UPDATE matches on
+  // it so a stale submit can't silently overwrite another consultant's edit.
+  // SQLite refuses to ADD COLUMN with a non-constant DEFAULT (CURRENT_TIMESTAMP),
+  // so add it as a nullable DATETIME and backfill in one shot from created_at
+  // so existing rows have a sensible initial token rather than NULL.
+  addColumnIfMissing('workspaces', 'updated_at', 'DATETIME');
+  db.prepare(`UPDATE workspaces SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL`).run();
+
   // Documents - hierarchy and watermarking
   ['parent_doc_id INTEGER REFERENCES generated_docs(id) ON DELETE SET NULL',
    'doc_kind TEXT', 'reference_code TEXT', 'controlled_copy INTEGER DEFAULT 0']
@@ -2041,14 +2062,249 @@ function init() {
     if (tplAdded) console.log(`[db] Added ${tplAdded} new system policy templates (catalog now: ${allTemplates.length})`);
   }
 
-  // Seed default firm + user (no-auth mode)
+  // ---- Repair: FK refs broken by the legacy_alter_table=OFF rename earlier ----
+  // SQLite 3.25+ auto-rewrites FK references in dependent tables when a
+  // referenced table is RENAMEd. The first pass of the role-rename migration
+  // ran without legacy_alter_table=ON, so every FK that pointed at `users`
+  // got rewritten to point at the throwaway alias `users_legacy_2026_05`.
+  // That alias has been dropped, so any INSERT that touches those FKs now
+  // dies with "no such table: users_legacy_2026_05". Walk sqlite_master and
+  // rewrite the offending CREATE TABLE SQL back to `users` via the
+  // writable_schema escape hatch; bump schema_version so the in-memory cache
+  // reloads. Idempotent: no-op once all references are clean.
+  const brokenFks = db.prepare(`SELECT name, sql FROM sqlite_master
+    WHERE type='table' AND sql LIKE '%users_legacy_2026_05%'`).all();
+  if (brokenFks.length) {
+    // better-sqlite3 blocks UPDATEs against sqlite_master even with
+    // writable_schema=1 via the prepared-statement path. The only in-process
+    // recovery is to use db.exec with the pragma toggled inline — that
+    // bypasses the guard in older betters and works around it in newer ones.
+    // If even this errors out, surface a clear repair command so the operator
+    // can run it from the shell without guessing.
+    try {
+      db.exec(`
+        PRAGMA writable_schema = 1;
+        UPDATE sqlite_master
+           SET sql = REPLACE(REPLACE(sql, '"users_legacy_2026_05"', 'users'), 'users_legacy_2026_05', 'users')
+         WHERE sql LIKE '%users_legacy_2026_05%';
+        PRAGMA writable_schema = 0;
+      `);
+      db.pragma('schema_version = ' + (db.pragma('schema_version', { simple: true }) + 1));
+      console.log(`[migration] Repaired ${brokenFks.length} table(s) — FK refs restored to users.`);
+    } catch (e) {
+      console.error(`[migration] Could not auto-repair broken FK refs (${e.message}).`);
+      console.error(`[migration] Stop the server and run:  sqlite3 ${dbPath} "PRAGMA writable_schema=1; UPDATE sqlite_master SET sql = REPLACE(sql, 'users_legacy_2026_05', 'users') WHERE sql LIKE '%users_legacy_2026_05%'; PRAGMA writable_schema=0;"`);
+    }
+  }
+
+  // Role-naming migration (2026-05-24). Drop the old CHECK constraints on
+  // users.firm_role and workspace_members.role (they reference the OLD names
+  // — 'owner', 'lead_consultant', 'client_admin', 'reviewer' — and block
+  // updates to the new names). Rewrite values in place. Idempotent: detects
+  // whether the migration is needed by sniffing the CREATE TABLE SQL.
+  const usersSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='users'`).get();
+  const wmSchema    = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='workspace_members'`).get();
+  const usersHasOldCheck = usersSchema && /firm_role[^,]*CHECK\(firm_role IN \('owner','consultant'\)\)/.test(usersSchema.sql);
+  const wmHasOldCheck    = wmSchema && /CHECK\(role IN \('lead_consultant','consultant','client_admin','contributor','reviewer'\)\)/.test(wmSchema.sql);
+
+  if (usersHasOldCheck || wmHasOldCheck) {
+    console.log('[migration] Recreating users/workspace_members without legacy role CHECK constraints…');
+    // SQLite can't DROP CONSTRAINT. The reliable path is the rename-recreate-
+    // copy dance: rename the old table, create a new one with the relaxed
+    // schema, copy rows across mapping legacy role names to new ones, then
+    // drop the rename. FKs from other tables stay valid because rows preserve
+    // their primary keys. PRAGMA foreign_keys=OFF prevents cascade chaos
+    // during the swap.
+    db.pragma('foreign_keys = OFF');
+    // legacy_alter_table = ON prevents SQLite 3.25+ from auto-rewriting FK
+    // references in dependent tables when we RENAME. Without this, FKs that
+    // pointed at users would get rewritten to point at the legacy alias and
+    // then dangle when we drop it. With it, the FK stays bound to the name
+    // `users` and seamlessly attaches to the new table we create below.
+    db.pragma('legacy_alter_table = ON');
+    const tx = db.transaction(() => {
+      if (usersHasOldCheck) {
+        db.exec(`
+          ALTER TABLE users RENAME TO users_legacy_2026_05;
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            name TEXT NOT NULL,
+            user_type TEXT NOT NULL CHECK(user_type IN ('firm','client')),
+            firm_id INTEGER,
+            firm_role TEXT,
+            active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_active_at DATETIME,
+            locale TEXT DEFAULT 'en',
+            idp_subject TEXT,
+            idp_kind TEXT,
+            FOREIGN KEY (firm_id) REFERENCES firms(id)
+          );
+          INSERT INTO users (id, email, password_hash, name, user_type, firm_id, firm_role, active, created_at, last_active_at, locale, idp_subject, idp_kind)
+          SELECT id, email, password_hash, name, user_type, firm_id,
+                 CASE firm_role WHEN 'owner' THEN 'manager' ELSE firm_role END,
+                 active, created_at, last_active_at, locale, idp_subject, idp_kind
+            FROM users_legacy_2026_05;
+          DROP TABLE users_legacy_2026_05;
+        `);
+      }
+      if (wmHasOldCheck) {
+        db.exec(`
+          ALTER TABLE workspace_members RENAME TO wm_legacy_2026_05;
+          CREATE TABLE workspace_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(workspace_id, user_id),
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+          INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at)
+          SELECT id, workspace_id, user_id,
+                 CASE role
+                   WHEN 'lead_consultant' THEN 'senior_consultant'
+                   WHEN 'client_admin'    THEN 'client_owner'
+                   WHEN 'reviewer'        THEN 'contributor'
+                   WHEN 'auditor'         THEN 'contributor'
+                   WHEN 'read_only'       THEN 'contributor'
+                   ELSE role
+                 END,
+                 created_at
+            FROM wm_legacy_2026_05;
+          DROP TABLE wm_legacy_2026_05;
+        `);
+      }
+      // Outstanding invitations may carry old role names too. No CHECK on these
+      // columns, so a plain UPDATE works.
+      db.prepare(`UPDATE user_invitations SET firm_role = 'manager' WHERE firm_role = 'owner'`).run();
+      db.prepare(`UPDATE user_invitations SET workspace_role = 'senior_consultant' WHERE workspace_role = 'lead_consultant'`).run();
+      db.prepare(`UPDATE user_invitations SET workspace_role = 'client_owner' WHERE workspace_role = 'client_admin'`).run();
+      db.prepare(`UPDATE user_invitations SET workspace_role = 'contributor' WHERE workspace_role IN ('reviewer','auditor','read_only')`).run();
+    });
+    tx();
+    db.pragma('legacy_alter_table = OFF');
+    db.pragma('foreign_keys = ON');
+    console.log('[migration] Role rename complete.');
+  }
+
+  // Member scopes (Contributor row-level scoping). One row per (member,
+  // scoped object) tuple. Queries against controls/risks/assets/documents
+  // for a contributor user join through this table and filter to the rows
+  // they're explicitly scoped to. Empty scopes mean "see nothing" — the UI
+  // surfaces this so a freshly-invited contributor isn't silently locked
+  // out without knowing why.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS member_scopes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      scope_type TEXT NOT NULL CHECK(scope_type IN ('control','risk','asset','document')),
+      scope_id TEXT NOT NULL,
+      granted_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(workspace_id, user_id, scope_type, scope_id),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (granted_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_member_scopes_lookup ON member_scopes(workspace_id, user_id, scope_type);
+  `);
+
+  // User invitations (Phase 3 auth). One row per outstanding invite link.
+  // Captures both the target user_type and the optional workspace-member
+  // attachment so a single email can fully provision either a firm consultant
+  // or a client-side workspace member without a second admin step on accept.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_invitations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      name TEXT,
+      firm_id INTEGER NOT NULL,
+      user_type TEXT NOT NULL CHECK(user_type IN ('firm','client')),
+      firm_role TEXT,
+      workspace_id INTEGER,
+      workspace_role TEXT,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at DATETIME NOT NULL,
+      accepted_at DATETIME,
+      accepted_user_id INTEGER,
+      revoked_at DATETIME,
+      invited_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (firm_id) REFERENCES firms(id),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (accepted_user_id) REFERENCES users(id),
+      FOREIGN KEY (invited_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_invitations_firm ON user_invitations(firm_id);
+    CREATE INDEX IF NOT EXISTS idx_user_invitations_email ON user_invitations(email);
+  `);
+
+  // Password-reset tokens (Phase 2 auth). One row per outstanding reset link.
+  // token_hash is SHA-256 of the raw token; the raw token only ever exists in
+  // the user's email + URL. used_at != NULL means the link is spent.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      requested_ip TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id);
+  `);
+
+  // Seed default firm + placeholder owner. Placeholder password ('!noauth') is a
+  // sentinel — the bootstrap block below promotes it to a real bcrypt hash on
+  // the next boot once INITIAL_ADMIN_PASSWORD is provided in the env.
   const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
   if (userCount === 0) {
     const firmId = db.prepare(`INSERT INTO firms (name) VALUES (?)`).run('My firm').lastInsertRowid;
     db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role)
-                VALUES (?, ?, ?, 'firm', ?, 'owner')`)
+                VALUES (?, ?, ?, 'firm', ?, 'manager')`)
       .run('local@local', '!noauth', 'You', firmId);
-    console.log('[db] Seeded default firm and user (no auth)');
+    console.log('[db] Seeded default firm and placeholder owner (local@local)');
+  }
+
+  // First-run bootstrap: any user still carrying the '!noauth' sentinel gets
+  // promoted with INITIAL_ADMIN_PASSWORD. Optionally also rename email/name
+  // via INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_NAME so the first deploy doesn't
+  // require visiting a Settings page just to fix the placeholder identity.
+  const placeholderUsers = db.prepare(`SELECT id, email, name FROM users WHERE password_hash = '!noauth'`).all();
+  if (placeholderUsers.length) {
+    const initPw = process.env.INITIAL_ADMIN_PASSWORD;
+    if (!initPw || initPw.length < 8) {
+      console.warn(`[auth] ${placeholderUsers.length} user(s) still hold the '!noauth' placeholder. ` +
+        `Set INITIAL_ADMIN_PASSWORD (>= 8 chars) in your environment and restart to promote them. ` +
+        `Until then, login is impossible — only seed/no-auth flows work.`);
+    } else {
+      const bcrypt = require('bcrypt');
+      const hash = bcrypt.hashSync(initPw, 12);
+      const newEmail = process.env.INITIAL_ADMIN_EMAIL || null;
+      const newName  = process.env.INITIAL_ADMIN_NAME  || null;
+      const tx = db.transaction(() => {
+        for (const u of placeholderUsers) {
+          // Only rename if the requested email isn't already taken by a real user
+          let renameEmail = null;
+          if (newEmail && newEmail !== u.email) {
+            const clash = db.prepare(`SELECT id FROM users WHERE email = ? AND id != ?`).get(newEmail, u.id);
+            if (!clash) renameEmail = newEmail;
+            else console.warn(`[auth] INITIAL_ADMIN_EMAIL=${newEmail} already in use; keeping ${u.email}`);
+          }
+          db.prepare(`UPDATE users SET password_hash = ?, email = COALESCE(?, email), name = COALESCE(?, name) WHERE id = ?`)
+            .run(hash, renameEmail, newName, u.id);
+          console.log(`[auth] Promoted placeholder user → ${renameEmail || u.email}`);
+        }
+      });
+      tx();
+    }
   }
 
   // Seed system questionnaire templates

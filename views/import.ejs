@@ -77,7 +77,7 @@
       <% if (isAsset) { %>
         Bulk-load the asset register from a spreadsheet. We validate every row before anything is written - skipped rows are listed so you can fix and re-upload.
       <% } else { %>
-        Bulk-load the risk register from a spreadsheet. Likelihood and impact are validated against your active methodology; asset names resolve to existing assets in this workspace.
+        Bulk-load the risk register from a spreadsheet. Likelihood and impact are validated against your active methodology; asset names resolve to existing assets in this client.
       <% } %>
     </div>
   </div>
@@ -140,7 +140,7 @@
                 else if (f.type === 'enum') hint = 'Allowed values: ' + f.values.map(v => '<code>' + v + '</code>').join(', ');
                 else if (f.type === 'intRange') hint = 'Whole number ' + (f.min !== undefined ? f.min : '') + (f.max !== undefined ? '–' + f.max : '') + '.';
                 else if (f.type === 'methodologyScale') hint = 'Whole number in the active methodology scale.';
-                else if (f.type === 'assetRef') hint = 'Asset name, must already exist in this workspace.';
+                else if (f.type === 'assetRef') hint = 'Asset name, must already exist in this client.';
               %>
               <%- hint %>
             </div>
@@ -167,7 +167,7 @@
                   const sc = methodology[f.scale + '_scale'];
                   hint = 'Whole number from <code>' + sc[0].value + '</code> to <code>' + sc[sc.length-1].value + '</code> (active methodology: ' + methodology.name + ').';
                 } else if (f.type === 'methodologyScale') hint = 'Whole number in the active methodology scale.';
-                else if (f.type === 'assetRef') hint = 'Asset name from this workspace - matched case-insensitively. Leave blank if not asset-linked. A name that does not match an existing asset is allowed; we surface a warning and create the risk unlinked.';
+                else if (f.type === 'assetRef') hint = 'Asset name from this client - matched case-insensitively. Leave blank if not asset-linked. A name that does not match an existing asset is allowed; we surface a warning and create the risk unlinked.';
               %>
               <%- hint %>
             </div>

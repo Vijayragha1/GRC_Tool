@@ -3,31 +3,28 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Email</h1>
-    <div class="page-subtitle">Transactional mail for policy approval requests, decision notifications, and (Phase 2+) auditor invites, NC assignments, and review-due reminders. Settings here apply to every workspace under this firm.</div>
+    <div class="page-subtitle">Transactional mail for policy approval requests, decision notifications, and (Phase 2+) auditor invites, NC assignments, and review-due reminders. Settings here apply to every client under this firm.</div>
   </div>
 </div>
 
-<%# Provider status strip - the first thing an admin should see is whether
-    the underlying transport is wired up. Without RESEND_API_KEY we fall
-    back to the dev outbox file; nothing actually leaves the server. %>
+<%# Provider status strip — reflects whichever transport the dispatcher
+    would actually pick (Brevo → Gmail → Resend → dev fallback). Mirrors
+    the priority list in lib/email.js currentProvider(). %>
+<%
+  const PROVIDER_INFO = {
+    brevo:   { label: 'Brevo — connected',          desc: 'Sends go through Brevo\'s HTTP API using <code>BREVO_API_KEY</code>. Free tier covers 300 emails/day; no domain verification required.' },
+    gmail:   { label: 'Gmail SMTP — connected',     desc: 'Sends go through Gmail SMTP (smtp.gmail.com) using <code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>. Limit is ~500 messages/day on a personal Google account.' },
+    resend:  { label: 'Resend — connected',         desc: 'Sends go through Resend\'s HTTP API using <code>RESEND_API_KEY</code>. Free tier covers 3,000 emails/month; recipients restricted until a domain is verified.' },
+    devnull: { label: 'Dev fallback — no provider', desc: 'No provider key set. Sends are written to <code>data/email-dev-outbox.log</code>; nothing actually leaves the server. Set <code>BREVO_API_KEY</code>, <code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>RESEND_API_KEY</code> in the environment to enable real delivery.' }
+  };
+  const provInfo = PROVIDER_INFO[provider] || PROVIDER_INFO.devnull;
+%>
 <div class="panel" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid <%= providerConfigured ? '#15803d' : '#a16207' %>;">
   <div style="display:flex;align-items:center;gap:12px;">
     <div style="flex:1;">
       <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:4px;">Provider</div>
-      <div style="font-size:14px;font-weight:600;color:var(--text);">
-        <% if (providerConfigured) { %>
-          Resend — connected
-        <% } else { %>
-          Dev fallback — emails are written to <code style="font-size:12px;background:var(--bg-muted);padding:1px 5px;border-radius:3px;">data/email-dev-outbox.log</code>
-        <% } %>
-      </div>
-      <div class="meta text-sm" style="margin-top:4px;">
-        <% if (providerConfigured) { %>
-          Sends go through Resend's HTTP API using the <code>RESEND_API_KEY</code> set on the server.
-        <% } else { %>
-          Set <code>RESEND_API_KEY</code> in the server environment and restart to enable real delivery. The free tier covers 3,000 emails/month.
-        <% } %>
-      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);"><%= provInfo.label %></div>
+      <div class="meta text-sm" style="margin-top:4px;"><%- provInfo.desc %></div>
     </div>
     <div style="text-align:right;min-width:140px;">
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Last 7 days</div>

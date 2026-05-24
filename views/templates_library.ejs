@@ -68,7 +68,7 @@
     <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs" title="Go to the documents list">View documents</a>
     <% const missingMandatory = counts.mandatory - counts.mandatoryAdopted; %>
     <% if (missingMandatory > 0) { %>
-      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory" style="display:inline;" onsubmit="if (!appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this workspace? Each gets created as a draft document with Annex A controls auto-linked.')) return false; window._markBusy(this, 'Adopting…'); return true;">
+      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory" style="display:inline;" onsubmit="if (!appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this client? Each gets created as a draft document with Annex A controls auto-linked.')) return false; window._markBusy(this, 'Adopting…'); return true;">
         <button class="btn btn-primary bulk-cta-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
           Adopt all mandatory<span class="num"><%= missingMandatory %></span>

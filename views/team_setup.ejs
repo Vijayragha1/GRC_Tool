@@ -1,0 +1,229 @@
+<%- include('partials/header', { title: 'Team & access', user, ws, active: 'team' }) %>
+
+<div class="page-head">
+  <div>
+    <div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:6px;letter-spacing:0.12em;text-transform:uppercase;">Setup &middot; Step 2 of 3</div>
+    <h1 class="page-title">Project team &amp; access</h1>
+    <div class="page-subtitle">Pick the firm consultants on this engagement and invite the client-side contacts they&rsquo;ll work with. You can revisit this page any time &mdash; it&rsquo;s in the sidebar under <strong>Setup</strong>.</div>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary btn-xs">← Back to scoping</a>
+    <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary btn-xs">Start gap assessment →</a>
+  </div>
+</div>
+
+<% if (!scopeConfirmed) { %>
+  <div class="panel" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid #c2410c;background:rgba(194,65,12,0.05);font-size:13px;line-height:1.55;display:flex;align-items:center;gap:14px;">
+    <div style="flex:1;">Scope hasn&rsquo;t been confirmed yet. You can set up the team now, but the gap assessment won&rsquo;t open for production work until scope is locked in.</div>
+    <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary btn-xs">Go to scoping</a>
+  </div>
+<% } %>
+
+<% if (typeof notice !== 'undefined' && notice) { %>
+  <div class="panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid #15803d;background:rgba(21,128,61,0.04);font-size:13px;color:#0f5132;line-height:1.5;"><%= notice %></div>
+<% } %>
+<% if (typeof error !== 'undefined' && error) { %>
+  <div class="panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);font-size:13px;color:#7a1010;line-height:1.5;"><%= error %></div>
+<% } %>
+
+<%# ====================== FIRM TEAM ====================== %>
+<div class="panel" style="margin-bottom:18px;overflow:hidden;">
+  <div class="panel-head" style="display:flex;align-items:baseline;justify-content:space-between;">
+    <h2>Firm consultants on this engagement</h2>
+    <span class="meta text-xs"><%= firmMembers.length + (leadConsultant ? 1 : 0) %> assigned</span>
+  </div>
+
+  <%# ----- Lead consultant ----- %>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+    <form method="POST" action="/workspaces/<%= ws.id %>/team/set-lead" style="display:flex;gap:10px;align-items:end;">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div style="flex:1;">
+        <label class="label">Lead consultant<span class="meta" style="font-weight:400;margin-left:8px;">primary client contact; signs off assessments</span></label>
+        <select class="select" name="lead_consultant_id" required>
+          <option value="">— pick a lead —</option>
+          <% firmPool.forEach(u => { %>
+            <option value="<%= u.id %>" <%= (leadConsultant && leadConsultant.id === u.id) ? 'selected' : '' %>><%= u.name %> &nbsp;·&nbsp; <%= u.email %><% if (rbac.isManager(u.firm_role)) { %> &nbsp;·&nbsp; Manager<% } %></option>
+          <% }) %>
+        </select>
+      </div>
+      <button class="btn btn-primary">Save lead</button>
+    </form>
+  </div>
+
+  <%# ----- Other firm members ----- %>
+  <table class="t" style="margin:0;">
+    <thead>
+      <tr>
+        <th>Consultant</th>
+        <th>Email</th>
+        <th style="width:150px;">Role on engagement</th>
+        <th style="width:90px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (leadConsultant) { %>
+        <tr>
+          <td><strong><%= leadConsultant.name %></strong><span class="tag tag-accent" style="margin-left:8px;">Lead</span></td>
+          <td class="meta"><%= leadConsultant.email %></td>
+          <td><span class="tag tag-neutral">Lead consultant</span></td>
+          <td></td>
+        </tr>
+      <% } %>
+      <% firmMembers.forEach(m => { %>
+        <tr>
+          <td><%= m.name %><% if (rbac.isManager(m.firm_role)) { %> <span class="tag tag-accent" style="margin-left:6px;">Manager</span><% } %></td>
+          <td class="meta"><%= m.email %></td>
+          <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[m.role] || m.role.replace(/_/g, ' ') %></span></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/team/remove-firm-member/<%= m.member_id %>" style="margin:0;" onsubmit="return confirm('Remove <%= m.name %> from this engagement? They keep their firm account; this only removes them from the workspace member list.')">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button class="btn btn-xs btn-secondary">Remove</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (!leadConsultant && !firmMembers.length) { %>
+        <tr><td colspan="4" class="t-empty" style="padding:18px;text-align:center;color:var(--text-tertiary);font-style:italic;">No consultants assigned yet. Pick a lead above to start.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+
+  <%# ----- Add firm member form ----- %>
+  <% const addable = firmPool.filter(u => !leadConsultant || u.id !== leadConsultant.id).filter(u => !firmMembers.some(m => m.user_id === u.id)); %>
+  <% if (addable.length) { %>
+    <div class="panel-pad" style="border-top:1px solid var(--border);">
+      <form method="POST" action="/workspaces/<%= ws.id %>/team/add-firm-member" style="display:flex;gap:10px;align-items:end;">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div style="flex:1;">
+          <label class="label">Add another consultant</label>
+          <select class="select" name="user_id" required>
+            <option value="">— pick a consultant —</option>
+            <% addable.forEach(u => { %>
+              <option value="<%= u.id %>"><%= u.name %> &nbsp;·&nbsp; <%= u.email %><% if (rbac.isManager(u.firm_role)) { %> &nbsp;·&nbsp; Manager<% } %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label class="label">Engagement role</label>
+          <select class="select" name="role" style="min-width:180px;">
+            <option value="consultant">Consultant</option>
+            <option value="senior_consultant">Senior consultant</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary">Add</button>
+      </form>
+    </div>
+  <% } else if (firmPool.length === 0) { %>
+    <div class="panel-pad" style="border-top:1px solid var(--border);font-size:12.5px;color:var(--text-secondary);line-height:1.5;">
+      No other firm consultants to add. <a href="/admin/users" style="color:var(--accent);font-weight:600;">Invite a new firm consultant in Admin → Users &amp; access</a>, then come back here to assign them.
+    </div>
+  <% } %>
+</div>
+
+<%# ====================== CLIENT TEAM ====================== %>
+<div class="panel" style="margin-bottom:18px;overflow:hidden;">
+  <div class="panel-head" style="display:flex;align-items:baseline;justify-content:space-between;">
+    <h2>Client-side accounts</h2>
+    <span class="meta text-xs"><%= clientMembers.length %> active &middot; <%= pendingInvites.length %> pending</span>
+  </div>
+
+  <%# ----- Invite form ----- %>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+    <form method="POST" action="/workspaces/<%= ws.id %>/team/invite-client" style="display:grid;grid-template-columns:1fr 1fr 200px auto;gap:10px;align-items:end;">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div>
+        <label class="label">Name (optional)</label>
+        <input class="input" name="name" type="text" placeholder="Jane Reeves">
+      </div>
+      <div>
+        <label class="label">Email</label>
+        <input class="input" name="email" type="email" required placeholder="jane@client.com">
+      </div>
+      <div>
+        <label class="label">Role</label>
+        <select class="select" name="workspace_role" required>
+          <option value="client_owner">Client owner &mdash; exec sponsor</option>
+          <option value="isms_manager" selected>ISMS manager &mdash; day-to-day</option>
+          <option value="contributor">Contributor &mdash; scoped SME</option>
+        </select>
+      </div>
+      <button class="btn btn-primary">Send invite</button>
+    </form>
+    <div class="meta text-xs" style="margin-top:8px;line-height:1.5;">
+      They&rsquo;ll receive a one-time link (expires in 7 days) to set their password. Already have an account? Manage them from <a href="/admin/users" style="color:var(--accent);font-weight:600;">Admin → Users &amp; access</a>.
+    </div>
+  </div>
+
+  <%# ----- Current client members ----- %>
+  <% if (clientMembers.length) { %>
+    <table class="t" style="margin:0;">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th style="width:170px;">Role</th>
+          <th style="width:130px;">Last active</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% clientMembers.forEach(m => { %>
+          <tr>
+            <td><%= m.name %></td>
+            <td class="meta"><%= m.email %></td>
+            <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[m.role] || m.role.replace(/_/g, ' ') %></span></td>
+            <td class="meta"><%= m.last_active_at ? new Date(m.last_active_at).toLocaleDateString() : 'never signed in' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+
+  <%# ----- Pending invitations ----- %>
+  <% if (pendingInvites.length) { %>
+    <div class="panel-pad" style="border-top:1px solid var(--border);background:#fefce8;">
+      <div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:8px;">Pending invitations</div>
+      <table class="t" style="margin:0;background:transparent;">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th style="width:170px;">Role</th>
+            <th style="width:130px;">Expires</th>
+            <th style="width:90px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pendingInvites.forEach(inv => { %>
+            <tr>
+              <td><%= inv.email %><% if (inv.name) { %> <span class="meta">(<%= inv.name %>)</span><% } %></td>
+              <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[inv.workspace_role] || inv.workspace_role %></span></td>
+              <td class="meta"><%= new Date(inv.expires_at).toLocaleDateString() %></td>
+              <td>
+                <form method="POST" action="/workspaces/<%= ws.id %>/team/revoke-invite/<%= inv.id %>" style="margin:0;" onsubmit="return confirm('Revoke this invitation? The recipient will no longer be able to use the link.')">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button class="btn btn-xs btn-secondary">Revoke</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <% if (!clientMembers.length && !pendingInvites.length) { %>
+    <div class="t-empty" style="padding:22px;text-align:center;color:var(--text-tertiary);font-style:italic;font-size:13px;">
+      No client-side accounts yet. Send the first invite above &mdash; or skip and do this later from the sidebar.
+    </div>
+  <% } %>
+</div>
+
+<%# ====================== CONTINUE ====================== %>
+<div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:18px;background:#fafaf8;border-left:3px solid #5C0A0A;">
+  <div style="flex:1;">
+    <div style="font-family:Georgia,'Source Serif 4',serif;font-size:16px;font-weight:600;color:var(--text);">Team set. Ready to start the gap assessment?</div>
+    <div class="meta text-sm" style="margin-top:4px;line-height:1.5;">You can also come back later &mdash; this page lives under <strong>Setup → Team &amp; access</strong> in the sidebar.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary">Start gap assessment →</a>
+</div>
+
+<%- include('partials/footer') %>

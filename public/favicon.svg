@@ -1,11 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#4f46e5"/>
-      <stop offset="100%" stop-color="#7c3aed"/>
-    </linearGradient>
-  </defs>
-  <rect width="32" height="32" rx="7" fill="url(#g)"/>
-  <path d="M16 6 L24 9 V16 C24 20.5 20.5 23.8 16 25.5 C11.5 23.8 8 20.5 8 16 V9 Z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M12.5 16 L15 18.5 L20 13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <title>ISMS</title>
+  <!--
+    Premium-feel favicon. Oxblood (#5C0A0A) matches the in-app --accent
+    var; serif "I" matches the Source Serif 4 wordmark used everywhere
+    else in the product (sidebar brand, /login, /approve portal, email
+    templates). Path-based glyph rather than font-based so the serif
+    caps render identically in every browser regardless of font loading.
+  -->
+  <rect width="32" height="32" rx="6" fill="#5C0A0A"/>
+  <rect x="9" y="7" width="14" height="2.6" fill="#ffffff"/>
+  <rect x="14.4" y="7" width="3.2" height="18" fill="#ffffff"/>
+  <rect x="9" y="22.4" width="14" height="2.6" fill="#ffffff"/>
 </svg>
