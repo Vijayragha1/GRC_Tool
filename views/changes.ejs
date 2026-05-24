@@ -1,0 +1,157 @@
+<%- include('partials/header', { title: 'Change Management', user, ws, active: 'changes' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Change management register</h1>
+    <div class="page-subtitle">Per A.8.32: structured change control with risk assessment, approval workflow, and post-implementation review.</div>
+  </div>
+  <div class="row">
+    <button onclick="document.getElementById('newChange').classList.toggle('hidden')" class="btn btn-primary">New change request</button>
+  </div>
+</div>
+
+<!-- Summary stats -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;">
+  <div class="panel" style="padding:14px 16px;">
+    <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+    <div style="font-size:24px;font-weight:700;"><%= stats.total %></div>
+  </div>
+  <div class="panel" style="padding:14px 16px;">
+    <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Open</div>
+    <div style="font-size:24px;font-weight:700;"><%= stats.openCount %></div>
+  </div>
+  <div class="panel" style="padding:14px 16px;">
+    <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Emergency</div>
+    <div style="font-size:24px;font-weight:700;color:<%= stats.emergencyCount > 0 ? '#dc2626' : 'inherit' %>;"><%= stats.emergencyCount %></div>
+  </div>
+  <div class="panel" style="padding:14px 16px;">
+    <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Pending approval</div>
+    <div style="font-size:24px;font-weight:700;color:<%= stats.pendingApproval > 0 ? '#ca8a04' : 'inherit' %>;"><%= stats.pendingApproval %></div>
+  </div>
+  <div class="panel" style="padding:14px 16px;">
+    <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">PIR completion</div>
+    <div style="font-size:24px;font-weight:700;"><%= stats.pirPct %>%</div>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="panel" style="margin-bottom:16px;">
+  <form method="GET" class="panel-pad" style="display:flex;gap:12px;align-items:end;">
+    <div>
+      <label class="label">Status</label>
+      <select class="select" name="status" style="width:140px;">
+        <option value="all" <%= filters.status === 'all' ? 'selected' : '' %>>All</option>
+        <% ['draft','submitted','approved','implemented','closed','rejected'].forEach(s => { %>
+          <option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= s %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Type</label>
+      <select class="select" name="change_type" style="width:140px;">
+        <option value="all" <%= filters.change_type === 'all' ? 'selected' : '' %>>All</option>
+        <% ['standard','normal','emergency'].forEach(t => { %>
+          <option value="<%= t %>" <%= filters.change_type === t ? 'selected' : '' %>><%= t %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="label">Risk level</label>
+      <select class="select" name="risk_level" style="width:140px;">
+        <option value="all" <%= filters.risk_level === 'all' ? 'selected' : '' %>>All</option>
+        <% ['low','medium','high','critical'].forEach(r => { %>
+          <option value="<%= r %>" <%= filters.risk_level === r ? 'selected' : '' %>><%= r %></option>
+        <% }) %>
+      </select>
+    </div>
+    <button class="btn btn-secondary">Filter</button>
+  </form>
+</div>
+
+<!-- Create form -->
+<div id="newChange" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New change request</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/changes" class="panel-pad grid-2">
+    <div class="col-full"><label class="label">Title</label><input class="input" name="title" required placeholder="e.g., Upgrade firewall firmware to v12.3"></div>
+    <div><label class="label">Change type</label>
+      <select class="select" name="change_type">
+        <option value="normal">Normal</option>
+        <option value="standard">Standard (pre-approved)</option>
+        <option value="emergency">Emergency</option>
+      </select>
+    </div>
+    <div><label class="label">Category</label>
+      <select class="select" name="category">
+        <option value="infrastructure">Infrastructure</option>
+        <option value="application">Application</option>
+        <option value="network">Network</option>
+        <option value="security">Security</option>
+        <option value="policy">Policy / procedure</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div><label class="label">Risk level</label>
+      <select class="select" name="risk_level">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+        <option value="critical">Critical</option>
+      </select>
+    </div>
+    <div><label class="label">Requester</label><input class="input" name="requester_name" placeholder="Name of requester"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" placeholder="Describe the change, its scope, and business justification..."></textarea></div>
+    <div class="col-full"><label class="label">Risk assessment</label><textarea class="textarea" name="risk_assessment" rows="2" placeholder="What are the risks if this change succeeds/fails?"></textarea></div>
+    <div class="col-full"><label class="label">Impact assessment</label><textarea class="textarea" name="impact_assessment" rows="2" placeholder="Systems, users, and processes affected..."></textarea></div>
+    <div class="col-full"><label class="label">Rollback plan</label><textarea class="textarea" name="rollback_plan" rows="2" placeholder="How to revert if the change fails..."></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Create change request</button></div>
+  </form>
+</div>
+
+<!-- Table -->
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr>
+      <th style="width:80px">ID</th>
+      <th>Title</th>
+      <th style="width:110px">Type</th>
+      <th style="width:100px">Risk</th>
+      <th style="width:110px">Status</th>
+      <th style="width:130px">Requester</th>
+      <th style="width:110px">Submitted</th>
+      <th style="width:110px">Approved</th>
+      <th style="width:110px">Implemented</th>
+    </tr></thead>
+    <tbody>
+      <% changes.forEach(c => { %>
+        <tr>
+          <td class="mono meta">CHG-<%= String(c.id).padStart(3,'0') %></td>
+          <td>
+            <a href="/workspaces/<%= ws.id %>/changes/<%= c.id %>" class="link-muted" style="font-weight:500;"><%= c.title %></a>
+            <% if (c.status === 'implemented' && !c.closed_at) { %>
+              <span class="tag tag-warn" style="margin-left:6px;font-size:10px;">PIR needed</span>
+            <% } %>
+          </td>
+          <td><span class="tag <%= c.change_type === 'emergency' ? 'tag-danger' : c.change_type === 'standard' ? 'tag-ok' : 'tag-info' %>"><%= c.change_type %></span></td>
+          <td><span class="tag <%= c.risk_level === 'critical' || c.risk_level === 'high' ? 'tag-danger' : c.risk_level === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= c.risk_level %></span></td>
+          <td><span class="status s-<%= c.status === 'closed' ? 'done' : c.status === 'rejected' ? 'overdue' : c.status === 'approved' || c.status === 'implemented' ? 'open' : c.status === 'submitted' ? 'open' : 'draft' %>"><%= c.status %></span></td>
+          <td class="text-secondary text-base"><%= c.requester_name || '-' %></td>
+          <td class="num meta"><%= c.submitted_at ? c.submitted_at.substring(0,10) : '-' %></td>
+          <td class="num meta"><%= c.approved_at ? c.approved_at.substring(0,10) : '-' %></td>
+          <td class="num meta"><%= c.implemented_at ? c.implemented_at.substring(0,10) : '-' %></td>
+        </tr>
+      <% }) %>
+      <% if (changes.length === 0) { %>
+        <tr><td colspan="9" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+            <div class="empty-title">No change requests</div>
+            <div class="empty-sub">A.8.32 requires a structured approach to managing changes. Log change requests to build the audit trail and ensure proper approval workflows.</div>
+            <button onclick="document.getElementById('newChange').classList.toggle('hidden')" class="btn btn-primary">New change request</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

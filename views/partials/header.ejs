@@ -773,11 +773,19 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
           <span class="nav-item-text">Incidents</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/changes" class="nav-item <%= (typeof active !== 'undefined' && active === 'changes') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <span class="nav-item-text">Changes</span>
+        </a>
         <%# Improvements demoted from the sidebar - reachable as a tab on the
             Nonconformities page since clause 10 keeps both concepts adjacent. %>
         <a href="/workspaces/<%= ws.id %>/vendors" data-shortcut="g v" class="nav-item <%= (typeof active !== 'undefined' && active === 'vendors') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           <span class="nav-item-text">Suppliers</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/bcp" data-shortcut="g b" class="nav-item <%= (typeof active !== 'undefined' && active === 'bcp') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="nav-item-text">Business continuity</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>

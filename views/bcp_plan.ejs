@@ -1,0 +1,275 @@
+<%- include('partials/header', { title: plan.name + ' - BCP', user, ws, active: 'bcp' }) %>
+
+<div class="page-head">
+  <div>
+    <a href="/workspaces/<%= ws.id %>/bcp" class="link-muted meta" style="display:inline-flex;align-items:center;gap:4px;margin-bottom:4px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to BCP
+    </a>
+    <h1 class="page-title"><%= plan.name %></h1>
+    <div class="page-subtitle"><span style="text-transform:uppercase;font-size:12px;font-weight:600;margin-right:8px;"><%= plan.plan_type %></span> <span class="status s-<%= plan.status === 'active' ? 'open' : plan.status === 'draft' ? 'draft' : 'done' %>"><%= plan.status %></span></div>
+  </div>
+  <div class="row">
+    <button onclick="document.getElementById('editPlan').classList.toggle('hidden')" class="btn btn-ghost">Edit plan</button>
+    <form method="POST" action="/workspaces/<%= ws.id %>/bcp/plans/<%= plan.id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this plan and all linked tests?')">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <button class="btn btn-ghost" style="color:#b91c1c;">Delete</button>
+    </form>
+  </div>
+</div>
+
+<!-- Edit plan form -->
+<div id="editPlan" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Edit plan</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/bcp/plans/<%= plan.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div style="grid-column:1/3"><label class="label">Plan name</label><input class="input" name="name" value="<%= plan.name %>" required></div>
+    <div><label class="label">Type</label>
+      <select class="select" name="plan_type">
+        <option value="bcp" <%= plan.plan_type==='bcp'?'selected':'' %>>Business Continuity (BCP)</option>
+        <option value="dr" <%= plan.plan_type==='dr'?'selected':'' %>>Disaster Recovery (DR)</option>
+        <option value="crisis" <%= plan.plan_type==='crisis'?'selected':'' %>>Crisis Management</option>
+      </select>
+    </div>
+    <div><label class="label">Status</label>
+      <select class="select" name="status">
+        <option value="draft" <%= plan.status==='draft'?'selected':'' %>>Draft</option>
+        <option value="active" <%= plan.status==='active'?'selected':'' %>>Active</option>
+        <option value="under_review" <%= plan.status==='under_review'?'selected':'' %>>Under review</option>
+        <option value="retired" <%= plan.status==='retired'?'selected':'' %>>Retired</option>
+      </select>
+    </div>
+    <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date" value="<%= plan.next_review_date || '' %>"></div>
+    <div><label class="label">Alternate site</label><input class="input" name="alternate_site" value="<%= plan.alternate_site || '' %>"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= plan.description || '' %></textarea></div>
+    <div class="col-full"><label class="label">Key contacts</label><textarea class="textarea" name="key_contacts" rows="2"><%= plan.key_contacts || '' %></textarea></div>
+    <div class="col-full"><label class="label">Recovery steps</label><textarea class="textarea" name="recovery_steps" rows="6"><%= plan.recovery_steps || '' %></textarea></div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary">Save changes</button>
+      <button type="button" onclick="document.getElementById('editPlan').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+    </div>
+    <div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" name="mark_reviewed" value="1">
+        <span class="label" style="margin:0;">Mark as reviewed now</span>
+      </label>
+    </div>
+  </form>
+</div>
+
+<!-- Plan metadata -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+  <div class="panel">
+    <div class="panel-pad">
+      <div class="meta" style="margin-bottom:4px;">Last reviewed</div>
+      <div style="font-weight:500;"><%= plan.last_reviewed_at ? plan.last_reviewed_at.split('T')[0] : 'Never' %></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-pad">
+      <div class="meta" style="margin-bottom:4px;">Next review</div>
+      <% var today = new Date().toISOString().split('T')[0]; %>
+      <div style="font-weight:500;<%= plan.next_review_date && plan.next_review_date < today ? 'color:#b91c1c;' : '' %>"><%= plan.next_review_date || 'Not set' %><%= plan.next_review_date && plan.next_review_date < today ? ' (overdue)' : '' %></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-pad">
+      <div class="meta" style="margin-bottom:4px;">Alternate site</div>
+      <div style="font-weight:500;"><%= plan.alternate_site || 'Not specified' %></div>
+    </div>
+  </div>
+</div>
+
+<% if (plan.key_contacts) { %>
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><h2>Key contacts</h2></div>
+  <div class="panel-pad"><pre style="white-space:pre-wrap;font-family:inherit;margin:0;"><%= plan.key_contacts %></pre></div>
+</div>
+<% } %>
+
+<% if (plan.recovery_steps) { %>
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-head"><h2>Recovery steps</h2></div>
+  <div class="panel-pad"><pre style="white-space:pre-wrap;font-family:inherit;margin:0;"><%= plan.recovery_steps %></pre></div>
+</div>
+<% } %>
+
+<!-- ===== LINKED PROCESSES ===== -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+  <h2 style="margin:0;">Linked processes</h2>
+  <% if (unlinkableProcesses.length > 0) { %>
+  <button onclick="document.getElementById('linkProc').classList.toggle('hidden')" class="btn btn-ghost">Link process</button>
+  <% } %>
+</div>
+
+<% if (unlinkableProcesses.length > 0) { %>
+<div id="linkProc" class="hidden panel" style="margin-bottom:12px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/bcp/plans/<%= plan.id %>/processes" class="panel-pad" style="display:flex;gap:10px;align-items:end;">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <input type="hidden" name="action" value="link">
+    <div style="flex:1;"><label class="label">Process</label>
+      <select class="select" name="process_id">
+        <% unlinkableProcesses.forEach(p => { %>
+          <option value="<%= p.id %>"><%= p.name %> (<%= p.criticality %>)</option>
+        <% }) %>
+      </select>
+    </div>
+    <button class="btn btn-primary">Link</button>
+  </form>
+</div>
+<% } %>
+
+<div class="panel" style="overflow:hidden;margin-bottom:24px;">
+  <table class="t">
+    <thead><tr>
+      <th>Process</th><th style="width:100px">Criticality</th><th style="width:80px">RTO (h)</th>
+      <th style="width:80px">RPO (h)</th><th style="width:80px">MTD (h)</th><th style="width:60px"></th>
+    </tr></thead>
+    <tbody>
+      <% linkedProcesses.forEach(p => { %>
+        <tr>
+          <td><strong><%= p.name %></strong><% if (p.description) { %><br><span class="meta"><%= p.description %></span><% } %></td>
+          <td><span class="tag" style="<%= p.criticality === 'critical' ? 'background:#b91c1c;color:#fff;' : p.criticality === 'high' ? 'background:#ea580c;color:#fff;' : p.criticality === 'medium' ? 'background:#ca8a04;color:#fff;' : 'background:#16a34a;color:#fff;' %>"><%= p.criticality %></span></td>
+          <td class="num"><%= p.rto_hours != null ? p.rto_hours : '-' %></td>
+          <td class="num"><%= p.rpo_hours != null ? p.rpo_hours : '-' %></td>
+          <td class="num"><%= p.max_tolerable_downtime_hours != null ? p.max_tolerable_downtime_hours : '-' %></td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/bcp/plans/<%= plan.id %>/processes" style="display:inline;">
+              <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+              <input type="hidden" name="action" value="unlink">
+              <input type="hidden" name="process_id" value="<%= p.id %>">
+              <button class="btn btn-ghost" style="padding:2px 6px;font-size:12px;color:#b91c1c;" title="Unlink process">Unlink</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (linkedProcesses.length === 0) { %>
+        <tr><td colspan="6" class="meta" style="text-align:center;padding:24px;">No processes linked to this plan yet.<% if (unlinkableProcesses.length > 0) { %> <a href="#" onclick="document.getElementById('linkProc').classList.remove('hidden');return false;" class="link-muted">Link one now</a>.<% } %></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== TEST HISTORY ===== -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+  <h2 style="margin:0;">Test history</h2>
+  <button onclick="document.getElementById('newTest').classList.toggle('hidden')" class="btn btn-primary">Record test</button>
+</div>
+
+<div id="newTest" class="hidden panel" style="margin-bottom:16px;">
+  <div class="panel-head"><h2>Record a test</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/bcp/plans/<%= plan.id %>/tests" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div><label class="label">Test type</label>
+      <select class="select" name="test_type">
+        <option value="tabletop">Tabletop / walkthrough</option>
+        <option value="simulation">Simulation</option>
+        <option value="full">Full exercise</option>
+        <option value="technical">Technical DR test</option>
+      </select>
+    </div>
+    <div><label class="label">Test date</label><input class="input" type="date" name="test_date" required></div>
+    <div><label class="label">Result</label>
+      <select class="select" name="pass">
+        <option value="1">Pass</option>
+        <option value="0">Fail</option>
+      </select>
+    </div>
+    <div><label class="label">RTO achieved (hours)</label><input class="input" type="number" step="0.5" name="rto_achieved_hours"></div>
+    <div><label class="label">RPO achieved (hours)</label><input class="input" type="number" step="0.5" name="rpo_achieved_hours"></div>
+    <div><label class="label">Next test date</label><input class="input" type="date" name="next_test_date"></div>
+    <div class="col-full"><label class="label">Participants</label><input class="input" name="participants" placeholder="e.g., IT team, HR lead, Facilities"></div>
+    <div class="col-full"><label class="label">Scenario description</label><textarea class="textarea" name="scenario_description" rows="2" placeholder="Describe the test scenario"></textarea></div>
+    <div class="col-full"><label class="label">Results / observations</label><textarea class="textarea" name="results" rows="2" placeholder="What happened during the test"></textarea></div>
+    <div class="col-full"><label class="label">Lessons learned</label><textarea class="textarea" name="lessons_learned" rows="2" placeholder="Key takeaways and improvement areas"></textarea></div>
+    <div class="col-full"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2" placeholder="Follow-up actions from the test"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Record test</button></div>
+  </form>
+</div>
+
+<%
+  // Compute best RTO/RPO targets from linked processes for comparison
+  var bestRto = null, bestRpo = null;
+  linkedProcesses.forEach(function(p) {
+    if (p.rto_hours != null && (bestRto === null || p.rto_hours < bestRto)) bestRto = p.rto_hours;
+    if (p.rpo_hours != null && (bestRpo === null || p.rpo_hours < bestRpo)) bestRpo = p.rpo_hours;
+  });
+%>
+
+<div class="panel" style="overflow:hidden;margin-bottom:24px;">
+  <table class="t">
+    <thead><tr>
+      <th style="width:100px">Date</th><th style="width:110px">Type</th><th>Scenario</th>
+      <th style="width:70px">Result</th>
+      <th style="width:100px">RTO achieved</th><th style="width:100px">RPO achieved</th>
+      <th style="width:80px"></th>
+    </tr></thead>
+    <tbody>
+      <% tests.forEach(t => { %>
+        <tr>
+          <td class="num meta"><%= t.test_date || '-' %></td>
+          <td class="text-secondary" style="text-transform:capitalize;"><%= (t.test_type || '').replace(/_/g,' ') %></td>
+          <td><%= t.scenario_description || '-' %><% if (t.results) { %><br><span class="meta"><%= t.results %></span><% } %></td>
+          <td><span class="tag <%= t.pass === 1 ? 'tag-neutral' : 'tag-danger' %>" style="<%= t.pass === 1 ? 'background:#16a34a;color:#fff;' : 'background:#b91c1c;color:#fff;' %>"><%= t.pass === 1 ? 'Pass' : 'Fail' %></span></td>
+          <td class="num" style="<%= (bestRto !== null && t.rto_achieved_hours != null && t.rto_achieved_hours > bestRto) ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.rto_achieved_hours != null ? t.rto_achieved_hours + 'h' : '-' %><% if (bestRto !== null && t.rto_achieved_hours != null && t.rto_achieved_hours > bestRto) { %> <span class="meta">(target: <%= bestRto %>h)</span><% } %></td>
+          <td class="num" style="<%= (bestRpo !== null && t.rpo_achieved_hours != null && t.rpo_achieved_hours > bestRpo) ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.rpo_achieved_hours != null ? t.rpo_achieved_hours + 'h' : '-' %><% if (bestRpo !== null && t.rpo_achieved_hours != null && t.rpo_achieved_hours > bestRpo) { %> <span class="meta">(target: <%= bestRpo %>h)</span><% } %></td>
+          <td>
+            <button onclick="document.getElementById('editTest<%= t.id %>').classList.toggle('hidden')" class="btn btn-ghost" style="padding:2px 6px;font-size:12px;">Edit</button>
+          </td>
+        </tr>
+        <tr id="editTest<%= t.id %>" class="hidden">
+          <td colspan="7" style="background:var(--bg-muted);padding:12px;">
+            <form method="POST" action="/workspaces/<%= ws.id %>/bcp/tests/<%= t.id %>" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+              <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+              <div><label class="label">Test type</label>
+                <select class="select" name="test_type">
+                  <option value="tabletop" <%= t.test_type==='tabletop'?'selected':'' %>>Tabletop</option>
+                  <option value="simulation" <%= t.test_type==='simulation'?'selected':'' %>>Simulation</option>
+                  <option value="full" <%= t.test_type==='full'?'selected':'' %>>Full exercise</option>
+                  <option value="technical" <%= t.test_type==='technical'?'selected':'' %>>Technical DR</option>
+                </select>
+              </div>
+              <div><label class="label">Test date</label><input class="input" type="date" name="test_date" value="<%= t.test_date || '' %>"></div>
+              <div><label class="label">Result</label>
+                <select class="select" name="pass">
+                  <option value="1" <%= t.pass===1?'selected':'' %>>Pass</option>
+                  <option value="0" <%= t.pass===0||t.pass===null?'selected':'' %>>Fail</option>
+                </select>
+              </div>
+              <div><label class="label">RTO achieved (h)</label><input class="input" type="number" step="0.5" name="rto_achieved_hours" value="<%= t.rto_achieved_hours != null ? t.rto_achieved_hours : '' %>"></div>
+              <div><label class="label">RPO achieved (h)</label><input class="input" type="number" step="0.5" name="rpo_achieved_hours" value="<%= t.rpo_achieved_hours != null ? t.rpo_achieved_hours : '' %>"></div>
+              <div><label class="label">Next test date</label><input class="input" type="date" name="next_test_date" value="<%= t.next_test_date || '' %>"></div>
+              <div class="col-full"><label class="label">Participants</label><input class="input" name="participants" value="<%= t.participants || '' %>"></div>
+              <div class="col-full"><label class="label">Scenario</label><textarea class="textarea" name="scenario_description" rows="2"><%= t.scenario_description || '' %></textarea></div>
+              <div class="col-full"><label class="label">Results</label><textarea class="textarea" name="results" rows="2"><%= t.results || '' %></textarea></div>
+              <div class="col-full"><label class="label">Lessons learned</label><textarea class="textarea" name="lessons_learned" rows="2"><%= t.lessons_learned || '' %></textarea></div>
+              <div class="col-full"><label class="label">Action items</label><textarea class="textarea" name="action_items" rows="2"><%= t.action_items || '' %></textarea></div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-primary">Save</button>
+                <button type="button" onclick="this.closest('tr').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+              </div>
+            </form>
+            <div style="text-align:right;margin-top:8px;">
+              <form method="POST" action="/workspaces/<%= ws.id %>/bcp/tests/<%= t.id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this test record?')">
+                <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+                <button class="btn btn-ghost" style="color:#b91c1c;">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (tests.length === 0) { %>
+        <tr><td colspan="7" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="empty-title">No tests recorded</div>
+            <div class="empty-sub">A.5.30 requires periodic testing of continuity plans. Record tabletop exercises, simulations, or full tests to demonstrate compliance.</div>
+            <button onclick="document.getElementById('newTest').classList.remove('hidden')" class="btn btn-primary">Record first test</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

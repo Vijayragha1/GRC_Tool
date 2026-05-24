@@ -3205,6 +3205,54 @@ function init() {
     CREATE INDEX IF NOT EXISTS idx_bcp_test_ws ON bcp_tests(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_bcp_test_plan ON bcp_tests(plan_id);
   `);
+
+  // Change Management Register (ISO 27001 A.8.32) - change request / approval / PIR workflow
+  db.exec(`CREATE TABLE IF NOT EXISTS changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    change_type TEXT DEFAULT 'normal',
+    category TEXT,
+    requester_name TEXT,
+    requester_id INTEGER,
+    risk_assessment TEXT,
+    risk_level TEXT DEFAULT 'medium',
+    impact_assessment TEXT,
+    rollback_plan TEXT,
+    status TEXT DEFAULT 'draft',
+    submitted_at DATETIME,
+    approved_at DATETIME,
+    implemented_at DATETIME,
+    closed_at DATETIME,
+    implementation_notes TEXT,
+    test_results TEXT,
+    post_implementation_review TEXT,
+    pir_date DATE,
+    success INTEGER,
+    linked_asset_ids TEXT,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (requester_id) REFERENCES users(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_changes_ws ON changes(workspace_id);
+
+  CREATE TABLE IF NOT EXISTS change_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    change_id INTEGER NOT NULL,
+    workspace_id INTEGER NOT NULL,
+    approver_id INTEGER,
+    approver_name TEXT NOT NULL,
+    sequence INTEGER DEFAULT 1,
+    decision TEXT,
+    reason TEXT,
+    decided_at DATETIME,
+    FOREIGN KEY (change_id) REFERENCES changes(id) ON DELETE CASCADE,
+    FOREIGN KEY (approver_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_change_approvals ON change_approvals(change_id);`);
 }
 
 const crypto = require('crypto');

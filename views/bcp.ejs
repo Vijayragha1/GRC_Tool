@@ -1,0 +1,204 @@
+<%- include('partials/header', { title: 'Business Continuity', user, ws, active: 'bcp' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Business continuity &amp; BIA</h1>
+    <div class="page-subtitle">Per <span class="iso-ref">A.5.29</span> &amp; <span class="iso-ref">A.5.30</span>: business impact analysis, continuity plans, and periodic testing to ensure resilience.</div>
+  </div>
+</div>
+
+<!-- Summary KPIs -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+  <div class="panel kpi"><div class="kpi-num num"><%= summary.totalProcesses %></div><div class="kpi-label">Total processes</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.criticalUnlinked > 0 ? '#b91c1c' : 'var(--text)' %>"><%= summary.criticalUnlinked %></div><div class="kpi-label">Critical without plan</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.overdueReview > 0 ? '#a16207' : 'var(--text)' %>"><%= summary.overdueReview %></div><div class="kpi-label">Plans overdue review</div></div>
+  <div class="panel kpi"><div class="kpi-num num"><%= summary.lastTestDate || 'Never' %></div><div class="kpi-label">Last test date</div></div>
+</div>
+
+<% if (criticalUnlinked.length > 0) { %>
+<div class="panel" style="margin-bottom:16px;border-left:3px solid #b91c1c;">
+  <div class="panel-pad" style="display:flex;align-items:center;gap:10px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span><strong><%= criticalUnlinked.length %> critical process<%= criticalUnlinked.length === 1 ? '' : 'es' %></strong> with no linked continuity plan: <%= criticalUnlinked.map(p => p.name).join(', ') %></span>
+  </div>
+</div>
+<% } %>
+
+<!-- ===== PROCESSES (BIA) ===== -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+  <h2 style="margin:0;">Business processes (BIA)</h2>
+  <button onclick="document.getElementById('newProc').classList.toggle('hidden')" class="btn btn-primary">Add process</button>
+</div>
+
+<div id="newProc" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New business process</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/bcp/processes" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div style="grid-column:1/3"><label class="label">Name</label><input class="input" name="name" required placeholder="e.g., Payroll processing"></div>
+    <div><label class="label">Owner</label><input class="input" name="owner_name" placeholder="e.g., Head of HR"></div>
+    <div><label class="label">Criticality</label>
+      <select class="select" name="criticality">
+        <option value="critical">Critical</option><option value="high">High</option>
+        <option value="medium" selected>Medium</option><option value="low">Low</option>
+      </select>
+    </div>
+    <div><label class="label">RTO (hours)</label><input class="input" type="number" step="0.5" name="rto_hours" placeholder="e.g., 4"></div>
+    <div><label class="label">RPO (hours)</label><input class="input" type="number" step="0.5" name="rpo_hours" placeholder="e.g., 1"></div>
+    <div><label class="label">Max tolerable downtime (hours)</label><input class="input" type="number" step="0.5" name="max_tolerable_downtime_hours" placeholder="e.g., 24"></div>
+    <div><label class="label">Dependencies</label><input class="input" name="dependencies" placeholder="e.g., ERP, Active Directory"></div>
+    <div><label class="label">Peak periods</label><input class="input" name="peak_periods" placeholder="e.g., Month-end, Q4"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2" placeholder="Brief description of the process and its business value"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Add process</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden;margin-bottom:32px;">
+  <table class="t">
+    <thead><tr>
+      <th>Name</th><th style="width:100px">Criticality</th><th style="width:80px">RTO (h)</th>
+      <th style="width:80px">RPO (h)</th><th style="width:80px">MTD (h)</th><th>Owner</th>
+      <th style="width:90px">Status</th><th style="width:60px"></th>
+    </tr></thead>
+    <tbody>
+      <% processes.forEach(p => { %>
+        <tr id="proc-<%= p.id %>">
+          <td><strong><%= p.name %></strong><% if (p.description) { %><br><span class="meta"><%= p.description %></span><% } %></td>
+          <td><span class="tag <%= p.criticality === 'critical' ? 'tag-danger' : p.criticality === 'high' ? 'tag-warn' : p.criticality === 'low' ? 'tag-neutral' : 'tag-warn' %>" style="<%= p.criticality === 'critical' ? 'background:#b91c1c;color:#fff;' : p.criticality === 'high' ? 'background:#ea580c;color:#fff;' : p.criticality === 'medium' ? 'background:#ca8a04;color:#fff;' : 'background:#16a34a;color:#fff;' %>"><%= p.criticality %></span></td>
+          <td class="num"><%= p.rto_hours != null ? p.rto_hours : '-' %></td>
+          <td class="num"><%= p.rpo_hours != null ? p.rpo_hours : '-' %></td>
+          <td class="num"><%= p.max_tolerable_downtime_hours != null ? p.max_tolerable_downtime_hours : '-' %></td>
+          <td class="text-secondary"><%= p.owner_name || '-' %></td>
+          <td><span class="status s-<%= p.status === 'active' ? 'open' : 'done' %>"><%= p.status %></span></td>
+          <td>
+            <button onclick="document.getElementById('editProc<%= p.id %>').classList.toggle('hidden')" class="btn btn-ghost" style="padding:2px 6px;font-size:12px;">Edit</button>
+          </td>
+        </tr>
+        <tr id="editProc<%= p.id %>" class="hidden">
+          <td colspan="8" style="background:var(--bg-muted);padding:12px;">
+            <form method="POST" action="/workspaces/<%= ws.id %>/bcp/processes/<%= p.id %>" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+              <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+              <div style="grid-column:1/3"><label class="label">Name</label><input class="input" name="name" value="<%= p.name %>" required></div>
+              <div><label class="label">Owner</label><input class="input" name="owner_name" value="<%= p.owner_name || '' %>"></div>
+              <div><label class="label">Criticality</label>
+                <select class="select" name="criticality">
+                  <option value="critical" <%= p.criticality==='critical'?'selected':'' %>>Critical</option>
+                  <option value="high" <%= p.criticality==='high'?'selected':'' %>>High</option>
+                  <option value="medium" <%= p.criticality==='medium'?'selected':'' %>>Medium</option>
+                  <option value="low" <%= p.criticality==='low'?'selected':'' %>>Low</option>
+                </select>
+              </div>
+              <div><label class="label">RTO (h)</label><input class="input" type="number" step="0.5" name="rto_hours" value="<%= p.rto_hours != null ? p.rto_hours : '' %>"></div>
+              <div><label class="label">RPO (h)</label><input class="input" type="number" step="0.5" name="rpo_hours" value="<%= p.rpo_hours != null ? p.rpo_hours : '' %>"></div>
+              <div><label class="label">MTD (h)</label><input class="input" type="number" step="0.5" name="max_tolerable_downtime_hours" value="<%= p.max_tolerable_downtime_hours != null ? p.max_tolerable_downtime_hours : '' %>"></div>
+              <div><label class="label">Dependencies</label><input class="input" name="dependencies" value="<%= p.dependencies || '' %>"></div>
+              <div><label class="label">Peak periods</label><input class="input" name="peak_periods" value="<%= p.peak_periods || '' %>"></div>
+              <div><label class="label">Status</label>
+                <select class="select" name="status">
+                  <option value="active" <%= p.status==='active'?'selected':'' %>>Active</option>
+                  <option value="retired" <%= p.status==='retired'?'selected':'' %>>Retired</option>
+                </select>
+              </div>
+              <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"><%= p.description || '' %></textarea></div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-primary">Save</button>
+                <button type="button" onclick="this.closest('tr').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+              </div>
+            </form>
+            <div style="text-align:right;margin-top:8px;">
+              <form method="POST" action="/workspaces/<%= ws.id %>/bcp/processes/<%= p.id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this process?')">
+                <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+                <button class="btn btn-ghost" style="color:#b91c1c;">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (processes.length === 0) { %>
+        <tr><td colspan="8" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+            <div class="empty-title">No business processes defined</div>
+            <div class="empty-sub">Start your Business Impact Analysis by cataloguing the processes that support your organisation. Identify RTOs, RPOs, and criticality to drive your continuity planning.</div>
+            <button onclick="document.getElementById('newProc').classList.toggle('hidden')" class="btn btn-primary">Add first process</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== PLANS ===== -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+  <h2 style="margin:0;">Continuity &amp; recovery plans</h2>
+  <button onclick="document.getElementById('newPlan').classList.toggle('hidden')" class="btn btn-primary">Create plan</button>
+</div>
+
+<div id="newPlan" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New continuity plan</h2></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/bcp/plans" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <div style="grid-column:1/3"><label class="label">Plan name</label><input class="input" name="name" required placeholder="e.g., IT Disaster Recovery Plan"></div>
+    <div><label class="label">Type</label>
+      <select class="select" name="plan_type">
+        <option value="bcp">Business Continuity (BCP)</option>
+        <option value="dr">Disaster Recovery (DR)</option>
+        <option value="crisis">Crisis Management</option>
+      </select>
+    </div>
+    <div><label class="label">Status</label>
+      <select class="select" name="status">
+        <option value="draft">Draft</option><option value="active">Active</option>
+        <option value="under_review">Under review</option><option value="retired">Retired</option>
+      </select>
+    </div>
+    <div><label class="label">Next review date</label><input class="input" type="date" name="next_review_date"></div>
+    <div><label class="label">Alternate site</label><input class="input" name="alternate_site" placeholder="e.g., DR site location"></div>
+    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2" placeholder="Purpose and scope of this plan"></textarea></div>
+    <div class="col-full"><label class="label">Key contacts</label><textarea class="textarea" name="key_contacts" rows="2" placeholder="Crisis team members and contact details"></textarea></div>
+    <div class="col-full"><label class="label">Recovery steps</label><textarea class="textarea" name="recovery_steps" rows="4" placeholder="Step-by-step recovery procedures"></textarea></div>
+    <div class="col-full"><button class="btn btn-primary">Create plan</button></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden;margin-bottom:24px;">
+  <table class="t">
+    <thead><tr>
+      <th>Name</th><th style="width:80px">Type</th><th style="width:90px">Status</th>
+      <th style="width:70px">Processes</th><th style="width:110px">Last reviewed</th>
+      <th style="width:110px">Next review</th><th style="width:100px">Last tested</th>
+      <th style="width:100px">Tests</th>
+    </tr></thead>
+    <tbody>
+      <% plans.forEach(p => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/bcp/plans/<%= p.id %>'">
+          <td><a href="/workspaces/<%= ws.id %>/bcp/plans/<%= p.id %>" class="link-muted" style="font-weight:500;"><%= p.name %></a></td>
+          <td class="text-secondary text-base" style="text-transform:uppercase;font-size:12px;"><%= p.plan_type %></td>
+          <td><span class="status s-<%= p.status === 'active' ? 'open' : p.status === 'draft' ? 'draft' : 'done' %>"><%= p.status %></span></td>
+          <td class="num"><%= p.linked_count %></td>
+          <td class="num meta"><%= p.last_reviewed_at ? p.last_reviewed_at.split('T')[0] : '-' %></td>
+          <td class="num meta"><% if (p.next_review_date && p.next_review_date < today) { %><span style="color:#b91c1c;font-weight:600;"><%= p.next_review_date %></span><% } else { %><%= p.next_review_date || '-' %><% } %></td>
+          <td class="num meta"><%= p.last_tested || '-' %></td>
+          <td>
+            <% if (p.tests_pass + p.tests_fail > 0) { %>
+              <span style="color:#16a34a;font-weight:500;"><%= p.tests_pass %> pass</span> / <span style="color:<%= p.tests_fail > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:500;"><%= p.tests_fail %> fail</span>
+            <% } else { %>
+              <span class="meta">No tests</span>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (plans.length === 0) { %>
+        <tr><td colspan="8" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="empty-title">No continuity plans yet</div>
+            <div class="empty-sub">Create recovery plans to cover your critical business processes. Link processes to plans and test regularly to satisfy A.5.29 and A.5.30.</div>
+            <button onclick="document.getElementById('newPlan').classList.toggle('hidden')" class="btn btn-primary">Create first plan</button>
+          </div>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>
