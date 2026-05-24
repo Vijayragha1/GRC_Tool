@@ -8,7 +8,11 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
+      # Required: set SESSION_SECRET and ISMS_MASTER_KEY in your .env or shell.
+      # Generate with: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ISMS_MASTER_KEY=${ISMS_MASTER_KEY}
+      - NODE_ENV=production
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

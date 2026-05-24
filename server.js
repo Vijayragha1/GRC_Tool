@@ -34,6 +34,41 @@ const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
 
 init();
+
+// ---------------------------------------------------------------------------
+// Startup secret validation
+// ---------------------------------------------------------------------------
+(function validateSecrets() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowInsecure = process.env.ALLOW_INSECURE_DEFAULTS === '1';
+
+  // SESSION_SECRET check
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'change-me-in-production') {
+    if (isProd && !allowInsecure) {
+      console.error('FATAL: SESSION_SECRET must be set to a strong random value in production.');
+      console.error('       Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+      process.exit(1);
+    }
+    console.warn('WARNING: SESSION_SECRET is not set or is insecure. Set SESSION_SECRET env var before deploying.');
+  }
+
+  // ISMS_MASTER_KEY check – if no env var and no key file, the encryption
+  // module will auto-generate one, which is fine for dev but not explicit
+  // enough for production.
+  if (!process.env.ISMS_MASTER_KEY) {
+    const keyFile = process.env.ISMS_KEY_FILE || path.join(__dirname, 'data', 'master.key');
+    const hasKeyFile = fs.existsSync(keyFile);
+    if (isProd && !allowInsecure && !hasKeyFile) {
+      console.error('FATAL: ISMS_MASTER_KEY env var is not set and no key file exists at ' + keyFile + '.');
+      console.error('       Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+      process.exit(1);
+    }
+    if (!hasKeyFile) {
+      console.warn('WARNING: ISMS_MASTER_KEY is not set. A key file will be auto-generated at ' + keyFile + '. Set ISMS_MASTER_KEY env var before deploying.');
+    }
+  }
+})();
+
 // Force master key generation eagerly so first request doesn't block.
 enc.masterKey();
 // Start scheduled job runner - every 60 minutes by default.
@@ -132,14 +167,28 @@ function resolveUploadPath(storedPath, firmId) {
 // stored in the session; currentUser returns the firm-owner of that tenant so
 // every existing firm_id-based query naturally scopes to the active tenant.
 function getActiveFirmId(req) {
+  const user = req.user || currentUser(req);
+  if (!user) {
+    const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
+    return first ? first.id : null;
+  }
+  // Firm users always operate within their own firm — session value is ignored.
+  if (user.user_type === 'firm') return user.firm_id;
+  // Client users: honour session value only if they have workspace membership
+  // in that firm, otherwise fall back to the first firm they belong to.
   const sessId = parseInt((req.session && req.session.active_firm_id) || 0, 10);
   if (sessId) {
-    const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(sessId);
-    if (exists) return sessId;
+    const hasMembership = db.prepare(
+      `SELECT 1 FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+       WHERE wm.user_id = ? AND w.firm_id = ?`
+    ).get(user.id, sessId);
+    if (hasMembership) return sessId;
   }
-  // Fall back to the lowest-id firm (the one created at first boot).
-  const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
-  return first ? first.id : null;
+  const fallback = db.prepare(
+    `SELECT w.firm_id FROM workspace_members wm INNER JOIN workspaces w ON w.id = wm.workspace_id
+     WHERE wm.user_id = ? LIMIT 1`
+  ).get(user.id);
+  return fallback ? fallback.firm_id : null;
 }
 
 function currentUser(req) {
@@ -157,6 +206,21 @@ function listAllFirms() {
   return db.prepare(`SELECT f.id, f.name, f.created_at,
     (SELECT COUNT(*) FROM workspaces w WHERE w.firm_id=f.id) AS workspace_count
     FROM firms f ORDER BY f.id`).all();
+}
+
+function listUserFirms(user) {
+  if (!user) return [];
+  if (user.user_type === 'firm') {
+    return db.prepare(`SELECT f.id, f.name, f.created_at,
+      (SELECT COUNT(*) FROM workspaces w WHERE w.firm_id=f.id) AS workspace_count
+      FROM firms f WHERE f.id = ?`).all(user.firm_id);
+  }
+  return db.prepare(`SELECT DISTINCT f.id, f.name, f.created_at,
+    (SELECT COUNT(*) FROM workspaces w2 WHERE w2.firm_id=f.id) AS workspace_count
+    FROM firms f
+    INNER JOIN workspaces w ON w.firm_id = f.id
+    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+    WHERE wm.user_id = ? ORDER BY f.id`).all(user.id);
 }
 
 // Paths that bypass requireAuth (login form, password-reset, accept-invite).
@@ -466,7 +530,8 @@ app.use((req, res, next) => {
   try {
     const firmId = getActiveFirmId(req);
     res.locals.activeFirm = firmId ? db.prepare('SELECT id, name FROM firms WHERE id=?').get(firmId) : null;
-    res.locals.allFirms = listAllFirms();
+    const u = req.user || currentUser(req);
+    res.locals.allFirms = listUserFirms(u);
   } catch (_) {
     res.locals.activeFirm = null;
     res.locals.allFirms = [];
@@ -1070,7 +1135,7 @@ require('./routes/tenants').register(app, {
   db, bcrypt,
   requireAuth,
   getActiveFirmId,
-  listAllFirms,
+  listUserFirms,
   withToast,
   projectRoot: __dirname,
 });
@@ -2804,8 +2869,7 @@ function normaliseTags(raw) {
     .join(', ');
 }
 
-app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
   if (!req.file) return redirectBack(req, res, 'Pick a file to upload', 'error');
   // Accept either a single iso_item_id (legacy: control wizard upload) OR
   // multiple iso_item_id values (new: evidence library multi-link upload).
@@ -2855,8 +2919,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, upload.sin
 // Bulk upload - multiple files at once with shared metadata. Each file becomes
 // an independent evidence row; all share the same period / valid_from / valid_until
 // and link to the same set of selected controls.
-app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, upload.array('files', 50), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.array('files', 50), (req, res) => {
   if (!req.files || !req.files.length) return redirectBack(req, res, 'Pick at least one file', 'error');
   const isoIds = parseFormArray(req.body.iso_item_id);
   const primaryId = isoIds[0] || null;
@@ -2900,8 +2963,7 @@ app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, uploa
 // Supersede an existing evidence file with a new version. Old row is kept
 // for audit trail (superseded_at + superseded_by_id), all links are copied
 // to the new row, and the new row records its predecessor in supersedes_id.
-app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
   const old = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!old) return res.status(404).send('Not found');
   if (!req.file) return redirectBack(req, res, 'Pick the new version of the file', 'error');
@@ -3435,6 +3497,8 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
 
 // Tier 1.1 - Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
 app.post('/workspaces/:wsId/risks/:id/actions', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const { title, description, owner_name, due_date } = req.body;
   if (!title || !title.trim()) return redirectBack(req, res);
   db.prepare(`INSERT INTO risk_treatment_actions
@@ -3658,8 +3722,7 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
   res.send(buf);
 });
 
-app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
   const { title, description, asset_id, threat, vulnerability, likelihood, impact,
           treatment, owner_name, status, residual_likelihood, residual_impact } = req.body;
   db.prepare(`UPDATE risks SET title=?, description=?, asset_id=?, threat=?, vulnerability=?,
@@ -3676,8 +3739,9 @@ app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, (req, res
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const { iso_item_id } = req.body;
   if (iso_item_id) {
     try {
@@ -3693,8 +3757,9 @@ app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, (req
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   db.prepare('DELETE FROM risk_controls WHERE risk_id = ? AND iso_item_id = ?')
     .run(req.params.id, req.body.iso_item_id);
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
@@ -3778,11 +3843,10 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   });
 });
 
-app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, res, nextMw) => {
+app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
   // Reserved literal sub-routes (snapshot, auto-justify, bulk, custom-controls, metadata)
   // must fall through to their own handlers.
   if (['snapshot','auto-justify','snapshots','bulk','custom-controls','metadata'].includes(req.params.isoId)) return nextMw();
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   getOrCreateState(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
   db.prepare(`UPDATE control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
@@ -3802,8 +3866,7 @@ app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, (req, re
 //   rows = JSON array of { iso_item_id, applicability, status,
 //                          inclusion_justification, exclusion_justification }
 // All updates run in a single transaction; the response is 200 with the count.
-app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   let rows = [];
   try { rows = JSON.parse(req.body.rows || '[]'); } catch (_) { rows = []; }
   if (!Array.isArray(rows) || !rows.length) {
@@ -3992,8 +4055,7 @@ app.get('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => 
   res.render('tasks', { user: req.user, ws: req.workspace, tasks, filter, wsUsers });
 });
 
-app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const { title, description, iso_item_id, assignee_id, due_date } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, assignee_id, due_date, created_by)
@@ -4004,8 +4066,7 @@ app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) =>
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/tasks', 'Task created'));
 });
 
-app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
   const { status, assignee_id, due_date, title, description } = req.body;
   const sets = []; const vals = [];
   if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
@@ -4304,7 +4365,7 @@ app.post('/workspaces/:wsId/templates/:id(\\d+)/adopt', requireAuth, requireWork
 
 app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
   const { template_id, document_owner, approval_authority, review_period } = req.body;
-  const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ?').get(template_id);
+  const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ? AND (is_system=1 OR firm_id=?)').get(template_id, req.workspace.firm_id);
   if (!tpl) return redirectBack(req, res);
   const result = adoptTemplateForWorkspace(tpl, req.workspace, req.user, req.entityScopeId, {
     document_owner, approval_authority, review_period
@@ -4632,8 +4693,7 @@ app.get('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) =>
   res.render('audits', { user: req.user, ws: req.workspace, audits });
 });
 
-app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { title, scope, audit_date, auditor_name } = req.body;
   if (!title) return redirectBack(req, res);
   const id = db.prepare(`INSERT INTO audits (workspace_id, title, scope, audit_date, auditor_name, created_by)
@@ -4658,8 +4718,7 @@ app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res
   res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples });
 });
 
-app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { title, scope, audit_date, auditor_name, status, summary } = req.body;
   db.prepare(`UPDATE audits SET title=?, scope=?, audit_date=?, auditor_name=?, status=?, summary=?
               WHERE id=? AND workspace_id=?`)
@@ -4772,8 +4831,7 @@ app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace
   res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
 });
 
-app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const { iso_item_id, finding_type, description, severity } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_findings (audit_id, iso_item_id, finding_type, description, severity)
@@ -4783,8 +4841,7 @@ app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace,
   res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
 });
 
-app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   const f = db.prepare('SELECT * FROM audit_findings WHERE id = ? AND audit_id = ?')
     .get(req.params.fId, req.params.id);
   if (!f) return redirectBack(req, res);
@@ -4909,8 +4966,7 @@ function compute932InputPack(wsId) {
   };
 }
 
-app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   const { meeting_date, attendees } = req.body;
   const pack = compute932InputPack(req.workspace.id);
   const id = db.prepare(`INSERT INTO mrms
@@ -4993,8 +5049,7 @@ app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) 
   });
 });
 
-app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) => {
-  if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
+app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
   const f = ['meeting_date','attendees','status','context_changes','prior_actions_status',
              'performance_review','feedback_interested_parties','risk_treatment_status',
              'improvement_opportunities','decisions','action_items'];
@@ -6126,7 +6181,7 @@ app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorks
   const sev = inc.severity === 'critical' || inc.severity === 'high' ? 'major' : 'minor';
   const ncId = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, source_ref, description, severity)
     VALUES (?, ?, 'incident', ?, ?, ?)`).run(req.workspace.id, inc.title, 'Incident #' + inc.id, inc.description, sev).lastInsertRowid;
-  db.prepare(`UPDATE incidents SET nonconformity_id=? WHERE id=?`).run(ncId, inc.id);
+  db.prepare(`UPDATE incidents SET nonconformity_id=? WHERE id=? AND workspace_id=?`).run(ncId, inc.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
@@ -6204,7 +6259,7 @@ function recomputeSupplierRisk(supplierId, wsId) {
   if (!s) return;
   const inherent = computeInherentRisk(s);
   const residual = computeResidualRisk(supplierId, inherent);
-  db.prepare(`UPDATE suppliers SET inherent_risk_score=?, residual_risk_score=? WHERE id=?`).run(inherent, residual, supplierId);
+  db.prepare(`UPDATE suppliers SET inherent_risk_score=?, residual_risk_score=? WHERE id=? AND workspace_id=?`).run(inherent, residual, supplierId, wsId);
 }
 
 function tierFromRisk(score) {
@@ -6269,8 +6324,8 @@ app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, (req, res) 
 
   recomputeSupplierRisk(id, req.workspace.id);
   // Auto-tier from inherent risk
-  const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=?`).get(id);
-  db.prepare(`UPDATE suppliers SET tier=? WHERE id=?`).run(tierFromRisk(cur.inherent_risk_score), id);
+  const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(id, req.workspace.id);
+  db.prepare(`UPDATE suppliers SET tier=? WHERE id=? AND workspace_id=?`).run(tierFromRisk(cur.inherent_risk_score), id, req.workspace.id);
 
   logAction(req.user.id, req.workspace.id, 'create_supplier', 'supplier', id, { name });
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/vendors/' + id, 'Supplier added'));
@@ -6366,10 +6421,10 @@ app.get('/workspaces/:wsId/vendors/:id/documents/:docId/download', requireAuth, 
 });
 
 app.post('/workspaces/:wsId/vendors/:id/documents/:docId/delete', requireAuth, requireWorkspace, (req, res) => {
-  const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=?`).get(req.params.docId, req.params.id);
+  const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=? AND workspace_id=?`).get(req.params.docId, req.params.id, req.workspace.id);
   if (d) {
     if (d.stored_path) { const fp = resolveUploadPath(d.stored_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); }
-    db.prepare(`DELETE FROM supplier_documents WHERE id=?`).run(d.id);
+    db.prepare(`DELETE FROM supplier_documents WHERE id=? AND workspace_id=?`).run(d.id, req.workspace.id);
     recomputeSupplierRisk(req.params.id, req.workspace.id);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=documents');
@@ -6389,7 +6444,7 @@ app.post('/workspaces/:wsId/vendors/:id/subprocessors', requireAuth, requireWork
 });
 
 app.post('/workspaces/:wsId/vendors/:id/subprocessors/:spId/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`DELETE FROM supplier_subprocessors WHERE id=? AND supplier_id=?`).run(req.params.spId, req.params.id);
+  db.prepare(`DELETE FROM supplier_subprocessors WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.spId, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=subprocessors');
 });
 
@@ -6397,7 +6452,8 @@ app.post('/workspaces/:wsId/vendors/:id/subprocessors/:spId/delete', requireAuth
 app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace, (req, res) => {
   if (req.workspace.role === 'reviewer') return res.status(403).send('Forbidden');
   const { review_date, reviewer, outcome, findings, action_items, next_review_date } = req.body;
-  const supplier = db.prepare(`SELECT inherent_risk_score, residual_risk_score FROM suppliers WHERE id=?`).get(req.params.id);
+  const supplier = db.prepare(`SELECT inherent_risk_score, residual_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!supplier) return res.status(404).send('Supplier not found');
   db.prepare(`INSERT INTO supplier_reviews (workspace_id, supplier_id, review_date, reviewer, outcome, inherent_risk, residual_risk, findings, action_items, next_review_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     req.workspace.id, req.params.id, review_date || null, reviewer || null,
@@ -6406,7 +6462,7 @@ app.post('/workspaces/:wsId/vendors/:id/reviews', requireAuth, requireWorkspace,
   );
   // Update supplier next_review_date and last_assessed
   if (next_review_date) {
-    db.prepare(`UPDATE suppliers SET next_review_date=?, last_assessed=? WHERE id=?`).run(next_review_date, review_date || new Date().toISOString().split('T')[0], req.params.id);
+    db.prepare(`UPDATE suppliers SET next_review_date=?, last_assessed=? WHERE id=? AND workspace_id=?`).run(next_review_date, review_date || new Date().toISOString().split('T')[0], req.params.id, req.workspace.id);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=reviews');
 });
@@ -6426,7 +6482,7 @@ app.post('/workspaces/:wsId/vendors/:id/notes', requireAuth, requireWorkspace, (
 });
 
 app.post('/workspaces/:wsId/vendors/:id/notes/:noteId/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`DELETE FROM supplier_notes WHERE id=? AND supplier_id=?`).run(req.params.noteId, req.params.id);
+  db.prepare(`DELETE FROM supplier_notes WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.noteId, req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=notes');
 });
 
@@ -6540,7 +6596,7 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
 });
 
 app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`DELETE FROM supplier_questionnaires WHERE id=? AND supplier_id=?`).run(req.params.qId, req.params.id);
+  db.prepare(`DELETE FROM supplier_questionnaires WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.qId, req.params.id, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=questionnaires');
 });
@@ -7798,6 +7854,8 @@ app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/risks/:id/treatments/:tId', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   const f = ['title','description','owner_name','due_date','completed_date','status','cost_estimate','expected_residual_l','expected_residual_i','iso_item_id'];
   const set = []; const vals = [];
   f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
@@ -7811,6 +7869,8 @@ app.post('/workspaces/:wsId/risks/:id/treatments/:tId', requireAuth, requireWork
 });
 
 app.post('/workspaces/:wsId/risks/:id/treatments/:tId/delete', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
   db.prepare('DELETE FROM risk_treatments WHERE id=? AND risk_id=?').run(req.params.tId, req.params.id);
   res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}/treatments`);
 });
@@ -10363,10 +10423,10 @@ app.post('/workspaces/:wsId/vendors/:id/termination/start', requireAuth, require
 
 app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const done = req.body.done === '1' ? 1 : 0;
-  db.prepare(`UPDATE supplier_termination_items SET done=?, done_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END, evidence=?, notes=? WHERE id=? AND supplier_id=?`)
-    .run(done, done, req.body.evidence || null, req.body.notes || null, req.params.itemId, req.params.id);
+  db.prepare(`UPDATE supplier_termination_items SET done=?, done_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END, evidence=?, notes=? WHERE id=? AND supplier_id=? AND workspace_id=?`)
+    .run(done, done, req.body.evidence || null, req.body.notes || null, req.params.itemId, req.params.id, req.workspace.id);
   // If all items done, mark terminated
-  const remaining = db.prepare('SELECT COUNT(*) c FROM supplier_termination_items WHERE supplier_id=? AND done=0').get(req.params.id).c;
+  const remaining = db.prepare('SELECT COUNT(*) c FROM supplier_termination_items WHERE supplier_id=? AND workspace_id=? AND done=0').get(req.params.id, req.workspace.id).c;
   if (remaining === 0) {
     db.prepare(`UPDATE suppliers SET lifecycle_stage='terminated', terminated_at=CURRENT_TIMESTAMP, data_return_completed=1 WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
   }
@@ -11070,6 +11130,8 @@ app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace
 });
 
 app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Audit not found');
   const { iso_item_id, description, recommendation } = req.body;
   if (!description) return redirectBack(req, res);
   db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, recommendation) VALUES (?, ?, ?, ?)`)
@@ -11078,7 +11140,7 @@ app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorksp
 });
 
 app.post('/workspaces/:wsId/audits/observations/:obsId/close', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
-  db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=?`).run(req.params.obsId);
+  db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=? AND audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`).run(req.params.obsId, req.workspace.id);
   redirectBack(req, res);
 });
 

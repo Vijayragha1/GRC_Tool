@@ -61,24 +61,9 @@ function buildOnboardingSteps(db) {
   ];
 }
 
-// Picks a target workspace for the "first-ws*" hrefs in the onboarding
-// wizard. Earlier this was always `ORDER BY id LIMIT 1` (lowest id),
-// which felt random to firms with multiple engagements - the wizard
-// would deep-link into whichever workspace had the smallest id, often
-// stale demo or test data. Resolution order is now:
-//   1. The workspace the user was last looking at (req.session.last_ws_id)
-//   2. The most recently CREATED workspace in this firm
-//   3. /dashboard if the firm has no workspaces at all
-// The caller passes lastWsId from req.session.last_ws_id (may be null).
-function resolveOnboardingHref(db, href, firmId, lastWsId) {
+function resolveOnboardingHref(db, href, firmId) {
   if (!href.startsWith('first-ws')) return href;
-  let ws = null;
-  if (lastWsId) {
-    ws = db.prepare(`SELECT id FROM workspaces WHERE id=? AND firm_id=?`).get(lastWsId, firmId);
-  }
-  if (!ws) {
-    ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(firmId);
-  }
+  const ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1`).get(firmId);
   if (!ws) return '/dashboard';
   const subpath = href.replace('first-ws', '').replace(/^-/, '/');
   if (!subpath || subpath === '') return `/workspaces/${ws.id}#workspace-settings`;
@@ -86,11 +71,11 @@ function resolveOnboardingHref(db, href, firmId, lastWsId) {
 }
 
 function register(app, deps) {
-  const { db, bcrypt, requireAuth, getActiveFirmId, listAllFirms, withToast, projectRoot } = deps;
+  const { db, bcrypt, requireAuth, getActiveFirmId, listUserFirms, withToast, projectRoot } = deps;
 
   // ---------- TENANTS ----------
   app.get('/tenants', requireAuth, (req, res) => {
-    const firms = listAllFirms();
+    const firms = listUserFirms(req.user);
     const activeFirmId = getActiveFirmId(req);
     res.render('tenants', { user: req.user, firms, activeFirmId });
   });
@@ -102,7 +87,7 @@ function register(app, deps) {
     const placeholderEmail = `owner+firm${fid}@local`;
     const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
     db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
-                VALUES (?, ?, ?, 'firm', ?, 'manager', 1)`).run(placeholderEmail, placeholderHash, `${name} manager`, fid);
+                VALUES (?, ?, ?, 'firm', ?, 'owner', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, fid);
     const tenantDir = path.join(projectRoot, 'uploads', `firm_${fid}`);
     try { fs.mkdirSync(tenantDir, { recursive: true }); } catch (_) {}
     db.prepare(`INSERT INTO tenant_onboarding (firm_id, current_step) VALUES (?, 1)`).run(fid);
@@ -112,13 +97,31 @@ function register(app, deps) {
 
   app.post('/tenants/:id/switch', requireAuth, (req, res) => {
     const fid = parseInt(req.params.id, 10);
-    const exists = db.prepare('SELECT id FROM firms WHERE id=?').get(fid);
-    if (exists) req.session.active_firm_id = fid;
+    // Tenant isolation: firm users can only switch to their own firm;
+    // client users can only switch to firms where they have workspace membership.
+    if (req.user.user_type === 'firm') {
+      if (req.user.firm_id !== fid) return res.status(403).send('Forbidden');
+    } else {
+      const hasMembership = db.prepare(
+        `SELECT 1 FROM workspace_members wm
+         INNER JOIN workspaces w ON w.id = wm.workspace_id
+         WHERE wm.user_id = ? AND w.firm_id = ?`
+      ).get(req.user.id, fid);
+      if (!hasMembership) return res.status(403).send('Forbidden');
+    }
+    req.session.active_firm_id = fid;
     res.redirect('/dashboard');
   });
 
   app.post('/tenants/:id/rename', requireAuth, (req, res) => {
     const fid = parseInt(req.params.id, 10);
+    // Tenant isolation: only firm-type managers of this specific firm can rename it.
+    if (req.user.user_type !== 'firm' || req.user.firm_id !== fid) {
+      return res.status(403).send('Forbidden');
+    }
+    if (req.user.firm_role !== 'manager' && req.user.firm_role !== 'owner') {
+      return res.status(403).send('Forbidden');
+    }
     const name = (req.body.name || '').trim();
     if (!name) return res.redirect('/tenants');
     db.prepare('UPDATE firms SET name=? WHERE id=?').run(name, fid);
@@ -129,6 +132,13 @@ function register(app, deps) {
   // pattern as workspace delete: enumerate firm_id-bearing tables and clear them.
   app.post('/tenants/:id/delete', requireAuth, (req, res) => {
     const fid = parseInt(req.params.id, 10);
+    // Tenant isolation: only firm-type managers of this specific firm can delete it.
+    if (req.user.user_type !== 'firm' || req.user.firm_id !== fid) {
+      return res.status(403).send('Forbidden');
+    }
+    if (req.user.firm_role !== 'manager' && req.user.firm_role !== 'owner') {
+      return res.status(403).send('Forbidden');
+    }
     const firm = db.prepare('SELECT id, name FROM firms WHERE id=?').get(fid);
     if (!firm) return res.redirect(withToast('/tenants', 'Tenant not found', 'error'));
 
@@ -198,11 +208,10 @@ function register(app, deps) {
       db.prepare(`INSERT INTO tenant_onboarding (firm_id) VALUES (?)`).run(firmId);
       onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
     }
-    const lastWsId = (req.session && req.session.last_ws_id) || null;
     const stepStates = ONBOARDING_STEPS.map(s => ({
       ...s,
       done: !!s.isDone(firmId),
-      href: resolveOnboardingHref(db, s.href, firmId, lastWsId)
+      href: resolveOnboardingHref(db, s.href, firmId)
     }));
     const completedCount = stepStates.filter(s => s.done).length;
     res.render('onboarding', {
