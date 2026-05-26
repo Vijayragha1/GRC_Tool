@@ -38,10 +38,19 @@ systemctl start docker
 echo "==> Installing Nginx (reverse proxy)..."
 apt-get install -y nginx certbot python3-certbot-nginx
 
-echo "==> Cloning application..."
-if [ -d "$APP_DIR" ]; then
+echo "==> Setting up application..."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/../server.js" ]; then
+  # Running from inside the cloned repo — copy to APP_DIR if needed
+  REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  if [ "$REPO_ROOT" != "$APP_DIR" ]; then
+    if [ ! -d "$APP_DIR" ]; then
+      cp -a "$REPO_ROOT" "$APP_DIR"
+    fi
+  fi
+elif [ -d "$APP_DIR" ]; then
   echo "    $APP_DIR already exists, pulling latest..."
-  cd "$APP_DIR" && git pull origin main
+  cd "$APP_DIR" && git pull
 else
   git clone "$REPO_URL" "$APP_DIR"
 fi
