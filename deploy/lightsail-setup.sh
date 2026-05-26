@@ -66,6 +66,18 @@ if [ ! -f "$ENV_FILE" ]; then
   SESSION_SECRET=$(openssl rand -hex 48)
   ISMS_MASTER_KEY=$(openssl rand -hex 48)
 
+  # Prompt for initial admin credentials
+  read -rp "Enter admin email [admin@example.com]: " ADMIN_EMAIL
+  ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
+  read -rp "Enter admin name [Admin]: " ADMIN_NAME
+  ADMIN_NAME="${ADMIN_NAME:-Admin}"
+  while true; do
+    read -rsp "Enter admin password (min 8 chars): " ADMIN_PW
+    echo
+    if [ "${#ADMIN_PW}" -ge 8 ]; then break; fi
+    echo "    Password must be at least 8 characters. Try again."
+  done
+
   cat > "$ENV_FILE" <<ENVEOF
 # GRC Tool — production environment
 NODE_ENV=production
@@ -74,6 +86,11 @@ PORT=3000
 # Required secrets (auto-generated — keep safe, back up separately)
 SESSION_SECRET=${SESSION_SECRET}
 ISMS_MASTER_KEY=${ISMS_MASTER_KEY}
+
+# Initial admin account (used on first boot only, can be removed after)
+INITIAL_ADMIN_EMAIL=${ADMIN_EMAIL}
+INITIAL_ADMIN_NAME=${ADMIN_NAME}
+INITIAL_ADMIN_PASSWORD=${ADMIN_PW}
 
 # Optional: Email integration (uncomment and configure)
 # RESEND_API_KEY=
