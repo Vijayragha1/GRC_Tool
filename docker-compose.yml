@@ -6,12 +6,10 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       - PORT=3000
-      # Required: set SESSION_SECRET and ISMS_MASTER_KEY in your .env or shell.
-      # Generate with: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-      - SESSION_SECRET=${SESSION_SECRET}
-      - ISMS_MASTER_KEY=${ISMS_MASTER_KEY}
       - NODE_ENV=production
     volumes:
       - ./data:/app/data
