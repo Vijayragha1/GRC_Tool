@@ -45,11 +45,13 @@ A senior consultant runs a kickoff from muscle memory. A junior reinvents it eac
 
 ### Firm content library
 
-Lives at `/firm/library`. The firm's own curated content, separate from the shipped defaults, that gets cloned into each new engagement. Today: a **firm risk library** (search/filter by domain or sector, add/edit/delete, re-seed from starter set). New firms auto-get the 40-risk starter library copied in as a seed; the firm then customises (sector tweaks, internal additions) without touching code. The "+ Firm library" button on a workspace's risk register clones every entry in (idempotent - duplicates skipped). Stubs for policy templates and control narratives are visible on the hub.
+Lives at `/firm/library`. The firm's own curated content, separate from the shipped defaults, that gets cloned into each new engagement. Today: a **firm risk library** (search/filter by domain or sector, add/edit/delete, re-seed from starter set). New firms auto-get the 59-risk starter library copied in as a seed - ISO 27001 + AI/ML (shadow AI, prompt injection, training-data leakage, model drift, automation bias, third-party model API change) + software supply chain (npm/PyPI compromise, build-pipeline tampering, stolen dev credentials, container CVEs, OSS licence) + cloud configuration (IAM, public buckets, KMS rotation, public mgmt plane, multi-account isolation) + regulatory change (EU AI Act, DORA, NIS2, India DPDP, sector-specific). The firm then customises (sector tweaks, internal additions) without touching code. The "+ Firm library" button on a workspace's risk register clones every entry in (idempotent - duplicates skipped). Stubs for policy templates and control narratives are visible on the hub.
 
 ### Gap assessment
 
 Walks all 25 main-body clauses + 93 Annex A controls in audit order. Per-item Yes / Partial / No diagnostic questions compute a status hint; you set the final status. Append-only history snapshot per save. Heatmap by Annex A theme (Organizational / People / Physical / Technological). Trend chart of average maturity per theme across passes. Re-engagement orientation panel showing what changed since the last pass closed (new evidence, NCs, controls touched, evidence superseded).
+
+Each item also carries a **`minimum_certifiable` MVP target** - 2-4 sentences describing the smallest version that will still pass Stage 2, rendered as a green-tinted tile alongside "What good looks like" so a consultant on a small client has an explicit floor. Covers all 118 items.
 
 ### Statement of Applicability
 
@@ -83,6 +85,28 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 `/workspaces/:id/deliverables`. One canonical home for every export this workspace produces, grouped semantically: for the certification body (audit pack PDF, companion ZIP, readiness pack), for internal stakeholders (gap report DOCX, RTP DOCX, recommendations DOCX, post-assessment summary DOCX), and raw data (SoA CSV, risks CSV, assets CSV, ISO 42001 SoA CSV if framework enabled). Each row has a format chip in semantic colour, a one-line description, and a single download button.
 
+### Review workflow + in-app comments
+
+Threaded comments on every control assessment (`views/partials/comments_thread.ejs`) with `@mention` hints and inline @-mention rendering. Any consultant can **flag a control for senior review** with a reason; the row tags `review_requested` and a reviewer takes action (approve / send back / dismiss) from a cross-framework **`/workspaces/:id/review-queue`** with KPIs and status filters. Reviewer-action events log to the audit trail. Works the same on ISO 27001 and ISO 42001.
+
+### ISMS performance metrics + feed to MRM
+
+`/workspaces/:id/metrics`. One dashboard pulling the numbers a clause 9.1 monitoring + 9.3 management-review session actually needs: implementation %, evidence coverage %, NC closure rate (last 90 / 180 days), risk-acceptance velocity, audit findings open / closed, MRM action-closure rate, document review-age distribution. Each tile has a one-click **"feed into next MRM"** action that appends the snapshot (with timestamp) into the upcoming MRM's performance-review input - so the 9.3.2(c) field isn't a blank prompt at MRM time.
+
+### Evidence coverage matrix
+
+`/workspaces/:id/evidence-coverage`. One row per Annex A control, with: applicability, status, evidence count, last-evidence date, linked-policy count, days-since-last-evidence. Highlights "Implemented with 0 evidence" rows in red - the most common Stage 2 finding. CSV export at `/evidence-coverage.csv` for the auditor or the engagement lead's followup.
+
+### Policy adoption dashboard
+
+`/workspaces/:id/policy-adoption`. For each mandatory + expected document template, shows whether it's been adopted in this workspace, its current status (draft / pending review / approved), version, owner, last review date, and the count of controls it covers. The "still missing" panel surfaces the templates the workspace hasn't adopted yet.
+
+### Training, competence, communication (Clauses 7.2 / 7.3 / 7.4)
+
+- **Training tracker** at `/workspaces/:id/training` - courses (name, duration, validity months, required-for roles, optional quiz with passing score, ISO control ref) + records (assigned / due / completed / score / status). Completion KPI, overdue list, per-role coverage. Maps to A.6.3 + Clause 7.3.
+- **Competence matrix** at `/workspaces/:id/competence` - roles with their required competences, plus per-person records (certificate / experience / training-record evidence, recorded-at, expires-on). Surfaces gaps. Maps to Clause 7.2.
+- **Communication plan** at `/workspaces/:id/communication-plan` - what / audience / channel / frequency / owner / internal vs external / last-sent / next-due / trigger event. Overdue and "due soon" rows highlight on the dashboard. Maps to Clause 7.4.
+
 ### Email integration
 
 `/admin/email` (Manager-only). Per-firm branded transactional mail — `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. The status strip at the top reflects whichever provider is actually active.
@@ -114,7 +138,7 @@ Six roles, three on the firm side, three on the client side. Defined in [lib/rba
 Per-user permission overrides live at `/workspaces/:id/access` — a Manager / Sr consultant / Client owner can grant or revoke any of the ~50 individual permissions on top of the role baseline, per workspace, with an audit-trail reason field.
 
 **Provisioning surfaces:**
-- `/admin/users` (Manager-only) — firm-wide. Invite or create firm consultants; invite client-side users scoped to a specific workspace.
+- `/admin/users` (Manager-only) — firm-wide. Invite or create firm consultants; invite client-side users scoped to a specific workspace. **Inline firm-role edit** (dropdown per row, with last-active-manager + self-edit guards) and deactivate / reactivate per row.
 - `/workspaces/:id/team` (any firm user) — per-engagement. Pick the lead consultant, add other firm consultants on the engagement, invite client owner / ISMS manager / contributors.
 
 **Duplicate detection** on invites: an active account → inline "Send password reset instead" button; a deactivated account → inline "Reactivate" button; a pending invitation → silently revoked and replaced with a fresh one. No dead-end errors.
@@ -147,11 +171,13 @@ The PDF Audit Pack is the auditor-facing deliverable. The readiness pack is its 
 
 ### Audit-grade content for every clause and control
 
-All 118 items written up in [data/iso-content.js](data/iso-content.js): purpose, what good looks like, where it usually goes wrong, evidence to gather, scoping notes, maturity ladder. Edits go in the file and sync into the database on boot.
+All 118 items written up in [data/iso-content.js](data/iso-content.js): purpose, what good looks like, **minimum certifiable** (smallest version that will still pass Stage 2), where it usually goes wrong, evidence to gather, scoping notes, maturity ladder. Edits go in the file and sync into the database on boot.
+
+**Provenance + staleness gate.** [data/content-meta.js](data/content-meta.js) records what each content source was last reviewed against (specific standard editions, amendments, IAF guidance) and a next-review date. `npm run content-staleness` walks every source, flags overdue + due-soon items, and exits non-zero if anything is overdue - drop it into CI so the content can't silently drift past the standard it claims to cover. Per-entry overrides supported.
 
 ### Other modules
 
-Asset register · risk register with starter library of 40 ISO 27001 risks · risk methodology (configurable scales / criteria) · document management with WYSIWYG editor + DOCX export · internal audit programme with **SoA-driven checklist generator** (one observation per applicable control, with auditor-norm sample-size hints, linked-policy / linked-evidence counts, and a finding-wording template — alongside the existing category-based generator) · management review with the full **6-of-6 Clause 9.3.2 inputs auto-populated on creation** (a–prior actions / b–context changes / c–performance / d–interested-party feedback / e–risk treatment / f–improvements) and a preview panel on the create form so the consultant sees exactly what will be auto-filled · nonconformities + corrective actions · incidents · suppliers with risk tiering · tasks · compliance calendar · 168-term glossary (with inline-expand on the index plus deep-link detail pages) · cross-client at-risk dashboard with overdue / due-this-week roll-up. Activity log has tabs for Log / Timeline / Anomalies / Verify (hash-chain integrity). Gap-assessment wizard has a left-rail **theme-jump navigator** with per-theme completion meters so the consultant can bounce between Clauses / A.5 / A.6 / A.7 / A.8 instead of walking 118 items linearly.
+Asset register · risk register with 59-entry starter library covering ISO 27001 + AI/ML + supply chain + cloud + regulatory change · risk methodology (configurable scales / criteria) · risk-acceptance DOCX export (clause 6.1.3.g audit artefact) · document management with WYSIWYG editor + DOCX export + **review-due snooze with audit-trailed reason** · internal audit programme with **SoA-driven checklist generator** (one observation per applicable control, with auditor-norm sample-size hints, linked-policy / linked-evidence counts, and a finding-wording template — alongside the existing category-based generator) plus an **inline checklist UI**: per-row auditor-notes textarea + save, filter pills (All / Clauses / A.5 / A.6 / A.7 / A.8) with live counts, **promote-to-finding** form (type + severity + description that defaults to the auditor's notes), mark-closed / reopen, and a **Clear open items** reset. Both generators dedupe — re-running doesn't double-insert. · management review with the full **6-of-6 Clause 9.3.2 inputs auto-populated on creation** (a–prior actions / b–context changes / c–performance / d–interested-party feedback / e–risk treatment / f–improvements) and a preview panel on the create form so the consultant sees exactly what will be auto-filled · nonconformities + corrective actions · incidents · suppliers with risk tiering · tasks · compliance calendar (training, comms, competence, supplier reviews, BCP, ISO 42001 cert woven in) · 168-term glossary (with inline-expand on the index plus deep-link detail pages) · cross-client at-risk dashboard with overdue / due-this-week roll-up. Activity log has tabs for Log / Timeline / Anomalies / Verify (hash-chain integrity). Gap-assessment wizard has a left-rail **theme-jump navigator** with per-theme completion meters so the consultant can bounce between Clauses / A.5 / A.6 / A.7 / A.8 instead of walking 118 items linearly.
 
 ### Multitenancy + security
 
@@ -261,15 +287,30 @@ PORT=3001 npm start            # macOS / Linux
 $env:PORT=3001; npm start      # PowerShell
 ```
 
+### Demo data
+
+To see the tool with realistic content rather than an empty database:
+
+```bash
+node scripts/seed-realistic-engagements.js
+```
+
+Creates 5 demo accounts (manager / two senior consultants / consultant / client owner, with cross-engagement role assignments) and two client workspaces:
+- **Apex Manufacturing Ltd.** at 100% implementation - 93/93 controls Implemented, every control has evidence, all NCs closed, two internal audits + two MRMs with everything actioned, full training / competence / supplier records.
+- **Stellar Logistics PLC** at ~60% implementation - 57 / 27 / 9 (Implemented / Partial / Not Impl), mid-flight internal audit with open findings, mixed training and supplier review state.
+
+All demo accounts share password `12345678`. **Demo-only - do not run this seed on a production database.** Idempotent: re-running wipes the prior demo workspaces by `client_name` before re-seeding.
+
 ## Editing the content
 
 | File | What's in it |
 |---|---|
-| [data/iso-content.js](data/iso-content.js) | Per-clause / control writeups |
+| [data/iso-content.js](data/iso-content.js) | Per-clause / control writeups (118 items) - purpose / WGLT / `minimum_certifiable` MVP target / pitfalls / evidence / scoping notes / maturity ladder |
 | [data/assessment-questions.js](data/assessment-questions.js) | Diagnostic questions per item |
 | [data/glossary.js](data/glossary.js) | 168 GRC / ISO terms with cross-references |
-| [data/risk-library.js](data/risk-library.js) | Starter risks |
+| [data/risk-library.js](data/risk-library.js) | 59 starter risks (ISO 27001 + AI/ML + supply chain + cloud + regulatory change) |
 | [data/policy-templates*.js](data/) | Document templates |
+| [data/content-meta.js](data/content-meta.js) | Review cadence + provenance per source. `npm run content-staleness` walks this and fails CI on overdue content. |
 
 Edits go in the file. Restart the server - the content sync runs at boot.
 
@@ -299,13 +340,11 @@ npm run test:browser    # puppeteer crawler - every sidebar route, every button
 
 Deliberately out of scope. The tool is consultant-side; anything client-ops belongs in the client's own systems.
 
-- Training records - auditors look at the awareness programme and a sample of staff, not your LMS
 - Phishing-sim tracking - not part of any cert audit
 - Document acknowledgement campaigns - paper exercise
 - AI-assisted assessment / auto-classification
 - Real-time integrations with Microsoft 365 / Google Workspace / cloud providers
-- Multi-framework crosswalks (SOC 2 / NIST CSF / GDPR)
-- KPI dashboards beyond what objectives + monitoring naturally produce
+- Full LMS replacement - the training tracker captures completion records for clause 7.3 / A.6.3 evidence but isn't an authoring platform
 
 ## What's still open
 
@@ -337,7 +376,8 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   ├── intake-questions.js         # 25-question scoping questionnaire
 │   ├── engagement-plan.js          # 12-week project plan template
 │   ├── playbooks.js                # Kickoff / scoping / risk workshop scripts
-│   ├── risk-library.js             # 40 starter risks
+│   ├── risk-library.js             # 59 starter risks (27001 + AI/ML + supply chain + cloud + reg change)
+│   ├── content-meta.js             # Per-source provenance + review cadence
 │   └── policy-templates*.js        # ~70 document templates
 ├── routes/                         # Extracted route modules (register(app, deps))
 │   ├── tenants.js                  # Firm CRUD + onboarding wizard
@@ -361,7 +401,10 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   ├── controls_assess_summary.ejs # Findings & worklist (workpaper idiom)
 │   └── … other operator + deliverable views
 ├── public/fonts/                   # Self-hosted Inter + Source Serif 4 (woff2)
-├── scripts/backup.js               # Online backup
+├── scripts/
+│   ├── backup.js                   # Online backup (online SQLite + uploads tar)
+│   ├── content-staleness.js        # Walk data/content-meta.js; CI gate for overdue content
+│   └── seed-realistic-engagements.js  # Demo seed - 5 users + 2 engagements (100% / 60%)
 ├── tests/
 │   ├── smoke.test.js               # Smoke suite (21 bare-node assertions)
 │   ├── security.test.js            # CSRF + XSS + auth (node:test)
