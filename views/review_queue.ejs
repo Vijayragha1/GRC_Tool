@@ -1,0 +1,85 @@
+<%- include('partials/header', { title: 'Review queue', user, ws, active: 'review-queue' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Review queue</h1>
+    <div class="page-subtitle">Assessment items flagged for senior review across ISO 27001 and ISO 42001. Juniors flag; engagement leads + senior consultants approve or send back.</div>
+  </div>
+  <div class="row">
+    <a href="?filter=open" class="btn btn-<%= filter === 'open' ? 'primary' : 'secondary' %> btn-xs">Open (<%= counts.requested + counts.needs_changes %>)</a>
+    <a href="?filter=all" class="btn btn-<%= filter === 'all' ? 'primary' : 'secondary' %> btn-xs">All (<%= counts.requested + counts.needs_changes + counts.reviewed %>)</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
+  <div class="panel kpi" style="padding:12px 14px;border-left:3px solid #a16207;">
+    <div class="kpi-label text-eyebrow">Awaiting review</div>
+    <div class="kpi-num" style="color:#a16207;"><%= counts.requested %></div>
+  </div>
+  <div class="panel kpi" style="padding:12px 14px;border-left:3px solid #b91c1c;">
+    <div class="kpi-label text-eyebrow">Sent back</div>
+    <div class="kpi-num" style="color:#b91c1c;"><%= counts.needs_changes %></div>
+  </div>
+  <div class="panel kpi" style="padding:12px 14px;border-left:3px solid #15803d;">
+    <div class="kpi-label text-eyebrow">Reviewed</div>
+    <div class="kpi-num" style="color:#15803d;"><%= counts.reviewed %></div>
+  </div>
+</div>
+
+<div class="panel" style="overflow:hidden;">
+  <table class="t">
+    <thead>
+      <tr>
+        <th style="width:120px;">Framework</th>
+        <th style="width:90px;">Code</th>
+        <th>Item</th>
+        <th style="width:140px;">Status</th>
+        <th style="width:160px;">Requested by</th>
+        <th style="width:140px;">When</th>
+        <th>Reason</th>
+        <th style="width:80px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% rows.forEach(r => {
+           const code = r.framework === 'iso42001'
+             ? r.item_id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.')
+             : r.item_id.replace('annex-','').replace('clause-','').toUpperCase();
+           const fwLabel = r.framework === 'iso42001' ? 'ISO 42001' : 'ISO 27001';
+           const fwColor = r.framework === 'iso42001' ? '#7c3aed' : '#0891b2';
+           const statusColor = r.review_status === 'requested' ? '#a16207'
+                            : r.review_status === 'needs_changes' ? '#b91c1c'
+                            : '#15803d';
+           const statusLabel = r.review_status === 'requested' ? 'Awaiting review'
+                            : r.review_status === 'needs_changes' ? 'Sent back'
+                            : 'Reviewed';
+      %>
+        <tr>
+          <td><span class="tag" style="background:<%= fwColor %>22;color:<%= fwColor %>;font-size:11px;font-weight:600;"><%= fwLabel %></span></td>
+          <td><span class="mono meta text-xs"><%= code %></span></td>
+          <td>
+            <a href="<%= r.link %>" class="link-muted" style="color:var(--text);font-weight:500;">
+              <%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %>
+            </a>
+          </td>
+          <td><span class="tag" style="background:<%= statusColor %>22;color:<%= statusColor %>;font-size:11px;"><%= statusLabel %></span></td>
+          <td class="meta text-base"><%= r.requested_by_name || '-' %></td>
+          <td class="meta text-base"><%= r.review_requested_at ? r.review_requested_at.slice(0,10) : '-' %></td>
+          <td class="meta text-base" style="line-height:1.45;"><%= (r.review_reason || '').slice(0, 120) %><% if (r.review_reason && r.review_reason.length > 120) { %>…<% } %></td>
+          <td><a href="<%= r.link %>" class="btn btn-secondary btn-xs">Open →</a></td>
+        </tr>
+      <% }) %>
+      <% if (rows.length === 0) { %>
+        <tr><td colspan="8" class="t-empty">
+          <% if (filter === 'open') { %>
+            No open items in the review queue. Juniors can flag items from the gap assessment wizard.
+          <% } else { %>
+            Nothing in the queue yet. When a junior flags an item for review, it'll appear here.
+          <% } %>
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

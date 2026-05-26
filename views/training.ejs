@@ -1,0 +1,126 @@
+<%- include('partials/header', { title: 'Training & awareness', user, ws, active: 'training' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Training &amp; awareness</h1>
+    <div class="page-subtitle">Clause 7.3 + A.6.3. Courses, assignments, completion. Auditors expect "100% of in-scope staff completed awareness training in the last 12 months."</div>
+  </div>
+</div>
+
+<!-- KPI row -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+  <div class="panel kpi">
+    <div class="kpi-num"><%= stats.completionPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
+    <div class="kpi-label">Completion rate</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num text-success"><%= stats.completed %></div>
+    <div class="kpi-label">Completed</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num" style="color:#1d4ed8"><%= stats.inflight %></div>
+    <div class="kpi-label">In-flight</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num text-danger"><%= stats.overdue %></div>
+    <div class="kpi-label">Overdue</div>
+  </div>
+</div>
+
+<!-- Courses -->
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head"><h2>Courses (<%= courses.length %>)</h2><span class="meta">define once, assign to many</span></div>
+  <% if (courses.length === 0) { %>
+    <div class="panel-pad meta">No courses yet. Add the standard ones - Annual security awareness, GDPR, secure development.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>Course</th><th>Required for</th><th class="num">Validity</th><th class="num">Assigned</th><th class="num">Completed</th><th style="width:60px;"></th></tr></thead>
+      <tbody>
+        <% courses.forEach(c => { %>
+          <tr>
+            <td><strong><%= c.name %></strong><% if (c.description) { %><div class="meta text-xs"><%= c.description %></div><% } %></td>
+            <td class="meta text-base"><%= c.required_for_roles || '-' %></td>
+            <td class="num meta"><%= c.validity_months || 12 %> mo</td>
+            <td class="num"><%= c.assigned_count %></td>
+            <td class="num"><strong style="color:<%= c.completed_count === c.assigned_count && c.assigned_count > 0 ? '#15803d' : 'var(--text)' %>;"><%= c.completed_count %></strong></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/training/courses/<%= c.id %>/delete" onsubmit="return confirm('Delete course?')" style="display:inline;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <button class="btn btn-ghost btn-xs">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <details style="border-top:1px solid var(--border);">
+    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Add course</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/training/courses" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:2fr 2fr 100px 100px;gap:8px;align-items:end;">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <div><label class="label">Name</label><input class="input" name="name" required placeholder="Annual security awareness"></div>
+      <div><label class="label">Required for roles</label><input class="input" name="required_for_roles" placeholder="all staff / engineering / managers"></div>
+      <div><label class="label">Validity (months)</label><input type="number" class="input" name="validity_months" value="12" min="1"></div>
+      <div><label class="label">Duration (min)</label><input type="number" class="input" name="duration_minutes" placeholder="30"></div>
+      <div style="grid-column:1/-1;"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div>
+      <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Add course</button></div>
+    </form>
+  </details>
+</div>
+
+<!-- Assignments / records -->
+<div class="panel">
+  <div class="panel-head"><h2>Training records (<%= records.length %>)</h2><span class="meta">per-person assignments + completion</span></div>
+  <% if (records.length === 0) { %>
+    <div class="panel-pad meta">No records yet. Assign a course to start tracking.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>Person</th><th>Role</th><th>Course</th><th>Assigned</th><th>Due</th><th>Status</th><th>Score</th><th style="width:60px;"></th></tr></thead>
+      <tbody>
+        <% records.forEach(r => {
+             const overdue = r.due_date && r.due_date < today && r.status !== 'completed';
+        %>
+          <tr style="<%= overdue ? 'background:rgba(185,28,28,0.04);' : '' %>">
+            <td><strong><%= r.user_name %></strong></td>
+            <td class="meta text-base"><%= r.user_role || '-' %></td>
+            <td><%= r.training_name %></td>
+            <td class="meta text-base"><%= r.assigned_date || '-' %></td>
+            <td class="meta text-base" style="color:<%= overdue ? '#b91c1c' : 'inherit' %>;"><%= r.due_date || '-' %></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/training/records/<%= r.id %>/update" style="display:inline-flex;gap:4px;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <select name="status" class="select text-sm" style="font-size:12px;padding:3px 6px;" onchange="this.form.submit()">
+                  <% ['assigned','in_progress','completed','expired','overdue'].forEach(s => { %><option value="<%= s %>" <%= r.status === s ? 'selected' : '' %>><%= s.replace(/_/g,' ') %></option><% }) %>
+                </select>
+              </form>
+            </td>
+            <td class="meta"><%= r.score || '-' %></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/training/records/<%= r.id %>/delete" onsubmit="return confirm('Delete record?')" style="display:inline;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <button class="btn btn-ghost btn-xs">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <details style="border-top:1px solid var(--border);">
+    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Assign training</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/training/records" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:2fr 1fr 2fr 130px 130px;gap:8px;align-items:end;">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <div><label class="label">Person</label><input class="input" name="user_name" required placeholder="Alice Smith"></div>
+      <div><label class="label">Role</label><input class="input" name="user_role" placeholder="Engineer"></div>
+      <div><label class="label">Course</label><select class="select" name="training_name" required>
+        <option value="">- pick course -</option>
+        <% courses.forEach(c => { %><option value="<%= c.name %>"><%= c.name %></option><% }) %>
+      </select></div>
+      <div><label class="label">Assigned</label><input type="date" class="input" name="assigned_date"></div>
+      <div><label class="label">Due</label><input type="date" class="input" name="due_date"></div>
+      <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Assign</button></div>
+    </form>
+  </details>
+</div>
+
+<%- include('partials/footer') %>

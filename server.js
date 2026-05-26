@@ -311,6 +311,12 @@ function requireWorkspace(req, res, next) {
       `SELECT COUNT(*) c FROM notifications WHERE workspace_id=? AND read_at IS NULL AND dismissed_at IS NULL AND (user_id IS NULL OR user_id=?)`
     ).get(ws.id, req.user.id).c;
   } catch (_) { res.locals.unreadNotifications = 0; }
+  // Open review-queue count for the sidebar badge.
+  try {
+    const a = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
+    const b = db.prepare(`SELECT COUNT(*) c FROM iso42001_control_states WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
+    res.locals.openReviewCount = a + b;
+  } catch (_) { res.locals.openReviewCount = 0; }
   next();
 }
 
@@ -941,6 +947,46 @@ app.post('/admin/invitations/:id/revoke', requireAuth, (req, res) => {
   if (!inv || inv.firm_id !== req.user.firm_id) return res.redirect('/admin/users');
   db.prepare(`UPDATE user_invitations SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?`).run(inv.id);
   res.redirect('/admin/users?notice=' + encodeURIComponent('Invitation revoked.'));
+});
+
+// Update a firm user's role from the Users & Access page. Manager-only,
+// scoped to the same firm. Guards against demoting yourself or removing the
+// last manager — both would lock the firm out of user management.
+app.post('/admin/users/:id/firm-role', requireAuth, (req, res) => {
+  if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
+  const newRole = String((req.body && req.body.firm_role) || '').trim();
+  if (!rbac.FIRM_ROLES.includes(newRole)) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent('Invalid role.'));
+  }
+  const target = db.prepare(`SELECT id, firm_id, user_type, firm_role, email, name FROM users WHERE id = ?`)
+    .get(req.params.id);
+  if (!target) return res.redirect('/admin/users?error=' + encodeURIComponent('User not found.'));
+  if (target.user_type !== 'firm' || target.firm_id !== req.user.firm_id) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent('Not allowed.'));
+  }
+  if (target.id === req.user.id) {
+    return res.redirect('/admin/users?error=' + encodeURIComponent('You cannot change your own role from here. Ask another manager.'));
+  }
+  // If the target is currently the last active manager, refuse the demotion.
+  const currentNormalised = rbac.normalizeRole(target.firm_role);
+  if (currentNormalised === 'manager' && newRole !== 'manager') {
+    const otherManagers = db.prepare(`
+      SELECT COUNT(*) AS n FROM users
+        WHERE firm_id = ? AND user_type = 'firm' AND active = 1 AND id != ?
+          AND (firm_role = 'manager' OR firm_role = 'firm_owner')`).get(target.firm_id, target.id);
+    if (!otherManagers.n) {
+      return res.redirect('/admin/users?error=' + encodeURIComponent(
+        'Cannot demote the last active manager. Promote another firm user to manager first.'));
+    }
+  }
+  if (currentNormalised === newRole) {
+    return res.redirect('/admin/users?notice=' + encodeURIComponent('Role unchanged.'));
+  }
+  db.prepare(`UPDATE users SET firm_role = ? WHERE id = ?`).run(newRole, target.id);
+  logAction(req.user.id, null, 'change_firm_role', 'user', target.id,
+    { old_role: target.firm_role, new_role: newRole }, auditCtx(req));
+  res.redirect('/admin/users?notice=' + encodeURIComponent(
+    `Updated ${target.email} to ${rbac.ROLE_LABELS[newRole] || newRole}.`));
 });
 
 // -------- Accept invitation (public, token-authenticated) --------
@@ -1833,7 +1879,7 @@ app.post('/workspaces/:wsId/team/set-lead', requireAuth, requireWorkspace, (req,
   db.prepare(`UPDATE workspaces SET lead_consultant_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(leadId, req.workspace.id);
   logAction(req.user.id, req.workspace.id, 'set_lead_consultant', 'workspace', req.workspace.id, { lead_consultant_id: leadId }, auditCtx(req));
-  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Lead consultant updated.'));
+  res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Engagement lead updated.'));
 });
 
 app.post('/workspaces/:wsId/team/add-firm-member', requireAuth, requireWorkspace, (req, res) => {
@@ -2272,6 +2318,23 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     ORDER BY p.pass_number DESC
   `).all(...(activePass ? [req.workspace.id, item.id, activePass.id] : [req.workspace.id, item.id]));
 
+  // Comments thread + @-mention hints. Comments are scoped to this workspace
+  // and this iso_item via parent_type/parent_id. Decryption is a no-op if the
+  // workspace doesn't have encryption_enabled set.
+  const commentsRaw = db.prepare(`SELECT c.id, c.body, c.internal_only, c.created_at, c.user_id, u.name AS user_name
+    FROM comments c LEFT JOIN users u ON u.id = c.user_id
+    WHERE c.workspace_id=? AND c.parent_type='iso_item' AND c.parent_id=?
+    ORDER BY c.created_at ASC`).all(req.workspace.id, item.id);
+  const comments = commentsRaw.map(c => ({ ...c, body: enc.decryptIfNeeded(c.body, req.workspace.id) }));
+  const firmUsers = db.prepare(`SELECT id, name FROM users WHERE firm_id=? AND user_type='firm' AND active=1 ORDER BY name`).all(req.workspace.firm_id);
+
+  // Review state + reviewer/requester names for the flag-for-review badge
+  let requestedByName = null, reviewedByName = null;
+  if (state.review_requested_by) requestedByName = db.prepare(`SELECT name FROM users WHERE id=?`).get(state.review_requested_by)?.name;
+  if (state.reviewed_by) reviewedByName = db.prepare(`SELECT name FROM users WHERE id=?`).get(state.reviewed_by)?.name;
+  // Can this user act on a flagged item? Reviewers = anyone with firm role of manager/senior_consultant.
+  const isReviewer = req.user.user_type === 'firm' && ['manager','senior_consultant'].includes(rbac.normalizeRole(req.user.firm_role));
+
   res.render('controls_assess', {
     user: req.user, ws: req.workspace, item, state, totals, position, sectionPosition, relatedRows,
     prevId, nextId: nextById, doneFlag: !!req.query.done,
@@ -2279,7 +2342,9 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     evidenceList, linkedRisks, linkedDocs, openNCs, linkableDocs,
     activePass, currentPassNotes, priorPassNotes,
     crosswalksByFramework,
-    navGroups
+    navGroups,
+    comments, firmUsers,
+    requestedByName, reviewedByName, isReviewer
   });
 });
 
@@ -2357,6 +2422,8 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
         activePassId
       );
   }
+  // Re-index for search now that the control's notes / state may have changed.
+  fts.refresh(req.workspace.id, 'control', item.id);
   logAction(req.user.id, req.workspace.id, 'gap_assess_item', item.type, item.id, { status, applicability }, auditCtx(req));
 
   const action = req.body.action || 'save';
@@ -2372,6 +2439,79 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   return res.redirect(nextU
     ? `/workspaces/${req.workspace.id}/controls/assess/${nextU.id}`
     : `/workspaces/${req.workspace.id}/controls/assess?done=1`);
+});
+
+// ==================== FLAG-FOR-REVIEW (ISO 27001) ====================
+// A junior consultant flags an assessment item; the engagement lead or any
+// firm member with assessment.signoff reviews. Both frameworks share a
+// generic state machine: none -> requested -> reviewed | needs_changes.
+function notifyReviewers(wsId, requesterUserId, item, reason, framework) {
+  // Engagement lead + anyone with assessment.signoff in this workspace.
+  const ws = db.prepare(`SELECT lead_consultant_id, firm_id FROM workspaces WHERE id=?`).get(wsId);
+  const recipients = new Set();
+  if (ws && ws.lead_consultant_id && ws.lead_consultant_id !== requesterUserId) recipients.add(ws.lead_consultant_id);
+  // Firm users with manager / senior_consultant roles get notified.
+  const firmReviewers = db.prepare(`SELECT id FROM users
+    WHERE firm_id=? AND user_type='firm' AND active=1
+      AND firm_role IN ('manager','senior_consultant')
+      AND id != ?`).all(ws ? ws.firm_id : 0, requesterUserId);
+  firmReviewers.forEach(u => recipients.add(u.id));
+  const linkPath = framework === 'iso42001'
+    ? `/workspaces/${wsId}/iso42001/gap/${item.id}`
+    : `/workspaces/${wsId}/controls/assess/${item.id}`;
+  const itemCode = framework === 'iso42001'
+    ? item.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.')
+    : item.id.replace('annex-','').replace('clause-','').toUpperCase();
+  recipients.forEach(uid => {
+    jobs.notify(wsId, uid, 'review_request', 'warning',
+      `Review requested on ${itemCode}`, (reason || '').slice(0, 140), linkPath);
+  });
+}
+
+app.post('/workspaces/:wsId/controls/assess/:isoId/flag-for-review', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(req.workspace.id, item.id);
+  db.prepare(`UPDATE control_states
+    SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
+        reviewed_by=NULL, reviewed_at=NULL
+    WHERE workspace_id=? AND iso_item_id=?`)
+    .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
+  logAction(req.user.id, req.workspace.id, 'flag_for_review', 'control', item.id, { reason: req.body.reason }, auditCtx(req));
+  notifyReviewers(req.workspace.id, req.user.id, item, req.body.reason, 'iso27001');
+  res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
+});
+
+app.post('/workspaces/:wsId/controls/assess/:isoId/review-action', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  const action = req.body.action; // 'approve' or 'send_back'
+  if (!['approve', 'send_back'].includes(action)) return res.status(400).send('Bad action');
+  const newStatus = action === 'approve' ? 'reviewed' : 'needs_changes';
+  const cur = db.prepare(`SELECT review_requested_by FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+  db.prepare(`UPDATE control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
+    WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
+  logAction(req.user.id, req.workspace.id, 'review_action', 'control', item.id, { action, note: req.body.note }, auditCtx(req));
+  // Notify the requester that the review is done.
+  if (cur && cur.review_requested_by && cur.review_requested_by !== req.user.id) {
+    const code = item.id.replace('annex-','').replace('clause-','').toUpperCase();
+    const verb = action === 'approve' ? 'approved your review on' : 'sent back your review on';
+    jobs.notify(req.workspace.id, cur.review_requested_by, 'review_complete', 'info',
+      `Reviewer ${verb} ${code}`, (req.body.note || '').slice(0, 140),
+      `/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
+});
+
+app.post('/workspaces/:wsId/controls/assess/:isoId/clear-flag', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  db.prepare(`UPDATE control_states
+    SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
+        reviewed_by=NULL, reviewed_at=NULL
+    WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
+  logAction(req.user.id, req.workspace.id, 'clear_review_flag', 'control', item.id, null, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
 });
 
 // ==================== GAP ASSESSMENT (PASSES) ====================
@@ -3200,6 +3340,7 @@ app.post('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermi
          rto_hours !== undefined && rto_hours !== '' ? parseInt(rto_hours, 10) : null,
          rpo_hours !== undefined && rpo_hours !== '' ? parseInt(rpo_hours, 10) : null,
          bia_notes || null).lastInsertRowid;
+  fts.refresh(req.workspace.id, 'asset', id);
   logAction(req.user.id, req.workspace.id, 'create_asset', 'asset', id, { name }, auditCtx(req));
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/assets', 'Asset added'));
 });
@@ -3207,6 +3348,7 @@ app.post('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermi
 app.post('/workspaces/:wsId/assets/:id/delete', requireAuth, requireWorkspace, requirePermission('asset.delete'), (req, res) => {
   const before = db.prepare('SELECT name FROM assets WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   db.prepare('DELETE FROM assets WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
+  fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'asset', entityId: req.params.id });
   if (before) logAction(req.user.id, req.workspace.id, 'delete_asset', 'asset', req.params.id, { name: before.name }, auditCtx(req));
   res.redirect('/workspaces/' + req.workspace.id + '/assets');
 });
@@ -3271,10 +3413,11 @@ app.post('/workspaces/:wsId/assets/import/commit', requireAuth, requireWorkspace
     (workspace_id, entity_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
      business_criticality, rto_hours, rpo_hours, bia_notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const importedAssetIds = [];
   const tx = db.transaction(() => {
     valid.forEach(r => {
       const p = r.parsed;
-      ins.run(
+      const info = ins.run(
         req.workspace.id,
         req.entityScopeId || null,
         p.name,
@@ -3290,9 +3433,11 @@ app.post('/workspaces/:wsId/assets/import/commit', requireAuth, requireWorkspace
         p.rpo_hours == null ? null : p.rpo_hours,
         p.bia_notes || null
       );
+      importedAssetIds.push(info.lastInsertRowid);
     });
   });
   tx();
+  importedAssetIds.forEach(id => fts.refresh(req.workspace.id, 'asset', id));
   logAction(req.user.id, req.workspace.id, 'import_assets_csv', 'asset', null, { count: valid.length, skipped: result.summary.invalid }, auditCtx(req));
   const msg = result.summary.invalid
     ? `Imported ${valid.length} asset${valid.length === 1 ? '' : 's'} - ${result.summary.invalid} row${result.summary.invalid === 1 ? '' : 's'} skipped`
@@ -3324,6 +3469,7 @@ app.post('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermis
          threat || null, vulnerability || null,
          parseInt(likelihood) || 3, parseInt(impact) || 3,
          treatment || 'modify', owner_name || null).lastInsertRowid;
+  fts.refresh(req.workspace.id, 'risk', id);
   logAction(req.user.id, req.workspace.id, 'create_risk', 'risk', id, { title }, auditCtx(req));
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/risks/' + id, 'Risk created'));
 });
@@ -3349,16 +3495,19 @@ app.post('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requi
                          VALUES (?, ?, ?, ?, ?, ?, 3, 3, 'modify', 'open')`);
   const linkCtrl = db.prepare(`INSERT OR IGNORE INTO risk_controls (risk_id, iso_item_id) VALUES (?, ?)`);
   let added = 0;
+  const insertedIds = [];
   const tx = db.transaction(() => {
     picked.forEach(idxStr => {
       const r = RISK_LIBRARY[parseInt(idxStr)];
       if (!r) return;
       const rid = ins.run(req.workspace.id, req.entityScopeId || null, r.title, r.description, r.threat || null, r.vulnerability || null).lastInsertRowid;
       (r.suggested_controls || []).forEach(c => linkCtrl.run(rid, c));
+      insertedIds.push(rid);
       added++;
     });
   });
   tx();
+  insertedIds.forEach(id => fts.refresh(req.workspace.id, 'risk', id));
   logAction(req.user.id, req.workspace.id, 'add_risks_from_library', 'risk', null, { count: added }, auditCtx(req));
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/risks', `Added ${added} risk${added === 1 ? '' : 's'} from library - review and adjust scoring`));
 });
@@ -3439,10 +3588,11 @@ app.post('/workspaces/:wsId/risks/import/commit', requireAuth, requireWorkspace,
     (workspace_id, entity_id, title, description, asset_id, threat, vulnerability,
      likelihood, impact, treatment, owner_name)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const importedIds = [];
   const tx = db.transaction(() => {
     valid.forEach(r => {
       const p = r.parsed;
-      ins.run(
+      const info = ins.run(
         req.workspace.id,
         req.entityScopeId || null,
         p.title,
@@ -3455,9 +3605,11 @@ app.post('/workspaces/:wsId/risks/import/commit', requireAuth, requireWorkspace,
         p.treatment || 'modify',
         p.owner_name || null
       );
+      importedIds.push(info.lastInsertRowid);
     });
   });
   tx();
+  importedIds.forEach(id => fts.refresh(req.workspace.id, 'risk', id));
   logAction(req.user.id, req.workspace.id, 'import_risks_csv', 'risk', null, { count: valid.length, skipped: result.summary.invalid }, auditCtx(req));
   const msg = result.summary.invalid
     ? `Imported ${valid.length} risk${valid.length === 1 ? '' : 's'} - ${result.summary.invalid} row${result.summary.invalid === 1 ? '' : 's'} skipped`
@@ -3729,6 +3881,7 @@ app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePe
          residual_likelihood ? parseInt(residual_likelihood) : null,
          residual_impact ? parseInt(residual_impact) : null,
          req.params.id, req.workspace.id);
+  fts.refresh(req.workspace.id, 'risk', req.params.id);
   logAction(req.user.id, req.workspace.id, 'update_risk', 'risk', req.params.id, null);
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
 });
@@ -3761,6 +3914,7 @@ app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, re
 
 app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, requirePermission('risk.delete'), (req, res) => {
   db.prepare('DELETE FROM risks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
+  fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'risk', entityId: req.params.id });
   res.redirect('/workspaces/' + req.workspace.id + '/risks');
 });
 
@@ -4390,6 +4544,7 @@ function adoptTemplateForWorkspace(tpl, workspace, user, entityScopeId, override
   const docId = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, template_id, name, category, content, created_by)
                          VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(workspace.id, entityScopeId || null, tpl.id, tpl.name, tpl.category, encContent, user.id).lastInsertRowid;
+  fts.refresh(workspace.id, 'document', docId);
   snapshotDocVersion(docId, workspace.id, 'draft', user.id, 'Initial draft from template: ' + tpl.name);
 
   // Auto-link every Annex A control referenced by the template (extracted at
@@ -4423,6 +4578,7 @@ app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, req
     .run(req.workspace.id, req.entityScopeId || null, name, category || 'policy',
          enc.encryptIfNeeded(initial, req.workspace.id, !!req.workspace.encryption_enabled),
          req.user.id).lastInsertRowid;
+  fts.refresh(req.workspace.id, 'document', id);
   snapshotDocVersion(id, req.workspace.id, 'draft', req.user.id, 'Blank document');
   logAction(req.user.id, req.workspace.id, 'create_document', 'document', id, { name, category }, auditCtx(req));
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + id);
@@ -4486,6 +4642,7 @@ app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, re
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, req.entityScopeId || null, docName, cat, encContent, req.user.id,
          req.file.originalname, req.file.filename, req.file.mimetype || null, req.file.size, sha).lastInsertRowid;
+  fts.refresh(req.workspace.id, 'document', id);
 
   snapshotDocVersion(id, req.workspace.id, 'draft', req.user.id, `Imported from ${req.file.originalname}`);
   logAction(req.user.id, req.workspace.id, 'upload_document', 'document', id, { filename: req.file.originalname, size: req.file.size, sha256: sha }, auditCtx(req));
@@ -4638,6 +4795,7 @@ app.post('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requi
   if (sets.length) {
     vals.push(req.params.id, req.workspace.id);
     db.prepare(`UPDATE generated_docs SET ${sets.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+    fts.refresh(req.workspace.id, 'document', req.params.id);
     const after = db.prepare('SELECT id, name, status FROM generated_docs WHERE id=?').get(req.params.id);
     const d = diffObjects(
       { name: before.name, status: before.status },
@@ -4672,7 +4830,28 @@ app.get('/workspaces/:wsId/documents/:id/download', requireAuth, requireWorkspac
 
 app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, requirePermission('document.delete'), (req, res) => {
   db.prepare('DELETE FROM generated_docs WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
+  fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'document', entityId: req.params.id });
   res.redirect('/workspaces/' + req.workspace.id + '/documents');
+});
+
+// Snooze a document's review date by N days. Used by the overdue/due-soon
+// banner on /documents and the per-row action on /policy-adoption. Records
+// who snoozed and why in audit log.
+app.post('/workspaces/:wsId/documents/:id/snooze-review', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  const days = parseInt(req.body.days, 10) || 30;
+  if (![14, 30, 60, 90, 180].includes(days)) return res.status(400).send('Bad snooze period');
+  const doc = db.prepare(`SELECT id, next_review_date FROM generated_docs WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!doc) return res.status(404).send('Not found');
+  // Push the review date forward from today (not from the existing date, which
+  // may already be in the past). A snooze should mean "give me N days from
+  // now to actually do the review."
+  const newDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  db.prepare(`UPDATE generated_docs SET next_review_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`)
+    .run(newDate, doc.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'snooze_doc_review', 'document', doc.id,
+    { old_date: doc.next_review_date, new_date: newDate, days, reason: req.body.reason || null }, auditCtx(req));
+  const back = req.headers.referer || `/workspaces/${req.workspace.id}/documents`;
+  res.redirect(back);
 });
 
 // ==================== INTERNAL AUDITS ====================
@@ -4706,7 +4885,10 @@ app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res
   const samples = db.prepare(`SELECT s.*, i.title AS iso_title FROM audit_samples s
     LEFT JOIN iso_items i ON i.id=s.iso_item_id
     WHERE s.audit_id=? ORDER BY s.sample_taken_at IS NULL, s.sample_taken_at DESC`).all(audit.id);
-  res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples });
+  const observations = db.prepare(`SELECT o.*, i.title AS iso_title FROM audit_observations o
+    LEFT JOIN iso_items i ON i.id = o.iso_item_id
+    WHERE o.audit_id=? ORDER BY o.status='closed', o.created_at`).all(audit.id);
+  res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples, observations });
 });
 
 app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
@@ -4851,6 +5033,7 @@ app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requ
     .run(req.workspace.id, f.description.substring(0, 100),
          'Audit #' + req.params.id, f.description, sev, f.iso_item_id).lastInsertRowid;
   db.prepare('UPDATE audit_findings SET nonconformity_id = ? WHERE id = ?').run(ncId, f.id);
+  fts.refresh(req.workspace.id, 'nc', ncId);
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
@@ -5085,6 +5268,7 @@ app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, req
                          VALUES (?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, title, source || 'other', description || null,
          severity || 'minor', iso_item_id || null).lastInsertRowid;
+  fts.refresh(req.workspace.id, 'nc', id);
   logAction(req.user.id, req.workspace.id, 'create_nc', 'nonconformity', id, { title });
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/nonconformities/' + id, 'Nonconformity created'));
 });
@@ -5112,6 +5296,7 @@ app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace,
   if (set.length) {
     vals.push(req.params.id, req.workspace.id);
     db.prepare(`UPDATE nonconformities SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+    fts.refresh(req.workspace.id, 'nc', req.params.id);
     logAction(req.user.id, req.workspace.id, 'update_nc', 'nonconformity', req.params.id, null);
 
     // Phase C: closing an NC bumps the linked control's last_verified_at - feeds SoA freshness view
@@ -5144,6 +5329,7 @@ app.post('/workspaces/:wsId/nonconformities/:id/spawn-task', requireAuth, requir
 
 app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
   db.prepare('DELETE FROM nonconformities WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
+  fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'nc', entityId: req.params.id });
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities');
 });
 
@@ -6131,6 +6317,7 @@ app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, requirePe
   const id = db.prepare(`INSERT INTO incidents (workspace_id, title, category, severity, detected_at, reported_by, description)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.workspace.id, title, category || 'other', severity || 'medium',
     detected_at || null, reported_by || null, description || null).lastInsertRowid;
+  fts.refresh(req.workspace.id, 'incident', id);
   logAction(req.user.id, req.workspace.id, 'create_incident', 'incident', id, { title });
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/incidents/' + id, 'Incident logged'));
 });
@@ -6157,6 +6344,7 @@ app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, requi
   if (set.length) {
     vals.push(req.params.id, req.workspace.id);
     db.prepare(`UPDATE incidents SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
+    fts.refresh(req.workspace.id, 'incident', req.params.id);
     logAction(req.user.id, req.workspace.id, 'update_incident', 'incident', req.params.id, null);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/incidents/' + req.params.id);
@@ -6170,11 +6358,13 @@ app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorks
   const ncId = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, source_ref, description, severity)
     VALUES (?, ?, 'incident', ?, ?, ?)`).run(req.workspace.id, inc.title, 'Incident #' + inc.id, inc.description, sev).lastInsertRowid;
   db.prepare(`UPDATE incidents SET nonconformity_id=? WHERE id=? AND workspace_id=?`).run(ncId, inc.id, req.workspace.id);
+  fts.refresh(req.workspace.id, 'nc', ncId);
   res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
 });
 
 app.post('/workspaces/:wsId/incidents/:id/delete', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   db.prepare(`DELETE FROM incidents WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'incident', entityId: req.params.id });
   res.redirect('/workspaces/' + req.workspace.id + '/incidents');
 });
 
@@ -6634,6 +6824,7 @@ app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePerm
   // Auto-tier from inherent risk
   const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(id, req.workspace.id);
   db.prepare(`UPDATE suppliers SET tier=? WHERE id=? AND workspace_id=?`).run(tierFromRisk(cur.inherent_risk_score), id, req.workspace.id);
+  fts.refresh(req.workspace.id, 'supplier', id);
 
   logAction(req.user.id, req.workspace.id, 'create_supplier', 'supplier', id, { name });
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/vendors/' + id, 'Supplier added'));
@@ -6687,6 +6878,7 @@ app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, require
     vals.push(req.params.id, req.workspace.id);
     db.prepare(`UPDATE suppliers SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
     recomputeSupplierRisk(req.params.id, req.workspace.id);
+    fts.refresh(req.workspace.id, 'supplier', req.params.id);
     logAction(req.user.id, req.workspace.id, 'update_supplier', 'supplier', req.params.id, null);
   }
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id);
@@ -6694,6 +6886,7 @@ app.post('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, require
 
 app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   db.prepare(`DELETE FROM suppliers WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'supplier', entityId: req.params.id });
   res.redirect('/workspaces/' + req.workspace.id + '/vendors');
 });
 
@@ -6975,6 +7168,493 @@ app.post('/workspaces/:wsId/access/override/:id/delete', requireAuth, requireWor
     logAction(req.user.id, req.workspace.id, 'remove_override', 'user', o.user_id, { permission: o.permission }, auditCtx(req));
   }
   res.redirect('/workspaces/' + req.workspace.id + '/access');
+});
+
+// ==================== ISMS PERFORMANCE METRICS (Clause 9.1) ====================
+// Auto-computed KPIs from existing tables. The auditor's complaint was that
+// MRM inputs are free-text; this lets a consultant click "Feed to MRM" and
+// have the numbers land in the next management-review record.
+function computeIsmsMetrics(wsId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const oneEightyDaysAgo = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const cnt = (sql, ...args) => { try { return db.prepare(sql).get(wsId, ...args)?.c || 0; } catch (_) { return 0; } };
+  const safeAll = (sql, ...args) => { try { return db.prepare(sql).all(wsId, ...args); } catch (_) { return []; } };
+
+  // 1. Control implementation %
+  const controlImpl = cnt(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status='Implemented' AND applicability='included'`);
+  const controlIncluded = cnt(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND applicability='included'`);
+
+  // 2. Training completion %
+  const trainAssigned = cnt(`SELECT COUNT(*) c FROM training_records WHERE workspace_id=?`);
+  const trainComplete = cnt(`SELECT COUNT(*) c FROM training_records WHERE workspace_id=? AND status='completed'`);
+
+  // 3. NCs by severity (open)
+  const ncOpen = safeAll(`SELECT severity, COUNT(*) AS c FROM nonconformities WHERE workspace_id=? AND status != 'closed' GROUP BY severity`);
+  const ncBySev = { major: 0, minor: 0, observation: 0, other: 0 };
+  ncOpen.forEach(r => { ncBySev[r.severity || 'other'] = (ncBySev[r.severity || 'other'] || 0) + r.c; });
+  const ncOpenTotal = ncBySev.major + ncBySev.minor + ncBySev.observation + ncBySev.other;
+
+  // 4. Mean Time To Close NC (last 90 days)
+  const ncClosed90 = safeAll(`SELECT julianday(closed_at) - julianday(created_at) AS d FROM nonconformities
+    WHERE workspace_id=? AND closed_at IS NOT NULL AND closed_at >= ?`, ninetyDaysAgo);
+  const mttcDays = ncClosed90.length ? Math.round(ncClosed90.reduce((s, r) => s + (r.d || 0), 0) / ncClosed90.length) : null;
+
+  // Prior 90 days for delta
+  const ncClosedPrior = safeAll(`SELECT julianday(closed_at) - julianday(created_at) AS d FROM nonconformities
+    WHERE workspace_id=? AND closed_at IS NOT NULL AND closed_at >= ? AND closed_at < ?`, oneEightyDaysAgo, ninetyDaysAgo);
+  const mttcPrior = ncClosedPrior.length ? Math.round(ncClosedPrior.reduce((s, r) => s + (r.d || 0), 0) / ncClosedPrior.length) : null;
+
+  // 5. Overdue tasks %
+  const tasksOpen = cnt(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND status != 'closed' AND status != 'completed'`);
+  const tasksOverdue = cnt(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND status != 'closed' AND status != 'completed' AND due_date IS NOT NULL AND due_date < ?`, today);
+
+  // 6. Risks above appetite (heuristic: likelihood*impact >= 15 = high)
+  const risksHigh = cnt(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status != 'closed' AND status != 'accepted' AND (likelihood * impact) >= 15`);
+  const risksAccepted = cnt(`SELECT COUNT(*) c FROM risk_acceptances WHERE workspace_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at >= ?)`, today);
+
+  // 7. Document review compliance %
+  const docsApproved = cnt(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`);
+  const docsOverdue = cnt(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published') AND next_review_date < ?`, today);
+
+  // 8. Evidence freshness %
+  let evidenceFresh = 0, evidenceTotalCtl = 0;
+  try {
+    const rows = db.prepare(`SELECT i.id,
+        (SELECT MAX(uploaded_at) FROM evidence WHERE workspace_id=? AND iso_item_id=i.id AND superseded_at IS NULL) AS last_ev
+      FROM iso_items i
+      INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+      WHERE i.type='control' AND cs.applicability='included'`).all(wsId, wsId);
+    evidenceTotalCtl = rows.length;
+    evidenceFresh = rows.filter(r => r.last_ev && r.last_ev >= oneYearAgo).length;
+  } catch (_) {}
+
+  // 9. Internal audit completion (audits with audit_date in last 12 months)
+  const auditsRun = cnt(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND audit_date IS NOT NULL AND audit_date >= ?`, oneYearAgo);
+
+  // 10. Incident MTTR (last 90 days)
+  let incidentMTTR = null;
+  try {
+    const inc = db.prepare(`SELECT julianday(COALESCE(resolved_at, closed_at)) - julianday(detected_at) AS d FROM incidents
+      WHERE workspace_id=? AND COALESCE(resolved_at, closed_at) IS NOT NULL AND COALESCE(resolved_at, closed_at) >= ?`).all(wsId, ninetyDaysAgo);
+    if (inc.length) incidentMTTR = Math.round(inc.reduce((s, r) => s + (r.d || 0), 0) / inc.length * 10) / 10;
+  } catch (_) {}
+
+  // 11. Open incidents
+  const incidentsOpen = cnt(`SELECT COUNT(*) c FROM incidents WHERE workspace_id=? AND status NOT IN ('closed','resolved')`);
+
+  return {
+    controlImpl, controlIncluded,
+    controlImplPct: controlIncluded ? Math.round((controlImpl / controlIncluded) * 100) : 0,
+    trainAssigned, trainComplete,
+    trainPct: trainAssigned ? Math.round((trainComplete / trainAssigned) * 100) : 0,
+    ncBySev, ncOpenTotal,
+    mttcDays, mttcPrior,
+    tasksOpen, tasksOverdue,
+    tasksOverduePct: tasksOpen ? Math.round((tasksOverdue / tasksOpen) * 100) : 0,
+    risksHigh, risksAccepted,
+    docsApproved, docsOverdue,
+    docsReviewPct: docsApproved ? Math.round(((docsApproved - docsOverdue) / docsApproved) * 100) : 0,
+    evidenceFresh, evidenceTotalCtl,
+    evidenceFreshPct: evidenceTotalCtl ? Math.round((evidenceFresh / evidenceTotalCtl) * 100) : 0,
+    auditsRun,
+    incidentMTTR, incidentsOpen
+  };
+}
+
+app.get('/workspaces/:wsId/metrics', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const m = computeIsmsMetrics(req.workspace.id);
+  // Upcoming MRMs the user could feed
+  const upcomingMrms = db.prepare(`SELECT id, meeting_date FROM mrms WHERE workspace_id=? AND status != 'closed' ORDER BY meeting_date IS NULL, meeting_date LIMIT 5`).all(req.workspace.id);
+  res.render('metrics', { user: req.user, ws: req.workspace, m, upcomingMrms });
+});
+
+// Push current metrics into the chosen MRM's performance_review field.
+app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
+  const mrm = db.prepare(`SELECT id FROM mrms WHERE id=? AND workspace_id=?`).get(req.params.mrmId, req.workspace.id);
+  if (!mrm) return res.status(404).send('MRM not found');
+  const m = computeIsmsMetrics(req.workspace.id);
+  const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const block = [
+    `--- ISMS performance metrics (auto-fed ${ts}) ---`,
+    `Control implementation: ${m.controlImpl}/${m.controlIncluded} included controls Implemented (${m.controlImplPct}%)`,
+    `Training completion: ${m.trainComplete}/${m.trainAssigned} (${m.trainPct}%)`,
+    `Open NCs: ${m.ncBySev.major} major, ${m.ncBySev.minor} minor, ${m.ncBySev.observation} observation (${m.ncOpenTotal} total)`,
+    `NC mean time to close (last 90d): ${m.mttcDays == null ? 'n/a' : m.mttcDays + ' days'}${m.mttcPrior != null ? ` (prior 90d: ${m.mttcPrior} days)` : ''}`,
+    `Tasks overdue: ${m.tasksOverdue}/${m.tasksOpen} (${m.tasksOverduePct}%)`,
+    `High-severity open risks (L×I ≥ 15): ${m.risksHigh}`,
+    `Active risk acceptances: ${m.risksAccepted}`,
+    `Document review compliance: ${m.docsReviewPct}% (${m.docsOverdue} overdue of ${m.docsApproved} approved)`,
+    `Evidence freshness (included controls with evidence in last 12 mo): ${m.evidenceFresh}/${m.evidenceTotalCtl} (${m.evidenceFreshPct}%)`,
+    `Internal audits in last 12 mo: ${m.auditsRun}`,
+    `Incident MTTR (last 90d): ${m.incidentMTTR == null ? 'n/a' : m.incidentMTTR + ' days'}`,
+    `Open incidents: ${m.incidentsOpen}`
+  ].join('\n');
+  // Append to existing performance_review rather than overwrite (a manager
+  // may have typed in their own notes already; we don't want to clobber).
+  const existing = db.prepare(`SELECT performance_review FROM mrms WHERE id=?`).get(mrm.id);
+  const merged = existing && existing.performance_review ? `${existing.performance_review}\n\n${block}` : block;
+  db.prepare(`UPDATE mrms SET performance_review=? WHERE id=?`).run(merged, mrm.id);
+  logAction(req.user.id, req.workspace.id, 'feed_metrics_to_mrm', 'mrm', mrm.id, null, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/mrms/${mrm.id}?notice=${encodeURIComponent('Metrics appended to performance review.')}`);
+});
+
+// ==================== POLICY ADOPTION & REVIEW DASHBOARD ====================
+// Closes the gap the auditor called out: "policies adopted but no dashboard
+// showing what's published, what's draft, what's stale." Joins generated_docs
+// with doc_templates.tier to surface mandatory-vs-recommended adoption.
+app.get('/workspaces/:wsId/policy-adoption', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const wsId = req.workspace.id;
+  const today = new Date().toISOString().slice(0, 10);
+  const soonDate = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+
+  // All workspace docs joined with their source template tier (mandatory/expected/recommended).
+  const docs = db.prepare(`SELECT d.id, d.name, d.category, d.status, d.version, d.created_at, d.updated_at,
+      d.next_review_date,
+      (SELECT name FROM users WHERE id = d.approved_by) AS approved_by_name,
+      d.approved_at,
+      COALESCE(t.tier, 'recommended') AS tier
+    FROM generated_docs d
+    LEFT JOIN doc_templates t ON t.id = d.template_id
+    WHERE d.workspace_id = ?
+    ORDER BY
+      CASE COALESCE(t.tier, 'recommended')
+        WHEN 'mandatory' THEN 1
+        WHEN 'expected' THEN 2
+        ELSE 3
+      END,
+      d.name`).all(wsId);
+
+  // Decorate with review band: current / due_soon / overdue / never_reviewed
+  const decorated = docs.map(d => {
+    let reviewBand = 'unset';
+    if (!d.next_review_date) reviewBand = 'unset';
+    else if (d.next_review_date < today) reviewBand = 'overdue';
+    else if (d.next_review_date < soonDate) reviewBand = 'due_soon';
+    else reviewBand = 'current';
+    const stale = d.updated_at && d.updated_at < staleCutoff && d.status === 'approved';
+    return { ...d, reviewBand, stale };
+  });
+
+  // Mandatory coverage: for each mandatory template name pattern, do we have a workspace doc?
+  // Just count templates with tier='mandatory' that have ZERO workspace docs.
+  const mandatoryTemplates = db.prepare(`SELECT id, name FROM doc_templates WHERE tier='mandatory' AND is_system=1`).all();
+  const adoptedTemplateIds = new Set(docs.filter(d => d.tier === 'mandatory').map(d => d.id));
+  // Quicker version: per template, do we have any generated_doc?
+  const templateAdoption = mandatoryTemplates.map(t => {
+    const adopted = db.prepare(`SELECT id, status FROM generated_docs WHERE workspace_id=? AND template_id=? ORDER BY id LIMIT 1`).get(wsId, t.id);
+    return { template_name: t.name, adopted: !!adopted, status: adopted ? adopted.status : null, doc_id: adopted ? adopted.id : null };
+  });
+
+  // KPIs
+  const kpis = {
+    total: decorated.length,
+    mandatory: decorated.filter(d => d.tier === 'mandatory').length,
+    expected: decorated.filter(d => d.tier === 'expected').length,
+    recommended: decorated.filter(d => d.tier === 'recommended').length,
+    draft: decorated.filter(d => d.status === 'draft').length,
+    inReview: decorated.filter(d => d.status === 'in_review').length,
+    approved: decorated.filter(d => d.status === 'approved').length,
+    published: decorated.filter(d => d.status === 'published').length,
+    retired: decorated.filter(d => d.status === 'retired').length,
+    overdue: decorated.filter(d => d.reviewBand === 'overdue').length,
+    dueSoon: decorated.filter(d => d.reviewBand === 'due_soon').length,
+    noReviewDate: decorated.filter(d => d.reviewBand === 'unset').length,
+    mandatoryAdopted: templateAdoption.filter(t => t.adopted).length,
+    mandatoryTotal: templateAdoption.length,
+    stale: decorated.filter(d => d.stale).length
+  };
+  kpis.mandatoryPct = kpis.mandatoryTotal ? Math.round((kpis.mandatoryAdopted / kpis.mandatoryTotal) * 100) : 0;
+
+  res.render('policy_adoption', { user: req.user, ws: req.workspace, docs: decorated, kpis, templateAdoption, today });
+});
+
+// ==================== EVIDENCE COVERAGE MATRIX ====================
+// For each Annex A control: what evidence types are EXPECTED (from the
+// iso_items.evidence_to_look_for content) vs what's actually attached, and
+// what's stale (>12 months old). This is the artefact an auditor builds in
+// their head while walking your controls; here we pre-build it.
+app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const wsId = req.workspace.id;
+  const filter = req.query.filter || 'included'; // 'included' | 'all' | 'missing' | 'stale'
+  const today = new Date().toISOString().slice(0, 10);
+  const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+
+  const rows = db.prepare(`SELECT i.id, i.title, i.category, i.type, i.evidence_to_look_for,
+      COALESCE(cs.status,'Not Assessed') AS status,
+      COALESCE(cs.applicability,'undecided') AS applicability
+    FROM iso_items i
+    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    WHERE i.type='control'
+    ORDER BY i.sort_order`).all(wsId);
+
+  // For each control, count attached evidence (live, not superseded).
+  // Two link paths to consider: primary evidence.iso_item_id, and evidence_controls join.
+  // UNION on evidence ids first then count.
+  const evidenceByControl = {};
+  const evRows = db.prepare(`
+    SELECT iso_item_id, MAX(uploaded_at) AS last_uploaded_at, COUNT(*) AS attached
+    FROM (
+      SELECT iso_item_id, uploaded_at FROM evidence WHERE workspace_id=? AND iso_item_id IS NOT NULL AND superseded_at IS NULL
+      UNION ALL
+      SELECT ec.iso_item_id AS iso_item_id, e.uploaded_at FROM evidence_controls ec
+        INNER JOIN evidence e ON e.id=ec.evidence_id
+        WHERE e.workspace_id=? AND e.superseded_at IS NULL
+    )
+    GROUP BY iso_item_id`).all(wsId, wsId);
+  evRows.forEach(r => { evidenceByControl[r.iso_item_id] = { attached: r.attached, last_uploaded_at: r.last_uploaded_at }; });
+
+  // Build the matrix.
+  const matrix = rows.map(r => {
+    let expected = [];
+    try { expected = JSON.parse(r.evidence_to_look_for || '[]') || []; } catch (_) {}
+    const ev = evidenceByControl[r.id] || { attached: 0, last_uploaded_at: null };
+    const expectedCount = expected.length;
+    const attachedCount = ev.attached;
+    const lastUp = ev.last_uploaded_at ? ev.last_uploaded_at.slice(0, 10) : null;
+    const stale = lastUp && lastUp < staleCutoff;
+    // Status: green (attached >= expected && not stale), amber (some attached but short or stale), red (none).
+    let band = 'red';
+    if (expectedCount === 0) band = attachedCount > 0 ? 'green' : 'gray';
+    else if (attachedCount >= expectedCount && !stale) band = 'green';
+    else if (attachedCount > 0) band = 'amber';
+    return {
+      id: r.id, title: r.title, category: r.category,
+      status: r.status, applicability: r.applicability,
+      expected, expectedCount, attachedCount, lastUp, stale, band
+    };
+  });
+
+  // Apply filter
+  let filtered = matrix;
+  if (filter === 'included') filtered = matrix.filter(m => m.applicability === 'included');
+  else if (filter === 'missing') filtered = matrix.filter(m => m.applicability === 'included' && m.attachedCount === 0);
+  else if (filter === 'stale') filtered = matrix.filter(m => m.applicability === 'included' && m.stale);
+
+  // Aggregate KPI
+  const included = matrix.filter(m => m.applicability === 'included');
+  const kpis = {
+    included: included.length,
+    fullyCovered: included.filter(m => m.band === 'green').length,
+    partial: included.filter(m => m.band === 'amber').length,
+    missing: included.filter(m => m.band === 'red').length,
+    stale: included.filter(m => m.stale).length
+  };
+  kpis.coveragePct = included.length ? Math.round((kpis.fullyCovered / included.length) * 100) : 0;
+
+  res.render('evidence_coverage', { user: req.user, ws: req.workspace, rows: filtered, kpis, filter, today });
+});
+
+// CSV export of the matrix
+app.get('/workspaces/:wsId/evidence-coverage.csv', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const wsId = req.workspace.id;
+  const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const rows = db.prepare(`SELECT i.id, i.title, i.category, i.evidence_to_look_for,
+      COALESCE(cs.applicability,'undecided') AS applicability
+    FROM iso_items i
+    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
+  const evidenceByControl = {};
+  db.prepare(`SELECT iso_item_id, MAX(uploaded_at) AS last_uploaded_at, COUNT(*) AS attached FROM (
+      SELECT iso_item_id, uploaded_at FROM evidence WHERE workspace_id=? AND iso_item_id IS NOT NULL AND superseded_at IS NULL
+      UNION ALL
+      SELECT ec.iso_item_id, e.uploaded_at FROM evidence_controls ec INNER JOIN evidence e ON e.id=ec.evidence_id WHERE e.workspace_id=? AND e.superseded_at IS NULL
+    ) GROUP BY iso_item_id`).all(wsId, wsId).forEach(r => { evidenceByControl[r.iso_item_id] = r; });
+  const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
+  const lines = ['Code,Title,Category,Applicability,Expected count,Attached count,Last upload,Stale (>12mo),Status band'];
+  for (const r of rows) {
+    let expected = [];
+    try { expected = JSON.parse(r.evidence_to_look_for || '[]') || []; } catch (_) {}
+    const ev = evidenceByControl[r.id] || { attached: 0, last_uploaded_at: null };
+    const lastUp = ev.last_uploaded_at ? ev.last_uploaded_at.slice(0, 10) : '';
+    const stale = lastUp && lastUp < staleCutoff;
+    const band = expected.length === 0 ? (ev.attached > 0 ? 'green' : 'gray')
+                : (ev.attached >= expected.length && !stale) ? 'green'
+                : ev.attached > 0 ? 'amber' : 'red';
+    const code = r.id.replace('annex-','').toUpperCase();
+    lines.push([code, r.title, r.category, r.applicability, expected.length, ev.attached, lastUp, stale ? 'yes' : '', band].map(esc).join(','));
+  }
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="evidence-coverage-${(new Date()).toISOString().slice(0,10)}.csv"`);
+  res.send(lines.join('\n'));
+});
+
+// ==================== TRAINING TRACKER (Clause 7.3 / A.6.3) ====================
+// Courses + per-person assignments. Schemas pre-existed; this just wires them.
+app.get('/workspaces/:wsId/training', requireAuth, requireWorkspace, requirePermission('members.view'), (req, res) => {
+  const courses = db.prepare(`SELECT c.*,
+      (SELECT COUNT(*) FROM training_records r WHERE r.workspace_id=c.workspace_id AND r.training_name=c.name) AS assigned_count,
+      (SELECT COUNT(*) FROM training_records r WHERE r.workspace_id=c.workspace_id AND r.training_name=c.name AND r.status='completed') AS completed_count
+    FROM training_courses c WHERE c.workspace_id=? ORDER BY c.name`).all(req.workspace.id);
+  const records = db.prepare(`SELECT * FROM training_records WHERE workspace_id=? ORDER BY due_date IS NULL, due_date, user_name`).all(req.workspace.id);
+  const today = (new Date()).toISOString().slice(0, 10);
+  const stats = {
+    total: records.length,
+    completed: records.filter(r => r.status === 'completed').length,
+    overdue: records.filter(r => r.status !== 'completed' && r.due_date && r.due_date < today).length,
+    inflight: records.filter(r => r.status === 'assigned').length
+  };
+  stats.completionPct = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
+  res.render('training', { user: req.user, ws: req.workspace, courses, records, stats, today });
+});
+
+app.post('/workspaces/:wsId/training/courses', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { name, description, duration_minutes, validity_months, required_for_roles, content_url, passing_score } = req.body;
+  if (!name) return res.redirect(`/workspaces/${req.workspace.id}/training`);
+  db.prepare(`INSERT INTO training_courses (workspace_id, name, description, duration_minutes, validity_months,
+    required_for_roles, content_url, has_quiz, passing_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, name.trim(), description || null,
+         duration_minutes ? parseInt(duration_minutes, 10) : null,
+         validity_months ? parseInt(validity_months, 10) : 12,
+         required_for_roles || null, content_url || null,
+         passing_score ? 1 : 0, passing_score ? parseInt(passing_score, 10) : null);
+  logAction(req.user.id, req.workspace.id, 'add_training_course', 'training_course', null, { name }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/training`);
+});
+
+app.post('/workspaces/:wsId/training/courses/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM training_courses WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/training`);
+});
+
+app.post('/workspaces/:wsId/training/records', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { user_name, user_role, training_name, assigned_date, due_date } = req.body;
+  if (!user_name || !training_name) return res.redirect(`/workspaces/${req.workspace.id}/training`);
+  db.prepare(`INSERT INTO training_records (workspace_id, user_name, user_role, training_name, assigned_date, due_date, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'assigned')`)
+    .run(req.workspace.id, user_name.trim(), user_role || null, training_name.trim(),
+         assigned_date || null, due_date || null);
+  logAction(req.user.id, req.workspace.id, 'assign_training', 'training_record', null, { user_name, training_name }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/training`);
+});
+
+app.post('/workspaces/:wsId/training/records/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { status, completed_date, score, notes } = req.body;
+  db.prepare(`UPDATE training_records SET status=COALESCE(?,status), completed_date=COALESCE(?,completed_date),
+    score=COALESCE(?,score), notes=COALESCE(?,notes) WHERE id=? AND workspace_id=?`)
+    .run(status || null, completed_date || null, score || null, notes || null, req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/training`);
+});
+
+app.post('/workspaces/:wsId/training/records/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM training_records WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/training`);
+});
+
+// ==================== COMPETENCE MATRIX (Clause 7.2) ====================
+app.get('/workspaces/:wsId/competence', requireAuth, requireWorkspace, requirePermission('members.view'), (req, res) => {
+  const roles = db.prepare(`SELECT * FROM competence_roles WHERE workspace_id=? ORDER BY name`).all(req.workspace.id);
+  const records = db.prepare(`SELECT cr.*, r.name AS role_name
+    FROM competence_records cr INNER JOIN competence_roles r ON r.id=cr.role_id
+    WHERE cr.workspace_id=? ORDER BY r.name, cr.person_name, cr.competence`).all(req.workspace.id);
+  // Build matrix: people × competences per role
+  const matrix = {};
+  records.forEach(r => {
+    const key = r.role_name;
+    if (!matrix[key]) matrix[key] = {};
+    if (!matrix[key][r.person_name]) matrix[key][r.person_name] = [];
+    matrix[key][r.person_name].push(r);
+  });
+  const today = (new Date()).toISOString().slice(0, 10);
+  const soon = (new Date(Date.now() + 90 * 86400000)).toISOString().slice(0, 10);
+  const stats = {
+    rolesCount: roles.length,
+    recordsCount: records.length,
+    expired: records.filter(r => r.expires_on && r.expires_on < today).length,
+    expiringSoon: records.filter(r => r.expires_on && r.expires_on >= today && r.expires_on < soon).length
+  };
+  res.render('competence', { user: req.user, ws: req.workspace, roles, records, matrix, stats, today, soon });
+});
+
+app.post('/workspaces/:wsId/competence/roles', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { name, description, required_competences } = req.body;
+  if (!name) return res.redirect(`/workspaces/${req.workspace.id}/competence`);
+  db.prepare(`INSERT INTO competence_roles (workspace_id, name, description, required_competences) VALUES (?, ?, ?, ?)`)
+    .run(req.workspace.id, name.trim(), description || null, required_competences || null);
+  logAction(req.user.id, req.workspace.id, 'add_competence_role', 'competence_role', null, { name }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/competence`);
+});
+
+app.post('/workspaces/:wsId/competence/roles/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { name, description, required_competences } = req.body;
+  db.prepare(`UPDATE competence_roles SET name=COALESCE(?,name), description=?, required_competences=? WHERE id=? AND workspace_id=?`)
+    .run(name || null, description || null, required_competences || null, req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/competence`);
+});
+
+app.post('/workspaces/:wsId/competence/roles/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM competence_roles WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/competence`);
+});
+
+app.post('/workspaces/:wsId/competence/records', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { role_id, person_name, person_email, competence, evidence_type, evidence_ref, recorded_at, expires_on, notes } = req.body;
+  if (!role_id || !person_name || !competence) return res.redirect(`/workspaces/${req.workspace.id}/competence`);
+  // Sanity: the role must belong to this workspace.
+  const role = db.prepare(`SELECT id FROM competence_roles WHERE id=? AND workspace_id=?`).get(role_id, req.workspace.id);
+  if (!role) return res.redirect(`/workspaces/${req.workspace.id}/competence`);
+  db.prepare(`INSERT INTO competence_records (workspace_id, role_id, person_name, person_email, competence, evidence_type, evidence_ref, recorded_at, expires_on, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, role_id, person_name.trim(), person_email || null, competence.trim(),
+         evidence_type || null, evidence_ref || null, recorded_at || null, expires_on || null, notes || null);
+  logAction(req.user.id, req.workspace.id, 'add_competence_record', 'competence_record', null, { role_id, person_name, competence }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/competence`);
+});
+
+app.post('/workspaces/:wsId/competence/records/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { evidence_type, evidence_ref, recorded_at, expires_on, notes } = req.body;
+  db.prepare(`UPDATE competence_records SET evidence_type=?, evidence_ref=?, recorded_at=?, expires_on=?, notes=? WHERE id=? AND workspace_id=?`)
+    .run(evidence_type || null, evidence_ref || null, recorded_at || null, expires_on || null, notes || null,
+         req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/competence`);
+});
+
+app.post('/workspaces/:wsId/competence/records/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM competence_records WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/competence`);
+});
+
+// ==================== COMMUNICATION PLAN (Clause 7.4) ====================
+app.get('/workspaces/:wsId/communication-plan', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const items = db.prepare(`SELECT * FROM communication_plan WHERE workspace_id=? ORDER BY next_due_date IS NULL, next_due_date, what`).all(req.workspace.id);
+  const today = (new Date()).toISOString().slice(0, 10);
+  const stats = {
+    total: items.length,
+    internal: items.filter(i => i.internal_external === 'internal').length,
+    external: items.filter(i => i.internal_external === 'external').length,
+    overdue: items.filter(i => i.next_due_date && i.next_due_date < today).length
+  };
+  res.render('communication_plan', { user: req.user, ws: req.workspace, items, stats, today });
+});
+
+app.post('/workspaces/:wsId/communication-plan', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { what, audience, channel, frequency, owner_name, internal_external, last_sent_date, next_due_date, trigger_event, notes } = req.body;
+  if (!what) return res.redirect(`/workspaces/${req.workspace.id}/communication-plan`);
+  db.prepare(`INSERT INTO communication_plan (workspace_id, what, audience, channel, frequency, owner_name, internal_external,
+    last_sent_date, next_due_date, trigger_event, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.workspace.id, what.trim(), audience || null, channel || null, frequency || null,
+         owner_name || null, internal_external || 'internal',
+         last_sent_date || null, next_due_date || null, trigger_event || null, notes || null);
+  logAction(req.user.id, req.workspace.id, 'add_communication_plan', 'communication_plan', null, { what }, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/communication-plan`);
+});
+
+app.post('/workspaces/:wsId/communication-plan/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const { what, audience, channel, frequency, owner_name, internal_external, last_sent_date, next_due_date, trigger_event, notes } = req.body;
+  db.prepare(`UPDATE communication_plan SET what=COALESCE(?,what), audience=?, channel=?, frequency=?, owner_name=?,
+    internal_external=COALESCE(?,internal_external), last_sent_date=?, next_due_date=?, trigger_event=?, notes=?
+    WHERE id=? AND workspace_id=?`)
+    .run(what || null, audience || null, channel || null, frequency || null, owner_name || null,
+         internal_external || null, last_sent_date || null, next_due_date || null, trigger_event || null, notes || null,
+         req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/communication-plan`);
+});
+
+app.post('/workspaces/:wsId/communication-plan/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  db.prepare(`DELETE FROM communication_plan WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  res.redirect(`/workspaces/${req.workspace.id}/communication-plan`);
 });
 
 // ==================== RISK METHODOLOGY ====================
@@ -7745,6 +8425,44 @@ app.post('/workspaces/:wsId/documents/:id/new-version', requireAuth, requireWork
 
 // ==================== ENHANCED ACTIVITY LOG ====================
 // Filter activity by user/action/entity_type/date range; show before/after diffs; export CSV.
+// ==================== REVIEW QUEUE ====================
+// Cross-framework list of assessment items flagged for senior review. Two
+// tabs aren't worth it - one list with a framework column is faster to scan.
+app.get('/workspaces/:wsId/review-queue', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const filter = req.query.filter || 'open'; // 'open' = requested + needs_changes; 'all' = everything non-none
+  const wsId = req.workspace.id;
+
+  const iso27 = db.prepare(`SELECT cs.iso_item_id AS item_id, i.title, cs.review_status, cs.review_requested_at,
+      cs.reviewed_at, cs.review_reason,
+      ru.name AS requested_by_name, rv.name AS reviewed_by_name
+    FROM control_states cs
+    INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    LEFT JOIN users ru ON ru.id = cs.review_requested_by
+    LEFT JOIN users rv ON rv.id = cs.reviewed_by
+    WHERE cs.workspace_id=? AND cs.review_status != 'none'
+    ORDER BY cs.review_requested_at DESC`).all(wsId).map(r => ({ ...r, framework: 'iso27001', link: `/workspaces/${wsId}/controls/assess/${r.item_id}` }));
+
+  const iso42 = db.prepare(`SELECT cs.iso_item_id AS item_id, i.title, cs.review_status, cs.review_requested_at,
+      cs.reviewed_at, cs.review_reason,
+      ru.name AS requested_by_name, rv.name AS reviewed_by_name
+    FROM iso42001_control_states cs
+    INNER JOIN iso42001_items i ON i.id = cs.iso_item_id
+    LEFT JOIN users ru ON ru.id = cs.review_requested_by
+    LEFT JOIN users rv ON rv.id = cs.reviewed_by
+    WHERE cs.workspace_id=? AND cs.review_status != 'none'
+    ORDER BY cs.review_requested_at DESC`).all(wsId).map(r => ({ ...r, framework: 'iso42001', link: `/workspaces/${wsId}/iso42001/gap/${r.item_id}` }));
+
+  let all = [...iso27, ...iso42];
+  if (filter === 'open') all = all.filter(r => ['requested','needs_changes'].includes(r.review_status));
+  all.sort((a, b) => (b.review_requested_at || '').localeCompare(a.review_requested_at || ''));
+  const counts = {
+    requested: [...iso27, ...iso42].filter(r => r.review_status === 'requested').length,
+    needs_changes: [...iso27, ...iso42].filter(r => r.review_status === 'needs_changes').length,
+    reviewed: [...iso27, ...iso42].filter(r => r.review_status === 'reviewed').length
+  };
+  res.render('review_queue', { user: req.user, ws: req.workspace, rows: all, filter, counts });
+});
+
 app.get('/workspaces/:wsId/activity-log', requireAuth, requireWorkspace, requirePermission('audit_log.view'), (req, res) => {
   const filters = {
     user_id: req.query.user_id || '',
@@ -7817,9 +8535,9 @@ function computeNextStep(ws) {
   // moment with the client.
   if (intakeCount >= 8 && !ws.scope_confirmed_at) {
     return {
-      kind: 'confirm-scope', title: 'Confirm the scope to start the gap assessment',
-      why: 'Sign off on the clause 4.3 scope statement so the engagement is locked in. Open setup, click "Confirm scope & start gap assessment".',
-      cta: 'Review &amp; confirm', href: `/workspaces/${wsId}/intake`,
+      kind: 'confirm-scope', title: 'Confirm scope before gap assessment',
+      why: 'Sign off on the clause 4.3 scope statement. Setup -> Confirm scope.',
+      cta: 'Review & confirm', href: `/workspaces/${wsId}/intake`,
     };
   }
 
@@ -8088,6 +8806,29 @@ app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) 
     .forEach(a => add(a.due_date, 'treatment', a.title, `/workspaces/${wsId}/risks/${a.risk_id}`, a.status === 'done' ? 'low' : 'medium'));
   db.prepare(`SELECT a.id, a.expires_at, a.risk_id, r.title FROM risk_acceptances a INNER JOIN risks r ON r.id=a.risk_id WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL`).all(wsId)
     .forEach(a => add(a.expires_at, 'risk-accept', `R-${a.risk_id} acceptance expires`, `/workspaces/${wsId}/risks/${a.risk_id}`, 'medium'));
+
+  // Newer sources: training due, comms plan, competence expiry, supplier reviews, BCP tests, ISO 42001 cert events.
+  try {
+    db.prepare(`SELECT id, user_name, training_name, due_date, status FROM training_records WHERE workspace_id=? AND due_date IS NOT NULL`).all(wsId)
+      .forEach(t => add(t.due_date, 'training', `${t.user_name} - ${t.training_name}`, `/workspaces/${wsId}/training`, t.status === 'completed' ? 'low' : 'medium'));
+  } catch (_) {}
+  try {
+    db.prepare(`SELECT id, what, next_due_date FROM communication_plan WHERE workspace_id=? AND next_due_date IS NOT NULL`).all(wsId)
+      .forEach(c => add(c.next_due_date, 'comms', c.what, `/workspaces/${wsId}/communication-plan`, 'low'));
+  } catch (_) {}
+  try {
+    db.prepare(`SELECT id, person_name, competence, expires_on FROM competence_records WHERE workspace_id=? AND expires_on IS NOT NULL`).all(wsId)
+      .forEach(c => add(c.expires_on, 'competence', `${c.person_name} - ${c.competence} expires`, `/workspaces/${wsId}/competence`, 'medium'));
+  } catch (_) {}
+  try {
+    db.prepare(`SELECT id, supplier_id, next_review_date FROM supplier_reviews WHERE next_review_date IS NOT NULL
+      AND supplier_id IN (SELECT id FROM suppliers WHERE workspace_id=?)`).all(wsId)
+      .forEach(r => add(r.next_review_date, 'supplier', `Supplier review`, `/workspaces/${wsId}/vendors/${r.supplier_id}`, 'low'));
+  } catch (_) {}
+  try {
+    db.prepare(`SELECT id, event_type, planned_date FROM iso42001_cert_cycle_events WHERE workspace_id=? AND planned_date IS NOT NULL`).all(wsId)
+      .forEach(e => add(e.planned_date, 'iso42001-cert', `[42001] ${e.event_type}`, `/workspaces/${wsId}/iso42001/cert-cycle`, 'medium'));
+  } catch (_) {}
 
   // Group by date for the grid
   const byDate = {};
@@ -8642,15 +9383,18 @@ app.post('/workspaces/:wsId/risks/clone-firm-library', requireAuth, requireWorks
     (workspace_id, title, description, threat, vulnerability, likelihood, impact, owner_name, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')`);
   let added = 0;
+  const clonedIds = [];
   const tx = db.transaction(() => {
     for (const r of lib) {
       if (have.has(r.title)) continue;
-      ins.run(req.workspace.id, r.title, r.description, r.threat, r.vulnerability,
+      const info = ins.run(req.workspace.id, r.title, r.description, r.threat, r.vulnerability,
         r.suggested_likelihood || 3, r.suggested_impact || 3, '');
+      clonedIds.push(info.lastInsertRowid);
       added++;
     }
   });
   tx();
+  clonedIds.forEach(id => fts.refresh(req.workspace.id, 'risk', id));
   logAction(req.user.id, req.workspace.id, 'risk_clone_firm_library', 'risk', null, { added }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/risks`, `Cloned ${added} risks from firm library`));
 });
@@ -11139,6 +11883,86 @@ app.get('/workspaces/:wsId/risks/:id/acceptances', requireAuth, requireWorkspace
   res.render('risk_acceptances', { user: req.user, ws: req.workspace, risk, list });
 });
 
+// Formal acceptance record - downloadable DOCX with the risk, residual,
+// rationale, expiry, and a signature block. The auditor wants this as a
+// hand-off artefact, not just a database row.
+app.get('/workspaces/:wsId/risks/:id/acceptances/:aid/record.docx', requireAuth, requireWorkspace, requirePermission('risk.view'), async (req, res) => {
+  const risk = db.prepare(`SELECT * FROM risks WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!risk) return res.status(404).send('Risk not found');
+  const a = db.prepare(`SELECT * FROM risk_acceptances WHERE id=? AND workspace_id=? AND risk_id=?`).get(req.params.aid, req.workspace.id, risk.id);
+  if (!a) return res.status(404).send('Acceptance record not found');
+
+  const para = (text, opts = {}) => new Paragraph({ children: [new TextRun({ text, ...opts })], ...opts });
+  const heading = (text, level) => new Paragraph({ heading: level, children: [new TextRun({ text, bold: true })], spacing: { before: 300, after: 120 } });
+  const row = (label, value) => new TableRow({ children: [
+    new TableCell({ width: { size: 30, type: WidthType.PERCENTAGE }, shading: { fill: 'F4F4F5' },
+      children: [new Paragraph({ children: [new TextRun({ text: label, bold: true })] })] }),
+    new TableCell({ width: { size: 70, type: WidthType.PERCENTAGE },
+      children: [new Paragraph({ children: [new TextRun({ text: value || '-' })] })] })
+  ]});
+
+  const score = (risk.likelihood || 0) * (risk.impact || 0);
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: [
+        new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: 'Risk acceptance record' })], alignment: AlignmentType.CENTER }),
+        para(`${req.workspace.client_name || 'Workspace'} - generated ${new Date().toISOString().slice(0,10)}`, { italics: true }),
+        para(''),
+
+        heading('Risk', HeadingLevel.HEADING_2),
+        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
+          row('Risk ID', `R-${risk.id}`),
+          row('Title', risk.title),
+          row('Description', risk.description || '-'),
+          row('Likelihood × Impact', `${risk.likelihood} × ${risk.impact} = ${score}`),
+          row('Treatment option chosen', 'Accept (residual risk)'),
+          row('Risk owner', risk.owner_name || '-'),
+        ]}),
+
+        heading('Residual position', HeadingLevel.HEADING_2),
+        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
+          row('Residual L × I', risk.residual_likelihood && risk.residual_impact
+            ? `${risk.residual_likelihood} × ${risk.residual_impact} = ${risk.residual_likelihood * risk.residual_impact}`
+            : (a.residual_score != null ? String(a.residual_score) : '-')),
+          row('Inherent L × I', `${risk.likelihood} × ${risk.impact} = ${score}`),
+        ]}),
+
+        heading('Acceptance rationale', HeadingLevel.HEADING_2),
+        para(a.rationale || '-'),
+
+        heading('Attestation', HeadingLevel.HEADING_2),
+        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
+          row('Accepter (full name)', a.accepter_name),
+          row('Role', a.accepter_role || '-'),
+          row('Signed at', a.signed_at),
+          row('IP address', a.ip_address || '-'),
+          row('User agent', a.user_agent || '-'),
+          row('Signature hash', a.signature ? a.signature.slice(0, 32) + '…' : '-'),
+          row('Expires / re-review by', a.expires_at || 'No fixed expiry - reviewed at each management review'),
+          row('Status', a.revoked_at ? `REVOKED at ${a.revoked_at}` : 'Active'),
+        ]}),
+        para(''),
+
+        new Paragraph({ children: [new TextRun({
+          text: 'I attest under my own authority that this residual risk has been considered and is hereby formally accepted. ' +
+                'This electronic signature is bound to my identity, the recorded IP, and the timestamp above. ' +
+                'The signature hash is anchored in the workspace audit log and tamper-evident.',
+          italics: true
+        })] }),
+        para(''),
+        para('Risk owner sign-off (clause 6.1.3.f): _________________________  Date: __________', { size: 22 }),
+      ]
+    }]
+  });
+
+  const buf = await Packer.toBuffer(doc);
+  const safeTitle = (risk.title || `risk-${risk.id}`).replace(/[^a-zA-Z0-9-]+/g, '-').slice(0, 60);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="risk-acceptance-R${risk.id}-${safeTitle}.docx"`);
+  res.send(buf);
+});
+
 app.post('/workspaces/:wsId/risks/:id/acceptances/:aid/revoke', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
   const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!risk) return res.status(404).send('Risk not found');
@@ -11391,27 +12215,34 @@ app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, require
 
   if (!rows.length) {
     return res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`,
-      'No controls marked included on the SoA — decide applicability before generating an audit checklist', 'error'));
+      'No controls marked included on the SoA - decide applicability before generating an audit checklist', 'error'));
   }
+
+  const existing = new Set(db.prepare(`SELECT iso_item_id FROM audit_observations WHERE audit_id=? AND iso_item_id IS NOT NULL`)
+    .all(audit.id).map(r => r.iso_item_id));
+  const toInsert = rows.filter(r => !existing.has(r.id));
 
   const ins = db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, status) VALUES (?, ?, ?, 'open')`);
   const tx = db.transaction(() => {
-    rows.forEach(r => {
+    toInsert.forEach(r => {
       const code = r.id.replace('annex-', '').toUpperCase();
       const cleanTitle = r.title.replace(/^A\.[0-9.]+ /, '');
-      const linkLine = `Linked policies: ${r.doc_count} · Linked evidence: ${r.evi_count}`;
+      const linkLine = `Linked policies: ${r.doc_count} - Linked evidence: ${r.evi_count}`;
       const sampleLine = `Sample size suggestion: ${sampleHintFor(r.id)}`;
-      const testLine = `Test: (1) Is there a documented procedure? (2) Is it operating in practice — sample evidence below. (3) Has it been reviewed in the last 12 months?`;
-      const findingLine = `Finding template: [Conformance / Observation / Minor NC / Major NC] — [describe what was tested, what was seen, root cause if NC, evidence references]`;
-      const description = `${code} — ${cleanTitle}\n\n${testLine}\n\n${linkLine}\n${sampleLine}\n\n${findingLine}`;
+      const testLine = `Test: (1) Is there a documented procedure? (2) Is it operating in practice - sample evidence below. (3) Has it been reviewed in the last 12 months?`;
+      const findingLine = `Finding template: [Conformance / Observation / Minor NC / Major NC] - [describe what was tested, what was seen, root cause if NC, evidence references]`;
+      const description = `${code} - ${cleanTitle}\n\n${testLine}\n\n${linkLine}\n${sampleLine}\n\n${findingLine}`;
       ins.run(audit.id, r.id, description);
     });
   });
   tx();
   logAction(req.user.id, req.workspace.id, 'generate_audit_checklist_from_soa', 'audit', audit.id,
-    { count: rows.length }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`,
-    `Generated ${rows.length} checklist item${rows.length === 1 ? '' : 's'} from SoA · sample-size hints + linkage included`));
+    { added: toInsert.length, skipped_existing: rows.length - toInsert.length }, auditCtx(req));
+  const skipped = rows.length - toInsert.length;
+  const msg = skipped > 0
+    ? `Added ${toInsert.length} new checklist item${toInsert.length === 1 ? '' : 's'} · ${skipped} already existed and were kept`
+    : `Generated ${toInsert.length} checklist item${toInsert.length === 1 ? '' : 's'} from SoA · sample-size hints + linkage included`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, msg));
 });
 
 app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
@@ -11423,17 +12254,27 @@ app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace
   const controls = category === 'clauses'
     ? db.prepare(`SELECT id, title FROM iso_items WHERE type='clause' ORDER BY sort_order`).all()
     : db.prepare(`SELECT id, title FROM iso_items WHERE type='control' AND category=? ORDER BY sort_order`).all(category);
+
+  const existing = new Set(db.prepare(`SELECT iso_item_id FROM audit_observations WHERE audit_id=? AND iso_item_id IS NOT NULL`)
+    .all(audit.id).map(r => r.iso_item_id));
+  const toInsert = controls.filter(c => !existing.has(c.id));
+
   const ins = db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, status) VALUES (?, ?, ?, 'open')`);
   const tx = db.transaction(() => {
-    controls.forEach(c => {
+    toInsert.forEach(c => {
       const cleanTitle = c.title.replace(/^A\.[0-9.]+ /, '').replace(/^Clause [0-9.]+ /, '');
       const q = `${c.id.replace('annex-','').replace('clause-','').toUpperCase()} - ${cleanTitle}: Is there a documented process? Is it operating in practice (sample evidence)? Has it been reviewed in the last 12 months?`;
       ins.run(audit.id, c.id, q);
     });
   });
   tx();
-  logAction(req.user.id, req.workspace.id, 'generate_audit_checklist', 'audit', audit.id, { category, count: controls.length }, auditCtx(req));
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, `Generated ${controls.length} checklist item${controls.length === 1 ? '' : 's'} - fill in findings against each`));
+  logAction(req.user.id, req.workspace.id, 'generate_audit_checklist', 'audit', audit.id,
+    { category, added: toInsert.length, skipped_existing: controls.length - toInsert.length }, auditCtx(req));
+  const skipped = controls.length - toInsert.length;
+  const msg = skipped > 0
+    ? `Added ${toInsert.length} new checklist item${toInsert.length === 1 ? '' : 's'} from ${category} · ${skipped} already existed and were kept`
+    : `Generated ${toInsert.length} checklist item${toInsert.length === 1 ? '' : 's'} - fill in findings against each`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, msg));
 });
 
 app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
@@ -11449,6 +12290,52 @@ app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorksp
 app.post('/workspaces/:wsId/audits/observations/:obsId/close', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
   db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=? AND audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`).run(req.params.obsId, req.workspace.id);
   redirectBack(req, res);
+});
+
+app.post('/workspaces/:wsId/audits/:id/checklist/clear', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!audit) return res.status(404).send('Not found');
+  const result = db.prepare(`DELETE FROM audit_observations WHERE audit_id=? AND status='open'`).run(audit.id);
+  logAction(req.user.id, req.workspace.id, 'clear_audit_checklist', 'audit', audit.id, { deleted: result.changes }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`,
+    `Cleared ${result.changes} open checklist item${result.changes === 1 ? '' : 's'} (closed items kept)`));
+});
+
+app.post('/workspaces/:wsId/audits/observations/:obsId/reopen', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  db.prepare(`UPDATE audit_observations SET status='open' WHERE id=? AND audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`).run(req.params.obsId, req.workspace.id);
+  redirectBack(req, res);
+});
+
+app.post('/workspaces/:wsId/audits/observations/:obsId/notes', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const obs = db.prepare(`SELECT o.id, o.audit_id FROM audit_observations o
+    INNER JOIN audits a ON a.id = o.audit_id
+    WHERE o.id=? AND a.workspace_id=?`).get(req.params.obsId, req.workspace.id);
+  if (!obs) return res.status(404).send('Not found');
+  db.prepare(`UPDATE audit_observations SET recommendation=? WHERE id=?`).run(req.body.recommendation || null, obs.id);
+  logAction(req.user.id, req.workspace.id, 'update_audit_observation', 'audit_observation', obs.id, {}, auditCtx(req));
+  redirectBack(req, res);
+});
+
+app.post('/workspaces/:wsId/audits/observations/:obsId/promote', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  const obs = db.prepare(`SELECT o.* FROM audit_observations o
+    INNER JOIN audits a ON a.id = o.audit_id
+    WHERE o.id=? AND a.workspace_id=?`).get(req.params.obsId, req.workspace.id);
+  if (!obs) return res.status(404).send('Not found');
+  const finding_type = ['observation','ofi','minor_nc','major_nc'].includes(req.body.finding_type) ? req.body.finding_type : 'observation';
+  const severity = ['low','medium','high'].includes(req.body.severity) ? req.body.severity : 'medium';
+  const description = (req.body.description || obs.recommendation || obs.description || '').trim();
+  if (!description) return redirectBack(req, res);
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO audit_findings (audit_id, iso_item_id, finding_type, severity, description, status)
+                VALUES (?, ?, ?, ?, ?, 'open')`)
+      .run(obs.audit_id, obs.iso_item_id || null, finding_type, severity, description);
+    db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=?`).run(obs.id);
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'promote_observation_to_finding', 'audit_observation', obs.id,
+    { finding_type, severity }, auditCtx(req));
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${obs.audit_id}`,
+    `Promoted to ${finding_type.replace('_',' ')} finding`));
 });
 
 // ==================== KEY ROTATION + BACKUP UI ====================
@@ -12130,11 +13017,24 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
   let suggestedStatus = null;
   try { suggestedStatus = suggestStatus42(savedAnswers, questions.length); } catch (_) {}
 
+  // Comments + review state (parallels the ISO 27001 wizard)
+  const commentsRaw42 = db.prepare(`SELECT c.id, c.body, c.internal_only, c.created_at, c.user_id, u.name AS user_name
+    FROM comments c LEFT JOIN users u ON u.id = c.user_id
+    WHERE c.workspace_id=? AND c.parent_type='iso42001_item' AND c.parent_id=?
+    ORDER BY c.created_at ASC`).all(req.workspace.id, item.id);
+  const comments = commentsRaw42.map(c => ({ ...c, body: enc.decryptIfNeeded(c.body, req.workspace.id) }));
+  const firmUsers = db.prepare(`SELECT id, name FROM users WHERE firm_id=? AND user_type='firm' AND active=1 ORDER BY name`).all(req.workspace.firm_id);
+  let requestedByName = null, reviewedByName = null;
+  if (state.review_requested_by) requestedByName = db.prepare(`SELECT name FROM users WHERE id=?`).get(state.review_requested_by)?.name;
+  if (state.reviewed_by) reviewedByName = db.prepare(`SELECT name FROM users WHERE id=?`).get(state.reviewed_by)?.name;
+  const isReviewer = req.user.user_type === 'firm' && ['manager','senior_consultant'].includes(rbac.normalizeRole(req.user.firm_role));
+
   res.render('iso42001_gap_detail', { user: req.user, ws: req.workspace, item, state,
     questions, savedAnswers, suggestedStatus,
     prev, next, totals, sectionPosition, doneFlag,
     relatedRows, evidenceList, openNCs, linkedRisks, linkedDocs, linkableDocs, linkableRisks,
-    priorPassNotes, activePass });
+    priorPassNotes, activePass,
+    comments, firmUsers, requestedByName, reviewedByName, isReviewer });
 });
 
 app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
@@ -12209,6 +13109,52 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, re
     .run(document_id, req.params.isoId, section_ref || null);
   logAction(req.user.id, req.workspace.id, 'link_iso42001_doc', 'iso42001_item', req.params.isoId, { document_id });
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
+});
+
+// ---- ISO 42001 flag-for-review (parallels the ISO 27001 routes above) ----
+app.post('/workspaces/:wsId/iso42001/gap/:isoId/flag-for-review', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(req.workspace.id, item.id);
+  db.prepare(`UPDATE iso42001_control_states
+    SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
+        reviewed_by=NULL, reviewed_at=NULL
+    WHERE workspace_id=? AND iso_item_id=?`)
+    .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
+  logAction(req.user.id, req.workspace.id, 'flag_for_review', 'iso42001_item', item.id, { reason: req.body.reason }, auditCtx(req));
+  notifyReviewers(req.workspace.id, req.user.id, item, req.body.reason, 'iso42001');
+  res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
+});
+
+app.post('/workspaces/:wsId/iso42001/gap/:isoId/review-action', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  const action = req.body.action;
+  if (!['approve', 'send_back'].includes(action)) return res.status(400).send('Bad action');
+  const newStatus = action === 'approve' ? 'reviewed' : 'needs_changes';
+  const cur = db.prepare(`SELECT review_requested_by FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+  db.prepare(`UPDATE iso42001_control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
+    WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
+  logAction(req.user.id, req.workspace.id, 'review_action', 'iso42001_item', item.id, { action, note: req.body.note }, auditCtx(req));
+  if (cur && cur.review_requested_by && cur.review_requested_by !== req.user.id) {
+    const code = item.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.');
+    const verb = action === 'approve' ? 'approved your review on' : 'sent back your review on';
+    jobs.notify(req.workspace.id, cur.review_requested_by, 'review_complete', 'info',
+      `Reviewer ${verb} ${code}`, (req.body.note || '').slice(0, 140),
+      `/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
+  }
+  res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
+});
+
+app.post('/workspaces/:wsId/iso42001/gap/:isoId/clear-flag', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
+  if (!item) return res.status(404).send('Not found');
+  db.prepare(`UPDATE iso42001_control_states
+    SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
+        reviewed_by=NULL, reviewed_at=NULL
+    WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
+  logAction(req.user.id, req.workspace.id, 'clear_review_flag', 'iso42001_item', item.id, null, auditCtx(req));
+  res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
 });
 
 app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {

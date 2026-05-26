@@ -1,0 +1,145 @@
+<%- include('partials/header', { title: 'Policy adoption', user, ws, active: 'policy-adoption' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Policy adoption &amp; review status</h1>
+    <div class="page-subtitle">Mandatory vs adopted, status distribution, review freshness. Auditor's first question: "show me your policies and when each was last reviewed."</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">All documents →</a>
+</div>
+
+<!-- KPI band 1: mandatory coverage + review status -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+  <div class="panel kpi" style="border-left:3px solid <%= kpis.mandatoryPct >= 80 ? '#15803d' : kpis.mandatoryPct >= 50 ? '#a16207' : '#b91c1c' %>;">
+    <div class="kpi-num" style="color:<%= kpis.mandatoryPct >= 80 ? '#15803d' : kpis.mandatoryPct >= 50 ? '#a16207' : '#b91c1c' %>;"><%= kpis.mandatoryPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
+    <div class="kpi-label">Mandatory adopted</div>
+    <div class="kpi-meta"><%= kpis.mandatoryAdopted %> / <%= kpis.mandatoryTotal %> ISO-mandatory templates</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num text-success"><%= kpis.published %></div>
+    <div class="kpi-label">Published</div>
+    <div class="kpi-meta">live policies</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num text-warn"><%= kpis.dueSoon %></div>
+    <div class="kpi-label">Review due &lt; 30d</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num text-danger"><%= kpis.overdue %></div>
+    <div class="kpi-label">Review overdue</div>
+  </div>
+</div>
+
+<!-- KPI band 2: status distribution -->
+<div class="panel" style="padding:14px 18px;margin-bottom:16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+  <div class="text-eyebrow">Document status</div>
+  <div><strong style="color:#6b7280;"><%= kpis.draft %></strong> <span class="meta">draft</span></div>
+  <div><strong style="color:#1d4ed8;"><%= kpis.inReview %></strong> <span class="meta">in review</span></div>
+  <div><strong style="color:#a16207;"><%= kpis.approved %></strong> <span class="meta">approved</span></div>
+  <div><strong style="color:#15803d;"><%= kpis.published %></strong> <span class="meta">published</span></div>
+  <div><strong style="color:var(--text-tertiary);"><%= kpis.retired %></strong> <span class="meta">retired</span></div>
+  <div style="margin-left:auto;font-size:11px;color:var(--text-tertiary);"><strong style="color:var(--text);"><%= kpis.total %></strong> total documents</div>
+</div>
+
+<!-- Mandatory template adoption coverage -->
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><h2>Mandatory ISO 27001 templates (<%= kpis.mandatoryAdopted %>/<%= kpis.mandatoryTotal %>)</h2><span class="meta">these are the clause-required documents</span></div>
+  <table class="t">
+    <thead><tr><th>Template</th><th style="width:140px;">Status</th><th style="width:120px;">Workspace doc</th></tr></thead>
+    <tbody>
+      <% templateAdoption.forEach(t => { %>
+        <tr style="<%= !t.adopted ? 'background:rgba(185,28,28,0.04);' : '' %>">
+          <td>
+            <% if (!t.adopted) { %><span style="color:#b91c1c;font-weight:600;margin-right:4px;">✗</span><% } else { %><span style="color:#15803d;font-weight:600;margin-right:4px;">✓</span><% } %>
+            <%= t.template_name %>
+          </td>
+          <td>
+            <% if (!t.adopted) { %>
+              <span class="tag tag-danger text-xxs">Not adopted</span>
+            <% } else { %>
+              <span class="tag <%= t.status === 'published' ? 'tag-success' : t.status === 'approved' ? 'tag-warn' : 'tag-neutral' %> text-xxs"><%= t.status %></span>
+            <% } %>
+          </td>
+          <td>
+            <% if (t.adopted) { %>
+              <a href="/workspaces/<%= ws.id %>/documents/<%= t.doc_id %>" class="link-muted text-base">Open →</a>
+            <% } else { %>
+              <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-primary btn-xs">Adopt</a>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (templateAdoption.length === 0) { %>
+        <tr><td colspan="3" class="t-empty">No mandatory templates indexed - check db.js seed.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- All policies table -->
+<div class="panel">
+  <div class="panel-head"><h2>All policies (<%= docs.length %>)</h2><span class="meta">click a row to open the document</span></div>
+  <% if (docs.length === 0) { %>
+    <div class="panel-pad meta">No policies yet. Generate one from a template on the Documents page.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th>Policy</th>
+        <th style="width:120px;">Tier</th>
+        <th style="width:140px;">Status</th>
+        <th style="width:140px;">Last updated</th>
+        <th style="width:130px;">Next review</th>
+        <th style="width:140px;">Review band</th>
+        <th style="width:60px;"></th>
+      </tr></thead>
+      <tbody>
+        <% docs.forEach(d => {
+             const tierColor = d.tier === 'mandatory' ? '#b91c1c' : d.tier === 'expected' ? '#a16207' : 'var(--text-tertiary)';
+             const reviewColor = d.reviewBand === 'overdue' ? '#b91c1c'
+                              : d.reviewBand === 'due_soon' ? '#a16207'
+                              : d.reviewBand === 'current' ? '#15803d'
+                              : 'var(--text-tertiary)';
+             const reviewLabel = d.reviewBand === 'overdue' ? 'Overdue'
+                              : d.reviewBand === 'due_soon' ? 'Due soon'
+                              : d.reviewBand === 'current' ? 'Current'
+                              : 'No date set';
+             const statusColor = d.status === 'published' ? '#15803d'
+                              : d.status === 'approved' ? '#a16207'
+                              : d.status === 'in_review' ? '#1d4ed8'
+                              : d.status === 'retired' ? 'var(--text-tertiary)'
+                              : '#6b7280';
+        %>
+          <tr>
+            <td>
+              <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted" style="font-weight:500;"><%= d.name %></a>
+              <% if (d.approved_by_name) { %><div class="meta text-xs">approved by <%= d.approved_by_name %><% if (d.approved_at) { %> &middot; <%= d.approved_at.slice(0,10) %><% } %></div><% } %>
+              <% if (d.stale) { %><span class="tag tag-warn text-xxs" style="margin-top:3px;">STALE</span><% } %>
+            </td>
+            <td><span class="tag text-xxs" style="background:<%= tierColor %>22;color:<%= tierColor %>;border:1px solid <%= tierColor %>44;"><%= d.tier %></span></td>
+            <td><span class="tag text-xxs" style="background:<%= statusColor %>22;color:<%= statusColor %>;border:1px solid <%= statusColor %>44;"><%= d.status || '-' %></span></td>
+            <td class="meta text-base"><%= d.updated_at ? d.updated_at.slice(0,10) : '-' %></td>
+            <td class="meta text-base" style="color:<%= reviewColor %>;"><%= d.next_review_date || '-' %></td>
+            <td><span class="tag text-xxs" style="background:<%= reviewColor %>22;color:<%= reviewColor %>;border:1px solid <%= reviewColor %>44;"><%= reviewLabel %></span></td>
+            <td style="white-space:nowrap;">
+              <% if (d.reviewBand === 'overdue' || d.reviewBand === 'due_soon') { %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= d.id %>/snooze-review" style="display:inline;">
+                  <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                  <input type="hidden" name="days" value="30">
+                  <button class="btn btn-ghost btn-xs" title="Push review date to today + 30 days">Snooze 30d</button>
+                </form>
+              <% } %>
+              <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="btn btn-secondary btn-xs">→</a>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<div class="meta text-xs" style="margin-top:10px;line-height:1.55;">
+  <strong>How tiers are assigned:</strong> the seed in <code>db.js</code> tags ~15 system templates as <em>mandatory</em> (clause-required by ISO 27001:2022), ~25 as <em>expected</em> (commonly expected by auditors), and the rest as <em>recommended</em>. Workspace docs inherit their tier from the source template.<br>
+  <strong>Review band:</strong> overdue (next_review_date in the past) / due soon (within 30 days) / current (later) / no date set. <em>Stale</em> = approved doc not touched in 12+ months.
+</div>
+
+<%- include('partials/footer') %>

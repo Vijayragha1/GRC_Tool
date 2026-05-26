@@ -1505,6 +1505,71 @@ function init() {
   // Phase C: control verification timestamp on closure of NC / audit
   addColumnIfMissing('control_states', 'last_verified_at', 'DATETIME');
 
+  // Flag-for-review workflow on assessment judgements. A junior consultant can
+  // mark an item for senior review; the reviewer can approve or send back.
+  // Status values: 'none' | 'requested' | 'in_review' | 'reviewed' | 'needs_changes'
+  ['control_states', 'iso42001_control_states'].forEach(t => {
+    addColumnIfMissing(t, 'review_status', "TEXT DEFAULT 'none'");
+    addColumnIfMissing(t, 'review_requested_by', 'INTEGER REFERENCES users(id)');
+    addColumnIfMissing(t, 'review_requested_at', 'DATETIME');
+    addColumnIfMissing(t, 'review_reason', 'TEXT');
+    addColumnIfMissing(t, 'reviewed_by', 'INTEGER REFERENCES users(id)');
+    addColumnIfMissing(t, 'reviewed_at', 'DATETIME');
+  });
+
+  // Competence matrix (Clause 7.2) and Communication plan (Clause 7.4) -
+  // mandatory ISO 27001:2022 documented-information requirements with no
+  // existing schema. Training tracker (7.3 / A.6.3) reuses training_courses
+  // + training_records which already exist; just needs routes/views.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS competence_roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      required_competences TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_competence_roles_ws ON competence_roles(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS competence_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      role_id INTEGER NOT NULL,
+      person_name TEXT NOT NULL,
+      person_email TEXT,
+      competence TEXT NOT NULL,
+      evidence_type TEXT,
+      evidence_ref TEXT,
+      recorded_at DATE,
+      expires_on DATE,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (role_id) REFERENCES competence_roles(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_competence_records_ws ON competence_records(workspace_id, role_id);
+
+    CREATE TABLE IF NOT EXISTS communication_plan (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      what TEXT NOT NULL,
+      audience TEXT,
+      channel TEXT,
+      frequency TEXT,
+      owner_name TEXT,
+      internal_external TEXT DEFAULT 'internal',
+      last_sent_date DATE,
+      next_due_date DATE,
+      trigger_event TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_communication_plan_ws ON communication_plan(workspace_id, next_due_date);
+  `);
+
   // Tasks - priority for triage of bulk-spawned remediation backlogs.
   addColumnIfMissing('tasks', 'priority', "TEXT DEFAULT 'normal'");
 
@@ -1518,11 +1583,15 @@ function init() {
   addColumnIfMissing('iso_items', 'scoping_notes', 'TEXT');
   addColumnIfMissing('iso_items', 'maturity_ladder', 'TEXT');         // JSON {1,2,3,4}
   addColumnIfMissing('iso_items', 'related_items', 'TEXT');           // JSON array of ids
+  // Pack 3: "the smallest version that will still pass Stage 2" - distinct
+  // from what_good_looks_like which paints the mid-sized-org picture. Surfaced
+  // in the wizard so a consultant on a small-client engagement has a clear MVP.
+  addColumnIfMissing('iso_items', 'minimum_certifiable', 'TEXT');
   try {
     const content = require('./data/iso-content');
     const upd = db.prepare(`UPDATE iso_items SET
       purpose=?, what_good_looks_like=?, common_pitfalls=?, evidence_to_look_for=?,
-      scoping_notes=?, maturity_ladder=?, related_items=? WHERE id=?`);
+      scoping_notes=?, maturity_ladder=?, related_items=?, minimum_certifiable=? WHERE id=?`);
     let n = 0;
     for (const [id, c] of Object.entries(content)) {
       const r = upd.run(
@@ -1533,6 +1602,7 @@ function init() {
         c.scoping_notes || null,
         c.maturity_ladder ? JSON.stringify(c.maturity_ladder) : null,
         c.related_items ? JSON.stringify(c.related_items) : null,
+        c.minimum_certifiable || null,
         id
       );
       if (r.changes > 0) n++;

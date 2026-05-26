@@ -1,0 +1,123 @@
+<%- include('partials/header', { title: 'Competence matrix', user, ws, active: 'competence' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Competence matrix</h1>
+    <div class="page-subtitle">Clause 7.2. Define ISMS roles → required competences → evidence per person. Auditors will ask "show me the people you say are competent and the proof."</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+  <div class="panel kpi"><div class="kpi-num"><%= stats.rolesCount %></div><div class="kpi-label">Roles defined</div></div>
+  <div class="panel kpi"><div class="kpi-num"><%= stats.recordsCount %></div><div class="kpi-label">Competence records</div></div>
+  <div class="panel kpi"><div class="kpi-num text-warn"><%= stats.expiringSoon %></div><div class="kpi-label">Expiring &lt; 90d</div></div>
+  <div class="panel kpi"><div class="kpi-num text-danger"><%= stats.expired %></div><div class="kpi-label">Expired</div></div>
+</div>
+
+<!-- Roles -->
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head"><h2>ISMS roles (<%= roles.length %>)</h2><span class="meta">role → required competences</span></div>
+  <% if (roles.length === 0) { %>
+    <div class="panel-pad meta">No roles yet. Common: CISO, ISMS Manager, Risk Owner, Internal Auditor, Asset Owner, Information Owner.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th style="width:200px;">Role</th><th>Description</th><th>Required competences</th><th style="width:60px;"></th></tr></thead>
+      <tbody>
+        <% roles.forEach(r => { %>
+          <tr>
+            <td><strong><%= r.name %></strong></td>
+            <td class="meta text-base"><%= r.description || '-' %></td>
+            <td class="meta text-base"><%= r.required_competences || '-' %></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/competence/roles/<%= r.id %>/delete" onsubmit="return confirm('Delete role and all its records?')" style="display:inline;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <button class="btn btn-ghost btn-xs">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <details style="border-top:1px solid var(--border);">
+    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Add role</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/competence/roles" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:1fr 2fr 2fr;gap:8px;align-items:end;">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <div><label class="label">Role name</label><input class="input" name="name" required placeholder="ISMS Manager"></div>
+      <div><label class="label">Description</label><input class="input" name="description" placeholder="Operates the ISMS day-to-day"></div>
+      <div><label class="label">Required competences</label><input class="input" name="required_competences" placeholder="ISO 27001 LI, 5+ years GRC, comms skills"></div>
+      <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Add role</button></div>
+    </form>
+  </details>
+</div>
+
+<!-- Records / matrix -->
+<div class="panel">
+  <div class="panel-head"><h2>Competence records (<%= records.length %>)</h2><span class="meta">person + competence + evidence</span></div>
+  <% if (records.length === 0) { %>
+    <div class="panel-pad meta">No competence records yet. Add a role above, then record who fills it and the evidence (cert, training, experience).</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:140px;">Role</th><th>Person</th><th>Competence</th><th>Evidence</th><th style="width:120px;">Recorded</th><th style="width:120px;">Expires</th><th style="width:60px;"></th>
+      </tr></thead>
+      <tbody>
+        <% records.forEach(r => {
+             const expired = r.expires_on && r.expires_on < today;
+             const expiring = !expired && r.expires_on && r.expires_on < soon;
+             const rowBg = expired ? 'background:rgba(185,28,28,0.06);' : expiring ? 'background:rgba(202,138,4,0.06);' : '';
+        %>
+          <tr style="<%= rowBg %>">
+            <td class="meta text-base"><%= r.role_name %></td>
+            <td><strong><%= r.person_name %></strong><% if (r.person_email) { %><div class="meta text-xs"><%= r.person_email %></div><% } %></td>
+            <td><%= r.competence %></td>
+            <td class="meta text-base"><% if (r.evidence_type) { %><strong><%= r.evidence_type %></strong><% } %><% if (r.evidence_ref) { %> &middot; <%= r.evidence_ref %><% } %></td>
+            <td class="meta text-base"><%= r.recorded_at || '-' %></td>
+            <td class="meta text-base">
+              <%= r.expires_on || '-' %>
+              <% if (expired) { %><span class="tag tag-danger text-xxs" style="margin-left:4px;">EXPIRED</span><% } %>
+              <% if (expiring) { %><span class="tag tag-warn text-xxs" style="margin-left:4px;">EXPIRING</span><% } %>
+            </td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/competence/records/<%= r.id %>/delete" onsubmit="return confirm('Delete record?')" style="display:inline;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <button class="btn btn-ghost btn-xs">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <% if (roles.length > 0) { %>
+    <details style="border-top:1px solid var(--border);">
+      <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Add competence record</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/competence/records" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+        <div><label class="label">Role *</label><select class="select" name="role_id" required>
+          <option value="">- pick role -</option>
+          <% roles.forEach(r => { %><option value="<%= r.id %>"><%= r.name %></option><% }) %>
+        </select></div>
+        <div><label class="label">Person *</label><input class="input" name="person_name" required placeholder="Alice Smith"></div>
+        <div><label class="label">Email</label><input class="input" name="person_email" type="email"></div>
+        <div><label class="label">Competence *</label><input class="input" name="competence" required placeholder="ISO 27001 LI"></div>
+        <div><label class="label">Evidence type</label><select class="select" name="evidence_type">
+          <option value="">- pick -</option>
+          <option value="Certification">Certification</option>
+          <option value="Training">Training</option>
+          <option value="Experience">Experience</option>
+          <option value="Qualification">Qualification</option>
+          <option value="Other">Other</option>
+        </select></div>
+        <div><label class="label">Evidence ref</label><input class="input" name="evidence_ref" placeholder="cert no., training ID, CV ref"></div>
+        <div><label class="label">Recorded</label><input type="date" class="input" name="recorded_at"></div>
+        <div><label class="label">Expires</label><input type="date" class="input" name="expires_on"></div>
+        <div></div>
+        <div style="grid-column:1/-1;"><label class="label">Notes</label><textarea class="textarea" name="notes" rows="2"></textarea></div>
+        <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Add record</button></div>
+      </form>
+    </details>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

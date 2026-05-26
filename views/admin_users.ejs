@@ -169,7 +169,7 @@
         <tr>
           <th>Name</th>
           <th>Email</th>
-          <th style="width:110px;">Role</th>
+          <th style="width:230px;">Role</th>
           <th style="width:130px;">Last active</th>
           <th style="width:80px;">Status</th>
           <th style="width:130px;"></th>
@@ -177,11 +177,29 @@
       </thead>
       <tbody>
         <% firmUsers.forEach(u => { %>
+          <%
+            const uRoleNorm = rbac.normalizeRole(u.firm_role) || 'consultant';
+            const editable = u.active && u.id !== user.id;
+          %>
           <tr style="<%= u.active ? '' : 'opacity:0.55;' %>">
             <td><%= u.name %><% if (u.id === user.id) { %> <span class="meta">(you)</span><% } %></td>
             <td class="meta"><%= u.email %></td>
-            <td><%= rbac.ROLE_LABELS[rbac.normalizeRole(u.firm_role)] || 'Consultant' %></td>
-            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
+            <td>
+              <% if (editable) { %>
+                <form method="POST" action="/admin/users/<%= u.id %>/firm-role" style="margin:0;display:flex;gap:6px;align-items:center;">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <select name="firm_role" class="select" style="font-size:12px;padding:4px 8px;min-width:150px;flex:1;">
+                    <% rbac.FIRM_ROLES.forEach(r => { %>
+                      <option value="<%= r %>" <%= r === uRoleNorm ? 'selected' : '' %>><%= rbac.ROLE_LABELS[r] || r %></option>
+                    <% }) %>
+                  </select>
+                  <button type="submit" class="btn btn-xs btn-secondary" style="padding:4px 10px;">Save</button>
+                </form>
+              <% } else { %>
+                <%= rbac.ROLE_LABELS[uRoleNorm] || 'Consultant' %>
+              <% } %>
+            </td>
+            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '-' %></td>
             <td><%= u.active ? 'Active' : 'Disabled' %></td>
             <td>
               <% if (u.active && u.id !== user.id) { %>

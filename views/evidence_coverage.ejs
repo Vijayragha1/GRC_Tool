@@ -1,0 +1,92 @@
+<%- include('partials/header', { title: 'Evidence coverage matrix', user, ws, active: 'evidence-coverage' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Evidence coverage matrix</h1>
+    <div class="page-subtitle">Per Annex A control: expected evidence types (from the standard's guidance) vs what's attached and how fresh it is. The mental model an auditor builds, pre-built.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/evidence-coverage.csv" class="btn btn-secondary btn-xs">Export CSV</a>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px;">
+  <div class="panel kpi">
+    <div class="kpi-num"><%= kpis.coveragePct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
+    <div class="kpi-label">Fully covered</div>
+    <div class="kpi-meta">of included controls</div>
+  </div>
+  <div class="panel kpi"><div class="kpi-num text-success"><%= kpis.fullyCovered %></div><div class="kpi-label">Green</div><div class="kpi-meta">expected ≤ attached, fresh</div></div>
+  <div class="panel kpi"><div class="kpi-num text-warn"><%= kpis.partial %></div><div class="kpi-label">Amber</div><div class="kpi-meta">partial or stale</div></div>
+  <div class="panel kpi"><div class="kpi-num text-danger"><%= kpis.missing %></div><div class="kpi-label">Red</div><div class="kpi-meta">no evidence attached</div></div>
+  <div class="panel kpi"><div class="kpi-num" style="color:#a16207"><%= kpis.stale %></div><div class="kpi-label">Stale</div><div class="kpi-meta">last upload &gt; 12 mo</div></div>
+</div>
+
+<!-- Filter tabs -->
+<div class="row" style="margin-bottom:12px;gap:6px;">
+  <a href="?filter=included" class="btn btn-<%= filter === 'included' ? 'primary' : 'secondary' %> btn-xs">Included (<%= kpis.included %>)</a>
+  <a href="?filter=missing" class="btn btn-<%= filter === 'missing' ? 'primary' : 'secondary' %> btn-xs">Missing only (<%= kpis.missing %>)</a>
+  <a href="?filter=stale" class="btn btn-<%= filter === 'stale' ? 'primary' : 'secondary' %> btn-xs">Stale only (<%= kpis.stale %>)</a>
+  <a href="?filter=all" class="btn btn-<%= filter === 'all' ? 'primary' : 'secondary' %> btn-xs">All controls</a>
+</div>
+
+<div class="panel" style="overflow:hidden;">
+  <table class="t">
+    <thead><tr>
+      <th style="width:80px;">Code</th>
+      <th>Control</th>
+      <th style="width:90px;">Applicability</th>
+      <th style="width:80px;" class="num">Expected</th>
+      <th style="width:80px;" class="num">Attached</th>
+      <th style="width:110px;">Last upload</th>
+      <th style="width:110px;">Coverage</th>
+      <th style="width:80px;"></th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(r => {
+           const code = r.id.replace('annex-','').toUpperCase();
+           const bandColors = {
+             green: { bg: 'rgba(22,163,74,0.10)', fg: '#15803d', label: 'Covered' },
+             amber: { bg: 'rgba(202,138,4,0.10)', fg: '#a16207', label: 'Partial' },
+             red:   { bg: 'rgba(185,28,28,0.10)', fg: '#b91c1c', label: 'Missing' },
+             gray:  { bg: 'var(--bg-subtle)',     fg: 'var(--text-tertiary)', label: '-' }
+           };
+           const b = bandColors[r.band] || bandColors.gray;
+      %>
+        <tr>
+          <td><span class="mono meta text-xs"><%= code %></span></td>
+          <td>
+            <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="link-muted">
+              <%= r.title.replace(/^A\.[0-9.]+ /, '') %>
+            </a>
+            <% if (r.expectedCount > 0 && r.expected.length > 0) { %>
+              <div class="meta text-xs" style="margin-top:3px;line-height:1.4;">
+                <% r.expected.slice(0, 3).forEach((e, i) => { %><%= e.item %><% if (i < Math.min(r.expected.length, 3) - 1) { %><span style="color:var(--text-tertiary);"> &middot; </span><% } %><% }) %>
+                <% if (r.expected.length > 3) { %><span style="color:var(--text-tertiary);"> &middot; +<%= r.expected.length - 3 %> more</span><% } %>
+              </div>
+            <% } %>
+          </td>
+          <td><span class="tag tag-<%= r.applicability === 'included' ? 'neutral' : 'warn' %>" style="font-size:10px;"><%= r.applicability %></span></td>
+          <td class="num"><%= r.expectedCount %></td>
+          <td class="num" style="font-weight:600;color:<%= r.attachedCount === 0 ? '#b91c1c' : r.attachedCount < r.expectedCount ? '#a16207' : '#15803d' %>;"><%= r.attachedCount %></td>
+          <td class="meta text-base" style="color:<%= r.stale ? '#a16207' : 'inherit' %>;"><%= r.lastUp || '-' %><% if (r.stale) { %> <span class="tag tag-warn text-xxs" style="margin-left:2px;">STALE</span><% } %></td>
+          <td>
+            <span class="tag" style="background:<%= b.bg %>;color:<%= b.fg %>;font-size:11px;font-weight:600;border:1px solid <%= b.fg %>;"><%= b.label %></span>
+          </td>
+          <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="btn btn-secondary btn-xs">Open →</a></td>
+        </tr>
+      <% }) %>
+      <% if (rows.length === 0) { %>
+        <tr><td colspan="8" class="t-empty">No controls match this filter.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<div class="meta text-xs" style="margin-top:10px;line-height:1.55;">
+  <strong>How this is computed:</strong>
+  "Expected" = number of evidence items listed under the control's <em>"evidence to look for"</em> section in the standard's guidance (data/iso-content.js).
+  "Attached" = live (non-superseded) evidence files linked to the control via primary <code>iso_item_id</code> or <code>evidence_controls</code> join.
+  "Stale" = most recent upload &gt; 12 months ago.
+  Coverage band: green = attached ≥ expected and fresh; amber = some attached but short or stale; red = no evidence attached.
+</div>
+
+<%- include('partials/footer') %>

@@ -38,9 +38,10 @@
         <td class="meta"><%= a.signed_at %></td>
         <td class="mono meta"><%= a.ip_address || '-' %></td>
         <td class="mono meta text-eyebrow"><%= a.signature.slice(0,16) %>…</td>
-        <td>
-          <% if (a.revoked_at) { %><span class="tag tag-danger">revoked</span>
-          <% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= a.id %>/revoke"><button class="btn btn-danger btn-xs">Revoke</button></form><% } %>
+        <td style="white-space:nowrap;">
+          <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= a.id %>/record.docx" class="btn btn-secondary btn-xs" title="Download formal acceptance record (DOCX)">↓ DOCX</a>
+          <% if (a.revoked_at) { %><span class="tag tag-danger" style="margin-left:4px;">revoked</span>
+          <% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= a.id %>/revoke" style="display:inline;margin-left:4px;"><% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %><button class="btn btn-danger btn-xs">Revoke</button></form><% } %>
         </td>
       </tr>
     <% }) %>

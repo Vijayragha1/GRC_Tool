@@ -21,7 +21,18 @@ const http = require('http');
 const ROOT = path.resolve(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'iso27001-smoke-'));
 const TMP_DB = path.join(TMP, 'iso27001.db');
-const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), DB_PATH: TMP_DB };
+// SESSION_SECRET pinned so the session cookie is stable; auth is now real, the
+// firm-owner no-auth fallback was removed in commit a573539. DISABLE_CSRF=1 is
+// the server's built-in test escape hatch - the body parser and CSRF middleware
+// have a chicken-and-egg with multi-request cookie capture in this bare-node
+// test, so we turn CSRF off and rely on the security.test.js suite to cover it.
+const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), DB_PATH: TMP_DB,
+  SESSION_SECRET: 'smoke-test-fixed-secret-for-deterministic-cookies-only',
+  DISABLE_CSRF: '1' };
+
+// Login credentials seeded into the test user before the server boots.
+const TEST_EMAIL = 'smoke@test.local';
+const TEST_PASSWORD = 'smoke-test-password-1234';
 
 let serverProc = null;
 let port = 3344;
@@ -102,6 +113,30 @@ async function startServer() {
   // db.js honours DB_PATH so the server writes its migrations to the tmp copy.
   const seedDb = path.join(ROOT, 'iso27001.db');
   if (fs.existsSync(seedDb)) fs.copyFileSync(seedDb, TMP_DB);
+
+  // Auth is real now (commit a573539). Seed a known test user with a known
+  // password so the test can log in before walking the assertions. Reuse the
+  // first firm so the user lands as its manager. Low bcrypt rounds for speed.
+  const bcrypt = require('bcrypt');
+  const Database = require('better-sqlite3');
+  const seedConn = new Database(TMP_DB);
+  const firm = seedConn.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
+  if (!firm) {
+    seedConn.prepare(`INSERT INTO firms (name) VALUES (?)`).run('Smoke Test Firm');
+  }
+  const firmId = firm ? firm.id : seedConn.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get().id;
+  const hash = bcrypt.hashSync(TEST_PASSWORD, 4);
+  const existing = seedConn.prepare('SELECT id FROM users WHERE email=?').get(TEST_EMAIL);
+  if (existing) {
+    seedConn.prepare(`UPDATE users SET password_hash=?, active=1, firm_role='manager', firm_id=?, user_type='firm' WHERE id=?`)
+      .run(hash, firmId, existing.id);
+  } else {
+    seedConn.prepare(`INSERT INTO users (email, password_hash, name, firm_id, user_type, firm_role, active)
+                      VALUES (?, ?, 'Smoke Tester', ?, 'firm', 'manager', 1)`)
+      .run(TEST_EMAIL, hash, firmId);
+  }
+  seedConn.close();
+
   serverProc = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT,
     env: { ...ENV, PORT: String(port) },
@@ -109,8 +144,18 @@ async function startServer() {
   });
   serverProc.stdout.on('data', () => {});
   serverProc.stderr.on('data', d => process.stderr.write('[srv] ' + d));
-  const ready = await waitFor(async () => (await get('/dashboard')).status < 500);
+  // Server is ready once /login responds (it's public and doesn't require auth).
+  const ready = await waitFor(async () => (await get('/login')).status < 500);
   if (!ready) throw new Error('server did not start within 8s');
+
+  // Authenticate: GET /login to capture CSRF token + initial session cookie,
+  // then POST /login with the seeded credentials. The login handler regenerates
+  // the session id and sets userId; subsequent requests via cookieJar are auth'd.
+  await get('/login');
+  const loginRes = await post('/login', { email: TEST_EMAIL, password: TEST_PASSWORD });
+  if (loginRes.status < 300 || loginRes.status >= 400) {
+    throw new Error(`login failed: expected 3xx, got ${loginRes.status}. Body preview: ${(loginRes.body || '').slice(0, 200)}`);
+  }
 }
 
 function stopServer() {

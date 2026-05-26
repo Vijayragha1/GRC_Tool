@@ -1,0 +1,51 @@
+<%
+  // Reusable comment thread + new-comment form.
+  // Expects:
+  //   parent_type  (string, e.g. 'iso_item' | 'iso42001_item' | 'document')
+  //   parent_id    (string or number)
+  //   comments     [{ id, user_name, user_id, body, internal_only, created_at }]
+  //   ws           workspace (for the form action)
+  //   user         current user
+  //   csrfToken    from res.locals
+  //   firmUsers    [{ id, name }]  optional, for @-mention hints
+  const _comments = typeof comments !== 'undefined' && comments ? comments : [];
+  const _firmUsers = typeof firmUsers !== 'undefined' && firmUsers ? firmUsers : [];
+%>
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head"><h2 style="font-size:14px;">Comments &amp; @-mentions (<%= _comments.length %>)</h2>
+    <span class="meta">Leave a question or context. Use @firstnamelastname to notify someone.</span>
+  </div>
+  <% if (_comments.length > 0) { %>
+    <div style="max-height:340px;overflow-y:auto;">
+      <% _comments.forEach(c => { %>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);<%= c.internal_only ? 'background:rgba(202,138,4,0.06);' : '' %>">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px;">
+            <div style="font-size:12.5px;font-weight:600;"><%= c.user_name || 'Unknown' %><% if (c.internal_only) { %> <span class="tag tag-warn" style="font-size:9.5px;margin-left:4px;">INTERNAL</span><% } %></div>
+            <div class="meta" style="font-size:11px;"><%= c.created_at %></div>
+          </div>
+          <div style="font-size:13px;line-height:1.5;white-space:pre-wrap;"><%= c.body %></div>
+        </div>
+      <% }) %>
+    </div>
+  <% } else { %>
+    <div class="panel-pad meta" style="font-size:12.5px;">No comments yet. Be the first to leave a note.</div>
+  <% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/comments" style="padding:10px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <input type="hidden" name="parent_type" value="<%= parent_type %>">
+    <input type="hidden" name="parent_id" value="<%= parent_id %>">
+    <textarea name="body" rows="2" required placeholder="Leave a comment. Type @ to mention a teammate..." class="textarea" style="width:100%;font-size:13px;font-family:inherit;margin-bottom:6px;"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <label class="meta" style="font-size:11.5px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" name="internal_only" value="1"> Internal only (hidden from client)
+      </label>
+      <button class="btn btn-primary btn-xs">Post comment</button>
+    </div>
+    <% if (_firmUsers.length > 0) { %>
+      <div class="meta" style="font-size:10.5px;margin-top:6px;">
+        @-mention hints:
+        <% _firmUsers.slice(0, 6).forEach((u, i) => { %><span class="mono" style="font-size:10px;background:var(--bg);padding:1px 5px;border-radius:3px;margin-right:3px;">@<%= u.name.replace(/\s+/g,'') %></span><% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>

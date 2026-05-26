@@ -33,12 +33,12 @@
     <span class="meta text-xs"><%= firmMembers.length + (leadConsultant ? 1 : 0) %> assigned</span>
   </div>
 
-  <%# ----- Lead consultant ----- %>
+  <%# ----- Engagement lead ----- %>
   <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
     <form method="POST" action="/workspaces/<%= ws.id %>/team/set-lead" style="display:flex;gap:10px;align-items:end;">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <div style="flex:1;">
-        <label class="label">Lead consultant<span class="meta" style="font-weight:400;margin-left:8px;">primary client contact; signs off assessments</span></label>
+        <label class="label">Engagement lead<span class="meta" style="font-weight:400;margin-left:8px;">primary client contact for this workspace; signs off assessments</span></label>
         <select class="select" name="lead_consultant_id" required>
           <option value="">— pick a lead —</option>
           <% firmPool.forEach(u => { %>
@@ -65,7 +65,7 @@
         <tr>
           <td><strong><%= leadConsultant.name %></strong><span class="tag tag-accent" style="margin-left:8px;">Lead</span></td>
           <td class="meta"><%= leadConsultant.email %></td>
-          <td><span class="tag tag-neutral">Lead consultant</span></td>
+          <td><span class="tag tag-neutral">Engagement lead</span></td>
           <td></td>
         </tr>
       <% } %>

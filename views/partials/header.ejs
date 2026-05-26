@@ -216,7 +216,8 @@
   .divide-row > * + * { border-top: 1px solid var(--border); }
 
   /* Buttons */
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; line-height: 1.2; transition: all 0.12s; cursor: pointer; border: 1px solid transparent; white-space: nowrap; user-select: none; font-family: inherit; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; line-height: 1.2; transition: all 0.12s; cursor: pointer; border: 1px solid transparent; white-space: nowrap; user-select: none; font-family: inherit; text-decoration: none; }
+  a.btn, a.btn:hover, a.btn:visited { text-decoration: none; }
   .btn-primary { background: var(--ink); color: var(--bg); border-color: var(--ink); box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, var(--shadow-sm); }
   [data-theme="dark"] .btn-primary { background: var(--bg); color: var(--ink); border-color: var(--bg); }
   .btn-primary:hover { transform: translateY(-0.5px); box-shadow: var(--shadow-md); }
@@ -675,6 +676,10 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="nav-item-text">Documents</span>
         </a>
+        <a href="/workspaces/<%= ws.id %>/policy-adoption" class="nav-item <%= (typeof active !== 'undefined' && active === 'policy-adoption') ? 'active' : '' %>" style="padding-left:30px;">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-item-text">Policy adoption</span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/evidence" class="nav-item <%= (typeof active !== 'undefined' && active === 'evidence') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <span class="nav-item-text">Evidence library</span>
@@ -737,6 +742,10 @@
         <% } %>
 
         <div class="nav-group-label">Operations</div>
+        <a href="/workspaces/<%= ws.id %>/review-queue" class="nav-item <%= (typeof active !== 'undefined' && active === 'review-queue') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h7"/><path d="M3 12h7"/><path d="M3 17h7"/><path d="M14 7l2 2 5-5"/><path d="M14 16l2 2 5-5"/></svg>
+          <span class="nav-item-text">Review queue<% if (typeof openReviewCount !== 'undefined' && openReviewCount > 0) { %> <span class="tag" style="background:#a16207;color:#fff;font-size:9.5px;padding:1px 5px;margin-left:4px;"><%= openReviewCount %></span><% } %></span>
+        </a>
         <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <span class="nav-item-text">Internal audit</span>
@@ -786,6 +795,30 @@
         <a href="/workspaces/<%= ws.id %>/bcp" data-shortcut="g b" class="nav-item <%= (typeof active !== 'undefined' && active === 'bcp') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           <span class="nav-item-text">Business continuity</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/training" class="nav-item <%= (typeof active !== 'undefined' && active === 'training') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          <span class="nav-item-text">Training &amp; awareness</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/competence" class="nav-item <%= (typeof active !== 'undefined' && active === 'competence') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+          <span class="nav-item-text">Competence matrix</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/communication-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'communication-plan') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="nav-item-text">Communication plan</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/evidence-coverage" class="nav-item <%= (typeof active !== 'undefined' && active === 'evidence-coverage') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span class="nav-item-text">Evidence coverage</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/metrics" class="nav-item <%= (typeof active !== 'undefined' && active === 'metrics') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span class="nav-item-text">ISMS metrics</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item <%= (typeof active !== 'undefined' && active === 'calendar') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="nav-item-text">Compliance calendar</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>

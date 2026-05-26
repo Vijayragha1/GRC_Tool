@@ -110,6 +110,168 @@
   </div>
 </div>
 
+<%
+  const obsList = (typeof observations !== 'undefined' && Array.isArray(observations)) ? observations : [];
+  const openObs = obsList.filter(o => o.status !== 'closed');
+  const closedObs = obsList.filter(o => o.status === 'closed');
+  // Map an iso_item_id to a filter bucket so the UI can scope the checklist
+  // without re-fetching. Mirrors the categories used by the generators.
+  function bucketFor(id) {
+    if (!id) return 'other';
+    if (id.startsWith('clause-')) return 'clauses';
+    if (id.startsWith('annex-a.5.')) return 'org';
+    if (id.startsWith('annex-a.6.')) return 'people';
+    if (id.startsWith('annex-a.7.')) return 'physical';
+    if (id.startsWith('annex-a.8.')) return 'tech';
+    return 'other';
+  }
+  const bucketCounts = { all: obsList.length, clauses: 0, org: 0, people: 0, physical: 0, tech: 0, other: 0 };
+  obsList.forEach(o => { bucketCounts[bucketFor(o.iso_item_id)]++; });
+%>
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <h2>Checklist</h2>
+      <span class="meta"><%= openObs.length %> open<% if (closedObs.length) { %> · <%= closedObs.length %> closed<% } %></span>
+    </div>
+    <% if (openObs.length > 0) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist/clear"
+            onsubmit="return appConfirmForm(event, 'Delete all open checklist items? Closed items are kept. This cannot be undone.');">
+        <button class="btn btn-secondary btn-xs">Clear open items</button>
+      </form>
+    <% } %>
+  </div>
+  <% if (obsList.length === 0) { %>
+    <div class="t-empty">No checklist items yet. Use Generate from SoA above to pre-populate one per included Annex A control.</div>
+  <% } else { %>
+    <%
+      const filterDefs = [
+        { key: 'all', label: 'All' },
+        { key: 'clauses', label: 'Clauses 4-10' },
+        { key: 'org', label: 'A.5 Org' },
+        { key: 'people', label: 'A.6 People' },
+        { key: 'physical', label: 'A.7 Physical' },
+        { key: 'tech', label: 'A.8 Tech' }
+      ].filter(f => f.key === 'all' || bucketCounts[f.key] > 0);
+    %>
+    <div class="panel-pad" style="display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+      <% filterDefs.forEach((f, idx) => { %>
+        <button type="button" class="btn btn-secondary btn-xs js-checklist-filter<%= idx === 0 ? ' is-active' : '' %>"
+                data-bucket="<%= f.key %>"
+                style="<%= idx === 0 ? 'background:var(--accent);color:white;border-color:var(--accent);' : '' %>">
+          <%= f.label %> <span class="meta" style="margin-left:4px;opacity:0.85;"><%= bucketCounts[f.key] %></span>
+        </button>
+      <% }) %>
+    </div>
+    <div class="divide-row js-checklist-list">
+      <% obsList.forEach(o => { %>
+        <div class="js-checklist-row" data-bucket="<%= bucketFor(o.iso_item_id) %>" style="padding:12px 16px;<%= o.status === 'closed' ? 'opacity:0.6;' : '' %>">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <span class="tag <%= o.status === 'closed' ? 'tag-neutral' : 'tag-warn' %>"><%= o.status %></span>
+            <% if (o.iso_title) { %><span class="meta"><strong><%= o.iso_title %></strong></span><% } %>
+          </div>
+          <details style="margin-bottom:8px;">
+            <summary class="meta text-sm" style="cursor:pointer;">Test guide (pre-filled prompts, sample-size hint, finding template)</summary>
+            <div class="text-sm" style="white-space:pre-wrap;line-height:1.55;margin-top:6px;padding:8px 10px;background:var(--bg-subtle);border-radius:6px;"><%= o.description %></div>
+          </details>
+          <form method="POST" action="/workspaces/<%= ws.id %>/audits/observations/<%= o.id %>/notes" style="margin-bottom:6px;">
+            <label class="label">Auditor notes / findings</label>
+            <textarea class="input text-md" name="recommendation" rows="3" placeholder="What did you test? What did you see? Evidence references. If NC, root cause." <%= o.status === 'closed' ? 'disabled' : '' %>><%= o.recommendation || '' %></textarea>
+            <% if (o.status !== 'closed') { %>
+              <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                <button class="btn btn-primary btn-xs">Save notes</button>
+              </div>
+            <% } %>
+          </form>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <% if (o.status !== 'closed') { %>
+              <details style="flex:1;min-width:260px;">
+                <summary class="meta text-sm" style="cursor:pointer;">+ Promote to finding</summary>
+                <form method="POST" action="/workspaces/<%= ws.id %>/audits/observations/<%= o.id %>/promote" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:6px;">
+                  <div><label class="label text-sm">Type</label>
+                    <select class="select text-sm" name="finding_type">
+                      <option value="major_nc">Major NC</option>
+                      <option value="minor_nc">Minor NC</option>
+                      <option value="observation" selected>Observation</option>
+                      <option value="ofi">OFI</option>
+                    </select>
+                  </div>
+                  <div><label class="label text-sm">Severity</label>
+                    <select class="select text-sm" name="severity">
+                      <option value="low">Low</option>
+                      <option value="medium" selected>Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div class="col-full" style="grid-column:1/-1;"><label class="label text-sm">Description (defaults to your notes)</label>
+                    <textarea class="input text-sm" name="description" rows="2" placeholder="Leave blank to use your notes above"></textarea>
+                  </div>
+                  <div class="col-full" style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Promote to finding (closes this item)</button></div>
+                </form>
+              </details>
+              <form method="POST" action="/workspaces/<%= ws.id %>/audits/observations/<%= o.id %>/close">
+                <button class="btn btn-secondary btn-xs">Mark closed (no finding)</button>
+              </form>
+            <% } else { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/audits/observations/<%= o.id %>/reopen">
+                <button class="btn btn-secondary btn-xs">Reopen</button>
+              </form>
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+    <div class="js-checklist-empty t-empty" style="display:none;">No items in this section.</div>
+    <script>
+    (function () {
+      const buttons = document.querySelectorAll('.js-checklist-filter');
+      const rows = document.querySelectorAll('.js-checklist-row');
+      const emptyMsg = document.querySelector('.js-checklist-empty');
+      if (!buttons.length || !rows.length) return;
+      function apply(bucket) {
+        let shown = 0;
+        rows.forEach(r => {
+          const match = bucket === 'all' || r.dataset.bucket === bucket;
+          r.style.display = match ? '' : 'none';
+          if (match) shown++;
+        });
+        buttons.forEach(b => {
+          const active = b.dataset.bucket === bucket;
+          b.classList.toggle('is-active', active);
+          if (active) {
+            b.style.background = 'var(--accent)';
+            b.style.color = 'white';
+            b.style.borderColor = 'var(--accent)';
+          } else {
+            b.style.background = '';
+            b.style.color = '';
+            b.style.borderColor = '';
+          }
+        });
+        if (emptyMsg) emptyMsg.style.display = shown === 0 ? '' : 'none';
+      }
+      buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.bucket)));
+    })();
+    </script>
+  <% } %>
+
+  <details>
+    <summary class="panel-pad text-lg text-secondary" style="border-top:1px solid var(--border);background:var(--bg-subtle);">+ Add checklist item</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/observations" class="panel-pad" style="border-top:1px solid var(--border);display:grid;grid-template-columns:1fr;gap:12px;">
+      <div>
+        <label class="label">Control (optional)</label>
+        <select class="select" name="iso_item_id">
+          <option value="">- none -</option>
+          <% allItems.forEach(it => { %><option value="<%= it.id %>"><%= it.title %></option><% }) %>
+        </select>
+      </div>
+      <div><label class="label">Description</label><textarea class="input" name="description" rows="3" required></textarea></div>
+      <div><label class="label">Recommendation (optional)</label><textarea class="input" name="recommendation" rows="2"></textarea></div>
+      <div><button class="btn btn-primary btn-xs">Add item</button></div>
+    </form>
+  </details>
+</div>
+
 <div class="panel">
   <div class="panel-head"><h2>Findings</h2><span class="meta"><%= findings.length %> total</span></div>
   <% if (findings.length === 0) { %>

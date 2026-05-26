@@ -11,6 +11,35 @@
   </div>
 </div>
 
+<%
+  // Review-reminder banner: count overdue + due-soon at the top of the page.
+  // Computed inline from the rows the route already passes through.
+  const _docs = typeof rows !== 'undefined' ? rows : [];
+  const _overdue = _docs.filter(d => d.review_status === 'overdue');
+  const _dueSoon = _docs.filter(d => d.review_status === 'due_soon');
+%>
+<% if (_overdue.length > 0 || _dueSoon.length > 0) { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid <%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>;background:<%= _overdue.length > 0 ? 'rgba(185,28,28,0.04)' : 'rgba(202,138,4,0.04)' %>;padding:12px 18px;display:flex;align-items:center;gap:12px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="<%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div style="flex:1;">
+      <div style="font-weight:600;font-size:13.5px;color:<%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>;">
+        <% if (_overdue.length > 0) { %><%= _overdue.length %> document<%= _overdue.length === 1 ? '' : 's' %> overdue for review<% } %>
+        <% if (_overdue.length > 0 && _dueSoon.length > 0) { %> &middot; <% } %>
+        <% if (_dueSoon.length > 0) { %><%= _dueSoon.length %> due within 30 days<% } %>
+      </div>
+      <div class="meta text-base" style="margin-top:2px;">
+        Top overdue:
+        <% _overdue.slice(0, 3).forEach((d, i) => { %><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted"><%= d.name %></a><% if (i < Math.min(_overdue.length, 3) - 1) { %>, <% } %><% }) %>
+        <% if (_overdue.length > 3) { %> &middot; +<%= _overdue.length - 3 %> more<% } %>
+        <% if (_overdue.length === 0 && _dueSoon.length > 0) { %>
+          <% _dueSoon.slice(0, 3).forEach((d, i) => { %><a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted"><%= d.name %></a><% if (i < Math.min(_dueSoon.length, 3) - 1) { %>, <% } %><% }) %>
+        <% } %>
+      </div>
+    </div>
+    <a href="/workspaces/<%= ws.id %>/policy-adoption" class="btn btn-secondary btn-xs">Review status →</a>
+  </div>
+<% } %>
+
 <div id="newFromTpl" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Generate from template</h2><span class="meta">Mandatory templates are starred - start with those</span></div>
   <% const tierLabel = { mandatory: '★ Mandatory (ISO requires)', expected: '◆ Expected (auditors look for)', recommended: '· Recommended' };

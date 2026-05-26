@@ -1,0 +1,74 @@
+<%- include('partials/header', { title: 'Communication plan', user, ws, active: 'communication-plan' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Communication plan</h1>
+    <div class="page-subtitle">Clause 7.4. What ISMS communications happen - what, when, to whom, by whom, how. Internal and external.</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+  <div class="panel kpi"><div class="kpi-num"><%= stats.total %></div><div class="kpi-label">Total entries</div></div>
+  <div class="panel kpi"><div class="kpi-num"><%= stats.internal %></div><div class="kpi-label">Internal</div></div>
+  <div class="panel kpi"><div class="kpi-num"><%= stats.external %></div><div class="kpi-label">External</div></div>
+  <div class="panel kpi"><div class="kpi-num text-danger"><%= stats.overdue %></div><div class="kpi-label">Overdue</div></div>
+</div>
+
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head"><h2>Planned communications (<%= items.length %>)</h2></div>
+  <% if (items.length === 0) { %>
+    <div class="panel-pad meta" style="font-size:12.5px;line-height:1.55;">
+      No entries yet. Common ones: <em>monthly security newsletter</em> (internal, all staff), <em>quarterly board update</em> (internal, board), <em>annual customer trust report</em> (external, customers), <em>breach notification</em> (external, regulator, trigger-based).
+    </div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th>What</th><th>Audience</th><th>Channel</th><th>Frequency / trigger</th><th>Owner</th><th>Type</th><th>Next due</th><th style="width:60px;"></th>
+      </tr></thead>
+      <tbody>
+        <% items.forEach(it => {
+             const overdue = it.next_due_date && it.next_due_date < today;
+        %>
+          <tr style="<%= overdue ? 'background:rgba(185,28,28,0.04);' : '' %>">
+            <td><strong><%= it.what %></strong><% if (it.notes) { %><div class="meta text-xs"><%= it.notes %></div><% } %></td>
+            <td class="meta text-base"><%= it.audience || '-' %></td>
+            <td class="meta text-base"><%= it.channel || '-' %></td>
+            <td class="meta text-base"><%= it.frequency || it.trigger_event || '-' %></td>
+            <td class="meta text-base"><%= it.owner_name || '-' %></td>
+            <td>
+              <span class="tag <%= it.internal_external === 'external' ? 'tag-accent' : 'tag-neutral' %>" style="font-size:10.5px;"><%= it.internal_external %></span>
+            </td>
+            <td class="meta text-base" style="color:<%= overdue ? '#b91c1c' : 'inherit' %>;"><%= it.next_due_date || '-' %></td>
+            <td>
+              <form method="POST" action="/workspaces/<%= ws.id %>/communication-plan/<%= it.id %>/delete" onsubmit="return confirm('Delete entry?')" style="display:inline;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <button class="btn btn-ghost btn-xs">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <details style="border-top:1px solid var(--border);">
+    <summary class="panel-pad" style="cursor:pointer;font-size:12.5px;color:var(--accent);">+ Add planned communication</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/communication-plan" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:end;">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <div><label class="label">What *</label><input class="input" name="what" required placeholder="Monthly security newsletter"></div>
+      <div><label class="label">Audience</label><input class="input" name="audience" placeholder="all staff / board / customers"></div>
+      <div><label class="label">Channel</label><input class="input" name="channel" placeholder="email / Slack / intranet"></div>
+      <div><label class="label">Type</label><select class="select" name="internal_external">
+        <option value="internal">Internal</option>
+        <option value="external">External</option>
+      </select></div>
+      <div><label class="label">Frequency</label><input class="input" name="frequency" placeholder="monthly / quarterly / annual"></div>
+      <div><label class="label">Trigger event</label><input class="input" name="trigger_event" placeholder="breach / regulator request"></div>
+      <div><label class="label">Owner</label><input class="input" name="owner_name" placeholder="CISO / Comms team"></div>
+      <div><label class="label">Next due</label><input type="date" class="input" name="next_due_date"></div>
+      <div style="grid-column:1/-1;"><label class="label">Notes</label><textarea class="textarea" name="notes" rows="2"></textarea></div>
+      <div style="grid-column:1/-1;"><button class="btn btn-primary btn-xs">Add entry</button></div>
+    </form>
+  </details>
+</div>
+
+<%- include('partials/footer') %>

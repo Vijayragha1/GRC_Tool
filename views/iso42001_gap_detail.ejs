@@ -366,6 +366,67 @@
   </form>
 </div>
 
+<!-- Flag-for-review block (parallel to ISO 27001 wizard) -->
+<% const rs42 = state.review_status || 'none'; %>
+<% if (rs42 === 'requested') { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(202,138,4,0.06);padding:14px 18px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div style="flex:1;">
+        <div style="font-weight:600;color:#a16207;font-size:13px;margin-bottom:3px;">🚩 Flagged for senior review</div>
+        <div class="meta" style="font-size:12px;line-height:1.5;">
+          Requested by <strong><%= requestedByName || 'someone' %></strong> on <%= state.review_requested_at %>.
+          <% if (state.review_reason) { %><br><em>"<%= state.review_reason %>"</em><% } %>
+        </div>
+      </div>
+      <% if (isReviewer) { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/review-action" style="display:flex;gap:6px;">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <button name="action" value="approve" class="btn btn-primary btn-xs">Mark reviewed</button>
+          <button name="action" value="send_back" class="btn btn-secondary btn-xs">Send back</button>
+        </form>
+      <% } else { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/clear-flag" style="margin:0;">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <button class="btn btn-ghost btn-xs">Cancel request</button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+<% } else if (rs42 === 'reviewed' || rs42 === 'needs_changes') { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid <%= rs42 === 'reviewed' ? '#16a34a' : '#b91c1c' %>;background:<%= rs42 === 'reviewed' ? 'rgba(22,163,74,0.06)' : 'rgba(185,28,28,0.06)' %>;padding:14px 18px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div style="flex:1;">
+        <div style="font-weight:600;color:<%= rs42 === 'reviewed' ? '#15803d' : '#b91c1c' %>;font-size:13px;margin-bottom:3px;">
+          <%= rs42 === 'reviewed' ? '✓ Reviewed' : '↩ Sent back for changes' %>
+        </div>
+        <div class="meta" style="font-size:12px;">
+          By <strong><%= reviewedByName || 'reviewer' %></strong> on <%= state.reviewed_at %>.
+          <% if (rs42 === 'needs_changes' && state.review_reason) { %><br>Original request: <em>"<%= state.review_reason %>"</em><% } %>
+        </div>
+      </div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/clear-flag" style="margin:0;">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+        <button class="btn btn-ghost btn-xs">Clear flag</button>
+      </form>
+    </div>
+  </div>
+<% } else { %>
+  <details class="panel" style="margin-bottom:14px;border-left:3px dashed var(--border-strong);">
+    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);">
+      🚩 Flag for senior review
+      <span class="meta" style="font-weight:400;font-size:12px;margin-left:6px;">- ask a senior to review your assessment before signoff</span>
+    </summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/flag-for-review" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <textarea name="reason" rows="2" placeholder="Why are you unsure? e.g., 'Annex C lists 'automation bias' as a risk source but I'm not sure if this AI system qualifies - want a second opinion.'" class="textarea" style="width:100%;font-size:13px;margin-bottom:8px;font-family:inherit;"></textarea>
+      <button class="btn btn-primary btn-xs">Flag for senior review</button>
+    </form>
+  </details>
+<% } %>
+
+<!-- Comments + @-mentions for this iso42001 item -->
+<%- include('partials/comments_thread', { parent_type: 'iso42001_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
+
 <!-- Evidence files panel -->
 <div class="panel" style="margin-bottom:16px;">
   <div class="panel-head">
