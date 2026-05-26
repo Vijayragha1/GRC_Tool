@@ -5,22 +5,22 @@
 // LLM-shaped checklist bullets. Avoid "robust", "leverage", "ensure".
 //
 // Each entry has the same shape:
-//   purpose                – one short paragraph: what is this clause/control
+//   purpose                - one short paragraph: what is this clause/control
 //                            actually trying to achieve, in plain English
-//   what_good_looks_like   – one paragraph painting a credible mid-size-org
+//   what_good_looks_like   - one paragraph painting a credible mid-size-org
 //                            implementation
-//   common_pitfalls        – array of strings, 4–6 specific failure modes
+//   common_pitfalls        - array of strings, 4-6 specific failure modes
 //                            (real audit findings, not hypotheticals)
-//   evidence_to_look_for   – array of {item, what_it_tells_you}
-//   scoping_notes          – short paragraph on common carve-outs and
+//   evidence_to_look_for   - array of {item, what_it_tells_you}
+//   scoping_notes          - short paragraph on common carve-outs and
 //                            structure decisions
-//   maturity_ladder        – {1,2,3,4} concrete description per CMMI level
-//   related_items          – array of iso_item_ids the auditor will check
+//   maturity_ladder        - {1,2,3,4} concrete description per CMMI level
+//   related_items          - array of iso_item_ids the auditor will check
 //                            alongside this one
 //
 // Items not present here fall back to the legacy summary/evidence_needed
 // fields. Goal is to fill all 118 entries, prioritised:
-//   Pass 1: 25 main-body clauses (4–10)
+//   Pass 1: 25 main-body clauses (4-10)
 //   Pass 2: 30 highest-impact Annex A controls
 //   Pass 3: remaining 63 controls
 
@@ -30,7 +30,7 @@ module.exports = {
   // ===================================================================
   'clause-4.1': {
     purpose: "This clause forces the organization to write down why its ISMS exists and what shapes it. Without it, every other clause is making assumptions that no one has tested. It's the input to risk assessment (6.1), scope (4.3), and objectives (6.2).",
-    what_good_looks_like: "A context register (or a section of the ISMS scope document) lists 5–15 substantive issues - not generic boilerplate like \"we operate in a regulated industry\", but specific items like \"GDPR Art. 33 breach-notification deadline of 72h\", \"our biggest customer requires SOC 2 Type II by 2026\", \"our primary data centre is in a flood zone\". Each issue is traceable somewhere downstream - a risk in the register, a control in the SoA, an objective. Climate change is explicitly listed as determined-relevant or determined-not-relevant, with a one-line rationale (Amendment 1:2024). The register is reviewed when something material happens (acquisition, new product, regulatory change), not just on a calendar.",
+    what_good_looks_like: "A context register (or a section of the ISMS scope document) lists 5-15 substantive issues - not generic boilerplate like \"we operate in a regulated industry\", but specific items like \"GDPR Art. 33 breach-notification deadline of 72h\", \"our biggest customer requires SOC 2 Type II by 2026\", \"our primary data centre is in a flood zone\". Each issue is traceable somewhere downstream - a risk in the register, a control in the SoA, an objective. Climate change is explicitly listed as determined-relevant or determined-not-relevant, with a one-line rationale (Amendment 1:2024). The register is reviewed when something material happens (acquisition, new product, regulatory change), not just on a calendar.",
     common_pitfalls: [
       "Generic PESTLE/SWOT boilerplate that could apply to any company - auditors spot this in 30 seconds",
       "Climate change not addressed at all (Amendment 1:2024 is new; orgs certified pre-2024 often haven't added it)",
@@ -45,6 +45,7 @@ module.exports = {
       { item: "Management review minutes from the last 12 months where context was a discussion item", what_it_tells_you: "Whether the register is alive or fossilised" }
     ],
     scoping_notes: "Some organizations capture context inside the ISMS scope statement; others maintain a separate register. Both are acceptable. What's not acceptable is having no documented determination at all, or documenting it once and never revisiting. Climate-change consideration is mandatory post-Amendment 1:2024 - if your last cert was before that date, expect to add it before the next surveillance.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a one-page context register listing 5-10 organisation-specific issues (not boilerplate), with climate change explicitly flagged as relevant or not-relevant with a one-line rationale per Amendment 1:2024. At least two of those issues visibly feed into the risk register so an auditor can trace the chain. Dated review within the last 12 months.",
     maturity_ladder: {
       1: "Context discussed verbally; nothing written, or what's written is generic boilerplate",
       2: "Specific organisation-tailored register exists; reviewed at planned intervals",
@@ -59,7 +60,7 @@ module.exports = {
   // ===================================================================
   'clause-4.2': {
     purpose: "4.1 is about the issues that surround the organization. 4.2 is about the people and entities that care what the organization does - regulators, customers, employees, suppliers, certification bodies - and what they specifically require. The output of this clause feeds 4.3 (scope), 6.1.1 (risks), 7.4 (communication), and 9.3 (MR).",
-    what_good_looks_like: "A register of interested parties and their requirements: who they are, what they require (legal, regulatory, contractual, commercial), and where in the ISMS that requirement is addressed. A real register has 10–25 entries - regulator names with the specific articles that bind you, key customers with the contractual security clauses they impose, employees with what they're entitled to expect (whistleblower channel, privacy at work). Updated when contracts are signed, regulations change, or major customers come/go. Climate-related obligations (Amendment 1:2024) are captured where they apply.",
+    what_good_looks_like: "A register of interested parties and their requirements: who they are, what they require (legal, regulatory, contractual, commercial), and where in the ISMS that requirement is addressed. A real register has 10-25 entries - regulator names with the specific articles that bind you, key customers with the contractual security clauses they impose, employees with what they're entitled to expect (whistleblower channel, privacy at work). Updated when contracts are signed, regulations change, or major customers come/go. Climate-related obligations (Amendment 1:2024) are captured where they apply.",
     common_pitfalls: [
       "Conflating 4.1 (issues) with 4.2 (parties) - auditors test whether you can articulate the difference",
       "Generic list of \"customers, employees, regulators\" without specifying which ones and what they require",
@@ -74,6 +75,7 @@ module.exports = {
       { item: "Evidence the register was updated in the last 12 months", what_it_tells_you: "Whether it's living or fossilised" }
     ],
     scoping_notes: "Most organizations maintain a separate register; some embed it in the scope statement. Either is acceptable. What's not acceptable is a list of names without their requirements, or a list of requirements without naming the parties.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a register of 10-15 interested parties with their specific requirements - named regulators with cited articles, named key customers with the security clauses they impose, employees with what they're entitled to expect. Each requirement points to where in the ISMS it is addressed. Updated at least once in the past 12 months.",
     maturity_ladder: {
       1: "Awareness of who the parties are; nothing documented",
       2: "Register exists with parties + requirements; reviewed at intervals",
@@ -85,7 +87,7 @@ module.exports = {
 
   'clause-4.3': {
     purpose: "Defines what the ISMS covers and - equally important - what it doesn't. Every other clause depends on this answer. Scope decisions trade audit cost against business coverage; getting it wrong costs the organization either money (over-scoped) or credibility (under-scoped vs. customer expectations).",
-    what_good_looks_like: "A 1–3 page scope statement covering: products and services in scope, locations, organizational units, technology, exclusions with rationale. Considers context (4.1) and interested-party requirements (4.2). Names interfaces and dependencies with other organizations (parent company, sister BUs, key suppliers). Clear and unambiguous - a reader can put any system / location / process in or out of scope based on the statement alone.",
+    what_good_looks_like: "A 1-3 page scope statement covering: products and services in scope, locations, organizational units, technology, exclusions with rationale. Considers context (4.1) and interested-party requirements (4.2). Names interfaces and dependencies with other organizations (parent company, sister BUs, key suppliers). Clear and unambiguous - a reader can put any system / location / process in or out of scope based on the statement alone.",
     common_pitfalls: [
       "Scope written so broadly (\"all of organisation\") that the SoA can't possibly be true",
       "Scope written so narrowly that customers reject the certificate as not covering what they care about",
@@ -101,6 +103,7 @@ module.exports = {
       { item: "Evidence of scope review in the last 12 months (or at the last material event)", what_it_tells_you: "Whether scope is alive" }
     ],
     scoping_notes: "Scope can be by product, by location, by organizational unit, by system, or any combination. Cert audits will sample across scope boundaries to verify they are sustainable. A \"Boston-only\" scope when 80% of staff are remote is fragile - auditors will probe.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a signed 1-3 page scope statement naming products/services, locations, organisational units, and technology in scope, with any exclusions justified. Interfaces with out-of-scope parties (parent, sister BUs, key suppliers) are described. No ambiguity about whether a given system, location, or process is in or out.",
     maturity_ladder: {
       1: "Scope discussed but not documented, or generic",
       2: "Documented scope statement; reviewed at intervals; exclusions justified",
@@ -126,6 +129,7 @@ module.exports = {
       { item: "MR minutes that reference outputs from each ISMS process", what_it_tells_you: "Top management sees the ISMS as one thing" }
     ],
     scoping_notes: "Many orgs use a single ISMS manual; others distribute the description across SOPs and reference them from a top-level policy. Both are acceptable. What matters is that the auditor can trace the system - not just inspect each part.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: clauses 4-10 are all addressed in the ISMS, with documented evidence the processes interact - risk outputs feed treatment plans, monitoring feeds management review, MR drives improvements. No clause is conspicuously empty. The ISMS is recognisably one connected system rather than a folder of disconnected documents.",
     maturity_ladder: {
       1: "ISMS components exist but no integration",
       2: "ISMS manual or process map documented; processes named",
@@ -153,6 +157,7 @@ module.exports = {
       { item: "Performance objectives or scorecards holding ISMS-role holders accountable", what_it_tells_you: "Whether accountability is operational" }
     ],
     scoping_notes: "Top management means the highest level of decision-making for the entity in scope - not the CISO unless they sit on the executive team. For a subsidiary in scope, the subsidiary's top management is the relevant party (with corporate engagement evident through other channels).",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: top management can name the ISMS owner, the security policy, and the most recent management-review outcomes without prompting. Evidence of at least one leadership-level security decision in the last 12 months (resource allocation, scope change, risk acceptance). The ISMS is not delegated wholesale to IT.",
     maturity_ladder: {
       1: "Top management aware of ISMS; engagement informal",
       2: "Policy signed; MR attended; resources allocated",
@@ -164,7 +169,7 @@ module.exports = {
 
   'clause-5.2': {
     purpose: "Requires a published Information Security Policy approved by top management - the document that articulates the ISMS's purpose and direction in language the whole organization can understand. It's both a governance artifact and a communication tool.",
-    what_good_looks_like: "A 2–5 page policy stating ISMS purpose, the framework for setting objectives, commitment to satisfy applicable requirements, and commitment to continual improvement. Approved by top management with a date. Published where staff can find it (intranet, induction pack). Communicated proactively - staff know it exists and roughly what it says. Reviewed at least annually and after material change. Made available to relevant interested parties as appropriate.",
+    what_good_looks_like: "A 2-5 page policy stating ISMS purpose, the framework for setting objectives, commitment to satisfy applicable requirements, and commitment to continual improvement. Approved by top management with a date. Published where staff can find it (intranet, induction pack). Communicated proactively - staff know it exists and roughly what it says. Reviewed at least annually and after material change. Made available to relevant interested parties as appropriate.",
     common_pitfalls: [
       "Policy is 30 pages because it tries to cover topic-specific rules - those belong in topic-specific policies (A.5.1)",
       "No top-management signature or no date",
@@ -179,6 +184,7 @@ module.exports = {
       { item: "Sample staff awareness check - ask three staff what the policy commits to", what_it_tells_you: "Whether communication worked" }
     ],
     scoping_notes: "Most organizations have one master Information Security Policy under 5.2, plus topic-specific policies under A.5.1 (access control, cryptography, supplier, etc.). The 5.2 deliverable is the master.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a signed information-security policy issued by top management, dated within the last 12-24 months, communicated to staff (intranet posting plus onboarding inclusion is enough), and referenced as the umbrella in the policy framework. Includes explicit commitments to continual improvement and to legal/regulatory compliance.",
     maturity_ladder: {
       1: "Policy drafted; not approved or not communicated",
       2: "Approved, published, communicated; annual review",
@@ -206,6 +212,7 @@ module.exports = {
       { item: "Segregation analysis - list of role conflicts and how they're addressed", what_it_tells_you: "Whether SoD is taken seriously" }
     ],
     scoping_notes: "Small organizations often have one person wearing multiple hats. That's acceptable - but conflicts must be addressed through compensating controls (peer review, automated logging, periodic external check). Document the basis.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented allocation of ISMS roles - at minimum a named ISMS owner, a risk-acceptance authority, and a person responsible for reporting ISMS performance to top management. Communicated via job descriptions or a roles-and-responsibilities document. Top management can name the ISMS owner without prompting when asked by the auditor.",
     maturity_ladder: {
       1: "Roles informal; some people know who owns what",
       2: "RACI or matrix exists; roles communicated to holders",
@@ -230,6 +237,7 @@ module.exports = {
       { item: "MR minutes referencing 6.1.1 risks and opportunities", what_it_tells_you: "Whether this is alive in governance" }
     ],
     scoping_notes: "Many organizations combine 6.1.1 outputs with their information-security risk register. That's pragmatic - but be ready to point at the ISMS-level entries when an auditor asks specifically about 6.1.1 vs. 6.1.2.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented planning that addresses the risks and opportunities identified from context (4.1) and interested parties (4.2), with actions integrated into the ISMS via risk treatment, objectives, or communication. Effectiveness of those actions is evaluated at least once per cycle.",
     maturity_ladder: {
       1: "Implicit; not documented",
       2: "Documented risks and opportunities; actions planned",
@@ -241,7 +249,7 @@ module.exports = {
 
   'clause-6.1.2': {
     purpose: "Requires a documented risk-assessment methodology that produces consistent, valid, and comparable results - and that the methodology is actually applied. The methodology is the thing audited; the assessment is the proof it's been applied.",
-    what_good_looks_like: "A 5–15 page methodology covering: scales (likelihood, impact) with explicit definitions, risk-acceptance criteria, asset / threat / vulnerability identification approach, risk-owner assignment rules. Methodology referenced in actual risk assessments. Two assessments by different teams or different time periods produce comparable outputs (same format, same scales, same evaluation logic). Risk owners are real people who know they're owners.",
+    what_good_looks_like: "A 5-15 page methodology covering: scales (likelihood, impact) with explicit definitions, risk-acceptance criteria, asset / threat / vulnerability identification approach, risk-owner assignment rules. Methodology referenced in actual risk assessments. Two assessments by different teams or different time periods produce comparable outputs (same format, same scales, same evaluation logic). Risk owners are real people who know they're owners.",
     common_pitfalls: [
       "Methodology written but never applied - the risk register doesn't follow it",
       "Methodology applied inconsistently - different teams use different scales or skip steps",
@@ -255,7 +263,8 @@ module.exports = {
       { item: "Sample risk traced from asset → threat → vulnerability → likelihood × impact → owner", what_it_tells_you: "Whether the methodology produces traceable outputs" },
       { item: "Risk-owner confirmation (e.g., signed acknowledgement or email trail)", what_it_tells_you: "Whether risk owners know they own" }
     ],
-    scoping_notes: "ISO 27005 is a common reference but not mandatory. Qualitative scales (1–5 or H/M/L) are fine for most organizations; quantitative is rarely worth the cost. Whatever you choose, the test is: does it produce consistent, comparable results?",
+    scoping_notes: "ISO 27005 is a common reference but not mandatory. Qualitative scales (1-5 or H/M/L) are fine for most organizations; quantitative is rarely worth the cost. Whatever you choose, the test is: does it produce consistent, comparable results?",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented risk-assessment methodology defining impact and likelihood scales, risk-acceptance criteria, who owns each risk, and how risks are identified. Applied to produce a current risk register (refreshed in the past 12 months) with at least 10-20 risks at varying levels. Repeatable - two assessors applying the methodology to the same input would land in roughly the same place.",
     maturity_ladder: {
       1: "Risk discussion ad-hoc; no documented methodology",
       2: "Methodology documented; applied at least once",
@@ -283,6 +292,7 @@ module.exports = {
       { item: "Cross-check: every \"included\" control in the SoA traceable to at least one risk", what_it_tells_you: "Whether 6.1.3.d.1 (necessary controls from risks) is satisfied" }
     ],
     scoping_notes: "Don't conflate the SoA with the risk register. SoA is control-by-control across all of Annex A; register is risk-by-risk. They cross-reference but answer different questions. SoA also includes implementation status and (best practice) reference to where each control is documented.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a risk-treatment plan covering every risk above the acceptance threshold, with named owners, target dates, and a status. An SoA listing all 93 Annex A controls with applicability decisions and justifications - none left as 'TBD'. Excluded controls have a one-line rationale beyond 'not applicable'. Residual risks have been formally accepted by a named risk owner.",
     maturity_ladder: {
       1: "SoA drafted but with weak justifications; treatment plan informal",
       2: "SoA + treatment plan documented; all Annex A controls addressed",
@@ -294,7 +304,7 @@ module.exports = {
 
   'clause-6.2': {
     purpose: "Requires measurable information-security objectives consistent with the policy. Without objectives, there's nothing to monitor (9.1) and nothing to improve (10.1). The objectives are how the ISMS proves it's actually doing something.",
-    what_good_looks_like: "3–7 documented objectives at the ISMS level - concrete, measurable, time-bound (e.g., \"Reduce mean time to detect security events from 12h to <4h by end-2026\", \"Close 90% of high-severity vulnerabilities within 30 days SLA quarter-on-quarter\"). Plans showing what will be done, by whom, by when, and how progress is measured. Reviewed at planned intervals - typically quarterly progress, annual reset.",
+    what_good_looks_like: "3-7 documented objectives at the ISMS level - concrete, measurable, time-bound (e.g., \"Reduce mean time to detect security events from 12h to <4h by end-2026\", \"Close 90% of high-severity vulnerabilities within 30 days SLA quarter-on-quarter\"). Plans showing what will be done, by whom, by when, and how progress is measured. Reviewed at planned intervals - typically quarterly progress, annual reset.",
     common_pitfalls: [
       "Objectives = \"comply with ISO 27001\" - that's not an objective",
       "Not measurable (\"improve security posture\")",
@@ -309,6 +319,7 @@ module.exports = {
       { item: "MR minutes reviewing objective progress", what_it_tells_you: "Whether objectives are governance-level concerns" }
     ],
     scoping_notes: "Objectives can cascade - ISMS-level → department-level → individual KPIs. ISO requires the ISMS-level ones to be documented; the cascade is a maturity indicator.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: 3-7 information-security objectives, each measurable (e.g., '95% phishing-simulation pass rate by Q4'), with a named owner, a target date, and a baseline. Reviewed at the most recent management review with status updates. Objectives connect back to either a policy commitment or a specific risk - not invented in isolation.",
     maturity_ladder: {
       1: "Stated aspirations; not measurable",
       2: "Measurable objectives documented; tracked",
@@ -334,6 +345,7 @@ module.exports = {
       { item: "MR inputs showing planned ISMS changes considered", what_it_tells_you: "Top management is involved in change-planning" }
     ],
     scoping_notes: "ISMS-level changes are infrequent - annual or less. The clause is satisfied by showing the process exists and is followed when triggered, plus showing planning is done rather than reactive.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented process for ISMS-level changes (scope, methodology, structural changes) requiring an impact assessment before approval. At least one change record exists for the last 12 months - or an explicit 'no changes this cycle' note in MR minutes.",
     maturity_ladder: {
       1: "No process; changes are ad-hoc",
       2: "Process documented; followed for major changes",
@@ -358,6 +370,7 @@ module.exports = {
       { item: "MR inputs showing resource decisions", what_it_tells_you: "Whether resourcing is governance-level" }
     ],
     scoping_notes: "ISO doesn't prescribe resourcing levels - that's a judgement call. The test is whether the org can demonstrably operate the ISMS as planned. If MR keeps surfacing missed deadlines, that's an under-resourcing finding.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented determination of the people, tooling, budget, and infrastructure the ISMS needs, with evidence those resources have been provided. The most recent management review discusses resource adequacy. No critical resource gap is open without a closure plan.",
     maturity_ladder: {
       1: "Resourcing implicit; no documented determination",
       2: "Resources allocated; reviewed annually",
@@ -384,6 +397,7 @@ module.exports = {
       { item: "Evidence of how competence was determined adequate (typically a written rationale)", what_it_tells_you: "Whether the org has actually thought about this" }
     ],
     scoping_notes: "Competence isn't only certifications - experience and demonstrated capability count. What's required is documenting the basis for the determination. \"Joe has 12 years of network security and demonstrated incident-response capability in two prior roles\" is a valid basis.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: defined competence requirements for the critical ISMS roles (ISMS owner, internal auditor, risk-acceptance authority at minimum), with evidence each role-holder meets them - CV, certification, or training record. Where requirements are not yet met, a documented gap-closure plan exists. Updated on hire or role change.",
     maturity_ladder: {
       1: "Implicit; based on job titles",
       2: "Requirements documented per role; records of role-holder competence",
@@ -411,6 +425,7 @@ module.exports = {
       { item: "Contractor-coverage evidence", what_it_tells_you: "Whether scope is correctly broad" }
     ],
     scoping_notes: "Format isn't prescribed - micro-learning, video, in-person, simulations all valid. Combination is best practice. Auditors will ask for the % of staff completed in the last cycle and what happens to non-completers.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented awareness covering the security policy, each person's role-relevant obligations, and the consequences of non-compliance. Delivery evidence (training records, attendance logs, completion certificates) for at least the last 12 months covering ~95% of in-scope staff and contractors. Onboarding includes security awareness. Non-completers have follow-up evidence.",
     maturity_ladder: {
       1: "Ad-hoc; new joiners get induction; no refreshers",
       2: "Programme documented; annual refresher; attestation tracked",
@@ -436,6 +451,7 @@ module.exports = {
       { item: "Records of recent ISMS-related communication", what_it_tells_you: "Plan is alive" }
     ],
     scoping_notes: "A.5.5 (contact with authorities) and A.5.24 (incident communications) overlap with 7.4. The 7.4 plan is the umbrella; A.5.5 / A.5.24 are operational specifics.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented communication plan covering what gets communicated, to whom, when, by whom, and through which channel - both internal and external. Includes how the organisation communicates with regulators and major customers on security matters. Records of recent communications exist.",
     maturity_ladder: {
       1: "Reactive; no plan",
       2: "Plan documented; channels named; records kept",
@@ -463,6 +479,7 @@ module.exports = {
       { item: "Distribution-control evidence (access permissions, intranet visibility)", what_it_tells_you: "Right people see right docs" }
     ],
     scoping_notes: "Applies to internal ISMS documents (policies, procedures, records). External documents (regulations, supplier docs, customer security questionnaires) need control too - typically a separate \"external documents\" register.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a controlled-document register listing every mandatory document (policies, procedures, risk register, SoA, scope, MR minutes, internal-audit reports) with owner, version, approval date, and next review date. Documents are version-controlled and superseded copies are marked or removed. No mandatory document is more than one approval cycle out of date.",
     maturity_ladder: {
       1: "Documents exist; control informal",
       2: "Register, versioning, owners; periodic review",
@@ -488,6 +505,7 @@ module.exports = {
       { item: "Records of process operation - ticket systems, review logs, run records", what_it_tells_you: "Processes execute" }
     ],
     scoping_notes: "Outsourced processes within scope must be controlled - supplier reviews (A.5.22), contract clauses (A.5.20), monitoring of supplier performance. The 8.1 record is that you've identified them and have control measures.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: evidence the ISMS plans from clause 6 are actually executed - risk treatments progressing per plan, controls operating as designed, changes that affect security routed through change management. Outsourced processes in scope have documented oversight. Operational records exist (tickets, logs, reviews) that an auditor can sample for the past 6-12 months.",
     maturity_ladder: {
       1: "Processes informal; records partial",
       2: "Processes documented; SOPs in place; records exist",
@@ -513,6 +531,7 @@ module.exports = {
       { item: "Communication to risk owners (email, ticket, signed acknowledgement)", what_it_tells_you: "Owners are informed" }
     ],
     scoping_notes: "8.2 is the operation of 6.1.2 - same methodology, just doing it. The deliverables of 8.2 are the actual assessments and their communication.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: risk assessments are performed at planned intervals (typically annual) and on defined triggers (new product/system, M&A, regulatory change, significant incident). Results are documented and communicated to risk owners. At least one assessment in the last 12 months.",
     maturity_ladder: {
       1: "Annual only; no triggers",
       2: "Cadence defined; triggers documented; recent assessments",
@@ -538,6 +557,7 @@ module.exports = {
       { item: "Residual-risk re-evaluation after a treatment", what_it_tells_you: "The risk picture is updated" }
     ],
     scoping_notes: "Effectiveness verification is part of the monitoring (9.1) function - but 8.3 is where you record the per-action verification. They link.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the risk treatment plan from 6.1.3 is being implemented - each treatment has a status, an owner, and a closure trail when complete. Overdue treatments have a documented reason. The plan is reviewed at management review.",
     maturity_ladder: {
       1: "Plan exists; status not maintained",
       2: "Plan tracked; implementation evidence kept",
@@ -549,7 +569,7 @@ module.exports = {
 
   'clause-9.1': {
     purpose: "Requires the organization to determine WHAT to monitor and measure, HOW, WHEN, by WHOM analysed, and WHAT the analysis says about ISMS performance and effectiveness. Turns the ISMS from a paper system into a measurable one.",
-    what_good_looks_like: "Documented metrics - typically 8–15 - derived from objectives (6.2) and key risks. For each: definition, source, frequency, who analyses, threshold for action. Records of measurement. Analysis turns numbers into insight (e.g., \"vulnerability backlog growing 5% MoM despite SLA compliance - driven by surge in dependency CVEs; recommend tooling investment\"). Used in MR (9.3) and continual improvement (10.1).",
+    what_good_looks_like: "Documented metrics - typically 8-15 - derived from objectives (6.2) and key risks. For each: definition, source, frequency, who analyses, threshold for action. Records of measurement. Analysis turns numbers into insight (e.g., \"vulnerability backlog growing 5% MoM despite SLA compliance - driven by surge in dependency CVEs; recommend tooling investment\"). Used in MR (9.3) and continual improvement (10.1).",
     common_pitfalls: [
       "Metrics defined but not measured",
       "Measured but not analysed - dashboards exist but no one looks",
@@ -564,6 +584,7 @@ module.exports = {
       { item: "Decision trail - actions taken based on analysis", what_it_tells_you: "Monitoring drives the ISMS" }
     ],
     scoping_notes: "ISO doesn't prescribe metrics. They should derive from objectives (6.2) and key risks. Avoid generic operational metrics like uptime unless they're directly tied to a security objective.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a monitoring and measurement plan naming what gets measured (selected from objectives plus a handful of key controls), by whom, on what frequency, and how results are analysed. At least one full cycle of measurement has been performed and results recorded. Results feed the most recent management review - not just collected and shelved.",
     maturity_ladder: {
       1: "Few metrics; measured ad-hoc",
       2: "Documented metrics; regular measurement; basic analysis",
@@ -591,6 +612,7 @@ module.exports = {
       { item: "Distribution evidence - audit reports go to relevant management", what_it_tells_you: "Audits are governance-level" }
     ],
     scoping_notes: "Internal auditors don't have to be external. Internal staff trained as auditors (CISA, IRCA ISO 27001 Lead Auditor, internal training) are common. What matters is independence from the audited area.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an internal-audit programme covering the full ISMS over a defined cycle (1-3 years), with at least one completed audit in the last 12 months covering both Clauses 4-10 and a sample of Annex A. Auditors are competent and demonstrably independent of the area they audit. Findings have owners, due dates, and a closure trail - none orphaned.",
     maturity_ladder: {
       1: "Single annual audit; coverage incomplete",
       2: "3-year programme covering ISMS; reports produced",
@@ -618,6 +640,7 @@ module.exports = {
       { item: "Trace from prior MR action → status update at next MR", what_it_tells_you: "MR is a closed loop" }
     ],
     scoping_notes: "The 9.3.2 input checklist is what auditors literally tick off. Build your MR template against the list. Missing one input is a finding; missing two is a major.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: management-review minutes from the last 12 months covering every required input in clause 9.3.2 and producing dated decisions on improvements, changes, and resource needs per 9.3.3. Top management is present and named in attendance - not just security. Minutes are signed or approved, and actions from prior MRs are tracked to closure.",
     maturity_ladder: {
       1: "Annual meeting; coverage incomplete",
       2: "All 9.3.2 inputs covered; minutes record decisions",
@@ -643,6 +666,7 @@ module.exports = {
       { item: "MR inputs/outputs showing improvement is governance-level", what_it_tells_you: "Improvement is sustained" }
     ],
     scoping_notes: "If the ISMS hasn't visibly changed in 12 months, that's a finding. Improvement need not be major - small refinements count, as long as they're documented.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: evidence of at least 3-5 closed improvements over the last 12 months, each traceable to a source - audit finding, MR action, metric trend, or incident. Improvements have been recorded, not just done. Trend over time shows the ISMS evolving rather than standing still.",
     maturity_ladder: {
       1: "Improvements informal",
       2: "Improvement log; actions traced to drivers; outcomes verified",
@@ -669,6 +693,7 @@ module.exports = {
       { item: "Integration with internal audit findings - audit findings open NCs", what_it_tells_you: "Audit drives improvement" }
     ],
     scoping_notes: "10.2 is heavily sampled. Major NCs in your own audits should show 10.2 working - NCs without clear closure are a Stage 2 finding. Minor NCs (or \"opportunities for improvement\") should still be tracked, even if not subject to formal RCA.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an NC and corrective-action process with at least 3-5 NCs raised in the last 12 months (from internal audit, incidents, or external feedback), each with root-cause analysis, immediate correction, corrective action, effectiveness check, and closure. NCs are not closed by just fixing the symptom - the closure note shows the cause is gone.",
     maturity_ladder: {
       1: "NCs tracked; root cause sometimes done",
       2: "Workflow consistent; RCA documented; corrective actions closed",
@@ -682,8 +707,8 @@ module.exports = {
   // ANNEX A - ORGANIZATIONAL CONTROLS - A.5.x
   // ===================================================================
   'annex-a.5.15': {
-    purpose: "This is the umbrella access-control clause. It says the organization must have rules - not just AD groups deployed by IT - that articulate principles (least privilege, need-to-know, segregation of duties) and connect to the operational controls in A.5.16–5.18 and A.8.2–8.5 that implement those principles.",
-    what_good_looks_like: "A documented Access Control Policy of 3–8 pages covering: principles, scope (logical and physical), resource classification (production vs corporate, sensitive vs public), and pointers to topic-specific procedures for provisioning, review, revocation, and privileged access. Different rules for different resource classes - a privileged production database is not governed by the same clause as a marketing SaaS tool. Critically, the policy is applied: a randomly chosen recent joiner's access ticket and a recent leaver's revocation ticket both follow what the policy says.",
+    purpose: "This is the umbrella access-control clause. It says the organization must have rules - not just AD groups deployed by IT - that articulate principles (least privilege, need-to-know, segregation of duties) and connect to the operational controls in A.5.16-5.18 and A.8.2-8.5 that implement those principles.",
+    what_good_looks_like: "A documented Access Control Policy of 3-8 pages covering: principles, scope (logical and physical), resource classification (production vs corporate, sensitive vs public), and pointers to topic-specific procedures for provisioning, review, revocation, and privileged access. Different rules for different resource classes - a privileged production database is not governed by the same clause as a marketing SaaS tool. Critically, the policy is applied: a randomly chosen recent joiner's access ticket and a recent leaver's revocation ticket both follow what the policy says.",
     common_pitfalls: [
       "The \"policy gap\" - beautifully written policy, completely disconnected from operational reality. Stage 2 auditors live for this finding",
       "Privileged access folded into the same rules as standard access (it shouldn't be)",
@@ -699,6 +724,7 @@ module.exports = {
       { item: "The privileged-access list for a sensitive system, with sign-off from the system owner", what_it_tells_you: "Whether privileged access is governed differently from standard access" }
     ],
     scoping_notes: "Most organizations split this into a parent Access Control Policy plus topic-specific procedures (joiner-mover-leaver, privileged access, physical access). Auditors look at both - don't claim policy-level statements cover operational detail. Physical access is sometimes governed under a separate Physical Security Policy; fine, as long as the Access Control Policy explicitly references it.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented Access Control Policy covering both logical and physical access, the principles applied (need-to-know, least privilege, segregation of duties), and the joiner-mover-leaver lifecycle. Implemented on the in-scope systems with auditor-sampleable evidence - a current user list, leaver tickets closed within SLA, and at least one access review in the past 12 months.",
     maturity_ladder: {
       1: "Access decisions made case-by-case; no documented rules",
       2: "Access Control Policy exists; some procedures aligned; reviews happen but informally",
@@ -714,7 +740,7 @@ module.exports = {
 
   'annex-a.5.1': {
     purpose: "Clause 5.2 produces the master Information Security Policy. A.5.1 is the family of topic-specific policies that sit underneath it (access control, cryptography, supplier, BCP, secure development, comms, etc.). Together they tell the organization what is required at the principle level for every important security topic. Without topic-specific policies, the master ISP becomes a wall of generic statements that nobody can actually act on.",
-    what_good_looks_like: "A documented policy hierarchy with the master ISP at the top and a small, deliberate set of topic-specific policies underneath - typically 6–12 for a mid-size org (access control, cryptography, supplier security, BCP, secure development, acceptable use, data classification, incident response, physical security, communications, third-party access). Each policy has a named owner, an approval record (top management or appropriately delegated), a review cycle (annual minimum), and a version block. Coverage maps to risk and to Annex A - there's a topic policy for every area where the organization has meaningful exposure. Policies are communicated, accessible, and actually referenced by procedures and operational documentation.",
+    what_good_looks_like: "A documented policy hierarchy with the master ISP at the top and a small, deliberate set of topic-specific policies underneath - typically 6-12 for a mid-size org (access control, cryptography, supplier security, BCP, secure development, acceptable use, data classification, incident response, physical security, communications, third-party access). Each policy has a named owner, an approval record (top management or appropriately delegated), a review cycle (annual minimum), and a version block. Coverage maps to risk and to Annex A - there's a topic policy for every area where the organization has meaningful exposure. Policies are communicated, accessible, and actually referenced by procedures and operational documentation.",
     common_pitfalls: [
       "Copy-paste templates from the internet that don't fit how the organization actually works - auditors detect this in seconds when they ask follow-up questions",
       "Policies exist but are never reviewed; same content for 4+ years",
@@ -731,6 +757,7 @@ module.exports = {
       { item: "Evidence of a policy change in the last 12 months (any policy)", what_it_tells_you: "Whether the policy set is alive" }
     ],
     scoping_notes: "Smaller organizations often combine multiple topics into fewer policies (e.g., one Operations Security Policy covering logging, monitoring, capacity, malware). That's acceptable as long as the content is covered. The test is not the count of policies but whether every meaningful topic has a policy-level statement that someone has signed off on.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an information-security policy plus topic-specific policies for the high-leverage areas (acceptable use, access control, cryptography, backup, supplier security, incident management at minimum) approved by management, dated within the last 24 months, and accessible to all staff. Each policy has an owner and a next-review date that hasn't expired.",
     maturity_ladder: {
       1: "Master ISP exists; few or no topic policies; no review cycle",
       2: "Documented hierarchy; topic policies for major areas; annual review",
@@ -757,6 +784,7 @@ module.exports = {
       { item: "Org chart showing CISO reporting line to top management", what_it_tells_you: "Whether the role has actual authority" }
     ],
     scoping_notes: "In smaller organizations one person legitimately wears multiple hats. That's fine - but conflicts must be addressed (see A.5.3). Document who owns what; document the conflicts; document the compensating control.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: each information-security responsibility (overall ISMS, risk acceptance, incident response, supplier security, asset ownership) has a named role assigned to a named person. Documented in job descriptions, a RACI, or a roles document, and updated on joiners/movers/leavers. No critical role is unassigned or 'TBD'.",
     maturity_ladder: {
       1: "Roles informal; some people know who owns what",
       2: "RACI documented; responsibilities in JDs; communicated to holders",
@@ -768,7 +796,7 @@ module.exports = {
 
   'annex-a.5.3': {
     purpose: "Forces the organization to identify combinations of duties that - if held by one person - create unacceptable risk (a.k.a. \"toxic combinations\"). The classic example: the developer who can also push to production. Or the user-access requestor who is also the approver. Or the system administrator who audits their own activity. A.5.3 requires either real segregation or a documented compensating control.",
-    what_good_looks_like: "A documented Segregation-of-Duties analysis lists the toxic combinations relevant to the organization (typically 10–30 entries) and how each is managed - either through technical separation (different roles in different systems), process separation (different people in the workflow), or compensating controls (peer review, immutable logging, periodic external check). The analysis is updated when the org structure changes or systems change. Sample testing (e.g., pull a recent prod deploy and check the developer didn't approve their own change) confirms the controls work.",
+    what_good_looks_like: "A documented Segregation-of-Duties analysis lists the toxic combinations relevant to the organization (typically 10-30 entries) and how each is managed - either through technical separation (different roles in different systems), process separation (different people in the workflow), or compensating controls (peer review, immutable logging, periodic external check). The analysis is updated when the org structure changes or systems change. Sample testing (e.g., pull a recent prod deploy and check the developer didn't approve their own change) confirms the controls work.",
     common_pitfalls: [
       "\"We're too small to segregate\" used as blanket excuse without any compensating control documented",
       "SoD analysis exists but is years out of date; no review when team grows or shrinks",
@@ -783,6 +811,7 @@ module.exports = {
       { item: "Update record showing the SoD analysis was reviewed in the last 12 months", what_it_tells_you: "Whether it's alive" }
     ],
     scoping_notes: "Small organizations rely heavily on compensating controls - that's expected and acceptable. What's not acceptable is claiming \"too small\" without documenting which combinations are problematic and what alternative controls are in place. Be specific: \"Sysadmin role conflicts with audit role; compensated by quarterly peer review of audit logs by external accountant.\"",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented segregation-of-duties analysis listing the toxic combinations relevant to the organisation (e.g., dev pushing to prod, requestor approving their own access). Each combination is managed through technical separation, process separation, or a documented compensating control. At least one sampled control test confirms the segregation works in practice.",
     maturity_ladder: {
       1: "SoD discussed informally; no documented analysis",
       2: "Toxic combinations identified; controls or compensating controls in place",
@@ -794,7 +823,7 @@ module.exports = {
 
   'annex-a.5.4': {
     purpose: "Pushes information security accountability into line management. Without this control, security is \"the security team's problem\" - line managers don't see it as part of their job, so their teams don't either. This is the control that turns security from a function into a behavior expectation.",
-    what_good_looks_like: "Every line manager has documented expectations for how they ensure their team applies information security: confirming staff completed training, reinforcing acceptable use, addressing security violations through normal performance management, supporting incident reporting, and not creating exceptions for their team. Manager-specific guidance exists (a 2–3 page \"manager's guide to ISMS expectations\"). Managers receive training on their security responsibilities. The expectation appears in their performance objectives, not just in policy.",
+    what_good_looks_like: "Every line manager has documented expectations for how they ensure their team applies information security: confirming staff completed training, reinforcing acceptable use, addressing security violations through normal performance management, supporting incident reporting, and not creating exceptions for their team. Manager-specific guidance exists (a 2-3 page \"manager's guide to ISMS expectations\"). Managers receive training on their security responsibilities. The expectation appears in their performance objectives, not just in policy.",
     common_pitfalls: [
       "Managers receive the same generic security awareness as staff - no manager-specific content",
       "No manager-level activity expected; security training delivered, end of story",
@@ -809,6 +838,7 @@ module.exports = {
       { item: "Channel for staff to escalate concerns past their manager (whistleblower, ethics line)", what_it_tells_you: "Whether the org accounts for the manager-as-problem case" }
     ],
     scoping_notes: "This control is usually under-evidenced because organizations conflate it with awareness training (7.3). They're different: 7.3 is everyone, A.5.4 is managers specifically. Even small orgs need a manager briefing - even if there are only three managers.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: management responsibilities for information security are documented and communicated - at minimum, that managers ensure their staff comply with policies, follow procedures, and report incidents. Reflected in line-management practice (e.g., a manager has actioned a security concern in the last 12 months) or in performance objectives where applicable.",
     maturity_ladder: {
       1: "Manager responsibilities not differentiated from general staff awareness",
       2: "Manager-specific guidance and training exist",
@@ -835,6 +865,7 @@ module.exports = {
       { item: "Pre-registered communication channels (regulator portals, encrypted email keys)", what_it_tells_you: "Whether channels work before the incident" }
     ],
     scoping_notes: "Jurisdictional. A multinational organization needs contacts per jurisdiction. A UK-only org needs ICO + sector regulator + local police cyber unit. The trigger conditions are specific to the incident type (data breach vs. operational disruption vs. fraud) and to the regulatory regime.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented list of authorities (data-protection regulators, sector regulators, law-enforcement contacts, national CERTs) the organisation must notify or engage with on security matters, with named contacts and notification thresholds. Updated in the last 12 months. Engagement records exist where any contact occurred.",
     maturity_ladder: {
       1: "Contacts known informally; no documented list",
       2: "Documented list with triggers; reviewed annually",
@@ -859,6 +890,7 @@ module.exports = {
       { item: "Annual review of membership relevance", what_it_tells_you: "Whether the portfolio is curated" }
     ],
     scoping_notes: "Relevance varies by sector. Financial services should be in FS-ISAC; healthcare in H-ISAC; critical infrastructure in the relevant sector ISAC. For a small org without an ISAC budget, a national CERT subscription plus a free advisory feed (CISA, NCSC) is a reasonable floor.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented membership of, or engagement with, relevant security communities - ISACs, vendor user groups, professional bodies, regional CERT distribution lists. Evidence the engagement produces actionable inputs (a control change, a hunt, a risk added) at least once per cycle.",
     maturity_ladder: {
       1: "Ad-hoc participation; no documented memberships",
       2: "Memberships documented; channels monitored",
@@ -885,6 +917,7 @@ module.exports = {
       { item: "Integration evidence - IOCs flowing into SIEM/EDR; advisories flowing into vulnerability management", what_it_tells_you: "Whether outputs reach the operational tools" }
     ],
     scoping_notes: "Sophistication varies enormously. A small org may rely on free OSS feeds plus their MSSP's threat intel. A large org has a dedicated threat intel team. Both can satisfy A.5.7 if they show collect / analyse / act. What can't satisfy it: claiming you do threat intel because you read security news.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented threat-intelligence process - even if it is just subscribing to a defined set of free feeds (CISA / NCSC / sector ISAC / key vendor advisories) and reviewing them on a stated cadence. Evidence the intel has been used at least once in the past 6 months - a risk added, a control tightened, a patch prioritised, a detection rule tuned. No paid feed required for a small org, but a documented routine is.",
     maturity_ladder: {
       1: "Ad-hoc reading of vendor reports; no documented sources or process",
       2: "Documented sources; some analysis; occasional action",
@@ -911,6 +944,7 @@ module.exports = {
       { item: "Project manager training records covering security activities", what_it_tells_you: "Whether PMs are equipped" }
     ],
     scoping_notes: "Applies across project types - IT projects, business projects with information security impact, M&A integration, regulatory programmes. Small orgs with informal project management still need to show security touchpoints exist; the formality scales but the activity does not become optional.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the organisation's project methodology has security activities embedded throughout - security risk assessment at kickoff, security requirements in design, security testing before release, and a security closure check. Applies to all projects affecting information security, not just security projects. Sampled project shows the activities were performed.",
     maturity_ladder: {
       1: "Security tacked on at end of some projects",
       2: "Security activities defined in methodology; PMs trained",
@@ -939,6 +973,7 @@ module.exports = {
       { item: "Procurement integration - sample new asset that entered the register on procurement", what_it_tells_you: "Whether new assets get captured" }
     ],
     scoping_notes: "Information assets and supporting assets are distinct - a CRM database is an information asset; the server hosting it is a supporting asset. Both should be inventoried but the management treatment differs (you classify information assets; you control supporting assets). Cloud creates a third category that's effectively both - handle deliberately.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a current inventory of information assets (data, systems, services) and associated assets (hardware, software, suppliers) within scope, with named owners. Reviewed in the last 12 months. The inventory is the source the SoA and risk register reference, not a separate parallel list.",
     maturity_ladder: {
       1: "Partial register; mostly IT inventory; gaps in information assets",
       2: "Both registers exist; owners assigned; reviewed periodically",
@@ -950,7 +985,7 @@ module.exports = {
 
   'annex-a.5.10': {
     purpose: "The Acceptable Use Policy - the rules that tell users what they can and cannot do with the organization's information and assets. This is the document that turns abstract security principles into operational rules a regular employee can understand and follow.",
-    what_good_looks_like: "A 2–4 page Acceptable Use Policy covering: devices (organization-issued and BYOD), networks (corporate, guest, VPN, public Wi-Fi), applications (approved vs. unapproved, shadow IT), removable media, information sharing (internal, external, cloud sync), password and authentication hygiene, reporting suspicious activity. Written in plain English, not legalese. Communicated at hire (induction), on every material change, and acknowledged by signature or LMS attestation. Enforcement is real - repeat violations go through the disciplinary process (A.6.4). Coverage extends to contractors and third parties under organizational control.",
+    what_good_looks_like: "A 2-4 page Acceptable Use Policy covering: devices (organization-issued and BYOD), networks (corporate, guest, VPN, public Wi-Fi), applications (approved vs. unapproved, shadow IT), removable media, information sharing (internal, external, cloud sync), password and authentication hygiene, reporting suspicious activity. Written in plain English, not legalese. Communicated at hire (induction), on every material change, and acknowledged by signature or LMS attestation. Enforcement is real - repeat violations go through the disciplinary process (A.6.4). Coverage extends to contractors and third parties under organizational control.",
     common_pitfalls: [
       "AUP exists but is vague (\"use assets responsibly\") with no concrete rules",
       "No acknowledgement records - claim is \"everyone has read it\" but no proof",
@@ -967,6 +1002,7 @@ module.exports = {
       { item: "Re-acknowledgement on policy change", what_it_tells_you: "Whether updates are communicated" }
     ],
     scoping_notes: "AUP is one document, kept short, kept current. The detail goes into supporting procedures (e.g., remote-work guide, BYOD setup guide). The AUP states the rules; the procedures explain how to follow them. Don't try to fit everything into the AUP.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an acceptable-use and asset-handling policy covering classification, handling, transmission, storage, and disposal of information. Staff have acknowledged it (signed AUP or e-learning completion record) on hire and on material change. The asset register includes a classification field that is actually populated for in-scope assets.",
     maturity_ladder: {
       1: "Vague AUP; no acknowledgement; not enforced",
       2: "Specific rules; acknowledgement on hire; periodic re-acknowledgement",
@@ -995,6 +1031,7 @@ module.exports = {
       { item: "HR-IT integration - automated trigger or formal notification mechanism", what_it_tells_you: "Whether the trigger is reliable" }
     ],
     scoping_notes: "BYOD complicates this control significantly. Decide your approach: contain organizational data inside an MDM container so it can be wiped without touching personal data, or have a formal data-removal attestation as part of off-boarding. Either is acceptable - undocumented is not.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented off-boarding (and transfer) process triggered by HR notification - not by IT noticing. A checklist covers physical assets, digital assets (including BYOD data removal), and access revocation across all systems within an SLA. Leaver tickets in the last 12 months show the SLA was met.",
     maturity_ladder: {
       1: "Process informal; gaps in BYOD and SaaS",
       2: "Documented checklist; HR-triggered; recovery tracked",
@@ -1006,7 +1043,7 @@ module.exports = {
 
   'annex-a.5.12': {
     purpose: "The classification scheme. Tells the organization which information is sensitive enough to warrant which level of protection. Without it, every dataset gets the same treatment, which means either over-protecting public data (cost) or under-protecting confidential data (risk). The classification scheme is the foundation that A.5.13 (labelling), A.5.14 (transfer), A.5.33 (records), and most data-handling controls depend on.",
-    what_good_looks_like: "A simple 3–5 level scheme - typically Public / Internal / Confidential / Restricted - with crisp definitions: who can see it, what happens if it leaks, examples per level. Each level has handling rules (storage, transmission, disposal). A default classification for unclassified data (usually Internal). Information owners apply classification at creation; classifications are reviewed when value or sensitivity changes (e.g., a strategy doc reclassified after public announcement). Distinct from PII categorization - privacy and classification are related but separate.",
+    what_good_looks_like: "A simple 3-5 level scheme - typically Public / Internal / Confidential / Restricted - with crisp definitions: who can see it, what happens if it leaks, examples per level. Each level has handling rules (storage, transmission, disposal). A default classification for unclassified data (usually Internal). Information owners apply classification at creation; classifications are reviewed when value or sensitivity changes (e.g., a strategy doc reclassified after public announcement). Distinct from PII categorization - privacy and classification are related but separate.",
     common_pitfalls: [
       "Scheme too complex - 8 levels with subtle distinctions that nobody remembers, so nobody applies it",
       "Scheme exists but data not actually classified - the labels live only in the policy",
@@ -1021,7 +1058,8 @@ module.exports = {
       { item: "Default classification policy", what_it_tells_you: "Whether unclassified data is covered" },
       { item: "Reclassification record - at least one example of a classification changing", what_it_tells_you: "Whether reviews happen" }
     ],
-    scoping_notes: "Keep it simple - 3–5 levels max. The temptation is to capture every nuance with more levels; it backfires because staff stop applying anything. If you need more granularity, do it through handling rules, not more levels. Classification applies to information assets; supporting assets (servers, devices) inherit the highest classification of data they hold.",
+    scoping_notes: "Keep it simple - 3-5 levels max. The temptation is to capture every nuance with more levels; it backfires because staff stop applying anything. If you need more granularity, do it through handling rules, not more levels. Classification applies to information assets; supporting assets (servers, devices) inherit the highest classification of data they hold.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented information-classification scheme (typically 3-4 levels: Public, Internal, Confidential, Restricted) with criteria for each level. Applied to at least the high-impact information assets in the inventory. Staff have been told what the levels mean and how to apply them.",
     maturity_ladder: {
       1: "Scheme exists; not applied",
       2: "Scheme applied to most data; handling rules documented",
@@ -1049,6 +1087,7 @@ module.exports = {
       { item: "Linkage between label and handling - e.g., DLP rule that triggers on Confidential label", what_it_tells_you: "Whether labels drive behavior" }
     ],
     scoping_notes: "Don't try to label every format perfectly on day one. Pick the highest-impact formats first (documents, email, removable media), get labelling working there, then expand. Modern stacks (M365, Google Workspace) make automated labelling much easier than manual procedures.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a labelling procedure aligned with the classification scheme covering at minimum digital documents and email containing Confidential/Restricted information. Applied in practice for at least the high-impact information assets. Tooling support (DLP / IRM / template) where the volume warrants it.",
     maturity_ladder: {
       1: "Scheme exists; manual labelling sporadic",
       2: "Procedures documented per format; labels applied to most output",
@@ -1077,6 +1116,7 @@ module.exports = {
       { item: "DLP or monitoring evidence catching policy violations", what_it_tells_you: "Whether enforcement happens" }
     ],
     scoping_notes: "Covers internal AND external transfers; internal is often forgotten. \"Confidential\" data emailed to a colleague in another department still requires the appropriate channel. Modern collaboration platforms (Teams, Slack, SharePoint) need explicit consideration - they're transfer channels even if they feel like \"internal storage.\"",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented information-transfer policy covering channels (email, file-sharing, removable media, physical mail, courier) and the controls applied per classification level (encryption, recipient verification, transit logging). Sampled transfer of Confidential or higher shows the controls were applied.",
     maturity_ladder: {
       1: "Generic rules; staff unclear",
       2: "Classification-based rules; approved channels listed; staff trained",
@@ -1104,7 +1144,8 @@ module.exports = {
       { item: "Sample joiner showing identity flowing from HR to all downstream systems", what_it_tells_you: "Whether JML propagation works" },
       { item: "Sample leaver showing identity disabled across all systems within SLA", what_it_tells_you: "Whether off-boarding is comprehensive" }
     ],
-    scoping_notes: "Identity sprawl is the modern enterprise's biggest hidden risk. Even with SSO, there are usually 20–50% of systems where identities are managed locally. Scope this control deliberately: list every system that has its own user database, decide how identity is governed there, and document the exceptions.",
+    scoping_notes: "Identity sprawl is the modern enterprise's biggest hidden risk. Even with SSO, there are usually 20-50% of systems where identities are managed locally. Scope this control deliberately: list every system that has its own user database, decide how identity is governed there, and document the exceptions.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented identity-management process covering issuance, change, suspension, and revocation of identities across in-scope systems. Tied to the HR joiner-mover-leaver workflow. Service-account and machine-identity lifecycle is also covered. Periodic recertification of high-risk identities.",
     maturity_ladder: {
       1: "Identity managed per-system; gaps in JML",
       2: "SSO for major systems; service accounts inventoried",
@@ -1135,6 +1176,7 @@ module.exports = {
       { item: "Helpdesk reset procedure with verification steps", what_it_tells_you: "Whether the recovery path is hardened" }
     ],
     scoping_notes: "Modern guidance (NIST 800-63B, NCSC) has moved away from forced password rotation toward length, MFA, and breach-monitoring. Don't justify weak-but-rotated as \"following policy\" - auditors increasingly know what current good practice looks like.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented authentication-information management policy covering passwords, MFA factors, certificates, and API keys - issuance, distribution, storage, change, and revocation. Default credentials are changed before deployment. Secrets are not stored in source control.",
     maturity_ladder: {
       1: "Basic password policy; MFA partial",
       2: "Modern password policy; MFA on sensitive systems; secrets in vault",
@@ -1163,6 +1205,7 @@ module.exports = {
       { item: "SLA metric - % of leavers fully revoked within SLA over the last 12 months", what_it_tells_you: "Whether outcomes are tracked" }
     ],
     scoping_notes: "Privileged access deserves its own sub-process. So does access for systems handling PII or regulated data. The general-access cadence (e.g., annual) doesn't fit privileged access (should be quarterly minimum) or super-sensitive access (continuous monitoring). Document the tiering.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: access rights are granted based on documented role/business requirement, reviewed at defined intervals (typically annual full review, more frequent for privileged), and revoked promptly on leaver/transfer. Recent access-review evidence covers at least the high-risk systems.",
     maturity_ladder: {
       1: "Access requests informal; reviews sporadic",
       2: "Documented process; reviews on cadence; SLAs defined",
@@ -1191,6 +1234,7 @@ module.exports = {
       { item: "Periodic refresh - sample supplier whose risk assessment was updated in the last 12 months", what_it_tells_you: "Whether the register is alive" }
     ],
     scoping_notes: "The hardest part is defining scope. Be inclusive: anyone with access to organizational systems, anyone holding data on their infrastructure, anyone whose service is in the ISMS scope. Don't forget OSS and cloud: open-source dependencies are technically a supply-chain consideration (covered more in A.5.21) but cloud providers are absolutely suppliers.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a supplier-security policy and process covering identification of supplier-related risks, classification of suppliers by risk, security clauses in contracts, and a review/oversight cadence proportional to risk. A current supplier register exists with risk-tiering.",
     maturity_ladder: {
       1: "Supplier list incomplete; no risk tiering",
       2: "Register exists with tiering; assessments per tier",
@@ -1218,6 +1262,7 @@ module.exports = {
       { item: "Legal-IS interaction evidence - correspondence on a recent negotiation", what_it_tells_you: "Whether the partnership is real" }
     ],
     scoping_notes: "Existing contracts are usually grandfathered - that's pragmatic. But every renewal should be an opportunity to update. For new contracts, the security exhibit is non-negotiable for Tier 1 and Tier 2; Tier 3 may get a streamlined version. If the supplier flatly refuses to accept incident notification clauses, that's a risk decision to escalate, not to ignore.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: contracts with suppliers handling in-scope information contain security clauses addressing confidentiality, access, return/destruction on termination, incident notification, audit/assurance rights, and personnel screening where applicable. Recent contract sample shows the clauses are present and appropriate to the risk tier.",
     maturity_ladder: {
       1: "Contracts have generic confidentiality only; security clauses absent or weak",
       2: "Standard security exhibit; applied to new contracts and renewals",
@@ -1246,6 +1291,7 @@ module.exports = {
       { item: "End-of-life inventory with remediation status", what_it_tells_you: "Whether unsupported components are tracked" }
     ],
     scoping_notes: "This control was de-emphasized pre-2022 and is now critical. Auditors increasingly probe it post-SolarWinds. Realistic scope: cover the top 20 suppliers by risk for sub-processor visibility, and apply SBOM / dependency tracking to critical applications and customer-facing software. Don't try to boil the ocean - but don't ignore software supply chain entirely.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: ICT supply-chain risks are identified for in-scope products/services (cloud, SaaS, managed services, hardware vendors, software libraries), with controls or compensating controls in place. Sub-supplier (4th-party) exposure is considered for critical suppliers.",
     maturity_ladder: {
       1: "Direct suppliers only; software supply chain unaddressed",
       2: "Procurement gate; sub-processors tracked for critical suppliers; basic SCA",
@@ -1274,6 +1320,7 @@ module.exports = {
       { item: "Evidence of post-incident contact when a supplier had a public incident", what_it_tells_you: "Whether the org responds to external signals" }
     ],
     scoping_notes: "Tier-based cadence is the practical answer - quarterly across all suppliers is unrealistic at scale. The risk is in calibrating tiering correctly: if a supplier provides a service the business depends on, they're Tier 1 even if the contract is small.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented supplier-review cadence proportional to risk (annual minimum for high-risk, longer for low). Reviews cover SLA performance, security incidents, changes to the supplier's posture (SOC 2/ISO certs, breach disclosures), and contract compliance. At least one review per high-risk supplier in the last 12 months.",
     maturity_ladder: {
       1: "Reviews ad-hoc; no records",
       2: "Tier-based cadence; reviews documented; actions tracked",
@@ -1304,6 +1351,7 @@ module.exports = {
       { item: "Recent CSPM / configuration drift findings with remediation", what_it_tells_you: "Whether monitoring drives action" }
     ],
     scoping_notes: "IaaS, PaaS, and SaaS have very different responsibility splits and risk profiles - handle them deliberately. SaaS is often the area where cloud sprawl bites; IaaS is where misconfiguration bites; PaaS sits in between. CSPM and SSPM tools help; their absence is not automatically a finding but their presence makes evidence much easier.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented cloud-services security policy covering provider selection, configuration baselines, identity federation, data residency/sovereignty, encryption requirements, exit strategy, and ongoing monitoring. Applied to each cloud provider in scope. Configuration baselines are documented and audited.",
     maturity_ladder: {
       1: "Cloud usage informal; configuration ad-hoc",
       2: "Cloud register; shared responsibility documented; baseline applied",
@@ -1315,7 +1363,7 @@ module.exports = {
 
   'annex-a.5.24': {
     purpose: "The incident-management foundation. Forces the organization to think through incidents before one happens - plan, roles, preparedness, exercise - rather than improvising under pressure. The cost of unprepared incident response shows up most acutely in the first hour, when decisions made fast and wrong have weeks-long consequences.",
-    what_good_looks_like: "A documented Incident Management Plan covering: severity classification (with concrete criteria, not just \"high / medium / low\"), roles (incident commander, technical lead, communications lead, legal liaison, executive liaison) with named primary and backup, 24/7 contact paths, escalation thresholds, decision rights (who can approve customer notification, who can approve a service shutdown), pre-defined comms templates (regulator notification, customer notification, internal). Out-of-band comms exist for when primary channels (email, Teams) are compromised - Signal group, phone tree, alternative platform. The plan is tested at least annually through a tabletop exercise; ideally a live exercise every 18–24 months. Tests produce findings that are tracked.",
+    what_good_looks_like: "A documented Incident Management Plan covering: severity classification (with concrete criteria, not just \"high / medium / low\"), roles (incident commander, technical lead, communications lead, legal liaison, executive liaison) with named primary and backup, 24/7 contact paths, escalation thresholds, decision rights (who can approve customer notification, who can approve a service shutdown), pre-defined comms templates (regulator notification, customer notification, internal). Out-of-band comms exist for when primary channels (email, Teams) are compromised - Signal group, phone tree, alternative platform. The plan is tested at least annually through a tabletop exercise; ideally a live exercise every 18-24 months. Tests produce findings that are tracked.",
     common_pitfalls: [
       "Plan exists but is theoretical - never tested under any conditions",
       "Roles defined but unclear under pressure (\"who is the incident commander when both primaries are unavailable?\")",
@@ -1333,6 +1381,7 @@ module.exports = {
       { item: "Pre-defined notification templates for regulators and major customers", what_it_tells_you: "Whether the org is ready to communicate" }
     ],
     scoping_notes: "The hardest part of this control is the realistic test. A 90-minute tabletop exercise around a sanitized scenario isn't proof of preparedness; a stress-test that involves real escalation paths and real decision rights is. Aim for the latter even if the former is more comfortable.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented incident-management plan covering definitions, severity classification, roles (with backups), escalation paths, internal and external communication, evidence preservation, and post-incident review. Tested at least once in the last 12 months (tabletop is acceptable for Stage 2). At least one real or simulated incident has been run through the process end-to-end with a written debrief.",
     maturity_ladder: {
       1: "Plan drafted; not tested",
       2: "Plan with roles, severity, comms; annual tabletop",
@@ -1360,6 +1409,7 @@ module.exports = {
       { item: "Recent criteria update reflecting changed threat or tech", what_it_tells_you: "Whether criteria are alive" }
     ],
     scoping_notes: "Triage criteria don't have to be perfect - they have to be consistent and reviewable. \"Analyst judgement based on these factors\" is acceptable; \"analyst judgement\" alone is not. The factors should be enumerated in writing.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented triage criteria distinguishing security events from incidents, with severity tiers and playbooks for common scenarios. Triage SLAs are defined and tracked. Recent triage records show the criteria are applied consistently.",
     maturity_ladder: {
       1: "Triage by analyst judgement; no documented criteria",
       2: "Criteria documented; severity matrix; SLA tracked",
@@ -1371,7 +1421,7 @@ module.exports = {
 
   'annex-a.5.26': {
     purpose: "The active response. A.5.24 plans, A.5.25 triages; A.5.26 is what happens during the incident - containment, eradication, recovery, and the communication that runs through all three. The most common Stage 2 finding here is \"response procedure exists but the recent incident wasn't handled per the procedure.\"",
-    what_good_looks_like: "A documented response procedure with defined stages - initial containment, investigation, eradication, recovery, post-incident - and clear gating between them. Playbooks for the top 5–10 incident types likely to affect the organization (BEC, ransomware, account compromise, data exfiltration, insider misuse, DDoS, supplier breach). Responders are trained on the playbooks. Coordination with regulators, affected customers, and law enforcement is defined per scenario, including who decides when to engage. Recent incidents demonstrate the procedure is followed: traceable response from detection through closure with decisions captured.",
+    what_good_looks_like: "A documented response procedure with defined stages - initial containment, investigation, eradication, recovery, post-incident - and clear gating between them. Playbooks for the top 5-10 incident types likely to affect the organization (BEC, ransomware, account compromise, data exfiltration, insider misuse, DDoS, supplier breach). Responders are trained on the playbooks. Coordination with regulators, affected customers, and law enforcement is defined per scenario, including who decides when to engage. Recent incidents demonstrate the procedure is followed: traceable response from detection through closure with decisions captured.",
     common_pitfalls: [
       "Ad-hoc response - every incident handled by improvisation",
       "Communication gaps - legal not looped in early, customer notification delayed past SLA",
@@ -1387,7 +1437,8 @@ module.exports = {
       { item: "Responder training records", what_it_tells_you: "Whether responders are equipped" },
       { item: "Coordination evidence - legal involved early, regulator-notification timeline observed, customer comms sent within agreed SLA", what_it_tells_you: "Whether multi-party coordination works" }
     ],
-    scoping_notes: "Playbooks are the highest-leverage investment - under pressure people rely on muscle memory, and muscle memory comes from playbooks plus practice. Don't try to write playbooks for every possible scenario; cover the top 5–10 likely types.",
+    scoping_notes: "Playbooks are the highest-leverage investment - under pressure people rely on muscle memory, and muscle memory comes from playbooks plus practice. Don't try to write playbooks for every possible scenario; cover the top 5-10 likely types.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: incident-response procedures aligned with the plan (A.5.24) and run by trained responders. At least one incident in the last 12 months (real or exercised) has a complete response record - timeline, decisions, evidence captured, communications, closure. Post-incident review fed back into the plan.",
     maturity_ladder: {
       1: "Response ad-hoc; no procedure or playbooks",
       2: "Procedure documented; playbooks for major types; responders trained",
@@ -1416,6 +1467,7 @@ module.exports = {
       { item: "Trace from a PIR lesson to a control change in the ISMS", what_it_tells_you: "Whether the loop closes" }
     ],
     scoping_notes: "The structure matters less than the discipline. Whether you use 5-Whys, fishbone, or another technique, what counts is that root cause is reached and lessons are converted into actions tracked to closure. Near-misses deserve PIRs too - they're the cheapest data the organization will ever get on what could have gone wrong.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented process for capturing lessons from incidents and using them to update controls, training, or detection. At least one closed incident in the last 12 months has a lesson-learned record with an action assigned and tracked to closure.",
     maturity_ladder: {
       1: "PIRs informal; lessons rarely captured",
       2: "PIRs after major incidents; lessons converted to actions; tracked",
@@ -1443,6 +1495,7 @@ module.exports = {
       { item: "Trained-responder list - who on the IR team has forensic training", what_it_tells_you: "Whether skills exist" }
     ],
     scoping_notes: "Depth scales with risk profile. A small org without in-house forensics is acceptable provided an external provider is on retainer and IR responders know when to invoke them. What's not acceptable is having nothing - no procedure, no provider, no awareness. Cloud evidence collection is its own discipline; if the org is cloud-heavy, address it explicitly.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented evidence-handling procedure for incidents that may have legal, regulatory, or disciplinary follow-through - chain of custody, hash records, restricted access, retention. Procedure is known to responders. Where invoked in the last 12 months, the procedure was followed.",
     maturity_ladder: {
       1: "Forensic readiness not addressed",
       2: "Procedure exists; external provider on retainer or in-house basics; chain-of-custody defined",
@@ -1469,6 +1522,7 @@ module.exports = {
       { item: "BCP test report covering security-specific tests (access controls, logging, monitoring at alt-site)", what_it_tells_you: "Whether security is tested under recovery conditions" }
     ],
     scoping_notes: "Recovery doesn't mean reduced security. If the architecture or budget genuinely can't support equivalent controls at the recovery site, document the gap, the time-bound under which it's accepted, and the compensating controls. Don't pretend parity exists when it doesn't.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: information-security continuity is addressed within the wider business-continuity programme, not as a separate stream. RTOs/RPOs are defined for in-scope services. At least one continuity test (tabletop or live) in the last 12 months covered a security-relevant scenario. Recovery procedures include the security controls that protect the recovered state.",
     maturity_ladder: {
       1: "BCP doesn't address security",
       2: "Security integrated into BCP; recovery-site parity claimed",
@@ -1497,6 +1551,7 @@ module.exports = {
       { item: "Cloud / SaaS continuity test evidence - region failover, vendor outage simulation, data export validation", what_it_tells_you: "Whether cloud assumptions hold" }
     ],
     scoping_notes: "RTO/RPO without architecture to back them is fiction. Honest target-setting may mean accepting higher RTO/RPO than business preference because the architecture and budget can't justify lower. Document the business-accepted targets and design to them; don't pretend.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: ICT readiness for business continuity is documented and tested - the technical capabilities (backup restoration, failover, alternate-site capacity, recovery procedures) required to meet the RTOs/RPOs from A.5.29 actually work. At least one technical recovery test in the last 12 months with a documented outcome.",
     maturity_ladder: {
       1: "Backups happen; restore untested; RTO/RPO informal",
       2: "RTO/RPO documented per service; failover and restore tested annually",
@@ -1525,6 +1580,7 @@ module.exports = {
       { item: "Contractual security obligations extracted from key customer agreements and tracked", what_it_tells_you: "Whether contractual obligations are tracked" }
     ],
     scoping_notes: "Legal usually owns the register; security consumes it for ISMS implications. The boundary between legal-as-owner and security-as-consumer should be explicit, not negotiated incident by incident. Many organizations find a quarterly legal-IS sync is the practical mechanism.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a register of legal, statutory, regulatory, and contractual requirements applicable to the organisation, with owners and how each requirement is met. Updated when material change occurs (new law, new contract). Legal or compliance has signed off on the register's accuracy.",
     maturity_ladder: {
       1: "Informal awareness; no register",
       2: "Register exists; owners assigned; reviewed annually",
@@ -1553,6 +1609,7 @@ module.exports = {
       { item: "Technical controls preventing unauthorised software installation", what_it_tells_you: "Whether the org backs its policy with technical enforcement" }
     ],
     scoping_notes: "OSS licence compliance is the modern lever here. Most organizations carry hundreds of OSS dependencies; without SCA tooling and a defined licence-allowlist, they have no idea whether they're compliant. Auditors increasingly probe this for organizations that produce or distribute software.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: intellectual property rights (third-party software licences, open-source compliance, copyrighted materials, trade secrets) are inventoried, with controls preventing infringement (licence tracking, OSS scanning, NDAs, watermarking where relevant). At least one recent licence review.",
     maturity_ladder: {
       1: "Software licences tracked informally; OSS unaddressed; IPR education ad-hoc",
       2: "Asset register; OSS scanning; user education; IPR clauses in contracts",
@@ -1581,6 +1638,7 @@ module.exports = {
       { item: "Coverage of backups in retention treatment", what_it_tells_you: "Whether the long-tail is governed" }
     ],
     scoping_notes: "Retention is one of the few areas where \"keep less\" is genuinely better - both for storage cost and regulator risk. Organizations regulated under GDPR have an active deletion obligation, not just a retention right. Don't conflate them.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: records (logs, evidence, regulatory submissions, contracts, audit trails) are identified, classified, retained for the required period, and protected from loss or falsification. Retention schedule exists and is followed. Records can be retrieved on request.",
     maturity_ladder: {
       1: "Retention informal; storage indefinite",
       2: "Schedule documented; major record types covered; disposal happens",
@@ -1611,6 +1669,7 @@ module.exports = {
       { item: "DPO appointment record (where applicable) and DPO-to-management reporting line", what_it_tells_you: "Whether privacy has executive standing" }
     ],
     scoping_notes: "Privacy obligations are jurisdiction-specific - what's required differs materially across GDPR, DPDP, CCPA, LGPD, sector-specific. Multi-jurisdiction organizations need a matrix, not a single global approach. The DPO requirement is conditional in GDPR (public authority, large-scale monitoring, large-scale special category) - verify whether the org is in scope before claiming a DPO is or isn't needed.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: privacy and protection of PII is covered through a privacy policy/notice, lawful-basis records (GDPR Art. 30 / equivalent), DPIA process for high-risk processing, data-subject-rights procedure, and breach-notification procedure aligned with applicable law (GDPR Art. 33, DPDP, etc.). Recent DPIA or data-subject-rights record exists.",
     maturity_ladder: {
       1: "Privacy partly addressed; ROPA absent or outdated",
       2: "ROPA, privacy notice, DPIA template, DSR process all in place",
@@ -1638,6 +1697,7 @@ module.exports = {
       { item: "Mix of internal and external reviews over the cycle", what_it_tells_you: "Whether the org gets outside perspective" }
     ],
     scoping_notes: "Internal reviewers are acceptable, but they need genuine independence from what they're reviewing. Outsourcing the review is more visibly independent and brings outside perspective; cost trade-off is real. A pragmatic mix: internal audit covers ISMS; external review covers specialised areas (cryptography, cloud security architecture, secure development) where outside expertise adds value.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an independent review of information security is performed at planned intervals - internal audit (clause 9.2) suffices if independence is real. Sampling covers policies, controls, and operations. Findings tracked to closure.",
     maturity_ladder: {
       1: "Reviews limited to certification-driven; gaps in scope",
       2: "Programme exists; mix of internal and external; findings tracked",
@@ -1665,6 +1725,7 @@ module.exports = {
       { item: "Differentiation showing risk-based review depth", what_it_tells_you: "Whether effort is calibrated" }
     ],
     scoping_notes: "Position A.5.36 as the routine pulse-check between internal audits. Tooling is the practical way to scale: CSPM for cloud, SAST/DAST for code, configuration scanning for endpoints and servers. Without tooling, A.5.36 collapses into self-attestation, which is weak evidence.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: regular compliance reviews confirm policies, procedures, and technical controls are being followed in practice. Sample reviews cover at least the high-leverage controls (access, change, incident, supplier). Findings closed in the last 12 months.",
     maturity_ladder: {
       1: "Self-attestation only; no technical compliance check",
       2: "Schedule with self-assessment + targeted technical scans",
@@ -1693,6 +1754,7 @@ module.exports = {
       { item: "Operator training records linked to SOPs", what_it_tells_you: "Whether operators know what to follow" }
     ],
     scoping_notes: "Operational SOPs and ISMS SOPs both fall under this control. Don't try to document everything - focus on routine operations and security-relevant tasks. A useful test: if this person was hit by a bus, would the operation continue? If not, that's where SOP investment pays off.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: operating procedures exist for the security-relevant tasks staff perform (joiner/mover/leaver, backup, patching, incident response at minimum), with named owners and review dates. Procedures are accessible to the staff who execute them and have been updated in the last 24 months.",
     maturity_ladder: {
       1: "SOPs partial; tribal knowledge dominant",
       2: "SOP register; major procedures documented; annual review",
@@ -1708,7 +1770,7 @@ module.exports = {
 
   'annex-a.6.1': {
     purpose: "Background screening before access. The first line of defence against insider threat is selection - knowing who you're handing the keys to before you hand them over. The control is risk-proportionate: a finance contractor handling payments needs more than a graduate intern shadowing a developer.",
-    what_good_looks_like: "Documented screening requirements per role sensitivity tier. A general role might require employment verification, identity verification, and basic criminal background; a sensitive role (privileged access, finance, regulated function) adds enhanced criminal check, credit history (where lawful and relevant), professional reference verification, and qualification verification. Screening is conducted before access is granted - not post-hire \"as soon as possible.\" Equivalent screening expectations apply to contractors and third-party personnel under organizational control. For sensitive roles, screening is refreshed periodically (typically every 3–5 years). All within applicable employment law - screening must be lawful, proportionate, and consented.",
+    what_good_looks_like: "Documented screening requirements per role sensitivity tier. A general role might require employment verification, identity verification, and basic criminal background; a sensitive role (privileged access, finance, regulated function) adds enhanced criminal check, credit history (where lawful and relevant), professional reference verification, and qualification verification. Screening is conducted before access is granted - not post-hire \"as soon as possible.\" Equivalent screening expectations apply to contractors and third-party personnel under organizational control. For sensitive roles, screening is refreshed periodically (typically every 3-5 years). All within applicable employment law - screening must be lawful, proportionate, and consented.",
     common_pitfalls: [
       "Only employees screened; contractors and consultants get desk and access on day one with no checks",
       "Same screening for all roles - graduate hire and DBA get identical background check",
@@ -1725,6 +1787,7 @@ module.exports = {
       { item: "Re-screening evidence for sensitive roles", what_it_tells_you: "Whether refresh happens" }
     ],
     scoping_notes: "Screening must comply with employment law in the jurisdictions where hiring happens - GDPR Art. 10 in EU/UK constrains criminal data, US states differ on credit checks, India and other jurisdictions have specific requirements. A multi-jurisdiction org needs a per-jurisdiction approach, not a global \"screen everyone the same way.\"",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: pre-employment screening proportional to role risk - at minimum identity verification, right-to-work, reference checks for all hires; criminal-record and credit checks for higher-risk roles where lawful. Screening completed before access is granted. Records retained in line with privacy law.",
     maturity_ladder: {
       1: "Screening informal or partial; gaps for contractors",
       2: "Tiered policy; pre-access screening; contractor coverage",
@@ -1751,6 +1814,7 @@ module.exports = {
       { item: "Pre-access verification - agreement signed before access granted, with evidence of the order of events", what_it_tells_you: "Whether the timing is right" }
     ],
     scoping_notes: "Existing employment contracts often pre-date the current ISMS. Practical answer: when policy materially changes, issue an addendum or include the new obligations in awareness training with attestation. Don't try to re-paper every employment contract; do for material changes.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: employment contracts (and contractor agreements) include information-security responsibilities and confidentiality obligations that survive termination. Sampled contracts show the clauses are present. Updates to obligations on role change are reflected in writing.",
     maturity_ladder: {
       1: "Generic confidentiality only",
       2: "Standard security clauses in employment and contractor agreements",
@@ -1781,6 +1845,7 @@ module.exports = {
       { item: "Recent content update reflecting an emerging threat", what_it_tells_you: "Whether content is current" }
     ],
     scoping_notes: "The shift from \"awareness training\" to \"continuous awareness\" is the modern direction - micro-learning, just-in-time prompts, simulation-driven, gamification. The annual 30-minute click-through is increasingly seen as floor, not ceiling. Auditors at Stage 2 increasingly want to see effectiveness, not just completion.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: security awareness covering all staff at onboarding and at least annually thereafter, with role-specific top-up for higher-risk roles (developers, admins, finance/payments). At least one phishing simulation or equivalent practical test in the past 12 months. ~95% completion across in-scope staff and contractors, with non-completion tracked to closure.",
     maturity_ladder: {
       1: "Annual generic training; no measurement",
       2: "Tailored programme; tracked completion; phishing simulation",
@@ -1804,10 +1869,11 @@ module.exports = {
     evidence_to_look_for: [
       { item: "Disciplinary process document with security-specific triggers and scaling", what_it_tells_you: "Whether the process exists" },
       { item: "Communication evidence - staff briefed on the process; included in awareness training", what_it_tells_you: "Whether deterrence is real" },
-      { item: "Sample applications from the last 12–24 months (anonymised if needed) showing the process in action", what_it_tells_you: "Whether the process has teeth" },
+      { item: "Sample applications from the last 12-24 months (anonymised if needed) showing the process in action", what_it_tells_you: "Whether the process has teeth" },
       { item: "Consistency check - same violation, different staff levels, proportionate response", what_it_tells_you: "Whether application is fair" }
     ],
     scoping_notes: "Disciplinary processes are HR territory but security needs to partner. The trigger conditions, severity scaling, and what constitutes a security violation are decisions security needs to drive. Cultural sensitivity matters - in some jurisdictions and industries, formal discipline is uncommon and the process needs to align with local practice while still having consequences.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented disciplinary process applicable to security violations, communicated to staff, with examples of consequences proportional to severity. At least one recent violation (where one occurred) has been handled through the process. The process is fairly and consistently applied.",
     maturity_ladder: {
       1: "No security-specific process; ad-hoc",
       2: "Process documented; communicated; occasional application",
@@ -1835,6 +1901,7 @@ module.exports = {
       { item: "Movers process - sample where role-change resulted in formal security touchpoints", what_it_tells_you: "Whether internal moves are covered" }
     ],
     scoping_notes: "Post-termination restrictions (non-compete, non-solicit) vary enormously by jurisdiction in lawfulness and enforceability. Don't write contract clauses that won't hold up in court. Confidentiality obligations are nearly universal, IPR ownership is usually clear with work-for-hire language, broader restrictions need legal review per jurisdiction.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a leaver/role-change process covering revocation of access, return of assets, restatement of post-employment obligations (confidentiality, IP), and reminder of any continuing responsibilities. Sampled leavers in the last 12 months show the process was followed.",
     maturity_ladder: {
       1: "Obligations not addressed post-termination",
       2: "Contract clauses; exit interview includes security",
@@ -1862,6 +1929,7 @@ module.exports = {
       { item: "Pre-access verification - NDA signed before confidential information shared", what_it_tells_you: "Whether timing is right" }
     ],
     scoping_notes: "NDA enforceability varies by jurisdiction. Some jurisdictions limit duration of confidentiality obligations; some require specificity of what's confidential; some restrict post-employment scope. Multi-jurisdiction organizations need legal review of NDA templates per jurisdiction.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: confidentiality/non-disclosure agreements with employees, contractors, and third parties handling in-scope information. Reviewed at planned intervals or on material change. Sampled NDAs include the appropriate scope, duration, and post-termination obligations.",
     maturity_ladder: {
       1: "Single boilerplate NDA; ad-hoc execution",
       2: "Template set; pre-access execution; register",
@@ -1890,6 +1958,7 @@ module.exports = {
       { item: "Remote-work training material", what_it_tells_you: "Whether staff are equipped" }
     ],
     scoping_notes: "Remote-work risk is highly contextual - a fully office-based organization has different exposure than a remote-first one. The control needs to address the organization's actual model, not a generic remote-work template. \"Work from anywhere\" without geographic constraints creates tax, employment law, and data residency issues that go beyond information security but should still be considered.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented remote-working policy covering eligible roles, equipment (corporate vs. BYOD), connectivity (VPN/ZTNA, MFA), physical environment expectations, data-handling rules, and incident reporting. Acknowledged by remote workers. Endpoints meet the policy's technical controls (encryption, EDR, patching).",
     maturity_ladder: {
       1: "Policy generic or outdated; technical controls partial",
       2: "Policy reflects current model; MDM/VPN/MFA on managed devices; rules communicated",
@@ -1920,6 +1989,7 @@ module.exports = {
       { item: "Phishing-report mechanism in email client (Outlook button, Gmail equivalent)", what_it_tells_you: "Whether the friction is minimised" }
     ],
     scoping_notes: "Reporting volume is a useful health metric. A 500-person organization should see double-digit reports per month from awareness-trained staff who have a phishing-report button. Implausibly low volume is a stronger signal of trust failure than implausibly high volume - staff feeling safe to report is the precondition for everything else in incident response.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a channel for reporting security events (and concerns) is documented, well-known to staff, and reachable 24/7 or escalated when out of hours. Confidential and anonymous options exist. Reports in the last 12 months have been logged and triaged.",
     maturity_ladder: {
       1: "Reporting informal; staff unclear where to go",
       2: "Channels documented; communicated; reports acknowledged",
@@ -1951,6 +2021,7 @@ module.exports = {
       { item: "Shared-building risk treatment - how the org handles multi-tenant exposures", what_it_tells_you: "Whether contextual risks are addressed" }
     ],
     scoping_notes: "Most modern organizations have less physical perimeter to worry about than 10 years ago - fewer on-premises data centres, more cloud, more remote work. But where perimeters do matter (data centres, sensitive labs, secure rooms, vault-style records storage), they matter a lot. Scope this control to the actual physical estate; don't write generic perimeter language for an organization with no physical estate of consequence.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: physical security perimeters are defined for sites/areas in scope (offices, data centres, equipment rooms). Where the organisation has no physical premises in scope (full remote, cloud-hosted), the SoA records the applicability decision and references the dependent supplier controls (data-centre certifications). Sampled perimeter shows the controls operate as documented.",
     maturity_ladder: {
       1: "Perimeters informal; degradation undetected",
       2: "Perimeters defined; inspected; controls proportionate",
@@ -1961,7 +2032,7 @@ module.exports = {
   },
 
   'annex-a.7.2': {
-    purpose: "Entry control - who gets through the perimeter, how, and how the organization knows. Distinct from access control to information (A.5.15–18) which is logical; this is about physical entry to spaces.",
+    purpose: "Entry control - who gets through the perimeter, how, and how the organization knows. Distinct from access control to information (A.5.15-18) which is logical; this is about physical entry to spaces.",
     what_good_looks_like: "Badge or key-card access for staff with role-appropriate levels - general office, sensitive areas, secure areas. Visitor management is structured: pre-registration where possible, sign-in with photo ID verification, badging visibly different from staff badging, escort policy for sensitive areas, sign-out tracked. Visitor logs maintained with arrival and departure times, and reviewed periodically (typically monthly) for anomalies. Tailgating is addressed - through tailgate-detection turnstiles where the risk justifies, or through cultural reinforcement and signage where it doesn't. Contractors with extended on-site access have time-bounded credentials, not permanent badges.",
     common_pitfalls: [
       "Visitor logs maintained sporadically - not all visitors actually sign in",
@@ -1979,6 +2050,7 @@ module.exports = {
       { item: "Anomaly review of access logs - periodic review with findings", what_it_tells_you: "Whether logs are used" }
     ],
     scoping_notes: "The visitor process is the most-sampled element here. Auditors physically sign in and observe how the process works. If they walk past reception without challenge, that's a finding. If they sign in but no one verifies the photo ID, that's a finding. The process is what gets tested.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: physical entry controls to secure areas use authentication appropriate to risk (badge, biometric, PIN+badge). Access lists are maintained and reviewed; visitor management is documented; tailgating is addressed. For cloud-only / no-premises orgs, the SoA records the applicability decision with reference to the supplier.",
     maturity_ladder: {
       1: "Entry informal; visitor logs partial",
       2: "Badge access; structured visitor process; logs maintained",
@@ -2006,6 +2078,7 @@ module.exports = {
       { item: "Walk-through evidence - randomly inspect sensitive rooms for clear-desk compliance, visible whiteboards, locked-when-unattended", what_it_tells_you: "Whether practice matches policy" }
     ],
     scoping_notes: "Privacy-of-information controls are increasingly important in open-plan and hot-desking environments - even \"general office\" space may need privacy controls if sensitive work happens there. Online-meeting backgrounds have created a new attack surface; whiteboards visible behind staff on video calls have leaked sensitive info publicly.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: offices, rooms, and facilities are protected proportional to the sensitivity of what they contain - server rooms locked, executive offices secured, secure-area access restricted. For cloud-only / no-premises orgs, the SoA records the applicability decision.",
     maturity_ladder: {
       1: "Room-level controls informal",
       2: "Server room and sensitive areas locked; access controlled",
@@ -2017,7 +2090,7 @@ module.exports = {
 
   'annex-a.7.4': {
     purpose: "Physical security monitoring - CCTV, alarms, guards, badge logs. The detection layer of physical security: when something does breach a perimeter or attempt unauthorized entry, the organization knows about it and can respond. Monitoring is what turns physical controls from preventive-only into preventive-plus-detective.",
-    what_good_looks_like: "Monitoring is proportionate to facility risk. Data centres get the full set: CCTV at perimeter and inside, alarms on doors, badge-log analysis. Sensitive areas get CCTV and badge logs. General office may have CCTV at entry only. Retention for monitoring data is defined and aligned with use - typically 30–90 days for general CCTV, longer for incident-relevant footage. Alerts (door alarms, after-hours badge use, tailgating detection) are triaged and integrated with the IR process - a SOC sees physical alerts alongside digital. Blind spots are identified and either remediated or documented as accepted risk. Privacy obligations on monitoring (GDPR Art. 6, Art. 13, employee monitoring laws) are addressed.",
+    what_good_looks_like: "Monitoring is proportionate to facility risk. Data centres get the full set: CCTV at perimeter and inside, alarms on doors, badge-log analysis. Sensitive areas get CCTV and badge logs. General office may have CCTV at entry only. Retention for monitoring data is defined and aligned with use - typically 30-90 days for general CCTV, longer for incident-relevant footage. Alerts (door alarms, after-hours badge use, tailgating detection) are triaged and integrated with the IR process - a SOC sees physical alerts alongside digital. Blind spots are identified and either remediated or documented as accepted risk. Privacy obligations on monitoring (GDPR Art. 6, Art. 13, employee monitoring laws) are addressed.",
     common_pitfalls: [
       "CCTV deployed but recordings retained for 7 days when investigations typically need 30+",
       "Alarms not monitored - \"the system rings, no one is on the other end\"",
@@ -2034,6 +2107,7 @@ module.exports = {
       { item: "Privacy notice / lawful basis for monitoring", what_it_tells_you: "Whether monitoring is lawful" }
     ],
     scoping_notes: "Physical security monitoring increasingly integrates with digital security operations - modern SOCs see physical alerts (after-hours data-centre access) alongside digital ones (anomalous logins). That integration is best-practice but not mandated. What is essential: monitoring without analysis is theatre, and analysis without retention is forgetfulness.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: physical monitoring (CCTV, alarms, guards, motion sensors) is applied to secure areas proportional to risk, with retention and review aligned to incident-response needs. For cloud-only / no-premises orgs, the SoA records the applicability decision.",
     maturity_ladder: {
       1: "Monitoring partial; analysis ad-hoc",
       2: "Coverage proportionate to risk; retention aligned with use; alerts triaged",
@@ -2062,6 +2136,7 @@ module.exports = {
       { item: "Risk acceptance for residual physical risks - explicit acceptance of insurance-only treatment", what_it_tells_you: "Whether residual risks are formally accepted" }
     ],
     scoping_notes: "Climate change is increasingly relevant - locations historically not at flood or wildfire risk increasingly are. Amendment 1:2024 to ISO 27001 makes climate consideration explicit (mostly via clause 4.1, but with operational implications here). Cloud and outsourcing reduce direct physical exposure but transfer it to the supplier - A.5.21 picks that up.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: protection against physical and environmental threats (fire, flood, power loss, earthquake, civil unrest) is covered through site selection, environmental controls (fire suppression, UPS, HVAC), and continuity provisions. For cloud-only / no-premises orgs, the SoA records the applicability decision.",
     maturity_ladder: {
       1: "Physical/environmental risks informal",
       2: "Per-location assessment; protective and detective controls; basic testing",
@@ -2091,6 +2166,7 @@ module.exports = {
       { item: "Visitor and contractor escort records for the area", what_it_tells_you: "Whether escort is enforced" }
     ],
     scoping_notes: "Not every organization has secure areas in the strict sense - a typical mid-size SaaS company may have only a server-room equivalent or none if fully cloud-hosted. Scope this control to the actual secure areas the org has; don't manufacture them. Where the org genuinely has none, document the determination explicitly rather than leaving the control unaddressed.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a working-in-secure-areas procedure covers authorisation, supervision of visitors/contractors, photography/recording restrictions, and notification on exit. For cloud-only / no-premises orgs, the SoA records the applicability decision.",
     maturity_ladder: {
       1: "Rules informal; escort patchy",
       2: "Rules documented; logs maintained; escort enforced",
@@ -2102,7 +2178,7 @@ module.exports = {
 
   'annex-a.7.7': {
     purpose: "Clear desk, clear screen - the daily discipline that keeps sensitive information from being visible to passersby, cleaners, visitors, and overnight intruders. The control is small in scope but high in audit visibility because the auditor literally walks around at lunchtime and sees what's on desks and screens.",
-    what_good_looks_like: "A documented clear-desk and clear-screen policy stating that sensitive information is not left visible when desks are unattended, that screens auto-lock after a defined timeout (typically 5–15 minutes), and that printouts containing sensitive information are removed from printers promptly and stored in locked containers when not in immediate use. Auto-lock is technically enforced via group policy or MDM - not relying on user discipline. Lockable storage (drawers, cabinets) is provided where staff handle sensitive material. End-of-day sweeps or periodic walk-throughs check compliance. Hot-desking and shared-workspace areas have specific rules accommodating the model.",
+    what_good_looks_like: "A documented clear-desk and clear-screen policy stating that sensitive information is not left visible when desks are unattended, that screens auto-lock after a defined timeout (typically 5-15 minutes), and that printouts containing sensitive information are removed from printers promptly and stored in locked containers when not in immediate use. Auto-lock is technically enforced via group policy or MDM - not relying on user discipline. Lockable storage (drawers, cabinets) is provided where staff handle sensitive material. End-of-day sweeps or periodic walk-throughs check compliance. Hot-desking and shared-workspace areas have specific rules accommodating the model.",
     common_pitfalls: [
       "Enforcement absent - policy exists, but a Tuesday-lunchtime walk-around finds dozens of unlocked screens and sensitive printouts",
       "Hot-desking breaks the model because no one owns end-of-day cleanup of a shared desk",
@@ -2119,6 +2195,7 @@ module.exports = {
       { item: "Hot-desking rules where applicable", what_it_tells_you: "Whether modern work patterns are addressed" }
     ],
     scoping_notes: "Auditors test this empirically - they walk through office areas at typical break times and observe. \"We have a policy\" is not the test; \"the desks are clear\" is. Periodic internal walk-throughs catch issues before the auditor does.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a clear-desk and clear-screen policy is documented, communicated, and reasonably enforced - screen locking on idle, papers and portable media locked when unattended. Sampled walk-through (or remote-equivalent reminder cadence) shows the policy works.",
     maturity_ladder: {
       1: "Policy exists; enforcement informal",
       2: "Policy + auto-lock enforcement; lockable storage available",
@@ -2146,6 +2223,7 @@ module.exports = {
       { item: "Move/change procedure including environmental and security review", what_it_tells_you: "Whether moves don't introduce new risks" }
     ],
     scoping_notes: "This control overlaps with A.7.5 (environmental threats), A.7.9 (off-premises), A.7.12 (cabling). The narrow scope of A.7.8 is the placement decision itself - where physical assets are positioned. Modern cloud-heavy organizations have less on-premises equipment to site, which simplifies the control but doesn't eliminate it (offices still have endpoints, network gear, peripherals).",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: equipment siting and protection is considered for in-scope sites - environmental risk, theft risk, side-channel risk. For cloud-only / no-premises orgs, the SoA records the applicability decision with reference to the cloud provider's controls.",
     maturity_ladder: {
       1: "Siting decisions ad-hoc; evident exposures",
       2: "Siting guidance documented; representative placements reviewed",
@@ -2174,6 +2252,7 @@ module.exports = {
       { item: "Asset-state evidence - for lost devices, what was on them at the time", what_it_tells_you: "Whether data-loss assessment is possible" }
     ],
     scoping_notes: "Encryption + remote-wipe + MDM is the modern foundation; without those three working together, off-premises security depends on user discipline that doesn't survive contact with reality. For BYOD that holds organizational data, the same controls need to apply or organizational data must be containerised.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: assets used off-premises (laptops, phones, removable media, work-at-home equipment) are protected via encryption, MDM, theft-reporting procedures, and acceptable-use rules. Sampled mobile worker has the configured controls in place.",
     maturity_ladder: {
       1: "Off-site rules informal; loss-tracking patchy",
       2: "Encryption + MDM mandatory; loss/theft reporting; remote-wipe tested",
@@ -2202,6 +2281,7 @@ module.exports = {
       { item: "Tape / backup-media handling for off-site storage with encryption confirmation", what_it_tells_you: "Whether long-tail media risk is managed" }
     ],
     scoping_notes: "USB-port lockdown and BitLocker-To-Go (or equivalent encryption-on-removable-media) are the practical floor. Cloud-collaboration tools have largely replaced USB for legitimate data sharing in many organizations; if the org is in that camp, the policy can be more restrictive (\"removable media not authorised except by exception\") which is easier to enforce than fine-grained allowlists.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: storage media (drives, tapes, USB, optical) is managed across its lifecycle - issuance, classification labelling, handling, disposal. Encryption applied where the media leaves controlled premises. Disposal evidence (certificates of destruction, secure-wipe records) exists for the last 12 months.",
     maturity_ladder: {
       1: "USB unrestricted; sanitisation informal",
       2: "Policy + DLP enforcement; encryption mandated; sanitisation procedure",
@@ -2229,6 +2309,7 @@ module.exports = {
       { item: "Environmental monitoring and alert evidence", what_it_tells_you: "Whether problems are detected early" }
     ],
     scoping_notes: "Cloud-hosted organizations transfer most of this to the cloud provider - a finding for an own-DC organization is not a finding for an org with no on-premises servers. Where the organization does run physical infrastructure, the test is real testing, not paper claims. Generators are the canonical failure point: claimed-functional, not actually-tested.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: supporting utilities (power, telecoms, water/cooling) are reliable enough to meet availability requirements - UPS for IT, generator or cloud-equivalent for critical workloads, redundant telecoms for sites that need it. Tested at least annually.",
     maturity_ladder: {
       1: "Redundancy partial; testing informal",
       2: "Redundancy proportionate; maintenance scheduled; basic testing",
@@ -2256,6 +2337,7 @@ module.exports = {
       { item: "Inspection or maintenance records", what_it_tells_you: "Whether degradation is caught" }
     ],
     scoping_notes: "Cloud and managed-network organizations have minimal on-premises cabling exposure beyond office infrastructure. For organizations with their own data centres, sensitive labs, or campuses, this control matters significantly. Modern alternative: structured cabling standards (TIA-568, ISO/IEC 11801) provide off-the-shelf good design.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: cabling is protected against interception and damage in in-scope premises - conduit, locked patching, separation of power and data, where the site has its own infrastructure. For cloud-only / no-premises orgs, the SoA records the applicability decision.",
     maturity_ladder: {
       1: "Cabling ad-hoc; documentation partial",
       2: "Standards-based design; risers controlled; labelling adequate",
@@ -2282,7 +2364,8 @@ module.exports = {
       { item: "Off-site maintenance procedure - wipe before removal, escort, records", what_it_tells_you: "Whether equipment-leaves-site risk is managed" },
       { item: "Recent maintenance records with what was done and by whom", what_it_tells_you: "Whether activity is tracked" }
     ],
-    scoping_notes: "Cloud-heavy organizations have most equipment maintenance handled by cloud providers - falls into A.5.19–22 supplier territory. For on-premises infrastructure, this control matters; the most-overlooked dimension is data protection when equipment leaves the site temporarily for service.",
+    scoping_notes: "Cloud-heavy organizations have most equipment maintenance handled by cloud providers - falls into A.5.19-22 supplier territory. For on-premises infrastructure, this control matters; the most-overlooked dimension is data protection when equipment leaves the site temporarily for service.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: equipment is maintained on schedule (warranty plus manufacturer guidance), maintenance is authorised and supervised, and decommissioned equipment is sanitised before disposal/reuse. Maintenance records exist.",
     maturity_ladder: {
       1: "Maintenance reactive; provider governance partial",
       2: "Schedule documented; providers vetted; records kept",
@@ -2312,6 +2395,7 @@ module.exports = {
       { item: "Vendor due diligence for disposal partners", what_it_tells_you: "Whether the chain is trustworthy" }
     ],
     scoping_notes: "NIST 800-88 is the industry reference. The Clear / Purge / Destroy distinction matters - Clear (single overwrite) is acceptable for low-classification reuse; Purge (cryptographic erase or multi-pass) for higher; Destroy (physical destruction) for highest. Pick a vendor with proven chain-of-custody and recoverable certificates; auditors will ask for one.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented secure disposal/reuse procedure for equipment containing data - wipe to a defined standard (NIST SP 800-88 or equivalent) or physical destruction with certificate. Records show the procedure was followed for in-scope disposals in the last 12 months.",
     maturity_ladder: {
       1: "Disposal informal; verification partial",
       2: "Procedure documented; certificates kept; inventory tracked",
@@ -2347,6 +2431,7 @@ module.exports = {
       { item: "Loss / theft response evidence - recent remote wipe", what_it_tells_you: "Whether the safety net works" }
     ],
     scoping_notes: "Endpoint security is the area where the gap between policy and reality shows up most visibly in audits. A 95%-MDM-coverage claim is one query away from being verified or refuted. Most-overlooked: the long tail of executive/technical-staff devices that escape standard policy through informal exception.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: user endpoints have a baseline security configuration applied via MDM/management tooling - disk encryption, screen lock, EDR/anti-malware, OS patching enforced, USB and remote-access policy applied. Sampled endpoints in the inventory show the baseline is current.",
     maturity_ladder: {
       1: "Endpoint policy partial; MDM coverage incomplete",
       2: "Baseline + MDM + EDR + encryption mandated; coverage tracked",
@@ -2379,6 +2464,7 @@ module.exports = {
       { item: "Cloud-account-root governance - who has root, how it's used, MFA, alerts on use", what_it_tells_you: "Whether cloud privilege is treated as sensitive" }
     ],
     scoping_notes: "PAM tooling materially raises the maturity floor - without it, privileged access governance relies on discipline and procedure that doesn't scale. JIT elevation is the modern best practice (privileged access exists only when needed, expires automatically); standing privilege is increasingly seen as the anti-pattern. Cloud account ownership (AWS root, Azure global admin) deserves its own focus - these credentials, if compromised, take the whole estate down.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: privileged accounts are inventoried, granted on least-privilege/just-in-time basis where feasible, separated from standard accounts, protected with MFA (preferably phish-resistant), and monitored. Recent privileged-access review exists.",
     maturity_ladder: {
       1: "Privileged access widely held; standing; reviews infrequent",
       2: "Separated accounts; MFA; quarterly reviews; basic vaulting",
@@ -2407,6 +2493,7 @@ module.exports = {
       { item: "Critical-action workflows - delete, export, privilege-escalation", what_it_tells_you: "Whether dangerous functions have additional checks" }
     ],
     scoping_notes: "This control is most-tested for SaaS organizations and any org with custom-built applications. For organizations using only off-the-shelf software, the control becomes more about configuring vendor-provided access controls correctly rather than designing them. Multi-tenant data is the highest-risk area - row-level security or equivalent is essentially mandatory for SaaS handling customer data.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: access to information is restricted per the access-control policy, with technical controls enforcing the restrictions (file shares, app permissions, database role-based access). Sampled access for a sensitive dataset shows only authorised users have it.",
     maturity_ladder: {
       1: "Function-level access partial; data-level absent",
       2: "RBAC consistently applied; row-level security on sensitive data; default-deny",
@@ -2437,6 +2524,7 @@ module.exports = {
       { item: "Personal-device cloning policy and enforcement (if applicable)", what_it_tells_you: "Whether code stays on managed devices" }
     ],
     scoping_notes: "GitHub, GitLab, Bitbucket, Azure DevOps each have their own model for branch protection, signed commits, and access management. The control is platform-agnostic but the evidence is platform-specific. For organizations with no in-house development, this control may not apply or may apply narrowly to scripts and infrastructure-as-code repositories.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: access to source code is restricted to authorised developers, with version control (Git or equivalent), code-review requirements before merge, branch-protection on production branches, and audit logging of changes. Sampled code change shows the controls were applied.",
     maturity_ladder: {
       1: "Repository access partly governed; branch protection partial",
       2: "Access matrix; protected branches; secrets scanning; off-boarding works",
@@ -2466,6 +2554,7 @@ module.exports = {
       { item: "Session-management configuration - timeouts, re-auth requirements", what_it_tells_you: "Whether sessions are properly limited" }
     ],
     scoping_notes: "The shift away from SMS MFA toward phish-resistant factors (FIDO2, hardware keys, platform authenticators like Touch ID / Face ID with WebAuthn) is the modern direction. Auditors are increasingly aware. SMS as fallback is acceptable; SMS as primary for high-risk roles is increasingly seen as a finding.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: MFA enforced on all admin and privileged accounts, and on remote access for normal users. Password policy aligned to current NIST SP 800-63B guidance (length over complexity, breach-list check). Authentication failures are monitored with alerting on brute-force or impossible-travel patterns. Service accounts are inventoried with credential-rotation evidence.",
     maturity_ladder: {
       1: "MFA partial; SMS-dominant; risk signals absent",
       2: "MFA on sensitive systems; failed-login monitoring; reasonable session limits",
@@ -2488,12 +2577,13 @@ module.exports = {
     ],
     evidence_to_look_for: [
       { item: "Capacity monitoring inventory - what's tracked across compute, storage, network, application layers", what_it_tells_you: "Whether monitoring is comprehensive" },
-      { item: "Capacity projections for the next 6–12 months for critical systems", what_it_tells_you: "Whether the future is planned for" },
+      { item: "Capacity projections for the next 6-12 months for critical systems", what_it_tells_you: "Whether the future is planned for" },
       { item: "Threshold and alert configuration with reaction-time built in", what_it_tells_you: "Whether alerts allow time to act" },
       { item: "Sample capacity decision - recent expansion or right-sizing driven by data", what_it_tells_you: "Whether capacity management is operational" },
       { item: "Licence capacity tracking with renewal alignment", what_it_tells_you: "Whether software-licensing capacity is included" }
     ],
     scoping_notes: "Cloud-native organizations have different capacity dynamics - auto-scaling handles compute capacity, but storage costs and database limits still need explicit management. The control isn't about \"do you scale\" but \"do you know your capacity posture and is it intentional.\" Cost-runaway is the cloud-era cousin of capacity exhaustion.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: capacity is monitored across the dimensions that matter (compute, storage, network, licences, queue depth) for in-scope systems, with alerts on thresholds and a capacity-planning cadence tied to growth/seasonality. Auto-scaling configured where applicable.",
     maturity_ladder: {
       1: "Capacity reactive; projection ad-hoc",
       2: "Monitoring across major dimensions; projection annual; threshold alerts",
@@ -2523,6 +2613,7 @@ module.exports = {
       { item: "Ransomware-recovery test evidence - backup restore from tested-immutable copy", what_it_tells_you: "Whether ransomware-specific resilience is real" }
     ],
     scoping_notes: "EDR with central monitoring is the modern floor. Legacy AV alone is increasingly seen as insufficient - auditors aware of EDR will probe for it. For organizations using cloud workloads heavily, cloud-workload protection (CWP) tooling becomes part of the picture and pure endpoint thinking misses the cloud attack surface.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: anti-malware controls deployed on endpoints and servers (EDR/EPP), with central reporting, automatic signature/engine updates, and an alert triage routine. Email gateways have anti-malware controls. Recent detection or test event shows the pipeline works.",
     maturity_ladder: {
       1: "Signature AV; partial coverage; alerts ad-hoc",
       2: "EDR deployed; central monitoring; alerts triaged; email/web filtering",
@@ -2553,6 +2644,7 @@ module.exports = {
       { item: "Threat-intel integration - vulnerabilities re-prioritised based on emerging exploit information", what_it_tells_you: "Whether intel feeds prioritisation" }
     ],
     scoping_notes: "Cloud and container vulnerability management is increasingly the largest volume in modern stacks. Tools and processes designed for traditional infrastructure don't transfer cleanly. SBOM and SCA for software-producing organizations is now expected; without them, dependency risk is invisible. The metrics matter - \"we have a programme\" without time-to-remediate or backlog-age is unprovable.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: technical vulnerabilities are identified through scanning (authenticated where possible) plus monitoring of vendor advisories. A documented patching/remediation SLA by severity, with metrics on adherence. At least one cycle of scan → prioritise → remediate → verify completed in the last 90 days.",
     maturity_ladder: {
       1: "Scanning partial; remediation ad-hoc",
       2: "Multi-layer scanning; SLAs by severity; tracked closure",
@@ -2582,6 +2674,7 @@ module.exports = {
       { item: "Cloud and container baseline coverage", what_it_tells_you: "Whether modern platforms are addressed" }
     ],
     scoping_notes: "CSPM (Cloud Security Posture Management) tooling is increasingly the practical answer for cloud configuration. Without it, cloud configuration governance is manual and unreliable. Container security tooling (Trivy, Falco, equivalent) provides similar coverage for container workloads. The control isn't about specific tools but about whether the org has continuous configuration visibility.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: configuration baselines exist for in-scope systems (servers, endpoints, network devices, cloud) referencing a recognised standard (CIS, vendor hardening guide). Configuration drift is detected. Sampled system shows the baseline is applied.",
     maturity_ladder: {
       1: "Baselines partial; drift undetected",
       2: "Baselines documented; automation for major systems; basic drift detection",
@@ -2612,6 +2705,7 @@ module.exports = {
       { item: "Records of deletion for high-sensitivity data with destruction certificates", what_it_tells_you: "Whether disposal is documented for sensitive data" }
     ],
     scoping_notes: "GDPR Art. 17 erasure obligations have specific timelines (one month with possible extension). Operationalising privacy deletion is the hardest part of A.8.10 for most organizations - it requires propagation across primary storage, backups, replicas, analytics, third-party processors. Crypto-erasure (deleting the encryption key for encrypted data) is an increasingly accepted approach for backup deletion at scale.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented information-deletion procedure covering both routine (retention-expiry deletion) and on-request (data-subject erasure, contract end) deletion. Applied across in-scope storage including backups and SaaS. Sample shows deletion was completed and recorded.",
     maturity_ladder: {
       1: "Deletion partial; backups exempt; verification absent",
       2: "Procedures documented; primary deletion verified; DSR process exists",
@@ -2640,6 +2734,7 @@ module.exports = {
       { item: "Third-party data-sharing agreement with re-identification restriction", what_it_tells_you: "Whether downstream re-identification is contractually prohibited" }
     ],
     scoping_notes: "True anonymisation (irreversible) is much harder than commonly claimed - for most realistic datasets, k-anonymity, l-diversity, differential privacy considerations apply, and naive masking leaves reidentification possible. For most organizations, pseudonymisation with strong key separation is more honest than claimed-anonymisation that wouldn't survive a re-identification attack.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: data masking/pseudonymisation is applied where high-classification data flows into lower-trust environments (test/dev, analytics, vendor support). Documented technique appropriate to the use case (tokenisation, format-preserving encryption, masking). Sampled non-prod environment shows masked data.",
     maturity_ladder: {
       1: "Production data flows to test/analytics largely unmasked",
       2: "Policy in place; masking applied to test environments; basic technique selection",
@@ -2670,6 +2765,7 @@ module.exports = {
       { item: "Cloud and SaaS DLP coverage (CASB, CSPM-DLP)", what_it_tells_you: "Whether modern data flows are addressed" }
     ],
     scoping_notes: "DLP is one of the technologies most prone to over-promising and under-delivering. Realistic expectations: DLP catches inadvertent and opportunistic leakage; determined exfiltration by an insider with technical knowledge typically gets around it. Layered defence (DLP + classification + access control + monitoring) is the only credible approach; DLP alone is theatre.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: data-leakage controls are deployed proportional to risk - email DLP, endpoint DLP, cloud DLP, USB control, restricted upload to unsanctioned services. Detection rules tuned to the organisation's data classifications. Sampled DLP alert was triaged in the last 90 days.",
     maturity_ladder: {
       1: "DLP deployed; configuration generic; alerts ad-hoc",
       2: "Patterns aligned with classification; multi-channel coverage; triage process",
@@ -2700,6 +2796,7 @@ module.exports = {
       { item: "Backup credential and infrastructure separation from production", what_it_tells_you: "Whether the blast radius is limited" }
     ],
     scoping_notes: "Modern ransomware specifically targets backup infrastructure. The 3-2-1 rule (three copies, two media, one off-site) has evolved into 3-2-1-1-0 (add one immutable, zero errors verified). Cloud and SaaS data needs explicit treatment - vendor uptime is not vendor backup. Restore-testing cadence and depth is the differentiator between a real backup capability and a paper one.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented backup policy covering scope, frequency, retention, encryption, off-site/immutable copy, and restore-testing cadence. At least one successful restore test in the last 12 months, preferably involving a critical system not just a trivial file.",
     maturity_ladder: {
       1: "Backups happen; restore untested; SaaS unaddressed",
       2: "Policy with scope; restore tested annually; encryption in place",
@@ -2728,6 +2825,7 @@ module.exports = {
       { item: "Documented and accepted SPOFs with rationale", what_it_tells_you: "Whether residual risk is explicit" }
     ],
     scoping_notes: "Cloud-native organizations have different redundancy levers - multi-AZ is cheap and standard, multi-region is expensive but increasingly justified for tier-1 services. The control isn't \"have redundancy everywhere\" but \"have redundancy where availability requirements justify it.\" Identity and DNS are commonly under-redundant despite being foundational.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: redundancy is implemented where availability requirements demand it - HA pairs, multi-AZ deployments, load balancers, redundant network paths. Sufficient to meet the documented RTO. Recent failover or HA test in the last 12 months.",
     maturity_ladder: {
       1: "Redundancy partial; SPOFs unknown",
       2: "Critical components redundant; SPOF analysis done; basic failover tested",
@@ -2758,6 +2856,7 @@ module.exports = {
       { item: "Cloud and SaaS log coverage (CloudTrail, Azure Activity, M365 Unified Audit, etc.)", what_it_tells_you: "Whether modern surfaces are covered" }
     ],
     scoping_notes: "SIEM is increasingly the practical answer at any meaningful scale. Without one, log analysis is essentially manual and reactive. Cloud-native logging (CloudTrail, Azure Monitor, GCP Audit Logs) needs collection too - these aren't auto-enabled for all event types and aren't retained indefinitely without configuration.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: logs are produced from in-scope systems (identity, endpoints, key apps, network edge, cloud control plane) covering authentication, privileged actions, changes, and security events. Logs are protected from tampering and retained at least 90 days. Log gaps are noticed and investigated.",
     maturity_ladder: {
       1: "Logging partial; centralisation incomplete",
       2: "Policy in place; SIEM or aggregator; required events collected; retention adequate",
@@ -2788,6 +2887,7 @@ module.exports = {
       { item: "Integration with IR - alerts trigger IR process when appropriate", what_it_tells_you: "Whether monitoring connects to response" }
     ],
     scoping_notes: "Modern detection is increasingly about identity (anomalous logins, MFA fatigue, OAuth-grant abuse) and cloud (configuration changes, IAM changes, data egress) rather than only network/endpoint. Detection portfolios that focus on traditional surfaces miss most of where modern compromise happens. MSSP value-for-money is highly variable; \"we have an MSSP\" is not the same as \"we have effective monitoring.\"",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: centralised logging across in-scope systems (identity, endpoints, key applications, network edge, and the cloud control plane where applicable) with at least 90 days online retention. Alerts configured on a defined set of high-value events (privilege escalation, after-hours admin, mass data export, MFA reset). A triage routine exists and at least one alert per month has been triaged with a written outcome record.",
     maturity_ladder: {
       1: "Monitoring partial; alerts ad-hoc",
       2: "SIEM with use cases; coverage of major surfaces; triage process",
@@ -2815,6 +2915,7 @@ module.exports = {
       { item: "Legal-time traceability where applicable", what_it_tells_you: "Whether regulatory time requirements are met" }
     ],
     scoping_notes: "Five minutes of clock skew on a server is a security incident waiting to happen - Kerberos breaks, certificate validation breaks, tokens reject. Modern clouds and orchestrators handle most time-sync automatically; the remaining gaps are usually legacy systems, niche network devices, and out-of-band management interfaces. The control is small effort, large impact when it fails.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: in-scope systems synchronise time to a documented authoritative source (NTP server, cloud-provider time service). Drift is monitored. Log timestamps across systems are consistent enough to enable correlation.",
     maturity_ladder: {
       1: "NTP partial; drift undetected",
       2: "Consistent NTP across systems; basic monitoring",
@@ -2841,6 +2942,7 @@ module.exports = {
       { item: "Sample PAM-mediated utility use", what_it_tells_you: "Whether privileged tools route through controlled paths" }
     ],
     scoping_notes: "Living-off-the-land is now the dominant technique for post-compromise lateral movement and privilege escalation. Detection of privileged utility abuse (PsExec from unusual sources, Mimikatz signatures, BloodHound enumeration patterns, living-off-the-land binaries) is a distinct detection portfolio that complements traditional malware detection.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: use of privileged utility programs (system tools, debuggers, sniffers, admin scripts) is restricted to authorised personnel, controlled by access management, and logged. Inventory exists for the in-scope environment.",
     maturity_ladder: {
       1: "Utilities widely available; use unmonitored",
       2: "Inventory; PowerShell logging; basic restrictions",
@@ -2869,6 +2971,7 @@ module.exports = {
       { item: "Legacy software register with removal plans", what_it_tells_you: "Whether technical debt is managed" }
     ],
     scoping_notes: "Application allowlisting (especially WDAC on Windows) is the most effective control but operationally demanding to maintain. Restricted local admin is a lower-effort floor that catches most accidental installation. Modern endpoint approaches combine the two with self-service portals to reduce friction.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: installation of software on production systems is controlled via change management, with only approved software installed. Endpoint software installation is restricted (allow-listing, MDM control, admin-only install). Sampled production change shows the control was applied.",
     maturity_ladder: {
       1: "Local admin widely granted; installation uncontrolled",
       2: "Restricted local admin; approved-software list; basic detection",
@@ -2898,6 +3001,7 @@ module.exports = {
       { item: "Cloud network controls (SGs, NSGs) governance evidence", what_it_tells_you: "Whether cloud network is managed" }
     ],
     scoping_notes: "Cloud-heavy organizations have less traditional network estate but more cloud network configuration (VPCs, subnets, Security Groups, NACLs, peering, transit gateways). The control applies to both - and increasingly the cloud configuration is the bigger surface. Zero Trust architectures shift emphasis from network controls to identity and workload controls but don't eliminate the need for network discipline.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: in-scope networks are managed with documented architecture, segmentation between trust zones (corporate vs. production, guest vs. internal, OT vs. IT where relevant), and change management on network configuration. Network diagrams are current.",
     maturity_ladder: {
       1: "Network controls partial; rule hygiene poor",
       2: "Architecture documented; rules reviewed; device hardening; management access controlled",
@@ -2926,6 +3030,7 @@ module.exports = {
       { item: "Outsourced-service agreements with security obligations", what_it_tells_you: "Whether external services are contractually governed" }
     ],
     scoping_notes: "DMARC at p=quarantine or p=reject is now the expected posture for organizations of consequence; p=none indefinitely is increasingly seen as a finding. Protective DNS (Cloudflare Gateway, Cisco Umbrella, Quad9, etc.) is a high-value, low-cost control increasingly expected. The control is broad - pick the network services in scope and apply security requirements deliberately.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: network services (DNS, NTP, email relay, VPN gateways, web proxies, etc.) have documented security configuration aligned to vendor hardening guidance, with monitoring of their security-relevant events. Sampled service config matches the baseline.",
     maturity_ladder: {
       1: "Network services partly secured; configuration ad-hoc",
       2: "Requirements per service; basic configurations correct; email authentication in place",
@@ -2955,6 +3060,7 @@ module.exports = {
       { item: "Periodic segmentation review", what_it_tells_you: "Whether segmentation is maintained" }
     ],
     scoping_notes: "Segmentation strategy varies - traditional VLAN/firewall zones, modern micro-segmentation (Illumio, Guardicore, NSX), zero-trust network access (ZTNA). The right approach depends on risk and tooling; what matters is that segmentation exists, reflects risk, is enforced, and is maintained. PCI compliance is the canonical case where segmentation is non-negotiable for cost reasons.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: network segregation is implemented between trust zones with explicit allow-rules (deny-by-default), monitored boundary controls (firewalls, NSGs, security groups), and access between zones logged. Sampled rule-base shows least-permissive policy.",
     maturity_ladder: {
       1: "Flat network or claimed segmentation that doesn't enforce",
       2: "Zone-based segmentation; default-deny inter-zone; documented",
@@ -2982,6 +3088,7 @@ module.exports = {
       { item: "TLS inspection scope and lawful-basis review", what_it_tells_you: "Whether deep inspection is governed" }
     ],
     scoping_notes: "Modern protective DNS (Cloudflare Gateway, Cisco Umbrella, Quad9) is the cheapest and broadest entry point - works for roaming endpoints, doesn't require certificates, blocks at resolution. Secure web gateways and cloud-based proxies provide deeper inspection at higher cost. The control isn't about specific tools but about whether outbound risk is filtered.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: web filtering is applied to corporate-network and managed-endpoint web traffic to block known-malicious categories and exfiltration patterns. Bypass requires justification. Recent block events triaged.",
     maturity_ladder: {
       1: "Filtering on corporate network only; categories generic",
       2: "Roaming-endpoint coverage; risk-tuned categories; exception register",
@@ -3011,6 +3118,7 @@ module.exports = {
       { item: "Post-quantum or crypto-agility position", what_it_tells_you: "Whether evolution is planned" }
     ],
     scoping_notes: "NIST SP 800-131A and similar references provide current and projected algorithm-strength guidance. Post-quantum cryptography is moving from research to standardisation (NIST PQC standards finalised 2024). For organizations with long-lived secrets (records expected to remain confidential beyond 2030), beginning crypto-agility planning is increasingly expected. For most organizations, the practical gap is key management, not algorithm choice - keys in vaults or HSMs, rotated, governed.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: cryptography is governed by a policy covering algorithms, key lengths, key lifecycle (generation, distribution, rotation, revocation, destruction), and approved use cases. Implementation aligned to current industry guidance (no MD5, no SHA-1 for signatures, TLS 1.2 minimum). Sampled key has a rotation record.",
     maturity_ladder: {
       1: "Cryptography ad-hoc; deprecated algorithms in use",
       2: "Policy with approved algorithms; major use cases addressed; basic key management",
@@ -3021,16 +3129,16 @@ module.exports = {
   },
 
   'annex-a.8.25': {
-    purpose: "Secure development lifecycle - embedding security into the development process from requirements through release rather than treating it as a pre-release pen-test. The umbrella control for software-producing organizations; it's where A.8.26–8.30 fit together.",
-    what_good_looks_like: "A documented Secure Development Lifecycle (Microsoft SDL, OWASP SAMM, NIST SSDF, BSIMM, or organization-specific) with security activities embedded at each phase: requirements (security requirements, threat modelling), design (secure design review, architecture review against principles A.8.27), implementation (secure coding standards A.8.28, peer review with security checklist), verification (SAST in CI, SCA for dependencies, DAST in staging, security testing A.8.29), release (security gate, deployment validation), maintenance (post-release monitoring, vulnerability response). Developer security training at hire and annually. Tooling for static, dynamic, and dependency analysis integrated into CI/CD. Metrics on security-debt and time-to-fix tracked. Backed by clear ownership - typically a security champions network plus a dedicated AppSec function for organizations of meaningful size.",
+    purpose: "Secure development lifecycle - embedding security into the development process from requirements through release rather than treating it as a pre-release pen-test. The umbrella control for software-producing organizations; it's where A.8.26-8.30 fit together. The audit test isn't \"do you have a document\" - it's \"sample one feature shipped in the last 90 days and trace the security activities at every phase.\" If any link in the chain (threat model, design review, SAST run, security gate sign-off) is missing for that one feature, you have a finding, regardless of how nice the SDL document is.",
+    what_good_looks_like: "A documented Secure Development Lifecycle (Microsoft SDL, OWASP SAMM, NIST SSDF, BSIMM, or organization-specific) of 5-15 pages with security activities embedded at each phase: requirements (security requirements, threat modelling), design (secure design review, architecture review against principles A.8.27), implementation (secure coding standards A.8.28, peer review with security checklist), verification (SAST in CI, SCA for dependencies, DAST in staging, security testing A.8.29), release (security gate, deployment validation), maintenance (post-release monitoring, vulnerability response). Developer security training at hire and annually with role-tailored content - frontend devs get XSS / CSRF / supply-chain, backend devs get authn / authz / injection, platform devs get IaC / secrets / IAM. Tooling for static, dynamic, and dependency analysis integrated into CI/CD with break-build thresholds on critical findings. Two metrics tracked at minimum: time from security finding to fix by severity, and percentage of releases that passed the security gate without an override. Backed by clear ownership - typically a security champions network (1 per ~10 devs) plus a dedicated AppSec function once the org exceeds 30-40 developers.",
     common_pitfalls: [
-      "Ad-hoc security - varies by team, by project, by individual",
-      "\"Shift left\" claimed but no actual phase integration - security is still pre-release-only",
-      "Security gates that don't gate - failures override-able by anyone",
-      "No measurement - \"we have an SDL\" with no metrics on whether it's followed or working",
-      "Security tooling deployed but findings not actioned - backlog grows; nothing happens",
-      "Developer training one-time at hire, never refreshed",
-      "Threat modelling claimed but not done in practice"
+      "Ad-hoc security - varies by team, by project, by individual. The classic Stage 2 finding: two engineers describe the SDL differently",
+      "\"Shift left\" claimed but no actual phase integration - security is still pre-release-only and the threat-model column on the design doc template is always empty",
+      "Security gates that don't gate - failures override-able by anyone with a Jira comment saying \"will fix after launch\"",
+      "No measurement - \"we have an SDL\" with no metrics on whether it's followed or working. Auditor asks for the override report; there isn't one",
+      "Security tooling deployed but findings not actioned - SAST backlog has 4000 items, oldest from 18 months ago; nothing happens",
+      "Developer training one-time at hire, never refreshed, and not role-tailored. The frontend devs got the same training as the platform team",
+      "Threat modelling claimed but not done in practice - the auditor asks for the threat model for last quarter's biggest feature and it doesn't exist"
     ],
     evidence_to_look_for: [
       { item: "Documented SDL or SSDF aligned framework", what_it_tells_you: "Whether the lifecycle is defined" },
@@ -3041,6 +3149,7 @@ module.exports = {
       { item: "Security champions network or dedicated AppSec resourcing", what_it_tells_you: "Whether ownership exists" }
     ],
     scoping_notes: "OWASP SAMM and NIST SSDF are the two practical reference frameworks. SSDF (NIST 800-218) is increasingly expected for organizations developing software for US federal customers and is becoming the industry baseline. The control is heavy on documentation but the audit test is whether the documented process actually drove what happened on a recent release.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented secure development lifecycle covering security activities at each stage - requirements, design (threat modelling), implementation (secure coding standards, code review), testing (SAST/SCA/DAST at minimum), and release (security sign-off). Applied to at least the in-scope applications. Sampled recent release shows the activities were performed and findings closed. Where development is not done in-house, the SoA records the applicability decision with reference to supplier controls.",
     maturity_ladder: {
       1: "Security tacked on at end of release",
       2: "SDL documented; activities defined per phase; tooling in CI",
@@ -3067,6 +3176,7 @@ module.exports = {
       { item: "Update record showing requirements evolved during the project lifecycle", what_it_tells_you: "Whether requirements are alive" }
     ],
     scoping_notes: "OWASP ASVS (Application Security Verification Standard) is the practical reference for what application security requirements look like at three maturity levels. Using ASVS as the requirements framework provides immediate structure and credibility. The control is most effective when paired with threat modelling - generic requirements miss application-specific risks.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: application security requirements (authentication, authorisation, input validation, output encoding, logging, error handling) are documented as part of design/requirements for in-scope applications. Sampled in-scope application has the requirements traceable to design or backlog.",
     maturity_ladder: {
       1: "Requirements implicit; security at end",
       2: "Requirements documented per project; approved before build; verified before release",
@@ -3093,6 +3203,7 @@ module.exports = {
       { item: "Recent principles update reflecting cloud / modern architecture considerations", what_it_tells_you: "Whether principles are alive" }
     ],
     scoping_notes: "Cloud-provider well-architected frameworks (AWS, Azure, GCP) provide ready-made architectural principle sets that map to ISO 27001 thinking. For organizations using these clouds, adopting the framework as the principle reference is pragmatic. The control isn't about inventing principles but about applying a credible set deliberately.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: secure-architecture and engineering principles (defence in depth, least privilege, secure defaults, fail-safe, separation of duties) are documented and applied to system design. Architecture-review or threat-modelling evidence exists for at least one in-scope system.",
     maturity_ladder: {
       1: "Principles informal",
       2: "Documented principles; applied in design reviews",
@@ -3121,6 +3232,7 @@ module.exports = {
       { item: "Vulnerability-class analysis - recurring patterns drive training updates", what_it_tells_you: "Whether the loop closes" }
     ],
     scoping_notes: "OWASP Top 10 and CWE Top 25 are the practical reference for what to focus on. Modern AppSec increasingly emphasises developer experience - findings in the IDE / pull request / IM are far more actionable than findings in a separate dashboard.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: secure-coding standards are documented (referencing OWASP ASVS or language-specific guides), developers are trained, code is reviewed before merge, and SAST/DAST tooling runs on the pipeline. Recent code-review and SAST findings closure evidence.",
     maturity_ladder: {
       1: "Secure coding informal",
       2: "Standards documented; training annual; SAST in CI; review covers security",
@@ -3150,6 +3262,7 @@ module.exports = {
       { item: "Cloud and container testing coverage", what_it_tells_you: "Whether modern surfaces are addressed" }
     ],
     scoping_notes: "Pen testing once a year is the floor for any meaningful product. For organizations with continuous deployment, pen testing should align with material changes rather than calendar dates alone. Bug bounty is high-leverage for organizations with public attack surface but operationally demanding; not appropriate for early-stage programs.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: security testing is performed during the development lifecycle - at minimum SAST, dependency/SCA scanning, and a pre-release security review. Penetration testing on internet-facing or high-impact applications at least annually. Findings tracked to closure.",
     maturity_ladder: {
       1: "Pen test annual; SAST partial",
       2: "Layered testing; findings tracked; SLAs by severity",
@@ -3177,7 +3290,8 @@ module.exports = {
       { item: "Supplier developer access governance - time-bounded credentials, scoped access, MFA", what_it_tells_you: "Whether access is controlled" },
       { item: "Findings feedback to supplier with remediation tracking", what_it_tells_you: "Whether the loop closes back to the supplier" }
     ],
-    scoping_notes: "Outsourced development is where many supply-chain risks sit - code that became part of your product carrying vulnerabilities from a third party's practices. The control connects to A.5.19–22 (supplier relationships) and A.8.25 (your SDLC). For organizations with significant outsourced-development exposure, treating supplier practices with the same rigor as internal SDLC is essential.",
+    scoping_notes: "Outsourced development is where many supply-chain risks sit - code that became part of your product carrying vulnerabilities from a third party's practices. The control connects to A.5.19-22 (supplier relationships) and A.8.25 (your SDLC). For organizations with significant outsourced-development exposure, treating supplier practices with the same rigor as internal SDLC is essential.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: outsourced development arrangements have security clauses (secure-coding standards, vulnerability disclosure, source-code escrow if applicable, right-to-test, incident notification), and the supplier's output is tested before deployment as if internally developed. SoA records applicability where this control does not apply.",
     maturity_ladder: {
       1: "Outsourcer trusted; verification ad-hoc",
       2: "Contract clauses; deliverable review; basic access controls",
@@ -3206,6 +3320,7 @@ module.exports = {
       { item: "Credential separation - environment-specific secrets", what_it_tells_you: "Whether trust boundaries are real" }
     ],
     scoping_notes: "Cloud account / subscription / project separation is the modern strong form - entirely different blast radius per environment. Within-account separation via VPCs, security groups, and IAM is weaker but workable for organizations starting from a single account. Production data in test is one of the most common audit findings - mask, anonymise, or use synthetic data, but production-data-in-test without controls is increasingly unacceptable.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: development, test, and production environments are separated with controlled promotion between them, separate credentials, and no production data in lower environments without masking. Sampled change shows the separation held.",
     maturity_ladder: {
       1: "Separation partial; production data flows freely",
       2: "Separate environments; CI/CD promotion; basic access differentiation",
@@ -3235,6 +3350,7 @@ module.exports = {
       { item: "Cloud / IaC changes integrated into change management", what_it_tells_you: "Whether modern paths are governed" }
     ],
     scoping_notes: "ITIL provides the canonical change-management framework but is heavyweight. Modern DevOps shifts emphasis from approval-gates to automated testing and rapid rollback - both are valid as long as the controls match the risk. The audit test is whether changes are deliberate, traceable, reversible, and reviewed after the fact. Whatever framework you use, those four properties are non-negotiable.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented change-management process for IT/security changes - impact assessment, approval, testing, rollback plan, scheduling, post-change verification. Sampled production change in the last 90 days has the full trail.",
     maturity_ladder: {
       1: "Change management partial; emergency abuse common",
       2: "Process documented with categories; CAB for higher-risk; rollback plans",
@@ -3245,15 +3361,16 @@ module.exports = {
   },
 
   'annex-a.8.33': {
-    purpose: "Test information - the data used in test environments. The control limits the use of production data in test, requires masking or restriction when production data is unavoidable, and ensures test environments don't become a backdoor to sensitive data through weaker controls. Pairs with A.8.11 (data masking) and A.8.31 (environment separation).",
-    what_good_looks_like: "A documented position: production data is not used in test environments unless masked or anonymised (links to A.8.11), with limited and approved exceptions. When production data is genuinely unavoidable (e.g., debugging a production-specific issue), access to the test environment for that specific use is restricted to the same group authorised for production access for the relevant data, time-bounded, and the data is removed when the work concludes. Test environments hold data classified per the highest-classification data they hold - if test contains anything derived from Confidential production data, the test environment is governed at Confidential level for access, encryption, monitoring. Test data lifecycle managed: refreshed periodically, anonymised before persistent storage, disposed when no longer needed.",
+    purpose: "Test information - the data used in test environments. The control limits the use of production data in test, requires masking or restriction when production data is unavoidable, and ensures test environments don't become a backdoor to sensitive data through weaker controls. This is one of the most-found and least-fixed Annex A issues - the auditor will pull the test database directly, sample 5 rows, and ask whether each row corresponds to a real customer. If the answer is yes and the data isn't masked, it's an instant finding. Pairs with A.8.11 (data masking) and A.8.31 (environment separation).",
+    what_good_looks_like: "A documented position - 1-2 pages, signed off at CISO or equivalent: production data is not used in test environments unless masked or anonymised (links to A.8.11), with limited and approved exceptions. When production data is genuinely unavoidable (e.g., debugging a production-specific issue), access to the test environment for that specific use is restricted to the same group authorised for production access for the relevant data, time-bounded to no more than 14 days, and the data is removed when the work concludes (with evidence of removal logged). Test environments hold data classified per the highest-classification data they hold - if test contains anything derived from Confidential production data, the test environment is governed at Confidential level for access, encryption, monitoring. Test data lifecycle managed: refreshed periodically (typically quarterly), anonymised before persistent storage, disposed when no longer needed. A tracking record of which test environments hold which production-derived data and when it expires, reviewed monthly.",
     common_pitfalls: [
-      "Production data routinely copied to test for \"realistic testing\" with no masking, no access restriction, no time-bounding",
-      "\"Anonymisation\" that's actually pseudonymisation - names removed but quasi-identifiers leak the identity (date of birth + postcode + gender re-identifies most individuals)",
-      "Test data accumulates indefinitely - original copy from 2019 still in the test database in 2026",
-      "Test environments less hardened than production despite holding similar-classification data - patching slower, monitoring weaker, access broader",
-      "Developers query production directly from local machines for debugging, then results sit on the local machine indefinitely",
-      "Synthetic data generators not used despite being available and good enough for most test purposes"
+      "Production data routinely copied to test for \"realistic testing\" with no masking, no access restriction, no time-bounding. This is the #1 cited finding in this control across real audits",
+      "\"Anonymisation\" that's actually pseudonymisation - names removed but quasi-identifiers leak the identity. DOB + postcode + gender re-identifies ~87% of the US population (Sweeney 2000); this still trips orgs in 2026",
+      "Test data accumulates indefinitely - original copy from 2019 still in the test database in 2026. The auditor will run a query for oldest record timestamp; if the year is two-plus before today, it's a finding",
+      "Test environments less hardened than production despite holding similar-classification data - patching slower, monitoring weaker, access broader. Test gets breached more often than prod for this exact reason",
+      "Developers query production directly from local machines for debugging, then results sit on the local machine indefinitely with no controls",
+      "Synthetic data generators (Mockaroo, Faker, Gretel, AI-generated) not used despite being available and good enough for ~80% of test purposes - the org never tried because \"production data is faster\"",
+      "Recovery snapshots of production restored into test environments for performance testing - all the data, none of the access controls. The recovery use case is the most-overlooked path"
     ],
     evidence_to_look_for: [
       { item: "Position on production data in test (policy or design document)", what_it_tells_you: "Whether the org has thought about this" },
@@ -3263,6 +3380,7 @@ module.exports = {
       { item: "Test data lifecycle evidence - refresh and disposal", what_it_tells_you: "Whether data doesn't persist indefinitely" }
     ],
     scoping_notes: "Synthetic data generators (Mockaroo, Faker, AI-generated synthetic) handle most testing needs without using production data at all. Where realistic data is genuinely needed, masking is the practical answer. The control connects tightly to A.8.11 (the masking technique itself) and A.8.31 (environment separation that makes the control meaningful). Production data in test is one of the most-cited findings in real audits.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented position on the use of production data in test environments - either prohibited (synthetic/masked data only) or permitted with documented controls (approval, masking, time-bounding, equivalent protection). Sampled non-production environment shows the position is followed. Where production data is used, the masking technique is documented.",
     maturity_ladder: {
       1: "Production data flows to test unmasked",
       2: "Position documented; masking applied; exceptions tracked",
@@ -3273,16 +3391,17 @@ module.exports = {
   },
 
   'annex-a.8.34': {
-    purpose: "Protection of information systems during audit testing - making sure that audits, security testing, and similar inspection activities don't themselves compromise the systems being audited. The control covers scope agreement, timing, scope creep prevention, and clean-up after the audit concludes. Often missed because audits are seen as low-risk; in practice, audit credentials and audit traffic are routine sources of incidents.",
-    what_good_looks_like: "Scope and timing of any audit testing on operational systems is agreed in advance with system owners - what will be tested, how, when, by whom, with what access. Activities likely to disrupt are scheduled for off-peak windows or run against representative test environments where feasible. Audit credentials are time-bounded - issued for the audit period only, revoked when the audit concludes. Audit access is logged and the logs reviewed after the audit. The integrity of the systems isn't compromised by the conduct of the audit - testing tools used are vetted, traffic patterns from audit don't trigger spurious incidents that get worked as real, audit findings are handled through normal channels rather than auditors having direct remediation access. Internal-audit, external-assessor, regulator, customer-audit, and pen-test activities are all in scope of A.8.34's protections.",
+    purpose: "Protection of information systems during audit testing - making sure that audits, security testing, and similar inspection activities don't themselves compromise the systems being audited. The control covers scope agreement, timing, scope creep prevention, and clean-up after the audit concludes. Often missed because audits are seen as low-risk; in practice, audit credentials and audit traffic are routine sources of real incidents - pen-test queries have crashed production databases, audit data extraction has triggered DLP alerts that fed back into customer comms, and audit credentials that nobody revoked have been the entry point for follow-on attacks 6-12 months later.",
+    what_good_looks_like: "Scope and timing of any audit testing on operational systems is agreed in advance with system owners via a rules-of-engagement document - what will be tested, how, when, by whom, with what access, what stop conditions apply, escalation paths if something breaks. Activities likely to disrupt are scheduled for off-peak windows or run against representative test environments where feasible. Audit credentials are time-bounded - issued for the audit period only, with an automatic expiry that doesn't require manual revocation. Audit access is logged in a way that's distinguishable from real user activity (separate user-ID convention, IP allowlist, tagged session) so monitoring teams can filter audit traffic from genuine alerts during the engagement. After the engagement: credentials revoked within 24 hours of close, access logs reviewed against the agreed scope (any out-of-scope queries get flagged back to the auditor), testing tools left no residue (no agents running, no cached credentials, no orphan accounts). The same template applies to internal-audit, external-assessor, regulator, customer-audit, and pen-test activities - the differences are in the rules-of-engagement detail, not the framework.",
     common_pitfalls: [
-      "Auditors given broad standing access \"to make their work easier\" - credentials persist long after the audit ends",
-      "Audit testing causes production incidents - pen test crashes a production system, audit data extraction overwhelms a database",
-      "No agreement on scope and timing - auditors decide what to test once they're in",
-      "Audit credentials don't get revoked - six months later, the auditor's account still has access",
-      "Audit traffic untracked - when something suspicious happens during the audit window, it's hard to distinguish audit activity from real attack",
-      "Audit findings provided to auditors directly - sensitive vulnerability information leaves the organization without going through review",
-      "Pen-test scoping creep - engagement starts at one scope, expands during the test"
+      "Auditors given broad standing access \"to make their work easier\" - credentials persist long after the audit ends. The audit account becomes the lateral-movement target for the next attacker",
+      "Audit testing causes production incidents - pen test sends a million test connections and exhausts the connection pool; data extraction script overwhelms a database. Cited in real post-mortems",
+      "No agreement on scope and timing - auditors decide what to test once they're in. Stage 2 finding: the pen-test report shows testing against systems that the engagement letter never named",
+      "Audit credentials don't get revoked - six months later, the auditor's account still has access. Auditor finds this themselves on the next engagement and writes a finding against the org",
+      "Audit traffic untracked - when something suspicious happens during the audit window, the SOC can't distinguish audit activity from real attack, so they either ignore it (and miss the real one) or chase the audit and burn out",
+      "Audit findings provided to auditors directly - sensitive vulnerability information leaves the organization without going through review. The pen-test report includes screenshots of exposed customer data",
+      "Pen-test scoping creep - engagement starts at \"the customer-facing API\", expands during the test to \"the internal admin panel because it was easier\", scope of compromise is now wider than authorised",
+      "Customer audits (right-to-audit clauses) treated as one-off goodwill events with no protections applied - the customer's auditor wanders the network because the contract said they could"
     ],
     evidence_to_look_for: [
       { item: "Audit / pen-test engagement template covering scope, timing, access, credentials", what_it_tells_you: "Whether engagements are governed" },
@@ -3292,6 +3411,7 @@ module.exports = {
       { item: "Pen-test scoping document with rules of engagement", what_it_tells_you: "Whether testing has guardrails" }
     ],
     scoping_notes: "Pen-test engagements are the most common A.8.34 application - every external pen test should have a rules-of-engagement document covering scope, timing, allowed techniques, escalation paths if something breaks, credential management. Internal-audit access on operational systems is similarly scoped - auditors don't need write access to most things, time-bounding is straightforward, log review afterwards is cheap. Customer audits (where customers exercise audit rights from contracts) follow the same model - scope, timing, access, conclusion.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented rules-of-engagement template for audit and pen-test activities on operational systems covering scope, timing, access, time-bounded credentials, and stop conditions. Applied to the most recent external pen test or internal audit touching production. Audit credentials are revoked within the documented SLA after engagement close.",
     maturity_ladder: {
       1: "Audit access ad-hoc; credentials persist",
       2: "Engagement template; scope and timing agreed; credentials time-bounded",

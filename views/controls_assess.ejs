@@ -125,6 +125,18 @@
       <% } %>
     </div>
 
+    <% if (item.minimum_certifiable) { %>
+      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(22,163,74,0.04);">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:14px;background:rgba(22,163,74,0.10);color:#15803d;font-size:11.5px;font-weight:600;border:1px solid #15803d;margin-top:2px;">MVP target</div>
+          <div style="flex:1;">
+            <%- hLabel('Minimum to pass Stage 2') %>
+            <p class="text-lg" style="margin:0;line-height:1.6;"><%= item.minimum_certifiable %></p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
     <% if (item.common_pitfalls && item.common_pitfalls.length) { %>
       <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(185,28,28,0.03);">
         <%- hLabel('Where this usually goes wrong') %>
@@ -423,6 +435,67 @@
     </div>
   </form>
 </div>
+
+<!-- Flag-for-review state machine. junior -> requested -> reviewer approves / sends back. -->
+<% const rs = state.review_status || 'none'; %>
+<% if (rs === 'requested') { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(202,138,4,0.06);padding:14px 18px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div style="flex:1;">
+        <div style="font-weight:600;color:#a16207;font-size:13px;margin-bottom:3px;">🚩 Flagged for senior review</div>
+        <div class="meta" style="font-size:12px;line-height:1.5;">
+          Requested by <strong><%= requestedByName || 'someone' %></strong> on <%= state.review_requested_at %>.
+          <% if (state.review_reason) { %><br><em>"<%= state.review_reason %>"</em><% } %>
+        </div>
+      </div>
+      <% if (isReviewer) { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/review-action" style="display:flex;gap:6px;">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <button name="action" value="approve" class="btn btn-primary btn-xs">Mark reviewed</button>
+          <button name="action" value="send_back" class="btn btn-secondary btn-xs">Send back</button>
+        </form>
+      <% } else { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/clear-flag" style="margin:0;">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <button class="btn btn-ghost btn-xs">Cancel request</button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+<% } else if (rs === 'reviewed' || rs === 'needs_changes') { %>
+  <div class="panel" style="margin-bottom:14px;border-left:3px solid <%= rs === 'reviewed' ? '#16a34a' : '#b91c1c' %>;background:<%= rs === 'reviewed' ? 'rgba(22,163,74,0.06)' : 'rgba(185,28,28,0.06)' %>;padding:14px 18px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div style="flex:1;">
+        <div style="font-weight:600;color:<%= rs === 'reviewed' ? '#15803d' : '#b91c1c' %>;font-size:13px;margin-bottom:3px;">
+          <%= rs === 'reviewed' ? '✓ Reviewed' : '↩ Sent back for changes' %>
+        </div>
+        <div class="meta" style="font-size:12px;">
+          By <strong><%= reviewedByName || 'reviewer' %></strong> on <%= state.reviewed_at %>.
+          <% if (rs === 'needs_changes' && state.review_reason) { %><br>Original request: <em>"<%= state.review_reason %>"</em><% } %>
+        </div>
+      </div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/clear-flag" style="margin:0;">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+        <button class="btn btn-ghost btn-xs">Clear flag</button>
+      </form>
+    </div>
+  </div>
+<% } else { %>
+  <details class="panel" style="margin-bottom:14px;border-left:3px dashed var(--border-strong);">
+    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);">
+      🚩 Flag for senior review
+      <span class="meta" style="font-weight:400;font-size:12px;margin-left:6px;">- ask a senior to review your assessment before signoff</span>
+    </summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/flag-for-review" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <textarea name="reason" rows="2" placeholder="Why are you unsure? e.g., 'Control says it's Implemented but evidence I saw was 6 months old - want a second opinion before signing off.'" class="textarea" style="width:100%;font-size:13px;margin-bottom:8px;font-family:inherit;"></textarea>
+      <button class="btn btn-primary btn-xs">Flag for senior review</button>
+    </form>
+  </details>
+<% } %>
+
+<!-- Comments + @-mentions. parent_type='iso_item' so comments are scoped to this control across views. -->
+<%- include('partials/comments_thread', { parent_type: 'iso_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
 
 <!-- Evidence + linked items panels (folded in from the deleted standalone control detail page) -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
