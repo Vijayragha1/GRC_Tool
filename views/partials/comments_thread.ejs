@@ -7,20 +7,23 @@
   //   ws           workspace (for the form action)
   //   user         current user
   //   csrfToken    from res.locals
-  //   firmUsers    [{ id, name }]  optional, for @-mention hints
+  //   firmUsers    [{ id, name }]  optional, drives the @-mention autocomplete
   const _comments = typeof comments !== 'undefined' && comments ? comments : [];
   const _firmUsers = typeof firmUsers !== 'undefined' && firmUsers ? firmUsers : [];
+  // Stable element id so the JS picks the right textarea/dropdown pair when
+  // the partial is rendered more than once on a page.
+  const _mentionId = 'mention-' + Math.random().toString(36).slice(2, 9);
 %>
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-head"><h2 style="font-size:14px;">Comments &amp; @-mentions (<%= _comments.length %>)</h2>
-    <span class="meta">Leave a question or context. Use @firstnamelastname to notify someone.</span>
+    <span class="meta">Leave a question or context. Type @ to mention a teammate.</span>
   </div>
   <% if (_comments.length > 0) { %>
     <div style="max-height:340px;overflow-y:auto;">
       <% _comments.forEach(c => { %>
         <div style="padding:10px 14px;border-bottom:1px solid var(--border);<%= c.internal_only ? 'background:rgba(202,138,4,0.06);' : '' %>">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px;">
-            <div style="font-size:12.5px;font-weight:600;"><%= c.user_name || 'Unknown' %><% if (c.internal_only) { %> <span class="tag tag-warn" style="font-size:9.5px;margin-left:4px;">INTERNAL</span><% } %></div>
+            <div style="font-size:12.5px;font-weight: 500;"><%= c.user_name || 'Unknown' %><% if (c.internal_only) { %> <span class="tag tag-warn" style="font-size:9.5px;margin-left:4px;">INTERNAL</span><% } %></div>
             <div class="meta" style="font-size:11px;"><%= c.created_at %></div>
           </div>
           <div style="font-size:13px;line-height:1.5;white-space:pre-wrap;"><%= c.body %></div>
@@ -34,18 +37,126 @@
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <input type="hidden" name="parent_type" value="<%= parent_type %>">
     <input type="hidden" name="parent_id" value="<%= parent_id %>">
-    <textarea name="body" rows="2" required placeholder="Leave a comment. Type @ to mention a teammate..." class="textarea" style="width:100%;font-size:13px;font-family:inherit;margin-bottom:6px;"></textarea>
+
+    <div class="js-mention-wrap" data-mention-id="<%= _mentionId %>" style="position:relative;">
+      <textarea name="body" rows="2" required placeholder="Leave a comment. Type @ to mention a teammate..." class="textarea js-mention-input" style="width:100%;font-size:13px;font-family:inherit;margin-bottom:6px;"></textarea>
+      <div class="js-mention-dropdown" role="listbox" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:-2px;background:var(--bg);border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 8px 20px rgba(15,15,18,0.10),0 2px 4px rgba(15,15,18,0.04);z-index:50;max-height:220px;overflow-y:auto;"></div>
+    </div>
+
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
       <label class="meta" style="font-size:11.5px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
         <input type="checkbox" name="internal_only" value="1"> Internal only (hidden from client)
       </label>
       <button class="btn btn-primary btn-xs">Post comment</button>
     </div>
-    <% if (_firmUsers.length > 0) { %>
-      <div class="meta" style="font-size:10.5px;margin-top:6px;">
-        @-mention hints:
-        <% _firmUsers.slice(0, 6).forEach((u, i) => { %><span class="mono" style="font-size:10px;background:var(--bg);padding:1px 5px;border-radius:3px;margin-right:3px;">@<%= u.name.replace(/\s+/g,'') %></span><% }) %>
-      </div>
-    <% } %>
   </form>
 </div>
+
+<script>
+(function () {
+  // Live @-mention autocomplete. Watches each comments textarea on the page,
+  // detects an unbroken @handle token immediately before the cursor, and
+  // shows a filterable dropdown of firm users. Selecting one replaces the
+  // partial token with the full handle (FirstnameLastname, no spaces) and
+  // appends a single space so the user can keep typing.
+  const FIRM_USERS = <%- JSON.stringify(_firmUsers.map(u => ({ id: u.id, name: u.name, handle: u.name.replace(/\s+/g, '') }))) %>;
+  if (!FIRM_USERS.length) return;
+
+  document.querySelectorAll('.js-mention-wrap').forEach(wrap => {
+    if (wrap.dataset.mentionWired) return;
+    wrap.dataset.mentionWired = '1';
+    const ta = wrap.querySelector('.js-mention-input');
+    const dd = wrap.querySelector('.js-mention-dropdown');
+    if (!ta || !dd) return;
+
+    let activeIdx = 0;
+    let matches = [];
+    let tokenStart = -1;
+
+    function currentToken() {
+      const v = ta.value;
+      const pos = ta.selectionStart;
+      // Scan back from cursor for an @ that isn't part of an email-ish token
+      // (i.e. the char before @ must be whitespace, punctuation, or BOF).
+      for (let i = pos - 1; i >= 0; i--) {
+        const ch = v[i];
+        if (ch === '@') {
+          const prev = i > 0 ? v[i - 1] : '';
+          if (i === 0 || /\s|[,;:.!?(\[]/.test(prev)) {
+            const partial = v.slice(i + 1, pos);
+            if (/^[A-Za-z0-9._-]*$/.test(partial)) {
+              return { start: i, partial };
+            }
+          }
+          return null;
+        }
+        if (/\s/.test(ch)) return null;
+      }
+      return null;
+    }
+
+    function close() { dd.style.display = 'none'; matches = []; tokenStart = -1; }
+
+    function render() {
+      if (!matches.length) { close(); return; }
+      dd.innerHTML = matches.map((u, i) => {
+        const active = i === activeIdx;
+        return `<div role="option" data-idx="${i}" style="padding:7px 11px;cursor:pointer;font-size:12.5px;display:flex;align-items:center;gap:8px;${active ? 'background:rgba(26,26,26,0.06);' : ''}">
+          <span style="font-weight:500;">${u.name}</span>
+          <span style="color:var(--text-tertiary);font-size:11px;font-family:ui-monospace,Menlo,monospace;">@${u.handle}</span>
+        </div>`;
+      }).join('');
+      dd.style.display = 'block';
+    }
+
+    function update() {
+      const tok = currentToken();
+      if (!tok) return close();
+      tokenStart = tok.start;
+      const q = tok.partial.toLowerCase();
+      matches = FIRM_USERS.filter(u =>
+        u.handle.toLowerCase().includes(q) || u.name.toLowerCase().includes(q)
+      ).slice(0, 8);
+      activeIdx = 0;
+      render();
+    }
+
+    function commit(idx) {
+      const u = matches[idx];
+      if (!u || tokenStart < 0) return close();
+      const v = ta.value;
+      const pos = ta.selectionStart;
+      const before = v.slice(0, tokenStart);
+      const after = v.slice(pos);
+      const insert = '@' + u.handle + ' ';
+      ta.value = before + insert + after;
+      const newCaret = before.length + insert.length;
+      ta.setSelectionRange(newCaret, newCaret);
+      close();
+      ta.focus();
+    }
+
+    ta.addEventListener('input', update);
+    ta.addEventListener('click', update);
+    ta.addEventListener('keyup', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') update();
+    });
+    ta.addEventListener('keydown', e => {
+      if (dd.style.display === 'none' || !matches.length) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = (activeIdx + 1) % matches.length; render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = (activeIdx - 1 + matches.length) % matches.length; render(); }
+      else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commit(activeIdx); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
+    dd.addEventListener('mousedown', e => {
+      const row = e.target.closest('[data-idx]');
+      if (!row) return;
+      e.preventDefault();
+      commit(parseInt(row.dataset.idx, 10));
+    });
+    document.addEventListener('click', e => {
+      if (!wrap.contains(e.target)) close();
+    });
+  });
+})();
+</script>

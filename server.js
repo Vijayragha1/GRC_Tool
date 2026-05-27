@@ -86,7 +86,17 @@ app.use('/vendor/tinymce', express.static(path.join(__dirname, 'node_modules/tin
 // Quiet the favicon 404 - no icon yet, just respond with No Content.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
+// Persistent session store. The default MemoryStore loses every session on
+// every restart, which makes "Keep me signed in for 30 days" a lie - users
+// get bounced back to /login the moment the container restarts (healthcheck,
+// daily backup, deploy). SQLite-backed store reuses the existing db handle
+// so sessions persist alongside the rest of the workspace data.
+const SqliteStore = require('better-sqlite3-session-store')(session);
 app.use(session({
+  store: new SqliteStore({
+    client: db,
+    expired: { clear: true, intervalMs: 1000 * 60 * 60 } // sweep expired rows hourly
+  }),
   secret: process.env.SESSION_SECRET || 'change-me-in-production-' + crypto.randomBytes(8).toString('hex'),
   resave: false,
   saveUninitialized: false,
@@ -1344,29 +1354,32 @@ app.get('/dashboard', requireAuth, (req, res) => {
     }
   } catch (_) {}
 
-  // Cross-client activity feed (D-10) - what happened across every
-  // client in the firm in the last 30 days. Last 25 events. Joins
-  // workspaces so we can show "<consultant> updated <thing> on
-  // <client>" rather than orphan log lines.
-  let recentActivity = [];
-  try {
-    const wsIds = workspacesWithProgress.map(w => w.id);
-    if (wsIds.length > 0) {
-      const placeholders = wsIds.map(() => '?').join(',');
-      recentActivity = db.prepare(
-        `SELECT a.created_at, a.action, a.entity_type, a.entity_id, a.workspace_id,
-                u.name AS user_name, w.client_name
-         FROM audit_log a
-         LEFT JOIN users u ON u.id = a.user_id
-         INNER JOIN workspaces w ON w.id = a.workspace_id
-         WHERE a.workspace_id IN (${placeholders})
-           AND a.created_at >= date('now','-30 days')
-         ORDER BY a.created_at DESC LIMIT 25`
-      ).all(...wsIds);
-    }
-  } catch (_) {}
+  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek, onboarding });
+});
 
-  res.render('dashboard', { user: req.user, workspaces: workspacesWithProgress, firmUsers, totals, atRisk, thisWeek, onboarding, recentActivity });
+// Cross-client activity feed lives under Admin in the portfolio sidebar -
+// pulled out of the dashboard so the landing page stays focused on the
+// portfolio roll-up. Manager-only (same gate as the rest of Admin).
+app.get('/admin/activity', requireAuth, (req, res) => {
+  if (!rbac.isManager(req.user.firm_role)) {
+    return res.status(403).render('error', { user: req.user, message: 'Only Managers can view firm-wide activity.' });
+  }
+  const wsIds = db.prepare(`SELECT id FROM workspaces WHERE firm_id = ?`).all(req.user.firm_id).map(r => r.id);
+  let recentActivity = [];
+  if (wsIds.length > 0) {
+    const placeholders = wsIds.map(() => '?').join(',');
+    recentActivity = db.prepare(
+      `SELECT a.created_at, a.action, a.entity_type, a.entity_id, a.workspace_id,
+              u.name AS user_name, w.client_name
+       FROM audit_log a
+       LEFT JOIN users u ON u.id = a.user_id
+       INNER JOIN workspaces w ON w.id = a.workspace_id
+       WHERE a.workspace_id IN (${placeholders})
+         AND a.created_at >= date('now','-90 days')
+       ORDER BY a.created_at DESC LIMIT 200`
+    ).all(...wsIds);
+  }
+  res.render('admin_activity', { user: req.user, ws: null, active: 'admin-activity', recentActivity });
 });
 
 // ==================== FIRM TEAM MANAGEMENT ====================
@@ -2855,11 +2868,40 @@ app.post('/workspaces/:wsId/comments', requireAuth, requireWorkspace, requirePer
   const { parent_type, parent_id, body, internal_only } = req.body;
   if (!body || !parent_type || !parent_id) return redirectBack(req, res);
   const internal = (internal_only === '1' && isFirmUser(req.user)) ? 1 : 0;
-  db.prepare(`INSERT INTO comments (workspace_id, parent_type, parent_id, user_id, body, internal_only)
+  const trimmedBody = body.trim();
+  const insResult = db.prepare(`INSERT INTO comments (workspace_id, parent_type, parent_id, user_id, body, internal_only)
               VALUES (?, ?, ?, ?, ?, ?)`)
     .run(req.workspace.id, parent_type, parent_id, req.user.id,
-         enc.encryptIfNeeded(body.trim(), req.workspace.id, !!req.workspace.encryption_enabled),
+         enc.encryptIfNeeded(trimmedBody, req.workspace.id, !!req.workspace.encryption_enabled),
          internal);
+  const commentId = insResult.lastInsertRowid;
+
+  // Parse @-mentions from the plaintext body, resolve handles to users in
+  // the same firm, insert comment_mentions rows, fire notifications.
+  // Handles match the user's full name with whitespace removed, case-
+  // insensitive. Cannot mention yourself. Used to be a separate route at
+  // /comments/:id/mentions that nothing ever called - hence the bug where
+  // typing @priyasharma in the comment box notified no one.
+  const handles = extractMentions(trimmedBody);
+  if (handles.length) {
+    const users = db.prepare(`SELECT id, name FROM users WHERE active=1 AND firm_id=?`).all(req.user.firm_id);
+    const insMention = db.prepare(`INSERT OR IGNORE INTO comment_mentions (comment_id, mentioned_user_id) VALUES (?, ?)`);
+    let mentioned = 0;
+    for (const h of handles) {
+      const target = users.find(u => u.name.toLowerCase().replace(/\s+/g, '') === h.toLowerCase());
+      if (target && target.id !== req.user.id) {
+        insMention.run(commentId, target.id);
+        mentioned++;
+        try {
+          jobs.notify(req.workspace.id, target.id, 'mention', 'info',
+            `@${h} you were mentioned`, trimmedBody.slice(0, 140),
+            `/workspaces/${req.workspace.id}`);
+        } catch (_) {}
+      }
+    }
+    if (mentioned > 0) db.prepare(`UPDATE comments SET has_mentions=1 WHERE id=?`).run(commentId);
+  }
+
   logAction(req.user.id, req.workspace.id, 'add_comment', parent_type, parent_id, { internal }, auditCtx(req));
   const back = req.headers.referer || '/workspaces/' + req.workspace.id;
   res.redirect(back);
@@ -13820,7 +13862,7 @@ module.exports = { app, db };
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
-    console.log(`\nISO 27001 Tool running at http://localhost:${PORT}`);
+    console.log(`\nCompliance Sphere running at http://localhost:${PORT}`);
     console.log(`First time? Visit /register to create your firm account.\n`);
   });
 }
