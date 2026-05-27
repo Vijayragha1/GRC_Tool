@@ -13,12 +13,12 @@
 
 <div class="panel" style="padding:16px;margin-bottom:16px;">
   <div class="text-base" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;text-align:center;">
-    <div><div style="font-size:22px;font-weight:600;"><%= counts.implemented || 0 %></div><div class="meta">Implemented</div></div>
-    <div><div style="font-size:22px;font-weight:600;"><%= counts.partial || 0 %></div><div class="meta">Partial</div></div>
-    <div><div style="font-size:22px;font-weight:600;"><%= counts.wip || 0 %></div><div class="meta">WIP</div></div>
-    <div><div style="font-size:22px;font-weight:600;"><%= counts.notimpl || 0 %></div><div class="meta">Not implemented</div></div>
-    <div><div style="font-size:22px;font-weight:600;"><%= counts.na || 0 %></div><div class="meta">N/A</div></div>
-    <div><div class="text-tertiary" style="font-size:22px;font-weight:600;"><%= counts.unassessed || 0 %></div><div class="meta">Unassessed</div></div>
+    <div><div style="font-size:22px;font-weight: 500;"><%= counts.implemented || 0 %></div><div class="meta">Implemented</div></div>
+    <div><div style="font-size:22px;font-weight: 500;"><%= counts.partial || 0 %></div><div class="meta">Partial</div></div>
+    <div><div style="font-size:22px;font-weight: 500;"><%= counts.wip || 0 %></div><div class="meta">WIP</div></div>
+    <div><div style="font-size:22px;font-weight: 500;"><%= counts.notimpl || 0 %></div><div class="meta">Not implemented</div></div>
+    <div><div style="font-size:22px;font-weight: 500;"><%= counts.na || 0 %></div><div class="meta">N/A</div></div>
+    <div><div class="text-tertiary" style="font-size:22px;font-weight: 500;"><%= counts.unassessed || 0 %></div><div class="meta">Unassessed</div></div>
   </div>
   <div style="margin-top:14px;text-align:center;">
     <a href="/workspaces/<%= ws.id %>/iso42001/gap" class="btn btn-secondary">Resume - jump to next un-assessed item</a>

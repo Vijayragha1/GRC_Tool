@@ -10,7 +10,7 @@
 
 <!-- KPI band 1: mandatory coverage + review status -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
-  <div class="panel kpi" style="border-left:3px solid <%= kpis.mandatoryPct >= 80 ? '#15803d' : kpis.mandatoryPct >= 50 ? '#a16207' : '#b91c1c' %>;">
+  <div class="panel kpi" style="">
     <div class="kpi-num" style="color:<%= kpis.mandatoryPct >= 80 ? '#15803d' : kpis.mandatoryPct >= 50 ? '#a16207' : '#b91c1c' %>;"><%= kpis.mandatoryPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-label">Mandatory adopted</div>
     <div class="kpi-meta"><%= kpis.mandatoryAdopted %> / <%= kpis.mandatoryTotal %> ISO-mandatory templates</div>
@@ -50,7 +50,7 @@
       <% templateAdoption.forEach(t => { %>
         <tr style="<%= !t.adopted ? 'background:rgba(185,28,28,0.04);' : '' %>">
           <td>
-            <% if (!t.adopted) { %><span style="color:#b91c1c;font-weight:600;margin-right:4px;">✗</span><% } else { %><span style="color:#15803d;font-weight:600;margin-right:4px;">✓</span><% } %>
+            <% if (!t.adopted) { %><span style="color:#b91c1c;font-weight: 500;margin-right:4px;">✗</span><% } else { %><span style="color:#15803d;font-weight: 500;margin-right:4px;">✓</span><% } %>
             <%= t.template_name %>
           </td>
           <td>

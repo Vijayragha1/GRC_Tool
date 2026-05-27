@@ -9,9 +9,9 @@
 
 <%# Headline strip: overdue / due-this-month / clear inbox %>
 <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 18px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
-  <span><strong style="color:<%= overdue.length > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:600;font-size:14px;"><%= overdue.length %></strong> overdue</span>
+  <span><strong style="color:<%= overdue.length > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight: 500;font-size:14px;"><%= overdue.length %></strong> overdue</span>
   <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= due.length > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight:600;font-size:14px;"><%= due.length %></strong> due in next 30 days</span>
+  <span><strong style="color:<%= due.length > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight: 500;font-size:14px;"><%= due.length %></strong> due in next 30 days</span>
   <span style="flex:1;"></span>
   <span class="meta text-xs">window ends <%= horizonStr %></span>
 </div>
@@ -28,16 +28,16 @@
     <% } %>
 
     <% if (overdue.length > 0) { %>
-      <div class="panel" style="padding:0;border-left:3px solid #b91c1c;">
+      <div class="panel" style="padding:0;">
         <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;background:rgba(220,38,38,0.04);">
           <h2 style="margin:0;font-size:13px;color:#b91c1c;">Overdue · <%= overdue.length %></h2>
           <span class="meta text-xs">past due_date as of <%= today %></span>
         </div>
         <% overdue.forEach(item => { %>
           <a href="<%= item.href %>" style="display:grid;grid-template-columns:90px 1fr 110px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
-            <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:#b91c1c;font-weight:600;"><%= item.due %></span>
+            <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:#b91c1c;font-weight: 500;"><%= item.due %></span>
             <span style="font-size:13.5px;">
-              <span class="text-eyebrow" style="font-weight:600;color:var(--text-tertiary);margin-right:6px;"><%= item.label %></span>
+              <span class="text-eyebrow" style="font-weight: 500;color:var(--text-tertiary);margin-right:6px;"><%= item.label %></span>
               <span style="color:var(--text);"><%= item.title %></span>
             </span>
             <span class="meta text-xs" style="text-align:right;"><%= item.meta %></span>
@@ -54,9 +54,9 @@
         </div>
         <% due.forEach(item => { %>
           <a href="<%= item.href %>" style="display:grid;grid-template-columns:90px 1fr 110px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
-            <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:var(--text-secondary);font-weight:600;"><%= item.due %></span>
+            <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:var(--text-secondary);font-weight: 500;"><%= item.due %></span>
             <span style="font-size:13.5px;">
-              <span class="text-eyebrow" style="font-weight:600;color:var(--text-tertiary);margin-right:6px;"><%= item.label %></span>
+              <span class="text-eyebrow" style="font-weight: 500;color:var(--text-tertiary);margin-right:6px;"><%= item.label %></span>
               <span style="color:var(--text);"><%= item.title %></span>
             </span>
             <span class="meta text-xs" style="text-align:right;"><%= item.meta %></span>

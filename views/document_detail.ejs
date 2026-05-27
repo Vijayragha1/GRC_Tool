@@ -68,7 +68,7 @@
                    const available = grp[t].filter(c => !linkedIds.has(c.id));
                    if (!available.length) return;
               %>
-                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
+                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
                   <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
                 </div>
                 <% available.forEach(c => {
@@ -176,7 +176,7 @@
             <% Object.keys(grp).forEach(t => {
                  const available = grp[t].filter(c => !linkedIds.has(c.id));
                  if (!available.length) return; %>
-              <div class="meta" style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;">
+              <div class="meta" style="font-weight: 500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;">
                 <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;">
@@ -219,7 +219,7 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
       <div style="flex:1;min-width:0;">
         <form class="row" method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>">
-          <input class="input" name="name" value="<%= doc.name %>" style="font-size:18px;font-weight:600;" <%= doc.locked ? 'disabled' : '' %>>
+          <input class="input" name="name" value="<%= doc.name %>" style="font-size:18px;font-weight: 500;" <%= doc.locked ? 'disabled' : '' %>>
           <% if (!doc.locked && can('document.edit')) { %><button class="btn btn-secondary btn-xs">Rename</button><% } %>
         </form>
         <div class="meta" style="margin-top:4px;">
@@ -370,7 +370,7 @@
              else if (isExternalExpired) statusLabel = 'expired';
         %>
           <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:<%= bg %>;">
-            <span class="num text-xs" style="width:18px;height:18px;border-radius:9px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:600;"><%= a.sequence %></span>
+            <span class="num text-xs" style="width:18px;height:18px;border-radius:9px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight: 500;"><%= a.sequence %></span>
             <div>
               <div class="text-md" style="font-weight:500;">
                 <%= a.person_name %><% if (a.role_label) { %> · <span class="meta"><%= a.role_label %></span><% } %>
@@ -448,9 +448,9 @@ function addApprover(kind) {
   const div = document.createElement('div');
   div.dataset.kind = kind;
   div.style.cssText = 'display:grid;grid-template-columns:30px 1fr auto;gap:6px;align-items:start;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);';
-  const seqBadge = `<span class="num text-xs" style="width:22px;height:22px;border-radius:11px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight:600;margin-top:4px;">${idx}</span>`;
+  const seqBadge = `<span class="num text-xs" style="width:22px;height:22px;border-radius:11px;background:var(--accent);color:white;display:inline-flex;align-items:center;justify-content:center;font-weight: 500;margin-top:4px;">${idx}</span>`;
   const kindBadge = kind === 'external'
-    ? `<div class="text-eyebrow" style="color:var(--accent);font-weight:600;margin-bottom:4px;">External · magic link</div>`
+    ? `<div class="text-eyebrow" style="color:var(--accent);font-weight: 500;margin-bottom:4px;">External · magic link</div>`
     : `<div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:4px;">Internal user</div>`;
   const inner = kind === 'internal'
     ? `${kindBadge}

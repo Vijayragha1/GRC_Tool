@@ -1,4 +1,4 @@
-# ISO 27001 tool
+# Compliance Sphere
 
 Self-hosted web app for running ISO 27001:2022 engagements. Built around the way I actually work - assess gaps, write up recommendations, hand off to the client, return to re-assess, produce the deliverables a certification audit asks for.
 

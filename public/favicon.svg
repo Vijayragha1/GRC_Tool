@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <title>ISMS</title>
+  <title>Compliance Sphere</title>
   <!--
-    Premium-feel favicon. Oxblood (#5C0A0A) matches the in-app --accent
-    var; serif "I" matches the Source Serif 4 wordmark used everywhere
-    else in the product (sidebar brand, /login, /approve portal, email
-    templates). Path-based glyph rather than font-based so the serif
-    caps render identically in every browser regardless of font loading.
+    Compliance Sphere mark - three concentric circles forming a target /
+    sphere abstraction. Stroked heavier than the in-app mark (1.8 vs 1.3)
+    so the glyph stays legible at 16x16 favicon size in the browser tab.
+    White-on-charcoal pill so it reads on light and dark browser themes
+    without depending on the page background.
   -->
-  <rect width="32" height="32" rx="6" fill="#5C0A0A"/>
-  <rect x="9" y="7" width="14" height="2.6" fill="#ffffff"/>
-  <rect x="14.4" y="7" width="3.2" height="18" fill="#ffffff"/>
-  <rect x="9" y="22.4" width="14" height="2.6" fill="#ffffff"/>
+  <rect width="32" height="32" rx="7" fill="#1a1a1a"/>
+  <circle cx="16" cy="16" r="11"  fill="none" stroke="#ffffff" stroke-width="1.8"/>
+  <circle cx="16" cy="16" r="7"   fill="none" stroke="#ffffff" stroke-width="1.8"/>
+  <circle cx="16" cy="16" r="2.8" fill="#ffffff"/>
 </svg>

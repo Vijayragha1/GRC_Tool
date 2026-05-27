@@ -12,10 +12,10 @@
 </div>
 
 <% if (answered === 0) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
-      <div style="font-size:13.5px;font-weight:600;color:var(--accent-deep);margin-bottom:3px;">New client - let's size it</div>
+      <div style="font-size:13.5px;font-weight: 500;color:var(--accent-deep);margin-bottom:3px;">New client - let's size it</div>
       <div class="meta text-base" style="line-height:1.5;">Fill this in from the discovery / qualification call. Answers auto-save as you type; the scoping summary panel on the right updates after each save.</div>
     </div>
     <a href="/workspaces/<%= ws.id %>" class="btn btn-ghost btn-xs">Skip for now →</a>
@@ -26,10 +26,10 @@
     scope, swap the "ready to confirm" banner for a "scope is locked"
     badge that links into the gap assessment as the obvious next step. %>
 <% if (typeof scopeConfirmedAt !== 'undefined' && scopeConfirmedAt) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid #15803d;background:rgba(22,128,61,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto auto;gap:12px;align-items:center;">
+  <div class="panel" style="margin-bottom:14px;background:rgba(22,128,61,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto auto;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
-      <div style="font-size:13.5px;font-weight:600;color:#15803d;margin-bottom:3px;">Scope confirmed</div>
+      <div style="font-size:13.5px;font-weight: 500;color:#15803d;margin-bottom:3px;">Scope confirmed</div>
       <div class="meta text-base" style="line-height:1.5;">Confirmed on <%= scopeConfirmedAt %><% if (scopeConfirmedBy) { %> by <strong><%= scopeConfirmedBy.name %></strong><% } %>. Editing answers here will update the draft scope statement but won't un-confirm — use "Unconfirm" if the engagement scope materially changed.</div>
     </div>
     <form method="POST" action="/workspaces/<%= ws.id %>/scope/unconfirm" style="margin:0;" onsubmit="return confirm('Un-confirm the scope? The auto-drafted text stays; you can re-confirm afterwards. This does not undo any gap-assessment work already done.');">
@@ -42,10 +42,10 @@
   <%# Ready-to-confirm banner: all required intake questions answered.
       Drives the consultant from setup → scope sign-off → gap assessment
       explicitly rather than leaving the page hanging. %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
-      <div style="font-size:13.5px;font-weight:600;color:var(--accent-deep);margin-bottom:3px;">All required scoping answered (<%= requiredAnswered %>/<%= requiredTotal %>)</div>
+      <div style="font-size:13.5px;font-weight: 500;color:var(--accent-deep);margin-bottom:3px;">All required scoping answered (<%= requiredAnswered %>/<%= requiredTotal %>)</div>
       <div class="meta text-base" style="line-height:1.5;">Confirm the scope to lock the clause 4.3 statement on the client and unlock the gap assessment. You can keep editing answers afterwards — confirming just signals that the engagement is ready to start.</div>
     </div>
     <form method="POST" action="/workspaces/<%= ws.id %>/scope/confirm" style="margin:0;">
@@ -56,10 +56,10 @@
 <% } else if (answered > 0) { %>
   <%# Partial-progress nudge: setup started but required questions
       still missing. Shows what's left. %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid #b45309;background:rgba(180,83,9,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:center;">
+  <div class="panel" style="margin-bottom:14px;background:rgba(180,83,9,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <div>
-      <div style="font-size:13.5px;font-weight:600;color:#9a3412;margin-bottom:3px;"><%= requiredAnswered %> of <%= requiredTotal %> required questions answered</div>
+      <div style="font-size:13.5px;font-weight: 500;color:#9a3412;margin-bottom:3px;"><%= requiredAnswered %> of <%= requiredTotal %> required questions answered</div>
       <div class="meta text-base" style="line-height:1.5;">Answer the remaining <%= requiredTotal - requiredAnswered %> required question<%= (requiredTotal - requiredAnswered) === 1 ? '' : 's' %> (marked with *) to enable scope confirmation.</div>
     </div>
   </div>
@@ -92,9 +92,9 @@
 %>
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--border);background:var(--bg);margin-bottom:18px;">
   <div style="padding:18px 22px;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Complexity tier</div>
+    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Complexity tier</div>
     <div style="display:flex;align-items:baseline;gap:10px;font-family:'Source Serif 4',Georgia,serif;">
-      <span style="font-size:34px;font-weight:600;letter-spacing:-0.01em;color:<%= tierColor %>;"><%= summary.tier %></span>
+      <span style="font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:<%= tierColor %>;"><%= summary.tier %></span>
       <span class="meta text-sm">score <%= summary.score.total.toFixed(1) %></span>
     </div>
     <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">
@@ -103,14 +103,14 @@
     </div>
   </div>
   <div style="padding:18px 22px;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Estimated effort</div>
-    <div style="font-family:'Source Serif 4',Georgia,serif;font-size:34px;font-weight:600;letter-spacing:-0.01em;color:var(--text);"><%= summary.effort.weeks %> <span style="font-size:18px;color:var(--text-tertiary);font-weight:400;">wks</span></div>
+    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Estimated effort</div>
+    <div style="font-family:'Source Serif 4',Georgia,serif;font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);"><%= summary.effort.weeks %> <span style="font-size:18px;color:var(--text-tertiary);font-weight:400;">wks</span></div>
     <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">to Stage 1 audit, based on firm benchmarks for <%= summary.tier.toLowerCase() %> clients</div>
   </div>
   <div style="padding:18px 22px;">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Deadline pressure</div>
+    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Deadline pressure</div>
     <% if (summary.pressure) { %>
-      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:600;letter-spacing:-0.01em;color:<%= pressureColor %>;"><%= summary.pressure.label %></div>
+      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight: 500;letter-spacing:-0.01em;color:<%= pressureColor %>;"><%= summary.pressure.label %></div>
       <div class="meta text-sm" style="margin-top:8px;line-height:1.5;"><%= summary.pressure.days %></div>
     <% } else { %>
       <div style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:500;color:var(--text-tertiary);font-style:italic;">No deadline set</div>
@@ -189,7 +189,7 @@
       <div style="padding:8px 0;">
         <% summary.readinessMarkers.forEach(m => { %>
           <div style="padding:5px 16px;display:flex;align-items:center;gap:10px;font-size:13px;color:<%= m.got ? 'var(--text)' : 'var(--text-tertiary)' %>;">
-            <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:<%= m.got ? '#15803d' : 'var(--bg-muted)' %>;color:#fff;font-size:9px;font-weight:700;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:<%= m.got ? '#15803d' : 'var(--bg-muted)' %>;color:#fff;font-size:9px;font-weight: 500;">
               <%= m.got ? '✓' : '' %>
             </span>
             <span><%= m.label %></span>
@@ -222,7 +222,7 @@
 
     <%# Scope statement preview - secondary now, was the headline before %>
     <details class="panel" style="padding:0;">
-      <summary style="padding:12px 16px;cursor:pointer;font-size:13px;font-weight:600;list-style:none;display:flex;align-items:center;justify-content:space-between;">
+      <summary style="padding:12px 16px;cursor:pointer;font-size:13px;font-weight: 500;list-style:none;display:flex;align-items:center;justify-content:space-between;">
         <span>Draft scope statement (clause 4.3)</span>
         <span class="meta text-sm">expand</span>
       </summary>

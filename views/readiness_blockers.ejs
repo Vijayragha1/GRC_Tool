@@ -17,7 +17,7 @@
 <% if (blockers.length === 0) { %>
   <div class="panel" style="border-color:#16a34a;background:rgba(22,163,74,0.04);">
     <div class="panel-pad" style="text-align:center;">
-      <div class="text-success" style="font-size:18px;font-weight:600;margin-bottom:6px;">No blockers detected</div>
+      <div class="text-success" style="font-size:18px;font-weight: 500;margin-bottom:6px;">No blockers detected</div>
       <div class="meta">All concrete pre-cert checks pass. This doesn't replace a real readiness audit, but it means no obvious red flags.</div>
     </div>
   </div>
@@ -26,11 +26,11 @@
        const sevColor = b.severity === 'high' ? '#b91c1c' : b.severity === 'medium' ? '#a16207' : '#0ea5e9';
        const sevBg    = b.severity === 'high' ? 'rgba(185,28,28,0.06)' : b.severity === 'medium' ? 'rgba(161,98,7,0.06)' : 'rgba(14,165,233,0.06)';
   %>
-    <div class="panel" style="margin-bottom:12px;border-left:3px solid <%= sevColor %>;">
+    <div class="panel" style="margin-bottom:12px;">
       <div class="panel-pad" style="background:<%= sevBg %>;border-bottom:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:8px;">
-          <span class="tag" style="background:<%= sevColor %>;color:white;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;font-weight:600;"><%= b.severity %></span>
-          <div class="text-xl" style="font-weight:600;"><%= b.title %></div>
+          <span class="tag" style="background:<%= sevColor %>;color:white;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;font-weight: 500;"><%= b.severity %></span>
+          <div class="text-xl" style="font-weight: 500;"><%= b.title %></div>
         </div>
         <div class="meta text-md" style="margin-top:4px;line-height:1.5;"><%= b.detail %></div>
       </div>

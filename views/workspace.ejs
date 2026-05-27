@@ -5,7 +5,7 @@
     <h1 class="page-title">
       <%= ws.client_name %>
       <% if (ws.scope_confirmed_at) { %>
-        <span title="Scope confirmed on <%= ws.scope_confirmed_at %>" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#15803d;background:rgba(22,128,61,0.08);padding:3px 8px;border-radius:12px;vertical-align:middle;margin-left:8px;">
+        <span title="Scope confirmed on <%= ws.scope_confirmed_at %>" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight: 500;letter-spacing:0.04em;text-transform:uppercase;color:#15803d;background:rgba(22,128,61,0.08);padding:3px 8px;border-radius:12px;vertical-align:middle;margin-left:8px;">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
           Scope confirmed
         </span>
@@ -18,7 +18,7 @@
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:stretch;">
-    <a href="/workspaces/<%= ws.id %>/audit-pack" class="btn-headline" style="display:inline-flex;align-items:center;gap:10px;padding:10px 18px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-deep) 100%);color:#fff;border:none;border-radius:8px;text-decoration:none;font-weight:600;font-size:13.5px;box-shadow:0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 12px rgba(79,70,229,0.30);transition:transform 0.12s, box-shadow 0.12s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 16px rgba(79,70,229,0.40)';" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 12px rgba(79,70,229,0.30)';">
+    <a href="/workspaces/<%= ws.id %>/audit-pack" class="btn-headline" style="display:inline-flex;align-items:center;gap:10px;padding:10px 18px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-deep) 100%);color:#fff;border:none;border-radius:8px;text-decoration:none;font-weight: 500;font-size:13.5px;box-shadow:0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 12px rgba(79,70,229,0.30);transition:transform 0.12s, box-shadow 0.12s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 16px rgba(79,70,229,0.40)';" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 12px rgba(79,70,229,0.30)';">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span>Audit pack</span>
       <span class="text-eyebrow" style="font-weight:500;opacity:0.78;background:rgba(255,255,255,0.14);padding:2px 7px;border-radius:999px;letter-spacing:0.02em;">.zip</span>
@@ -44,12 +44,12 @@
     summary numbers won't make sense until basic scoping facts are in.
     Drops away on its own once the setup gets enough answers. %>
 <% if (typeof setupIncomplete !== 'undefined' && setupIncomplete) { %>
-  <div class="panel" style="margin-bottom:18px;border-left:4px solid #b45309;background:rgba(180,83,9,0.06);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:14px 18px;">
+  <div class="panel" style="margin-bottom:18px;background:rgba(180,83,9,0.06);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:14px 18px;">
     <div style="width:42px;height:42px;border-radius:10px;background:#b45309;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
     <div style="min-width:0;">
-      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9a3412;margin-bottom:2px;">Client setup is incomplete</div>
+      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:#9a3412;margin-bottom:2px;">Client setup is incomplete</div>
       <div class="text-ink" style="font-size:14px;font-weight:500;letter-spacing:-0.005em;">Only <%= intakeAnswered %> of 25 scoping questions answered. The numbers below will be more meaningful once basic scope, headcount, and crown-jewel assets are captured.</div>
     </div>
     <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary" style="white-space:nowrap;">Continue setup →</a>
@@ -60,13 +60,13 @@
      highest-leverage next step. Replaces the "where do I go from here?" gap
      a new consultant lands on the client overview with. -->
 <% if (typeof nextStep !== 'undefined' && nextStep) { %>
-  <div class="panel" style="margin-bottom:18px;border-left:4px solid var(--accent);background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:18px 22px;">
+  <div class="panel" style="margin-bottom:18px;background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:18px 22px;">
     <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
     <div style="min-width:0;">
-      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
-      <div class="text-ink" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin-bottom:4px;"><%= nextStep.title %></div>
+      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
+      <div class="text-ink" style="font-size:15px;font-weight: 500;letter-spacing:-0.01em;margin-bottom:4px;"><%= nextStep.title %></div>
       <div class="meta text-md" style="line-height:1.5;"><%= nextStep.why %></div>
     </div>
     <a href="<%= nextStep.href %>" class="btn btn-primary" style="white-space:nowrap;"><%= nextStep.cta %> →</a>
@@ -94,9 +94,9 @@
 <div style="border:1px solid var(--border);background:var(--bg);margin-bottom:10px;display:grid;grid-template-columns:240px 1fr 220px;align-items:stretch;">
   <!-- Left: big number -->
   <a href="/workspaces/<%= ws.id %>/readiness" style="padding:18px 22px;text-decoration:none;color:inherit;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Stage 1 readiness</div>
+    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Stage 1 readiness</div>
     <div style="display:flex;align-items:baseline;gap:4px;font-family:'Source Serif 4',Georgia,serif;line-height:0.95;">
-      <span style="font-size:54px;font-weight:600;letter-spacing:-0.02em;color:<%= heroColor %>;"><%= readiness.stage1 %></span>
+      <span style="font-size:54px;font-weight: 500;letter-spacing:-0.02em;color:<%= heroColor %>;"><%= readiness.stage1 %></span>
       <span style="font-size:22px;font-weight:400;color:var(--text-tertiary);">%</span>
     </div>
     <div id="heroDelta" class="num" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);letter-spacing:0.02em;">&nbsp;</div>
@@ -104,7 +104,7 @@
   <!-- Middle: 30-day sparkline of controls-implemented (proxy for readiness trend) -->
   <div style="position:relative;padding:14px 18px 10px;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-      <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);">30-day trajectory</div>
+      <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);">30-day trajectory</div>
       <div class="num" style="font-size:11px;color:var(--text-tertiary);">controls implemented</div>
     </div>
     <div id="heroSpark" style="height:96px;width:100%;"></div>
@@ -114,19 +114,19 @@
     <div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Target</span>
-        <span style="color:var(--text);font-weight:600;"><%= targetDate || '—' %></span>
+        <span style="color:var(--text);font-weight: 500;"><%= targetDate || '—' %></span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Days left</span>
-        <span style="color:<%= dtt !== null && dtt < 90 ? '#b45309' : 'var(--text)' %>;font-weight:600;"><%= dtt !== null ? dtt : '—' %></span>
+        <span style="color:<%= dtt !== null && dtt < 90 ? '#b45309' : 'var(--text)' %>;font-weight: 500;"><%= dtt !== null ? dtt : '—' %></span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Stage 2</span>
-        <span style="color:var(--text);font-weight:600;"><%= readiness.stage2 %>%</span>
+        <span style="color:var(--text);font-weight: 500;"><%= readiness.stage2 %>%</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">High-sev</span>
-        <span style="color:<%= highSev > 0 ? '#b91c1c' : '#15803d' %>;font-weight:600;"><%= highSev %><% if (highSev > 0) { %> ●<% } %></span>
+        <span style="color:<%= highSev > 0 ? '#b91c1c' : '#15803d' %>;font-weight: 500;"><%= highSev %><% if (highSev > 0) { %> ●<% } %></span>
       </div>
     </div>
   </div>
@@ -136,42 +136,42 @@
 <div style="display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--border);background:var(--bg);margin-bottom:24px;">
   <!-- Mandatory docs - progress fill (no historical sparkline available) -->
   <a href="/workspaces/<%= ws.id %>/documents" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Mandatory docs</div>
-    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= readiness.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= readiness.records.total %></span></div>
+    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Mandatory docs</div>
+    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= readiness.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= readiness.records.total %></span></div>
     <div style="margin-top:8px;height:4px;background:var(--bg-muted);border-radius:0;overflow:hidden;">
       <div style="height:100%;width:<%= recPct %>%;background:<%= recPct >= 80 ? '#15803d' : recPct >= 50 ? '#b45309' : '#b91c1c' %>;"></div>
     </div>
   </a>
   <!-- Controls assessed - progress fill -->
   <a href="/workspaces/<%= ws.id %>/controls" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assessed</div>
-    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= progress.assessed %><span style="color:var(--text-tertiary);font-weight:400;">/<%= progress.total %></span></div>
+    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assessed</div>
+    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= progress.assessed %><span style="color:var(--text-tertiary);font-weight:400;">/<%= progress.total %></span></div>
     <div style="margin-top:8px;height:4px;background:var(--bg-muted);border-radius:0;overflow:hidden;">
       <div style="height:100%;width:<%= progress.percent %>%;background:<%= progress.percent >= 80 ? '#15803d' : progress.percent >= 50 ? '#b45309' : '#b91c1c' %>;"></div>
     </div>
   </a>
   <!-- Assets - count + sparkline (no historical data, blank track) -->
   <a href="/workspaces/<%= ws.id %>/assets" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assets</div>
-    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= assetCount %></div>
+    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assets</div>
+    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= assetCount %></div>
     <div style="margin-top:8px;font-size:10px;color:var(--text-tertiary);font-family:'SF Mono','Menlo','Consolas',monospace;">in scope</div>
   </a>
   <!-- Risks - count + 30d sparkline (created) -->
   <a href="/workspaces/<%= ws.id %>/risks" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Risks</div>
-    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= riskCount %></div>
+    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Risks</div>
+    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= riskCount %></div>
     <div id="stripSparkRisks" style="margin-top:6px;height:18px;"></div>
   </a>
   <!-- Audits - count -->
   <a href="/workspaces/<%= ws.id %>/audits" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Internal audits</div>
-    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= auditCount %></div>
+    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Internal audits</div>
+    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= auditCount %></div>
     <div style="margin-top:8px;font-size:10px;color:var(--text-tertiary);font-family:'SF Mono','Menlo','Consolas',monospace;">conducted</div>
   </a>
   <!-- Open NCs - count + 30d sparkline (opened) + status dot -->
   <a href="/workspaces/<%= ws.id %>/nonconformities" style="padding:12px 14px;text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Open NCs</div>
-    <div class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.01em;color:<%= ncColor %>;font-family:'SF Mono','Menlo','Consolas',monospace;display:flex;align-items:center;gap:8px;">
+    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Open NCs</div>
+    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:<%= ncColor %>;font-family:'SF Mono','Menlo','Consolas',monospace;display:flex;align-items:center;gap:8px;">
       <%= ncOpen %>
       <% if (ncOpen > 0) { %><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#b91c1c;"></span><% } %>
     </div>
@@ -240,7 +240,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
   if (el && cumulative.some(d => d.c > 0)) {
     const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '◆';
     const color = delta > 0 ? '#15803d' : delta < 0 ? '#b91c1c' : 'var(--text-tertiary)';
-    el.innerHTML = `<span style="color:${color};font-weight:600;">${arrow}</span> ${Math.abs(delta)} controls past 7d`;
+    el.innerHTML = `<span style="color:${color};font-weight: 500;">${arrow}</span> ${Math.abs(delta)} controls past 7d`;
   }
 });
 </script>
@@ -398,7 +398,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       </div>
 
       <div class="col-full" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--border);">
-        <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Branding & sector</div>
+        <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Branding & sector</div>
         <div class="meta text-sm" style="margin-bottom:10px;">Customise per-client without a code change. Used in the sidebar workspace block, the dashboard chip, and DOCX cover pages (when set).</div>
       </div>
       <div><label class="label">Display name (overrides client_name on cover pages)</label><input class="input" name="brand_display_name" value="<%= ws.brand_display_name || '' %>" placeholder="e.g., Acme Health Tech Inc."></div>
@@ -422,7 +422,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       <div class="col-full"><button class="btn btn-primary">Save</button></div>
     </form>
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
-      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
+      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
       <details>
         <summary class="text-lg" style="cursor:pointer;color:var(--danger,#b91c1c);">Delete this client</summary>
         <div style="margin-top:10px;padding:12px;border:1px solid var(--danger,#b91c1c);border-radius:6px;background:rgba(185,28,28,0.04);">

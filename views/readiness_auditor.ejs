@@ -16,7 +16,7 @@
         <td><a href="/workspaces/<%= ws.id %>/controls/<%= i.id %>" class="link-muted"><%= i.title %></a></td>
         <td><span class="status s-<%= (i.status || 'Not Assessed').toLowerCase().replace(/\s+/g,'-') %>"><%= i.status || 'Not Assessed' %></span></td>
         <td><span class="status s-<%= i.applicability || 'undecided' %>"><%= i.applicability || 'undecided' %></span></td>
-        <td class="num" style="color:<%= i.evidence_count > 0 ? '#16a34a' : '#b91c1c' %>;font-weight:600;"><%= i.evidence_count %></td>
+        <td class="num" style="color:<%= i.evidence_count > 0 ? '#16a34a' : '#b91c1c' %>;font-weight: 500;"><%= i.evidence_count %></td>
         <td class="num"><%= i.risk_links %></td>
         <td class="meta"><%= i.last_updated || '-' %></td>
       </tr>

@@ -25,7 +25,7 @@
 </div>
 
 <% if (version.change_summary) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);">
+  <div class="panel" style="margin-bottom:14px;">
     <div class="panel-pad text-md" style="line-height:1.55;">
       <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Change summary</div>
       <div style="white-space:pre-wrap;"><%= version.change_summary %></div>
@@ -71,8 +71,8 @@
     <div class="panel" style="border-top:3px solid <%= tierColor(fn.tier) %>;">
       <div class="panel-pad">
         <div style="display:flex;align-items:baseline;gap:8px;">
-          <span class="mono text-lg" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-          <span class="text-lg" style="font-weight:600;"><%= fn.name %></span>
+          <span class="mono text-lg" style="font-weight: 500;color:var(--accent);"><%= fn.code %></span>
+          <span class="text-lg" style="font-weight: 500;"><%= fn.name %></span>
         </div>
         <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px;">
           <div>
@@ -111,7 +111,7 @@
       <tbody>
         <% findingSnaps.forEach(f => { %>
           <tr>
-            <td><span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:11px;font-weight:600;"><%= f.severity %></span></td>
+            <td><span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:11px;font-weight: 500;"><%= f.severity %></span></td>
             <td class="text-md"><%= f.title %></td>
             <td class="mono text-sm"><%= f.sub_code || (f.promoted_to_engagement_theme ? '(theme)' : '-') %></td>
             <td class="meta text-sm"><%= f.status %></td>

@@ -89,7 +89,7 @@
                  const c = bands[band].color;
                  const cellRisks = risks.filter(r => r.likelihood === l.value && r.impact === iL.value);
             %>
-              <td style="text-align:center;background:<%= c %>22;color:<%= c %>;font-weight:600;">
+              <td style="text-align:center;background:<%= c %>22;color:<%= c %>;font-weight: 500;">
                 <% if (cellRisks.length) { %>
                   <span class="num" style="font-size:15px;"><%= cellRisks.length %></span>
                   <div class="meta" style="font-size:10px;color:<%= c %>"><%= band %></div>

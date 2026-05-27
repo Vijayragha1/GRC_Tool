@@ -43,7 +43,7 @@
 <div class="panel" style="overflow:hidden;">
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;">
     <% ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => { %>
-      <div class="text-xs text-secondary" style="padding:8px 10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);background:var(--bg-subtle);text-align:center;"><%= d %></div>
+      <div class="text-xs text-secondary" style="padding:8px 10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);background:var(--bg-subtle);text-align:center;"><%= d %></div>
     <% }) %>
     <% cells.forEach((c, idx) => {
          const isToday = c && c.date === today;

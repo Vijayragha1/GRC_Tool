@@ -12,15 +12,15 @@
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
-  <div class="panel kpi" style="padding:12px 14px;border-left:3px solid #a16207;">
+  <div class="panel kpi" style="padding:12px 14px;">
     <div class="kpi-label text-eyebrow">Awaiting review</div>
     <div class="kpi-num" style="color:#a16207;"><%= counts.requested %></div>
   </div>
-  <div class="panel kpi" style="padding:12px 14px;border-left:3px solid #b91c1c;">
+  <div class="panel kpi" style="padding:12px 14px;">
     <div class="kpi-label text-eyebrow">Sent back</div>
     <div class="kpi-num" style="color:#b91c1c;"><%= counts.needs_changes %></div>
   </div>
-  <div class="panel kpi" style="padding:12px 14px;border-left:3px solid #15803d;">
+  <div class="panel kpi" style="padding:12px 14px;">
     <div class="kpi-label text-eyebrow">Reviewed</div>
     <div class="kpi-num" style="color:#15803d;"><%= counts.reviewed %></div>
   </div>
@@ -55,7 +55,7 @@
                             : 'Reviewed';
       %>
         <tr>
-          <td><span class="tag" style="background:<%= fwColor %>22;color:<%= fwColor %>;font-size:11px;font-weight:600;"><%= fwLabel %></span></td>
+          <td><span class="tag" style="background:<%= fwColor %>22;color:<%= fwColor %>;font-size:11px;font-weight: 500;"><%= fwLabel %></span></td>
           <td><span class="mono meta text-xs"><%= code %></span></td>
           <td>
             <a href="<%= r.link %>" class="link-muted" style="color:var(--text);font-weight:500;">

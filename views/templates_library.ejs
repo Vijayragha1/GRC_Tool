@@ -4,15 +4,13 @@
   /* Three-stat header so the consultant sees adoption progress at a glance.
      Visually plays the role the dashboard KPI tiles play - same health rails
      so the look is consistent across the product. */
-  .lib-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-  .lib-stat { padding: 14px 18px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; position: relative; overflow: hidden; }
-  .lib-stat::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--border-strong); }
-  .lib-stat.good::before { background: #16a34a; }
-  .lib-stat.warn::before { background: #ca8a04; }
-  .lib-stat.brand::before { background: var(--accent); }
-  .lib-stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
-  .lib-stat-num { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 4px; }
-  .lib-stat-meta { font-size: 11.5px; color: var(--text-tertiary); margin-top: 3px; }
+  /* Compact typographic data line (same pattern as the portfolio page).
+     Replaced a 4-card KPI grid that read as generic-SaaS dashboard. */
+  .lib-line { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 0 0 18px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+  .lib-line strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .lib-line .sep { color: var(--text-tertiary); }
+  .lib-line .warn { color: #b45309; }
+  .lib-line .done { color: #15803d; }
 
   /* Filter row: search + tier chips + category chips */
   .lib-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
@@ -26,11 +24,11 @@
 
   /* Tier headers above each group of cards */
   .tier-head { display: flex; align-items: center; gap: 10px; margin: 24px 0 12px; }
-  .tier-icon { width: 22px; height: 22px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .tier-icon { width: 22px; height: 22px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; }
   .tier-icon.mandatory { background: rgba(220,38,38,0.10); color: #b91c1c; }
   .tier-icon.expected  { background: rgba(202,138,4,0.10); color: #b45309; }
   .tier-icon.recommended { background: rgba(113,113,122,0.10); color: #52525b; }
-  .tier-head h2 { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .tier-head h2 { font-size: 14px; font-weight: 500; color: var(--ink); }
   .tier-head .tier-sub { font-size: 12px; color: var(--text-tertiary); margin-left: auto; }
 
   /* Card grid */
@@ -39,9 +37,9 @@
   .tpl-card:hover { border-color: var(--text-tertiary); box-shadow: var(--shadow-md); transform: translateY(-1px); }
   .tpl-card.adopted { border-color: rgba(22,163,74,0.30); background: rgba(22,163,74,0.025); }
   .tpl-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-  .tpl-card-cat { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); padding: 2px 7px; background: var(--bg-muted); border-radius: 4px; }
+  .tpl-card-cat { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); padding: 2px 7px; background: var(--bg-muted); border-radius: 4px; }
   .tpl-card-tier { font-size: 12px; }
-  .tpl-card-name { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.35; letter-spacing: -0.005em; }
+  .tpl-card-name { font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.35; letter-spacing: -0.005em; }
   .tpl-card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .tpl-card-controls { display: flex; flex-wrap: wrap; gap: 4px; }
   .tpl-card-control { font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 6px; background: var(--accent-soft); color: var(--accent-deep); border-radius: 3px; font-weight: 500; }
@@ -49,13 +47,13 @@
   .tpl-card-control.empty { background: var(--bg-muted); color: var(--text-tertiary); font-style: italic; font-family: inherit; }
   .tpl-card-actions { display: flex; gap: 6px; align-items: center; margin-top: auto; padding-top: 6px; }
   .tpl-card-actions .preview-btn { flex: 1; }
-  .tpl-adopted-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(22,163,74,0.10); color: #15803d; border: 1px solid rgba(22,163,74,0.22); border-radius: 999px; font-size: 10.5px; font-weight: 600; }
+  .tpl-adopted-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(22,163,74,0.10); color: #15803d; border: 1px solid rgba(22,163,74,0.22); border-radius: 999px; font-size: 10.5px; font-weight: 500; }
 
   .empty-pane { padding: 40px; text-align: center; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-tertiary); }
-  .empty-pane-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .empty-pane-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
 
   /* Bulk-adopt CTA: prominent for kickoff, dims after all mandatory adopted. */
-  .bulk-cta-btn .num { background: rgba(255,255,255,0.18); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-left: 4px; }
+  .bulk-cta-btn .num { background: rgba(255,255,255,0.18); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 500; margin-left: 4px; }
   [data-theme="dark"] .bulk-cta-btn .num { background: rgba(0,0,0,0.18); }
 </style>
 
@@ -83,28 +81,25 @@
   </div>
 </div>
 
-<%# ===== adoption stats ===== %>
-<div class="lib-stats">
-  <div class="lib-stat brand">
-    <div class="lib-stat-label">Templates in library</div>
-    <div class="lib-stat-num"><%= counts.total %></div>
-    <div class="lib-stat-meta">curated · ISO 27001:2022-aligned</div>
-  </div>
-  <div class="lib-stat <%= counts.mandatoryAdopted >= counts.mandatory ? 'good' : 'warn' %>">
-    <div class="lib-stat-label">Mandatory adopted</div>
-    <div class="lib-stat-num"><%= counts.mandatoryAdopted %> <span class="text-tertiary text-md">/ <%= counts.mandatory %></span></div>
-    <div class="lib-stat-meta"><%= counts.mandatory - counts.mandatoryAdopted %> remaining</div>
-  </div>
-  <div class="lib-stat <%= counts.adopted > 0 ? 'good' : '' %>">
-    <div class="lib-stat-label">Total adopted</div>
-    <div class="lib-stat-num"><%= counts.adopted %></div>
-    <div class="lib-stat-meta">across all tiers</div>
-  </div>
-  <div class="lib-stat">
-    <div class="lib-stat-label">Coverage of catalog</div>
-    <div class="lib-stat-num"><%= counts.total ? Math.round(100 * counts.adopted / counts.total) : 0 %>%</div>
-    <div class="lib-stat-meta">drives clause 7.5 compliance</div>
-  </div>
+<%# ===== adoption stats =====
+     Typographic scanline rather than a KPI-card grid - the four cards
+     read as generic-SaaS / LLM-generated. ISO 27001:2022 alignment is
+     declared once in the page subtitle, not on every stat. %>
+<%
+  const remaining = counts.mandatory - counts.mandatoryAdopted;
+  const coverage = counts.total ? Math.round(100 * counts.adopted / counts.total) : 0;
+%>
+<div class="lib-line">
+  <span><strong style="color:var(--text);"><%= counts.total %></strong> templates in library</span>
+  <span class="sep">·</span>
+  <span>
+    <strong class="<%= remaining > 0 ? 'warn' : 'done' %>"><%= counts.mandatoryAdopted %>/<%= counts.mandatory %></strong>
+    mandatory adopted<% if (remaining > 0) { %> · <strong class="warn"><%= remaining %></strong> remaining<% } %>
+  </span>
+  <span class="sep">·</span>
+  <span><strong style="color:var(--text);"><%= counts.adopted %></strong> adopted overall</span>
+  <span class="sep">·</span>
+  <span><strong style="color:var(--text);"><%= coverage %>%</strong> of catalog</span>
 </div>
 
 <%# ===== filter row ===== %>
@@ -155,9 +150,9 @@
               Adopted
             </span>
           <% } else if (t.tier === 'mandatory') { %>
-            <span class="tpl-card-tier text-danger" style="font-weight:700;" title="ISO 27001 mandates this document">★</span>
+            <span class="tpl-card-tier text-danger" style="font-weight: 500;" title="ISO 27001 mandates this document">★</span>
           <% } else if (t.tier === 'expected') { %>
-            <span class="tpl-card-tier text-warn" style="font-weight:700;" title="Auditors expect this document">◆</span>
+            <span class="tpl-card-tier text-warn" style="font-weight: 500;" title="Auditors expect this document">◆</span>
           <% } %>
         </div>
         <div class="tpl-card-name"><%= t.name %></div>

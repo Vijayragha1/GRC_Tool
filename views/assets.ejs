@@ -51,7 +51,7 @@
         to operations, and how fast must it recover? Drives A.5.30, A.8.13,
         A.8.14 design and risk decisions. %>
     <div class="col-full" style="border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;">
-      <div class="meta text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Business Impact (optional)</div>
+      <div class="meta text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Business Impact (optional)</div>
     </div>
     <div><label class="label">Business criticality</label>
       <select class="select" name="business_criticality">
@@ -92,7 +92,7 @@
           <td><span class="tag <%= a.classification === 'restricted' ? 'tag-danger' : a.classification === 'confidential' ? 'tag-warn' : a.classification === 'internal' ? 'tag-info' : 'tag-neutral' %>"><%= a.classification || '-' %></span></td>
           <td class="text-secondary text-base"><%= a.owner_name || '-' %></td>
           <td class="num meta"><%= a.cia_c %>·<%= a.cia_i %>·<%= a.cia_a %></td>
-          <td style="font-size:11.5px;font-weight:600;color:<%= biaColor %>;text-transform:uppercase;"><%= a.business_criticality || '-' %></td>
+          <td style="font-size:11.5px;font-weight: 500;color:<%= biaColor %>;text-transform:uppercase;"><%= a.business_criticality || '-' %></td>
           <td class="num meta text-sm"><%= a.rto_hours != null ? a.rto_hours + 'h' : '-' %> / <%= a.rpo_hours != null ? a.rpo_hours + 'h' : '-' %></td>
           <td style="text-align:right">
             <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">

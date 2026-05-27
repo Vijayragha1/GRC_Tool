@@ -8,21 +8,21 @@
 </div>
 
 <% if (typeof notice !== 'undefined' && notice) { %>
-  <div class="panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid #15803d;background:rgba(21,128,61,0.04);font-size:13px;color:#0f5132;line-height:1.5;"><%= notice %></div>
+  <div class="panel" style="padding:12px 16px;margin-bottom:16px;background:rgba(21,128,61,0.04);font-size:13px;color:#0f5132;line-height:1.5;"><%= notice %></div>
 <% } %>
 <% if (typeof error !== 'undefined' && error) { %>
-  <div class="panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid #b91c1c;background:rgba(185,28,28,0.04);font-size:13px;color:#7a1010;line-height:1.5;display:flex;align-items:center;gap:14px;">
+  <div class="panel" style="padding:12px 16px;margin-bottom:16px;background:rgba(185,28,28,0.04);font-size:13px;color:#7a1010;line-height:1.5;display:flex;align-items:center;gap:14px;">
     <div style="flex:1;"><%= error %></div>
     <% if (typeof errorAction !== 'undefined' && errorAction === 'offer_reset' && errorEmail) { %>
       <form method="POST" action="/admin/users/send-reset" style="margin:0;flex-shrink:0;">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <input type="hidden" name="email" value="<%= errorEmail %>">
-        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight:600;cursor:pointer;white-space:nowrap;">Send password-reset link instead →</button>
+        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight: 500;cursor:pointer;white-space:nowrap;">Send password-reset link instead →</button>
       </form>
     <% } else if (typeof errorAction !== 'undefined' && errorAction === 'offer_reactivate' && errorUserId) { %>
       <form method="POST" action="/admin/users/<%= errorUserId %>/reactivate" style="margin:0;flex-shrink:0;" onsubmit="return confirm('Reactivate this account? They will be able to sign in with their previous password.');">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight:600;cursor:pointer;white-space:nowrap;">Reactivate account →</button>
+        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight: 500;cursor:pointer;white-space:nowrap;">Reactivate account →</button>
       </form>
     <% } %>
   </div>
@@ -34,7 +34,7 @@
   <form method="POST" action="/admin/users/invite" class="panel" style="padding:18px 20px;">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:600;">Invite by email</div>
+      <div style="font-size:14px;font-weight: 500;">Invite by email</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Single-use, 7 days</div>
     </div>
     <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">User clicks the link, sets their own password, and lands on the dashboard. No temp password to share over chat.</p>
@@ -84,7 +84,7 @@
   <form method="POST" action="/admin/users/create" class="panel" style="padding:18px 20px;">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:600;">Create with temp password</div>
+      <div style="font-size:14px;font-weight: 500;">Create with temp password</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">For firm consultants</div>
     </div>
     <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">Use when email isn&rsquo;t reliable or for self-onboarding a colleague you can hand the password to in person. They can change it later via Forgot password.</p>
@@ -114,7 +114,7 @@
 <% if (outstanding.length) { %>
 <div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
   <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-    <div style="font-size:14px;font-weight:600;">Outstanding invitations</div>
+    <div style="font-size:14px;font-weight: 500;">Outstanding invitations</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= outstanding.length %> open</div>
   </div>
   <table class="t" style="margin:0;">
@@ -158,7 +158,7 @@
 <%# ---------- Firm users ---------- %>
 <div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
   <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-    <div style="font-size:14px;font-weight:600;">Firm users</div>
+    <div style="font-size:14px;font-weight: 500;">Firm users</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= firmUsers.length %> total &middot; <%= firmUsers.filter(u => u.active).length %> active</div>
   </div>
   <% if (!firmUsers.length) { %>
@@ -224,7 +224,7 @@
 <%# ---------- Client users ---------- %>
 <div class="panel" style="padding:0;overflow:hidden;">
   <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-    <div style="font-size:14px;font-weight:600;">Client-side users</div>
+    <div style="font-size:14px;font-weight: 500;">Client-side users</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= clientUsers.length %> total</div>
   </div>
   <% if (!clientUsers.length) { %>

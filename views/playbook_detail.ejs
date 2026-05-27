@@ -45,8 +45,8 @@
         <% seg.script.forEach(line => { %><li style="margin-bottom:6px;"><%= line %></li><% }) %>
       </ul>
       <% if (seg.decisions && seg.decisions.length) { %>
-        <div style="margin-top:12px;padding:10px 14px;background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:4px;">
-          <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:6px;">Decisions to leave with</div>
+        <div style="margin-top:12px;padding:10px 14px;background:var(--accent-soft);border-radius:4px;">
+          <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:6px;">Decisions to leave with</div>
           <ul class="text-md" style="margin:0;padding-left:18px;line-height:1.5;">
             <% seg.decisions.forEach(d => { %><li><%= d %></li><% }) %>
           </ul>
@@ -64,7 +64,7 @@
     </ul>
   </div>
   <% if (playbook.watchOuts) { %>
-    <div class="panel" style="border-left:3px solid #ca8a04;">
+    <div class="panel" style="">
       <div class="panel-head"><h2 class="text-xl" style="margin:0;color:#b45309;">Watch-outs</h2></div>
       <ul class="text-lg" style="margin:0;padding:14px 18px 16px 36px;line-height:1.6;">
         <% playbook.watchOuts.forEach(w => { %><li><%= w %></li><% }) %>

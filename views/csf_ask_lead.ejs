@@ -23,7 +23,7 @@
 <% } %>
 
 <% messages.forEach(m => { %>
-  <div class="panel" style="margin-bottom:10px;<%= m.read_at ? '' : 'border-left:3px solid var(--accent);' %>">
+  <div class="panel" style="margin-bottom:10px;<%= m.read_at ? '' : '' %>">
     <div class="panel-pad">
       <div class="text-base" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <strong><%= m.sender_name %></strong>

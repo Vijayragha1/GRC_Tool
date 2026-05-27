@@ -51,10 +51,10 @@
 <% } %>
 
 <% findings.forEach(f => { %>
-  <div class="panel" style="margin-bottom:12px;border-left:3px solid <%= sevColor[f.severity] || 'var(--border)' %>;">
+  <div class="panel" style="margin-bottom:12px;">
     <div class="panel-head" style="display:flex;align-items:center;gap:10px;">
-      <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:11px;font-weight:600;"><%= f.severity %></span>
-      <h2 class="text-xl" style="font-weight:600;margin:0;flex:1;"><%= f.title %></h2>
+      <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:11px;font-weight: 500;"><%= f.severity %></span>
+      <h2 class="text-xl" style="font-weight: 500;margin:0;flex:1;"><%= f.title %></h2>
       <span class="meta text-sm">
         <% if (f.sub_code) { %>
           <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= f.subcategory_id %>" class="mono" style="color:var(--accent);text-decoration:none;"><%= f.sub_code %></a>

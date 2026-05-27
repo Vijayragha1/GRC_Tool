@@ -9,7 +9,7 @@
 
 <% const done = phases.filter(p => progress[p.key] && progress[p.key].completed_at).length; %>
 <div class="panel" style="padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
-  <div style="font-size:30px;font-weight:600;"><%= done %>/<%= phases.length %></div>
+  <div style="font-size:30px;font-weight: 500;"><%= done %>/<%= phases.length %></div>
   <div>
     <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.5px;">phases complete</div>
     <div style="height:6px;width:300px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;margin-top:4px;">
@@ -32,7 +32,7 @@
       <div style="flex:1;">
         <div style="display:flex;align-items:baseline;gap:10px;">
           <span class="text-xs text-tertiary" style="font-weight:500;">Phase <%= i+1 %></span>
-          <span style="font-size:14px;font-weight:600;<%= isDone ? 'text-decoration:line-through;color:var(--text-secondary);' : '' %>"><%= p.title %></span>
+          <span style="font-size:14px;font-weight: 500;<%= isDone ? 'text-decoration:line-through;color:var(--text-secondary);' : '' %>"><%= p.title %></span>
         </div>
         <div class="text-base text-secondary" style="margin-top:2px;"><%= p.summary %></div>
         <% if (isDone) { %>

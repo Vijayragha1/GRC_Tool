@@ -66,10 +66,10 @@
           </td>
           <td><span class="tag tag-<%= r.applicability === 'included' ? 'neutral' : 'warn' %>" style="font-size:10px;"><%= r.applicability %></span></td>
           <td class="num"><%= r.expectedCount %></td>
-          <td class="num" style="font-weight:600;color:<%= r.attachedCount === 0 ? '#b91c1c' : r.attachedCount < r.expectedCount ? '#a16207' : '#15803d' %>;"><%= r.attachedCount %></td>
+          <td class="num" style="font-weight: 500;color:<%= r.attachedCount === 0 ? '#b91c1c' : r.attachedCount < r.expectedCount ? '#a16207' : '#15803d' %>;"><%= r.attachedCount %></td>
           <td class="meta text-base" style="color:<%= r.stale ? '#a16207' : 'inherit' %>;"><%= r.lastUp || '-' %><% if (r.stale) { %> <span class="tag tag-warn text-xxs" style="margin-left:2px;">STALE</span><% } %></td>
           <td>
-            <span class="tag" style="background:<%= b.bg %>;color:<%= b.fg %>;font-size:11px;font-weight:600;border:1px solid <%= b.fg %>;"><%= b.label %></span>
+            <span class="tag" style="background:<%= b.bg %>;color:<%= b.fg %>;font-size:11px;font-weight: 500;border:1px solid <%= b.fg %>;"><%= b.label %></span>
           </td>
           <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="btn btn-secondary btn-xs">Open →</a></td>
         </tr>

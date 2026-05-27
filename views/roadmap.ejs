@@ -12,7 +12,7 @@
      const naHigh = needsAttention.filter(i => i.severity === 'high').length;
      const naMedium = needsAttention.filter(i => i.severity === 'medium').length;
 %>
-  <div class="panel" style="margin-bottom:18px;border-left:3px solid <%= naHigh > 0 ? '#dc2626' : '#a16207' %>;">
+  <div class="panel" style="margin-bottom:18px;">
     <div class="panel-head">
       <h2>Needs your attention <span class="meta text-lg" style="font-weight:400;">· live from data</span></h2>
       <span class="meta">
@@ -63,7 +63,7 @@
     %>
       <div style="padding:10px 14px;<%= idx > 0 ? 'border-left:1px solid var(--border);' : '' %>">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-          <span style="font-weight:600;font-size:13px;color:<%= ph.color %>;text-transform:uppercase;letter-spacing:0.04em;"><%= ph.label %></span>
+          <span style="font-weight: 500;font-size:13px;color:<%= ph.color %>;text-transform:uppercase;letter-spacing:0.04em;"><%= ph.label %></span>
           <span class="num meta text-sm"><%= phDone %>/<%= items.length %></span>
         </div>
         <div class="meta text-xs" style="margin-bottom:6px;"><%= ph.blurb %></div>
@@ -79,7 +79,7 @@
        const items = roadmap.filter(r => r.phase === ph.key);
        if (items.length === 0) return;
   %>
-    <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:<%= ph.color %>;">
+    <div style="padding:8px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:11px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:<%= ph.color %>;">
       <%= ph.label %> <span class="meta" style="font-weight:400;text-transform:none;letter-spacing:normal;">· <%= ph.blurb %></span>
     </div>
     <% items.forEach((r, i) => {
@@ -88,7 +88,7 @@
          const tickGlyph = r.done ? '✓' : r.partial ? '·' : (i + 1);
     %>
       <div style="display:grid;grid-template-columns:30px 1fr auto;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:start;">
-        <div style="width:26px;height:26px;border-radius:13px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0;"><%= tickGlyph %></div>
+        <div style="width:26px;height:26px;border-radius:13px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight: 500;font-size:12px;flex-shrink:0;"><%= tickGlyph %></div>
         <div style="min-width:0;">
           <div style="font-size:13.5px;font-weight:500;line-height:1.3;"><%= r.label %> <span class="meta" style="font-weight:400;">· <%= r.clause %></span></div>
           <div class="meta text-base" style="margin-top:2px;line-height:1.4;"><%= r.detail %></div>

@@ -15,10 +15,10 @@
 </div>
 
 <% if (answered === 0) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);background:var(--bg-subtle);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+  <div class="panel" style="margin-bottom:14px;background:var(--bg-subtle);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
-      <div style="font-size:13.5px;font-weight:600;margin-bottom:3px;">New AIMS rollout - finish the intake first</div>
+      <div style="font-size:13.5px;font-weight: 500;margin-bottom:3px;">New AIMS rollout - finish the intake first</div>
       <div class="meta text-base" style="line-height:1.5;">Send this intake to the client 3 days before kickoff (just the URL works). When they're done, hit <strong>Apply to client</strong> above to push the scope statement into clauses 4.1, 4.2, 4.3 and set the target cert date.</div>
     </div>
     <a href="/workspaces/<%= ws.id %>" class="btn btn-ghost btn-xs">Skip for now →</a>

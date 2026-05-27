@@ -19,10 +19,10 @@
   const _dueSoon = _docs.filter(d => d.review_status === 'due_soon');
 %>
 <% if (_overdue.length > 0 || _dueSoon.length > 0) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid <%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>;background:<%= _overdue.length > 0 ? 'rgba(185,28,28,0.04)' : 'rgba(202,138,4,0.04)' %>;padding:12px 18px;display:flex;align-items:center;gap:12px;">
+  <div class="panel" style="margin-bottom:14px;background:<%= _overdue.length > 0 ? 'rgba(185,28,28,0.04)' : 'rgba(202,138,4,0.04)' %>;padding:12px 18px;display:flex;align-items:center;gap:12px;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="<%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <div style="flex:1;">
-      <div style="font-weight:600;font-size:13.5px;color:<%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>;">
+      <div style="font-weight: 500;font-size:13.5px;color:<%= _overdue.length > 0 ? '#b91c1c' : '#a16207' %>;">
         <% if (_overdue.length > 0) { %><%= _overdue.length %> document<%= _overdue.length === 1 ? '' : 's' %> overdue for review<% } %>
         <% if (_overdue.length > 0 && _dueSoon.length > 0) { %> &middot; <% } %>
         <% if (_dueSoon.length > 0) { %><%= _dueSoon.length %> due within 30 days<% } %>
@@ -217,8 +217,8 @@
                  const rsColor = d.review_status === 'overdue' ? '#b91c1c' : d.review_status === 'due_soon' ? '#a16207' : 'var(--text-secondary)';
             %>
               <span style="font-size:11.5px;color:<%= rsColor %>;font-weight:<%= d.review_status === 'overdue' ? 600 : 500 %>;"><%= d.next_review_date %></span>
-              <% if (d.review_status === 'overdue') { %><div class="text-xxs text-danger" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">overdue</div>
-              <% } else if (d.review_status === 'due_soon') { %><div class="text-xxs text-warn" style="font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">due soon</div><% } %>
+              <% if (d.review_status === 'overdue') { %><div class="text-xxs text-danger" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.04em;">overdue</div>
+              <% } else if (d.review_status === 'due_soon') { %><div class="text-xxs text-warn" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.04em;">due soon</div><% } %>
             <% } %>
           </td>
           <td class="num meta text-sm"><%= d.updated_at %></td>

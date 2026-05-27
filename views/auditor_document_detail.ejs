@@ -18,10 +18,10 @@
   .doc-body blockquote { margin: 0 0 10px 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 4px 4px 0; font-size: 13px; }
   .doc-body code { font-family: ui-monospace, monospace; font-size: 12.5px; padding: 1px 4px; background: var(--bg-muted); border-radius: 3px; }
   .doc-body hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
-  .doc-body strong { font-weight: 600; }
+  .doc-body strong { font-weight: 500; }
   .doc-body table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12.5px; }
   .doc-body table th, .doc-body table td { padding: 8px 12px; border: 1px solid var(--border); text-align: left; }
-  .doc-body table thead th { background: var(--bg-subtle); font-weight: 600; }
+  .doc-body table thead th { background: var(--bg-subtle); font-weight: 500; }
 
   .meta-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .meta-row:last-child { border-bottom: none; }
@@ -85,7 +85,7 @@
         <div class="panel-pad" style="padding:8px 14px;">
           <% links.forEach(l => { %>
             <div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
-              <span class="mono" style="font-size:11px;font-weight:600;color:var(--accent-deep);background:var(--accent-soft);padding:2px 6px;border-radius:3px;flex-shrink:0;"><%= String(l.iso_item_id).replace('annex-a.','A.').replace('clause-','Cl. ').toUpperCase() %></span>
+              <span class="mono" style="font-size:11px;font-weight: 500;color:var(--accent-deep);background:var(--accent-soft);padding:2px 6px;border-radius:3px;flex-shrink:0;"><%= String(l.iso_item_id).replace('annex-a.','A.').replace('clause-','Cl. ').toUpperCase() %></span>
               <span class="meta text-sm" style="line-height:1.45;"><%= l.title.replace(/^A\.[\d.]+\s+/, '').replace(/^Clause [\d.]+\s+/, '') %></span>
             </div>
           <% }) %>

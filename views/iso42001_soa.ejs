@@ -23,9 +23,9 @@
 <%- include('partials/iso42001_soa_tabs', { ws, tab: 'current' }) %>
 
 <!-- SoA metadata header -->
-<details class="panel" style="margin-bottom:10px;<%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'border-left:3px solid #a16207;' : 'border-left:3px solid #16a34a;' %>" <%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'open' : '' %>>
+<details class="panel" style="margin-bottom:10px;<%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? '' : '' %>" <%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'open' : '' %>>
   <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:8px;">
-    <span style="font-weight:600;">SoA metadata</span>
+    <span style="font-weight: 500;">SoA metadata</span>
     <% if (soaMeta.version || soaMeta.owner || soaMeta.approved_by) { %>
       <% if (soaMeta.version) { %><span class="tag tag-info text-eyebrow">v<%= soaMeta.version %></span><% } %>
       <% if (soaMeta.owner) { %><span class="meta text-xs">owner: <%= soaMeta.owner %></span><% } %>

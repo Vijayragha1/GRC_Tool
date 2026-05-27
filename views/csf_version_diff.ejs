@@ -63,7 +63,7 @@
       <div class="divide-row">
         <% diff.findings.added.forEach(f => { %>
           <div class="text-base" style="padding:8px 14px;display:flex;gap:8px;align-items:flex-start;line-height:1.5;">
-            <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
+            <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight: 500;"><%= f.severity %></span>
             <span><%= f.title %></span>
           </div>
         <% }) %>

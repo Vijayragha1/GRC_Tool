@@ -81,7 +81,7 @@
       <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:16px;">
         <% r.records.mandatory.checks.forEach(c => { %>
           <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : '#b91c1c' %>;"><%= c.found ? '✓' : '✗' %></span>
+            <span style="flex-shrink:0;font-weight: 500;color:<%= c.found ? '#15803d' : '#b91c1c' %>;"><%= c.found ? '✓' : '✗' %></span>
             <div style="flex:1;">
               <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text);font-weight:500' %>"><%= c.name %></span>
               <span class="mono meta" style="margin-left:6px;">Cl. <%= c.clause %></span>
@@ -94,7 +94,7 @@
       <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;">
         <% r.records.expected.checks.forEach(c => { %>
           <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="flex-shrink:0;font-weight:600;color:<%= c.found ? '#15803d' : 'var(--text-tertiary)' %>;"><%= c.found ? '✓' : '○' %></span>
+            <span style="flex-shrink:0;font-weight: 500;color:<%= c.found ? '#15803d' : 'var(--text-tertiary)' %>;"><%= c.found ? '✓' : '○' %></span>
             <div style="flex:1;">
               <span class="text-secondary"><%= c.name %></span>
               <span class="mono meta" style="margin-left:6px;"><%= c.clause %></span>

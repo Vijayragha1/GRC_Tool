@@ -15,22 +15,22 @@
 
 <!-- Primary KPI band -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
-  <div class="panel kpi" style="border-left:3px solid <%= m.controlImplPct >= 80 ? '#15803d' : m.controlImplPct >= 50 ? '#a16207' : '#b91c1c' %>;">
+  <div class="panel kpi" style="">
     <div class="kpi-label text-eyebrow">Control implementation</div>
     <div class="kpi-num" style="color:<%= m.controlImplPct >= 80 ? '#15803d' : m.controlImplPct >= 50 ? '#a16207' : '#b91c1c' %>;"><%= m.controlImplPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta"><%= m.controlImpl %>/<%= m.controlIncluded %> included controls</div>
   </div>
-  <div class="panel kpi" style="border-left:3px solid <%= m.trainPct >= 95 ? '#15803d' : m.trainPct >= 80 ? '#a16207' : '#b91c1c' %>;">
+  <div class="panel kpi" style="">
     <div class="kpi-label text-eyebrow">Training completion</div>
     <div class="kpi-num" style="color:<%= m.trainPct >= 95 ? '#15803d' : m.trainPct >= 80 ? '#a16207' : '#b91c1c' %>;"><%= m.trainPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta"><%= m.trainComplete %>/<%= m.trainAssigned %> assigned</div>
   </div>
-  <div class="panel kpi" style="border-left:3px solid <%= m.docsReviewPct >= 90 ? '#15803d' : m.docsReviewPct >= 70 ? '#a16207' : '#b91c1c' %>;">
+  <div class="panel kpi" style="">
     <div class="kpi-label text-eyebrow">Doc review compliance</div>
     <div class="kpi-num" style="color:<%= m.docsReviewPct >= 90 ? '#15803d' : m.docsReviewPct >= 70 ? '#a16207' : '#b91c1c' %>;"><%= m.docsReviewPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta"><%= m.docsOverdue %> overdue of <%= m.docsApproved %> approved</div>
   </div>
-  <div class="panel kpi" style="border-left:3px solid <%= m.evidenceFreshPct >= 70 ? '#15803d' : m.evidenceFreshPct >= 40 ? '#a16207' : '#b91c1c' %>;">
+  <div class="panel kpi" style="">
     <div class="kpi-label text-eyebrow">Evidence freshness</div>
     <div class="kpi-num" style="color:<%= m.evidenceFreshPct >= 70 ? '#15803d' : m.evidenceFreshPct >= 40 ? '#a16207' : '#b91c1c' %>;"><%= m.evidenceFreshPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-meta"><%= m.evidenceFresh %>/<%= m.evidenceTotalCtl %> with evidence &lt; 12mo</div>
@@ -47,7 +47,7 @@
           <strong>Nonconformities - open</strong>
           <div class="meta text-xs">major / minor / observation</div>
         </td>
-        <td style="width:25%;font-weight:600;">
+        <td style="width:25%;font-weight: 500;">
           <span style="color:#b91c1c;"><%= m.ncBySev.major %></span>
           <span class="meta">/</span>
           <span style="color:#a16207;"><%= m.ncBySev.minor %></span>
@@ -59,31 +59,31 @@
       </tr>
       <tr>
         <td><strong>NC mean time to close</strong><div class="meta text-xs">avg days from open to close, last 90d</div></td>
-        <td style="font-weight:600;<%= m.mttcDays != null && m.mttcDays > 30 ? 'color:#a16207;' : '' %>"><%= m.mttcDays == null ? '-' : m.mttcDays + ' days' %></td>
+        <td style="font-weight: 500;<%= m.mttcDays != null && m.mttcDays > 30 ? 'color:#a16207;' : '' %>"><%= m.mttcDays == null ? '-' : m.mttcDays + ' days' %></td>
         <td class="meta text-base"><% if (m.mttcPrior != null) { %>prior 90d: <%= m.mttcPrior %> days<% } else { %>no prior data<% } %></td>
         <td></td>
       </tr>
       <tr>
         <td><strong>Tasks overdue</strong><div class="meta text-xs">past due_date and not closed</div></td>
-        <td style="font-weight:600;color:<%= m.tasksOverduePct > 20 ? '#b91c1c' : m.tasksOverduePct > 10 ? '#a16207' : '#15803d' %>;"><%= m.tasksOverdue %> / <%= m.tasksOpen %> (<%= m.tasksOverduePct %>%)</td>
+        <td style="font-weight: 500;color:<%= m.tasksOverduePct > 20 ? '#b91c1c' : m.tasksOverduePct > 10 ? '#a16207' : '#15803d' %>;"><%= m.tasksOverdue %> / <%= m.tasksOpen %> (<%= m.tasksOverduePct %>%)</td>
         <td></td>
         <td><a href="/workspaces/<%= ws.id %>/tasks" class="link-muted text-base">→</a></td>
       </tr>
       <tr>
         <td><strong>High-severity open risks</strong><div class="meta text-xs">L × I ≥ 15</div></td>
-        <td style="font-weight:600;color:<%= m.risksHigh > 0 ? '#b91c1c' : 'var(--text)' %>;"><%= m.risksHigh %></td>
+        <td style="font-weight: 500;color:<%= m.risksHigh > 0 ? '#b91c1c' : 'var(--text)' %>;"><%= m.risksHigh %></td>
         <td class="meta text-base"><%= m.risksAccepted %> active acceptances</td>
         <td><a href="/workspaces/<%= ws.id %>/risks" class="link-muted text-base">→</a></td>
       </tr>
       <tr>
         <td><strong>Internal audits</strong><div class="meta text-xs">runs in last 12 months</div></td>
-        <td style="font-weight:600;color:<%= m.auditsRun === 0 ? '#b91c1c' : 'var(--text)' %>;"><%= m.auditsRun %></td>
+        <td style="font-weight: 500;color:<%= m.auditsRun === 0 ? '#b91c1c' : 'var(--text)' %>;"><%= m.auditsRun %></td>
         <td class="meta text-base"><%= m.auditsRun === 0 ? 'clause 9.2 requires at least one' : 'on cadence' %></td>
         <td><a href="/workspaces/<%= ws.id %>/audits" class="link-muted text-base">→</a></td>
       </tr>
       <tr>
         <td><strong>Incident MTTR</strong><div class="meta text-xs">detected → resolved, last 90d</div></td>
-        <td style="font-weight:600;"><%= m.incidentMTTR == null ? '-' : m.incidentMTTR + ' days' %></td>
+        <td style="font-weight: 500;"><%= m.incidentMTTR == null ? '-' : m.incidentMTTR + ' days' %></td>
         <td class="meta text-base"><%= m.incidentsOpen %> currently open</td>
         <td><a href="/workspaces/<%= ws.id %>/incidents" class="link-muted text-base">→</a></td>
       </tr>

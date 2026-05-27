@@ -16,13 +16,13 @@
     the relevant cohort on the table below. %>
 <% if (workspaces.length > 0) { %>
 <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 16px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
-  <span><strong style="color:var(--text);font-weight:600;font-size:14px;"><%= totals.total %></strong> active client<%= totals.total === 1 ? '' : 's' %></span>
+  <span><strong style="color:var(--text);font-weight: 500;font-size:14px;"><%= totals.total %></strong> active client<%= totals.total === 1 ? '' : 's' %></span>
   <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= totals.nearCert > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight:600;"><%= totals.nearCert %></strong> near cert <span class="text-xs" style="color:var(--text-tertiary);">(&lt; 90d)</span></span>
+  <span><strong style="color:<%= totals.nearCert > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight: 500;"><%= totals.nearCert %></strong> near cert <span class="text-xs" style="color:var(--text-tertiary);">(&lt; 90d)</span></span>
   <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= totals.redFlags > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:600;"><%= totals.redFlags %></strong> needing attention</span>
+  <span><strong style="color:<%= totals.redFlags > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight: 500;"><%= totals.redFlags %></strong> needing attention</span>
   <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= totals.totalOpenNCs > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:600;"><%= totals.totalOpenNCs %></strong> open NC<%= totals.totalOpenNCs === 1 ? '' : 's' %> across the firm</span>
+  <span><strong style="color:<%= totals.totalOpenNCs > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight: 500;"><%= totals.totalOpenNCs %></strong> open NC<%= totals.totalOpenNCs === 1 ? '' : 's' %> across the firm</span>
 </div>
 <% } %>
 
@@ -30,15 +30,15 @@
      wizard once. Reviewer feedback: the wizard disappeared after skip with
      no way back. Now persistent until all 6 steps are done. -->
 <% if (typeof onboarding !== 'undefined' && onboarding && onboarding.done < onboarding.total) { %>
-  <div class="panel" style="margin-bottom:24px;border-left:4px solid var(--accent);background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:16px 20px;">
+  <div class="panel" style="margin-bottom:24px;background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:16px 20px;">
     <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
     <div style="min-width:0;">
-      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">
+      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">
         Setup <%= onboarding.done %> / <%= onboarding.total %><% if (onboarding.skipped) { %> · resumed after skip<% } %>
       </div>
-      <div class="text-xl text-ink" style="font-weight:600;letter-spacing:-0.005em;margin-bottom:4px;">
+      <div class="text-xl text-ink" style="font-weight: 500;letter-spacing:-0.005em;margin-bottom:4px;">
         <% if (onboarding.nextStep) { %>Next: <%= onboarding.nextStep.title %><% } else { %>Setup almost complete<% } %>
       </div>
       <div style="height:5px;background:var(--bg-muted);border-radius:3px;overflow:hidden;max-width:380px;">
@@ -64,7 +64,7 @@
 
     <% if (thisWeek.overdue.length) { %>
       <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(220,38,38,0.03);">
-        <div class="text-xs text-danger" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Overdue (<%= thisWeek.overdue.length %>)</div>
+        <div class="text-xs text-danger" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Overdue (<%= thisWeek.overdue.length %>)</div>
         <div style="display:grid;gap:6px;">
           <% thisWeek.overdue.slice(0, 10).forEach(it => { %>
             <a href="<%= it.href %>" class="link-muted text-md" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;align-items:center;">
@@ -83,7 +83,7 @@
 
     <% if (thisWeek.dueThisWeek.length) { %>
       <div class="panel-pad">
-        <div class="text-xs text-warn" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Due this week (<%= thisWeek.dueThisWeek.length %>)</div>
+        <div class="text-xs text-warn" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Due this week (<%= thisWeek.dueThisWeek.length %>)</div>
         <div style="display:grid;gap:6px;">
           <% thisWeek.dueThisWeek.slice(0, 10).forEach(it => { %>
             <a href="<%= it.href %>" class="link-muted text-md" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;align-items:center;">
@@ -105,7 +105,7 @@
     %>
     <% if (byClient.length > 1) { %>
       <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
-        <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">By client</div>
+        <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">By client</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
           <% byClient.forEach(c => { %>
             <a href="/workspaces/<%= c.ws_id %>" class="link-muted text-base" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
@@ -124,7 +124,7 @@
 
 <!-- At-risk clients - one row per client flagged across multiple signals -->
 <% if (typeof atRisk !== 'undefined' && atRisk.length > 0) { %>
-  <div class="panel" style="margin-bottom:24px;border-left:3px solid <%= atRisk.some(r => r.severity === 'high') ? '#b91c1c' : '#a16207' %>;">
+  <div class="panel" style="margin-bottom:24px;">
     <div class="panel-head">
       <h2>At-risk clients <span class="meta text-lg" style="font-weight:400;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
       <span class="meta">
@@ -208,7 +208,7 @@
   <form method="POST" action="/workspaces">
     <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
       <div>
-        <h2 style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600;letter-spacing:-0.01em;">New client</h2>
+        <h2 style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight: 500;letter-spacing:-0.01em;">New client</h2>
         <div class="meta text-sm" style="margin-top:2px;">Just the basics here — scope, stakeholders, and the rest of the 25 scoping questions come on the next page.</div>
       </div>
       <button type="button" onclick="document.getElementById('newWs').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">×</button>
@@ -368,8 +368,8 @@
 <div id="deleteClientModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(185,28,28,0.06);">
-      <div class="text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client</div>
-      <div id="dcmTitle" style="font-size:15px;font-weight:600;margin-top:4px;"></div>
+      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);">Delete client</div>
+      <div id="dcmTitle" style="font-size:15px;font-weight: 500;margin-top:4px;"></div>
     </div>
     <form id="deleteClientForm" method="POST" action="">
       <div style="padding:18px;">
@@ -424,35 +424,5 @@
     window.deleteClient = open;
   })();
 </script>
-
-<%# Cross-client activity feed (D-10). Last 25 events across every
-    client in the firm in the last 30 days. Lets a consultant skim
-    "what changed while I was in a meeting" without clicking into
-    each client. Filtered to actionable events; pure read events would
-    drown out the signal. %>
-<% if (typeof recentActivity !== 'undefined' && recentActivity.length > 0) { %>
-  <div class="panel" style="margin-top:24px;padding:0;">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-      <h2 style="margin:0;font-size:14px;">Recent activity across clients</h2>
-      <span class="meta text-xs">last 30 days · most recent <%= recentActivity.length %> events</span>
-    </div>
-    <% recentActivity.forEach(a => {
-        // Hide read-only events that would be noise (login, dashboard views)
-        if (/^(login|logout|view_|page_)/.test(a.action)) return;
-        // Friendly action label
-        const actionLabel = (a.action || '').replace(/_/g, ' ');
-    %>
-      <a href="/workspaces/<%= a.workspace_id %>" style="display:grid;grid-template-columns:140px 1fr auto;gap:14px;padding:8px 18px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
-        <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:var(--text-tertiary);"><%= a.created_at %></span>
-        <span style="font-size:13px;color:var(--text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-          <strong style="font-weight:600;color:var(--text);"><%= a.user_name || 'system' %></strong>
-          <%= actionLabel %>
-          <% if (a.entity_type) { %><span class="meta"><%= a.entity_type %><% if (a.entity_id) { %> #<%= a.entity_id %><% } %></span><% } %>
-        </span>
-        <span class="text-xs" style="color:var(--text-tertiary);font-weight:500;"><%= a.client_name %></span>
-      </a>
-    <% }) %>
-  </div>
-<% } %>
 
 <%- include('partials/footer') %>

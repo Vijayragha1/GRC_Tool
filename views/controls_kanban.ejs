@@ -35,7 +35,7 @@
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;overflow-x:auto;" id="kanban-board">
   <% cols.forEach(c => { %>
     <div class="panel kanban-col" data-status="<%= c.key %>" style="padding:10px;min-width:180px;">
-      <div class="text-xs text-secondary" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;">
+      <div class="text-xs text-secondary" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.04em;font-weight: 500;">
         <span style="width:7px;height:7px;border-radius:50%;background:<%= c.color %>;"></span><%= c.label %>
         <span class="meta col-count" style="margin-left:auto;font-weight:500;text-transform:none;letter-spacing:0;"><%= grouped[c.key].length %></span>
       </div>

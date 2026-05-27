@@ -114,7 +114,7 @@
        // /glossary/:slug deep-link available for sharing externally. %>
     <% letters.forEach(L => { %>
       <div style="border-top:1px solid var(--border);">
-        <div class="text-xs text-tertiary" style="padding:6px 18px;background:var(--bg-subtle);font-weight:600;letter-spacing:0.05em;font-family:ui-monospace,monospace;"><%= L %></div>
+        <div class="text-xs text-tertiary" style="padding:6px 18px;background:var(--bg-subtle);font-weight: 500;letter-spacing:0.05em;font-family:ui-monospace,monospace;"><%= L %></div>
         <div class="divide-row">
           <% grouped[L].forEach(e => {
                const cat = categories.find(c => c.key === e.category);
@@ -128,7 +128,7 @@
               <summary style="padding:12px 18px;cursor:pointer;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;list-style:none;">
                 <div style="flex:1;min-width:0;">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <span class="text-xl text-ink" style="font-weight:600;"><%= e.term %></span>
+                    <span class="text-xl text-ink" style="font-weight: 500;"><%= e.term %></span>
                     <% if (e.aliases && e.aliases.length) { %>
                       <% e.aliases.forEach(a => { %><span class="meta text-xs" style="font-family:ui-monospace,monospace;"><%= a %></span><% }) %>
                     <% } %>

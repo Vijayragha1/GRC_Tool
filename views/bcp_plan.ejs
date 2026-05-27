@@ -7,7 +7,7 @@
       Back to BCP
     </a>
     <h1 class="page-title"><%= plan.name %></h1>
-    <div class="page-subtitle"><span style="text-transform:uppercase;font-size:12px;font-weight:600;margin-right:8px;"><%= plan.plan_type %></span> <span class="status s-<%= plan.status === 'active' ? 'open' : plan.status === 'draft' ? 'draft' : 'done' %>"><%= plan.status %></span></div>
+    <div class="page-subtitle"><span style="text-transform:uppercase;font-size:12px;font-weight: 500;margin-right:8px;"><%= plan.plan_type %></span> <span class="status s-<%= plan.status === 'active' ? 'open' : plan.status === 'draft' ? 'draft' : 'done' %>"><%= plan.status %></span></div>
   </div>
   <div class="row">
     <button onclick="document.getElementById('editPlan').classList.toggle('hidden')" class="btn btn-ghost">Edit plan</button>
@@ -211,8 +211,8 @@
           <td class="text-secondary" style="text-transform:capitalize;"><%= (t.test_type || '').replace(/_/g,' ') %></td>
           <td><%= t.scenario_description || '-' %><% if (t.results) { %><br><span class="meta"><%= t.results %></span><% } %></td>
           <td><span class="tag <%= t.pass === 1 ? 'tag-neutral' : 'tag-danger' %>" style="<%= t.pass === 1 ? 'background:#16a34a;color:#fff;' : 'background:#b91c1c;color:#fff;' %>"><%= t.pass === 1 ? 'Pass' : 'Fail' %></span></td>
-          <td class="num" style="<%= (bestRto !== null && t.rto_achieved_hours != null && t.rto_achieved_hours > bestRto) ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.rto_achieved_hours != null ? t.rto_achieved_hours + 'h' : '-' %><% if (bestRto !== null && t.rto_achieved_hours != null && t.rto_achieved_hours > bestRto) { %> <span class="meta">(target: <%= bestRto %>h)</span><% } %></td>
-          <td class="num" style="<%= (bestRpo !== null && t.rpo_achieved_hours != null && t.rpo_achieved_hours > bestRpo) ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= t.rpo_achieved_hours != null ? t.rpo_achieved_hours + 'h' : '-' %><% if (bestRpo !== null && t.rpo_achieved_hours != null && t.rpo_achieved_hours > bestRpo) { %> <span class="meta">(target: <%= bestRpo %>h)</span><% } %></td>
+          <td class="num" style="<%= (bestRto !== null && t.rto_achieved_hours != null && t.rto_achieved_hours > bestRto) ? 'color:#b91c1c;font-weight: 500;' : '' %>"><%= t.rto_achieved_hours != null ? t.rto_achieved_hours + 'h' : '-' %><% if (bestRto !== null && t.rto_achieved_hours != null && t.rto_achieved_hours > bestRto) { %> <span class="meta">(target: <%= bestRto %>h)</span><% } %></td>
+          <td class="num" style="<%= (bestRpo !== null && t.rpo_achieved_hours != null && t.rpo_achieved_hours > bestRpo) ? 'color:#b91c1c;font-weight: 500;' : '' %>"><%= t.rpo_achieved_hours != null ? t.rpo_achieved_hours + 'h' : '-' %><% if (bestRpo !== null && t.rpo_achieved_hours != null && t.rpo_achieved_hours > bestRpo) { %> <span class="meta">(target: <%= bestRpo %>h)</span><% } %></td>
           <td>
             <button onclick="document.getElementById('editTest<%= t.id %>').classList.toggle('hidden')" class="btn btn-ghost" style="padding:2px 6px;font-size:12px;">Edit</button>
           </td>

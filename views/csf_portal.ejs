@@ -60,10 +60,10 @@
       <div class="panel" style="border-top:3px solid <%= tierColor(fn.tier) %>;">
         <div class="panel-pad">
           <div style="display:flex;align-items:baseline;gap:8px;">
-            <span class="mono" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-            <span class="text-lg" style="font-weight:600;"><%= fn.name %></span>
+            <span class="mono" style="font-weight: 500;color:var(--accent);"><%= fn.code %></span>
+            <span class="text-lg" style="font-weight: 500;"><%= fn.name %></span>
           </div>
-          <div style="font-size:24px;font-weight:600;color:<%= tierColor(fn.tier) %>;margin-top:8px;"><%= fn.current == null ? '-' : r1(fn.current) %></div>
+          <div style="font-size:24px;font-weight: 500;color:<%= tierColor(fn.tier) %>;margin-top:8px;"><%= fn.current == null ? '-' : r1(fn.current) %></div>
           <% if (fn.tier) { %><div style="font-size:11.5px;color:<%= tierColor(fn.tier) %>;font-weight:500;"><%= fn.tier.label %></div><% } %>
         </div>
       </div>
@@ -78,9 +78,9 @@
     <% } else { %>
       <div class="divide-row">
         <% findingSnaps.slice(0, 10).forEach(f => { %>
-          <div style="padding:10px 14px;border-left:3px solid <%= sevColor[f.severity] || 'var(--border)' %>;">
+          <div style="padding:10px 14px;">
             <div style="display:flex;align-items:center;gap:8px;">
-              <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
+              <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight: 500;"><%= f.severity %></span>
               <strong class="text-lg"><%= f.title %></strong>
               <% if (f.sub_code) { %><span class="meta mono text-xs" style="margin-left:auto;"><%= f.sub_code %></span><% } %>
             </div>

@@ -27,23 +27,23 @@
     <div class="panel-pad">
       <table style="width:100%;border-collapse:separate;border-spacing:4px;">
         <thead>
-          <tr><th></th><% iScale.forEach(i => { %><th style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);padding:6px;text-align:center;"><%= i.value %> · <%= i.label %></th><% }) %></tr>
+          <tr><th></th><% iScale.forEach(i => { %><th style="font-size:11px;font-weight: 500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);padding:6px;text-align:center;"><%= i.value %> · <%= i.label %></th><% }) %></tr>
         </thead>
         <tbody>
           <% for (let li = lScale.length - 1; li >= 0; li--) { const l = lScale[li]; %>
             <tr>
-              <th style="text-align:right;font-size:11px;font-weight:600;color:var(--text-tertiary);padding-right:10px;text-transform:uppercase;letter-spacing:0.04em;"><%= l.value %> · <%= l.label %></th>
+              <th style="text-align:right;font-size:11px;font-weight: 500;color:var(--text-tertiary);padding-right:10px;text-transform:uppercase;letter-spacing:0.04em;"><%= l.value %> · <%= l.label %></th>
               <% iScale.forEach((iL, ii) => {
                    const band = methodology.matrix[li][ii];
                    const color = bands[band] ? bands[band].color : '#a3a3a3';
                    const cellRisks = risks.filter(r => r.likelihood === l.value && r.impact === iL.value);
               %>
-                <td style="text-align:center;padding:10px;background:<%= color %>1a;border:1px solid <%= color %>40;border-radius:5px;color:<%= color %>;font-weight:600;">
+                <td style="text-align:center;padding:10px;background:<%= color %>1a;border:1px solid <%= color %>40;border-radius:5px;color:<%= color %>;font-weight: 500;">
                   <% if (cellRisks.length) { %>
                     <div style="font-size:18px;line-height:1.1;"><%= cellRisks.length %></div>
-                    <div style="font-size:9px;font-weight:600;text-transform:uppercase;opacity:0.7;letter-spacing:0.04em;margin-top:2px;"><%= band %></div>
+                    <div style="font-size:9px;font-weight: 500;text-transform:uppercase;opacity:0.7;letter-spacing:0.04em;margin-top:2px;"><%= band %></div>
                   <% } else { %>
-                    <div style="font-size:9px;font-weight:600;text-transform:uppercase;opacity:0.4;letter-spacing:0.04em;"><%= band %></div>
+                    <div style="font-size:9px;font-weight: 500;text-transform:uppercase;opacity:0.4;letter-spacing:0.04em;"><%= band %></div>
                   <% } %>
                 </td>
               <% }) %>

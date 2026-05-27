@@ -67,8 +67,8 @@
     <div class="panel" style="border-top:3px solid <%= tierColor(fn.tier) %>;">
       <div class="panel-pad">
         <div style="display:flex;align-items:baseline;gap:8px;">
-          <span class="mono text-lg" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-          <span class="text-lg" style="font-weight:600;"><%= fn.name %></span>
+          <span class="mono text-lg" style="font-weight: 500;color:var(--accent);"><%= fn.code %></span>
+          <span class="text-lg" style="font-weight: 500;"><%= fn.name %></span>
         </div>
         <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px;">
           <div>
@@ -98,8 +98,8 @@
 <% rollup.functions.forEach(fn => { %>
   <details class="panel" style="margin-bottom:10px;" open>
     <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
-      <span class="mono" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-      <span class="text-xl" style="font-weight:600;"><%= fn.name %></span>
+      <span class="mono" style="font-weight: 500;color:var(--accent);"><%= fn.code %></span>
+      <span class="text-xl" style="font-weight: 500;"><%= fn.name %></span>
       <div style="margin-left:auto;display:flex;gap:18px;align-items:center;">
         <span style="font-size:14px;font-weight:500;color:<%= tierColor(fn.tier) %>;"><%= fn.current == null ? '-' : r1(fn.current) %><span class="text-xs text-tertiary">/5</span></span>
         <% if (fn.tier) { %><span class="tag" style="background:rgba(0,0,0,0.04);color:<%= tierColor(fn.tier) %>;font-size:11px;">Tier <%= fn.tier.tier %></span><% } %>

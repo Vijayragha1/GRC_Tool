@@ -32,9 +32,9 @@
         <% if (d.k === 'eq') { %>
           <div class="text-secondary" style="padding:1px 16px;"><span class="text-tertiary" style="display:inline-block;width:14px;"> </span><%= escapeHtml(d.a) %></div>
         <% } else if (d.k === 'add') { %>
-          <div class="text-success" style="padding:1px 16px;background:rgba(22,163,74,0.08);"><span style="display:inline-block;width:14px;font-weight:600;">+</span><%= escapeHtml(d.b) %></div>
+          <div class="text-success" style="padding:1px 16px;background:rgba(22,163,74,0.08);"><span style="display:inline-block;width:14px;font-weight: 500;">+</span><%= escapeHtml(d.b) %></div>
         <% } else { %>
-          <div class="text-danger" style="padding:1px 16px;background:rgba(220,38,38,0.06);text-decoration:line-through;"><span style="display:inline-block;width:14px;font-weight:600;">−</span><%= escapeHtml(d.a) %></div>
+          <div class="text-danger" style="padding:1px 16px;background:rgba(220,38,38,0.06);text-decoration:line-through;"><span style="display:inline-block;width:14px;font-weight: 500;">−</span><%= escapeHtml(d.a) %></div>
         <% } %>
       <% }) %>
     </div>

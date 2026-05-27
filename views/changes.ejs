@@ -14,23 +14,23 @@
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;">
   <div class="panel" style="padding:14px 16px;">
     <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Total</div>
-    <div style="font-size:24px;font-weight:700;"><%= stats.total %></div>
+    <div style="font-size:24px;font-weight: 500;"><%= stats.total %></div>
   </div>
   <div class="panel" style="padding:14px 16px;">
     <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Open</div>
-    <div style="font-size:24px;font-weight:700;"><%= stats.openCount %></div>
+    <div style="font-size:24px;font-weight: 500;"><%= stats.openCount %></div>
   </div>
   <div class="panel" style="padding:14px 16px;">
     <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Emergency</div>
-    <div style="font-size:24px;font-weight:700;color:<%= stats.emergencyCount > 0 ? '#dc2626' : 'inherit' %>;"><%= stats.emergencyCount %></div>
+    <div style="font-size:24px;font-weight: 500;color:<%= stats.emergencyCount > 0 ? '#dc2626' : 'inherit' %>;"><%= stats.emergencyCount %></div>
   </div>
   <div class="panel" style="padding:14px 16px;">
     <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">Pending approval</div>
-    <div style="font-size:24px;font-weight:700;color:<%= stats.pendingApproval > 0 ? '#ca8a04' : 'inherit' %>;"><%= stats.pendingApproval %></div>
+    <div style="font-size:24px;font-weight: 500;color:<%= stats.pendingApproval > 0 ? '#ca8a04' : 'inherit' %>;"><%= stats.pendingApproval %></div>
   </div>
   <div class="panel" style="padding:14px 16px;">
     <div class="meta text-xs" style="text-transform:uppercase;letter-spacing:0.04em;">PIR completion</div>
-    <div style="font-size:24px;font-weight:700;"><%= stats.pirPct %>%</div>
+    <div style="font-size:24px;font-weight: 500;"><%= stats.pirPct %>%</div>
   </div>
 </div>
 

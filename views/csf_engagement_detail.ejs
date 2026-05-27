@@ -28,17 +28,17 @@
       </form>
     <% } %>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/scores" class="btn btn-secondary btn-xs">Scores</a>
-    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="btn btn-secondary btn-xs">Findings<% if (unresolvedCommentCount > 0) { %> <span class="tag text-warn text-xxs" style="background:rgba(161,98,7,0.12);font-weight:600;margin-left:2px;padding:1px 5px;" title="<%= unresolvedCommentCount %> unresolved reviewer comment<%= unresolvedCommentCount === 1 ? '' : 's' %>"><%= unresolvedCommentCount %></span><% } %></a>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/findings" class="btn btn-secondary btn-xs">Findings<% if (unresolvedCommentCount > 0) { %> <span class="tag text-warn text-xxs" style="background:rgba(161,98,7,0.12);font-weight: 500;margin-left:2px;padding:1px 5px;" title="<%= unresolvedCommentCount %> unresolved reviewer comment<%= unresolvedCommentCount === 1 ? '' : 's' %>"><%= unresolvedCommentCount %></span><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions" class="btn btn-secondary btn-xs">Versions<% if (engagement.current_version) { %> v<%= engagement.current_version %><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal" class="btn btn-secondary btn-xs" title="Read-only client-facing view. Published engagements only.">Client portal</a>
-    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead" class="btn btn-secondary btn-xs" title="Async question thread with the Lead">Inbox<% if (inboxUnread > 0) { %> <span class="tag text-xxs" style="background:var(--accent-soft);color:var(--accent);font-weight:600;margin-left:2px;padding:1px 5px;"><%= inboxUnread %></span><% } %></a>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead" class="btn btn-secondary btn-xs" title="Async question thread with the Lead">Inbox<% if (inboxUnread > 0) { %> <span class="tag text-xxs" style="background:var(--accent-soft);color:var(--accent);font-weight: 500;margin-left:2px;padding:1px 5px;"><%= inboxUnread %></span><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/report.docx<%= engagement.current_version ? '' : '' %>" class="btn btn-secondary btn-xs" title="Download Word report (DRAFT watermark when not published)">Report &darr;</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/data.csv" class="btn btn-secondary btn-xs" title="Download CSV of all 106 subcategories with current state">CSV &darr;</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="btn btn-primary btn-xs">Open assessment &rarr;</a>
   </div>
 </div>
 
-<div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
+<div class="panel" style="margin-bottom:14px;background:rgba(161,98,7,0.04);">
   <div class="panel-pad text-md text-secondary">
     <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
     Stage 2 of the CSF module. Engagement overview + assignments. Assessment workspace, scoring, findings, and reporting come in subsequent stages.
@@ -157,7 +157,7 @@
         <div style="height:80px;display:flex;align-items:flex-end;justify-content:center;">
           <div style="width:36px;background:<%= d.score >= 4 ? '#15803d' : d.score >= 3 ? '#1d4ed8' : d.score >= 2 ? '#a16207' : '#b91c1c' %>;height:<%= Math.round((d.count / maxC) * 76) + 4 %>px;border-radius:4px 4px 0 0;"></div>
         </div>
-        <div style="font-size:18px;font-weight:600;margin-top:6px;"><%= d.count %></div>
+        <div style="font-size:18px;font-weight: 500;margin-top:6px;"><%= d.count %></div>
         <div class="kpi-meta">CMMI <%= d.score %></div>
       </div>
     <% }) %>
@@ -202,7 +202,7 @@
         <div class="meta text-xs text-warn" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Findings without recommendations (<%= findingsNoRecs.length %>)</div>
         <% findingsNoRecs.slice(0, 8).forEach(f => { %>
           <div class="text-base" style="padding:3px 0;line-height:1.5;display:flex;gap:6px;align-items:center;">
-            <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:9.5px;font-weight:600;"><%= f.severity %></span>
+            <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:9.5px;font-weight: 500;"><%= f.severity %></span>
             <span style="flex:1;"><%= f.title %></span>
             <% if (f.sub_code) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= f.subcategory_id %>" class="mono text-xs" style="color:var(--accent);text-decoration:none;"><%= f.sub_code %></a><% } %>
           </div>

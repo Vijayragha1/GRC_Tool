@@ -19,11 +19,11 @@
   };
   const provInfo = PROVIDER_INFO[provider] || PROVIDER_INFO.devnull;
 %>
-<div class="panel" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid <%= providerConfigured ? '#15803d' : '#a16207' %>;">
+<div class="panel" style="padding:14px 18px;margin-bottom:18px;">
   <div style="display:flex;align-items:center;gap:12px;">
     <div style="flex:1;">
       <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:4px;">Provider</div>
-      <div style="font-size:14px;font-weight:600;color:var(--text);"><%= provInfo.label %></div>
+      <div style="font-size:14px;font-weight: 500;color:var(--text);"><%= provInfo.label %></div>
       <div class="meta text-sm" style="margin-top:4px;"><%- provInfo.desc %></div>
     </div>
     <div style="text-align:right;min-width:140px;">
@@ -40,7 +40,7 @@
   <form method="POST" action="/admin/email/settings" class="panel" style="padding:18px 20px;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:600;">Branded sender</div>
+      <div style="font-size:14px;font-weight: 500;">Branded sender</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Per firm</div>
     </div>
 
@@ -68,7 +68,7 @@
   <form method="POST" action="/admin/email/test" class="panel" style="padding:18px 20px;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:600;">Send a test</div>
+      <div style="font-size:14px;font-weight: 500;">Send a test</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Connectivity check</div>
     </div>
     <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">Sends a single test email to the address below using the current From settings. Use this after editing the From, after rotating <code>RESEND_API_KEY</code>, or after verifying a new sending domain.</p>
@@ -83,7 +83,7 @@
     columns that actually matter; we omit the body to keep the row tight. %>
 <div class="panel" style="padding:0;overflow:hidden;">
   <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-    <div style="font-size:14px;font-weight:600;">Recent activity</div>
+    <div style="font-size:14px;font-weight: 500;">Recent activity</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);">Last <%= outbox.length %> sends</div>
   </div>
   <% if (!outbox.length) { %>
@@ -114,11 +114,11 @@
             </td>
             <td>
               <% if (o.status === 'sent') { %>
-                <span class="status" style="color:#15803d;font-weight:600;">Sent</span>
+                <span class="status" style="color:#15803d;font-weight: 500;">Sent</span>
               <% } else if (o.status === 'failed') { %>
-                <span class="status" style="color:#b91c1c;font-weight:600;">Failed</span>
+                <span class="status" style="color:#b91c1c;font-weight: 500;">Failed</span>
               <% } else { %>
-                <span class="status" style="color:var(--text-tertiary);font-weight:600;"><%= o.status %></span>
+                <span class="status" style="color:var(--text-tertiary);font-weight: 500;"><%= o.status %></span>
               <% } %>
             </td>
             <td class="text-xs" style="color:var(--text-tertiary);"><%= o.provider || '-' %></td>

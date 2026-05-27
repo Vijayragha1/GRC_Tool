@@ -12,12 +12,12 @@
 
 <% if (blockers.length === 0) { %>
   <div class="panel" style="padding:24px;text-align:center;background:rgba(22,163,74,0.04);border-color:#16a34a;">
-    <div class="text-success" style="font-size:18px;font-weight:600;margin-bottom:6px;">No blockers detected</div>
+    <div class="text-success" style="font-size:18px;font-weight: 500;margin-bottom:6px;">No blockers detected</div>
     <div class="meta">Every high-severity readiness check is clean. Schedule the Stage 1 audit.</div>
   </div>
 <% } else { %>
   <% blockers.forEach(b => { %>
-    <div class="panel" style="margin-bottom:14px;border-left:3px solid #b91c1c;">
+    <div class="panel" style="margin-bottom:14px;">
       <div class="panel-head">
         <h2 class="text-xl text-danger"><%= b.label %></h2>
         <span class="meta"><%= b.items.length %> item<%= b.items.length === 1 ? '' : 's' %></span>

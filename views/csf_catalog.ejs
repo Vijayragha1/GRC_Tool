@@ -10,7 +10,7 @@
   </div>
 </div>
 
-<div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
+<div class="panel" style="margin-bottom:14px;background:rgba(161,98,7,0.04);">
   <div class="panel-pad text-md text-secondary">
     <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
     The NIST CSF assessment module is in Stage 1 (catalog browser only). Assessment, scoring, findings, deliverables, and benchmarking will land in subsequent stages. Until production security work is built, do not use this with real client information.
@@ -20,8 +20,8 @@
 <% tree.forEach(fn => { %>
   <details class="panel" style="margin-bottom:10px;" open>
     <summary class="panel-pad" style="cursor:pointer;display:flex;align-items:center;gap:10px;">
-      <span class="mono text-lg" style="font-weight:600;color:var(--accent);"><%= fn.code %></span>
-      <span class="text-xl" style="font-weight:600;"><%= fn.name %></span>
+      <span class="mono text-lg" style="font-weight: 500;color:var(--accent);"><%= fn.code %></span>
+      <span class="text-xl" style="font-weight: 500;"><%= fn.name %></span>
       <span class="meta text-base">(<%= fn.categories.length %> categories, <%= fn.categories.reduce((s, c) => s + c.subcategories.length, 0) %> subcategories)</span>
     </summary>
     <div class="panel-pad text-md text-secondary" style="padding-top:0;"><%= fn.description %></div>

@@ -54,10 +54,10 @@
 <!-- Plan + days-to-target band -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
   <div class="panel" style="padding:12px 14px;">
-    <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Client plan</div>
+    <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Client plan</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
       <div>
-        <div class="exec-num" style="font-size:22px;font-weight:600;"><%= planDone %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= planTotal %></span></div>
+        <div class="exec-num" style="font-size:22px;font-weight: 500;"><%= planDone %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= planTotal %></span></div>
         <div class="kpi-meta">phases complete &middot; <%= planPct %>%</div>
       </div>
       <div style="flex:1;height:6px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
@@ -66,10 +66,10 @@
     </div>
   </div>
   <div class="panel" style="padding:12px 14px;">
-    <div class="text-xs text-tertiary" style="font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Cert target</div>
+    <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Cert target</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
       <div>
-        <div class="exec-num" style="font-size:22px;font-weight:600;color:<%= readiness.daysToTarget !== null && readiness.daysToTarget < 30 ? '#b91c1c' : 'var(--text)' %>"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %><span class="text-xl text-tertiary" style="font-weight:400;"> days</span></div>
+        <div class="exec-num" style="font-size:22px;font-weight: 500;color:<%= readiness.daysToTarget !== null && readiness.daysToTarget < 30 ? '#b91c1c' : 'var(--text)' %>"><%= readiness.daysToTarget !== null ? readiness.daysToTarget : '-' %><span class="text-xl text-tertiary" style="font-weight:400;"> days</span></div>
         <div class="kpi-meta"><%= ws.target_cert_date || 'no target set' %></div>
       </div>
       <div class="text-xs text-secondary" style="text-align:right;line-height:1.5;">
@@ -93,7 +93,7 @@
           <% topRisks.forEach(r => { %>
             <tr>
               <td style="padding:6px 14px;"><%= r.title %></td>
-              <td class="num" style="text-align:right;padding:6px 14px;font-weight:600;color:<%= r.score >= 15 ? '#b91c1c' : r.score >= 8 ? '#a16207' : 'var(--text)' %>;"><%= r.likelihood %>×<%= r.impact %>=<%= r.score %></td>
+              <td class="num" style="text-align:right;padding:6px 14px;font-weight: 500;color:<%= r.score >= 15 ? '#b91c1c' : r.score >= 8 ? '#a16207' : 'var(--text)' %>;"><%= r.likelihood %>×<%= r.impact %>=<%= r.score %></td>
               <td class="meta text-eyebrow" style="padding:6px 14px;"><%= r.owner_name || '-' %></td>
             </tr>
           <% }) %>

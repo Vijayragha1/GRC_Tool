@@ -25,10 +25,10 @@
      const days = daysUntil(upcoming.planned_date);
      const t = ETYPES[upcoming.event_type];
 %>
-  <div class="panel kpi" style="margin-bottom:18px;border-left:3px solid #0891b2;">
+  <div class="panel kpi" style="margin-bottom:18px;">
     <div class="panel-pad">
       <div class="meta text-sm" style="text-transform:uppercase;letter-spacing:0.05em;">Next event</div>
-      <div style="font-size:18px;font-weight:600;margin-top:4px;"><%= t ? t.label : upcoming.event_type %></div>
+      <div style="font-size:18px;font-weight: 500;margin-top:4px;"><%= t ? t.label : upcoming.event_type %></div>
       <div class="meta text-lg" style="margin-top:2px;">
         <%= upcoming.planned_date %>
         <% if (days >= 0) { %>· <strong style="color:<%= days < 30 ? '#b91c1c' : days < 90 ? '#a16207' : 'var(--text)' %>;"><%= days %> day<%= days === 1 ? '' : 's' %></strong> away<% } %>

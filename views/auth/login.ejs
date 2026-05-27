@@ -3,78 +3,182 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Sign in &middot; <%= typeof brandName !== 'undefined' && brandName ? brandName : 'ISMS Console' %></title>
+  <title>Sign in &middot; Compliance Sphere</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root { color-scheme: light; }
-    body { background: #f4f3ee; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1a1a1a; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
-    .auth-shell { width: 100%; max-width: 420px; }
-    .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
-    .auth-brand .mark { width: 32px; height: 32px; background: #5C0A0A; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; font-style: italic; }
-    .auth-brand .name { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.005em; }
-    .auth-card { background: #fff; border: 1px solid #d6d3c9; padding: 32px 32px 28px; }
-    .auth-card h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 6px; color: #1a1a1a; }
-    .auth-card .sub { font-size: 13.5px; color: #6b6b6b; line-height: 1.5; margin: 0 0 22px; }
-    .auth-card label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5a5a5a; margin-bottom: 6px; }
-    .auth-card input[type="email"], .auth-card input[type="password"] { width: 100%; padding: 10px 12px; border: 1px solid #c9c6bd; font-size: 14px; font-family: inherit; background: #fff; color: #1a1a1a; box-sizing: border-box; outline: none; transition: border-color 0.1s; }
-    .auth-card input[type="email"]:focus, .auth-card input[type="password"]:focus { border-color: #5C0A0A; }
-    .auth-card .field { margin-bottom: 16px; }
-    .auth-card .remember-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 22px; font-size: 13px; }
-    .auth-card .remember-row label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #4a4a4a; font-weight: 500; text-transform: none; letter-spacing: 0; margin: 0; cursor: pointer; }
-    .auth-card .remember-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: #5C0A0A; }
-    .auth-card .remember-row a { color: #5C0A0A; text-decoration: none; font-weight: 600; font-size: 12.5px; }
-    .auth-card .remember-row a:hover { text-decoration: underline; }
-    .auth-card button[type="submit"] { width: 100%; padding: 11px 14px; background: #5C0A0A; color: #fff; border: 0; font-family: inherit; font-size: 14px; font-weight: 600; letter-spacing: 0.01em; cursor: pointer; transition: background 0.1s; }
-    .auth-card button[type="submit"]:hover { background: #4a0808; }
-    .auth-err { background: rgba(185, 28, 28, 0.06); border-left: 3px solid #b91c1c; color: #7a1010; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 18px; }
-    .auth-note { font-size: 11.5px; color: #6b6b6b; text-align: center; margin-top: 18px; line-height: 1.55; }
-    .auth-foot { text-align: center; font-size: 10.5px; color: #8a8a8a; margin-top: 22px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #FAFAF8;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .auth-shell { width: 100%; max-width: 360px; }
+
+    .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 2.5rem; }
+    .brand .name { font-size: 15px; font-weight: 500; color: #1a1a1a; letter-spacing: -0.3px; }
+
+    h1 { font-size: 22px; font-weight: 500; margin: 0 0 0.5rem; color: #1a1a1a; letter-spacing: -0.4px; }
+    .sub { font-size: 13px; color: #6b6b66; margin: 0 0 2rem; }
+
+    .auth-form { display: flex; flex-direction: column; gap: 16px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #4a4a47;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .field input[type="email"], .field input[type="password"] {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid #d8d6cf;
+      background: #ffffff;
+      border-radius: 6px;
+      color: #1a1a1a;
+      outline: none;
+      transition: border-color 0.1s;
+    }
+    .field input[type="email"]:focus, .field input[type="password"]:focus { border-color: #1a1a1a; }
+
+    .row-between {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 2px;
+    }
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #4a4a47;
+      margin: 0;
+    }
+    .remember input[type="checkbox"] { margin: 0; width: 13px; height: 13px; accent-color: #1a1a1a; }
+    .row-between a {
+      font-size: 12px;
+      color: #1a1a1a;
+      text-decoration: none;
+      border-bottom: 1px solid #d8d6cf;
+    }
+    .row-between a:hover { border-bottom-color: #1a1a1a; }
+
+    .btn-primary {
+      width: 100%;
+      height: 38px;
+      background: #1a1a1a;
+      color: #ffffff;
+      border: none;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 6px;
+      font-family: inherit;
+      transition: background 0.1s;
+    }
+    .btn-primary:hover { background: #333; }
+
+    .foot {
+      font-size: 12px;
+      color: #6b6b66;
+      text-align: center;
+      margin: 2.5rem 0 0;
+    }
+    .foot a {
+      color: #1a1a1a;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .foot a:hover { text-decoration: underline; }
+
+    .alert {
+      font-size: 12.5px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      line-height: 1.45;
+    }
+    .alert-err { background: #fbeaea; color: #7a1010; border: 1px solid #ecc6c6; }
+    .alert-ok  { background: #e9f4ec; color: #0f5132; border: 1px solid #c7e2cf; }
   </style>
 </head>
 <body>
   <div class="auth-shell">
-    <div class="auth-brand">
-      <div class="mark">I</div>
-      <div class="name"><%= typeof brandName !== 'undefined' && brandName ? brandName : 'ISMS Console' %></div>
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+        <circle cx="11" cy="11" r="9.5" fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+        <circle cx="11" cy="11" r="6"   fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+        <circle cx="11" cy="11" r="2.5" fill="#1a1a1a"/>
+      </svg>
+      <span class="name">Compliance Sphere</span>
     </div>
-    <div class="auth-card">
-      <h1>Sign in</h1>
-      <p class="sub">Use the email and password your firm administrator gave you.</p>
 
-      <% if (typeof error !== 'undefined' && error) { %>
-        <div class="auth-err"><%= error %></div>
+    <h1>Sign in</h1>
+    <p class="sub">Welcome back. Please enter your details.</p>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="alert alert-err"><%= error %></div>
+    <% } %>
+    <% if (typeof notice !== 'undefined' && notice) { %>
+      <div class="alert alert-ok"><%= notice %></div>
+    <% } %>
+
+    <form method="POST" action="/login" class="auth-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <% if (typeof next_url !== 'undefined' && next_url) { %>
+        <input type="hidden" name="next" value="<%= next_url %>">
       <% } %>
-      <% if (typeof notice !== 'undefined' && notice) { %>
-        <div class="auth-err" style="background:rgba(21,128,61,0.06);border-left-color:#15803d;color:#0f5132;"><%= notice %></div>
-      <% } %>
 
-      <form method="POST" action="/login">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <% if (typeof next_url !== 'undefined' && next_url) { %>
-          <input type="hidden" name="next" value="<%= next_url %>">
-        <% } %>
-        <div class="field">
-          <label for="email">Email</label>
-          <input type="email" id="email" name="email" autocomplete="username" required autofocus value="<%= typeof prefillEmail !== 'undefined' ? prefillEmail : '' %>">
-        </div>
-        <div class="field">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" autocomplete="current-password" required>
-        </div>
-        <div class="remember-row">
-          <label><input type="checkbox" name="remember" value="1"> Keep me signed in for 30 days</label>
-          <a href="/forgot">Forgot password?</a>
-        </div>
-        <button type="submit">Sign in →</button>
-      </form>
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          placeholder="name@company.com"
+          autocomplete="username"
+          required
+          autofocus
+          value="<%= typeof prefillEmail !== 'undefined' ? prefillEmail : '' %>"
+        />
+      </div>
 
-      <div class="auth-note">External approvers don&rsquo;t need an account &mdash; use the one-shot link in your approval email.</div>
-    </div>
-    <div class="auth-foot">Authorised personnel only</div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+
+      <div class="row-between">
+        <label class="remember">
+          <input type="checkbox" name="remember" value="1"> Remember me
+        </label>
+        <a href="/forgot">Forgot password</a>
+      </div>
+
+      <button type="submit" class="btn-primary">Sign in</button>
+    </form>
   </div>
 </body>
 </html>

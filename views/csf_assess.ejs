@@ -91,7 +91,7 @@
         <% rows.forEach(r => { %>
           <% if (r.cat_code !== prevCat) { prevCat = r.cat_code; %>
             <tr style="background:var(--bg-subtle);">
-              <td class="text-xs text-tertiary" colspan="<%= (canBulkTransition || canBulkScore) ? 7 : 6 %>" style="padding:6px 14px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
+              <td class="text-xs text-tertiary" colspan="<%= (canBulkTransition || canBulkScore) ? 7 : 6 %>" style="padding:6px 14px;font-weight: 500;text-transform:uppercase;letter-spacing:0.04em;">
                 <span class="mono"><%= r.fn_code %> &middot; <%= r.cat_code %></span> &mdash; <%= r.cat_name %>
               </td>
             </tr>

@@ -44,7 +44,7 @@
 </div>
 
 <% if (warnings && warnings.length) { %>
-  <div class="panel" style="margin-bottom:14px;border-left:3px solid #a16207;background:rgba(161,98,7,0.04);">
+  <div class="panel" style="margin-bottom:14px;background:rgba(161,98,7,0.04);">
     <div class="panel-pad text-md text-secondary">
       <strong class="text-warn">Soft warnings (not blocking):</strong>
       <ul style="margin:6px 0 0 0;padding-left:18px;">
@@ -56,7 +56,7 @@
 
 <!-- Stage 11: Analyst guidance sidebar (Layers 1-3) -->
 <% if (explainer || questions.length || prompts.length) { %>
-  <details class="panel" style="margin-bottom:14px;border-left:3px solid var(--accent);" <%= detail.status === 'Not Started' || detail.status === 'In Progress' ? 'open' : '' %>>
+  <details class="panel" style="margin-bottom:14px;" <%= detail.status === 'Not Started' || detail.status === 'In Progress' ? 'open' : '' %>>
     <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;color:var(--accent);">Analyst guide for <%= detail.sub_code %></summary>
 
     <% if (explainer) { %>
@@ -297,9 +297,9 @@
     <% } else { %>
       <div class="divide-row">
         <% findings.forEach(f => { %>
-          <div style="padding:10px 14px;border-left:3px solid <%= sevColor[f.severity] || 'var(--border)' %>;">
+          <div style="padding:10px 14px;">
             <div style="display:flex;align-items:center;gap:8px;">
-              <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight:600;"><%= f.severity %></span>
+              <span class="tag" style="background:<%= sevColor[f.severity] || 'var(--bg-subtle)' %>;color:#fff;font-size:10px;font-weight: 500;"><%= f.severity %></span>
               <strong class="text-lg" style="flex:1;"><%= f.title %></strong>
               <span class="tag text-xxs" style="background:var(--bg-subtle);"><%= f.status %></span>
               <% if (canCreateFinding) { %>
