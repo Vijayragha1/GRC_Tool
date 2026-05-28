@@ -1,0 +1,5 @@
+<div class="subtabs">
+  <% [['team','Team','/team'], ['members','Members','/members'], ['access','Roles & permissions','/access']].forEach(([k, label, path]) => { %>
+    <a href="/workspaces/<%= ws.id %><%= path %>" class="subtab <%= active === k ? 'is-active' : '' %>"><%= label %></a>
+  <% }) %>
+</div>

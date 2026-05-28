@@ -1,56 +1,59 @@
 <%- include('partials/header', { title: 'Certification readiness', user, ws, active: 'readiness' }) %>
 
 <style>
-  /* Reuse the workpaper idiom from controls_assess_summary.ejs. Same .pack-*
-     and .wp classes. Kept inline rather than promoted to a global stylesheet
-     because the readiness view has a few unique exhibits (verdict callout,
-     stage-gate scorecard) that don't appear elsewhere. */
+  /* App-native readiness styling. This page used to use a "workpaper /
+     document" idiom (serif, double-rules, Exhibit captions, classification
+     banner, page footer). Reskinned to the Compliance Sphere app chrome:
+     Inter, panels, cream, charcoal. Class names kept so the body markup is
+     untouched. */
 
-  .pack { max-width: 1000px; margin: 0 auto; background: #fff; color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+  .pack { max-width: 1100px; margin: 0 auto; color: var(--text); }
 
-  .pack-classification { background: #1a1a1a; color: rgba(255,255,255,0.92); padding: 9px 28px; display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; }
-  .pack-classification .right { color: rgba(255,255,255,0.55); font-weight: 500; letter-spacing: 0.06em; font-size: 10px; }
-
-  .pack-title { padding: 30px 32px 22px; border-bottom: 4px double var(--text); display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: flex-end; }
-  .pack-title-eyebrow { font-size: 10.5px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-  .pack-title h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 32px; line-height: 1.05; font-weight: 500; letter-spacing: -0.02em; margin: 0; color: var(--text); }
-  .pack-title h1 .sub { display: block; font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; font-weight: 400; font-style: italic; color: var(--text-secondary); margin-top: 8px; letter-spacing: -0.005em; }
-  .pack-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 200px; }
+  /* Header (was the document title block) */
+  .pack-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+  .pack-title-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px; }
+  .pack-title h1 { font-family: 'Inter', system-ui, sans-serif; font-size: 22px; line-height: 1.2; font-weight: 500; letter-spacing: -0.4px; margin: 0; color: var(--text); }
+  .pack-title h1 .sub { display: block; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 400; font-style: normal; color: var(--text-secondary); margin-top: 6px; letter-spacing: 0; }
+  .pack-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 170px; }
   .pack-actions .btn { justify-content: center; white-space: nowrap; }
 
-  .pack-body { padding: 24px 32px 16px; }
+  .pack-body { padding: 0; }
 
-  .pack-section { margin-bottom: 32px; }
-  .pack-section-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 14px; }
-  .pack-section-num { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; font-weight: 500; color: var(--accent); letter-spacing: -0.02em; }
-  .pack-section-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: var(--text); margin: 0; }
-  .pack-section-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+  /* Sections become panels */
+  .pack-section { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+  details.pack-section > summary { margin: -18px -20px 0; padding: 16px 20px; }
+  details.pack-section[open] > summary { margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .pack-section-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  details.pack-section > summary.pack-section-head { padding-bottom: 16px; border-bottom: 0; margin-bottom: 0; }
+  .pack-section-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; background: var(--bg-muted); font-size: 12px; font-weight: 500; color: var(--text-secondary); flex-shrink: 0; }
+  .pack-section-title { font-family: 'Inter', system-ui, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); margin: 0; flex: 1; }
+  .pack-section-meta { font-size: 11px; color: var(--text-tertiary); font-weight: 400; letter-spacing: 0; text-transform: none; }
 
-  /* Captions + source line shared with body workpaper */
-  .pack-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 0 0 6px; font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; font-weight: 500; color: var(--text); letter-spacing: -0.005em; }
-  .pack-caption .label { color: var(--text-tertiary); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
-  .pack-source { padding: 8px 0 0; font-size: 10.5px; color: var(--text-tertiary); line-height: 1.55; font-style: italic; }
-  .pack-source strong { font-style: normal; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; color: var(--text-secondary); margin-right: 6px; }
+  /* Captions = small section labels */
+  .pack-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 0 0 8px; font-family: 'Inter', system-ui, sans-serif; font-size: 12px; font-weight: 500; color: var(--text); letter-spacing: 0; }
+  .pack-caption .label { color: var(--text-tertiary); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .pack-source { padding: 8px 0 0; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.55; font-style: normal; }
+  .pack-source strong { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 11.5px; color: var(--text-secondary); margin-right: 4px; }
 
-  /* Workpaper table */
-  .wp { width: 100%; border-collapse: collapse; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); }
-  .wp thead th { text-align: left; padding: 8px 12px 6px; color: var(--text); font-size: 9.5px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1px solid var(--text); background: transparent; vertical-align: bottom; }
+  /* Tables - clean app style */
+  .wp { width: 100%; border-collapse: collapse; font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .wp thead th { text-align: left; padding: 8px 12px; color: var(--text-tertiary); font-size: 10px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; border-bottom: 1px solid var(--border); background: var(--bg-subtle); vertical-align: bottom; }
   .wp thead th.num { text-align: right; }
   .wp thead th.center { text-align: center; }
-  .wp tbody td { padding: 8px 12px; vertical-align: middle; border-bottom: 1px dotted var(--border); }
+  .wp tbody td { padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border); }
   .wp tbody tr:last-child td { border-bottom: 0; }
-  .wp tbody tr:hover { background: rgba(92, 10, 10, 0.025); }
-  .wp tbody tr.group td { padding: 12px 12px 4px; border-bottom: 0; font-family: 'Source Serif 4', Georgia, serif; font-style: italic; font-size: 11.5px; font-weight: 500; color: var(--text-secondary); letter-spacing: -0.005em; }
-  .wp tbody tr.totals td { padding-top: 10px; border-top: 1px solid var(--text); border-bottom: 0; font-weight: 500; color: var(--text); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
-  .wp tbody tr.totals td.num { font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 13px; letter-spacing: 0; text-transform: none; }
-  .wp td.num { text-align: right; font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text); }
+  .wp tbody tr:hover { background: var(--bg-subtle); }
+  .wp tbody tr.group td { padding: 12px 12px 4px; border-bottom: 0; font-style: normal; font-size: 10px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+  .wp tbody tr.totals td { padding-top: 10px; border-top: 1px solid var(--border-strong); border-bottom: 0; font-weight: 500; color: var(--text); font-size: 12px; letter-spacing: 0; text-transform: none; background: var(--bg-subtle); }
+  .wp tbody tr.totals td.num { font-variant-numeric: tabular-nums; font-size: 13px; }
+  .wp td.num { text-align: right; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text); }
   .wp td.num.dim { color: var(--text-tertiary); font-size: 11.5px; }
-  .wp td.ref { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--text-secondary); font-weight: 500; white-space: nowrap; letter-spacing: 0; }
+  .wp td.ref { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
   .wp td.metric { color: var(--text); font-weight: 500; }
-  .wp td.metric .sub { display: block; font-weight: 400; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; font-style: italic; }
+  .wp td.metric .sub { display: block; font-weight: 400; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; font-style: normal; }
   .wp td.title-cell a { color: var(--text); text-decoration: none; font-weight: 500; border-bottom: 1px solid transparent; }
-  .wp td.title-cell a:hover { border-bottom-color: var(--accent); color: var(--accent); }
-  .wp td.note { font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.04em; font-weight: 500; }
+  .wp td.title-cell a:hover { border-bottom-color: var(--accent); }
+  .wp td.note { font-size: 10px; color: var(--text-tertiary); letter-spacing: 0; font-weight: 500; }
   .wp td.center { text-align: center; }
 
   /* Textual indicators */
@@ -58,49 +61,61 @@
   .mark .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .mark .dot.red    { background: #b91c1c; }
   .mark .dot.orange { background: #c2410c; }
-  .mark .dot.amber  { background: #92400e; }
+  .mark .dot.amber  { background: #b45309; }
   .mark .dot.green  { background: #166534; }
   .mark .dot.grey   { background: transparent; border: 1.5px solid var(--text-tertiary); }
   .mark .dot.hollow { background: transparent; border: 1.5px solid var(--text-secondary); }
   .mark .lbl { color: var(--text-secondary); font-weight: 500; font-size: 11px; text-transform: none; letter-spacing: 0; }
   .mark.subdued .lbl, .mark.subdued { color: var(--text-tertiary); font-weight: 500; }
 
-  .footref { font-size: 9.5px; vertical-align: super; color: var(--accent); font-weight: 500; margin-left: 2px; font-family: 'Source Serif 4', Georgia, serif; line-height: 0; }
+  .footref { font-size: 9.5px; vertical-align: super; color: var(--accent); font-weight: 500; margin-left: 2px; line-height: 0; }
 
-  /* Verdict callout — sits below the title, before the first section */
-  .pack-verdict { display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center; padding: 18px 22px; border: 1.5px solid var(--text); border-left-width: 5px; background: #fafaf8; margin-bottom: 26px; }
-  .pack-verdict.go { border-left-color: #166534; }
-  .pack-verdict.caution { border-left-color: #c2410c; }
-  .pack-verdict.stop { border-left-color: #b91c1c; }
-  .pack-verdict .stamp { font-family: 'Source Serif 4', Georgia, serif; font-style: italic; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; color: var(--text); padding-right: 22px; border-right: 1px solid var(--border); }
-  .pack-verdict .stamp .label { display: block; font-family: 'Inter', sans-serif; font-style: normal; font-size: 9.5px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
-  .pack-verdict .stamp .word { color: var(--text); }
+  /* Verdict hero card (no left-rail accent; status carried by a dot + the
+     coloured verdict word) */
+  .pack-verdict { display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center; padding: 18px 22px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+  .pack-verdict .stamp { font-family: 'Inter', system-ui, sans-serif; font-style: normal; font-weight: 500; font-size: 20px; letter-spacing: -0.3px; color: var(--text); padding-right: 22px; border-right: 1px solid var(--border); }
+  .pack-verdict .stamp .label { display: block; font-family: 'Inter', sans-serif; font-style: normal; font-size: 10px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
+  .pack-verdict .stamp .word { color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+  .pack-verdict .stamp .word::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
   .pack-verdict.go .stamp .word { color: #166534; }
-  .pack-verdict.caution .stamp .word { color: #c2410c; }
+  .pack-verdict.go .stamp .word::before { background: #166534; }
+  .pack-verdict.caution .stamp .word { color: #b45309; }
+  .pack-verdict.caution .stamp .word::before { background: #b45309; }
   .pack-verdict.stop .stamp .word { color: #b91c1c; }
-  .pack-verdict .narrative { font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; line-height: 1.55; color: var(--text); letter-spacing: -0.005em; }
-  .pack-verdict .countdown { text-align: right; font-family: 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .pack-verdict.stop .stamp .word::before { background: #b91c1c; }
+  .pack-verdict .narrative { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; line-height: 1.55; color: var(--text-secondary); letter-spacing: 0; }
+  .pack-verdict .countdown { text-align: right; font-variant-numeric: tabular-nums; }
   .pack-verdict .countdown .n { font-size: 26px; font-weight: 500; color: var(--text); display: block; line-height: 1; }
-  .pack-verdict .countdown .lbl { font-family: 'Inter', sans-serif; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 500; margin-top: 4px; display: block; }
+  .pack-verdict .countdown .lbl { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 500; margin-top: 4px; display: block; }
 
-  /* Appendix block reused from summary */
-  .pack-appendix { background: #fafaf8; border-top: 4px double var(--text); padding: 28px 32px 32px; }
-  .pack-appendix-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; align-items: baseline; padding-bottom: 8px; border-bottom: 1.5px solid var(--text); margin-bottom: 18px; }
-  .pack-appendix-eyebrow { font-family: 'Inter', sans-serif; font-size: 9.5px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
-  .pack-appendix-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: var(--text); margin: 0; }
-  .pack-appendix-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+  /* Dashboard KPI tile row */
+  .rd-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .rd-kpi { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; box-shadow: var(--shadow-sm); }
+  .rd-kpi .k-label { font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px; }
+  .rd-kpi .k-val { font-size: 20px; font-weight: 500; letter-spacing: -0.3px; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 7px; }
+  .rd-kpi .k-val::before { content: ''; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: none; }
+  .rd-kpi.is-dot .k-val::before { display: inline-block; background: var(--text-tertiary); }
+  .rd-kpi.ok .k-val { color: #166534; } .rd-kpi.ok.is-dot .k-val::before { background: #166534; }
+  .rd-kpi.warn .k-val { color: #b45309; } .rd-kpi.warn.is-dot .k-val::before { background: #b45309; }
+  .rd-kpi.bad .k-val { color: #b91c1c; } .rd-kpi.bad.is-dot .k-val::before { background: #b91c1c; }
+  .rd-kpi .k-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+  @media (max-width: 820px) { .rd-kpis { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Appendix = panel */
+  .pack-appendix { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+  details.pack-appendix > summary { margin: -18px -20px 0; padding: 16px 20px; }
+  details.pack-appendix[open] > summary { margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .pack-appendix-head { display: flex; align-items: center; gap: 10px; }
+  .pack-appendix-eyebrow { display: inline-flex; align-items: center; justify-content: center; padding: 2px 7px; border-radius: 5px; background: var(--bg-muted); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-secondary); }
+  .pack-appendix-title { font-family: 'Inter', system-ui, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); margin: 0; flex: 1; }
+  .pack-appendix-meta { font-size: 11px; color: var(--text-tertiary); font-weight: 400; letter-spacing: 0; text-transform: none; }
   .pack-appendix-grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
-  .pack-appendix .wp td.numref { width: 28px; text-align: center; vertical-align: top; padding-top: 9px; font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; font-weight: 500; color: var(--accent); }
-  .pack-appendix .wp td.term { width: 200px; vertical-align: top; padding-top: 8px; font-weight: 500; color: var(--text); font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; letter-spacing: -0.005em; }
-  .pack-appendix .wp td.term .meta { display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; color: var(--text-tertiary); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; }
+  .pack-appendix .wp td.numref { width: 28px; text-align: center; vertical-align: top; padding-top: 10px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+  .pack-appendix .wp td.term { width: 200px; vertical-align: top; padding-top: 9px; font-weight: 500; color: var(--text); font-size: 12.5px; letter-spacing: 0; }
+  .pack-appendix .wp td.term .meta { display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 400; color: var(--text-tertiary); letter-spacing: 0; text-transform: none; margin-top: 3px; }
   .pack-appendix .wp td.def { vertical-align: top; padding-top: 9px; color: var(--text-secondary); line-height: 1.6; font-size: 12px; }
-  .pack-appendix .wp td.def code { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; background: rgba(92, 10, 10, 0.05); color: var(--accent); padding: 1px 5px; border-radius: 2px; letter-spacing: 0; }
+  .pack-appendix .wp td.def code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; background: var(--bg-muted); color: var(--text); padding: 1px 5px; border-radius: 3px; letter-spacing: 0; }
   .pack-appendix .pack-caption { color: var(--text); margin-bottom: 4px; }
-
-  /* Footer band */
-  .pack-foot { background: var(--bg-subtle); padding: 16px 32px; border-top: 1.5px solid var(--text); display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; font-size: 10px; color: var(--text-secondary); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 500; }
-  .pack-foot .center { text-align: center; color: var(--text-tertiary); font-weight: 500; }
-  .pack-foot .right { text-align: right; }
 </style>
 
 <%
@@ -108,30 +123,34 @@
   const clientName = ws.brand_display_name || ws.client_name;
   const docId = 'ISMS-CRR-' + String(ws.id).padStart(4, '0') + '-' + today.replace(/-/g, '');
 
-  // Verdict logic — same thresholds as the appendix below
-  const stage1Pass = r.stage1 >= 80;
-  const stage2Pass = r.stage2 >= 80;
+  // Verdict logic — driven by the two-layer model (Layer 1 hard gate
+  // decides Ready/Not-Ready; Layer 2 maturity is secondary).
+  const stage1Pass = !!r.stage1Ready;
+  const stage2Pass = !!r.stage2Ready;
   const highFlags = r.flags.filter(f => f.severity === 'high').length;
   const medFlags  = r.flags.filter(f => f.severity === 'medium').length;
   let verdict, verdictWord, narrative;
-  if (stage1Pass && stage2Pass && highFlags === 0) {
+  if (stage2Pass) {
     verdict = 'go'; verdictWord = 'Audit-ready';
-    narrative = 'Stage 1 and Stage 2 readiness both clear 80%, mandatory records are present, and no high-severity observations remain open. The ISMS is positioned to enter the certification audit.';
-  } else if (stage1Pass && highFlags <= 1) {
+    narrative = 'Both Layer 1 hard gates pass and maturity clears the Stage 2 floor (75%, no control at 0/1). The ISMS is positioned to enter the certification audit.';
+  } else if (stage1Pass) {
     verdict = 'caution'; verdictWord = 'Stage 1 ready';
-    narrative = 'Documentation and management-system framework satisfy Stage 1 thresholds. Stage 2 operational evidence and the open observations below must close before a Stage 2 visit.';
-  } else if (highFlags > 2 || (r.daysToTarget !== null && r.daysToTarget < 30 && !stage2Pass)) {
-    verdict = 'stop'; verdictWord = 'Not ready';
-    narrative = 'Material observations remain open or the certification target date is at risk. The audit should be rescheduled or remediation accelerated before booking a registrar.';
-  } else {
+    narrative = 'The Stage 1 hard gate is clear and maturity meets the 60% floor. Close the Stage 2 hard-gate items and lift maturity to 75% before a Stage 2 visit.';
+  } else if (r.stage1GateClear && !r.stage1MaturityOk) {
     verdict = 'caution'; verdictWord = 'In progress';
-    narrative = 'Build is on track but not yet at audit-ready posture. Work the observations and documentation gaps below in numbered order; each closes a specific Stage-gate prerequisite.';
+    narrative = 'Every Stage 1 hard-gate item passes but average control maturity (' + r.maturityPct + '%) is below the 60% Stage 1 floor — aggregated minors risk escalating to a major. Lift maturity before booking Stage 1.';
+  } else {
+    verdict = 'stop'; verdictWord = 'Not ready';
+    narrative = (r.stage1GateTotal - r.stage1GatePassed) + ' of ' + r.stage1GateTotal + ' Stage 1 hard-gate items are still failing. Any single Layer 1 failure blocks readiness regardless of maturity (ISO/IEC 17021-1 §9.5.2).';
   }
 
   // Stage-gate scorecard
   const scorecard = [
-    { metric: 'Stage 1 readiness',        sub: 'Documentation + ISMS framework',         current: r.stage1 + '%',                            target: '≥ 80%',  pass: stage1Pass,                              dot: stage1Pass ? 'green' : (r.stage1 >= 50 ? 'amber' : 'red') },
-    { metric: 'Stage 2 readiness',        sub: 'Operational effectiveness + evidence',   current: r.stage2 + '%',                            target: '≥ 80%',  pass: stage2Pass,                              dot: stage2Pass ? 'green' : (r.stage2 >= 50 ? 'amber' : 'red') },
+    { metric: 'Stage 1 verdict',          sub: 'Layer 1 hard gate + 60% maturity floor', current: r.stage1Ready ? 'Ready' : 'Not ready',     target: 'Ready',  pass: stage1Pass,                              dot: stage1Pass ? 'green' : 'red' },
+    { metric: 'Stage 2 verdict',          sub: 'Layer 1 hard gate + 75% maturity floor', current: r.stage2Ready ? 'Ready' : 'Not ready',     target: 'Ready',  pass: stage2Pass,                              dot: stage2Pass ? 'green' : (r.stage1Ready ? 'amber' : 'red') },
+    { metric: 'Stage 1 hard gate',        sub: '17 boolean prerequisites',               current: r.stage1GatePassed + ' of ' + r.stage1GateTotal, target: 'All', pass: r.stage1GateClear,                  dot: r.stage1GateClear ? 'green' : 'red' },
+    { metric: 'Stage 2 hard gate',        sub: '9 operational prerequisites',            current: r.stage2GatePassed + ' of ' + r.stage2GateTotal, target: 'All', pass: r.stage2GateClear,                  dot: r.stage2GateClear ? 'green' : 'amber' },
+    { metric: 'Control maturity (Layer 2)', sub: '0-5 avg across applicable Annex A',     current: r.maturityPct + '%',                       target: '≥ 60% / 75%', pass: r.maturityPct >= 60,             dot: r.maturityPct >= 75 ? 'green' : (r.maturityPct >= 60 ? 'amber' : 'red') },
     { metric: 'Mandatory documented information', sub: 'Required by Clauses 4–10',       current: r.records.mandatory.found + ' of ' + r.records.mandatory.total, target: 'Complete', pass: r.records.mandatory.found === r.records.mandatory.total, dot: r.records.mandatory.found === r.records.mandatory.total ? 'green' : (r.records.mandatory.found >= r.records.mandatory.total - 2 ? 'amber' : 'red') },
     { metric: 'Control implementation',   sub: 'Implemented or N/A on the SoA',          current: ((r.metrics.implemented + r.metrics.na) + ' of ' + r.metrics.totalItems), target: '≥ 80%', pass: r.metrics.totalItems > 0 && ((r.metrics.implemented + r.metrics.na) / r.metrics.totalItems) >= 0.8, dot: r.metrics.totalItems > 0 && ((r.metrics.implemented + r.metrics.na) / r.metrics.totalItems) >= 0.8 ? 'green' : 'amber' },
     { metric: 'Average control maturity', sub: 'Self-rated, 0–5 scale',                  current: r.metrics.avgMaturity + ' / 5',            target: '≥ 3.0',  pass: parseFloat(r.metrics.avgMaturity) >= 3.0, dot: parseFloat(r.metrics.avgMaturity) >= 3.0 ? 'green' : (parseFloat(r.metrics.avgMaturity) >= 2.0 ? 'amber' : 'red') },
@@ -168,12 +187,6 @@
 
 <div class="pack">
 
-  <%# Classification %>
-  <div class="pack-classification">
-    <span>Internal · Certification-readiness review</span>
-    <span class="right">Document <%= docId %></span>
-  </div>
-
   <%# Title block %>
   <div class="pack-title">
     <div>
@@ -191,6 +204,30 @@
   </div>
 
   <div class="pack-body">
+
+    <%# Dashboard KPI tiles %>
+    <div class="rd-kpis">
+      <div class="rd-kpi is-dot <%= r.stage1Ready ? 'ok' : 'bad' %>">
+        <div class="k-label">Stage 1 verdict</div>
+        <div class="k-val"><%= r.stage1Ready ? 'Ready' : 'Not ready' %></div>
+        <div class="k-sub"><%= r.stage1GatePassed %>/<%= r.stage1GateTotal %> hard gate · maturity <%= r.maturityPct %>%</div>
+      </div>
+      <div class="rd-kpi is-dot <%= r.stage2Ready ? 'ok' : (r.stage1Ready ? 'warn' : 'bad') %>">
+        <div class="k-label">Stage 2 verdict</div>
+        <div class="k-val"><%= r.stage2Ready ? 'Ready' : 'Not ready' %></div>
+        <div class="k-sub"><%= r.stage2GatePassed %>/<%= r.stage2GateTotal %> hard gate · floor 75%</div>
+      </div>
+      <div class="rd-kpi <%= r.maturityPct >= 75 ? 'ok' : (r.maturityPct >= 60 ? 'warn' : 'bad') %>">
+        <div class="k-label">Control maturity</div>
+        <div class="k-val"><%= r.maturityPct %>%</div>
+        <div class="k-sub">0-5 avg across <%= r.applicableControls %> applicable controls</div>
+      </div>
+      <div class="rd-kpi <%= r.daysToTarget !== null && r.daysToTarget < 30 ? 'bad' : (r.daysToTarget !== null && r.daysToTarget < 90 ? 'warn' : '') %>">
+        <div class="k-label">Days to target cert</div>
+        <div class="k-val"><%= r.daysToTarget !== null ? r.daysToTarget : '—' %></div>
+        <div class="k-sub"><%= ws.target_cert_date || 'No target date set' %></div>
+      </div>
+    </div>
 
     <%# Verdict callout %>
     <div class="pack-verdict <%= verdict %>">
@@ -212,46 +249,404 @@
       <% } %>
     </div>
 
-    <%# Section 1 — Stage-gate scorecard %>
+    <%
+      // Gap-assessment + implementation stats panel. Same data lives in
+      // the workspace overview hero; rendered once per Stage section so
+      // each section is self-contained without scrolling away to find
+      // "where are we" context.
+      const renderStatsPanel = () => {
+        const sc = r.statusCounts || { impl:0, partial:0, wip:0, notImpl:0, na:0, notAss:0 };
+        const total = r.totalSoaItems || 0;
+        const assessed = r.totalAssessed || 0;
+        const assessedPct = total ? Math.round(assessed / total * 100) : 0;
+        const implPct = total ? Math.round(sc.impl / total * 100) : 0;
+        const seg = [
+          { v: sc.impl,    color: '#15803d', label: 'Implemented' },
+          { v: sc.partial, color: '#b45309', label: 'Partially' },
+          { v: sc.wip,     color: '#0891b2', label: 'In progress' },
+          { v: sc.notImpl, color: '#b91c1c', label: 'Not implemented' },
+          { v: sc.na,      color: '#8a8a87', label: 'Not applicable' },
+          { v: sc.notAss,  color: '#e5e3dc', label: 'Not assessed' }
+        ].filter(s => s.v > 0);
+        const themesObj = r.themes || {};
+
+        let html = '<div style="border:1px solid var(--border);background:#fafaf8;padding:14px 16px;display:flex;flex-direction:column;gap:12px;margin-bottom:18px;">';
+
+        // Gap assessment row
+        html += '<div>'
+              + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">'
+              + '<div style="font-size:10px;font-weight:500;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-tertiary);">Gap assessment</div>'
+              + '<div class="num" style="font-size:11px;color:var(--text-tertiary);"><span style="color:var(--text);font-weight:500;">' + assessed + '</span> of ' + total + ' assessed · ' + assessedPct + '%</div>'
+              + '</div>'
+              + '<div style="display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--bg-muted);">';
+        if (assessed > 0) html += '<span style="background:#1a1a1a;width:' + (total ? (assessed/total*100).toFixed(2) : 0) + '%;"></span>';
+        html += '</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;">';
+        Object.values(themesObj).forEach(t => {
+          const pct = t.total ? Math.round(t.assessed / t.total * 100) : 0;
+          html += '<div>'
+                + '<div style="font-size:9.5px;color:var(--text-tertiary);margin-bottom:2px;letter-spacing:0.2px;">' + t.label + '</div>'
+                + '<div class="num" style="font-size:11.5px;color:var(--text);font-weight:500;">' + t.assessed + '<span style="color:var(--text-tertiary);font-weight:400;">/' + t.total + '</span></div>'
+                + '<div style="height:3px;background:var(--bg-muted);border-radius:1px;margin-top:3px;overflow:hidden;"><div style="height:100%;background:#1a1a1a;width:' + pct + '%;"></div></div>'
+                + '</div>';
+        });
+        html += '</div></div>';
+
+        // Implementation row
+        html += '<div>'
+              + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">'
+              + '<div style="font-size:10px;font-weight:500;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-tertiary);">Implementation</div>'
+              + '<div class="num" style="font-size:11px;color:var(--text-tertiary);"><span style="color:var(--text);font-weight:500;">' + sc.impl + '</span> of ' + total + ' implemented · ' + implPct + '%</div>'
+              + '</div>'
+              + '<div style="display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--bg-muted);">';
+        seg.forEach(s => {
+          html += '<span title="' + s.label + ': ' + s.v + '" style="background:' + s.color + ';width:' + (total ? (s.v/total*100).toFixed(2) : 0) + '%;"></span>';
+        });
+        html += '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:10px;color:var(--text-tertiary);">';
+        seg.forEach(s => {
+          html += '<span style="display:inline-flex;align-items:center;gap:5px;">'
+                + '<span style="width:8px;height:8px;border-radius:2px;background:' + s.color + ';display:inline-block;flex-shrink:0;"></span>'
+                + s.label + ' <span class="num" style="color:var(--text);font-weight:500;">' + s.v + '</span>'
+                + '</span>';
+        });
+        html += '</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;">';
+        Object.values(themesObj).forEach(t => {
+          const pct = t.total ? Math.round(t.implemented / t.total * 100) : 0;
+          const col = pct >= 80 ? '#15803d' : pct >= 50 ? '#b45309' : pct > 0 ? '#b91c1c' : 'var(--text-tertiary)';
+          html += '<div>'
+                + '<div style="font-size:9.5px;color:var(--text-tertiary);margin-bottom:2px;letter-spacing:0.2px;">' + t.label + '</div>'
+                + '<div class="num" style="font-size:11.5px;color:var(--text);font-weight:500;">' + t.implemented + '<span style="color:var(--text-tertiary);font-weight:400;">/' + t.total + '</span></div>'
+                + '<div style="height:3px;background:var(--bg-muted);border-radius:1px;margin-top:3px;overflow:hidden;"><div style="height:100%;background:' + col + ';width:' + pct + '%;"></div></div>'
+                + '</div>';
+        });
+        html += '</div></div>';
+
+        html += '</div>';
+        return html;
+      };
+
+      // Shared renderers for both Stage 1 and Stage 2 sections. Stage 2 is
+      // structurally identical: same per-input breakdown table + same top
+      // actions table, just computed against different weights (and an
+      // extra "evidence" input).
+      const renderBreakdownTable = (breakdown, totalScore) => {
+        let html = '<table class="wp"><thead><tr>'
+                 + '<th style="width:30%;">Input</th>'
+                 + '<th class="num">Weight</th>'
+                 + '<th class="num">Earned</th>'
+                 + '<th class="num">On the table</th>'
+                 + '<th>Status &amp; what to do</th>'
+                 + '</tr></thead><tbody>';
+        breakdown.forEach(b => {
+          const ringCol = b.score >= 0.99 ? '#166534' : b.score >= 0.5 ? '#92400e' : '#b91c1c';
+          html += '<tr>'
+            + '<td class="metric">' + b.label + '<span class="sub">' + b.detail + '</span></td>'
+            + '<td class="num">' + Math.round(b.weight * 100) + '%</td>'
+            + '<td class="num">' + b.earned.toFixed(1) + '</td>'
+            + '<td class="num dim">' + (b.remaining > 0 ? '+' + b.remaining.toFixed(1) : '–') + '</td>'
+            + '<td><span class="mark"><span class="dot" style="background:' + ringCol + ';"></span>'
+            + '<span class="lbl">' + b.hint + '</span></span></td>'
+            + '</tr>';
+        });
+        html += '<tr class="totals">'
+              + '<td>Readiness</td>'
+              + '<td class="num">100%</td>'
+              + '<td class="num">' + totalScore.toFixed(1) + '</td>'
+              + '<td class="num">' + (100 - totalScore).toFixed(1) + '</td>'
+              + '<td></td>'
+              + '</tr></tbody></table>';
+        return html;
+      };
+
+      // Issues table: every detected flag (high + medium), one row each.
+      // High-severity flags drive the breakdown's row 3 ("No high-severity
+      // issues") and carry an explicit per-flag points-back number.
+      // Medium-severity flags don't move the readiness score directly
+      // (the formula only counts high-sev), but they're still real audit
+      // gaps so they're listed here for completeness.
+      const renderIssuesTable = (breakdown, stageLabel) => {
+        const allFlags = (r.flags || []).slice().sort((a, b) =>
+          (a.severity === 'high' ? 0 : 1) - (b.severity === 'high' ? 0 : 1)
+        );
+        if (!allFlags.length) {
+          return '<div class="pack-empty" style="padding: 18px 14px; text-align: center; color: var(--text-tertiary); font-style: italic; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text);">No issues open. All detection rules pass.</div>';
+        }
+        const flagsRow = breakdown.find(b => b.key === 'flags');
+        const perHighFlag = flagsRow ? Math.round((flagsRow.ceiling / 5) * 10) / 10 : 3;
+        const highCount = allFlags.filter(f => f.severity === 'high').length;
+        let html = '<table class="wp"><thead><tr>'
+                 + '<th style="width:30px;">#</th>'
+                 + '<th style="width:80px;">Severity</th>'
+                 + '<th>Issue</th>'
+                 + '<th>Sampled affected items</th>'
+                 + '<th class="num" style="width:120px;">' + stageLabel + ' impact</th>'
+                 + '</tr></thead><tbody>';
+        allFlags.forEach((f, i) => {
+          const items = (f.items || []).slice(0, 3).map(it => it.title).join(' · ');
+          const more = Math.max(0, (f.items || []).length - 3);
+          const itemCell = items || '<span style="color:var(--text-tertiary);font-style:italic;">no sample items</span>';
+          const sevColor = f.severity === 'high' ? '#b91c1c' : '#a16207';
+          const sevLabel = f.severity === 'high' ? 'High' : 'Medium';
+          const impactCell = f.severity === 'high'
+            ? '+' + perHighFlag.toFixed(1) + ' pts'
+            : '<span class="dim" style="color:var(--text-tertiary);">no score impact</span>';
+          html += '<tr>'
+            + '<td class="num dim">' + (i + 1) + '</td>'
+            + '<td><span class="mark"><span class="dot" style="background:' + sevColor + ';"></span><span class="lbl">' + sevLabel + '</span></span></td>'
+            + '<td class="metric">' + f.label + '</td>'
+            + '<td style="font-size:11.5px;color:var(--text-secondary);">' + itemCell
+            + (more > 0 ? ' <span class="meta">+ ' + more + ' more</span>' : '') + '</td>'
+            + '<td class="num">' + impactCell + '</td>'
+            + '</tr>';
+        });
+        html += '<tr class="totals">'
+              + '<td></td>'
+              + '<td colspan="2">Close all high-severity issues (' + highCount + ')</td>'
+              + '<td></td>'
+              + '<td class="num">+' + (perHighFlag * highCount).toFixed(1) + ' pts</td>'
+              + '</tr></tbody></table>';
+        return html;
+      };
+    %>
+
+    <%
+      const passDot = '<span class="mark"><span class="dot green"></span><span class="lbl">Pass</span></span>';
+      const failDot = '<span class="mark"><span class="dot red"></span><span class="lbl">Fail</span></span>';
+
+      const renderChecklistTable = (rows, totalPassed, totalCount) => {
+        let html = '<table class="wp"><thead><tr>'
+                 + '<th style="width:30px;">#</th>'
+                 + '<th style="width:130px;">ISO ref</th>'
+                 + '<th>Prerequisite</th>'
+                 + '<th>Status</th>'
+                 + '<th class="center" style="width:90px;">Check</th>'
+                 + '</tr></thead><tbody>';
+        rows.forEach((c, i) => {
+          const dot = c.pass ? passDot : failDot;
+          const action = c.pass
+            ? '<span style="color:var(--text-tertiary);font-style:italic;">' + c.detail + '</span>'
+            : c.detail + ' — <a href="' + c.href + '" style="color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;">' + c.action + '</a>';
+          html += '<tr>'
+                + '<td class="num dim">' + (i + 1) + '</td>'
+                + '<td class="ref">' + c.clause + '</td>'
+                + '<td class="metric">' + c.name + '</td>'
+                + '<td style="font-size:11.5px;color:var(--text-secondary);">' + action + '</td>'
+                + '<td class="center">' + dot + '</td>'
+                + '</tr>';
+        });
+        html += '<tr class="totals">'
+              + '<td></td><td></td>'
+              + '<td>Mandatory prerequisites passed</td>'
+              + '<td></td>'
+              + '<td class="center"><span class="num">' + totalPassed + ' / ' + totalCount + '</span></td>'
+              + '</tr></tbody></table>';
+        return html;
+      };
+
+      const renderSignalsTable = (rows) => {
+        const passed = rows.filter(c => c.pass).length;
+        let html = '<table class="wp"><thead><tr>'
+                 + '<th style="width:30px;">#</th>'
+                 + '<th>Signal</th>'
+                 + '<th>Status</th>'
+                 + '<th class="center" style="width:90px;">Check</th>'
+                 + '</tr></thead><tbody>';
+        rows.forEach((c, i) => {
+          const dot = c.pass ? passDot : '<span class="mark"><span class="dot amber"></span><span class="lbl">Not yet</span></span>';
+          const action = '<a href="' + c.href + '" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--border);">' + c.detail + '</a>';
+          html += '<tr>'
+                + '<td class="num dim">' + (i + 1) + '</td>'
+                + '<td class="metric">' + c.name + '</td>'
+                + '<td style="font-size:11.5px;color:var(--text-secondary);">' + action + '</td>'
+                + '<td class="center">' + dot + '</td>'
+                + '</tr>';
+        });
+        html += '<tr class="totals">'
+              + '<td></td>'
+              + '<td>Operational quality signals on track</td>'
+              + '<td></td>'
+              + '<td class="center"><span class="num">' + passed + ' / ' + rows.length + '</span></td>'
+              + '</tr></tbody></table>';
+        return html;
+      };
+    %>
+
+    <%
+      // Layer 1 hard-gate table. Rows: {clause, name, pass, detail, action?, href}.
+      const renderGateTable = (rows, passed, total) => {
+        let html = '<table class="wp"><thead><tr>'
+                 + '<th style="width:30px;">#</th>'
+                 + '<th style="width:130px;">ISO ref</th>'
+                 + '<th>Hard-gate requirement</th>'
+                 + '<th>Status</th>'
+                 + '<th class="center" style="width:80px;">Gate</th>'
+                 + '</tr></thead><tbody>';
+        rows.forEach((c, i) => {
+          const dot = c.pass ? passDot : failDot;
+          const status = c.pass
+            ? '<span style="color:var(--text-tertiary);">' + c.detail + '</span>'
+            : c.detail + (c.action ? ' — <a href="' + c.href + '" style="color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;">' + c.action + '</a>' : '');
+          // Requirement name links to where it's evidenced/fixed.
+          const nameCell = c.href
+            ? '<a href="' + c.href + '" style="color:var(--text);text-decoration:none;border-bottom:1px solid transparent;" onmouseover="this.style.borderBottomColor=\'var(--accent)\'" onmouseout="this.style.borderBottomColor=\'transparent\'">' + c.name + '</a>'
+            : c.name;
+          html += '<tr>'
+                + '<td class="num dim">' + (i + 1) + '</td>'
+                + '<td class="ref">' + c.clause + '</td>'
+                + '<td class="metric">' + nameCell + '</td>'
+                + '<td style="font-size:11.5px;color:var(--text-secondary);">' + status + '</td>'
+                + '<td class="center">' + dot + '</td>'
+                + '</tr>';
+        });
+        html += '<tr class="totals">'
+              + '<td></td><td></td>'
+              + '<td>Hard-gate items passing</td><td></td>'
+              + '<td class="center"><span class="num">' + passed + ' / ' + total + '</span></td>'
+              + '</tr></tbody></table>';
+        return html;
+      };
+
+      // Quiet inline verdict line - coloured dot + status word + reason.
+      // No bordered/tinted alert box, no inner label box.
+      const verdictBanner = (ready, gateClear, matOk, matPct, floor, gatePassed, gateTotal) => {
+        const dot = (c) => '<span style="width:9px;height:9px;border-radius:50%;background:' + c + ';display:inline-block;flex-shrink:0;margin-top:5px;"></span>';
+        if (ready) {
+          return '<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:16px;font-size:13px;line-height:1.55;">'
+               + dot('#166534')
+               + '<div><span style="color:#166534;font-weight:500;">Ready.</span> <span style="color:var(--text-secondary);">All ' + gateTotal + ' hard-gate items pass and maturity is ' + matPct + '% (floor ' + floor + '%). No Layer 1 blocker remains.</span></div>'
+               + '</div>';
+        }
+        const reasons = [];
+        if (!gateClear) reasons.push((gateTotal - gatePassed) + ' hard-gate item' + ((gateTotal - gatePassed) === 1 ? '' : 's') + ' failing');
+        if (!matOk) reasons.push('maturity ' + matPct + '% below the ' + floor + '% floor');
+        return '<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:16px;font-size:13px;line-height:1.55;">'
+             + dot('#b91c1c')
+             + '<div><span style="color:#b91c1c;font-weight:500;">Not ready</span> <span style="color:var(--text);">' + reasons.join(' · ') + '.</span> <span style="color:var(--text-tertiary);">Any single Layer 1 failure blocks readiness regardless of the maturity score (ISO/IEC 17021-1 §9.5.2).</span></div>'
+             + '</div>';
+      };
+    %>
+
+    <%# Section 1 — Stage 1 readiness: Layer 1 hard gate + Layer 2 maturity %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">1</span>
-        <h2 class="pack-section-title">Stage-gate scorecard</h2>
-        <span class="pack-section-meta">8 metrics · thresholds in Appendix A.1</span>
+        <h2 class="pack-section-title">Stage 1 — design &amp; documentation</h2>
+        <span class="pack-section-meta">verdict: <%= r.stage1Ready ? 'Ready' : 'Not ready' %> · maturity <%= r.maturityPct %>%</span>
       </div>
-      <div class="pack-caption"><span>Exhibit 1.1 &nbsp;·&nbsp; Posture against Stage 1 and Stage 2 gate criteria</span><span class="label">All thresholds</span></div>
-      <table class="wp">
-        <thead>
-          <tr>
-            <th style="width:30px;"></th>
-            <th>Metric</th>
-            <th class="num" style="width:130px;">Current</th>
-            <th class="num" style="width:90px;">Threshold</th>
-            <th class="center" style="width:100px;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% scorecard.forEach(row => { %>
-            <tr>
-              <td class="center"><span class="mark"><span class="dot <%= row.dot %>"></span></span></td>
-              <td class="metric"><%= row.metric %><span class="sub"><%= row.sub %></span></td>
-              <td class="num"><%= row.current %></td>
-              <td class="num dim"><%= row.target %></td>
-              <td class="center"><span class="mark"><span class="dot <%= row.pass ? 'green' : 'red' %>"></span><span class="lbl"><%= row.pass ? 'Pass' : 'Fail' %></span></span></td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-      <div class="pack-source"><strong>Source</strong> Computed live from <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">computeReadiness(ws)</code>. Formula weights and pass thresholds are listed in Appendix A.1; mandatory-record detection caveats are in A.2.</div>
+
+      <%- verdictBanner(r.stage1Ready, r.stage1GateClear, r.stage1MaturityOk, r.maturityPct, 60, r.stage1GatePassed, r.stage1GateTotal) %>
+
+      <div class="pack-caption"><span>Layer 1 — hard gate</span><span class="label">17 items · any FAIL = Not ready</span></div>
+      <%- renderGateTable(r.stage1Gate || [], r.stage1GatePassed, r.stage1GateTotal) %>
+      <div class="pack-source"><strong>Methodology</strong> Boolean presence + substantive-compliance checks drawn from the documented-information requirements of clauses 4-10 and the procedural requirements of §9.2/§9.3. Mirrors 17021-1 §9.5.2: certification cannot be granted while any major nonconformity remains.</div>
+
+      <div class="pack-caption" style="margin-top:22px;"><span>Layer 2 — maturity</span><span class="label">0-5 averaged across applicable Annex A controls</span></div>
+      <div style="border:1px solid var(--border);background:#fafaf8;padding:16px 18px;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;">
+        <div style="text-align:center;border-right:1px solid var(--border);padding-right:20px;">
+          <div class="num" style="font-size:34px;font-weight:500;line-height:1;color:<%= r.maturityPct >= 60 ? '#166534' : '#b91c1c' %>;"><%= r.maturityPct %>%</div>
+          <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-top:6px;">Stage 1 floor 60%</div>
+        </div>
+        <div style="font-size:12.5px;line-height:1.6;color:var(--text-secondary);">
+          Average maturity across <strong style="color:var(--text);font-weight:500;"><%= r.applicableControls %></strong> applicable Annex A controls, on the 0-5 ISO/IEC 33020 scale.
+          <% if (r.maturityPct < 60) { %><br><span style="color:#b91c1c;">Below the 60% Stage 1 floor — aggregated minor nonconformities risk escalating to major (§3.12 Note 1).</span><% } else { %><br>Meets the 60% Stage 1 floor.<% } %>
+          Unassessed applicable controls count as 0. Set per-control maturity in the gap-assessment wizard.
+        </div>
+      </div>
+      <div class="pack-source"><strong>How read</strong> Layer 2 informs but never overrides Layer 1. A high maturity % with a failing hard-gate item is still Not ready.</div>
+
+      <div class="pack-caption" style="margin-top:22px;"><span>Gap assessment + implementation snapshot</span><span class="label">SoA state context</span></div>
+      <%- renderStatsPanel() %>
     </div>
 
-    <%# Section 2 — Observations %>
+    <%# Section 2 — Stage 2 readiness: Layer 1 hard gate + Layer 2 maturity (75% floor) %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">2</span>
-        <h2 class="pack-section-title">Observations &amp; detected gaps</h2>
-        <span class="pack-section-meta"><%= r.flags.length %> open · grouped by severity</span>
+        <h2 class="pack-section-title">Stage 2 — implementation &amp; effectiveness</h2>
+        <span class="pack-section-meta">verdict: <%= r.stage2Ready ? 'Ready' : 'Not ready' %> · maturity <%= r.maturityPct %>%</span>
       </div>
+
+      <% if (!r.stage1Ready) { %>
+        <div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:16px;font-size:13px;line-height:1.55;">
+          <span style="width:9px;height:9px;border-radius:50%;background:#b45309;display:inline-block;flex-shrink:0;margin-top:5px;"></span>
+          <div><span style="color:#b45309;font-weight:500;">Gated.</span> <span style="color:var(--text-secondary);">Stage 2 cannot be reached until Stage 1 is Ready. Clear the Stage 1 hard gate first; the Stage 2 gate below is shown for forward planning.</span></div>
+        </div>
+      <% } else { %>
+        <%- verdictBanner(r.stage2Ready, r.stage2GateClear, r.stage2MaturityOk, r.maturityPct, 75, r.stage2GatePassed, r.stage2GateTotal) %>
+      <% } %>
+
+      <div class="pack-caption"><span>Layer 1 — hard gate</span><span class="label">9 items · requires Stage 1 Ready first</span></div>
+      <%- renderGateTable(r.stage2Gate || [], r.stage2GatePassed, r.stage2GateTotal) %>
+      <div class="pack-source"><strong>Methodology</strong> Stage 2 evaluates implementation + effectiveness (17021-1 §9.3.1.3): operating records, ≥2 evidence samples per applicable control, monitoring outputs, a closed internal-audit cycle, a recent MRM, root-cause + effectiveness in the NC register, legal register current, and BCP + IR tests performed.</div>
+
+      <div class="pack-caption" style="margin-top:22px;"><span>Layer 2 — maturity</span><span class="label">Floor 75% · no control at 0 or 1</span></div>
+      <div style="border:1px solid var(--border);background:#fafaf8;padding:16px 18px;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;">
+        <div style="text-align:center;border-right:1px solid var(--border);padding-right:20px;">
+          <div class="num" style="font-size:34px;font-weight:500;line-height:1;color:<%= (r.maturityPct >= 75 && r.controlsAtZeroOrOne === 0) ? '#166534' : '#b91c1c' %>;"><%= r.maturityPct %>%</div>
+          <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-top:6px;">Stage 2 floor 75%</div>
+        </div>
+        <div style="font-size:12.5px;line-height:1.6;color:var(--text-secondary);">
+          <% if (r.maturityPct < 75) { %><span style="color:#b91c1c;">Maturity <%= r.maturityPct %>% is below the 75% Stage 2 floor.</span>
+          <% } else if (r.controlsAtZeroOrOne > 0) { %><span style="color:#b91c1c;"><%= r.controlsAtZeroOrOne %> applicable control<%= r.controlsAtZeroOrOne === 1 ? ' is' : 's are' %> still at maturity 0 or 1 — Stage 2 requires every applicable control at ≥ 2.</span>
+          <% } else { %>Meets the 75% floor with no applicable control at 0 or 1.<% } %>
+        </div>
+      </div>
+    </div>
+
+    <%# ===== Drill-down: collapsible reference detail =====
+        Sections below are collapsed by default. The verdict + why + top
+        actions above are what a consultant needs day-to-day. Below is
+        reference data: the full scorecard, all observations, every
+        document, every control. Click any header to expand. %>
+    <div style="border-top:2px solid var(--text);padding-top:14px;margin-top:14px;margin-bottom:18px;">
+      <div class="pack-caption" style="margin-bottom:0;"><span>Drill-down detail</span><span class="label">Click any section below to expand</span></div>
+    </div>
+
+    <%# Stage-gate scorecard (was prominent §1, now demoted) %>
+    <details class="pack-section" id="sec-scorecard">
+      <summary class="pack-section-head" style="cursor:pointer;list-style:none;">
+        <span class="pack-section-num" style="opacity:0.55;">▸</span>
+        <h2 class="pack-section-title">Stage-gate scorecard</h2>
+        <span class="pack-section-meta">8 metrics · click to expand</span>
+      </summary>
+      <div style="padding-top:14px;">
+        <div class="pack-caption"><span>Posture against Stage 1 and Stage 2 gate criteria</span><span class="label">All thresholds</span></div>
+        <table class="wp">
+          <thead>
+            <tr>
+              <th style="width:30px;"></th>
+              <th>Metric</th>
+              <th class="num" style="width:130px;">Current</th>
+              <th class="num" style="width:90px;">Threshold</th>
+              <th class="center" style="width:100px;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% scorecard.forEach(row => { %>
+              <tr>
+                <td class="center"><span class="mark"><span class="dot <%= row.dot %>"></span></span></td>
+                <td class="metric"><%= row.metric %><span class="sub"><%= row.sub %></span></td>
+                <td class="num"><%= row.current %></td>
+                <td class="num dim"><%= row.target %></td>
+                <td class="center"><span class="mark"><span class="dot <%= row.pass ? 'green' : 'red' %>"></span><span class="lbl"><%= row.pass ? 'Pass' : 'Fail' %></span></span></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <div class="pack-source"><strong>Source</strong> Computed live from <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">computeReadiness(ws)</code>. Formula weights + pass thresholds are in the Methodology block at the bottom.</div>
+      </div>
+    </details>
+
+    <%# Open observations (collapsed drill-down) %>
+    <details class="pack-section" id="sec-observations">
+      <summary class="pack-section-head" style="cursor:pointer;list-style:none;">
+        <span class="pack-section-num" style="opacity:0.55;">▸</span>
+        <h2 class="pack-section-title">Open observations &amp; detected gaps</h2>
+        <span class="pack-section-meta"><%= r.flags.length %> open · click to expand</span>
+      </summary>
+      <div style="padding-top:14px;">
       <% if (r.flags.length === 0) { %>
         <div class="pack-empty" style="padding: 18px 14px; text-align: center; color: var(--text-tertiary); font-style: italic; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text);">No observations open. Readiness posture is clean across all detection rules.</div>
       <% } else {
@@ -313,17 +708,18 @@
         </table>
         <div class="pack-source"><strong>Source</strong> Each observation is generated by a deterministic rule (e.g. <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">implemented_no_evidence</code>). Severity is fixed per rule; <em>Sampled items</em> shows the first three affected records.</div>
       <% } %>
-    </div>
-
-    <%# Section 3 — Documented information register %>
-    <div class="pack-section">
-      <div class="pack-section-head">
-        <span class="pack-section-num">3</span>
-        <h2 class="pack-section-title">Documented-information register</h2>
-        <span class="pack-section-meta"><%= r.records.mandatory.found %>/<%= r.records.mandatory.total %> mandatory · <%= r.records.expected.found %>/<%= r.records.expected.total %> expected</span>
       </div>
+    </details>
 
-      <div class="pack-caption"><span>Exhibit 3.1 &nbsp;·&nbsp; Mandatory records (Clauses 4–10)</span><span class="label"><%= r.records.mandatory.total %> rows</span></div>
+    <%# Documented information register (collapsed drill-down) %>
+    <details class="pack-section">
+      <summary class="pack-section-head" style="cursor:pointer;list-style:none;">
+        <span class="pack-section-num" style="opacity:0.55;">▸</span>
+        <h2 class="pack-section-title">Documented-information register</h2>
+        <span class="pack-section-meta"><%= r.records.mandatory.found %>/<%= r.records.mandatory.total %> mandatory · <%= r.records.expected.found %>/<%= r.records.expected.total %> expected · click to expand</span>
+      </summary>
+      <div style="padding-top:14px;">
+      <div class="pack-caption"><span>Mandatory records (Clauses 4–10)</span><span class="label"><%= r.records.mandatory.total %> rows</span></div>
       <table class="wp">
         <thead>
           <tr>
@@ -367,15 +763,17 @@
         </tbody>
       </table>
       <div class="pack-source"><strong>Caveat</strong> Detection is heuristic &mdash; based on document type, naming patterns, and presence of linked records. Mark a record as present in the underlying register if the heuristic misses it.</div>
-    </div>
-
-    <%# Section 4 — Control implementation distribution %>
-    <div class="pack-section">
-      <div class="pack-section-head">
-        <span class="pack-section-num">4</span>
-        <h2 class="pack-section-title">Control implementation distribution</h2>
-        <span class="pack-section-meta"><%= totalControls %> items · clauses + Annex A</span>
       </div>
+    </details>
+
+    <%# Control implementation distribution (collapsed drill-down) %>
+    <details class="pack-section">
+      <summary class="pack-section-head" style="cursor:pointer;list-style:none;">
+        <span class="pack-section-num" style="opacity:0.55;">▸</span>
+        <h2 class="pack-section-title">Control implementation distribution</h2>
+        <span class="pack-section-meta"><%= totalControls %> items · click to expand</span>
+      </summary>
+      <div style="padding-top:14px;">
       <div class="pack-caption"><span>Exhibit 4.1 &nbsp;·&nbsp; Posture of every control on the SoA</span><span class="label">All counts</span></div>
       <table class="wp">
         <thead>
@@ -406,18 +804,19 @@
           </tr>
         </tbody>
       </table>
-      <div class="pack-source"><strong>Source</strong> <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">control_states</code> + <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">evidence</code> tables. Implemented controls without an evidence file appear in Exhibit 4.1 of the gap-findings pack.</div>
-    </div>
+      <div class="pack-source"><strong>Source</strong> <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">control_states</code> + <code style="background:rgba(92,10,10,0.05);color:var(--accent);padding:1px 5px;font-family:'SF Mono',Menlo,monospace;font-size:11px;">evidence</code> tables. Implemented controls without an evidence file appear in the gap-findings pack.</div>
+      </div>
+    </details>
 
   </div>
 
-  <%# Appendix %>
-  <div class="pack-appendix">
-    <div class="pack-appendix-head">
+  <%# Appendix (collapsed drill-down — methodology + formulas) %>
+  <details class="pack-appendix">
+    <summary class="pack-appendix-head" style="cursor:pointer;list-style:none;">
       <div class="pack-appendix-eyebrow">App. A</div>
-      <h3 class="pack-appendix-title">Verdict thresholds &amp; scoring formulas</h3>
-      <span class="pack-appendix-meta">Reading notes for this pack</span>
-    </div>
+      <h3 class="pack-appendix-title">Methodology · verdict thresholds &amp; scoring formulas</h3>
+      <span class="pack-appendix-meta">Click to expand</span>
+    </summary>
 
     <div class="pack-appendix-grid">
 
@@ -497,13 +896,10 @@
       </div>
 
     </div>
-  </div>
+  </details>
 
-  <%# Footer %>
-  <div class="pack-foot">
-    <span>Internal</span>
-    <span class="center">Document <%= docId %> &middot; Page 1 of 1</span>
-    <span class="right">Prepared <%= today %> by <%= user.name %></span>
+  <div class="meta text-xs" style="margin-top:18px;color:var(--text-tertiary);">
+    Generated <%= today %> by <%= user.name %> · internal readiness instrument, not a substitute for the certification body's audit decision.
   </div>
 
 </div>

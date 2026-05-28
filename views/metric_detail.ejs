@@ -1,0 +1,189 @@
+<%- include('partials/header', { title: metric.name, user, ws, active: 'metrics-library' }) %>
+<%
+  const ragColor = r => r === 'green' ? '#15803d' : r === 'amber' ? '#b45309' : r === 'red' ? '#b91c1c' : '#52525b';
+  const ragLabel = r => r === 'green' ? 'On target' : r === 'amber' ? 'Near target' : r === 'red' ? 'Off target' : 'No target set';
+  const fmt = v => v == null ? '—' : (Math.round(v * 100) / 100).toString();
+  const unitSuffix = (v, u) => v == null ? '' : (u === '%' ? '%' : u === 'days' ? ' d' : '');
+  const today = new Date().toISOString().slice(0, 10);
+  // Trend geometry
+  const vals = readings.map(r => r.value);
+  const hasData = vals.length > 0;
+  const tgt = metric.target_value;
+  const lo = hasData ? Math.min(...vals, tgt != null ? tgt : Infinity) : 0;
+  const hi = hasData ? Math.max(...vals, tgt != null ? tgt : -Infinity) : 1;
+  const W = 640, H = 150, padL = 10, padR = 10, padT = 12, padB = 22;
+  const range = (hi - lo) || 1;
+  const n = readings.length;
+  const px = i => n <= 1 ? W / 2 : padL + i * (W - padL - padR) / (n - 1);
+  const py = v => padT + (H - padT - padB) * (1 - (v - lo) / range);
+%>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title"><%= metric.name %></h1>
+    <div class="page-subtitle"><%= metric.ref %> · <%= metric.category %> · ISO/IEC 27004:2016 Annex B</div>
+  </div>
+  <div class="row">
+    <a href="/workspaces/<%= ws.id %>/metrics/adopted" class="btn btn-secondary btn-xs">← Adopted metrics</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= metric.id %>/delete" onsubmit="return confirm('Remove this metric and all its readings from the engagement?');" style="display:inline;">
+      <button type="submit" class="btn btn-danger btn-xs">Remove</button>
+    </form>
+  </div>
+</div>
+
+<%- include('partials/metric_tabs', { ws, active: 'adopted' }) %>
+
+<div style="display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start;">
+  <!-- LEFT: readings + trend -->
+  <div>
+    <!-- Latest reading summary -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
+      <div class="panel kpi">
+        <div class="kpi-label text-eyebrow">Latest reading</div>
+        <div class="kpi-num"><%= latest ? fmt(latest.value) + unitSuffix(latest.value, metric.unit) : '—' %></div>
+        <div class="kpi-meta"><%= latest ? latest.measured_at : 'no readings yet' %></div>
+      </div>
+      <div class="panel kpi">
+        <div class="kpi-label text-eyebrow">Target</div>
+        <div class="kpi-num"><%= metric.target_value == null ? '—' : fmt(metric.target_value) + unitSuffix(metric.target_value, metric.unit) %></div>
+        <div class="kpi-meta"><%= metric.direction === 'lower' ? 'lower is better' : 'higher is better' %></div>
+      </div>
+      <div class="panel kpi">
+        <div class="kpi-label text-eyebrow">Status</div>
+        <div class="kpi-num" style="color:<%= ragColor(metric.rag) %>;font-size:15px;"><%= ragLabel(metric.rag) %></div>
+        <div class="kpi-meta"><%= readings.length %> reading<%= readings.length === 1 ? '' : 's' %></div>
+      </div>
+    </div>
+
+    <!-- Trend -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2>Trend</h2><span class="meta"><%= metric.unit %><%= metric.frequency ? ' · ' + metric.frequency : '' %></span></div>
+      <div class="panel-pad">
+        <% if (!hasData) { %>
+          <div class="meta" style="padding:20px 0;text-align:center;">Record a reading below to start the trend.</div>
+        <% } else { %>
+          <svg viewBox="0 0 <%= W %> <%= H %>" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">
+            <% if (tgt != null) { %>
+              <line x1="<%= padL %>" y1="<%= py(tgt).toFixed(1) %>" x2="<%= W - padR %>" y2="<%= py(tgt).toFixed(1) %>" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4 3"/>
+              <text x="<%= W - padR %>" y="<%= (py(tgt) - 4).toFixed(1) %>" text-anchor="end" font-size="10" fill="#9ca3af">target <%= fmt(tgt) %></text>
+            <% } %>
+            <% if (n > 1) { %>
+              <polyline fill="none" stroke="#1a1a1a" stroke-width="1.5" points="<%= readings.map((r,i) => px(i).toFixed(1)+','+py(r.value).toFixed(1)).join(' ') %>"/>
+            <% } %>
+            <% readings.forEach((r,i) => { %>
+              <circle cx="<%= px(i).toFixed(1) %>" cy="<%= py(r.value).toFixed(1) %>" r="3.5" fill="<%= ragColor(r.rag) %>"/>
+            <% }) %>
+          </svg>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Record a reading -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2>Record a reading</h2></div>
+      <div class="panel-pad">
+        <form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= metric.id %>/readings">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label class="label">Value (<%= metric.unit %>)</label>
+              <input class="input" type="number" name="value" step="any" required placeholder="e.g. <%= metric.target_value != null ? fmt(metric.target_value) : '0' %>">
+            </div>
+            <div>
+              <label class="label">Measured on</label>
+              <input class="input" type="date" name="measured_at" value="<%= today %>" max="<%= today %>">
+            </div>
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="label">Notes (optional)</label>
+            <input class="input" type="text" name="notes" placeholder="Context, data source, anomalies…">
+          </div>
+          <button type="submit" class="btn btn-primary btn-xs">Save reading</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Readings history -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2>Readings</h2><span class="meta"><%= readings.length %></span></div>
+      <% if (!readings.length) { %>
+        <div class="panel-pad"><div class="meta">No readings recorded yet.</div></div>
+      <% } else { %>
+        <table class="t">
+          <thead><tr><th>Date</th><th>Value</th><th>Status</th><th>Notes</th><th>Recorded by</th></tr></thead>
+          <tbody>
+            <% readings.slice().reverse().forEach(r => { %>
+              <tr>
+                <td class="num"><%= r.measured_at %></td>
+                <td class="num" style="font-weight:500;"><%= fmt(r.value) %><%= unitSuffix(r.value, metric.unit) %></td>
+                <td><span class="status" style="color:<%= ragColor(r.rag) %>;"><%= ragLabel(r.rag) %></span></td>
+                <td class="text-base"><%= r.notes || '' %></td>
+                <td class="meta text-base"><%= r.recorder || '—' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- RIGHT: definition + edit -->
+  <div>
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2>Target &amp; ownership</h2></div>
+      <div class="panel-pad">
+        <form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= metric.id %>">
+          <div style="margin-bottom:10px;">
+            <label class="label">Target value (<%= metric.unit %>)</label>
+            <input class="input" type="number" name="target_value" step="any" value="<%= metric.target_value == null ? '' : metric.target_value %>" placeholder="not set">
+            <% if (metric.target_text) { %><div class="meta text-xs" style="margin-top:4px;">Standard suggests: <%= metric.target_text %></div><% } %>
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="label">Owner</label>
+            <input class="input" type="text" name="owner_name" value="<%= metric.owner_name || '' %>" placeholder="e.g. CISO">
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="label">Frequency</label>
+            <input class="input" type="text" name="frequency" value="<%= metric.frequency || '' %>">
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="label">Notes</label>
+            <textarea class="textarea" name="notes" rows="2" placeholder="Engagement-specific notes…"><%= metric.notes || '' %></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-xs">Save</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2>Definition</h2><span class="meta">ISO/IEC 27004</span></div>
+      <div class="panel-pad" style="font-size:13px;line-height:1.55;">
+        <% const def = [['Information need', catalog.informationNeed], ['Measure', catalog.measure], ['Formula / scoring', catalog.formula], ['Target (standard)', catalog.targetText], ['Data source', catalog.dataSource], ['Responsible parties', catalog.responsibleParties], ['Reporting format', catalog.reportingFormat]]; %>
+        <% def.forEach(([k, v]) => { if (!v) return; %>
+          <div style="margin-bottom:8px;">
+            <div class="text-eyebrow text-tertiary"><%= k %></div>
+            <div><%= v %></div>
+          </div>
+        <% }) %>
+        <% if (catalog.action) { %>
+          <div style="margin-bottom:8px;">
+            <div class="text-eyebrow text-tertiary">Action if target missed</div>
+            <div><%= catalog.action %></div>
+          </div>
+        <% } %>
+        <% if (controlsResolved && controlsResolved.length) { %>
+          <div style="margin-top:10px;">
+            <div class="text-eyebrow text-tertiary" style="margin-bottom:4px;">Related controls (ISO 27001:2022)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              <% controlsResolved.forEach(c => { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= c.id %>" class="tag tag-info text-eyebrow" style="text-decoration:none;" title="<%= c.title %>"><%= c.id.replace('annex-','').replace('clause-','Cl. ').toUpperCase() %></a><% }) %>
+            </div>
+          </div>
+        <% } %>
+        <% if (catalog.controls2013 && catalog.controls2013.length) { %>
+          <div class="meta text-xs" style="margin-top:10px;line-height:1.5;">Source mapping: <%= catalog.controls2013.join('; ') %></div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

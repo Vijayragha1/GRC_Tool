@@ -41,8 +41,8 @@
     <a href="/workspaces/<%= ws.id %>/templates" class="link-muted text-base">← Template library</a>
     <h1 class="page-title" style="margin-top:6px;"><%= tpl.name %></h1>
     <div class="page-subtitle" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px;">
-      <span class="tier-badge <%= tpl.tier || 'recommended' %>">
-        <%= tpl.tier === 'mandatory' ? '★ Mandatory' : tpl.tier === 'expected' ? '◆ Expected' : '· Recommended' %>
+      <span class="tier-badge <%= tpl.tier || 'recommended' %>" style="display:inline-flex;align-items:center;gap:5px;">
+        <%- tierIcon(tpl.tier || 'recommended', 12) %><%= tpl.tier === 'mandatory' ? 'Mandatory' : tpl.tier === 'expected' ? 'Expected' : 'Recommended' %>
       </span>
       <span class="meta text-md" style="text-transform:capitalize;"><%= tpl.category %></span>
       <% if (controls.length || clauses.length) { %>

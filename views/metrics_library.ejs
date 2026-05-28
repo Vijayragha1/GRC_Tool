@@ -1,0 +1,101 @@
+<%- include('partials/header', { title: 'ISMS metrics library', user, ws, active: 'metrics-library' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISMS metrics library</h1>
+    <div class="page-subtitle">ISO/IEC 27004:2016 Annex B measurement constructs. Expand any measure to see its full definition, then adopt the ones relevant to this engagement — each lands with the standard's suggested target and frequency, ready to record readings against (clause 9.1).</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/metrics/adopted" class="btn btn-secondary btn-xs">Adopted metrics (<%= adoptedCount %>) →</a>
+</div>
+
+<%- include('partials/metric_tabs', { ws, active: 'library' }) %>
+
+<!-- Standalone adopt form: checkboxes below reference it via form="adoptForm",
+     which keeps the per-row Remove forms from nesting inside it. -->
+<form id="adoptForm" method="POST" action="/workspaces/<%= ws.id %>/metrics/library">
+  <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+</form>
+
+<div style="position:sticky;top:0;background:var(--bg-deep);padding:8px 0;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);z-index:5;">
+  <div class="meta"><span id="pickCount">0</span> selected · <%= total %> measures · <%= adoptedCount %> already adopted</div>
+  <div class="row">
+    <button type="button" onclick="pickAll(true)" class="btn btn-secondary btn-xs">Select all available</button>
+    <button type="button" onclick="pickAll(false)" class="btn btn-secondary btn-xs">Clear</button>
+    <button type="submit" form="adoptForm" class="btn btn-primary btn-xs">Adopt selected</button>
+  </div>
+</div>
+
+<% categories.forEach(cat => { %>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-head"><h2><%= cat %></h2><span class="meta"><%= byCategory[cat].length %> measure<%= byCategory[cat].length === 1 ? '' : 's' %></span></div>
+    <% byCategory[cat].forEach(m => { %>
+      <div style="display:grid;grid-template-columns:24px 1fr;gap:10px;padding:10px 16px;border-top:1px solid var(--border);align-items:start;">
+        <div style="padding-top:2px;">
+          <% if (m.adopted) { %>
+            <input type="checkbox" checked disabled aria-label="Adopted">
+          <% } else { %>
+            <input type="checkbox" name="pick" value="<%= m.key %>" id="cb-<%= m.key %>" form="adoptForm" onchange="updateCount()">
+          <% } %>
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;">
+            <div style="font-size:13.5px;font-weight:500;line-height:1.4;">
+              <% if (m.adopted) { %>
+                <span class="meta text-sm" style="margin-right:6px;"><%= m.ref %></span><%= m.name %>
+              <% } else { %>
+                <label for="cb-<%= m.key %>" style="cursor:pointer;"><span class="meta text-sm" style="margin-right:6px;"><%= m.ref %></span><%= m.name %></label>
+              <% } %>
+            </div>
+            <% if (m.adopted) { %>
+              <div class="row" style="flex-shrink:0;align-items:center;gap:10px;">
+                <span class="status s-implemented">Adopted</span>
+                <a href="/workspaces/<%= ws.id %>/metrics/adopted/<%= m.adoptedId %>" class="link-muted text-base">Open</a>
+                <form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= m.adoptedId %>/delete" onsubmit="return confirm('Remove this metric and its readings from the engagement?');" style="display:inline;">
+                  <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                  <button type="submit" class="text-base" title="Remove from engagement" style="background:none;border:none;padding:0;cursor:pointer;color:#b91c1c;font-family:inherit;">Remove</button>
+                </form>
+              </div>
+            <% } %>
+          </div>
+          <div class="text-md text-secondary" style="margin-top:3px;line-height:1.5;"><%= m.informationNeed %></div>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;">
+            <span class="meta text-sm"><strong>Measure:</strong> <%= m.measure %></span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:4px;">
+            <span class="meta text-sm"><strong>Target:</strong> <%= m.targetText %></span>
+            <span class="meta text-sm"><strong>Frequency:</strong> <%= m.frequency %></span>
+            <span class="meta text-sm"><strong>Unit:</strong> <%= m.unit %></span>
+          </div>
+          <% if (m.controlsResolved && m.controlsResolved.length) { %>
+            <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
+              <% m.controlsResolved.forEach(c => { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= c.id %>" class="tag tag-info text-eyebrow" style="text-decoration:none;" title="<%= c.title %>"><%= c.id.replace('annex-','').replace('clause-','Cl. ').toUpperCase() %></a><% }) %>
+            </div>
+          <% } %>
+          <details style="margin-top:8px;">
+            <summary class="text-md" style="cursor:pointer;color:var(--text-secondary);">Full definition</summary>
+            <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+              <% [['Formula / scoring', m.formula], ['Data source', m.dataSource], ['Responsible parties', m.responsibleParties], ['Reporting format', m.reportingFormat], (m.action ? ['Action if target missed', m.action] : null), ['Source mapping (ISO 27001:2013)', (m.controls2013 || []).join('; ')]].forEach(function (pair) { if (!pair || !pair[1]) return; %>
+                <div style="margin-bottom:7px;">
+                  <div class="text-eyebrow text-tertiary"><%= pair[0] %></div>
+                  <div class="text-md" style="line-height:1.5;"><%= pair[1] %></div>
+                </div>
+              <% }) %>
+            </div>
+          </details>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% }) %>
+
+<script>
+function updateCount() {
+  document.getElementById('pickCount').textContent = document.querySelectorAll('input[name="pick"]:checked').length;
+}
+function pickAll(state) {
+  document.querySelectorAll('input[name="pick"]:not(:disabled)').forEach(c => c.checked = state);
+  updateCount();
+}
+</script>
+
+<%- include('partials/footer') %>

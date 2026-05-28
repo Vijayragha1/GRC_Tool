@@ -459,6 +459,15 @@ function redirectBack(req, res, toastMsg, toastKind) {
 }
 
 app.locals.escapeHtml = escapeHtml;
+// Tier marker as a crisp inline SVG (star/diamond/dot) instead of unicode
+// glyphs (★ ◆ ·), which render inconsistently across fonts. Colour is inherited
+// via currentColor. Safe to emit with <%- %> — no user input.
+app.locals.tierIcon = (tier, size = 12) => {
+  const open = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="vertical-align:-0.125em;flex-shrink:0;">`;
+  if (tier === 'mandatory') return open + '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+  if (tier === 'expected') return open + '<polygon points="12 2 22 12 12 22 2 12"/></svg>';
+  return open + '<circle cx="12" cy="12" r="4"/></svg>';
+};
 app.locals.rbac = rbac;
 
 // ==================== RBAC + AUDIT CONTEXT ====================
@@ -1611,6 +1620,27 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     else breakdown.annex[r.status]++;
   });
 
+  // Per-section counts (Requirements = clauses 4-10, A.5/A.6/A.7/A.8 =
+  // Annex A themes). Tracks both how much has been assessed (anything not
+  // "Not Assessed") and how much is Implemented. Feeds the overview's
+  // gap-assessment + implementation summary panel.
+  const themes = {
+    requirements: { label: 'Requirements', total: 0, assessed: 0, implemented: 0 },
+    org:          { label: 'A.5 Org',      total: 0, assessed: 0, implemented: 0 },
+    people:       { label: 'A.6 People',   total: 0, assessed: 0, implemented: 0 },
+    physical:     { label: 'A.7 Physical', total: 0, assessed: 0, implemented: 0 },
+    tech:         { label: 'A.8 Tech',     total: 0, assessed: 0, implemented: 0 }
+  };
+  stateRows.forEach(r => {
+    let key = null;
+    if (r.type === 'clause') key = 'requirements';
+    else if (themes[r.category]) key = r.category;
+    if (!key) return;
+    themes[key].total++;
+    if (r.status !== 'Not Assessed') themes[key].assessed++;
+    if (r.status === 'Implemented') themes[key].implemented++;
+  });
+
   const riskCount = db.prepare('SELECT COUNT(*) AS c FROM risks WHERE workspace_id = ?').get(ws.id).c;
   const openRisks = db.prepare(`SELECT * FROM risks WHERE workspace_id = ? AND status = 'open'
                                 ORDER BY (likelihood * impact) DESC LIMIT 5`).all(ws.id);
@@ -1655,11 +1685,21 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
   const nextStep = computeNextStep(ws);
   const derivedStage = computeClientStage(ws);
+  // Active gap-assessment pass (if any) so the overview can show
+  // "Pass 1 in progress · 87 of 118 assessed" without forcing the
+  // consultant to click into Gap assessment to see it.
+  let activePass = null;
+  try {
+    activePass = db.prepare(`SELECT id, pass_number, label, started_at, status
+      FROM assessment_passes WHERE workspace_id=? AND status='in_progress'
+      ORDER BY pass_number DESC LIMIT 1`).get(ws.id) || null;
+  } catch (_) {}
+
   res.render('workspace', {
-    user: req.user, ws, progress, breakdown, riskCount, openRisks,
+    user: req.user, ws, progress, breakdown, themes, riskCount, openRisks,
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
-    roadmap, needsAttention, nextStep,
+    roadmap, needsAttention, nextStep, activePass,
     setupIncomplete, intakeAnswered, derivedStage
   });
 });
@@ -4277,44 +4317,13 @@ app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, re
 });
 
 // ==================== ACTIVITY / AUDIT LOG ====================
+// The standalone /activity drill-down was merged into /activity-log (which has the
+// same filters plus the Timeline / Anomalies / Verify tabs and is permission-gated).
+// Redirect, preserving any query string.
 app.get('/workspaces/:wsId/activity', requireAuth, requireWorkspace, (req, res) => {
-  // Tier 2.6 - Audit-log drill-down with filters: user, action, entity_type,
-  // free-text search, date range. Pagination by 100. The audit_log table is
-  // appended to throughout the app; this is the read interface.
-  const { user_id, action, entity_type, q, since, until } = req.query;
-  const page = Math.max(1, parseInt(req.query.page || '1', 10));
-  const pageSize = 100;
-
-  const where = ['a.workspace_id=?'];
-  const params = [req.workspace.id];
-  if (user_id)     { where.push('a.user_id=?');     params.push(parseInt(user_id, 10)); }
-  if (action)      { where.push('a.action=?');      params.push(action); }
-  if (entity_type) { where.push('a.entity_type=?'); params.push(entity_type); }
-  if (since)       { where.push('a.created_at >= ?'); params.push(since + ' 00:00:00'); }
-  if (until)       { where.push('a.created_at <= ?'); params.push(until + ' 23:59:59'); }
-  if (q)           { where.push('(a.action LIKE ? OR a.entity_type LIKE ? OR a.entity_id LIKE ? OR u.name LIKE ?)');
-                     const like = `%${q}%`; params.push(like, like, like, like); }
-
-  const whereSql = where.join(' AND ');
-  const totalRow = db.prepare(`SELECT COUNT(*) c FROM audit_log a INNER JOIN users u ON u.id=a.user_id WHERE ${whereSql}`).get(...params);
-  const total = totalRow.c;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  const log = db.prepare(`SELECT a.*, u.name AS user_name FROM audit_log a
-    INNER JOIN users u ON u.id=a.user_id WHERE ${whereSql}
-    ORDER BY a.created_at DESC LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize);
-
-  // Distinct values for filter dropdowns (workspace-scoped).
-  const distinctActions      = db.prepare(`SELECT DISTINCT action      FROM audit_log WHERE workspace_id=? AND action      IS NOT NULL ORDER BY action`).all(req.workspace.id).map(r => r.action);
-  const distinctEntityTypes  = db.prepare(`SELECT DISTINCT entity_type FROM audit_log WHERE workspace_id=? AND entity_type IS NOT NULL ORDER BY entity_type`).all(req.workspace.id).map(r => r.entity_type);
-  const distinctUsers        = db.prepare(`SELECT DISTINCT u.id, u.name FROM audit_log a INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY u.name`).all(req.workspace.id);
-
-  res.render('activity', {
-    user: req.user, ws: req.workspace, log,
-    filters: { user_id, action, entity_type, q, since, until },
-    distinctActions, distinctEntityTypes, distinctUsers,
-    page, totalPages, total
-  });
+  const i = req.originalUrl.indexOf('?');
+  const qs = i >= 0 ? req.originalUrl.slice(i) : '';
+  res.redirect('/workspaces/' + req.workspace.id + '/activity-log' + qs);
 });
 
 // ==================== EXPORTS ====================
@@ -5783,27 +5792,262 @@ function computeReadiness(ws) {
   const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items`).get().c;
   const assessed = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`).get(ws.id).c;
 
-  // Stage 1 readiness: weighted score
-  // 30% mandatory records found, 35% Annex A controls implemented or N/A, 15% no high-severity flags,
-  // 10% MRM exists, 10% internal audit complete
-  const recordsScore = recordsTotal ? recordsFound / recordsTotal : 0;
-  const ctrlScore = totalItems ? ((totals.implemented || 0) + (totals.na || 0)) / totalItems : 0;
-  const highFlagsCount = flags.filter(f => f.severity === 'high').length;
-  const flagScore = Math.max(0, 1 - highFlagsCount / 5);
-  const mrmComplete = db.prepare(`SELECT 1 FROM mrms WHERE workspace_id=? AND status='complete' LIMIT 1`).get(ws.id) ? 1 : 0;
-  const auditComplete = db.prepare(`SELECT 1 FROM audits WHERE workspace_id=? AND status='complete' LIMIT 1`).get(ws.id) ? 1 : 0;
-  const stage1 = Math.round((0.30 * recordsScore + 0.35 * ctrlScore + 0.15 * flagScore + 0.10 * mrmComplete + 0.10 * auditComplete) * 100);
+  // =====================================================================
+  // TWO-LAYER READINESS MODEL (per the ISO 27001:2022 readiness rubric,
+  // anchored in ISO/IEC 17021-1 + 27006-1:2024)
+  //
+  // Layer 1 - Hard gate (boolean). Any single FAIL = Not Ready, no matter
+  //           how high the maturity score is (mirrors 17021-1 §9.5.2).
+  // Layer 2 - Maturity % (0-5 averaged across applicable Annex A controls).
+  //           Forecasting only; informs but never overrides Layer 1.
+  //           Stage 1 floor 60%; Stage 2 floor 75% with no control at 0/1.
+  // =====================================================================
+  const wsId = ws.id;
+  const evidenceCount = db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`).get(wsId).c;
 
-  // Stage 2 readiness: same plus operational evidence
-  const evidenceCount = db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`).get(ws.id).c;
-  const evidenceCoverage = totalItems ? Math.min(1, evidenceCount / (totalItems * 0.6)) : 0;
-  const stage2 = Math.round((0.20 * recordsScore + 0.30 * ctrlScore + 0.20 * flagScore + 0.10 * mrmComplete + 0.10 * auditComplete + 0.10 * evidenceCoverage) * 100);
+  const docApproved = (likeClauses) => {
+    const where = likeClauses.map(() => `lower(name) LIKE ?`).join(' OR ');
+    return !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND (${where}) AND status IN ('approved','published') LIMIT 1`).get(wsId, ...likeClauses);
+  };
+  const itemHasSubstance = (isoId) => {
+    const cs = db.prepare(`SELECT notes, maturity FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
+    return !!(cs && ((cs.notes && cs.notes.trim().length > 30) || (cs.maturity && cs.maturity >= 2)));
+  };
+  const annexADecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id=cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(wsId).c;
+  const soaJustGaps = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id=cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control'
+      AND ((cs.applicability='included' AND (cs.inclusion_justification IS NULL OR length(trim(cs.inclusion_justification)) < 10))
+        OR (cs.applicability='excluded' AND (cs.exclusion_justification IS NULL OR length(trim(cs.exclusion_justification)) < 10)))`).get(wsId).c;
+  const interestedPartiesCount = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?`).get(wsId).c;
+  const objectivesOk = db.prepare(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=?
+    AND target_value IS NOT NULL AND length(trim(target_value)) > 0
+    AND owner IS NOT NULL AND length(trim(owner)) > 0`).get(wsId).c >= 3;
+  const trainingComplete = db.prepare(`SELECT COUNT(*) c FROM training_records WHERE workspace_id=? AND status='complete'`).get(wsId).c;
+  const commPlanCount = db.prepare(`SELECT COUNT(*) c FROM communication_plan WHERE workspace_id=?`).get(wsId).c;
+  const docRegisterCount = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(wsId).c;
+  const internalAuditClosed = db.prepare(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND status IN ('complete','closed')`).get(wsId).c > 0;
+  const mrmFull = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=?
+    AND status IN ('complete','closed')
+    AND prior_actions_status IS NOT NULL AND length(trim(prior_actions_status)) > 0
+    AND context_changes IS NOT NULL AND length(trim(context_changes)) > 0
+    AND performance_review IS NOT NULL AND length(trim(performance_review)) > 0
+    AND feedback_interested_parties IS NOT NULL AND length(trim(feedback_interested_parties)) > 0
+    AND risk_treatment_status IS NOT NULL AND length(trim(risk_treatment_status)) > 0
+    AND improvement_opportunities IS NOT NULL AND length(trim(improvement_opportunities)) > 0`).get(wsId).c > 0;
+  const mandRecordsAllFound = mandatoryChecks.every(c => c.found);
+  const ismsPolicyDoc = docApproved(['%information security policy%']);
+  const policyApprovedRecent = (() => {
+    const d = db.prepare(`SELECT MAX(v.created_at) AS approved_at FROM doc_versions v
+      INNER JOIN generated_docs g ON g.id=v.document_id
+      WHERE g.workspace_id=? AND lower(g.name) LIKE '%information security policy%' AND v.status='approved'`).get(wsId);
+    if (!d || !d.approved_at) return false;
+    return (Date.now() - new Date(d.approved_at).getTime()) <= 365 * 86400000;
+  })();
+  const risksCount = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(wsId).c;
+  const rtpPresent = docApproved(['%risk treatment plan%']) || db.prepare(`SELECT COUNT(*) c FROM risk_treatment_actions WHERE workspace_id=?`).get(wsId).c > 0;
 
-  // Days to target cert
+  // ----- Layer 1: Stage 1 hard gate (17 items, rubric §2.2) -----
+  const s1 = (key, clause, name, pass, detail, action, href) => ({ key, clause, name, pass, detail, action, href });
+  const stage1Gate = [
+    s1('context', '4.1', 'Context analysis documented',
+      itemHasSubstance('clause-4.1'),
+      itemHasSubstance('clause-4.1') ? 'Context issues recorded against clause 4.1' : 'No documented internal/external context analysis',
+      'Document internal + external issues (clause 4.1)', '/workspaces/' + wsId + '/controls/assess/clause-4.1'),
+    s1('interested_parties', '4.2', 'Interested parties + requirements documented',
+      interestedPartiesCount >= 3 || itemHasSubstance('clause-4.2'),
+      (interestedPartiesCount >= 3 ? interestedPartiesCount + ' interested parties in the register' : 'Interested-parties register thin or empty'),
+      'Build the interested-parties register incl. 2022 sub-point (c)', '/workspaces/' + wsId + '/intake'),
+    s1('scope', '4.3', 'ISMS scope documented + approved',
+      !!(ws.scope && ws.scope.length > 10 && ws.scope_confirmed_at),
+      ws.scope_confirmed_at ? ('Scope confirmed ' + String(ws.scope_confirmed_at).slice(0,10)) : (ws.scope && ws.scope.length > 10 ? 'Scope drafted, not confirmed' : 'No scope defined'),
+      'Define scope + confirm boundaries', '/workspaces/' + wsId + '/intake'),
+    s1('policy', '5.2', 'Information security policy approved (≤12 mo)',
+      ismsPolicyDoc && policyApprovedRecent,
+      ismsPolicyDoc ? (policyApprovedRecent ? 'Approved policy within 12 months' : 'Policy approved but older than 12 months') : 'No approved information security policy',
+      'Adopt + approve the ISMS policy', '/workspaces/' + wsId + '/templates'),
+    s1('roles', '5.3', 'Roles, responsibilities + authorities documented',
+      itemHasSubstance('clause-5.3') || docApproved(['%roles%','%responsibilit%']),
+      (itemHasSubstance('clause-5.3') || docApproved(['%roles%','%responsibilit%'])) ? 'Roles documented' : 'No documented ISMS roles + responsibilities',
+      'Document ISMS roles + responsibilities (clause 5.3)', '/workspaces/' + wsId + '/controls/assess/clause-5.3'),
+    s1('risk_method', '6.1.2', 'Risk assessment process documented',
+      docApproved(['%risk%methodology%','%risk%procedure%','%risk management%']),
+      docApproved(['%risk%methodology%','%risk%procedure%','%risk management%']) ? 'Approved risk methodology found' : 'No approved risk methodology',
+      'Adopt the Risk Management Methodology template', '/workspaces/' + wsId + '/templates'),
+    s1('risk_assessment', '8.2', 'Risk assessment completed; results retained',
+      risksCount >= 10,
+      risksCount + ' risks in the register',
+      'Complete the first risk assessment (10+ risks)', '/workspaces/' + wsId + '/risks'),
+    s1('rtp', '6.1.3 e) / 8.3', 'Risk treatment plan; owners + deadlines',
+      rtpPresent,
+      rtpPresent ? 'RTP present' : 'No risk treatment plan',
+      'Adopt the Risk Treatment Plan + assign owners/deadlines', '/workspaces/' + wsId + '/templates'),
+    s1('soa', '6.1.3 d)', 'SoA: all 93 controls + justifications',
+      annexADecided >= 93 && soaJustGaps === 0,
+      annexADecided >= 93 ? (soaJustGaps === 0 ? 'All 93 decided + justified' : annexADecided + '/93 decided but ' + soaJustGaps + ' missing justification') : annexADecided + '/93 controls decided',
+      'Complete + justify every Annex A control', '/workspaces/' + wsId + '/soa'),
+    s1('objectives', '6.2', 'Measurable security objectives + evaluation',
+      objectivesOk,
+      objectivesOk ? '3+ measurable objectives with owners' : 'Fewer than 3 objectives with target + owner',
+      'Add 3+ measurable objectives with owners', '/workspaces/' + wsId + '/objectives'),
+    s1('planning_changes', '6.3', 'Planning of ISMS changes (method documented)',
+      itemHasSubstance('clause-6.3') || docApproved(['%change management%','%management of change%']),
+      (itemHasSubstance('clause-6.3') || docApproved(['%change management%','%management of change%'])) ? 'ISMS-change method documented' : 'No documented method for ISMS-level changes',
+      'Document an ISMS-change method (clause 6.3, distinct from A.8.32)', '/workspaces/' + wsId + '/controls/assess/clause-6.3'),
+    s1('awareness', '7.3', 'Awareness programme documented',
+      trainingComplete > 0 || docApproved(['%awareness%']),
+      (trainingComplete > 0 || docApproved(['%awareness%'])) ? 'Awareness programme / records present' : 'No awareness programme or completed records',
+      'Document the awareness programme + record completion', '/workspaces/' + wsId + '/training'),
+    s1('communication', '7.4', 'Communication plan (matrix, internal + external)',
+      commPlanCount >= 2,
+      commPlanCount >= 2 ? commPlanCount + ' communication-plan entries' : 'No communication matrix',
+      'Build the communication matrix (what/when/whom/how)', '/workspaces/' + wsId + '/communication-plan'),
+    s1('doc_control', '7.5', 'Documented information control in place',
+      docRegisterCount >= 3,
+      docRegisterCount >= 3 ? docRegisterCount + ' version-controlled approved documents' : 'Document register thin (version control unproven)',
+      'Adopt + version-control the mandatory documents', '/workspaces/' + wsId + '/documents'),
+    s1('internal_audit', '9.2', 'Internal audit completed (full ISMS scope)',
+      internalAuditClosed,
+      internalAuditClosed ? 'At least one internal audit closed' : 'No completed internal audit',
+      'Run + close one internal audit covering clauses 4-10', '/workspaces/' + wsId + '/audits'),
+    s1('mgmt_review', '9.3', 'Management review (all 9.3.2 inputs + outputs)',
+      mrmFull,
+      mrmFull ? 'MRM closed with all six 9.3.2 inputs' : 'No MRM closed with all required inputs',
+      'Hold one MRM with all 9.3.2 inputs documented', '/workspaces/' + wsId + '/mrms'),
+    s1('mandatory_docs', '4–10', 'All mandatory documented information present',
+      mandRecordsAllFound,
+      mandRecordsAllFound ? 'All mandatory clause 4-10 records detected' : (mandTotal - mandFound) + ' of ' + mandTotal + ' mandatory records missing',
+      'Produce the remaining mandatory clause 4-10 records', '/workspaces/' + wsId + '/readiness')
+  ];
+
+  // ----- Layer 2: maturity % across applicable Annex A controls -----
+  const maturityRows = db.prepare(`SELECT cs.maturity FROM control_states cs
+    INNER JOIN iso_items i ON i.id=cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).all(wsId);
+  const applicableControls = maturityRows.length;
+  const maturitySum = maturityRows.reduce((s, r) => s + (r.maturity || 0), 0);
+  const maturityPct = applicableControls > 0 ? Math.round((maturitySum / (applicableControls * 5)) * 100) : 0;
+  const controlsAtZeroOrOne = maturityRows.filter(r => (r.maturity || 0) <= 1).length;
+
+  // ----- Stage 1 verdict -----
+  const stage1GatePassed = stage1Gate.filter(g => g.pass).length;
+  const stage1GateTotal = stage1Gate.length;
+  const stage1GateClear = stage1GatePassed === stage1GateTotal;
+  const stage1MaturityOk = maturityPct >= 60;
+  const stage1Ready = stage1GateClear && stage1MaturityOk;
+  const stage1 = maturityPct;
+  const stage1Blocked = !stage1Ready;
+
+  // ----- Layer 1: Stage 2 hard gate (9 items, rubric §3.2) -----
+  const controlsWithOwnerAndEvidence = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    INNER JOIN iso_items i ON i.id=cs.iso_item_id
+    WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
+      AND cs.owner_id IS NOT NULL
+      AND (SELECT COUNT(*) FROM evidence e WHERE e.workspace_id=cs.workspace_id AND e.iso_item_id=cs.iso_item_id) >= 2`).get(wsId).c;
+  const oldestEvRow = db.prepare(`SELECT MIN(uploaded_at) AS d FROM evidence WHERE workspace_id=?`).get(wsId);
+  const evidenceAgeDays = oldestEvRow && oldestEvRow.d ? Math.floor((Date.now() - new Date(oldestEvRow.d).getTime()) / 86400000) : 0;
+  const auditFindingsTracked = db.prepare(`SELECT COUNT(*) c FROM audit_findings f
+    INNER JOIN audits a ON a.id=f.audit_id
+    WHERE a.workspace_id=? AND f.status NOT IN ('closed') AND f.finding_type IN ('major_nc','minor_nc')`).get(wsId).c === 0;
+  const mrmRecent = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status IN ('complete','closed')
+    AND meeting_date >= date('now','-365 days')`).get(wsId).c > 0;
+  const ncRcaOk = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=?
+    AND status NOT IN ('closed','verified')
+    AND (root_cause IS NULL OR length(trim(root_cause)) < 10)`).get(wsId).c === 0;
+  const overdueNCs2 = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=?
+    AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < date('now')`).get(wsId).c;
+  const legalRegisterOk = itemHasSubstance('annex-a.5.31') || docApproved(['%legal%','%regulatory%','%compliance register%']);
+  const bcpTestOk = itemHasSubstance('annex-a.5.30') || !!db.prepare(`SELECT 1 FROM evidence WHERE workspace_id=? AND iso_item_id IN ('annex-a.5.30','annex-a.5.29') LIMIT 1`).get(wsId);
+  const irExerciseOk = itemHasSubstance('annex-a.5.24') || db.prepare(`SELECT COUNT(*) c FROM incidents WHERE workspace_id=?`).get(wsId).c > 0;
+  const monitoringOk = itemHasSubstance('clause-9.1') || !!db.prepare(`SELECT 1 FROM evidence WHERE workspace_id=? AND iso_item_id='clause-9.1' LIMIT 1`).get(wsId);
+
+  const s2 = (key, clause, name, pass, detail, href) => ({ key, clause, name, pass, detail, href });
+  const stage2Gate = [
+    s2('operating', 'IAF MD 5', 'ISMS operating with normal-cycle records',
+      evidenceAgeDays >= 90,
+      oldestEvRow && oldestEvRow.d ? ('Oldest evidence ' + evidenceAgeDays + ' days old') : 'No evidence files',
+      '/workspaces/' + wsId + '/evidence'),
+    s2('control_evidence', 'SoA', 'Every applicable control: owner + ≥2 evidence samples',
+      applicableControls > 0 && controlsWithOwnerAndEvidence >= applicableControls,
+      controlsWithOwnerAndEvidence + ' of ' + applicableControls + ' applicable controls have owner + 2 evidence samples',
+      '/workspaces/' + wsId + '/evidence-coverage'),
+    s2('monitoring', '9.1', 'Monitoring / measurement outputs exist',
+      monitoringOk,
+      monitoringOk ? 'Monitoring outputs recorded' : 'No monitoring/measurement outputs',
+      '/workspaces/' + wsId + '/metrics/adopted'),
+    s2('audit_closed', '9.2', 'Internal-audit cycle complete; findings closed/tracked',
+      internalAuditClosed && auditFindingsTracked,
+      (internalAuditClosed ? (auditFindingsTracked ? 'Audit closed; NC findings closed' : 'Audit closed but NC findings still open') : 'No closed internal audit'),
+      '/workspaces/' + wsId + '/audits'),
+    s2('mrm_recent', '9.3', 'Management review within last 12 months',
+      mrmRecent,
+      mrmRecent ? 'MRM held in last 12 months' : 'No MRM in last 12 months',
+      '/workspaces/' + wsId + '/mrms'),
+    s2('nc_rca', '10.2', 'Corrective actions: root cause + effectiveness',
+      ncRcaOk,
+      ncRcaOk ? 'Open NCs carry root-cause analysis' : 'Open NCs missing root-cause analysis',
+      '/workspaces/' + wsId + '/nonconformities'),
+    s2('stage1_closed', '17021-1', 'Stage 1 findings / overdue NCs closed',
+      overdueNCs2 === 0,
+      overdueNCs2 === 0 ? 'No overdue nonconformities' : overdueNCs2 + ' overdue NCs',
+      '/workspaces/' + wsId + '/nonconformities'),
+    s2('legal_register', 'A.5.31', 'Legal / regulatory / contractual register current',
+      legalRegisterOk,
+      legalRegisterOk ? 'Legal register present' : 'No legal/regulatory register',
+      '/workspaces/' + wsId + '/controls/assess/annex-a.5.31'),
+    s2('tests', 'A.5.30 / A.5.24', 'BCP test + incident-response exercise performed',
+      bcpTestOk && irExerciseOk,
+      (bcpTestOk && irExerciseOk) ? 'BCP + IR tests recorded' : ((bcpTestOk ? '' : 'BCP test missing. ') + (irExerciseOk ? '' : 'IR exercise missing.')),
+      '/workspaces/' + wsId + '/controls/assess/annex-a.5.30')
+  ];
+
+  const stage2GatePassed = stage2Gate.filter(g => g.pass).length;
+  const stage2GateTotal = stage2Gate.length;
+  const stage2GateClear = stage2GatePassed === stage2GateTotal;
+  const stage2MaturityOk = maturityPct >= 75 && controlsAtZeroOrOne === 0;
+  const stage2Ready = stage1Ready && stage2GateClear && stage2MaturityOk;
+  const stage2 = maturityPct;
+  const stage2Blocked = !stage2Ready;
+
+  // Per-section breakdown so the readiness Stage panels can render the
+  // same gap-assessment / implementation summary the workspace overview
+  // shows. Requirements = clauses 4-10; org/people/physical/tech = the
+  // four Annex A themes.
+  const themeStateRows = db.prepare(`SELECT i.id, i.type, i.category, COALESCE(cs.status,'Not Assessed') AS status
+                                     FROM iso_items i
+                                     LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`).all(ws.id);
+  const themes = {
+    requirements: { label: 'Requirements', total: 0, assessed: 0, implemented: 0 },
+    org:          { label: 'A.5 Org',      total: 0, assessed: 0, implemented: 0 },
+    people:       { label: 'A.6 People',   total: 0, assessed: 0, implemented: 0 },
+    physical:     { label: 'A.7 Physical', total: 0, assessed: 0, implemented: 0 },
+    tech:         { label: 'A.8 Tech',     total: 0, assessed: 0, implemented: 0 }
+  };
+  const statusCounts = { impl: 0, partial: 0, wip: 0, notImpl: 0, na: 0, notAss: 0 };
+  themeStateRows.forEach(row => {
+    let key = null;
+    if (row.type === 'clause') key = 'requirements';
+    else if (themes[row.category]) key = row.category;
+    if (!key) return;
+    themes[key].total++;
+    if (row.status !== 'Not Assessed') themes[key].assessed++;
+    if (row.status === 'Implemented') themes[key].implemented++;
+    if (row.status === 'Implemented') statusCounts.impl++;
+    else if (row.status === 'Partially Implemented') statusCounts.partial++;
+    else if (row.status === 'Work In Progress') statusCounts.wip++;
+    else if (row.status === 'Not Implemented') statusCounts.notImpl++;
+    else if (row.status === 'Not Applicable') statusCounts.na++;
+    else if (row.status === 'Not Assessed') statusCounts.notAss++;
+  });
+  const totalSoaItems = themeStateRows.length;
+  const totalAssessed = totalSoaItems - statusCounts.notAss;
+
+  // Days remaining to the workspace's target cert date (null if unset).
   let daysToTarget = null;
   if (ws.target_cert_date) {
-    const diff = Math.ceil((new Date(ws.target_cert_date) - new Date()) / (1000*60*60*24));
-    daysToTarget = diff;
+    daysToTarget = Math.ceil((new Date(ws.target_cert_date) - new Date()) / 86400000);
   }
 
   return {
@@ -5813,6 +6057,15 @@ function computeReadiness(ws) {
                mandatory: { found: mandFound, total: mandTotal, checks: mandatoryChecks },
                expected:  { found: expFound,  total: expTotal,  checks: expectedChecks } },
     flags,
+    stage1Gate, stage1GatePassed, stage1GateTotal, stage1GateClear,
+    stage1MaturityOk, stage1Ready, stage1Blocked,
+    stage2Gate, stage2GatePassed, stage2GateTotal, stage2GateClear,
+    stage2MaturityOk, stage2Ready, stage2Blocked,
+    maturityPct, applicableControls, controlsAtZeroOrOne,
+    themes,
+    statusCounts,
+    totalSoaItems,
+    totalAssessed,
     metrics: {
       assessed, totalItems,
       implemented: totals.implemented || 0,
@@ -6058,9 +6311,9 @@ app.get('/api/search', requireAuth, (req, res) => {
         ['Tasks', '/tasks', 'task remediation'],
         ['Task templates', '/task-templates', 'task template'],
         ['Compliance calendar', '/calendar', 'calendar dates schedule'],
-        ['Reports', '/reports', 'report export'],
-        ['Members', '/members', 'team users'],
-        ['Access & permissions', '/access', 'permissions rbac'],
+        ['Deliverables', '/deliverables', 'deliverable export report docx zip pack'],
+        ['Report templates', '/reports', 'report template markdown'],
+        ['Team & access', '/team', 'team members users access permissions rbac'],
         ['Activity log', '/activity-log', 'audit trail history']
       ];
       nav.filter(([n, , aliases]) => n.toLowerCase().includes(q) || (aliases && aliases.toLowerCase().includes(q)))
@@ -7305,11 +7558,11 @@ function computeIsmsMetrics(wsId) {
   };
 }
 
-app.get('/workspaces/:wsId/metrics', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-  const m = computeIsmsMetrics(req.workspace.id);
-  // Upcoming MRMs the user could feed
-  const upcomingMrms = db.prepare(`SELECT id, meeting_date FROM mrms WHERE workspace_id=? AND status != 'closed' ORDER BY meeting_date IS NULL, meeting_date LIMIT 5`).all(req.workspace.id);
-  res.render('metrics', { user: req.user, ws: req.workspace, m, upcomingMrms });
+// The standalone performance dashboard was merged into the adopted-metrics area;
+// keep the old path working by redirecting. computeIsmsMetrics is still used by
+// the feed-to-mrm route below to push live KPIs into a management review.
+app.get('/workspaces/:wsId/metrics', requireAuth, requireWorkspace, (req, res) => {
+  res.redirect('/workspaces/' + req.workspace.id + '/metrics/adopted');
 });
 
 // Push current metrics into the chosen MRM's performance_review field.
@@ -7318,7 +7571,7 @@ app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWor
   if (!mrm) return res.status(404).send('MRM not found');
   const m = computeIsmsMetrics(req.workspace.id);
   const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
-  const block = [
+  let block = [
     `--- ISMS performance metrics (auto-fed ${ts}) ---`,
     `Control implementation: ${m.controlImpl}/${m.controlIncluded} included controls Implemented (${m.controlImplPct}%)`,
     `Training completion: ${m.trainComplete}/${m.trainAssigned} (${m.trainPct}%)`,
@@ -7333,6 +7586,24 @@ app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWor
     `Incident MTTR (last 90d): ${m.incidentMTTR == null ? 'n/a' : m.incidentMTTR + ' days'}`,
     `Open incidents: ${m.incidentsOpen}`
   ].join('\n');
+  // Append the adopted ISO/IEC 27004 measures with their latest readings, so the
+  // curated measurement programme reaches the review alongside the auto-computed KPIs.
+  const adoptedFeed = db.prepare(`
+    SELECT m.name, m.ref, m.unit, m.direction, m.target_value,
+      (SELECT value FROM isms_metric_readings r WHERE r.metric_id=m.id ORDER BY r.measured_at DESC, r.id DESC LIMIT 1) AS latest_value,
+      (SELECT measured_at FROM isms_metric_readings r WHERE r.metric_id=m.id ORDER BY r.measured_at DESC, r.id DESC LIMIT 1) AS latest_at
+    FROM isms_metrics m WHERE m.workspace_id=? ORDER BY m.category, m.name`).all(req.workspace.id);
+  if (adoptedFeed.length) {
+    const suffix = u => u === '%' ? '%' : u === 'days' ? ' d' : '';
+    const lines = adoptedFeed.map(a => {
+      const rag = ismsMetricRag(a.latest_value, a.target_value, a.direction);
+      const val = a.latest_value == null ? 'no reading yet' : a.latest_value + suffix(a.unit) + (a.latest_at ? ` (as of ${a.latest_at})` : '');
+      const tgt = a.target_value == null ? 'no target set' : `target ${a.target_value}${suffix(a.unit)}`;
+      const status = rag ? ` [${rag === 'green' ? 'on target' : rag === 'amber' ? 'near target' : 'off target'}]` : '';
+      return `${a.ref} ${a.name}: ${val}; ${tgt}${status}`;
+    });
+    block += `\n\n--- Adopted ISO/IEC 27004 measures (${adoptedFeed.length}) ---\n` + lines.join('\n');
+  }
   // Append to existing performance_review rather than overwrite (a manager
   // may have typed in their own notes already; we don't want to clobber).
   const existing = db.prepare(`SELECT performance_review FROM mrms WHERE id=?`).get(mrm.id);
@@ -7340,6 +7611,138 @@ app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWor
   db.prepare(`UPDATE mrms SET performance_review=? WHERE id=?`).run(merged, mrm.id);
   logAction(req.user.id, req.workspace.id, 'feed_metrics_to_mrm', 'mrm', mrm.id, null, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/mrms/${mrm.id}?notice=${encodeURIComponent('Metrics appended to performance review.')}`);
+});
+
+// ==================== ISMS METRICS LIBRARY (ISO/IEC 27004:2016 Annex B) ====================
+// A catalog of standardized measures consultants adopt into an engagement, set a
+// target on, and record readings against over time. Complements the auto-computed
+// clause-9.1 dashboard above with a curated, user-maintained measurement programme.
+const ISO27004_METRICS = require('./data/iso27004-metrics');
+const ISO27004_BY_KEY = Object.fromEntries(ISO27004_METRICS.map(m => [m.key, m]));
+
+// RAG status for a reading vs the adopted target, honouring the metric's direction
+// (whether a higher or lower value is better). Null when no target/value is set.
+function ismsMetricRag(value, target, direction) {
+  if (value == null || target == null) return null;
+  const lower = direction === 'lower';
+  if (lower ? value <= target : value >= target) return 'green';
+  if (lower ? value <= target * 1.1 : value >= target * 0.9) return 'amber';
+  return 'red';
+}
+
+// Resolve iso_item ids to {id, title, type} for display + linking to controls.
+function resolveControls(ids) {
+  if (!ids || !ids.length) return [];
+  const ph = ids.map(() => '?').join(',');
+  const rows = db.prepare(`SELECT id, title, type FROM iso_items WHERE id IN (${ph})`).all(...ids);
+  const byId = Object.fromEntries(rows.map(r => [r.id, r]));
+  return ids.map(id => byId[id] || { id, title: id, type: 'control' });
+}
+
+// Browse the catalog; shows which measures are already adopted (with their id so
+// the view can link/remove), and the full definition of each before adoption.
+app.get('/workspaces/:wsId/metrics/library', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const adoptedById = {};
+  db.prepare(`SELECT id, metric_key FROM isms_metrics WHERE workspace_id=?`).all(req.workspace.id).forEach(a => { adoptedById[a.metric_key] = a.id; });
+  const byCategory = {};
+  ISO27004_METRICS.forEach(m => {
+    (byCategory[m.category] = byCategory[m.category] || []).push({
+      ...m, adoptedId: adoptedById[m.key] || null, adopted: adoptedById[m.key] != null, controlsResolved: resolveControls(m.controls),
+    });
+  });
+  const categories = ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]);
+  res.render('metrics_library', { user: req.user, ws: req.workspace, byCategory, categories, total: ISO27004_METRICS.length, adoptedCount: Object.keys(adoptedById).length });
+});
+
+// Adopt selected catalog measures into the engagement.
+app.post('/workspaces/:wsId/metrics/library', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const picked = parseFormArray(req.body.pick);
+  if (!picked.length) return redirectBack(req, res, 'Select at least one metric to adopt.', 'warn');
+  const ins = db.prepare(`INSERT OR IGNORE INTO isms_metrics
+    (workspace_id, metric_key, ref, name, category, unit, direction, formula, target_value, target_text, frequency, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+  let added = 0;
+  const tx = db.transaction(() => {
+    picked.forEach(key => {
+      const m = ISO27004_BY_KEY[key];
+      if (!m) return;
+      const r = ins.run(req.workspace.id, m.key, m.ref, m.name, m.category, m.unit, m.direction,
+        m.formula, m.suggestedTarget ?? null, m.targetText || null, m.frequency || null, req.user.id);
+      if (r.changes) added++;
+    });
+  });
+  tx();
+  logAction(req.user.id, req.workspace.id, 'adopt_isms_metrics', 'isms_metric', null, { count: added }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/metrics/adopted',
+    added ? `Adopted ${added} metric${added === 1 ? '' : 's'} - set targets and record readings` : 'Those metrics were already adopted'));
+});
+
+// Adopted measures with their latest reading vs target (RAG).
+app.get('/workspaces/:wsId/metrics/adopted', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const rows = db.prepare(`
+    SELECT m.*,
+      (SELECT value FROM isms_metric_readings r WHERE r.metric_id=m.id ORDER BY r.measured_at DESC, r.id DESC LIMIT 1) AS latest_value,
+      (SELECT measured_at FROM isms_metric_readings r WHERE r.metric_id=m.id ORDER BY r.measured_at DESC, r.id DESC LIMIT 1) AS latest_at,
+      (SELECT COUNT(*) FROM isms_metric_readings r WHERE r.metric_id=m.id) AS reading_count
+    FROM isms_metrics m WHERE m.workspace_id=? ORDER BY m.category, m.name`).all(req.workspace.id);
+  const byCategory = {};
+  rows.forEach(m => {
+    m.rag = ismsMetricRag(m.latest_value, m.target_value, m.direction);
+    (byCategory[m.category] = byCategory[m.category] || []).push(m);
+  });
+  const categories = ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]);
+  const ragCounts = { green: 0, amber: 0, red: 0, none: 0 };
+  rows.forEach(m => ragCounts[m.rag || 'none']++);
+  const upcomingMrms = db.prepare(`SELECT id, meeting_date FROM mrms WHERE workspace_id=? AND status != 'closed' ORDER BY meeting_date IS NULL, meeting_date LIMIT 5`).all(req.workspace.id);
+  res.render('metrics_adopted', { user: req.user, ws: req.workspace, byCategory, categories, total: rows.length, ragCounts, upcomingMrms });
+});
+
+// Detail: one adopted measure, its readings + trend, and record/edit forms.
+app.get('/workspaces/:wsId/metrics/adopted/:id', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  const metric = db.prepare(`SELECT * FROM isms_metrics WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!metric) return res.status(404).render('error', { user: req.user, message: 'Metric not found.' });
+  const readings = db.prepare(`SELECT r.*, u.name AS recorder FROM isms_metric_readings r LEFT JOIN users u ON u.id=r.recorded_by WHERE r.metric_id=? ORDER BY r.measured_at ASC, r.id ASC`).all(metric.id);
+  readings.forEach(r => { r.rag = ismsMetricRag(r.value, metric.target_value, metric.direction); });
+  const catalog = ISO27004_BY_KEY[metric.metric_key] || {};
+  const controlsResolved = resolveControls(catalog.controls || []);
+  const latest = readings.length ? readings[readings.length - 1] : null;
+  metric.rag = latest ? ismsMetricRag(latest.value, metric.target_value, metric.direction) : null;
+  res.render('metric_detail', { user: req.user, ws: req.workspace, metric, readings, catalog, controlsResolved, latest });
+});
+
+// Record a reading against an adopted measure.
+app.post('/workspaces/:wsId/metrics/adopted/:id/readings', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const metric = db.prepare(`SELECT * FROM isms_metrics WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!metric) return res.status(404).render('error', { user: req.user, message: 'Metric not found.' });
+  const value = parseFloat(req.body.value);
+  if (!Number.isFinite(value)) return redirectBack(req, res, 'Enter a numeric value.', 'warn');
+  const measured_at = (req.body.measured_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const status = ismsMetricRag(value, metric.target_value, metric.direction);
+  db.prepare(`INSERT INTO isms_metric_readings (metric_id, value, measured_at, status, notes, recorded_by) VALUES (?,?,?,?,?,?)`)
+    .run(metric.id, value, measured_at, status, (req.body.notes || '').trim() || null, req.user.id);
+  logAction(req.user.id, req.workspace.id, 'record_metric_reading', 'isms_metric', metric.id, { value, measured_at }, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/metrics/adopted/' + metric.id, 'Reading recorded'));
+});
+
+// Update target / owner / frequency / notes for an adopted measure.
+app.post('/workspaces/:wsId/metrics/adopted/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const metric = db.prepare(`SELECT id FROM isms_metrics WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!metric) return res.status(404).render('error', { user: req.user, message: 'Metric not found.' });
+  const tv = req.body.target_value;
+  const target_value = (tv === '' || tv == null || !Number.isFinite(parseFloat(tv))) ? null : parseFloat(tv);
+  db.prepare(`UPDATE isms_metrics SET target_value=?, owner_name=?, frequency=?, notes=? WHERE id=?`)
+    .run(target_value, (req.body.owner_name || '').trim() || null, (req.body.frequency || '').trim() || null, (req.body.notes || '').trim() || null, metric.id);
+  logAction(req.user.id, req.workspace.id, 'update_isms_metric', 'isms_metric', metric.id, null, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/metrics/adopted/' + metric.id, 'Metric updated'));
+});
+
+// Remove an adopted measure (cascade deletes its readings).
+app.post('/workspaces/:wsId/metrics/adopted/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const metric = db.prepare(`SELECT id FROM isms_metrics WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  if (!metric) return res.status(404).render('error', { user: req.user, message: 'Metric not found.' });
+  db.prepare(`DELETE FROM isms_metrics WHERE id=?`).run(metric.id);
+  logAction(req.user.id, req.workspace.id, 'remove_isms_metric', 'isms_metric', metric.id, null, auditCtx(req));
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/metrics/adopted', 'Metric removed'));
 });
 
 // ==================== POLICY ADOPTION & REVIEW DASHBOARD ====================
@@ -8780,22 +9183,38 @@ function computeNeedsAttention(wsId) {
   else if (lastAudit.audit_date < new Date(Date.now() - 365*86400000).toISOString().slice(0,10))
     push('medium', 'audit', 'Last internal audit > 12 months ago', `/workspaces/${wsId}/audits`, `Last: ${lastAudit.audit_date}`);
 
+  // Tasks overdue / due soon
+  db.prepare(`SELECT id, title, due_date FROM tasks
+    WHERE workspace_id=? AND status NOT IN ('done','cancelled') AND due_date IS NOT NULL AND due_date < ?`)
+    .all(wsId, today).forEach(t => push('high', 'task', `Overdue task: ${t.title}`, `/workspaces/${wsId}/tasks`, `Due ${t.due_date}`));
+  db.prepare(`SELECT id, title, due_date FROM tasks
+    WHERE workspace_id=? AND status NOT IN ('done','cancelled') AND due_date IS NOT NULL AND due_date >= ? AND due_date < ?`)
+    .all(wsId, today, expSoon).forEach(t => push('medium', 'task', `Task due soon: ${t.title}`, `/workspaces/${wsId}/tasks`, `Due ${t.due_date}`));
+
+  // Upcoming scheduled internal audits / management reviews (within 30 days)
+  db.prepare(`SELECT id, title, audit_date FROM audits
+    WHERE workspace_id=? AND audit_date IS NOT NULL AND audit_date >= ? AND audit_date < ? AND closed_at IS NULL`)
+    .all(wsId, today, expSoon).forEach(a => push('medium', 'audit', `Internal audit scheduled: ${a.title}`, `/workspaces/${wsId}/audits/${a.id}`, `On ${a.audit_date}`));
+  db.prepare(`SELECT id, meeting_date FROM mrms
+    WHERE workspace_id=? AND meeting_date IS NOT NULL AND meeting_date >= ? AND meeting_date < ? AND status != 'completed'`)
+    .all(wsId, today, expSoon).forEach(m => push('medium', 'mrm', `Management review scheduled (clause 9.3)`, `/workspaces/${wsId}/mrms/${m.id}`, `On ${m.meeting_date}`));
+
+  // Certification target date passed / approaching
+  const wsRow = db.prepare(`SELECT target_cert_date FROM workspaces WHERE id=?`).get(wsId);
+  if (wsRow && wsRow.target_cert_date) {
+    if (wsRow.target_cert_date < today) push('high', 'cert', 'Certification target date has passed', `/workspaces/${wsId}`, `Target was ${wsRow.target_cert_date}`);
+    else if (wsRow.target_cert_date < expSoon) push('medium', 'cert', 'Certification audit within 30 days', `/workspaces/${wsId}`, `Target ${wsRow.target_cert_date}`);
+  }
+
   // Sort: high before medium, newer/sooner deadlines first within severity
   items.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1));
   return items;
 }
 
+// The standalone notifications page was merged into the Inbox; redirect (keep ?filter).
 app.get('/workspaces/:wsId/notifications', requireAuth, requireWorkspace, (req, res) => {
-  const filter = req.query.filter || 'unread';
-  let q = `SELECT * FROM notifications WHERE workspace_id=? AND (user_id IS NULL OR user_id=?)`;
-  if (filter === 'unread') q += ` AND read_at IS NULL AND dismissed_at IS NULL`;
-  else if (filter === 'all') q += ` AND dismissed_at IS NULL`;
-  q += ` ORDER BY created_at DESC LIMIT 200`;
-  const list = db.prepare(q).all(req.workspace.id, req.user.id);
-  // Augment with computed items so the inbox always shows live actionable
-  // signals, even before any notifications have been written by background jobs.
-  const computed = computeNeedsAttention(req.workspace.id);
-  res.render('notifications', { user: req.user, ws: req.workspace, notifications: list, filter, computed });
+  const qs = req.query.filter ? ('?filter=' + encodeURIComponent(req.query.filter)) : '';
+  res.redirect('/workspaces/' + req.workspace.id + '/inbox' + qs);
 });
 
 app.post('/workspaces/:wsId/notifications/:id/read', requireAuth, requireWorkspace, (req, res) => {
@@ -9087,95 +9506,21 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
 // doc reviews, audits/MRMs scheduled, tasks) with a free-text monthly
 // plan notepad. The consultant's "what do I owe THIS client this
 // month" view, not the firm-wide /dashboard.
+// Single per-client Inbox: live "needs your attention" items (computeNeedsAttention),
+// stored per-user notifications (read/dismiss), and a free-text 30-day plan notepad.
+// Merged from the former /notifications page so there's one place to look.
 app.get('/workspaces/:wsId/inbox', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
-  // Window: next 30 days (and anything overdue). Captures the consultant's
-  // monthly planning horizon without picking up far-future noise.
-  const due = [];
-  const overdue = [];
-  const today = new Date().toISOString().split('T')[0];
-  const horizon = new Date(); horizon.setDate(horizon.getDate() + 30);
-  const horizonStr = horizon.toISOString().split('T')[0];
-
-  // Nonconformities with due_date
-  db.prepare(`SELECT id, title, due_date, severity, status FROM nonconformities
-    WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date <= ?
-    ORDER BY due_date`).all(wsId, horizonStr).forEach(r => {
-      const item = {
-        kind: 'nc', icon: 'alert', label: 'NC',
-        title: r.title, due: r.due_date,
-        href: `/workspaces/${wsId}/nonconformities/${r.id}`,
-        meta: r.severity || 'minor'
-      };
-      (r.due_date < today ? overdue : due).push(item);
-    });
-
-  // Tasks
-  db.prepare(`SELECT id, title, due_date, status FROM tasks
-    WHERE workspace_id=? AND status NOT IN ('done','cancelled') AND due_date IS NOT NULL AND due_date <= ?
-    ORDER BY due_date`).all(wsId, horizonStr).forEach(r => {
-      const item = {
-        kind: 'task', icon: 'check', label: 'Task',
-        title: r.title, due: r.due_date,
-        href: `/workspaces/${wsId}/tasks`, meta: r.status
-      };
-      (r.due_date < today ? overdue : due).push(item);
-    });
-
-  // Audits scheduled
-  db.prepare(`SELECT id, title, audit_date, lifecycle_stage FROM audits
-    WHERE workspace_id=? AND audit_date IS NOT NULL AND audit_date <= ? AND closed_at IS NULL
-    ORDER BY audit_date`).all(wsId, horizonStr).forEach(r => {
-      const item = {
-        kind: 'audit', icon: 'audit', label: 'Internal audit',
-        title: r.title, due: r.audit_date,
-        href: `/workspaces/${wsId}/audits/${r.id}`, meta: r.lifecycle_stage || 'planned'
-      };
-      (r.audit_date < today ? overdue : due).push(item);
-    });
-
-  // Management reviews scheduled
-  db.prepare(`SELECT id, meeting_date, status FROM mrms
-    WHERE workspace_id=? AND meeting_date IS NOT NULL AND meeting_date <= ? AND status != 'completed'
-    ORDER BY meeting_date`).all(wsId, horizonStr).forEach(r => {
-      const item = {
-        kind: 'mrm', icon: 'users', label: 'Management review',
-        title: `Management review (clause 9.3)`, due: r.meeting_date,
-        href: `/workspaces/${wsId}/mrms/${r.id}`, meta: r.status || 'planned'
-      };
-      (r.meeting_date < today ? overdue : due).push(item);
-    });
-
-  // Documents up for review
-  db.prepare(`SELECT id, name, next_review_date FROM generated_docs
-    WHERE workspace_id=? AND status IN ('approved','published') AND next_review_date IS NOT NULL AND next_review_date <= ?
-    ORDER BY next_review_date`).all(wsId, horizonStr).forEach(r => {
-      const item = {
-        kind: 'doc', icon: 'doc', label: 'Doc review',
-        title: r.name, due: r.next_review_date,
-        href: `/workspaces/${wsId}/documents/${r.id}`, meta: ''
-      };
-      (r.next_review_date < today ? overdue : due).push(item);
-    });
-
-  // Cert target date if within 30 days (not a "due deliverable" exactly
-  // but absolutely the most important date a consultant cares about)
-  if (req.workspace.target_cert_date && req.workspace.target_cert_date <= horizonStr) {
-    const item = {
-      kind: 'cert', icon: 'flag', label: 'Cert target',
-      title: 'Stage 1 / Stage 2 certification audit date',
-      due: req.workspace.target_cert_date,
-      href: `/workspaces/${wsId}`, meta: 'target'
-    };
-    (req.workspace.target_cert_date < today ? overdue : due).push(item);
-  }
-
-  overdue.sort((a, b) => (a.due || '').localeCompare(b.due || ''));
-  due.sort((a, b) => (a.due || '').localeCompare(b.due || ''));
-
+  const computed = computeNeedsAttention(wsId);
+  const filter = req.query.filter === 'all' ? 'all' : 'unread';
+  let q = `SELECT * FROM notifications WHERE workspace_id=? AND (user_id IS NULL OR user_id=?)`;
+  if (filter === 'unread') q += ` AND read_at IS NULL AND dismissed_at IS NULL`;
+  else q += ` AND dismissed_at IS NULL`;
+  q += ` ORDER BY created_at DESC LIMIT 200`;
+  const notifications = db.prepare(q).all(wsId, req.user.id);
   res.render('client_inbox', {
     user: req.user, ws: req.workspace,
-    overdue, due, today, horizonStr,
+    computed, notifications, filter,
     monthlyPlan: req.workspace.monthly_plan || ''
   });
 });
@@ -9203,7 +9548,10 @@ app.get('/workspaces/:wsId/changes-since', requireAuth, requireWorkspace, requir
 // lives in views/deliverables.ejs (data-only), not here — adding a new export
 // to the product means adding a row there + linking the generator route.
 app.get('/workspaces/:wsId/deliverables', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-  res.render('deliverables', { user: req.user, ws: req.workspace });
+  // Custom markdown report templates surface here too, so Deliverables is the
+  // single home for every export (the standalone Reports page is just the editor).
+  const reportTemplates = db.prepare(`SELECT id, name, description, is_system FROM report_templates WHERE workspace_id IS NULL OR workspace_id=? OR firm_id=? ORDER BY is_system DESC, name`).all(req.workspace.id, req.workspace.firm_id);
+  res.render('deliverables', { user: req.user, ws: req.workspace, reportTemplates });
 });
 
 // ==================== AUDIT PACK ====================

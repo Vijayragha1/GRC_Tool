@@ -33,7 +33,7 @@
         <a class="text-lg" href="/workspaces/<%= ws.id %>/export/soa.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">SoA <span class="meta text-eyebrow">.csv</span></a>
         <a class="text-lg" href="/workspaces/<%= ws.id %>/export/risks.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Risks <span class="meta text-eyebrow">.csv</span></a>
         <a class="text-lg" href="/workspaces/<%= ws.id %>/export/assets.csv" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-subtle)'" onmouseout="this.style.background=''">Assets <span class="meta text-eyebrow">.csv</span></a>
-        <a class="text-lg" href="/workspaces/<%= ws.id %>/reports" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;background:var(--bg-subtle);" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='var(--bg-subtle)'">All deliverables <span class="meta text-eyebrow">+ markdown templates</span></a>
+        <a class="text-lg" href="/workspaces/<%= ws.id %>/deliverables" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;text-decoration:none;background:var(--bg-subtle);" onmouseover="this.style.background='var(--bg-muted)'" onmouseout="this.style.background='var(--bg-subtle)'">All deliverables <span class="meta text-eyebrow">+ report templates</span></a>
       </div>
     </details>
   </div>
@@ -101,13 +101,123 @@
     </div>
     <div id="heroDelta" class="num" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);letter-spacing:0.02em;">&nbsp;</div>
   </a>
-  <!-- Middle: 30-day sparkline of controls-implemented (proxy for readiness trend) -->
-  <div style="position:relative;padding:14px 18px 10px;">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-      <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);">30-day trajectory</div>
-      <div class="num" style="font-size:11px;color:var(--text-tertiary);">controls implemented</div>
+  <!-- Middle: gap assessment + implementation breakdown. Was a misleading
+       30-day "trajectory" sparkline (cumulative count of Implemented
+       controls touched in last 30d - looked like a readiness trend but
+       wasn't). Replaced with the two questions the overview should
+       answer: (1) where are we in the gap assessment, (2) how does the
+       implementation status break down by theme. -->
+  <%
+    const totalItems = stateRows => 0; // placeholder, not used
+    const totalControls = themes.org.total + themes.people.total + themes.physical.total + themes.tech.total;
+    const totalClauses = (breakdown.clauses['Implemented'] || 0) + (breakdown.clauses['Partially Implemented'] || 0) +
+                         (breakdown.clauses['Work In Progress'] || 0) + (breakdown.clauses['Not Implemented'] || 0) +
+                         (breakdown.clauses['Not Applicable'] || 0) + (breakdown.clauses['Not Assessed'] || 0);
+    const totalAll = totalClauses + totalControls;
+    const sum = key => (breakdown.clauses[key] || 0) + (breakdown.annex[key] || 0);
+    const counts = {
+      impl: sum('Implemented'),
+      partial: sum('Partially Implemented'),
+      wip: sum('Work In Progress'),
+      notImpl: sum('Not Implemented'),
+      na: sum('Not Applicable'),
+      notAss: sum('Not Assessed')
+    };
+    const assessed = totalAll - counts.notAss;
+    const assessedPct = totalAll ? Math.round((assessed / totalAll) * 100) : 0;
+    const passLabel = activePass
+      ? (activePass.label || `Pass ${activePass.pass_number}`)
+      : 'No active pass';
+    // Stacked-bar segments (skip zero-width to avoid 0.5px slivers).
+    const seg = [
+      { v: counts.impl,    color: '#15803d', label: 'Implemented' },
+      { v: counts.partial, color: '#b45309', label: 'Partially' },
+      { v: counts.wip,     color: '#0891b2', label: 'In progress' },
+      { v: counts.notImpl, color: '#b91c1c', label: 'Not implemented' },
+      { v: counts.na,      color: '#8a8a87', label: 'Not applicable' },
+      { v: counts.notAss,  color: '#e5e3dc', label: 'Not assessed' }
+    ].filter(s => s.v > 0);
+  %>
+  <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;">
+    <%
+      const implPct = totalAll ? Math.round(counts.impl / totalAll * 100) : 0;
+      const implMeta = [];
+      if (counts.partial > 0) implMeta.push(`<span style="color:#b45309;">${counts.partial}</span> partial`);
+      if (counts.notImpl > 0) implMeta.push(`<span style="color:#b91c1c;">${counts.notImpl}</span> not impl`);
+    %>
+
+    <!-- BLOCK 1: Gap assessment - summary + bar + per-section breakdown -->
+    <div>
+      <a href="/workspaces/<%= ws.id %>/controls" style="text-decoration:none;color:inherit;display:block;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+          <div style="font-size:10px;font-weight:500;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-tertiary);">Gap assessment</div>
+          <div class="num" style="font-size:11px;color:var(--text-tertiary);"><span style="color:var(--text);font-weight:500;"><%= assessed %></span> of <%= totalAll %> assessed · <%= assessedPct %>%<% if (activePass) { %> · <%= passLabel %><% } %></div>
+        </div>
+        <div style="display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--bg-muted);" title="<%= assessed %> assessed · <%= counts.notAss %> not assessed">
+          <% if (assessed > 0) { %><span style="background:#1a1a1a;width:<%= totalAll ? (assessed / totalAll * 100).toFixed(2) : 0 %>%;"></span><% } %>
+        </div>
+      </a>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:10px;color:var(--text-tertiary);">
+        <span style="display:inline-flex;align-items:center;gap:5px;">
+          <span style="width:8px;height:8px;border-radius:2px;background:#1a1a1a;display:inline-block;flex-shrink:0;"></span>
+          Assessed <span class="num" style="color:var(--text);font-weight:500;"><%= assessed %></span>
+        </span>
+        <% if (counts.notAss > 0) { %>
+          <span style="display:inline-flex;align-items:center;gap:5px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:#e5e3dc;border:1px solid var(--border);display:inline-block;flex-shrink:0;"></span>
+            Not assessed <span class="num" style="color:var(--text);font-weight:500;"><%= counts.notAss %></span>
+          </span>
+        <% } %>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;">
+        <% Object.values(themes).forEach(t => {
+             const pct = t.total ? Math.round(t.assessed / t.total * 100) : 0;
+        %>
+          <div>
+            <div style="font-size:9.5px;color:var(--text-tertiary);margin-bottom:2px;letter-spacing:0.2px;"><%= t.label %></div>
+            <div class="num" style="font-size:11.5px;color:var(--text);font-weight:500;"><%= t.assessed %><span style="color:var(--text-tertiary);font-weight:400;">/<%= t.total %></span></div>
+            <div style="height:3px;background:var(--bg-muted);border-radius:1px;margin-top:3px;overflow:hidden;">
+              <div style="height:100%;background:#1a1a1a;width:<%= pct %>%;"></div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
     </div>
-    <div id="heroSpark" style="height:96px;width:100%;"></div>
+
+    <!-- BLOCK 2: Implementation - summary + stacked bar + per-section breakdown -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <div style="font-size:10px;font-weight:500;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-tertiary);">Implementation</div>
+        <div class="num" style="font-size:11px;color:var(--text-tertiary);"><span style="color:var(--text);font-weight:500;"><%= counts.impl %></span> of <%= totalAll %> implemented · <%= implPct %>%<% if (implMeta.length) { %> · <%- implMeta.join(' · ') %><% } %></div>
+      </div>
+      <div style="display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--bg-muted);">
+        <% seg.forEach(s => { %>
+          <span title="<%= s.label %>: <%= s.v %>" style="background:<%= s.color %>;width:<%= totalAll ? (s.v / totalAll * 100).toFixed(2) : 0 %>%;"></span>
+        <% }) %>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:10px;color:var(--text-tertiary);">
+        <% seg.forEach(s => { %>
+          <span style="display:inline-flex;align-items:center;gap:5px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:<%= s.color %>;display:inline-block;flex-shrink:0;"></span>
+            <%= s.label %> <span class="num" style="color:var(--text);font-weight:500;"><%= s.v %></span>
+          </span>
+        <% }) %>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;">
+        <% Object.values(themes).forEach(t => {
+             const pct = t.total ? Math.round(t.implemented / t.total * 100) : 0;
+             const col = pct >= 80 ? '#15803d' : pct >= 50 ? '#b45309' : pct > 0 ? '#b91c1c' : 'var(--text-tertiary)';
+        %>
+          <div>
+            <div style="font-size:9.5px;color:var(--text-tertiary);margin-bottom:2px;letter-spacing:0.2px;"><%= t.label %></div>
+            <div class="num" style="font-size:11.5px;color:var(--text);font-weight:500;"><%= t.implemented %><span style="color:var(--text-tertiary);font-weight:400;">/<%= t.total %></span></div>
+            <div style="height:3px;background:var(--bg-muted);border-radius:1px;margin-top:3px;overflow:hidden;">
+              <div style="height:100%;background:<%= col %>;width:<%= pct %>%;"></div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
   </div>
   <!-- Right: status sidebar -->
   <div style="padding:14px 18px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;font-family:'SF Mono','Menlo','Consolas',monospace;font-size:11px;">
@@ -357,7 +467,9 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       </svg>
       <span class="meta">30-day events</span>
     </div>
-    <a href="/workspaces/<%= ws.id %>/activity" class="link-muted text-base">Full audit log →</a>
+    <% if (typeof userPerms !== 'undefined' && rbac.hasPermission(userPerms, 'audit_log.view')) { %>
+      <a href="/workspaces/<%= ws.id %>/activity-log" class="link-muted text-base">Full audit log →</a>
+    <% } %>
   </div>
   <% if (recentActivity.length === 0) { %>
     <div class="t-empty">No activity yet.</div>

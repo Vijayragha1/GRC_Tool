@@ -136,4 +136,34 @@
   </div>
 <% }) %>
 
+<div class="deliv-section">
+  <div class="deliv-section-head">
+    <div><span class="deliv-section-title">Custom report templates</span></div>
+    <a href="/workspaces/<%= ws.id %>/reports" class="deliv-section-sub" style="color:var(--accent);text-decoration:none;">Manage templates →</a>
+  </div>
+  <div class="panel">
+    <% if (!reportTemplates || reportTemplates.length === 0) { %>
+      <div class="deliv-card">
+        <div class="deliv-fmt docx">DOCX</div>
+        <div class="deliv-desc">No report templates yet. <a href="/workspaces/<%= ws.id %>/reports" style="color:var(--accent);">Create one →</a> — reusable markdown with <code>{{placeholders}}</code>, rendered to .docx from live client data.</div>
+        <div></div>
+      </div>
+    <% } else { %>
+      <% reportTemplates.forEach(t => { %>
+        <div class="deliv-card">
+          <div class="deliv-fmt docx">DOCX</div>
+          <div>
+            <div class="deliv-name"><%= t.name %> <% if (t.is_system) { %><span class="tag tag-info text-xxs" style="margin-left:4px;">system</span><% } %></div>
+            <% if (t.description) { %><div class="deliv-desc"><%= t.description %></div><% } %>
+          </div>
+          <div class="deliv-actions">
+            <a href="/workspaces/<%= ws.id %>/reports/<%= t.id %>" class="btn btn-secondary btn-xs">Preview</a>
+            <a href="/workspaces/<%= ws.id %>/reports/<%= t.id %>/docx" class="btn btn-secondary btn-xs" download>Download</a>
+          </div>
+        </div>
+      <% }) %>
+    <% } %>
+  </div>
+</div>
+
 <%- include('partials/footer') %>

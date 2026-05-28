@@ -67,6 +67,7 @@ function wipeClient(clientName) {
   safe(`DELETE FROM competence_roles WHERE workspace_id=?`);
   safe(`DELETE FROM communication_plan WHERE workspace_id=?`);
   safe(`DELETE FROM workspace_members WHERE workspace_id=?`);
+  safe(`DELETE FROM audit_log WHERE workspace_id=?`);
   db.prepare(`DELETE FROM workspaces WHERE id=?`).run(id);
   console.log(`  cleared prior workspace #${id} (${clientName})`);
 }
@@ -130,9 +131,9 @@ function seedRisks(wsId, risks, assetIdByName) {
 function seedSoA(wsId, mode) {
   const controls = db.prepare(`SELECT id, category FROM iso_items WHERE type='control' ORDER BY sort_order`).all();
   const ins = db.prepare(`INSERT OR REPLACE INTO control_states
-    (workspace_id, iso_item_id, applicability, status,
+    (workspace_id, iso_item_id, applicability, status, maturity,
      inclusion_justification, exclusion_justification, last_updated)
-    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`);
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`);
 
   const incJust = 'In scope of the ISMS; treats risks identified in the risk register.';
   const excJust = 'Not applicable - no in-house custom hardware or related operations in scope.';
@@ -140,23 +141,26 @@ function seedSoA(wsId, mode) {
   db.transaction(() => {
     let included = 0, implemented = 0;
     controls.forEach((c, i) => {
-      let applicability, status;
+      let applicability, status, maturity;
       if (mode === 'full') {
+        // 100% client: optimized. Maturity 4-5 (mostly 4, every 3rd a 5)
+        // so the average clears the Stage 2 floor (75%) with no 0/1.
         applicability = 'included';
         status = 'Implemented';
+        maturity = (i % 3 === 0) ? 5 : 4;
         included++; implemented++;
       } else {
-        // 60% mode: every control included; lands at 56 of 93 Implemented
-        // (60.2%) via a 10-slot cycle of 6 / 3 / 1. Stable per-index so
-        // re-runs produce identical data.
+        // 60% client: mixed. Implemented -> 3, Partial -> 2, Not Impl -> 1.
+        // Averages around 50-55% (below the 60% Stage 1 floor) with some
+        // controls still at 1 so the Stage 2 no-0/1 rule also bites.
         applicability = 'included';
         included++;
         const cycle = i % 10;
-        if (cycle < 6) { status = 'Implemented'; implemented++; }
-        else if (cycle < 9) { status = 'Partially Implemented'; }
-        else { status = 'Not Implemented'; }
+        if (cycle < 6) { status = 'Implemented'; maturity = 3; implemented++; }
+        else if (cycle < 9) { status = 'Partially Implemented'; maturity = 2; }
+        else { status = 'Not Implemented'; maturity = 1; }
       }
-      ins.run(wsId, c.id, applicability, status,
+      ins.run(wsId, c.id, applicability, status, maturity,
         applicability === 'included' ? incJust : null,
         applicability === 'excluded' ? excJust : null);
     });
@@ -164,7 +168,8 @@ function seedSoA(wsId, mode) {
     const clauses = db.prepare(`SELECT id FROM iso_items WHERE type='clause'`).all();
     clauses.forEach(cl => {
       const status = mode === 'full' ? 'Implemented' : (Math.random() < 0.7 ? 'Implemented' : 'Partially Implemented');
-      ins.run(wsId, cl.id, 'included', status, 'Mandatory clause - applies to every certified ISMS.', null);
+      const maturity = mode === 'full' ? 4 : 3;
+      ins.run(wsId, cl.id, 'included', status, maturity, 'Mandatory clause - applies to every certified ISMS.', null);
     });
     console.log(`  control_states: ${included} included, ${implemented} Implemented (mode=${mode})`);
   })();

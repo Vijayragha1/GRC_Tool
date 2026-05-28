@@ -1,86 +1,96 @@
 <%- include('partials/header', { title: 'Inbox', user, ws, active: 'inbox' }) %>
+<%
+  const highN = computed.filter(i => i.severity === 'high').length;
+  const medN  = computed.filter(i => i.severity === 'medium').length;
+  const dot = sev => sev === 'high' ? '#b91c1c' : sev === 'medium' ? '#b45309' : 'var(--accent)';
+%>
 
 <div class="page-head">
   <div>
     <h1 class="page-title">Inbox</h1>
-    <div class="page-subtitle">Everything due on this client in the next 30 days, plus a free-form notepad for your monthly plan. Auto-computed from NCs, doc reviews, scheduled audits, MRMs, and tasks.</div>
+    <div class="page-subtitle">Everything needing your attention on this client — live items computed from your data, your notifications, and a 30-day plan.</div>
   </div>
 </div>
 
-<%# Headline strip: overdue / due-this-month / clear inbox %>
-<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 18px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
-  <span><strong style="color:<%= overdue.length > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight: 500;font-size:14px;"><%= overdue.length %></strong> overdue</span>
-  <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= due.length > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight: 500;font-size:14px;"><%= due.length %></strong> due in next 30 days</span>
-  <span style="flex:1;"></span>
-  <span class="meta text-xs">window ends <%= horizonStr %></span>
-</div>
-
-<%# Two-column: deliverables list left, plan notepad right %>
+<%# Two-column: attention + notifications on the left, plan notepad on the right %>
 <div style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;align-items:start;">
   <div style="display:flex;flex-direction:column;gap:14px;">
-    <% if (overdue.length === 0 && due.length === 0) { %>
-      <div class="panel">
-        <div class="t-empty" style="padding:32px 20px;line-height:1.6;">
-          Nothing scheduled in the next 30 days. Either you're clear, or this client doesn't have due dates set on its NCs / scheduled audits / MRMs / docs / tasks. Set some so the inbox can populate.
-        </div>
-      </div>
-    <% } %>
 
-    <% if (overdue.length > 0) { %>
+    <%# ===== Needs your attention (live computed) ===== %>
+    <% if (computed.length > 0) { %>
       <div class="panel" style="padding:0;">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;background:rgba(220,38,38,0.04);">
-          <h2 style="margin:0;font-size:13px;color:#b91c1c;">Overdue · <%= overdue.length %></h2>
-          <span class="meta text-xs">past due_date as of <%= today %></span>
+        <div class="panel-head">
+          <h2>Needs your attention <span class="meta text-lg" style="font-weight:400;">· live from data</span></h2>
+          <span class="meta"><strong style="color:#b91c1c;"><%= highN %></strong> high · <strong style="color:#b45309;"><%= medN %></strong> medium</span>
         </div>
-        <% overdue.forEach(item => { %>
-          <a href="<%= item.href %>" style="display:grid;grid-template-columns:90px 1fr 110px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
-            <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:#b91c1c;font-weight: 500;"><%= item.due %></span>
-            <span style="font-size:13.5px;">
-              <span class="text-eyebrow" style="font-weight: 500;color:var(--text-tertiary);margin-right:6px;"><%= item.label %></span>
-              <span style="color:var(--text);"><%= item.title %></span>
-            </span>
-            <span class="meta text-xs" style="text-align:right;"><%= item.meta %></span>
-          </a>
+        <% computed.forEach(c => { %>
+          <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:<%= dot(c.severity) %>;"></span>
+            <div style="flex:1;min-width:0;">
+              <div class="text-base" style="font-weight:500;"><%= c.title %></div>
+              <% if (c.detail) { %><div class="meta text-sm"><%= c.detail %></div><% } %>
+            </div>
+            <span class="tag tag-neutral text-eyebrow"><%= c.category %></span>
+            <a href="<%= c.link %>" class="btn btn-secondary btn-xs">Open →</a>
+          </div>
         <% }) %>
       </div>
     <% } %>
 
-    <% if (due.length > 0) { %>
-      <div class="panel" style="padding:0;">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-          <h2 style="margin:0;font-size:13px;">Due in the next 30 days · <%= due.length %></h2>
-          <span class="meta text-xs">window <%= today %> → <%= horizonStr %></span>
+    <%# ===== Notifications (stored, per-user) ===== %>
+    <div class="panel" style="padding:0;">
+      <div class="panel-head">
+        <h2>Notifications</h2>
+        <div class="row" style="gap:6px;">
+          <a href="?filter=unread" class="btn <%= filter === 'unread' ? 'btn-primary' : 'btn-secondary' %> btn-xs">Unread</a>
+          <a href="?filter=all" class="btn <%= filter === 'all' ? 'btn-primary' : 'btn-secondary' %> btn-xs">All</a>
+          <% if (notifications.length > 0) { %>
+            <form method="POST" action="/workspaces/<%= ws.id %>/notifications/mark-all-read" style="display:inline;"><button class="btn btn-ghost btn-xs">Mark all read</button></form>
+          <% } %>
         </div>
-        <% due.forEach(item => { %>
-          <a href="<%= item.href %>" style="display:grid;grid-template-columns:90px 1fr 110px;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
-            <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:var(--text-secondary);font-weight: 500;"><%= item.due %></span>
-            <span style="font-size:13.5px;">
-              <span class="text-eyebrow" style="font-weight: 500;color:var(--text-tertiary);margin-right:6px;"><%= item.label %></span>
-              <span style="color:var(--text);"><%= item.title %></span>
-            </span>
-            <span class="meta text-xs" style="text-align:right;"><%= item.meta %></span>
-          </a>
-        <% }) %>
       </div>
-    <% } %>
+      <% if (notifications.length === 0) { %>
+        <div class="t-empty" style="padding:28px 20px;text-align:center;line-height:1.6;">
+          <div style="font-weight:500;color:var(--text);">All caught up</div>
+          <div class="meta">No <%= filter === 'unread' ? 'unread ' : '' %>notifications<% if (computed.length > 0) { %> — see live items above<% } %>.</div>
+        </div>
+      <% } else { %>
+        <% notifications.forEach(n => { %>
+          <div style="padding:12px 18px;border-bottom:1px solid var(--border);<%= n.read_at ? 'opacity:0.6;' : '' %>display:flex;align-items:flex-start;gap:12px;">
+            <span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:5px;background:<%= dot(n.severity) %>;"></span>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;gap:8px;">
+                <strong style="font-size:13.5px;"><%= n.title %></strong>
+                <span class="meta text-xs"><%= n.created_at %></span>
+              </div>
+              <% if (n.body) { %><div class="meta text-md text-secondary" style="margin-top:2px;"><%= n.body %></div><% } %>
+              <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+                <% if (n.category) { %><span class="tag tag-neutral text-eyebrow"><%= n.category %></span><% } %>
+                <% if (n.link) { %><a href="<%= n.link %>" class="link-muted text-base" style="color:var(--accent);">Open →</a><% } %>
+                <span style="flex:1;"></span>
+                <% if (!n.read_at) { %>
+                  <form method="POST" action="/workspaces/<%= ws.id %>/notifications/<%= n.id %>/read" style="display:inline;"><button class="btn btn-ghost btn-xs">Read</button></form>
+                <% } %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/notifications/<%= n.id %>/dismiss" style="display:inline;"><button class="btn btn-ghost btn-xs">Dismiss</button></form>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      <% } %>
+    </div>
   </div>
 
-  <%# Right column: 30-day plan notepad. Auto-submits on blur so you never lose work. %>
+  <%# ===== Right column: 30-day plan notepad (auto-saves on blur) ===== %>
   <aside style="position:sticky;top:18px;">
     <form method="POST" action="/workspaces/<%= ws.id %>/inbox/plan" class="panel" style="padding:0;" id="planForm">
       <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
-        <h2 style="margin:0;font-size:13px;">30-day plan</h2>
+      <div class="panel-head">
+        <h2>30-day plan</h2>
         <span class="meta text-xs" id="planSavedBadge">&nbsp;</span>
       </div>
       <div style="padding:12px 14px;">
-        <textarea name="monthly_plan" id="monthlyPlan" rows="14" placeholder="What you want to get done on this client over the next 30 days. Free-form — checklist, narrative, copy-paste from email, whatever fits. Auto-saves on blur.
-- [ ] Walk Vijay through SoA bulk decisions Tue
-- [ ] Draft AUP rev 3 by Friday
-- [ ] Schedule internal audit dry-run with client team by 15th
-- [ ] MRM pre-read sent to CISO 3 days before review" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px;line-height:1.6;color:var(--text);background:var(--bg);resize:vertical;"><%= monthlyPlan %></textarea>
-        <div class="meta text-xs" style="margin-top:8px;">Saves on blur. Markdown-style checkboxes render as plain text — visual rendering is a future option if you want it.</div>
+        <textarea name="monthly_plan" id="monthlyPlan" rows="14" placeholder="What you want to get done on this client over the next 30 days. Free-form — checklist, narrative, copy-paste from email, whatever fits. Auto-saves on blur." style="width:100%;border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px;line-height:1.6;color:var(--text);background:var(--bg);resize:vertical;"><%= monthlyPlan %></textarea>
+        <div class="meta text-xs" style="margin-top:8px;">Saves on blur.</div>
       </div>
     </form>
   </aside>

@@ -197,7 +197,7 @@
         <div>
           <%- hLabel('Maturity ladder for this control') %>
           <div class="text-base" style="display:grid;grid-template-columns:30px 1fr;gap:6px 10px;line-height:1.5;">
-            <% [1,2,3,4].forEach(lvl => { if (item.maturity_ladder[lvl]) { %>
+            <% [0,1,2,3,4,5].forEach(lvl => { if (item.maturity_ladder[lvl]) { %>
               <div class="mono meta" style="font-weight: 500;"><%= lvl %> -</div>
               <div><%= item.maturity_ladder[lvl] %></div>
             <% } }) %>
@@ -349,14 +349,16 @@
         <% } %>
       </div>
       <div>
-        <label class="label">Maturity (0–4) <span class="meta">CMMI-style</span></label>
+        <label class="label">Maturity (0–5) <span class="meta">ISO/IEC 33020 scale</span></label>
         <select class="select" name="maturity">
-          <option value="0" <%= state.maturity == 0 ? 'selected' : '' %>>0 - Not performed</option>
-          <option value="1" <%= state.maturity == 1 ? 'selected' : '' %>>1 - Ad-hoc / informal</option>
-          <option value="2" <%= state.maturity == 2 ? 'selected' : '' %>>2 - Documented and repeatable</option>
-          <option value="3" <%= state.maturity == 3 ? 'selected' : '' %>>3 - Measured and reviewed</option>
-          <option value="4" <%= state.maturity == 4 ? 'selected' : '' %>>4 - Continuously improved</option>
+          <option value="0" <%= state.maturity == 0 ? 'selected' : '' %>>0 - Not implemented; no documentation; no awareness</option>
+          <option value="1" <%= state.maturity == 1 ? 'selected' : '' %>>1 - Ad hoc; informal practice; no documentation</option>
+          <option value="2" <%= state.maturity == 2 ? 'selected' : '' %>>2 - Documented; not yet consistently performed</option>
+          <option value="3" <%= state.maturity == 3 ? 'selected' : '' %>>3 - Documented and consistently performed; records exist</option>
+          <option value="4" <%= state.maturity == 4 ? 'selected' : '' %>>4 - Performed, measured, and improved on data</option>
+          <option value="5" <%= state.maturity == 5 ? 'selected' : '' %>>5 - Optimized; predictive metrics; continual improvement</option>
         </select>
+        <div class="meta text-xs" style="margin-top:4px;">Stage 1 target: every applicable control ≥ 2 (documented + approved). Stage 2 target: ≥ 3 (operating, with records).</div>
       </div>
     </div>
 

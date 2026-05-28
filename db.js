@@ -3323,6 +3323,47 @@ function init() {
     FOREIGN KEY (approver_id) REFERENCES users(id)
   );
   CREATE INDEX IF NOT EXISTS idx_change_approvals ON change_approvals(change_id);`);
+
+  // ISMS metrics (ISO/IEC 27004:2016 Annex B) - measures adopted into an engagement
+  // from the catalog, plus the readings recorded against them over time (clause 9.1).
+  // Catalog fields are snapshotted at adoption so the adopted measure stays self-contained.
+  db.exec(`CREATE TABLE IF NOT EXISTS isms_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL,
+    metric_key TEXT NOT NULL,
+    ref TEXT,
+    name TEXT NOT NULL,
+    category TEXT,
+    unit TEXT,
+    direction TEXT DEFAULT 'higher',
+    formula TEXT,
+    target_value REAL,
+    target_text TEXT,
+    frequency TEXT,
+    owner_name TEXT,
+    notes TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workspace_id, metric_key),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_isms_metrics_ws ON isms_metrics(workspace_id);
+
+  CREATE TABLE IF NOT EXISTS isms_metric_readings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    metric_id INTEGER NOT NULL,
+    value REAL NOT NULL,
+    measured_at DATE NOT NULL,
+    status TEXT,
+    notes TEXT,
+    recorded_by INTEGER,
+    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (metric_id) REFERENCES isms_metrics(id) ON DELETE CASCADE,
+    FOREIGN KEY (recorded_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_isms_metric_readings ON isms_metric_readings(metric_id, measured_at);`);
 }
 
 const crypto = require('crypto');

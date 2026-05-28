@@ -23,11 +23,11 @@
   [data-theme="dark"] .chip-toggle.active { background: var(--bg); color: var(--ink); border-color: var(--bg); }
 
   /* Tier headers above each group of cards */
-  .tier-head { display: flex; align-items: center; gap: 10px; margin: 24px 0 12px; }
-  .tier-icon { width: 22px; height: 22px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; }
-  .tier-icon.mandatory { background: rgba(220,38,38,0.10); color: #b91c1c; }
-  .tier-icon.expected  { background: rgba(202,138,4,0.10); color: #b45309; }
-  .tier-icon.recommended { background: rgba(113,113,122,0.10); color: #52525b; }
+  .tier-head { display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; }
+  .tier-icon { display: inline-flex; align-items: center; justify-content: center; }
+  .tier-icon.mandatory { color: #b91c1c; }
+  .tier-icon.expected  { color: #b45309; }
+  .tier-icon.recommended { color: #52525b; }
   .tier-head h2 { font-size: 14px; font-weight: 500; color: var(--ink); }
   .tier-head .tier-sub { font-size: 12px; color: var(--text-tertiary); margin-left: auto; }
 
@@ -110,9 +110,9 @@
   </div>
   <div class="row" style="gap:6px;">
     <span class="chip-toggle active" data-filter-tier="all">All tiers</span>
-    <span class="chip-toggle" data-filter-tier="mandatory">★ Mandatory</span>
-    <span class="chip-toggle" data-filter-tier="expected">◆ Expected</span>
-    <span class="chip-toggle" data-filter-tier="recommended">· Recommended</span>
+    <span class="chip-toggle" data-filter-tier="mandatory"><%- tierIcon('mandatory') %>Mandatory</span>
+    <span class="chip-toggle" data-filter-tier="expected"><%- tierIcon('expected') %>Expected</span>
+    <span class="chip-toggle" data-filter-tier="recommended"><%- tierIcon('recommended') %>Recommended</span>
   </div>
   <div class="row" style="gap:6px;">
     <span class="chip-toggle active" data-filter-cat="all">All types</span>
@@ -130,7 +130,7 @@
      const adoptedInTier = rowsInTier.filter(t => t.adopted).length;
 %>
   <div class="tier-head" data-tier-section="<%= tier %>">
-    <div class="tier-icon <%= tier %>"><%= tier === 'mandatory' ? '★' : tier === 'expected' ? '◆' : '·' %></div>
+    <div class="tier-icon <%= tier %>"><%- tierIcon(tier, 16) %></div>
     <h2 style="text-transform:capitalize;"><%= tier %></h2>
     <span class="tier-sub"><%= adoptedInTier %> of <%= rowsInTier.length %> adopted<% if (tier === 'mandatory') { %> · required by ISO for certification<% } else if (tier === 'expected') { %> · auditors expect these<% } %></span>
   </div>
@@ -150,9 +150,9 @@
               Adopted
             </span>
           <% } else if (t.tier === 'mandatory') { %>
-            <span class="tpl-card-tier text-danger" style="font-weight: 500;" title="ISO 27001 mandates this document">★</span>
+            <span class="tpl-card-tier text-danger" style="display:inline-flex;" title="ISO 27001 mandates this document"><%- tierIcon('mandatory', 13) %></span>
           <% } else if (t.tier === 'expected') { %>
-            <span class="tpl-card-tier text-warn" style="font-weight: 500;" title="Auditors expect this document">◆</span>
+            <span class="tpl-card-tier text-warn" style="display:inline-flex;" title="Auditors expect this document"><%- tierIcon('expected', 13) %></span>
           <% } %>
         </div>
         <div class="tpl-card-name"><%= t.name %></div>
