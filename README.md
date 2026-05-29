@@ -87,11 +87,18 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 ### Review workflow + in-app comments
 
-Threaded comments on every control assessment (`views/partials/comments_thread.ejs`) with `@mention` hints and inline @-mention rendering. Any consultant can **flag a control for senior review** with a reason; the row tags `review_requested` and a reviewer takes action (approve / send back / dismiss) from a cross-framework **`/workspaces/:id/review-queue`** with KPIs and status filters. Reviewer-action events log to the audit trail. Works the same on ISO 27001 and ISO 42001.
+Threaded comments on every control assessment (`views/partials/comments_thread.ejs`) with live `@mention` autocomplete (type `@`, pick from the workspace's people) and inline @-mention rendering on posted comments. Any consultant can **flag a control for senior review** with a reason; the row tags `review_requested` and a reviewer takes action (approve / send back / dismiss) from a cross-framework **`/workspaces/:id/review-queue`** with KPIs and status filters. Reviewer-action events log to the audit trail. Works the same on ISO 27001 and ISO 42001.
 
-### ISMS performance metrics + feed to MRM
+### ISMS measurement programme (ISO/IEC 27004:2016 + clauses 9.1 / 9.3)
 
-`/workspaces/:id/metrics`. One dashboard pulling the numbers a clause 9.1 monitoring + 9.3 management-review session actually needs: implementation %, evidence coverage %, NC closure rate (last 90 / 180 days), risk-acceptance velocity, audit findings open / closed, MRM action-closure rate, document review-age distribution. Each tile has a one-click **"feed into next MRM"** action that appends the snapshot (with timestamp) into the upcoming MRM's performance-review input - so the 9.3.2(c) field isn't a blank prompt at MRM time.
+A clause 9.1 monitoring + measurement programme built on the **ISO/IEC 27004:2016 Annex B measurement-construct catalog**, not an ad-hoc dashboard.
+
+- **Metrics library** at `/workspaces/:id/metrics/library` - 36 standardized measures straight from ISO/IEC 27004:2016 Annex B, grouped into 10 categories (governance & leadership, risk management, audit / review / improvement, incident management, people & awareness, access control, physical & environmental, operations security, technical vulnerability management, supplier relationships). Each carries the full measurement construct: information need, measure, formula, target text, unit, collection frequency, responsible parties, data source, reporting format, and ISO/IEC 27001:2013 references **translated to live 27001:2022 Annex A / clause IDs** (per 27002:2022 Annex B) so they link straight to the controls in this tool. Adopt one with a click - the suggested target pre-fills and is editable.
+- **Adopted measures** at `/workspaces/:id/metrics/adopted` - the measures this engagement is actually tracking, grouped by category, each with its latest reading, a RAG flag (computed against target + direction - higher-is-better vs lower-is-better), and a reading count. A RAG roll-up banner (green / amber / red / not-yet-measured) sits up top.
+- **Measure detail** at `/workspaces/:id/metrics/adopted/:id` - record a dated reading, see the full reading history with a per-reading RAG, the trend over time, the verbatim Annex B construct, and the linked live controls. Edit the target or retire the measure here.
+- **Feed to MRM** - one-click action that appends the current measurement snapshot (with timestamp) into an upcoming MRM's clause 9.3.2(c) performance-review input, so that field isn't a blank prompt at management-review time.
+
+`/workspaces/:id/metrics` redirects to the adopted view.
 
 ### Evidence coverage matrix
 
@@ -309,6 +316,7 @@ All demo accounts share password `12345678`. **Demo-only - do not run this seed 
 | [data/assessment-questions.js](data/assessment-questions.js) | Diagnostic questions per item |
 | [data/glossary.js](data/glossary.js) | 168 GRC / ISO terms with cross-references |
 | [data/risk-library.js](data/risk-library.js) | 59 starter risks (ISO 27001 + AI/ML + supply chain + cloud + regulatory change) |
+| [data/iso27004-metrics.js](data/iso27004-metrics.js) | 36 ISO/IEC 27004:2016 Annex B measurement constructs, mapped to live 27001:2022 control IDs |
 | [data/policy-templates*.js](data/) | Document templates |
 | [data/content-meta.js](data/content-meta.js) | Review cadence + provenance per source. `npm run content-staleness` walks this and fails CI on overdue content. |
 
@@ -361,7 +369,7 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 
 ## Stack
 
-Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired and enforced) · nodemailer (Gmail SMTP) + Brevo HTTP API + Resend HTTP API (provider auto-selected, dev-fallback writes to log) · **puppeteer (bundled Chromium, ~170 MB) for the audit-pack PDF generator**. Tests use node:test plus puppeteer-core. Self-hosted typography: Inter variable + Source Serif 4 variable, both as woff2 in `public/fonts/`. No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
+Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session backed by better-sqlite3-session-store (sessions persist across restarts; auth wired and enforced) · nodemailer (Gmail SMTP) + Brevo HTTP API + Resend HTTP API (provider auto-selected, dev-fallback writes to log) · **puppeteer (bundled Chromium, ~170 MB) for the audit-pack PDF generator**. Tests use node:test plus puppeteer-core. Self-hosted typography: Inter variable + Source Serif 4 variable, both as woff2 in `public/fonts/`. No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
 
 ## Folder structure
 
@@ -378,6 +386,7 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   ├── playbooks.js                # Kickoff / scoping / risk workshop scripts
 │   ├── risk-library.js             # 59 starter risks (27001 + AI/ML + supply chain + cloud + reg change)
 │   ├── content-meta.js             # Per-source provenance + review cadence
+│   ├── iso27004-metrics.js         # 36 ISO/IEC 27004:2016 Annex B measurement constructs (10 categories)
 │   └── policy-templates*.js        # ~70 document templates
 ├── routes/                         # Extracted route modules (register(app, deps))
 │   ├── tenants.js                  # Firm CRUD + onboarding wizard
