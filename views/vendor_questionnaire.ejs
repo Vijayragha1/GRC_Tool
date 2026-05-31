@@ -28,7 +28,58 @@
   </div>
 </div>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>">
+<%# ===== Send to vendor — separate form, NOT nested in the responses form ===== %>
+<%
+  const shared = !!q.external_token;
+  const done = !!q.external_completed_at;
+  const expired = q.external_expires_at && !done && new Date(q.external_expires_at) < new Date();
+  const prefill = q.external_email || ((q.supplier_contact && q.supplier_contact.includes('@')) ? q.supplier_contact : '');
+%>
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head">
+    <h2>Send to vendor</h2>
+    <% if (shared && done) { %><span class="tag tag-success">Responded <%= (q.external_completed_at || '').slice(0,10) %></span>
+    <% } else if (expired) { %><span class="tag tag-danger">Link expired</span>
+    <% } else if (shared) { %><span class="tag tag-warn">Awaiting response</span>
+    <% } else { %><span class="tag tag-neutral">Not sent</span><% } %>
+  </div>
+  <div class="panel-pad">
+    <% if (shared && !done) { %>
+      <div class="row" style="gap:8px;align-items:center;margin-bottom:10px;">
+        <input id="qLink" class="input text-base" readonly value="/q/<%= q.external_token %>" style="flex:1;font-family:ui-monospace,monospace;font-size:12px;">
+        <button type="button" class="btn btn-secondary btn-xs" id="qCopy">Copy link</button>
+      </div>
+      <% if (q.external_expires_at) { %><div class="meta" style="margin-bottom:12px;">Link expires <%= (q.external_expires_at || '').slice(0,10) %>. Sending again rotates the link and resets the clock.</div><% } %>
+    <% } %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/share">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <label class="label">Vendor contact email</label>
+      <div class="row" style="gap:8px;align-items:center;">
+        <input type="email" name="email" class="input" value="<%= prefill %>" placeholder="security@vendor.com" style="flex:1;" required>
+        <button class="btn btn-primary" type="submit"><%= done ? 'Send a new request' : (shared ? 'Resend & refresh link' : 'Email questionnaire') %></button>
+      </div>
+      <div class="meta" style="margin-top:8px;">We'll email a secure link to complete the questionnaire — no account needed. You'll be notified when they respond.</div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var i = document.getElementById('qLink');
+  if (i && i.value.indexOf('/q/') === 0) i.value = location.origin + i.value;
+  var b = document.getElementById('qCopy');
+  if (b && i) b.addEventListener('click', function () {
+    i.select();
+    navigator.clipboard && navigator.clipboard.writeText(i.value);
+    b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy link'; }, 1500);
+  });
+})();
+</script>
+
+<%
+  const aMap = (typeof attachMap !== 'undefined' && attachMap) ? attachMap : {};
+  function fmtSize(b){ if(!b) return ''; if(b < 1024) return b + ' B'; if(b < 1048576) return Math.round(b/1024) + ' KB'; return (b/1048576).toFixed(1) + ' MB'; }
+%>
+<form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>">
   <% Object.keys(sections).forEach(secName => { %>
     <div class="panel" style="margin-bottom:14px;">
       <div class="panel-head"><h2><%= secName %></h2><span class="meta"><%= sections[secName].length %> questions</span></div>
@@ -54,6 +105,23 @@
               </div>
             </div>
             <input type="text" name="comment_<%= qu.id %>" class="input text-base" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)" style="margin-top:8px;">
+            <% const atts = aMap[qu.id] || []; %>
+            <% if (atts.length) { %>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px;">
+                <% atts.forEach(a => { %>
+                  <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+                    <span style="color:var(--text-tertiary);flex-shrink:0;">📎</span>
+                    <a href="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/attachments/<%= a.id %>/download" download style="font-weight:500;color:var(--text);text-decoration:underline;text-underline-offset:2px;"><%= a.filename %></a>
+                    <span class="meta"><%= a.source === 'consultant' ? 'added by reviewer' : 'from vendor' %><% if (a.size_bytes) { %> · <%= fmtSize(a.size_bytes) %><% } %></span>
+                    <button type="submit" form="qadel_<%= a.id %>" class="btn btn-secondary btn-xs" style="margin-left:auto;">Remove</button>
+                  </div>
+                <% }) %>
+              </div>
+            <% } %>
+            <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <input type="file" name="file_<%= qu.id %>" multiple style="font-size:12px;color:var(--text-secondary);">
+              <span class="meta">Attach evidence (optional)</span>
+            </div>
           </div>
         <% }) %>
       </div>
@@ -74,10 +142,18 @@
     <button name="action" value="submit" class="btn btn-primary">Submit responses</button>
     <button name="action" value="review" class="btn btn-accent">Mark reviewed</button>
     <div style="flex:1;"></div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this questionnaire and responses?')" style="display:inline">
-      <button class="btn btn-danger">Delete</button>
-    </form>
+    <button type="submit" form="qDeleteForm" class="btn btn-danger">Delete</button>
   </div>
 </form>
+
+<%# Out-of-form POST targets. The buttons above (and the per-attachment Remove
+   buttons) reference these by id via the HTML form= attribute, so they are NOT
+   nested inside the multipart responses form (nested <form>s are invalid and
+   the parser silently breaks them apart). Each is empty; the global walker
+   stamps _csrf on submit. %>
+<form id="qDeleteForm" method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this questionnaire and responses?')" style="display:none"></form>
+<% Object.keys(sections).forEach(secName => { sections[secName].forEach(qu => { (aMap[qu.id] || []).forEach(a => { %>
+<form id="qadel_<%= a.id %>" method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>/attachments/<%= a.id %>/delete" onsubmit="return appConfirmForm(event, 'Remove this file?')" style="display:none"></form>
+<% }) }) }) %>
 
 <%- include('partials/footer') %>

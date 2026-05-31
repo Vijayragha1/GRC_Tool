@@ -952,6 +952,19 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
 
+-- Per-(notification, recipient) email-dispatch ledger. One row means "we have
+-- already emailed this user about this notification" — keeps the notify()->email
+-- bridge idempotent across job re-runs and leaves room for a future daily digest.
+CREATE TABLE IF NOT EXISTS notification_emails (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  notification_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(notification_id, user_id),
+  FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- ========== Permission templates (named override bundles) ==========
 CREATE TABLE IF NOT EXISTS permission_templates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1484,7 +1497,7 @@ function init() {
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('suppliers', n, d.join(' ')); });
 
   // Supplier questionnaires - tokenized external link
-  ['external_token TEXT', 'external_email TEXT', 'external_completed_at DATETIME']
+  ['external_token TEXT', 'external_email TEXT', 'external_completed_at DATETIME', 'external_expires_at DATETIME']
     .forEach(c => { const [n, ...d] = c.split(' '); addColumnIfMissing('supplier_questionnaires', n, d.join(' ')); });
 
   // Training records - link to course catalogue + attestation/quiz
@@ -1752,6 +1765,9 @@ function init() {
   addColumnIfMissing('users', 'locale', "TEXT DEFAULT 'en'");
   addColumnIfMissing('users', 'idp_subject', 'TEXT');
   addColumnIfMissing('users', 'idp_kind', 'TEXT');
+  // Email-notification preference: 'immediate' (email when a notification is
+  // raised) or 'off' (in-app only). 'daily' is reserved for a future digest.
+  addColumnIfMissing('users', 'email_notify', "TEXT DEFAULT 'immediate'");
 
   // Risks - DPIA flag, risk acceptance lifecycle
   addColumnIfMissing('risks', 'is_dpia', 'INTEGER DEFAULT 0');
@@ -2006,6 +2022,29 @@ function init() {
         AND item_ref    = NEW.iso_item_id;
     END;
   `);
+
+  // Per-question evidence attachments on supplier questionnaires. Files may be
+  // uploaded by the vendor (anonymous, via the tokenised /q/ link) or by a
+  // consultant during review — hence uploaded_by is nullable (no users FK) and
+  // a `source` discriminator records who attached it. question_id is nullable
+  // so a file can be attached to the questionnaire as a whole if ever needed.
+  db.exec(`CREATE TABLE IF NOT EXISTS questionnaire_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    questionnaire_id INTEGER NOT NULL,
+    question_id INTEGER,
+    workspace_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    mime TEXT,
+    size_bytes INTEGER,
+    sha256 TEXT,
+    source TEXT DEFAULT 'vendor',     -- vendor / consultant
+    uploaded_by INTEGER,              -- users.id when source='consultant', else NULL
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (questionnaire_id) REFERENCES supplier_questionnaires(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_qattach_q ON questionnaire_attachments(questionnaire_id);
+  CREATE INDEX IF NOT EXISTS idx_qattach_question ON questionnaire_attachments(question_id);`);
 
   // C.10 - Continual improvement register (clause 10.1). Improvements driven
   // by data - distinct from corrective actions on NCs (10.2).

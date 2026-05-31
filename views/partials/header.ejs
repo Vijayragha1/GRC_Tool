@@ -598,6 +598,25 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
           <span class="nav-item-text">Inbox</span>
         </a>
+        <%# Personal work hub: the outputs you assemble (audit pack,
+            deliverables) and your own schedule / to-dos (calendar, tasks)
+            sit under Inbox rather than padding out the Operations group. %>
+        <a href="/workspaces/<%= ws.id %>/audit-pack" class="nav-item <%= (typeof active !== 'undefined' && active === 'audit-pack') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span class="nav-item-text">Audit pack</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/deliverables" class="nav-item <%= (typeof active !== 'undefined' && active === 'deliverables') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span class="nav-item-text">Deliverables</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item <%= (typeof active !== 'undefined' && active === 'calendar') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="nav-item-text">Compliance calendar</span>
+        </a>
+        <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span class="nav-item-text">Tasks</span>
+        </a>
         <%# Unified all-framework view - only meaningful when the engagement
             covers more than one framework. %>
         <% if (ws.frameworks && ws.frameworks.length > 1) { %>
@@ -642,10 +661,6 @@
         <a href="/workspaces/<%= ws.id %>/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'engagement-plan') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="11" cy="12" r="1.5" fill="currentColor"/><circle cx="17" cy="18" r="1.5" fill="currentColor"/></svg>
           <span class="nav-item-text">Client plan</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/exec-brief" class="nav-item <%= (typeof active !== 'undefined' && active === 'exec-brief') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span class="nav-item-text">Exec brief</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/roadmap" class="nav-item <%= (typeof active !== 'undefined' && active === 'roadmap') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 9 12 3 18"/><polyline points="13 6 21 12 13 18"/></svg>
@@ -734,10 +749,6 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           <span class="nav-item-text">Readiness</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/exec-brief" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-exec-brief') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-          <span class="nav-item-text">Exec brief</span>
-        </a>
         <a href="/workspaces/<%= ws.id %>/iso42001/cert-cycle" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-cert-cycle') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="nav-item-text">Cert cycle</span>
@@ -764,14 +775,6 @@
         <a href="/workspaces/<%= ws.id %>/changes-since" class="nav-item <%= (typeof active !== 'undefined' && active === 'changes-since') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
           <span class="nav-item-text">Changes since</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/audit-pack" class="nav-item <%= (typeof active !== 'undefined' && active === 'audit-pack') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <span class="nav-item-text">Audit pack</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/deliverables" class="nav-item <%= (typeof active !== 'undefined' && active === 'deliverables') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span class="nav-item-text">Deliverables</span>
         </a>
         <a href="/workspaces/<%= ws.id %>/auditor-access" class="nav-item <%= (typeof active !== 'undefined' && active === 'auditor-access') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -819,15 +822,6 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           <span class="nav-item-text">Adopted metrics</span>
         </a>
-        <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item <%= (typeof active !== 'undefined' && active === 'calendar') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="nav-item-text">Compliance calendar</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span class="nav-item-text">Tasks</span>
-        </a>
-        <%# Task templates / Calendar reachable from the Tasks page header. %>
 
         <div class="nav-group-label">Settings</div>
         <%# Search reachable via the Cmd-K palette in the topbar. Reports is a
@@ -875,10 +869,20 @@
         <%# Dropped the "Firm" group label - the firm is implicit when
             you're logged into it. Clients is the primary destination at
             firm-level; doesn't need a header above it. %>
-        <a href="/dashboard" class="nav-item <%= (typeof active === 'undefined' || active !== 'glossary') ? 'active' : '' %>">
+        <a href="/dashboard" class="nav-item <%= (typeof active === 'undefined' || (active !== 'glossary' && active !== 'portfolio' && active !== 'firm-calendar')) ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="nav-item-text">Clients</span>
         </a>
+        <% if (user && user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('firm.cross_view')) { %>
+          <a href="/portfolio" class="nav-item <%= (typeof active !== 'undefined' && active === 'portfolio') ? 'active' : '' %>">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span class="nav-item-text">Portfolio</span>
+          </a>
+          <a href="/calendar" class="nav-item <%= (typeof active !== 'undefined' && active === 'firm-calendar') ? 'active' : '' %>">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span class="nav-item-text">Calendar</span>
+          </a>
+        <% } %>
         <div class="nav-group-label">Reference</div>
         <a href="/playbooks" class="nav-item <%= (typeof active !== 'undefined' && active === 'playbooks') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>

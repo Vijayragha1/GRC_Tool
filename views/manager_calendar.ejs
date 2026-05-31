@@ -1,0 +1,294 @@
+<%- include('partials/header', { title: 'Calendar', user, ws: null, active: 'firm-calendar' }) %>
+
+<%
+  // Colour + label per item kind. Calendar/chip backgrounds and legend dots.
+  const kindColor = {
+    'task':          '#2563eb',
+    'nc':            '#b91c1c',
+    'improvement':   '#0d9488',
+    'treatment':     '#ea580c',
+    'control':       '#6b7280',
+    'audit':         '#0891b2',
+    'mrm':           '#7c3aed',
+    'cert':          '#16a34a',
+    'doc-review':    '#a16207',
+    'supplier':      '#9333ea',
+    'questionnaire': '#c026d3'
+  };
+  const kindLabel = {
+    'task': 'Task', 'nc': 'Nonconformity', 'improvement': 'Improvement', 'treatment': 'Treatment action',
+    'control': 'Control', 'audit': 'Audit', 'mrm': 'Mgmt review', 'cert': 'Cert milestone',
+    'doc-review': 'Doc review', 'supplier': 'Supplier review', 'questionnaire': 'Vendor questionnaire'
+  };
+  const prettyRole = r => r ? String(r).replace(/_/g, ' ') : '';
+  const daysAgo = d => Math.max(1, Math.round((Date.parse(today) - Date.parse(d)) / 86400000));
+  // Soft tints for engagement duration bars — deliberately lighter than the
+  // event chips so they read as background context, not as work items.
+  const projPalette = ['#dbeafe', '#dcfce7', '#fef3c7', '#ede9fe', '#cffafe', '#fce7f3', '#ffedd5', '#e0e7ff'];
+  const projColor = i => projPalette[i % projPalette.length];
+  const prettyDate = d => d ? new Date(d + 'T00:00:00').toLocaleString('en', { day: 'numeric', month: 'short' }) : '';
+%>
+
+<style>
+  .mc-grid2 { display:grid; grid-template-columns:minmax(0,2.2fr) minmax(290px,1fr); gap:16px; align-items:start; }
+  @media (max-width: 1080px){ .mc-grid2 { grid-template-columns:1fr; } }
+  /* ----- Year overview: 12 months in 3 rows of 4, one connected grid (shared
+     borders, like the day grid). Engagement durations are drawn as continuous
+     bars that flow across each row's month cells. Outer frame = container
+     top/left border + radius; internal lines come from each row's bottom border
+     and each cell's right border (overflow:hidden clips the outer edges clean). */
+  .mc-year { background:var(--bg); border-top:1px solid var(--border); border-left:1px solid var(--border);
+             border-radius:var(--radius); box-shadow:var(--shadow-sm); overflow:hidden; }
+  .mc-yrow { position:relative; border-bottom:1px solid var(--border); }
+  .mc-yrow:last-child { border-bottom:0; }
+  .mc-yrow-cells { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
+  .mc-mcard { display:block; text-decoration:none; color:inherit; border-right:1px solid var(--border);
+              padding:11px 12px 12px; min-height:118px; transition:background .12s; }
+  .mc-mcard:hover { background:var(--bg-subtle); }
+  .mc-mcard.is-current { background:rgba(37,99,235,0.05); }
+  .mc-mcard-head { display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:4px; }
+  .mc-mcard-name { font-weight:600; font-size:15px; color:var(--text); letter-spacing:-0.01em; }
+  .mc-mcard-count { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; flex-shrink:0; }
+  .mc-now-tag { font-size:9px; font-weight:600; color:var(--bg); background:var(--accent); border-radius:3px;
+                padding:1px 5px; margin-left:6px; vertical-align:1px; letter-spacing:0.04em; text-transform:uppercase; }
+  /* Engagement bars overlaid across each year-row, just below the month names */
+  .mc-yspan { position:absolute; left:0; right:0; top:36px; display:grid;
+              grid-template-columns:repeat(4,minmax(0,1fr)); pointer-events:none; z-index:3; }
+  .mc-ybar { pointer-events:auto; height:15px; margin:1px 7px; padding:0 8px; font-size:10px; line-height:14px;
+             color:var(--text); text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+             border:1px solid rgba(0,0,0,0.10); border-left:0; border-right:0; }
+  .mc-ybar.cap-l { border-left:1px solid rgba(0,0,0,0.10); border-top-left-radius:7px; border-bottom-left-radius:7px; }
+  .mc-ybar.cap-r { border-right:1px solid rgba(0,0,0,0.10); border-top-right-radius:7px; border-bottom-right-radius:7px; }
+  .mc-kinds { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .mc-kinds .k { display:inline-flex; align-items:center; gap:3px; font-size:10px; color:var(--text-secondary); }
+  /* ----- Month detail (day grid) ----- */
+  .mc-cal-head { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
+  .mc-week { position:relative; border-bottom:1px solid var(--border); }
+  .mc-week:last-child { border-bottom:0; }
+  .mc-cal-week { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:stretch; }
+  .mc-dow { padding:8px 6px; font-weight:500; text-transform:uppercase; letter-spacing:0.05em; font-size:11px;
+            color:var(--text-secondary); text-align:center; border-bottom:1px solid var(--border); background:var(--bg); }
+  .mc-cell { min-height:100px; padding:5px 7px; }
+  .mc-daynum { font-size:11.5px; font-weight:500; color:var(--text-secondary); margin-bottom:3px; }
+  /* Engagement duration bars overlaid across each week, just under the day numbers */
+  .mc-spanband { position:absolute; left:0; right:0; top:22px; display:grid;
+                 grid-template-columns:repeat(7,minmax(0,1fr)); pointer-events:none; z-index:3; }
+  .mc-span { pointer-events:auto; height:14px; margin:1px 3px; padding:0 6px; font-size:10px; line-height:13px;
+             color:var(--text); text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+             border:1px solid rgba(0,0,0,0.10); border-left:0; border-right:0; }
+  .mc-span.cap-l { border-left:1px solid rgba(0,0,0,0.10); border-top-left-radius:7px; border-bottom-left-radius:7px; }
+  .mc-span.cap-r { border-right:1px solid rgba(0,0,0,0.10); border-top-right-radius:7px; border-bottom-right-radius:7px; }
+  .mc-chip { display:block; text-decoration:none; font-size:10.5px; line-height:1.35; padding:1px 5px;
+             margin-bottom:2px; border-radius:3px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mc-bar-track { height:7px; background:var(--bg-subtle); border:1px solid var(--border); border-radius:999px; overflow:hidden; margin:5px 0 4px; }
+  .mc-bar-fill { height:100%; background:var(--accent, #1a1a1a); border-radius:999px; }
+  .mc-wl-row { padding:11px 0; border-bottom:1px solid var(--border); }
+  .mc-wl-row:last-child { border-bottom:0; }
+  .mc-od-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .mc-od-row:last-child { border-bottom:0; }
+  .mc-ctag { font-size:11px; color:var(--text-secondary); background:var(--bg-subtle); border:1px solid var(--border);
+             border-radius:4px; padding:1px 7px; white-space:nowrap; flex-shrink:0; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .mc-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Calendar</h1>
+    <div class="page-subtitle"><% if (view === 'year') { %>A year at a glance — engagement timelines and deadlines across every client. Click any month to open its day-by-day view.<% } else { %>Day-by-day view for the month. Bars show how long each project runs to its target certification; chips mark audits, reviews and assigned work.<% } %></div>
+  </div>
+  <div class="row-center">
+    <% if (view === 'year') { %>
+      <% if (year !== thisYear) { %><a href="/calendar" class="btn btn-secondary btn-xs" style="margin-right:6px;">This year</a><% } %>
+      <a href="?year=<%= prevYear %>" class="btn btn-secondary btn-xs">← <%= prevYear %></a>
+      <strong class="text-xl" style="min-width:80px;text-align:center;"><%= year %></strong>
+      <a href="?year=<%= nextYear %>" class="btn btn-secondary btn-xs"><%= nextYear %> →</a>
+    <% } else { %>
+      <a href="?year=<%= monthStr.slice(0,4) %>" class="btn btn-secondary btn-xs" style="margin-right:6px;">‹ Year</a>
+      <% if (monthStr !== thisMonth) { %><a href="/calendar?month=<%= thisMonth %>" class="btn btn-secondary btn-xs">Today</a><% } %>
+      <a href="?month=<%= prevMo %>" class="btn btn-secondary btn-xs">← Prev</a>
+      <strong class="text-xl" style="min-width:150px;text-align:center;"><%= monthLabel %></strong>
+      <a href="?month=<%= nextMo %>" class="btn btn-secondary btn-xs">Next →</a>
+      <span class="meta text-base" style="margin-left:12px;"><%= monthCount %> this month</span>
+    <% } %>
+  </div>
+</div>
+
+<%# ===== KPI strip (mirrors the portfolio summary line) ===== %>
+<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
+  <span><strong style="color:var(--text);font-weight:500;font-size:14px;"><%= kpi.engagements %></strong> engagement<%= kpi.engagements === 1 ? '' : 's' %></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:var(--text);font-weight:500;"><%= kpi.openItems %></strong> open work item<%= kpi.openItems === 1 ? '' : 's' %></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= kpi.overdue > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:500;"><%= kpi.overdue %></strong> overdue</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= kpi.dueSoon > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight:500;"><%= kpi.dueSoon %></strong> due in 7 days</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= kpi.unassigned > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight:500;"><%= kpi.unassigned %></strong> unassigned</span>
+</div>
+
+<%# ===== Legend (engagement duration + item kinds) ===== %>
+<div class="text-sm" style="display:flex;gap:10px 14px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+  <span style="display:inline-flex;gap:5px;align-items:center;color:var(--text-secondary);">
+    <span style="width:24px;height:9px;border-radius:5px;background:#dbeafe;border:1px solid rgba(0,0,0,0.12);"></span>Engagement duration
+  </span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <% Object.keys(kindLabel).forEach(k => { %>
+    <span style="display:inline-flex;gap:5px;align-items:center;color:var(--text-secondary);">
+      <span style="width:10px;height:10px;border-radius:2px;background:<%= kindColor[k] %>;"></span><%= kindLabel[k] %>
+    </span>
+  <% }) %>
+</div>
+
+<% if (view === 'year') { %>
+  <%# ===== Year overview: 12 months (3 rows of 4) with engagement flow-bars ===== %>
+  <div class="mc-year">
+    <% monthRows.forEach(row => { %>
+      <div class="mc-yrow">
+        <% if (row.laneRows) { %>
+          <div class="mc-yspan" style="grid-template-rows:repeat(<%= row.laneRows %>,18px);">
+            <% row.bars.forEach(b => { %>
+              <a href="?month=<%= row.months[b.startCol].ym %>"
+                 class="mc-ybar<%= b.capLeft ? ' cap-l' : '' %><%= b.capRight ? ' cap-r' : '' %>"
+                 style="grid-row:<%= b.lane + 1 %>;grid-column:<%= b.startCol + 1 %> / <%= b.endCol + 2 %>;background:<%= projColor(b.lane) %>;"
+                 title="<%= b.name %><%= b.stage ? ' — ' + b.stage : '' %> · <%= prettyDate(b.start) %> → <%= prettyDate(b.end) %> (<%= b.daysToCert >= 0 ? b.daysToCert + ' days to target cert' : Math.abs(b.daysToCert) + ' days past target' %>)">
+                <% if (b.labelHere) { %><%= b.name %><% if (b.capLeft && b.stage) { %> <span style="opacity:.65;">· <%= b.stage %></span><% } %><% } %>
+              </a>
+            <% }) %>
+          </div>
+        <% } %>
+        <div class="mc-yrow-cells">
+          <% row.months.forEach(mo => { %>
+            <a class="mc-mcard<%= mo.isCurrent ? ' is-current' : '' %>" href="?month=<%= mo.ym %>" title="Open <%= mo.label %> <%= year %> day view">
+              <div class="mc-mcard-head">
+                <span class="mc-mcard-name"><%= mo.label %><% if (mo.isCurrent) { %><span class="mc-now-tag">now</span><% } %></span>
+                <% if (mo.count) { %><span class="mc-mcard-count"><%= mo.count %> item<%= mo.count === 1 ? '' : 's' %></span><% } %>
+              </div>
+              <% if (row.laneRows) { %><div style="height:<%= row.laneRows * 18 %>px;"></div><% } %>
+              <% if (Object.keys(mo.byKind).length) { %>
+                <div class="mc-kinds">
+                  <% Object.keys(mo.byKind).forEach(k => { %>
+                    <span class="k" title="<%= mo.byKind[k] %> <%= kindLabel[k] || k %>"><span class="mc-dot" style="width:7px;height:7px;background:<%= kindColor[k] || '#666' %>;"></span><%= mo.byKind[k] %></span>
+                  <% }) %>
+                </div>
+              <% } %>
+              <% if (mo.overdue) { %><div style="font-size:10.5px;color:#b91c1c;font-weight:500;margin-top:6px;"><%= mo.overdue %> overdue</div><% } %>
+            </a>
+          <% }) %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } else { %>
+  <%# ===== Month detail: day grid with engagement span bars ===== %>
+  <div class="panel" style="overflow:hidden;">
+    <div class="mc-cal-head">
+      <% ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => { %><div class="mc-dow"><%= d %></div><% }) %>
+    </div>
+    <% weeks.forEach(wk => { %>
+      <div class="mc-week">
+        <% if (wk.laneRows) { %>
+          <div class="mc-spanband" style="grid-template-rows:repeat(<%= wk.laneRows %>,16px);">
+            <% wk.bars.forEach(b => { %>
+              <a href="<%= b.link %>"
+                 class="mc-span<%= b.capLeft ? ' cap-l' : '' %><%= b.capRight ? ' cap-r' : '' %>"
+                 style="grid-row:<%= b.lane + 1 %>;grid-column:<%= b.startCol + 1 %> / <%= b.endCol + 2 %>;background:<%= projColor(b.lane) %>;"
+                 title="<%= b.name %><%= b.stage ? ' — ' + b.stage : '' %> · <%= prettyDate(b.start) %> → <%= prettyDate(b.end) %> (<%= b.daysToCert >= 0 ? b.daysToCert + ' days to target cert' : Math.abs(b.daysToCert) + ' days past target' %>)">
+                <% if (b.labelHere) { %><%= b.name %><% if (b.capLeft && b.stage) { %> <span style="opacity:.65;">· <%= b.stage %></span><% } %><% } %>
+              </a>
+            <% }) %>
+          </div>
+        <% } %>
+        <div class="mc-cal-week">
+          <% wk.days.forEach((c, colIdx) => { const isToday = c && c.date === today; %>
+            <div class="mc-cell" style="<%= colIdx < 6 ? 'border-right:1px solid var(--border);' : '' %><%= isToday ? 'background:rgba(37,99,235,0.05);' : '' %>">
+              <% if (c) { %>
+                <div class="mc-daynum" style="<%= isToday ? 'color:#2563eb;font-weight:700;' : '' %>"><%= c.day %></div>
+                <% if (wk.laneRows) { %><div style="height:<%= wk.laneRows * 16 %>px;" aria-hidden="true"></div><% } %>
+                <% c.events.slice(0, 3).forEach(e => { %>
+                  <a href="<%= e.link %>" class="mc-chip" style="background:<%= kindColor[e.kind] || '#666' %>;" title="<%= e.wsName %> — <%= kindLabel[e.kind] || e.kind %>: <%= e.title %>"><%= e.title %></a>
+                <% }) %>
+                <% if (c.events.length > 3) { %><div class="meta" style="font-size:10px;">+ <%= c.events.length - 3 %> more</div><% } %>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<% if (docsNeedingReviewDate) { %>
+  <div class="meta" style="font-size:12px;margin-top:9px;line-height:1.5;">
+    <span style="color:#b45309;font-weight:500;"><%= docsNeedingReviewDate %></span> approved document<%= docsNeedingReviewDate === 1 ? '' : 's' %> ha<%= docsNeedingReviewDate === 1 ? 's' : 've' %> no review date set, so <%= docsNeedingReviewDate === 1 ? 'it does' : 'they do' %> not appear above. Set a review date on a document to schedule its review here.
+  </div>
+<% } %>
+
+<%# ===== Overdue + team workload (below the calendar) ===== %>
+<div class="mc-grid2" style="margin-top:18px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Overdue</h2><span class="meta"><%= overdue.length %> past due</span></div>
+    <div class="panel-pad" style="padding-top:4px;padding-bottom:4px;">
+      <% if (!overdue.length) { %>
+        <div class="meta" style="padding:10px 0;">Nothing overdue across your engagements.</div>
+      <% } else { %>
+        <% overdue.slice(0, 12).forEach(e => { %>
+          <div class="mc-od-row">
+            <span class="mc-dot" style="background:<%= kindColor[e.kind] || '#666' %>;" title="<%= kindLabel[e.kind] || e.kind %>"></span>
+            <span class="mc-ctag"><%= e.wsName %></span>
+            <a href="<%= e.link %>" style="color:var(--text);text-decoration:none;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<%= kindLabel[e.kind] || e.kind %>: <%= e.title %>"><%= e.title %></a>
+            <% if (e.ownerLabel) { %><span class="meta" style="flex-shrink:0;"><%= e.ownerLabel %></span><% } %>
+            <span style="color:#b91c1c;font-weight:500;flex-shrink:0;min-width:84px;text-align:right;"><%= daysAgo(e.date) %> day<%= daysAgo(e.date) === 1 ? '' : 's' %> over</span>
+          </div>
+        <% }) %>
+        <% if (overdue.length > 12) { %><div class="meta" style="padding:8px 0 2px;">+ <%= overdue.length - 12 %> more overdue</div><% } %>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Team workload</h2><span class="meta"><%= kpi.openItems %> open</span></div>
+    <div class="panel-pad" style="padding-top:6px;">
+      <% if (!workload.length) { %>
+        <div class="meta">No active team members in this firm yet.</div>
+      <% } else { %>
+        <% workload.forEach(p => { const pct = Math.round((p.total / maxLoad) * 100);
+             const kinds = Object.keys(p.byKind).map(k => p.byKind[k] + ' ' + (kindLabel[k] || k).toLowerCase()).join(' · '); %>
+          <div class="mc-wl-row">
+            <div style="display:flex;align-items:baseline;gap:8px;">
+              <span style="font-weight:500;color:var(--text);"><%= p.name %></span>
+              <% if (p.role) { %><span class="meta" style="font-size:11px;"><%= prettyRole(p.role) %></span><% } %>
+              <span style="flex:1;"></span>
+              <span style="font-weight:500;color:var(--text);font-size:15px;" class="num"><%= p.total %></span>
+            </div>
+            <div class="mc-bar-track"><div class="mc-bar-fill" style="width:<%= p.total ? Math.max(pct, 4) : 0 %>%;"></div></div>
+            <% if (p.total) { %>
+              <div class="meta" style="font-size:11.5px;">
+                <% if (p.overdue) { %><span style="color:#b91c1c;font-weight:500;"><%= p.overdue %> overdue</span> · <% } %>
+                <% if (p.dueSoon) { %><span style="color:#b45309;font-weight:500;"><%= p.dueSoon %> due ≤7d</span> · <% } %>
+                <%= kinds %>
+              </div>
+            <% } else { %>
+              <div class="meta" style="font-size:11.5px;">No open items</div>
+            <% } %>
+          </div>
+        <% }) %>
+        <% if (unassigned.total) { %>
+          <div class="mc-wl-row">
+            <div style="display:flex;align-items:baseline;gap:8px;">
+              <span style="font-weight:500;color:var(--text-secondary);">Unassigned / external</span>
+              <span style="flex:1;"></span>
+              <span style="font-weight:500;color:var(--text);font-size:15px;" class="num"><%= unassigned.total %></span>
+            </div>
+            <div class="mc-bar-track"><div class="mc-bar-fill" style="width:<%= Math.max(Math.round((unassigned.total / maxLoad) * 100), 4) %>%;background:var(--text-tertiary);"></div></div>
+            <div class="meta" style="font-size:11.5px;">
+              <% if (unassigned.overdue) { %><span style="color:#b91c1c;font-weight:500;"><%= unassigned.overdue %> overdue</span> · <% } %>
+              <%= Object.keys(unassigned.byKind).map(k => unassigned.byKind[k] + ' ' + (kindLabel[k] || k).toLowerCase()).join(' · ') %>
+            </div>
+          </div>
+        <% } %>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
