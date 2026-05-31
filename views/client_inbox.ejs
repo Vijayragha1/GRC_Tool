@@ -41,12 +41,22 @@
     <div class="panel" style="padding:0;">
       <div class="panel-head">
         <h2>Notifications</h2>
-        <div class="row" style="gap:6px;">
+        <div class="row" style="gap:6px;align-items:center;">
           <a href="?filter=unread" class="btn <%= filter === 'unread' ? 'btn-primary' : 'btn-secondary' %> btn-xs">Unread</a>
           <a href="?filter=all" class="btn <%= filter === 'all' ? 'btn-primary' : 'btn-secondary' %> btn-xs">All</a>
           <% if (notifications.length > 0) { %>
             <form method="POST" action="/workspaces/<%= ws.id %>/notifications/mark-all-read" style="display:inline;"><button class="btn btn-ghost btn-xs">Mark all read</button></form>
           <% } %>
+          <span style="width:1px;height:16px;background:var(--border);margin:0 2px;"></span>
+          <%# Per-account email preference: mirror in-app notifications to email, or in-app only. %>
+          <% const emailOff = (typeof user !== 'undefined' && user.email_notify === 'off'); %>
+          <form method="POST" action="/me/notification-pref" style="display:inline-flex;align-items:center;gap:4px;">
+            <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+            <input type="hidden" name="return" value="/workspaces/<%= ws.id %>/inbox<%= filter === 'all' ? '?filter=all' : '' %>">
+            <span class="meta text-xs">Email me</span>
+            <button name="value" value="immediate" class="btn <%= emailOff ? 'btn-secondary' : 'btn-primary' %> btn-xs" title="Email me when a new notification is raised">On</button>
+            <button name="value" value="off" class="btn <%= emailOff ? 'btn-primary' : 'btn-secondary' %> btn-xs" title="In-app only — no emails">Off</button>
+          </form>
         </div>
       </div>
       <% if (notifications.length === 0) { %>

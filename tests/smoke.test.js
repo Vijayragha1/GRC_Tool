@@ -259,6 +259,89 @@ function stopServer() {
     const soaResp = await get(`/workspaces/${wsId}/soa`);
     ok('SoA includes "Risks treated" header', soaResp.body.includes('Risks treated'), 'header missing');
 
+    // Firm-manager cross-engagement surfaces (portfolio + calendar). The seeded
+    // user is a firm manager, so they clear the firm.cross_view gate. Markers
+    // are structural (grid scaffolding), not data-dependent, so these pass on
+    // any seed - they catch render/route regressions, not specific content.
+    console.log('\nfirm manager surfaces');
+    const portfolioResp = await get('/portfolio');
+    ok('GET /portfolio returns 200', portfolioResp.status === 200, `got ${portfolioResp.status}`);
+    ok('portfolio renders the health board', portfolioResp.body.includes('Portfolio health'), 'heading missing');
+
+    const calYear = await get('/calendar');
+    ok('GET /calendar (year overview) returns 200', calYear.status === 200, `got ${calYear.status}`);
+    ok('year view renders the connected month grid', calYear.body.includes('mc-year'), 'mc-year grid missing');
+    ok('year view renders the 3 month rows', calYear.body.includes('mc-yrow'), 'mc-yrow rows missing');
+
+    const calMonth = await get('/calendar?month=2026-05');
+    ok('GET /calendar?month= (month detail) returns 200', calMonth.status === 200, `got ${calMonth.status}`);
+    ok('month view renders the weekday day-grid header', calMonth.body.includes('mc-cal-head'), 'mc-cal-head missing');
+
+    const wsCal = await get(`/workspaces/${wsId}/calendar`);
+    ok('GET /workspaces/:id/calendar returns 200', wsCal.status === 200, `got ${wsCal.status}`);
+
+    // Glossary is a firm-level reference page. The run has already visited
+    // workspace pages above, so last_ws_id is set - that is the exact condition
+    // that used to make /glossary inherit a stale client sidebar ("lands in a
+    // client page"). Assert it renders the firm sidebar (Glossary nav present +
+    // active) and did NOT leak the client sidebar.
+    const glossary = await get('/glossary');
+    ok('GET /glossary returns 200', glossary.status === 200, `got ${glossary.status}`);
+    ok('glossary renders the firm sidebar with Glossary active',
+       glossary.body.includes('href="/glossary" class="nav-item active"'),
+       'firm-level active Glossary nav item missing');
+    ok('glossary did not inherit the client sidebar',
+       !glossary.body.includes('>Compliance calendar<'),
+       'client sidebar leaked into /glossary');
+
+    // Playbooks, Firm library, and Admin email are the other firm-level pages
+    // that shared the glossary defect (they rendered with the sticky client
+    // sidebar). Same guard: firm sidebar present + active, client sidebar absent.
+    // last_ws_id is still set from the workspace visits above.
+    const playbooks = await get('/playbooks');
+    ok('GET /playbooks returns 200', playbooks.status === 200, `got ${playbooks.status}`);
+    ok('playbooks renders the firm sidebar with Playbooks active',
+       playbooks.body.includes('href="/playbooks" class="nav-item active"'),
+       'firm-level active Playbooks nav item missing');
+    ok('playbooks did not inherit the client sidebar',
+       !playbooks.body.includes('>Compliance calendar<'),
+       'client sidebar leaked into /playbooks');
+
+    const playbookDetail = await get('/playbooks/kickoff');
+    ok('GET /playbooks/:id (detail) returns 200', playbookDetail.status === 200, `got ${playbookDetail.status}`);
+    ok('playbook detail did not inherit the client sidebar',
+       playbookDetail.body.includes('href="/playbooks" class="nav-item active"') &&
+       !playbookDetail.body.includes('>Compliance calendar<'),
+       'playbook detail did not render the firm sidebar');
+
+    const firmLib = await get('/firm/library');
+    ok('GET /firm/library returns 200', firmLib.status === 200, `got ${firmLib.status}`);
+    ok('firm library renders the firm sidebar with Library active',
+       firmLib.body.includes('href="/firm/library" class="nav-item active"'),
+       'firm-level active Library nav item missing');
+    ok('firm library did not inherit the client sidebar',
+       !firmLib.body.includes('>Compliance calendar<'),
+       'client sidebar leaked into /firm/library');
+
+    const firmLibRisks = await get('/firm/library/risks');
+    ok('GET /firm/library/risks returns 200', firmLibRisks.status === 200, `got ${firmLibRisks.status}`);
+    ok('firm library risks did not inherit the client sidebar',
+       firmLibRisks.body.includes('href="/firm/library" class="nav-item active"') &&
+       !firmLibRisks.body.includes('>Compliance calendar<'),
+       'firm library risks did not render the firm sidebar');
+
+    // /admin/email is gated by isFirmOwner(), which in this codebase resolves to
+    // rbac.isManager() - a firm manager IS allowed in. The seeded smoke user is a
+    // manager, so this page is reachable and renders the same firm-level chrome.
+    const adminEmail = await get('/admin/email');
+    ok('GET /admin/email returns 200 (managers allowed)', adminEmail.status === 200, `got ${adminEmail.status}`);
+    ok('admin email renders the firm sidebar with Admin email active',
+       adminEmail.body.includes('href="/admin/email" class="nav-item active"'),
+       'firm-level active Admin email nav item missing');
+    ok('admin email did not inherit the client sidebar',
+       !adminEmail.body.includes('>Compliance calendar<'),
+       'client sidebar leaked into /admin/email');
+
   } catch (e) {
     failures++;
     console.error(`\n✗ test crashed: ${e.message}`);

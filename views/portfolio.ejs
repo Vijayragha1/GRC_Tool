@@ -1,0 +1,115 @@
+<%- include('partials/header', { title: 'Portfolio health', user, ws: null }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Portfolio health</h1>
+    <div class="meta text-sm" style="margin-top:2px;">Every engagement ranked worst-first by a health score, so you know where to intervene.</div>
+  </div>
+</div>
+
+<% if (engagements.length > 0) { %>
+<%# Compact summary line - mirrors the dashboard strip: counts, no card chrome. %>
+<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 16px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
+  <span><strong style="color:var(--text);font-weight:500;font-size:14px;"><%= summary.total %></strong> engagement<%= summary.total === 1 ? '' : 's' %></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= summary.atRisk > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:500;"><%= summary.atRisk %></strong> at risk</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= summary.watch > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight:500;"><%= summary.watch %></strong> watch</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= summary.healthy > 0 ? '#15803d' : 'var(--text-secondary)' %>;font-weight:500;"><%= summary.healthy %></strong> healthy</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span>avg score <strong style="color:var(--text);font-weight:500;"><%= summary.avgScore %></strong></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= summary.overdueNCs > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:500;"><%= summary.overdueNCs %></strong> overdue NC<%= summary.overdueNCs === 1 ? '' : 's' %> firm-wide</span>
+</div>
+
+<div class="panel" style="overflow:hidden;">
+  <div style="overflow-x:auto;">
+  <table class="t">
+    <thead><tr>
+      <th style="width:96px;">Health</th>
+      <th>Client</th>
+      <th style="width:90px;">Readiness</th>
+      <th style="width:90px;">Cert</th>
+      <th style="width:64px;">NCs</th>
+      <th style="width:80px;">High risks</th>
+      <th style="width:84px;">Overdue tasks</th>
+      <th style="width:80px;">Stale ctrls</th>
+      <th>Why</th>
+    </tr></thead>
+    <tbody>
+      <%
+        function reasonLink(reason, wsId) {
+          if (/NC/i.test(reason)) return `/workspaces/${wsId}/nonconformities`;
+          if (/cert in/i.test(reason)) return `/workspaces/${wsId}/cert-cycle`;
+          if (/risk/i.test(reason)) return `/workspaces/${wsId}/risks`;
+          if (/objective/i.test(reason)) return `/workspaces/${wsId}/objectives`;
+          if (/stale control/i.test(reason)) return `/workspaces/${wsId}/controls/assess`;
+          if (/task/i.test(reason)) return `/workspaces/${wsId}/tasks`;
+          if (/gap assessment|pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
+          return `/workspaces/${wsId}`;
+        }
+      %>
+      <% engagements.forEach(e => {
+           const bandColor = e.band === 'healthy' ? '#15803d' : e.band === 'watch' ? '#b45309' : '#b91c1c';
+           const bandLabel = e.band === 'healthy' ? 'Healthy' : e.band === 'watch' ? 'Watch' : 'At risk';
+           const readyColor = e.stage1 >= 80 ? '#15803d' : e.stage1 >= 50 ? '#b45309' : '#b91c1c';
+           const daysColor = e.daysToTarget !== null && e.daysToTarget < 30 ? '#b91c1c' : e.daysToTarget !== null && e.daysToTarget < 90 ? '#b45309' : '';
+      %>
+        <tr style="cursor:pointer;" onclick="location='/workspaces/<%= e.id %>'">
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:9px;height:9px;border-radius:50%;background:<%= bandColor %>;flex-shrink:0;"></span>
+              <span class="num" style="font-weight:500;font-size:15px;color:<%= bandColor %>;"><%= e.score %></span>
+            </div>
+            <div class="text-eyebrow" style="color:var(--text-tertiary);margin-top:2px;padding-left:17px;"><%= bandLabel %></div>
+          </td>
+          <td>
+            <span style="font-weight:500;"><%= e.name %></span>
+            <% if (e.stage && e.stage.label) { %><div class="meta text-xs" style="margin-top:2px;"><%= e.stage.label %></div><% } %>
+          </td>
+          <td><span class="num" style="font-weight:500;color:<%= readyColor %>;"><%= e.stage1 %>%</span></td>
+          <td class="num meta" style="color:<%= daysColor %>;<%= daysColor ? 'font-weight:500;' : '' %>"><%= e.daysToTarget !== null ? e.daysToTarget + 'd' : '-' %></td>
+          <td>
+            <% if (e.signals.overdueNCs > 0 || e.signals.majorNCs > 0) { %>
+              <span class="tag tag-danger num" title="<%= e.signals.overdueNCs %> overdue, <%= e.signals.majorNCs %> major"><%= e.signals.overdueNCs + e.signals.majorNCs %></span>
+            <% } else { %><span class="meta">-</span><% } %>
+          </td>
+          <td><% if (e.signals.highRisks > 0) { %><span class="num text-danger" style="font-weight:500;"><%= e.signals.highRisks %></span><% } else { %><span class="meta">-</span><% } %></td>
+          <td><% if (e.signals.overdueTasks > 0) { %><span class="num" style="font-weight:500;color:#b45309;"><%= e.signals.overdueTasks %></span><% } else { %><span class="meta">-</span><% } %></td>
+          <td><% if (e.signals.staleControls > 0) { %><span class="num meta"><%= e.signals.staleControls %></span><% } else { %><span class="meta">-</span><% } %></td>
+          <td class="text-sm" style="line-height:1.5;" onclick="event.stopPropagation()">
+            <% if (e.reasons.length) { %>
+              <% e.reasons.forEach(reason => { %><a href="<%= reasonLink(reason, e.id) %>" class="tag tag-neutral text-eyebrow" style="margin:1px 2px 1px 0;text-decoration:none;cursor:pointer;"><%= reason %></a><% }) %>
+            <% } else { %>
+              <span class="meta">on track</span>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="meta text-xs" style="margin-top:10px;line-height:1.6;max-width:760px;">
+  Score starts at 100 and subtracts weighted penalties for overdue and major nonconformities,
+  cert pressure (how close the target is × how far from ready), untreated high risks, stale controls,
+  overdue tasks and objectives, and stalled or never-started gap assessments. Bands:
+  <strong style="color:#15803d;">healthy</strong> 75+, <strong style="color:#b45309;">watch</strong> 50&ndash;74,
+  <strong style="color:#b91c1c;">at risk</strong> below 50.
+</div>
+
+<% } else { %>
+<div class="panel" style="overflow:hidden;">
+  <div class="empty-state">
+    <div class="empty-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </div>
+    <div class="empty-title">No engagements yet</div>
+    <div class="empty-sub">Once you create client engagements, this board ranks them by health so you can triage at a glance.</div>
+  </div>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>

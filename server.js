@@ -1,3 +1,8 @@
+// Pin the whole app to India Standard Time so "today", date math, scheduled
+// scans and the calendar all operate in IST regardless of the host's timezone.
+// Must run before anything constructs a Date.
+process.env.TZ = 'Asia/Kolkata';
+
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcrypt');
@@ -18,6 +23,17 @@ const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: tru
 function looksLikeMarkdown(s) {
   if (!s) return false;
   return !/<(p|h[1-6]|ul|ol|li|table|tr|td|th|div|span|strong|em|br|hr|img|a)\b/i.test(s);
+}
+
+// Local-timezone (IST, pinned above) date-only / month formatters. Use these
+// instead of `.toISOString().slice(0,10|7)` for calendar logic: toISOString is
+// always UTC and silently shifts the day/month in positive-offset zones like
+// IST (e.g. 1 Jun 00:00 IST -> "2026-05-31" in UTC), which breaks month nav.
+function ymdLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function ymLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 const { db, init, logAction, verifyAuditChain, defaultMethodology, ensureWorkspaceMethodology, getActiveMethodology, methodologyBand } = require('./db');
 const enc = require('./lib/encryption');
@@ -158,6 +174,102 @@ const csvUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 }
 });
+
+// Questionnaire evidence uploader. Used on both the external (vendor, anonymous)
+// and internal (consultant) questionnaire pages. Stricter than `upload`: a
+// conservative type allowlist and a 25MB/file, 40-file cap. Disallowed types
+// are dropped silently (their names collected on req._rejectedUploads) so a
+// single bad file never discards the vendor's typed answers; oversize trips a
+// MulterError that qUploadAny surfaces as a friendly retry message.
+const QFILE_ALLOWED_EXT = new Set([
+  'pdf','doc','docx','xls','xlsx','ppt','pptx','csv','txt','rtf','odt','ods',
+  'png','jpg','jpeg','gif','webp','zip','json','xml'
+]);
+const questionnaireUpload = multer({
+  storage: multer.diskStorage({
+    destination: function (req, _file, cb) {
+      const firmId = (req.workspace && req.workspace.firm_id) || (req.user && req.user.firm_id) || 0;
+      const dir = path.join(__dirname, 'uploads', `firm_${firmId}`);
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+      cb(null, dir);
+    },
+    filename: function (_req, file, cb) {
+      const rand = crypto.randomBytes(8).toString('hex');
+      cb(null, `${Date.now()}-${rand}-${file.originalname.replace(/[^\w.\-]/g, '_')}`);
+    }
+  }),
+  limits: { fileSize: 25 * 1024 * 1024, files: 40 },
+  fileFilter: function (req, file, cb) {
+    const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+    if (QFILE_ALLOWED_EXT.has(ext)) return cb(null, true);
+    if (!req._rejectedUploads) req._rejectedUploads = [];
+    req._rejectedUploads.push(file.originalname);
+    cb(null, false); // skip this file, keep parsing the rest of the form
+  }
+});
+
+// Run questionnaireUpload.any() but never throw out of the middleware chain:
+// any MulterError (e.g. LIMIT_FILE_SIZE / LIMIT_FILE_COUNT) is parked on
+// req._uploadError so the route handler can decide how to respond. We use
+// .any() because field names are dynamic (file_<questionId>).
+function qUploadAny(req, res, next) {
+  questionnaireUpload.any()(req, res, (err) => {
+    if (err) req._uploadError = err;
+    next();
+  });
+}
+
+// Resolve the firm (for upload partitioning) from a questionnaire's external
+// token BEFORE multer parses the body — multer's destination() needs
+// req.workspace.firm_id, and req.params.token is available pre-parse. Also
+// short-circuits invalid / completed / expired links with the same status
+// pages the GET route renders, so multer never runs for a dead link. On
+// success it stashes the (open) questionnaire on req._questionnaire.
+function resolveQuestionnaireFirm(req, res, next) {
+  const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description,
+      w.firm_id AS ws_firm_id, COALESCE(w.brand_display_name, w.client_name) AS requester_name
+    FROM supplier_questionnaires q
+    INNER JOIN suppliers s ON s.id=q.supplier_id
+    LEFT JOIN questionnaire_templates t ON t.id=q.template_id
+    LEFT JOIN workspaces w ON w.id=q.workspace_id
+    WHERE q.external_token=?`).get(req.params.token);
+  const blank = { sections: {}, respMap: {}, token: req.params.token };
+  if (!q) return res.status(404).render('external_questionnaire', { q: null, state: 'invalid', ...blank });
+  if (q.external_completed_at) return res.render('external_questionnaire', { q, state: 'done', ...blank });
+  if (q.external_expires_at && new Date(q.external_expires_at) < new Date())
+    return res.status(410).render('external_questionnaire', { q, state: 'expired', ...blank });
+  req._questionnaire = q;
+  req.workspace = { id: q.workspace_id, firm_id: q.ws_firm_id || 0 };
+  next();
+}
+
+// Persist already-uploaded multipart files (from multer .any()) as
+// questionnaire_attachments rows. Field names map to a question via the
+// file_<questionId> convention; anything else is treated as unattached
+// (question_id NULL). Each file is hashed for integrity/dedup display. One
+// failing file is logged and skipped rather than aborting the batch.
+function persistQuestionnaireFiles({ files, questionnaireId, workspaceId, source, uploadedBy }) {
+  if (!Array.isArray(files) || !files.length) return 0;
+  const ins = db.prepare(`INSERT INTO questionnaire_attachments
+    (questionnaire_id, question_id, workspace_id, filename, stored_path, mime, size_bytes, sha256, source, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  let saved = 0;
+  for (const f of files) {
+    try {
+      const m = /^file_(\d+)$/.exec(f.fieldname || '');
+      const questionId = m ? parseInt(m[1], 10) : null;
+      let sha = null;
+      try { sha = crypto.createHash('sha256').update(fs.readFileSync(f.path)).digest('hex'); } catch (_) {}
+      ins.run(questionnaireId, questionId, workspaceId, f.originalname, f.filename,
+        f.mimetype || null, f.size || null, sha, source || 'vendor', uploadedBy || null);
+      saved++;
+    } catch (e) {
+      console.error('[questionnaire attach] failed to persist', f && f.originalname, e && e.message);
+      try { if (f && f.path) fs.unlinkSync(f.path); } catch (_) {}
+    }
+  }
+  return saved;
+}
 
 // Resolve a stored_path back to an absolute filesystem path. Tries the
 // per-firm directory first; falls back to the legacy unpartitioned uploads/
@@ -561,10 +673,12 @@ app.use((req, res, next) => {
     res.locals.activeFirm = null;
     res.locals.allFirms = [];
   }
-  // Expose the last-visited workspace so firm-level reference pages
-  // (Glossary, Playbooks, Firm library) can render with the workspace
-  // sidebar still in place. requireAuth hasn't run yet at this middleware
-  // tier, so resolve the current user inline before the access check.
+  // Expose the last-visited workspace so the firm-level sidebar's client
+  // switcher can highlight it ("last viewed"). Firm-level pages (Glossary,
+  // Playbooks, Firm library, Admin email) render with the firm sidebar
+  // (ws:null) and deliberately do NOT inherit this as a workspace context -
+  // doing so stranded users in a stale client's chrome. requireAuth hasn't run
+  // yet at this middleware tier, so resolve the current user inline first.
   res.locals.lastWs = null;
   // List of workspaces in the active firm - powers the workspace
   // switcher dropdown in the sidebar. Cheap query (small set, indexed
@@ -1391,6 +1505,485 @@ app.get('/admin/activity', requireAuth, (req, res) => {
   res.render('admin_activity', { user: req.user, ws: null, active: 'admin-activity', recentActivity });
 });
 
+// ==================== PORTFOLIO HEALTH (manager triage board) ====================
+// Per-engagement health score (0-100, higher = healthier) for the firm-wide
+// triage board. Reuses the same signal queries the dashboard at-risk strip
+// runs so the two never disagree. The score is a transparent sum of capped
+// penalties off a perfect 100, and every contributing signal is returned so
+// the board can show *why* an engagement scored low, not just the number.
+//
+// Readiness only enters via cert pressure (urgency × unreadiness): a close
+// target hurts only when you're not ready for it, and low readiness with no
+// target at all is just an early engagement, not a health problem.
+function computeEngagementHealth(w) {
+  const readiness = computeReadiness(w);
+  const progress = workspaceProgress(w.id);
+
+  const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
+  const majorNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(w.id).c;
+  const staleControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+      INNER JOIN iso_items i ON i.id = cs.iso_item_id
+      WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
+        AND (cs.last_verified_at IS NULL OR cs.last_verified_at < datetime('now','-365 days'))
+        AND cs.status NOT IN ('Not Assessed','Not Applicable')`).get(w.id).c;
+  const overdueObj = db.prepare(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < date('now') AND status NOT IN ('achieved','paused')`).get(w.id).c;
+  const overdueTasks = db.prepare(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND status NOT IN ('done','closed','cancelled') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
+  const highRisks = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted') AND (likelihood * impact) >= 15`).get(w.id).c;
+  const lastPass = db.prepare(`SELECT pass_number, status, completed_at FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(w.id);
+
+  const stage1 = readiness.stage1 || 0;
+  const daysToTarget = (readiness.daysToTarget === undefined) ? null : readiness.daysToTarget;
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+  let certPenalty = 0;
+  if (daysToTarget !== null && daysToTarget < 90) {
+    const urgency = clamp((90 - daysToTarget) / 90, 0, 1);
+    const gap = clamp((100 - stage1) / 100, 0, 1);
+    certPenalty = Math.round(urgency * gap * 35);
+  }
+
+  // "Started" = a formal pass row OR any controls already assessed. Readiness
+  // can be high without a pass row (older engagements predate the passes
+  // feature), so keying off the passes table alone wrongly brands a
+  // well-progressed engagement as "never started."
+  const started = !!lastPass || progress.assessed > 0;
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  let passPenalty = 0;
+  if (!started) passPenalty = 18;
+  else if (lastPass && lastPass.status !== 'in_progress' && lastPass.completed_at && lastPass.completed_at < ninetyDaysAgo) passPenalty = 8;
+
+  const contrib = [
+    { label: overdueNCs === 1 ? '1 overdue NC' : `${overdueNCs} overdue NCs`, n: overdueNCs, penalty: clamp(overdueNCs * 9, 0, 27) },
+    { label: majorNCs === 1 ? '1 open major NC' : `${majorNCs} open major NCs`, n: majorNCs, penalty: clamp(majorNCs * 7, 0, 21) },
+    { label: daysToTarget !== null ? `cert in ${daysToTarget}d · ${stage1}% ready` : null, n: certPenalty, penalty: certPenalty },
+    { label: highRisks === 1 ? '1 high risk untreated' : `${highRisks} high risks untreated`, n: highRisks, penalty: clamp(highRisks * 2.5, 0, 15) },
+    { label: `${staleControls} stale controls`, n: staleControls, penalty: clamp(staleControls * 1, 0, 12) },
+    { label: `${overdueTasks} overdue tasks`, n: overdueTasks, penalty: clamp(overdueTasks * 1.5, 0, 12) },
+    { label: `${overdueObj} overdue objectives`, n: overdueObj, penalty: clamp(overdueObj * 3, 0, 9) },
+    { label: !started ? 'no gap assessment started' : 'last pass > 90d, none active', n: passPenalty, penalty: passPenalty },
+  ];
+
+  const totalPenalty = contrib.reduce((s, c) => s + c.penalty, 0);
+  const score = Math.round(clamp(100 - totalPenalty, 0, 100));
+  const band = score >= 75 ? 'healthy' : score >= 50 ? 'watch' : 'at_risk';
+  const reasons = contrib
+    .filter(c => c.penalty > 0 && c.n > 0 && c.label)
+    .sort((a, b) => b.penalty - a.penalty)
+    .slice(0, 4)
+    .map(c => c.label);
+
+  return {
+    id: w.id,
+    name: w.brand_display_name || w.client_name,
+    stage: computeClientStage(w),
+    score, band, reasons, stage1, daysToTarget,
+    signals: { overdueNCs, majorNCs, staleControls, overdueObj, overdueTasks, highRisks, assessedPct: progress.percent },
+  };
+}
+
+// Firm-wide, ranked view of every engagement's health. The dashboard flags
+// at-risk clients as a yes/no; this scores ALL of them so a manager can
+// triage worst-first. Gated on firm.cross_view (manager + senior consultant);
+// plain consultants don't get the cross-client lens.
+app.get('/portfolio', requireAuth, (req, res) => {
+  if (!isFirmUser(req.user) || !rbac.rolePermissions(req.user.firm_role).includes('firm.cross_view')) {
+    return res.status(403).render('error', { user: req.user, message: 'The portfolio board is for firm managers and senior consultants.' });
+  }
+  const engagements = listWorkspaces(req.user)
+    .map(w => computeEngagementHealth(w))
+    .sort((a, b) => a.score - b.score);
+  const summary = {
+    total: engagements.length,
+    atRisk: engagements.filter(e => e.band === 'at_risk').length,
+    watch: engagements.filter(e => e.band === 'watch').length,
+    healthy: engagements.filter(e => e.band === 'healthy').length,
+    avgScore: engagements.length ? Math.round(engagements.reduce((s, e) => s + e.score, 0) / engagements.length) : 0,
+    overdueNCs: engagements.reduce((s, e) => s + e.signals.overdueNCs, 0),
+  };
+  res.render('portfolio', { user: req.user, ws: null, active: 'portfolio', engagements, summary });
+});
+
+// Firm-wide schedule aggregation: every dated / assignable item across ALL of a
+// firm's engagements, normalised into one list. Powers the manager calendar grid,
+// the overdue strip, the KPI counts and the per-consultant workload panel — the
+// cross-client sibling of the per-workspace /workspaces/:id/calendar.
+//
+// Each item is { kind, title, date|null, status, open, countsWorkload, wsId, wsName,
+// link, ownerId|null, ownerLabel|null }. "Schedule" items (audits, reviews, cert
+// milestones, vendor deadlines) show on the calendar but don't count as a person's
+// workload — only items with a real per-person owner do (tasks, NCs, improvements,
+// treatment actions, deliberately-assigned controls).
+function collectManagerSchedule(user) {
+  const wss = listWorkspaces(user);
+  const wsIds = wss.map(w => w.id);
+  const wsName = {};
+  wss.forEach(w => { wsName[w.id] = w.brand_display_name || w.client_name; });
+
+  // Engagement spans — drive the Outlook-style duration bars on the calendar.
+  // Each project runs from kickoff (created_at) to its target certification
+  // date. The manual `stage` column is unreliable, so derive the live stage.
+  const projects = wss.filter(w => w.target_cert_date).map(w => {
+    let stage = null;
+    try { stage = computeClientStage(w).label; } catch (_) {}
+    return {
+      wsId: w.id,
+      name: wsName[w.id],
+      start: (w.created_at || '').slice(0, 10) || null,
+      end: String(w.target_cert_date).slice(0, 10),
+      stage,
+      link: `/workspaces/${w.id}`,
+    };
+  });
+
+  // The firm's people — workload rows are drawn from here, and free-text owner
+  // strings (NCs, improvements) are resolved back to a person by name match.
+  const people = db.prepare(
+    `SELECT id, name, email, firm_role FROM users
+     WHERE firm_id = ? AND user_type = 'firm' AND active = 1 ORDER BY name`
+  ).all(user.firm_id);
+  const byName = {};
+  people.forEach(p => { if (p.name) byName[p.name.trim().toLowerCase()] = p.id; });
+  const resolveName = (txt) => txt ? (byName[String(txt).trim().toLowerCase()] || null) : null;
+
+  const items = [];
+  if (!wsIds.length) return { items, people, wsName, projects, docsNeedingReviewDate: 0 };
+  const ph = wsIds.map(() => '?').join(',');
+  const push = (o) => items.push(o);
+
+  // 1. Tasks (assignee_id FK) ------------------------------------------------
+  db.prepare(`SELECT id, workspace_id, title, due_date, status, assignee_id
+              FROM tasks WHERE workspace_id IN (${ph})`).all(...wsIds).forEach(t => {
+    push({ kind:'task', title:t.title, date:t.due_date||null, status:t.status, open:t.status!=='done',
+      countsWorkload:true, wsId:t.workspace_id, wsName:wsName[t.workspace_id],
+      link:`/workspaces/${t.workspace_id}/tasks`, ownerId:t.assignee_id||null, ownerLabel:null });
+  });
+
+  // 2. Nonconformities (responsible TEXT) -----------------------------------
+  db.prepare(`SELECT id, workspace_id, title, due_date, status, responsible
+              FROM nonconformities WHERE workspace_id IN (${ph})`).all(...wsIds).forEach(n => {
+    push({ kind:'nc', title:n.title, date:n.due_date||null, status:n.status, open:n.status!=='closed',
+      countsWorkload:true, wsId:n.workspace_id, wsName:wsName[n.workspace_id],
+      link:`/workspaces/${n.workspace_id}/nonconformities/${n.id}`,
+      ownerId:resolveName(n.responsible), ownerLabel:n.responsible||null });
+  });
+
+  // 3. Improvements (owner_name TEXT) ---------------------------------------
+  db.prepare(`SELECT id, workspace_id, title, due_date, status, owner_name
+              FROM improvements WHERE workspace_id IN (${ph})`).all(...wsIds).forEach(i => {
+    push({ kind:'improvement', title:i.title, date:i.due_date||null, status:i.status,
+      open:(i.status==='open'||i.status==='in_progress'),
+      countsWorkload:true, wsId:i.workspace_id, wsName:wsName[i.workspace_id],
+      link:`/workspaces/${i.workspace_id}/improvements`,
+      ownerId:resolveName(i.owner_name), ownerLabel:i.owner_name||null });
+  });
+
+  // 4. Risk treatment actions (owner_name TEXT) -----------------------------
+  db.prepare(`SELECT id, workspace_id, title, due_date, status, owner_name, risk_id, closed_at
+              FROM risk_treatment_actions WHERE workspace_id IN (${ph})`).all(...wsIds).forEach(a => {
+    push({ kind:'treatment', title:a.title||'Treatment action', date:a.due_date||null, status:a.status,
+      open:(!a.closed_at && a.status!=='done' && a.status!=='closed'),
+      countsWorkload:true, wsId:a.workspace_id, wsName:wsName[a.workspace_id],
+      link:`/workspaces/${a.workspace_id}/risks/${a.risk_id}`,
+      ownerId:resolveName(a.owner_name), ownerLabel:a.owner_name||null });
+  });
+
+  // 5. Control reviews (owner_id FK; only deliberately-assigned controls) ----
+  db.prepare(`SELECT workspace_id, iso_item_id, due_date, status, owner_id, applicability
+              FROM control_states WHERE workspace_id IN (${ph}) AND owner_id IS NOT NULL`).all(...wsIds).forEach(c => {
+    push({ kind:'control', title:`Control ${c.iso_item_id}`, date:c.due_date||null, status:c.status,
+      open:(c.status!=='Implemented'&&c.applicability!=='excluded'),
+      countsWorkload:true, wsId:c.workspace_id, wsName:wsName[c.workspace_id],
+      link:`/workspaces/${c.workspace_id}/controls/${c.iso_item_id}`, ownerId:c.owner_id, ownerLabel:null });
+  });
+
+  // 6. Audits (schedule event) ----------------------------------------------
+  db.prepare(`SELECT id, workspace_id, title, audit_date, status
+              FROM audits WHERE workspace_id IN (${ph}) AND audit_date IS NOT NULL`).all(...wsIds).forEach(a => {
+    push({ kind:'audit', title:a.title||'Audit', date:a.audit_date, status:a.status, open:a.status!=='closed',
+      countsWorkload:false, wsId:a.workspace_id, wsName:wsName[a.workspace_id],
+      link:`/workspaces/${a.workspace_id}/audits/${a.id}`, ownerId:null, ownerLabel:null });
+  });
+
+  // 7. Management reviews (schedule event) ----------------------------------
+  db.prepare(`SELECT id, workspace_id, meeting_date, status
+              FROM mrms WHERE workspace_id IN (${ph}) AND meeting_date IS NOT NULL`).all(...wsIds).forEach(m => {
+    push({ kind:'mrm', title:'Management review', date:m.meeting_date, status:m.status,
+      open:(m.status!=='completed'&&m.status!=='done'),
+      countsWorkload:false, wsId:m.workspace_id, wsName:wsName[m.workspace_id],
+      link:`/workspaces/${m.workspace_id}/mrms/${m.id}`, ownerId:null, ownerLabel:null });
+  });
+
+  // 8. Certification cycle milestones (schedule event) ----------------------
+  db.prepare(`SELECT id, workspace_id, event_type, planned_date, status
+              FROM cert_cycle_events WHERE workspace_id IN (${ph}) AND planned_date IS NOT NULL`).all(...wsIds).forEach(e => {
+    push({ kind:'cert', title:String(e.event_type||'Cert event').replace(/_/g,' '), date:e.planned_date, status:e.status,
+      open:(e.status!=='completed'&&e.status!=='done'),
+      countsWorkload:false, wsId:e.workspace_id, wsName:wsName[e.workspace_id],
+      link:`/workspaces/${e.workspace_id}/cert-cycle`, ownerId:null, ownerLabel:null });
+  });
+
+  // 9. Document reviews (next_review_date) ----------------------------------
+  db.prepare(`SELECT id, workspace_id, name, next_review_date
+              FROM generated_docs WHERE workspace_id IN (${ph}) AND next_review_date IS NOT NULL`).all(...wsIds).forEach(d => {
+    push({ kind:'doc-review', title:`Review: ${d.name}`, date:d.next_review_date, status:null, open:true,
+      countsWorkload:false, wsId:d.workspace_id, wsName:wsName[d.workspace_id],
+      link:`/workspaces/${d.workspace_id}/documents/${d.id}`, ownerId:null, ownerLabel:null });
+  });
+
+  // 10. Supplier reviews due (next_review_date) -----------------------------
+  try {
+    db.prepare(`SELECT sr.id, sr.supplier_id, sr.next_review_date, s.workspace_id, s.name AS supplier_name
+                FROM supplier_reviews sr INNER JOIN suppliers s ON s.id = sr.supplier_id
+                WHERE s.workspace_id IN (${ph}) AND sr.next_review_date IS NOT NULL`).all(...wsIds).forEach(r => {
+      push({ kind:'supplier', title:`Supplier review: ${(r.supplier_name||'').trim()}`.trim(), date:r.next_review_date, status:null, open:true,
+        countsWorkload:false, wsId:r.workspace_id, wsName:wsName[r.workspace_id],
+        link:`/workspaces/${r.workspace_id}/vendors/${r.supplier_id}`, ownerId:null, ownerLabel:null });
+    });
+  } catch (_) {}
+
+  // 11. Vendor questionnaire response deadlines (link expiry) ---------------
+  try {
+    db.prepare(`SELECT q.id, q.workspace_id, q.supplier_id, q.template_name, q.status,
+                       q.external_expires_at, q.external_completed_at, s.name AS supplier_name
+                FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id = q.supplier_id
+                WHERE q.workspace_id IN (${ph}) AND q.external_expires_at IS NOT NULL`).all(...wsIds).forEach(qr => {
+      if (qr.external_completed_at) return; // vendor already responded — no deadline pressure
+      push({ kind:'questionnaire', title:`${qr.supplier_name||'Vendor'} · ${qr.template_name||'questionnaire'}`,
+        date:String(qr.external_expires_at).slice(0,10), status:qr.status, open:true,
+        countsWorkload:false, wsId:qr.workspace_id, wsName:wsName[qr.workspace_id],
+        link:`/workspaces/${qr.workspace_id}/vendors/${qr.supplier_id}/questionnaires/${qr.id}`,
+        ownerId:null, ownerLabel:null });
+    });
+  } catch (_) {}
+
+  // Approved/published documents with no review date set. The app treats these
+  // as a readiness gap (they can't appear on the calendar until scheduled), so
+  // surface the count rather than inventing dates from the review cadence.
+  let docsNeedingReviewDate = 0;
+  try {
+    docsNeedingReviewDate = db.prepare(
+      `SELECT COUNT(*) n FROM generated_docs
+       WHERE workspace_id IN (${ph}) AND status IN ('approved','published') AND next_review_date IS NULL`
+    ).get(...wsIds).n;
+  } catch (_) {}
+
+  return { items, people, wsName, projects, docsNeedingReviewDate };
+}
+
+// Firm-wide calendar + team workload. A manager's cross-client view of what's due
+// and who's carrying it. Gated on firm.cross_view (manager + senior consultant),
+// same as /portfolio; the per-workspace calendar lives at /workspaces/:id/calendar.
+app.get('/calendar', requireAuth, (req, res) => {
+  if (!isFirmUser(req.user) || !rbac.rolePermissions(req.user.firm_role).includes('firm.cross_view')) {
+    return res.status(403).render('error', { user: req.user, message: 'The firm calendar is for managers and senior consultants.' });
+  }
+  const { items, people, wsName, projects, docsNeedingReviewDate } = collectManagerSchedule(req.user);
+
+  const today = ymdLocal(new Date());
+  const weekEnd = ymdLocal(new Date(Date.now() + 7 * 86400000));
+
+  // ----- View mode -----
+  // ?month=YYYY-MM → a single-month day grid (the detail view). Otherwise the
+  // default is a year-at-a-glance grid of 12 month cards, so the calendar
+  // itself (not the overdue list) is the first thing on screen, and each month
+  // is a click away from its day-by-day detail.
+  const now = new Date();
+  const thisMonth = ymLocal(now);
+  const thisYear = now.getFullYear();
+  const view = (req.query.month && /^\d{4}-\d{2}$/.test(req.query.month)) ? 'month' : 'year';
+
+  // Month-detail vars (populated only in month view)
+  let monthStr = null, monthLabel = '', monthCount = 0, prevMo = null, nextMo = null;
+  let cells = [], weeks = [], laneCount = 0, monthProjects = [];
+  // Year-overview vars (populated only in year view)
+  let year = thisYear, months = [], monthRows = [], prevYear = thisYear - 1, nextYear = thisYear + 1;
+
+  if (view === 'month') {
+    monthStr = req.query.month;
+    const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
+    const monthStart = `${monthStr}-01`;
+    // Local-component formatters — toISOString() is UTC and would roll the
+    // 1st-of-month back a day (and a month) in IST, breaking the Prev/Next links.
+    const nextMoStart = ymdLocal(new Date(yr, mo, 1));
+    prevMo = ymLocal(new Date(yr, mo - 2, 1));
+    nextMo = ymLocal(new Date(yr, mo, 1));
+    monthLabel = new Date(yr, mo - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' });
+
+    const byDate = {};
+    items.forEach(e => {
+      if (!e.date || e.date < monthStart || e.date >= nextMoStart) return;
+      (byDate[e.date] = byDate[e.date] || []).push(e);
+      monthCount++;
+    });
+    Object.values(byDate).forEach(list => list.sort((a, b) => a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
+
+    const firstDay = new Date(yr, mo - 1, 1).getDay();
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = `${monthStr}-${String(d).padStart(2, '0')}`;
+      cells.push({ day: d, date, events: byDate[date] || [] });
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    // ----- Engagement span bars (Outlook-style multi-day bars over the grid) -----
+    // Each engagement that overlaps the visible month gets one lane; its bar is
+    // split into per-week segments positioned by grid column. Lanes are stable
+    // across weeks so a project reads as one continuous horizontal bar.
+    const monthEndDate = `${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
+    monthProjects = (projects || [])
+      .filter(p => p.start && p.end && p.start <= monthEndDate && p.end >= monthStart)
+      .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : (a.name || '').localeCompare(b.name || '')));
+
+    for (let w = 0; w < cells.length / 7; w++) weeks.push({ days: cells.slice(w * 7, w * 7 + 7), bars: [] });
+
+    monthProjects.forEach((p, lane) => {
+      const cs = p.start < monthStart ? monthStart : p.start;
+      const ce = p.end > monthEndDate ? monthEndDate : p.end;
+      if (cs > ce) return;
+      const gridStart = firstDay + parseInt(cs.slice(8, 10), 10) - 1;
+      const gridEnd = firstDay + parseInt(ce.slice(8, 10), 10) - 1;
+      const wStart = Math.floor(gridStart / 7);
+      const wEnd = Math.floor(gridEnd / 7);
+      const contLeft = p.start < monthStart;   // bar continues from a previous month
+      const contRight = p.end > monthEndDate;   // bar continues into a later month
+      const daysToCert = Math.round((Date.parse(p.end) - Date.parse(today)) / 86400000);
+      for (let w = wStart; w <= wEnd; w++) {
+        const segStart = Math.max(gridStart, w * 7);
+        const segEnd = Math.min(gridEnd, w * 7 + 6);
+        weeks[w].bars.push({
+          lane,
+          startCol: segStart - w * 7,
+          endCol: segEnd - w * 7,
+          name: p.name, link: p.link, stage: p.stage,
+          start: p.start, end: p.end, daysToCert,
+          capLeft: (w === wStart) && !contLeft,
+          capRight: (w === wEnd) && !contRight,
+          labelHere: (w === wStart) || (segStart % 7 === 0), // label at true start + each new week row
+        });
+      }
+    });
+    laneCount = monthProjects.length;
+    // Per-week reserved lane rows: only as tall as the highest lane present that
+    // week, so weeks with no active engagements stay compact (lanes still keep a
+    // stable index across the weeks a project actually spans).
+    weeks.forEach(wk => { wk.laneRows = wk.bars.length ? Math.max(...wk.bars.map(b => b.lane)) + 1 : 0; });
+  } else {
+    // ----- Year overview: 12 month cells, 4 per row × 3 rows (?year=YYYY) -----
+    // Each cell tallies the dated items that fall in that month. Engagements are
+    // drawn as continuous horizontal bars that flow across the month cells of a
+    // row (Outlook-style), so a project's duration reads as one bar spanning the
+    // run of months it covers, not a repeated pill in every month.
+    year = (req.query.year && /^\d{4}$/.test(req.query.year)) ? parseInt(req.query.year, 10) : thisYear;
+    prevYear = year - 1;
+    nextYear = year + 1;
+    const yStart = `${year}-01-01`, yEnd = `${year}-12-31`;
+    for (let m = 0; m < 12; m++) {
+      const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
+      months.push({
+        ym,
+        label: new Date(year, m, 1).toLocaleString('en', { month: 'short' }),
+        start: `${ym}-01`,
+        end: `${ym}-${String(new Date(year, m + 1, 0).getDate()).padStart(2, '0')}`,
+        count: 0, overdue: 0, byKind: {},
+        isCurrent: ym === thisMonth,
+      });
+    }
+    items.forEach(e => {
+      if (!e.date || e.date < yStart || e.date > yEnd) return;
+      const b = months[parseInt(e.date.slice(5, 7), 10) - 1];
+      b.count++;
+      b.byKind[e.kind] = (b.byKind[e.kind] || 0) + 1;
+      if (e.open && e.date < today) b.overdue++;
+    });
+
+    // Lay the 12 months out in fixed rows of 4 so bars can be positioned by
+    // grid column within each row.
+    const COLS = 4;
+    for (let r = 0; r < 12 / COLS; r++) {
+      monthRows.push({ months: months.slice(r * COLS, r * COLS + COLS), bars: [] });
+    }
+
+    // Each engagement overlapping the year gets a stable lane (= sort order).
+    // Its month span is split into per-row segments; lanes stay constant across
+    // rows so a project reads as one continuous bar even where it wraps.
+    const yearProjects = (projects || [])
+      .filter(p => p.start && p.end && p.start <= yEnd && p.end >= yStart)
+      .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : (a.name || '').localeCompare(b.name || ''));
+    yearProjects.forEach((p, lane) => {
+      const contLeft = p.start < yStart;   // bar continues from a previous year
+      const contRight = p.end > yEnd;       // bar continues into a later year
+      const startIdx = contLeft ? 0 : parseInt(p.start.slice(5, 7), 10) - 1;
+      const endIdx = contRight ? 11 : parseInt(p.end.slice(5, 7), 10) - 1;
+      if (startIdx > endIdx) return;
+      const daysToCert = Math.round((Date.parse(p.end) - Date.parse(today)) / 86400000);
+      const rStart = Math.floor(startIdx / COLS);
+      const rEnd = Math.floor(endIdx / COLS);
+      for (let r = rStart; r <= rEnd; r++) {
+        const segStart = Math.max(startIdx, r * COLS);
+        const segEnd = Math.min(endIdx, r * COLS + COLS - 1);
+        monthRows[r].bars.push({
+          lane,
+          startCol: segStart - r * COLS,
+          endCol: segEnd - r * COLS,
+          name: p.name, link: p.link, stage: p.stage,
+          start: p.start, end: p.end, daysToCert,
+          capLeft: (segStart === startIdx) && !contLeft,
+          capRight: (segEnd === endIdx) && !contRight,
+          labelHere: (segStart === startIdx) || (segStart % COLS === 0), // label at true start + each new row
+        });
+      }
+    });
+    // Reserve only as many lane rows per month-row as the highest lane present
+    // there, so rows with no engagements stay compact.
+    monthRows.forEach(row => { row.laneRows = row.bars.length ? Math.max(...row.bars.map(b => b.lane)) + 1 : 0; });
+  }
+
+  // ----- Overdue strip: every open dated item now past due (any kind) -----
+  const overdue = items
+    .filter(e => e.open && e.date && e.date < today)
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+
+  // ----- Per-person workload: open, assignable work items only -----
+  const pmap = {};
+  people.forEach(p => { pmap[p.id] = { id: p.id, name: p.name, role: p.firm_role, total: 0, overdue: 0, dueSoon: 0, byKind: {} }; });
+  const unassigned = { total: 0, overdue: 0, dueSoon: 0, byKind: {} };
+  let openWork = 0;
+  items.forEach(e => {
+    if (!e.countsWorkload || !e.open) return;
+    openWork++;
+    const b = (e.ownerId && pmap[e.ownerId]) ? pmap[e.ownerId] : unassigned;
+    b.total++;
+    b.byKind[e.kind] = (b.byKind[e.kind] || 0) + 1;
+    if (e.date && e.date < today) b.overdue++;
+    else if (e.date && e.date <= weekEnd) b.dueSoon++;
+  });
+  const workload = Object.values(pmap).sort((a, b) => b.total - a.total || (a.name || '').localeCompare(b.name || ''));
+  const maxLoad = Math.max(1, unassigned.total, ...workload.map(w => w.total));
+
+  // ----- KPIs -----
+  const kpi = {
+    engagements: Object.keys(wsName).length,
+    openItems: openWork,
+    overdue: overdue.length,
+    dueSoon: items.filter(e => e.open && e.date && e.date >= today && e.date <= weekEnd).length,
+    unassigned: unassigned.total,
+  };
+
+  res.render('manager_calendar', {
+    user: req.user, ws: null, active: 'firm-calendar',
+    view, today, thisMonth, thisYear,
+    // month-detail view
+    cells, weeks, laneCount, monthProjects, monthCount, monthLabel,
+    prevMo, nextMo, monthStr,
+    // year-overview view
+    year, months, monthRows, prevYear, nextYear,
+    // shared
+    overdue, workload, unassigned, maxLoad, kpi,
+    docsNeedingReviewDate: docsNeedingReviewDate || 0,
+  });
+});
+
 // ==================== FIRM TEAM MANAGEMENT ====================
 app.post('/firm/users', requireAuth, (req, res) => {
   if (!isFirmOwner(req.user)) return res.status(403).send('Forbidden');
@@ -1498,13 +2091,15 @@ app.get('/glossary', requireAuth, (req, res) => {
     .map(slug => GLOSSARY.ENTRIES.find(e => e.slug === slug))
     .filter(Boolean);
   const linkWsId = firstWorkspaceIdFor(req.user);
-  // If the user just came from a workspace, render glossary with the
-  // workspace sidebar still in place - they're not "exiting" the engagement,
-  // they're viewing reference material inside it. Falls back to firm-level
-  // sidebar if there's no recent workspace.
+  // Firm-level reference page: always render with the firm sidebar. The Glossary
+  // nav link only appears in the firm-level nav, so inheriting a sticky
+  // last-visited workspace would strand the user in a client's chrome - the
+  // active nav item vanishes and it reads as "landing in a client page". The
+  // client switcher still highlights the last-viewed workspace via
+  // res.locals.lastWs, so no context is lost.
   res.render('glossary', {
     user: req.user,
-    ws: res.locals.lastWs || null,
+    ws: null,
     title: 'Glossary',
     active: 'glossary',
     q, category, letter,
@@ -1527,7 +2122,7 @@ app.get('/glossary/:slug', requireAuth, (req, res) => {
   const linkWsId = firstWorkspaceIdFor(req.user);
   res.render('glossary_detail', {
     user: req.user,
-    ws: res.locals.lastWs || null,
+    ws: null, // firm-level reference page - see GET /glossary note
     title: entry.term,
     active: 'glossary',
     entry,
@@ -7326,7 +7921,7 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWor
 });
 
 app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, (req, res) => {
-  const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description
+  const q = db.prepare(`SELECT q.*, s.name AS supplier_name, s.contact AS supplier_contact, t.description AS tpl_description
     FROM supplier_questionnaires q
     INNER JOIN suppliers s ON s.id=q.supplier_id
     LEFT JOIN questionnaire_templates t ON t.id=q.template_id
@@ -7335,17 +7930,34 @@ app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requir
   const questions = db.prepare(`SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order`).all(q.template_id);
   const responses = db.prepare(`SELECT * FROM supplier_questionnaire_responses WHERE questionnaire_id=?`).all(q.id);
   const respMap = Object.fromEntries(responses.map(r => [r.question_id, r]));
+  // Per-question evidence attachments (vendor- or consultant-uploaded). Keyed by
+  // question_id; files with no question_id land under 'general'.
+  const attachRows = db.prepare(`SELECT * FROM questionnaire_attachments WHERE questionnaire_id=? ORDER BY uploaded_at`).all(q.id);
+  const attachMap = {};
+  attachRows.forEach(a => { const k = a.question_id == null ? 'general' : a.question_id; (attachMap[k] = attachMap[k] || []).push(a); });
   // Group by section
   const sections = {};
   questions.forEach(qu => { (sections[qu.section] = sections[qu.section] || []).push(qu); });
-  res.render('vendor_questionnaire', { user: req.user, ws: req.workspace, q, sections, respMap });
+  res.render('vendor_questionnaire', { user: req.user, ws: req.workspace, q, sections, respMap, attachMap });
 });
 
-app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), qUploadAny, (req, res) => {
   const ws = req.workspace;
   const qid = req.params.qId;
+  const dest = '/workspaces/' + ws.id + '/vendors/' + req.params.id + '/questionnaires/' + qid;
   const questionnaire = db.prepare('SELECT id FROM supplier_questionnaires WHERE id=? AND workspace_id=?').get(qid, ws.id);
   if (!questionnaire) return res.status(404).send('Questionnaire not found');
+
+  // A multer error (oversize / too many files) aborts parsing mid-stream, so the
+  // body may be partial — bail before saving and tell the consultant to retry.
+  if (req._uploadError) {
+    (req.files || []).forEach(f => { try { fs.unlinkSync(f.path); } catch (_) {} });
+    const e = req._uploadError;
+    const msg = e && e.code === 'LIMIT_FILE_SIZE' ? 'A file exceeded the 25 MB limit — nothing was saved. Please attach a smaller file and try again.'
+      : e && e.code === 'LIMIT_FILE_COUNT' ? 'Too many files at once (limit 40) — nothing was saved. Please try again with fewer files.'
+      : 'An attachment could not be processed — nothing was saved. Please try again.';
+    return res.redirect(withToast(dest, msg));
+  }
 
   // Save responses for any question_X_answer fields
   const qIds = Object.keys(req.body).filter(k => k.startsWith('answer_')).map(k => parseInt(k.replace('answer_',''),10));
@@ -7380,14 +7992,65 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
     reviewer=COALESCE(?, reviewer), reviewer_comments=COALESCE(?, reviewer_comments)
     WHERE id=? AND workspace_id=?`).run(allQ.filter(q => q.answer).length, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
-  logAction(req.user.id, ws.id, 'update_questionnaire', 'questionnaire', qid, { status, score: finalScore });
-  res.redirect('/workspaces/' + ws.id + '/vendors/' + req.params.id + '/questionnaires/' + qid);
+
+  // Persist any evidence the consultant attached during review.
+  let attachSaved = 0;
+  try {
+    attachSaved = persistQuestionnaireFiles({
+      files: req.files, questionnaireId: parseInt(qid, 10), workspaceId: ws.id, source: 'consultant', uploadedBy: req.user.id
+    });
+  } catch (e) { console.error('[questionnaire attach]', e && e.message); }
+
+  logAction(req.user.id, ws.id, 'update_questionnaire', 'questionnaire', qid, { status, score: finalScore, attachments: attachSaved });
+
+  const rejected = req._rejectedUploads || [];
+  let toast = status === 'reviewed' ? 'Questionnaire marked reviewed.' : status === 'responded' ? 'Responses submitted.' : 'Draft saved.';
+  if (attachSaved) toast += ` ${attachSaved} file${attachSaved === 1 ? '' : 's'} attached.`;
+  if (rejected.length) toast += ` ${rejected.length} file${rejected.length === 1 ? '' : 's'} skipped (unsupported type).`;
+  res.redirect(withToast(dest, toast));
 });
 
 app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  // Unlink attachment files first — the questionnaire_attachments rows cascade
+  // via FK, but the files on disk would otherwise be orphaned.
+  const files = db.prepare(`SELECT a.stored_path FROM questionnaire_attachments a
+    INNER JOIN supplier_questionnaires q ON q.id=a.questionnaire_id
+    WHERE a.questionnaire_id=? AND q.supplier_id=? AND q.workspace_id=?`)
+    .all(req.params.qId, req.params.id, req.workspace.id);
+  files.forEach(f => { if (f.stored_path) { const fp = resolveUploadPath(f.stored_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) { try { fs.unlinkSync(fp); } catch (_) {} } } });
   db.prepare(`DELETE FROM supplier_questionnaires WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.qId, req.params.id, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=questionnaires');
+});
+
+// Download a questionnaire attachment. Scoped by joining through the parent
+// questionnaire so a token from one workspace can't pull another's files.
+app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId/attachments/:attId/download', requireAuth, requireWorkspace, (req, res) => {
+  const a = db.prepare(`SELECT a.* FROM questionnaire_attachments a
+    INNER JOIN supplier_questionnaires q ON q.id=a.questionnaire_id
+    WHERE a.id=? AND a.questionnaire_id=? AND q.supplier_id=? AND q.workspace_id=?`)
+    .get(req.params.attId, req.params.qId, req.params.id, req.workspace.id);
+  if (!a || !a.stored_path) return res.status(404).send('Not found');
+  const fp = resolveUploadPath(a.stored_path, req.workspace.firm_id);
+  if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
+  res.download(fp, a.filename);
+});
+
+// Delete a questionnaire attachment (consultant only). Removes the file from
+// disk then the row; same join-scoping as download.
+app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/attachments/:attId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const a = db.prepare(`SELECT a.* FROM questionnaire_attachments a
+    INNER JOIN supplier_questionnaires q ON q.id=a.questionnaire_id
+    WHERE a.id=? AND a.questionnaire_id=? AND q.supplier_id=? AND q.workspace_id=?`)
+    .get(req.params.attId, req.params.qId, req.params.id, req.workspace.id);
+  const dest = '/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '/questionnaires/' + req.params.qId;
+  if (a) {
+    if (a.stored_path) { const fp = resolveUploadPath(a.stored_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) { try { fs.unlinkSync(fp); } catch (_) {} } }
+    db.prepare(`DELETE FROM questionnaire_attachments WHERE id=?`).run(a.id);
+    logAction(req.user.id, req.workspace.id, 'delete_questionnaire_attachment', 'questionnaire', req.params.qId, { filename: a.filename });
+    return res.redirect(withToast(dest, 'Attachment deleted.'));
+  }
+  res.redirect(dest);
 });
 
 // ==================== TREND DATA ====================
@@ -9230,19 +9893,32 @@ app.post('/workspaces/:wsId/notifications/mark-all-read', requireAuth, requireWo
   redirectBack(req, res);
 });
 
+// Per-user email-notification preference (global to the account, not per-workspace).
+// 'immediate' = email me when a notification is raised; 'off' = in-app only.
+// Drives the notify()->email bridge in lib/jobs.js via users.email_notify.
+app.post('/me/notification-pref', requireAuth, (req, res) => {
+  const value = req.body.value === 'off' ? 'off' : 'immediate';
+  db.prepare('UPDATE users SET email_notify=? WHERE id=?').run(value, req.user.id);
+  // Only honour a same-site relative return path; never an absolute/protocol-relative URL.
+  const back = (typeof req.body.return === 'string' && /^\/[^/]/.test(req.body.return)) ? req.body.return : '/dashboard';
+  res.redirect(withToast(back, value === 'off' ? 'Email notifications turned off' : 'Email notifications on'));
+});
+
 // Tier B.8 - Calendar view aggregating every due-dated item across the workspace.
 // Month grid; navigate prev/next via ?month=YYYY-MM. Pulls audits, MRMs,
 // NCs, cert events, doc reviews, treatment actions, risk-acceptance expiries.
 app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
-  const today = new Date();
   const monthStr = req.query.month && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month
-                  : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}`;
+                  : ymLocal(new Date());
   const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
   const monthStart = `${monthStr}-01`;
-  const nextMo = new Date(yr, mo, 1).toISOString().slice(0, 10); // first of next month
-  const prevMo = new Date(yr, mo - 2, 1).toISOString().slice(0, 7);
-  const nextLabel = new Date(yr, mo, 1).toISOString().slice(0, 7);
+  // Local-component formatters — toISOString() is UTC and rolls these back a day
+  // (and the prev-month label back a whole month) in IST, breaking Prev/Next nav
+  // and dropping last-of-month events from the exclusive upper bound.
+  const nextMo = ymdLocal(new Date(yr, mo, 1)); // first of next month (exclusive bound)
+  const prevMo = ymLocal(new Date(yr, mo - 2, 1));
+  const nextLabel = ymLocal(new Date(yr, mo, 1));
 
   // Aggregate every dated item that falls inside the visible window
   // (first to last of selected month).
@@ -9677,7 +10353,7 @@ app.get('/firm/library', requireAuth, (req, res) => {
   const counts = {
     risks: db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c,
   };
-  res.render('firm_library', { user: req.user, ws: res.locals.lastWs || null, counts });
+  res.render('firm_library', { user: req.user, ws: null, counts }); // firm-level page - firm sidebar
 });
 
 app.get('/firm/library/risks', requireAuth, (req, res) => {
@@ -9697,7 +10373,7 @@ app.get('/firm/library/risks', requireAuth, (req, res) => {
   // Distinct values for the filter dropdowns.
   const sectors = [...new Set(db.prepare('SELECT DISTINCT sector FROM firm_risk_library WHERE firm_id=? AND sector IS NOT NULL').all(firmId).map(r => r.sector))];
   const domains = [...new Set(db.prepare('SELECT DISTINCT domain FROM firm_risk_library WHERE firm_id=? AND domain IS NOT NULL').all(firmId).map(r => r.domain))];
-  res.render('firm_library_risks', { user: req.user, ws: res.locals.lastWs || null, rows, sectors, domains, filterSector, filterDomain, search });
+  res.render('firm_library_risks', { user: req.user, ws: null, rows, sectors, domains, filterSector, filterDomain, search }); // firm-level page - firm sidebar
 });
 
 app.post('/firm/library/risks', requireAuth, (req, res) => {
@@ -9807,7 +10483,7 @@ app.get('/admin/email', requireAuth, (req, res) => {
   };
   res.render('admin_email', {
     user: req.user,
-    ws: res.locals.lastWs || null,
+    ws: null, // firm-level page - firm sidebar (see GET /glossary note)
     settings,
     outbox,
     counts,
@@ -9939,13 +10615,13 @@ app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res
 const PLAYBOOKS = require('./data/playbooks');
 
 app.get('/playbooks', requireAuth, (req, res) => {
-  res.render('playbooks_index', { user: req.user, ws: res.locals.lastWs || null, playbooks: PLAYBOOKS.PLAYBOOK_INDEX });
+  res.render('playbooks_index', { user: req.user, ws: null, playbooks: PLAYBOOKS.PLAYBOOK_INDEX }); // firm-level page - firm sidebar
 });
 
 app.get('/playbooks/:id', requireAuth, (req, res) => {
   const pb = PLAYBOOKS.PLAYBOOKS[req.params.id];
   if (!pb) return res.status(404).render('error', { user: req.user, message: 'Playbook not found' });
-  res.render('playbook_detail', { user: req.user, ws: res.locals.lastWs || null, playbook: pb });
+  res.render('playbook_detail', { user: req.user, ws: null, playbook: pb }); // firm-level page - firm sidebar
 });
 
 // ==================== ENGAGEMENT INTAKE + 12-WEEK PLAN ====================
@@ -11871,33 +12547,92 @@ app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requi
 });
 
 // External tokenized questionnaire link - external supplier completes without an account.
+// Mints (or re-mints) a single-use token, sets a 30-day expiry, and - when a contact
+// email is supplied - emails the vendor the /q/<token> link. The token in the URL is the
+// credential; the vendor never sees the rest of the tool. Re-running this rotates the
+// token (older links stop working) so it doubles as "resend".
 app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const toEmail = (req.body.email || '').trim() || null;
   const token = crypto.randomBytes(20).toString('hex');
-  db.prepare(`UPDATE supplier_questionnaires SET external_token=?, external_email=? WHERE id=? AND workspace_id=?`)
-    .run(token, req.body.email || null, req.params.qId, req.workspace.id);
+  const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+  db.prepare(`UPDATE supplier_questionnaires
+      SET external_token=?, external_email=?, external_expires_at=?, external_completed_at=NULL,
+          sent_at=CURRENT_TIMESTAMP, status=CASE WHEN status='draft' THEN 'sent' ELSE status END
+      WHERE id=? AND workspace_id=?`)
+    .run(token, toEmail, expiresAt, req.params.qId, req.workspace.id);
+  const base = `/workspaces/${req.workspace.id}/vendors/${req.params.id}/questionnaires/${req.params.qId}`;
   const link = `${req.protocol}://${req.get('host')}/q/${token}`;
-  res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}/questionnaires/${req.params.qId}`, `External link: ${link}`));
+
+  if (toEmail) {
+    const meta = db.prepare(`SELECT q.template_name, q.total_questions, s.name AS supplier_name, t.description AS tpl_description
+        FROM supplier_questionnaires q
+        INNER JOIN suppliers s ON s.id=q.supplier_id
+        LEFT JOIN questionnaire_templates t ON t.id=q.template_id
+        WHERE q.id=? AND q.workspace_id=?`).get(req.params.qId, req.workspace.id);
+    email.sendSupplierQuestionnaireEmail({
+      toEmail,
+      supplierName: meta ? meta.supplier_name : 'your organisation',
+      templateName: (meta && meta.template_name) || 'Security questionnaire',
+      templateDescription: meta ? meta.tpl_description : null,
+      questionCount: meta ? meta.total_questions : null,
+      workspaceName: req.workspace.brand_display_name || req.workspace.client_name,
+      workspaceId: req.workspace.id,
+      firmId: req.workspace.firm_id,
+      token,
+      expiresAt,
+      questionnaireId: parseInt(req.params.qId, 10)
+    }).catch(err => console.error('[supplier-questionnaire email] send failed:', err && err.message));
+    logAction(req.user.id, req.workspace.id, 'questionnaire_shared', 'questionnaire', req.params.qId, { to: toEmail, emailed: true }, auditCtx(req));
+    return res.redirect(withToast(base, `Questionnaire emailed to ${toEmail}. The link expires in 30 days.`));
+  }
+
+  logAction(req.user.id, req.workspace.id, 'questionnaire_shared', 'questionnaire', req.params.qId, { to: null, emailed: false }, auditCtx(req));
+  res.redirect(withToast(base, `External link ready (expires in 30 days): ${link}`));
 });
 
 app.get('/q/:token', (req, res) => {
-  const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description
+  const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description,
+      COALESCE(w.brand_display_name, w.client_name) AS requester_name
     FROM supplier_questionnaires q
     INNER JOIN suppliers s ON s.id=q.supplier_id
     LEFT JOIN questionnaire_templates t ON t.id=q.template_id
+    LEFT JOIN workspaces w ON w.id=q.workspace_id
     WHERE q.external_token=?`).get(req.params.token);
-  if (!q) return res.status(404).send('Link not valid.');
-  if (q.external_completed_at) return res.send('This questionnaire has already been submitted. Thank you.');
+  const blank = { sections: {}, respMap: {}, token: req.params.token };
+  if (!q) return res.status(404).render('external_questionnaire', { q: null, state: 'invalid', ...blank });
+  if (q.external_completed_at) return res.render('external_questionnaire', { q, state: 'done', ...blank });
+  if (q.external_expires_at && new Date(q.external_expires_at) < new Date())
+    return res.status(410).render('external_questionnaire', { q, state: 'expired', ...blank });
   const questions = db.prepare('SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order').all(q.template_id);
   const responses = db.prepare('SELECT * FROM supplier_questionnaire_responses WHERE questionnaire_id=?').all(q.id);
   const respMap = Object.fromEntries(responses.map(r => [r.question_id, r]));
   const sections = {};
   questions.forEach(qu => { (sections[qu.section] = sections[qu.section] || []).push(qu); });
-  res.render('external_questionnaire', { q, sections, respMap, token: req.params.token });
+  res.render('external_questionnaire', { q, sections, respMap, token: req.params.token, state: 'open' });
 });
 
-app.post('/q/:token', (req, res) => {
-  const q = db.prepare('SELECT * FROM supplier_questionnaires WHERE external_token=?').get(req.params.token);
-  if (!q || q.external_completed_at) return res.status(404).send('Link not valid.');
+app.post('/q/:token', resolveQuestionnaireFirm, qUploadAny, (req, res) => {
+  const q = req._questionnaire; // guaranteed open by resolveQuestionnaireFirm
+
+  // An upload error (oversize / too many files) aborts multer mid-parse, so the
+  // body may be incomplete — don't risk a partial save. Show a clear retry
+  // message with the answers still on screen; the link stays open.
+  if (req._uploadError) {
+    const e = req._uploadError;
+    const tooBig = e && e.code === 'LIMIT_FILE_SIZE';
+    const tooMany = e && e.code === 'LIMIT_FILE_COUNT';
+    const uploadMsg = tooBig
+      ? 'One of your files is larger than 25 MB. Please attach a smaller file (or split it) and submit again — your answers were not saved yet.'
+      : tooMany
+        ? 'Too many files were attached at once (limit 40). Please reduce the number of attachments and submit again — your answers were not saved yet.'
+        : 'We could not process one of your attachments. Please remove it and submit again — your answers were not saved yet.';
+    // Clean up any partial temp files multer did manage to write.
+    (req.files || []).forEach(f => { try { fs.unlinkSync(f.path); } catch (_) {} });
+    return res.status(413).render('external_questionnaire', {
+      q, sections: {}, respMap: {}, token: req.params.token, state: 'uploaderror', uploadMsg
+    });
+  }
+
   const qIds = Object.keys(req.body).filter(k => k.startsWith('answer_')).map(k => parseInt(k.replace('answer_',''), 10));
   const upsert = db.prepare(`INSERT INTO supplier_questionnaire_responses (questionnaire_id, question_id, answer, comment)
     VALUES (?, ?, ?, ?) ON CONFLICT(questionnaire_id, question_id) DO UPDATE SET answer=excluded.answer, comment=excluded.comment`);
@@ -11918,7 +12653,35 @@ app.post('/q/:token', (req, res) => {
   db.prepare(`UPDATE supplier_questionnaires SET answered_questions=?, score=?, risk_rating=?, status='responded', responded_at=CURRENT_TIMESTAMP, external_completed_at=CURRENT_TIMESTAMP WHERE id=?`)
     .run(allQ.filter(qu => qu.answer).length, score, rating, q.id);
   logAction(0, q.workspace_id, 'external_questionnaire_submit', 'questionnaire', q.id, { score, rating }, { ip: (req.ip || ''), userAgent: req.get('user-agent') || '' });
-  res.send('Thank you. Your responses have been submitted.');
+
+  // Persist any per-question evidence the vendor attached. Field names follow
+  // the file_<questionId> convention; disallowed types were already dropped by
+  // the multer fileFilter (names on req._rejectedUploads, surfaced below).
+  let attachSaved = 0;
+  try {
+    attachSaved = persistQuestionnaireFiles({
+      files: req.files, questionnaireId: q.id, workspaceId: q.workspace_id, source: 'vendor', uploadedBy: null
+    });
+  } catch (e) { console.error('[questionnaire attach]', e && e.message); }
+
+  // Close the loop: notify the engagement lead that the vendor responded. The
+  // notify->email bridge emails them automatically (subject to their pref). The
+  // title carries the supplier + template so distinct questionnaires don't dedup
+  // into one another, but stays day-count-free so genuine re-fires are rare.
+  const supName = q.supplier_name || 'A supplier';
+  try {
+    const ratingLabel = rating ? rating.charAt(0).toUpperCase() + rating.slice(1) : 'n/a';
+    const attachNote = attachSaved ? ` ${attachSaved} file${attachSaved === 1 ? '' : 's'} attached.` : '';
+    jobs.notify(q.workspace_id, null, 'questionnaire_responded', score !== null && score < 60 ? 'high' : 'medium',
+      `${supName} returned their questionnaire: ${q.template_name}`,
+      `Score ${score === null ? 'n/a' : score + '%'} · risk ${ratingLabel}.${attachNote} Review and confirm the rating.`,
+      `/workspaces/${q.workspace_id}/vendors/${q.supplier_id}/questionnaires/${q.id}`);
+  } catch (e) { console.error('[questionnaire notify]', e && e.message); }
+
+  res.render('external_questionnaire', {
+    q, sections: {}, respMap: {}, token: req.params.token, state: 'submitted',
+    rejectedUploads: req._rejectedUploads || [], attachSaved
+  });
 });
 
 // ==================== TASKS: TEMPLATES + TIME TRACKING ====================

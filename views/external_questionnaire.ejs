@@ -1,54 +1,196 @@
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Security questionnaire - <%= q.supplier_name %></title>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security questionnaire<% if (typeof q !== 'undefined' && q && q.supplier_name) { %> · <%= q.supplier_name %><% } %></title>
 <link rel="stylesheet" href="/fonts/inter.css">
 <style>
-body { font-family:'Inter',sans-serif; background:#f7f7f8; max-width:880px; margin:0 auto; padding:32px 28px; line-height:1.5; }
-.panel { background:#fff; border:1px solid #ececef; border-radius:8px; padding:18px 22px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
-h1 { font-size:22px; margin:0 0 4px; }
-h2 { font-size:14px; margin:18px 0 8px; }
-.meta { color:#71717a; font-size:13px; }
-input[type=text] { width:100%; padding:6px 10px; border:1px solid #d6d6db; border-radius:5px; font-size:12px; margin-top:4px; }
-.opt { display:inline-block; padding:4px 10px; border:1px solid #d6d6db; border-radius:5px; font-size:12px; margin:2px 4px 2px 0; cursor:pointer; }
-.opt input { display:none; }
-.opt.selected { border-color:#5C0A0A; background:rgba(92,10,10,0.08); }
-button { background:#0a0a0a; color:#fff; border:0; padding:10px 18px; font-size:13px; border-radius:6px; cursor:pointer; font-weight:500; }
-.q { padding:10px 0; border-bottom:1px solid #ececef; }
+  :root{
+    --bg:#f5f3ed; --card:#ffffff; --border:#e7e4dc; --border-strong:#d8d6cf;
+    --text:#1a1a1a; --muted:#6f6f6a; --faint:#9c9ca5;
+    --accent:#1a1a1a; --accent-soft:#f0eee8; --success:#15803d;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); margin:0; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:40px 22px 64px;}
+  .eyebrow{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--faint); font-weight:500;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:10px;}
+  .card + .card{margin-top:14px;}
+  .pad{padding:20px 24px;}
+  h1{font-size:23px; font-weight:500; letter-spacing:-.4px; margin:6px 0 4px;}
+  h2{font-size:14px; font-weight:500; margin:0;}
+  .sub{color:var(--muted); font-size:13.5px;}
+  .sec-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    padding:14px 24px; border-bottom:1px solid var(--border);}
+  .sec-head .meta{color:var(--faint); font-size:12px;}
+  .q{padding:16px 24px; border-bottom:1px solid var(--border);}
+  .q:last-child{border-bottom:0;}
+  .q-text{font-size:14.5px; font-weight:500; line-height:1.45;}
+  .q-ref{color:var(--faint); font-size:12px; margin-top:3px;}
+  .opts{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+  .opt{display:inline-flex; align-items:center; padding:6px 14px; border:1px solid var(--border-strong);
+    background:var(--card); border-radius:7px; font-size:13px; cursor:pointer; color:var(--muted);
+    transition:border-color .12s, background .12s, color .12s; user-select:none;}
+  .opt:hover{border-color:var(--accent); color:var(--text);}
+  .opt input{position:absolute; opacity:0; width:0; height:0;}
+  .opt.selected{border-color:var(--accent); background:var(--accent-soft); color:var(--text); font-weight:500;}
+  .cmt{width:100%; margin-top:10px; padding:8px 12px; border:1px solid var(--border-strong);
+    border-radius:7px; font-size:13px; font-family:inherit; color:var(--text); background:var(--card);}
+  .cmt::placeholder{color:var(--faint);}
+  .cmt:focus{outline:none; border-color:var(--accent);}
+  .attach{margin-top:10px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .attach input[type=file]{font-size:12.5px; color:var(--muted); max-width:100%;}
+  .attach input[type=file]::file-selector-button{
+    font-family:inherit; font-size:12.5px; padding:6px 13px; margin-right:11px;
+    border:1px solid var(--border-strong); background:var(--card); color:var(--text);
+    border-radius:7px; cursor:pointer; transition:border-color .12s;}
+  .attach input[type=file]::file-selector-button:hover{border-color:var(--accent);}
+  .attach-hint{color:var(--faint); font-size:11.5px;}
+  .existing-files{margin-top:9px; display:flex; flex-direction:column; gap:5px;}
+  .existing-file{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted);}
+  .existing-file .fi-dot{width:5px; height:5px; border-radius:50%; background:var(--success); flex-shrink:0;}
+  .notice{background:var(--accent-soft); border:1px solid var(--border); border-radius:8px; padding:11px 15px; font-size:13px; color:var(--muted); margin-top:14px;}
+  .footer-card{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+  .privacy{color:var(--faint); font-size:12px; max-width:60%;}
+  .btn{background:var(--accent); color:#fff; border:0; padding:11px 22px; font-size:14px;
+    font-weight:500; border-radius:7px; cursor:pointer; font-family:inherit;}
+  .btn:hover{background:#000;}
+  .brandbar{display:flex; align-items:center; gap:10px; margin-bottom:18px; color:var(--muted); font-size:13px;}
+  .brandbar .dot{width:6px; height:6px; border-radius:50%; background:var(--border-strong);}
+  /* status (non-form) states */
+  .status-card{text-align:center; padding:44px 32px;}
+  .status-mark{width:44px; height:44px; border-radius:50%; margin:0 auto 16px; display:flex;
+    align-items:center; justify-content:center; font-size:22px; line-height:1;}
+  .status-mark.ok{background:#eaf6ee; color:var(--success);}
+  .status-mark.neutral{background:var(--accent-soft); color:var(--muted);}
+  .status-card h1{font-size:20px; margin:0 0 8px;}
+  .status-card p{color:var(--muted); font-size:14px; margin:0 auto; max-width:420px;}
+  .footnote{color:var(--faint); font-size:12px; text-align:center; margin-top:22px;}
 </style>
-</head><body>
-<div class="panel">
-  <h1>Security questionnaire - <%= q.supplier_name %></h1>
-  <div class="meta"><%= q.template_name %><% if (q.tpl_description) { %> · <%= q.tpl_description %><% } %></div>
-</div>
+</head>
+<body>
+<div class="wrap">
+<%
+  const st = (typeof state !== 'undefined' && state) ? state : 'open';
+  const requester = (typeof q !== 'undefined' && q && q.requester_name) ? q.requester_name : null;
+%>
 
-<form method="POST">
-<% Object.keys(sections).forEach(secName => { %>
-  <div class="panel">
-    <h2><%= secName %></h2>
-    <% sections[secName].forEach(qu => { const r = respMap[qu.id] || {}; %>
-      <div class="q">
-        <div class="text-lg" style="font-weight:500;"><%= qu.question %></div>
-        <div style="margin-top:6px;">
-          <% ['yes','partial','no','na'].forEach(opt => { %>
-            <label class="opt <%= r.answer === opt ? 'selected' : '' %>">
-              <input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %>><%= opt %>
-            </label>
-          <% }) %>
-        </div>
-        <input type="text" name="comment_<%= qu.id %>" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)">
-      </div>
-    <% }) %>
+<% if (st === 'open') { %>
+  <div class="brandbar">
+    <% if (requester) { %><span>Requested by <strong style="color:var(--text);font-weight:500;"><%= requester %></strong></span><span class="dot"></span><% } %>
+    <span>Secure questionnaire</span>
   </div>
-<% }) %>
 
-<div class="panel" style="text-align:right;">
-  <button>Submit responses</button>
+  <div class="card">
+    <div class="pad">
+      <div class="eyebrow">Security questionnaire</div>
+      <h1><%= q.supplier_name %></h1>
+      <div class="sub"><%= q.template_name %><% if (q.tpl_description) { %> · <%= q.tpl_description %><% } %></div>
+    </div>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" style="margin-top:14px;">
+  <% const OPT_LABEL = { yes:'Yes', partial:'Partial', no:'No', na:'N/A' }; %>
+  <% const aMap = (typeof attachMap !== 'undefined' && attachMap) ? attachMap : {}; %>
+  <% Object.keys(sections).forEach(secName => { %>
+    <div class="card">
+      <div class="sec-head">
+        <h2><%= secName %></h2>
+        <span class="meta"><%= sections[secName].length %> question<%= sections[secName].length === 1 ? '' : 's' %></span>
+      </div>
+      <% sections[secName].forEach(qu => { const r = respMap[qu.id] || {}; %>
+        <div class="q">
+          <div class="q-text"><%= qu.question %></div>
+          <% if (qu.iso_control_ref) { %><div class="q-ref"><%= qu.iso_control_ref %></div><% } %>
+          <div class="opts">
+            <% ['yes','partial','no','na'].forEach(opt => { %>
+              <label class="opt <%= r.answer === opt ? 'selected' : '' %>">
+                <input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %>><%= OPT_LABEL[opt] %>
+              </label>
+            <% }) %>
+          </div>
+          <input type="text" class="cmt" name="comment_<%= qu.id %>" value="<%= r.comment || '' %>" placeholder="Add a comment or point to evidence (optional)">
+          <% const existing = aMap[qu.id] || []; %>
+          <% if (existing.length) { %>
+            <div class="existing-files">
+              <% existing.forEach(a => { %><span class="existing-file"><span class="fi-dot"></span><%= a.filename %></span><% }) %>
+            </div>
+          <% } %>
+          <div class="attach">
+            <input type="file" name="file_<%= qu.id %>" multiple>
+            <span class="attach-hint">Attach evidence — PDF, Office docs, images or zip · up to 25&nbsp;MB each</span>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% }) %>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="pad footer-card">
+        <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account — this link is your secure access.</div>
+        <button class="btn" type="submit">Submit responses</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="footnote">Powered by Compliance Sphere</div>
+
+  <script>
+    document.querySelectorAll('.opt input').forEach(el => el.addEventListener('change', e => {
+      const name = e.target.name;
+      document.querySelectorAll('input[name="' + name + '"]').forEach(r => r.parentElement.classList.toggle('selected', r.checked));
+    }));
+  </script>
+
+<% } else { %>
+  <%# ===== status states: submitted / done / expired / invalid / uploaderror ===== %>
+  <%
+    const isOk = (st === 'submitted');
+    const mark = isOk ? '✓' : (st === 'uploaderror' ? '!' : '–');
+    const rejected = (typeof rejectedUploads !== 'undefined' && rejectedUploads) ? rejectedUploads : [];
+    const savedCount = (typeof attachSaved !== 'undefined' && attachSaved) ? attachSaved : 0;
+    let heading, message;
+    if (st === 'submitted') {
+      heading = 'Thank you — your responses are in';
+      message = (requester ? requester : 'The requesting organisation') + ' has received your answers' +
+        (savedCount ? ' and ' + savedCount + ' attached file' + (savedCount === 1 ? '' : 's') : '') +
+        '. There is nothing more you need to do — you can safely close this tab.';
+    } else if (st === 'uploaderror') {
+      heading = 'Your submission didn\'t go through';
+      message = (typeof uploadMsg !== 'undefined' && uploadMsg) ? uploadMsg
+        : 'We could not process one of your attachments. Please remove it and submit again — your answers were not saved yet.';
+    } else if (st === 'done') {
+      heading = 'This questionnaire is already complete';
+      message = 'Our records show a response was already submitted using this link. If you think this is a mistake, reach out to your ' + (requester ? requester : 'requesting') + ' contact.';
+    } else if (st === 'expired') {
+      heading = 'This link has expired';
+      message = 'For security, questionnaire links expire after a set period. Please ask your ' + (requester ? requester : 'requesting') + ' contact to send a fresh link.';
+    } else {
+      heading = 'This link isn\'t valid';
+      message = 'The link may be mistyped, or it may have been replaced by a newer one. Please ask your contact for an up-to-date link.';
+    }
+  %>
+  <div class="card">
+    <div class="status-card">
+      <div class="status-mark <%= isOk ? 'ok' : 'neutral' %>"><%= mark %></div>
+      <h1><%= heading %></h1>
+      <p><%= message %></p>
+      <% if (st === 'uploaderror') { %>
+        <p style="margin-top:12px;">Use your browser's <strong>Back</strong> button to return to your answers, adjust the attachment, and submit again.</p>
+      <% } %>
+      <% if (st === 'submitted' && rejected.length) { %>
+        <p style="margin-top:12px;">Note: <%= rejected.length %> file<%= rejected.length === 1 ? ' was' : 's were' %> not accepted because of the file type (<%= rejected.join(', ') %>). If this was evidence you need to share, please send it to your contact directly.</p>
+      <% } %>
+    </div>
+  </div>
+  <div class="footnote">Powered by Compliance Sphere</div>
+<% } %>
+
 </div>
-</form>
-
-<script>
-document.querySelectorAll('.opt input').forEach(el => el.addEventListener('change', e => {
-  const name = e.target.name;
-  document.querySelectorAll(`input[name="${name}"]`).forEach(r => r.parentElement.classList.toggle('selected', r.checked));
-}));
-</script>
-</body></html>
+</body>
+</html>
