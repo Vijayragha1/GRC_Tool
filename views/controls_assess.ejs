@@ -3,9 +3,15 @@
 <style>
   /* Diagnostic-question pills - visual state driven by :has(input:checked)
      so the radio state is the single source of truth (no JS style mutation). */
-  .diag-pill { cursor:pointer; display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border:1px solid var(--border); border-radius:14px; font-size:11.5px; background:var(--bg); color:var(--text-secondary); font-weight:500; transition:all 0.12s; user-select:none; }
+  .diag-pill { position:relative; cursor:pointer; display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border:1px solid var(--border); border-radius:14px; font-size:11.5px; background:var(--bg); color:var(--text-secondary); font-weight:500; transition:all 0.12s; user-select:none; }
   .diag-pill:hover { border-color:var(--text-tertiary); }
-  .diag-pill input[type="radio"] { position:absolute; opacity:0; pointer-events:none; }
+  /* The radio is visually hidden but must stay anchored INSIDE its pill. Without
+     position:relative on .diag-pill the absolutely-positioned radio escapes to
+     the document body (offsetParent = BODY); clicking the label then focuses an
+     off-screen radio and the browser scrolls the whole page to it - landing on a
+     blank area, which read as a "white page" on laptop viewports. Anchoring it
+     here keeps focus where the pill is, so no scroll jump. */
+  .diag-pill input[type="radio"] { position:absolute; top:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none; }
   .diag-pill-yes:has(input:checked)     { background:#16a34a; color:#fff; border-color:#16a34a; font-weight: 500; }
   .diag-pill-partial:has(input:checked) { background:#a16207; color:#fff; border-color:#a16207; font-weight: 500; }
   .diag-pill-no:has(input:checked)      { background:#b91c1c; color:#fff; border-color:#b91c1c; font-weight: 500; }
