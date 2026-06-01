@@ -648,9 +648,18 @@
 </div>
 
 <script>
+// Wrapped in an IIFE so the top-level declarations below stay function-scoped.
+// The SPA navigation layer (footer.ejs swapApp) re-executes inline scripts in
+// the .main pane after every in-app navigation. Top-level `const` at global
+// scope would throw "Identifier already declared" on the second assess page
+// visited (e.g. clicking Next / another control), which aborted the swap and
+// left a blank white page. Keeping these inside the IIFE makes re-execution
+// idempotent; the handlers are exposed on `window` so the inline on* attributes
+// (onchange/onclick) can still reach them.
+(function () {
 const QUESTION_TEXTS = <%- JSON.stringify(questions || []) %>;
 
-function applySuggested(e) {
+window.applySuggested = function (e) {
   if (e) e.preventDefault();
   const txt = document.getElementById('suggestedStatusText');
   const sel = document.querySelector('select[name="status"]');
@@ -659,9 +668,9 @@ function applySuggested(e) {
   const allowed = ['Implemented','Partially Implemented','Work In Progress','Not Implemented'];
   if (!allowed.includes(val)) return;
   for (const o of sel.options) { if (o.value === val) { sel.value = val; break; } }
-}
+};
 
-function prefillNotesFromGaps(e) {
+window.prefillNotesFromGaps = function (e) {
   if (e) e.preventDefault();
   const ta = document.querySelector('textarea[name="notes"]');
   if (!ta) return;
@@ -678,7 +687,7 @@ function prefillNotesFromGaps(e) {
   }
   ta.value = (ta.value && ta.value.trim() ? ta.value.trim() + '\n\n' : '') + lines.join('\n');
   ta.focus();
-}
+};
 
 // toggleExclusion() was a helper for the applicability + inclusion/
 // exclusion fields that used to live on this page. Removed alongside
@@ -688,7 +697,7 @@ function prefillNotesFromGaps(e) {
 // Live-update suggested status as the user answers.
 // (Pill visual state is now driven by CSS :has(input:checked), no JS needed.)
 const QUESTION_COUNT = <%= questions ? questions.length : 0 %>;
-function recomputeSuggested() {
+window.recomputeSuggested = function () {
   if (QUESTION_COUNT === 0) return;
   // Compute suggested status from current radio state
   const score = { yes: 1, partial: 0.5, no: 0 };
@@ -718,7 +727,8 @@ function recomputeSuggested() {
   text.textContent = status;
   text.style.color = color;
   if (applyLink) applyLink.style.display = 'inline';
-}
+};
+})();
 </script>
 
   </div><%# /.assess-shell content column %>
