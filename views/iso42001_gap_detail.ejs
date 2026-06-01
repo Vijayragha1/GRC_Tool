@@ -597,17 +597,9 @@
 </div>
 
 <script>
-// Wrapped in an IIFE so the top-level declarations below stay function-scoped.
-// The SPA navigation layer (footer.ejs swapApp) re-executes inline scripts in
-// the .main pane after every in-app navigation. Top-level `const` at global
-// scope would throw "Identifier already declared" on the second gap-detail page
-// visited, which aborted the swap and left a blank white page. Keeping these
-// inside the IIFE makes re-execution idempotent; the handlers are exposed on
-// `window` so the inline on* attributes can still reach them.
-(function () {
 const QUESTION_TEXTS = <%- JSON.stringify(questions || []) %>;
 
-window.applySuggested = function (e) {
+function applySuggested(e) {
   if (e) e.preventDefault();
   const txt = document.getElementById('suggestedStatusText');
   const sel = document.querySelector('select[name="status"]');
@@ -616,9 +608,9 @@ window.applySuggested = function (e) {
   const allowed = ['Implemented','Partially Implemented','Work In Progress','Not Implemented'];
   if (!allowed.includes(val)) return;
   for (const o of sel.options) { if (o.value === val) { sel.value = val; break; } }
-};
+}
 
-window.prefillNotesFromGaps = function (e) {
+function prefillNotesFromGaps(e) {
   if (e) e.preventDefault();
   const ta = document.querySelector('textarea[name="notes"]');
   if (!ta) return;
@@ -635,19 +627,19 @@ window.prefillNotesFromGaps = function (e) {
   }
   ta.value = (ta.value && ta.value.trim() ? ta.value.trim() + '\n\n' : '') + lines.join('\n');
   ta.focus();
-};
+}
 
-window.toggleExclusion = function () {
+function toggleExclusion() {
   const f = document.getElementById('applicabilityField');
   if (!f) return;
   const incBlock = document.getElementById('inclusionBlock');
   const excBlock = document.getElementById('exclusionBlock');
   if (incBlock) incBlock.style.display = (f.value === 'excluded') ? 'none' : 'block';
   if (excBlock) excBlock.style.display = (f.value === 'excluded') ? 'block' : 'none';
-};
+}
 
 const QUESTION_COUNT = <%= questions ? questions.length : 0 %>;
-window.recomputeSuggested = function () {
+function recomputeSuggested() {
   if (QUESTION_COUNT === 0) return;
   const score = { yes: 1, partial: 0.5, no: 0 };
   let total = 0, count = 0;
@@ -676,8 +668,7 @@ window.recomputeSuggested = function () {
   text.textContent = status;
   text.style.color = color;
   if (applyLink) applyLink.style.display = 'inline';
-};
-})();
+}
 </script>
 
 <%- include('partials/footer') %>
