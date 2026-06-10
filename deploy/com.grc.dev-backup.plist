@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Daily dev-DB backup LaunchAgent. Install on the dev machine:
+       cp deploy/com.grc.dev-backup.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/com.grc.dev-backup.plist
+       launchctl start com.grc.dev-backup    # run once to verify
+     Paths below are machine-specific (this dev box); adjust if relocated.
+     Runs scripts/dev-backup.js, which runs scripts/backup.js (file bundle) AND
+     records a backup_runs row (the Phase 7 demolition gate keys off backup_runs). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grc.dev-backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>/Users/vijayraghavan/iso27001-tool/scripts/dev-backup.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/vijayraghavan/iso27001-tool</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/vijayraghavan/iso27001-tool/backups/dev-backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/vijayraghavan/iso27001-tool/backups/dev-backup.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

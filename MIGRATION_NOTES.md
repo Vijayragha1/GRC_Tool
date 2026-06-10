@@ -10,10 +10,10 @@ Schema of record: `schema_current.sql` (regenerated at the end of Phase 7).
 - **Runner is the single source of truth for schema:** no manual schema changes outside the `migrations/` runner; `schema_migrations` is authoritative.
 - **Deferred migrations are permanently fixture-only:** `006` (responses-blob), `007` (CSF engine port), `009` (DDQ history) have NO legacy data anywhere. They stay in the replay chain as **no-op-safe insurance** only. The `006` blob-keying assumption is now **untestable and irrelevant** (no real answer blobs exist to validate against).
 - **Cutover gate:** `fix/audit-hardening-2026-06` merged + full test suite green. (No AWS precondition.)
-- **Demolition gate:** per-module cutover parity passes + Vijay's explicit approval per item. (No AWS precondition.)
+- **Demolition gate:** per-module cutover parity passes + Vijay's explicit approval per item + the latest `backup_runs` row is `status='ok'` and under 24h old at execution time. Verify with: `SELECT status='ok' AND (julianday('now')-julianday(ran_at))<1 FROM backup_runs ORDER BY id DESC LIMIT 1;` (must return 1). No AWS precondition.
 - **Standing pre-cutover rule:** immediately before any cutover, re-run that phase's idempotent backfill so the new tables are current (point-in-time).
 - **Cutover order:** one module at a time, smallest blast radius first: evidence reads → evidence writes → control instances → engine → remediation. No feature work on a module during its cutover window.
-- **Backup discipline (dev = single instance of record):** the app backup job (`npm run backup` → `backup_runs`) is now the ONLY recovery path; there is no second environment to recover schema shape from. **Confirm rotation is current before cutovers begin.** Status 2026-06-10: latest `full` backup `ok` today, but cadence is irregular (06-04 → 06-09 → 06-10) — put it on a reliable (ideally daily) schedule before any demolition.
+- **Backup discipline (dev = single instance of record):** the dev DB is the ONLY recovery path. A **launchd daily job** (`com.grc.dev-backup`, 02:30) runs `scripts/dev-backup.js`, which performs the file-bundle backup (`scripts/backup.js`) AND records a `backup_runs` row. The wrapper exists because `scripts/backup.js` (`npm run backup`) writes bundles to `backups/` but does NOT write `backup_runs`, and the demolition gate keys off `backup_runs`. Plist version-controlled at `deploy/com.grc.dev-backup.plist`, installed at `~/Library/LaunchAgents/`. Verified firing 2026-06-10 (`backup_runs` row `status='ok'`, gate freshness query returns 1).
 - **Quarantine approvals:** Phase 1 (65), Phase 2 (53), Phase 6 (3) approved by Vijay. The 22 orphaned-evidence + 14 orphaned-document references stand as dev data-quality findings (no second environment to cross-check).
 
 ---
@@ -289,7 +289,7 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
-## Cleanup pass — GATED (post-merge of `fix/audit-hardening-2026-06` + full suite green; then per-module cutover parity + Vijay's explicit approval per demolition. AWS descoped — no AWS precondition.)
+## Cleanup pass — GATED (post-merge of `fix/audit-hardening-2026-06` + full suite green; then per demolition: per-module cutover parity + latest `backup_runs` `ok` and under 24h + Vijay's explicit approval. AWS descoped.)
 
 Demolitions in dependency order (none executed):
 1. **Phase 2:** drop `evidence_controls` + its 3 `evctrl_to_evlinks_*` triggers, then `evidence_links`.
