@@ -3,12 +3,13 @@
 // Run: node --test tests/security.test.js
 //
 // These boot the real server in-process (no spawn) against a tmp DB so each
-// test owns isolated state. Auth is currently disabled - the auth tests
-// exercise the route shape so they keep working when auth is turned on.
+// test owns isolated state. Auth is enforced now: the harness logs in (see
+// bootClient in helpers.js), and these tests exercise the live CSRF / XSS /
+// auth controls against an authenticated session.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { bootClient } = require('./helpers');
+const { bootClient, makeClient } = require('./helpers');
 
 test('CSRF - POST without token is rejected with 403', async (t) => {
   const { client } = await bootClient();
@@ -28,17 +29,24 @@ test('CSRF - POST with wrong token is rejected with 403', async (t) => {
   assert.equal(r.status, 403);
 });
 
-test('CSRF - POST with correct token + cookie is accepted', async (t) => {
+test('CSRF - authenticated state-changing POST is rejected without a token and accepted with one', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const r = await client.post('/tenants', { name: 'LegitCorp' });
-  // Successful tenant creation redirects to /onboarding.
-  assert.equal(r.status, 302);
-  assert.match(r.location, /\/onboarding/);
+  // The control must FIRE for an authenticated request. A state-changing POST
+  // with no token is rejected by CSRF (the body proves it is CSRF, not auth).
+  const noToken = await client.post('/tenants', { name: 'NoTokenCorp' }, { csrf: false });
+  assert.equal(noToken.status, 403, 'authenticated POST without a CSRF token must be 403');
+  assert.match(noToken.text, /CSRF token missing or invalid/, 'rejection must come from CSRF, not auth');
+  assert.doesNotMatch(noToken.text, /auth_required/, 'must not be an auth (401) failure masquerading as a CSRF pass');
+
+  // The same request WITH the auto-injected token is accepted.
+  const withToken = await client.post('/tenants', { name: 'LegitCorp' });
+  assert.equal(withToken.status, 302);
+  assert.match(withToken.location, /\/onboarding/);
 });
 
-test('CSRF - GET requests do not require a token (safe method)', async (t) => {
+test('CSRF - safe GET requests do not require a token', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -48,7 +56,7 @@ test('CSRF - GET requests do not require a token (safe method)', async (t) => {
   }
 });
 
-test('CSRF - token is exposed in <meta name="csrf-token">', async (t) => {
+test('CSRF - token is exposed as a 64-hex meta tag on rendered pages', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -58,14 +66,15 @@ test('CSRF - token is exposed in <meta name="csrf-token">', async (t) => {
   assert.equal(m[1].length, 64, 'token should be 64 hex chars');
 });
 
-test('CSRF - token is stable across the same session', async (t) => {
+test('CSRF - token is stable across requests in the same session', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
   const a = await client.get('/dashboard');
   const b = await client.get('/glossary');
-  const ta = a.text.match(/name="csrf-token" content="([a-f0-9]+)"/)[1];
-  const tb = b.text.match(/name="csrf-token" content="([a-f0-9]+)"/)[1];
+  const ta = (a.text.match(/name="csrf-token" content="([a-f0-9]+)"/) || [])[1];
+  const tb = (b.text.match(/name="csrf-token" content="([a-f0-9]+)"/) || [])[1];
+  assert.ok(ta && tb, 'both pages must expose a token');
   assert.equal(ta, tb, 'token must persist for the lifetime of the session');
 });
 
@@ -76,45 +85,71 @@ test('CSRF - different sessions get different tokens', async (t) => {
 
   const t1 = c1.getCsrfToken();
   const t2 = c2.getCsrfToken();
+  assert.ok(t1 && t1.length === 64, 'session 1 must have a 64-hex token');
+  assert.ok(t2 && t2.length === 64, 'session 2 must have a 64-hex token');
   assert.notEqual(t1, t2, 'sessions must not share tokens');
 });
 
-test('XSS - script tag in tenant name is escaped on render', async (t) => {
+test('XSS - a script payload in a client name is HTML-escaped on render', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const payload = '<script>window.__pwn=true</script>';
-  const post = await client.post('/tenants', { name: payload });
-  assert.equal(post.status, 302);
+  // Distinctive canary: the XSSCANARY marker survives escaping (so we can prove
+  // the name was actually rendered, not silently dropped), while the <script>
+  // proves neutralisation. The client list on /dashboard is a surface the test
+  // user genuinely sees (unlike /tenants firm creation, which the original test
+  // posted to but never rendered for a normal user - a false pass waiting to happen).
+  const CANARY = 'XSSCANARY<script>window.__xss_canary=1</script>END';
+  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001' });
+  assert.equal(post.status, 302, 'client creation should redirect');
 
-  // The new tenant page lists tenants in an HTML table. The script tag must
-  // be escaped - appear as &lt; not <.
-  const list = await client.get('/tenants');
-  assert.equal(list.status, 200);
-  assert.ok(!list.text.includes(payload), 'raw script tag must not render');
-  assert.ok(list.text.includes('&lt;script&gt;'), 'angle brackets must be escaped');
+  const dash = await client.get('/dashboard');
+  assert.equal(dash.status, 200);
+  // (a) the raw executable payload must never reach the response. The marker is
+  //     distinctive enough that a partial-strip bypass (e.g. <scr<script>ipt>)
+  //     would still leave a raw "<script" for this substring check to catch.
+  assert.ok(!dash.text.includes('<script>window.__xss_canary'), 'raw script must not render');
+  // (b) the name must be present AND escaped - so the test fails if escaping is
+  //     dropped OR the surface silently stops rendering user input.
+  assert.ok(dash.text.includes('XSSCANARY'), 'the client name must be rendered');
+  assert.ok(dash.text.includes('&lt;script&gt;'), 'angle brackets must be HTML-escaped');
 });
 
-test('XSS - event-handler attribute payload is escaped', async (t) => {
+test('XSS - an attribute-breakout payload in a client name cannot escape its element', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const payload = '" onclick="window.__pwn=true"';
-  const post = await client.post('/tenants', { name: 'X' + payload });
+  const CANARY = 'XSSATTR" onclick="window.__xss_pwn=1"';
+  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001' });
   assert.equal(post.status, 302);
 
-  const list = await client.get('/tenants');
-  // The payload's quote-and-attribute must not break out of the value="" attribute.
-  assert.ok(!/value="X"\s+onclick=/.test(list.text), 'attribute injection must be neutralised');
+  const dash = await client.get('/dashboard');
+  assert.ok(dash.text.includes('XSSATTR'), 'the client name must be rendered');
+  // The raw event handler must never appear as live markup, and the quote that
+  // would start a new attribute must be HTML-escaped (EJS emits &#34;).
+  assert.ok(!/onclick="window\.__xss_pwn/.test(dash.text), 'attribute injection must be neutralised');
+  assert.ok(dash.text.includes('&quot;') || dash.text.includes('&#34;') || dash.text.includes('&#x22;'), 'the breakout quote must be HTML-escaped');
 });
 
-test('Auth - default user lookup never returns null on bare-DB fallback', async (t) => {
-  // Auth is disabled per README; the fallback in currentUser must always
-  // resolve a user so requireAuth doesn't 500. This test pins that contract.
-  const { client } = await bootClient();
+test('Auth - protected pages require authentication (no default-user bypass)', async (t) => {
+  // The old assertion pinned a no-auth "default user" fallback so /dashboard
+  // returned 200 without logging in. That bypass was removed when real
+  // email/password auth was enabled (currentUser returns null with no session).
+  // This test now proves auth is ENFORCED: an unauthenticated request is
+  // challenged, and an authenticated one is served.
+  const { client, app } = await bootClient();
   t.after(() => client.close());
 
-  const r = await client.get('/dashboard');
-  assert.equal(r.status, 200, 'default-user fallback must succeed on a fresh DB');
-  assert.ok(!/No default user found/.test(r.text), 'must not show no-user error');
+  // Authenticated session works and shows no "no user" error.
+  const authed = await client.get('/dashboard');
+  assert.equal(authed.status, 200, 'authenticated dashboard must render');
+  assert.ok(!/No default user found/.test(authed.text), 'must not show a no-user error');
+
+  // A fresh, unauthenticated client on the same app must be redirected to login.
+  // Regression guard: if a default-user bypass is ever reintroduced, this 200s.
+  const anon = makeClient(app);
+  t.after(() => anon.close());
+  const r = await anon.get('/dashboard');
+  assert.equal(r.status, 302, 'unauthenticated dashboard must redirect, not serve a default user');
+  assert.match(r.location, /\/login/, 'must redirect to /login');
 });

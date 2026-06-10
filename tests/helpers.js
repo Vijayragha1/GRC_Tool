@@ -1,13 +1,20 @@
 // Shared test helpers. Boots the express app in-process against a freshly
-// seeded tmp DB, returns a small fetch-like client with cookie persistence
-// and CSRF-token auto-injection. Each test file owns its own DB and port,
-// so tests can run in parallel with no cross-contamination.
+// seeded tmp DB and returns a fetch-like client with cookie persistence and
+// CSRF-token auto-injection. Each test file owns its own DB and port, so tests
+// run in parallel with no cross-contamination.
+//
+// Auth is real and enforced now, so bootClient() seeds a known firm user and
+// logs in: an unauthenticated client is redirected to /login and can never
+// exercise the post-auth security controls (CSRF/XSS render surfaces). Tests
+// that need an *unauthenticated* client build one directly with makeClient(app).
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+const Database = require('better-sqlite3');
 
 let _portCursor = 14000;
 
@@ -68,7 +75,7 @@ function makeClient(app) {
             const existing = cookieJar ? cookieJar.split('; ').filter(c => !cookies.some(nc => nc.startsWith(c.split('=')[0] + '='))) : [];
             cookieJar = [...existing, ...cookies].join('; ');
           }
-          // Snapshot the CSRF token from the meta tag if present.
+          // Snapshot the CSRF token from the meta tag if present (authed pages only).
           const m = text.match(/name="csrf-token" content="([a-f0-9]+)"/);
           if (m) csrfToken = m[1];
           resolve({
@@ -96,12 +103,36 @@ function makeClient(app) {
   };
 }
 
-// Convenience: boot + open client + warm CSRF token from /dashboard.
+// Seed a known firm-manager user in the freshly-booted DB and log `client` in.
+// The login page exposes the CSRF token as a hidden `_csrf` input (it has no
+// <meta> tag), so the login POST reads it from there; afterwards the token is
+// warmed from an authenticated page's meta tag for subsequent POSTs.
+async function authenticate(client, dbPath) {
+  const email = 'sec-test@example.com';
+  const password = 'sec-test-password-1234';
+  const conn = new Database(dbPath);
+  let firm = conn.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
+  if (!firm) { conn.prepare('INSERT INTO firms (name) VALUES (?)').run('Security Test Firm'); firm = conn.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get(); }
+  const hash = bcrypt.hashSync(password, 4); // low rounds: test speed
+  const existing = conn.prepare('SELECT id FROM users WHERE email=?').get(email);
+  if (existing) conn.prepare("UPDATE users SET password_hash=?, active=1, firm_role='manager', firm_id=?, user_type='firm' WHERE id=?").run(hash, firm.id, existing.id);
+  else conn.prepare("INSERT INTO users (email, password_hash, name, firm_id, user_type, firm_role, active) VALUES (?, ?, 'Security Tester', ?, 'firm', 'manager', 1)").run(email, hash, firm.id);
+  conn.close();
+
+  const lg = await client.get('/login');
+  const token = (lg.text.match(/name="_csrf"\s+value="([a-f0-9]+)"/) || [])[1];
+  const res = await client.post('/login', { email, password, _csrf: token }, { csrf: false });
+  if (res.status < 300 || res.status >= 400) throw new Error(`test login failed: expected 3xx, got ${res.status}`);
+  await client.get('/dashboard'); // warm the meta token from an authed page
+  return { email, password };
+}
+
+// Boot + open client + AUTHENTICATE + warm the CSRF token.
 async function bootClient() {
   const { app, tmpDir, dbPath } = bootApp();
   const client = makeClient(app);
-  await client.get('/dashboard'); // sets session cookie + csrf token
-  return { client, tmpDir, dbPath };
+  const login = await authenticate(client, dbPath);
+  return { client, app, tmpDir, dbPath, login };
 }
 
-module.exports = { bootApp, makeClient, bootClient };
+module.exports = { bootApp, makeClient, bootClient, authenticate };
