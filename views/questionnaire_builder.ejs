@@ -1,0 +1,135 @@
+<%- include('partials/header', { title: t.name, user, ws: null, active: 'firm-library' }) %>
+
+<a href="/firm/questionnaires" class="link-muted text-base">← All templates</a>
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title"><%= t.name %></h1>
+    <div class="page-subtitle">
+      <span class="tag tag-neutral"><%= t.category || 'general' %></span>
+      v<%= t.version || 1 %>
+      <% if (t.is_system) { %> <span class="status s-na">system template, read-only</span><% } else if (readonly) { %> <span class="status s-na">read-only</span><% } %>
+    </div>
+  </div>
+  <div class="row">
+    <form method="POST" action="/firm/questionnaires/<%= t.id %>/clone" style="display:inline"><button class="btn btn-secondary">Clone</button></form>
+    <% if (!readonly) { %>
+      <form method="POST" action="/firm/questionnaires/<%= t.id %>/publish" style="display:inline" onsubmit="return appConfirmForm(event, 'Snapshot the current questions as version <%= t.version || 1 %>?')"><button class="btn btn-primary">Publish version</button></form>
+      <form method="POST" action="/firm/questionnaires/<%= t.id %>/archive" style="display:inline" onsubmit="return appConfirmForm(event, 'Archive this template? In-flight questionnaires keep working.')"><button class="btn btn-danger">Archive</button></form>
+    <% } %>
+  </div>
+</div>
+
+<% if (readonly) { %>
+<div class="panel panel-pad" style="margin-bottom:16px;"><div class="meta">This is a <%= t.is_system ? 'system' : 'read-only' %> template. Clone it to create an editable firm copy.</div></div>
+<% } else { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Template details</h2></div>
+  <form method="POST" action="/firm/questionnaires/<%= t.id %>" class="panel-pad" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end;">
+    <div><label class="label">Name</label><input class="input" name="name" value="<%= t.name %>"></div>
+    <div><label class="label">Category</label>
+      <select class="select" name="category"><% ['security','privacy','operational','financial','general'].forEach(c => { %><option value="<%= c %>" <%= t.category===c?'selected':'' %>><%= c %></option><% }) %></select>
+    </div>
+    <div><button class="btn btn-secondary">Save</button></div>
+    <div class="col-full"><label class="label">Description</label><input class="input" name="description" value="<%= t.description || '' %>"></div>
+  </form>
+</div>
+<% } %>
+
+<div class="panel" style="margin-bottom:16px;overflow:hidden">
+  <div class="panel-head"><h2>Questions (<%= questions.length %>)</h2><span class="meta">Weighted scoring; free-text is informational</span></div>
+  <table class="t">
+    <thead><tr><th style="width:36px"></th><th>Question</th><th style="width:110px">Type</th><th style="width:60px">Weight</th><th style="width:110px">Expected</th><th style="width:90px">Control</th><th style="width:150px"></th></tr></thead>
+    <tbody>
+      <% let lastSection = null; questions.forEach((q, i) => { %>
+        <% if (q.section !== lastSection) { lastSection = q.section; %><tr><td colspan="7" class="text-base" style="background:var(--bg-subtle);font-weight:500;"><%= q.section || 'General' %></td></tr><% } %>
+        <tr>
+          <td class="num meta"><%= i + 1 %></td>
+          <td><%= q.question %></td>
+          <td class="text-base text-secondary"><%= (q.question_type || 'yes_no').replace('_',' ') %></td>
+          <td class="num"><%= q.weight %></td>
+          <td class="text-base"><%= q.expected_answer || '-' %></td>
+          <td class="mono meta"><%= q.iso_control_ref || '-' %></td>
+          <td style="text-align:right">
+            <% if (!readonly) { %>
+              <form method="POST" action="/firm/questionnaires/<%= t.id %>/questions/<%= q.id %>/move" style="display:inline"><input type="hidden" name="dir" value="up"><button class="btn btn-ghost btn-xs" <%= i === 0 ? 'disabled' : '' %>>↑</button></form>
+              <form method="POST" action="/firm/questionnaires/<%= t.id %>/questions/<%= q.id %>/move" style="display:inline"><input type="hidden" name="dir" value="down"><button class="btn btn-ghost btn-xs" <%= i === questions.length - 1 ? 'disabled' : '' %>>↓</button></form>
+              <details style="display:inline-block;text-align:left">
+                <summary class="btn btn-secondary btn-xs">Edit</summary>
+                <form method="POST" action="/firm/questionnaires/<%= t.id %>/questions/<%= q.id %>" style="margin-top:6px;display:grid;gap:6px;width:320px;">
+                  <input class="input" name="section" value="<%= q.section || '' %>" placeholder="Section">
+                  <textarea class="textarea" name="question" rows="2" placeholder="Question"><%= q.question %></textarea>
+                  <select class="select" name="question_type">
+                    <% ['yes_no','multiple_choice','rating','free_text'].forEach(qt => { %><option value="<%= qt %>" <%= q.question_type === qt ? 'selected' : '' %>><%= qt.replace('_',' ') %></option><% }) %>
+                  </select>
+                  <input class="input" name="options" value="<%= q.options || '' %>" placeholder="Options (comma-separated, multiple choice)">
+                  <input class="input" name="expected_answer" value="<%= q.expected_answer || '' %>" placeholder="Expected answer (yes; or >=4 for rating)">
+                  <input class="input" type="number" name="weight" value="<%= q.weight %>" placeholder="Weight">
+                  <input class="input" name="iso_control_ref" value="<%= q.iso_control_ref || '' %>" placeholder="ISO control ref (optional)">
+                  <button class="btn btn-primary btn-xs">Save question</button>
+                </form>
+              </details>
+              <form method="POST" action="/firm/questionnaires/<%= t.id %>/questions/<%= q.id %>/to-bank" style="display:inline"><button class="btn btn-ghost btn-xs" title="Save to question bank">Bank</button></form>
+              <form method="POST" action="/firm/questionnaires/<%= t.id %>/questions/<%= q.id %>/delete" style="display:inline" onsubmit="return appConfirmForm(event,'Delete question?')"><button class="btn btn-ghost btn-xs text-danger">×</button></form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (questions.length === 0) { %><tr><td colspan="7" class="t-empty">No questions yet.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+
+<% if (!readonly) { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Add question</h2></div>
+  <form method="POST" action="/firm/questionnaires/<%= t.id %>/questions" class="panel-pad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+    <div><label class="label">Section</label><input class="input" name="section" placeholder="e.g. Access control"></div>
+    <div><label class="label">Type</label>
+      <select class="select" name="question_type"><% ['yes_no','multiple_choice','rating','free_text'].forEach(qt => { %><option value="<%= qt %>"><%= qt.replace('_',' ') %></option><% }) %></select>
+    </div>
+    <div class="col-full"><label class="label">Question</label><textarea class="textarea" name="question" rows="2" required></textarea></div>
+    <div><label class="label">Options <span class="meta">(multiple choice, comma-separated)</span></label><input class="input" name="options"></div>
+    <div><label class="label">Expected answer <span class="meta">(yes; or >=4 for rating)</span></label><input class="input" name="expected_answer"></div>
+    <div><label class="label">Weight</label><input class="input" type="number" name="weight" value="1"></div>
+    <div><label class="label">ISO control ref <span class="meta">(optional)</span></label><input class="input" name="iso_control_ref" placeholder="annex-a.5.1"></div>
+    <div class="col-full"><button class="btn btn-primary">Add question</button></div>
+  </form>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Question bank</h2><span class="meta">Reusable questions across templates</span></div>
+  <% if (bank.length === 0) { %>
+    <div class="panel-pad meta">No saved questions yet. Use "Bank" on any question to save it here for reuse.</div>
+  <% } else { %>
+    <div class="divide-row">
+      <% bank.forEach(b => { %>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 16px;">
+          <div><div class="text-base" style="font-weight:500;"><%= b.question %></div><div class="meta"><%= b.section || 'General' %> · <%= (b.question_type || 'yes_no').replace('_',' ') %><% if (b.iso_control_ref) { %> · <%= b.iso_control_ref %><% } %></div></div>
+          <div class="row">
+            <form method="POST" action="/firm/questionnaires/<%= t.id %>/bank-insert" style="display:inline"><input type="hidden" name="bank_id" value="<%= b.id %>"><button class="btn btn-secondary btn-xs">Insert</button></form>
+            <% if (!b.is_system) { %><form method="POST" action="/firm/questionnaires/bank/<%= b.id %>/delete" style="display:inline"><button class="btn btn-ghost btn-xs text-danger">×</button></form><% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+<% } %>
+
+<div class="panel">
+  <div class="panel-head"><h2>Version history</h2><span class="meta">Snapshots preserve point-in-time wording for audit defensibility</span></div>
+  <% if (versions.length === 0) { %>
+    <div class="t-empty">No published versions yet.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th style="width:80px">Version</th><th>Snapshotted</th><th>By</th><th class="num" style="width:90px">Questions</th></tr></thead>
+      <tbody>
+        <% versions.forEach(v => { let snap = []; try { snap = JSON.parse(v.snapshot); } catch (e) {} %>
+          <tr><td class="num">v<%= v.version_number %></td><td class="meta"><%= v.created_at %></td><td class="meta"><%= v.author || '-' %></td><td class="num"><%= snap.length %></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

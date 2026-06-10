@@ -1,16 +1,16 @@
-// ISO/IEC 27004:2016 Annex B — measurement construct examples ("ISMS metrics").
+// ISO/IEC 27004:2016 Annex B: measurement construct examples ("ISMS metrics").
 // A starter catalog of 36 standardized measures consultants can adopt into an
 // engagement, set a target on, and then record readings against over time.
 //
 // Each metric:
 //   { key, ref, name, category,
 //     informationNeed, measure, formula, targetText,
-//     unit       — '%', 'ratio', 'count', 'days', 'score', 'currency'
-//     direction  — 'higher' (bigger = better) | 'lower' (smaller = better)
-//     suggestedTarget — numeric default the consultant can override (or null)
+//     unit:            '%', 'ratio', 'count', 'days', 'score', 'currency'
+//     direction:       'higher' (bigger = better) | 'lower' (smaller = better)
+//     suggestedTarget: numeric default the consultant can override (or null)
 //     frequency, responsibleParties, dataSource, reportingFormat,
-//     controls2013 — verbatim ISO/IEC 27001:2013 references from the standard
-//     controls     — mapped ISO/IEC 27001:2022 iso_items IDs used in this tool }
+//     controls2013:    verbatim ISO/IEC 27001:2013 references from the standard
+//     controls:        mapped ISO/IEC 27001:2022 iso_items IDs used in this tool }
 //
 // Control mappings translate the standard's 2013 references to 2022 Annex A /
 // clause IDs (per ISO/IEC 27002:2022 Annex B) so they link to live controls.

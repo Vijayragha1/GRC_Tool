@@ -9,8 +9,11 @@
 //
 // What this does NOT do:
 //   - Off-site replication. Schedule this from cron and rsync the output dir.
-//   - Encrypt the backup. Pipe through gpg/age in a wrapper if needed.
-//   - Verify restoration. Run a periodic restore drill against a scratch dir.
+//   - Encrypt the backup. Pipe through gpg/age in a wrapper if needed, or use
+//     the in-process encrypted backups (lib/backup.js) restored via
+//     scripts/restore.js.
+//
+// Restore: node scripts/restore.js <bundle-dir-or-encrypted-file> (see that file).
 
 const fs = require('fs');
 const path = require('path');
@@ -24,14 +27,19 @@ const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').
 const destDir = path.join(DEST_BASE, `iso27001-${stamp}`);
 fs.mkdirSync(destDir, { recursive: true });
 
-const dbPath = path.join(ROOT, 'iso27001.db');
+// Honor DB_PATH (set in the Dockerfile to /app/data/iso27001.db). The old code
+// hardcoded ROOT/iso27001.db, which does not exist in the container, so the
+// nightly cron backup silently captured nothing and exited 1.
+const dbPath = process.env.DB_PATH || path.join(ROOT, 'iso27001.db');
 const dbBackupPath = path.join(destDir, 'iso27001.db');
-const uploadsDir = path.join(ROOT, 'uploads');
-const masterKeyPath = path.join(ROOT, 'data', 'master.key');
+const uploadsDir = process.env.ISMS_UPLOADS_DIR || path.join(ROOT, 'uploads');
+// Matches lib/encryption.js KEY_FILE default (ROOT/data/master.key), overridable.
+const masterKeyPath = process.env.ISMS_KEY_FILE || path.join(ROOT, 'data', 'master.key');
 
 (async () => {
   if (!fs.existsSync(dbPath)) {
     console.error(`[backup] No database at ${dbPath} - nothing to back up.`);
+    console.error(`[backup] (DB_PATH=${process.env.DB_PATH || '<unset>'}). Set DB_PATH to the live database file.`);
     process.exit(1);
   }
 

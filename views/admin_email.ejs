@@ -7,15 +7,15 @@
   </div>
 </div>
 
-<%# Provider status strip — reflects whichever transport the dispatcher
+<%# Provider status strip, reflects whichever transport the dispatcher
     would actually pick (Brevo → Gmail → Resend → dev fallback). Mirrors
     the priority list in lib/email.js currentProvider(). %>
 <%
   const PROVIDER_INFO = {
-    brevo:   { label: 'Brevo — connected',          desc: 'Sends go through Brevo\'s HTTP API using <code>BREVO_API_KEY</code>. Free tier covers 300 emails/day; no domain verification required.' },
-    gmail:   { label: 'Gmail SMTP — connected',     desc: 'Sends go through Gmail SMTP (smtp.gmail.com) using <code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>. Limit is ~500 messages/day on a personal Google account.' },
-    resend:  { label: 'Resend — connected',         desc: 'Sends go through Resend\'s HTTP API using <code>RESEND_API_KEY</code>. Free tier covers 3,000 emails/month; recipients restricted until a domain is verified.' },
-    devnull: { label: 'Dev fallback — no provider', desc: 'No provider key set. Sends are written to <code>data/email-dev-outbox.log</code>; nothing actually leaves the server. Set <code>BREVO_API_KEY</code>, <code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>RESEND_API_KEY</code> in the environment to enable real delivery.' }
+    brevo:   { label: 'Brevo: connected',          desc: 'Sends go through Brevo\'s HTTP API using <code>BREVO_API_KEY</code>. Free tier covers 300 emails/day; no domain verification required.' },
+    gmail:   { label: 'Gmail SMTP: connected',     desc: 'Sends go through Gmail SMTP (smtp.gmail.com) using <code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>. Limit is ~500 messages/day on a personal Google account.' },
+    resend:  { label: 'Resend: connected',         desc: 'Sends go through Resend\'s HTTP API using <code>RESEND_API_KEY</code>. Free tier covers 3,000 emails/month; recipients restricted until a domain is verified.' },
+    devnull: { label: 'Dev fallback: no provider', desc: 'No provider key set. Sends are written to <code>data/email-dev-outbox.log</code>; nothing actually leaves the server. Set <code>BREVO_API_KEY</code>, <code>GMAIL_USER</code> + <code>GMAIL_APP_PASSWORD</code>, or <code>RESEND_API_KEY</code> in the environment to enable real delivery.' }
   };
   const provInfo = PROVIDER_INFO[provider] || PROVIDER_INFO.devnull;
 %>

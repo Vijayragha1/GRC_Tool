@@ -28,7 +28,7 @@
   </div>
 </div>
 
-<%# ===== Send to vendor — separate form, NOT nested in the responses form ===== %>
+<%# ===== Send to vendor, separate form, NOT nested in the responses form ===== %>
 <%
   const shared = !!q.external_token;
   const done = !!q.external_completed_at;
@@ -58,7 +58,7 @@
         <input type="email" name="email" class="input" value="<%= prefill %>" placeholder="security@vendor.com" style="flex:1;" required>
         <button class="btn btn-primary" type="submit"><%= done ? 'Send a new request' : (shared ? 'Resend & refresh link' : 'Email questionnaire') %></button>
       </div>
-      <div class="meta" style="margin-top:8px;">We'll email a secure link to complete the questionnaire — no account needed. You'll be notified when they respond.</div>
+      <div class="meta" style="margin-top:8px;">We'll email a secure link to complete the questionnaire; no account needed. You'll be notified when they respond.</div>
     </form>
   </div>
 </div>
@@ -86,8 +86,16 @@
       <div class="divide-row">
         <% sections[secName].forEach(qu => {
           const r = respMap[qu.id] || {};
-          const isCorrect = r.answer && qu.expected_answer && r.answer.toLowerCase() === qu.expected_answer.toLowerCase();
-          const isWrong = r.answer && qu.expected_answer && r.answer.toLowerCase() !== qu.expected_answer.toLowerCase();
+          const qtype = qu.question_type || 'yes_no';
+          let isCorrect = false, isWrong = false;
+          if (r.answer && qu.expected_answer) {
+            if (qtype === 'rating') {
+              const m = qu.expected_answer.match(/-?\d+(?:\.\d+)?/); const th = m ? parseFloat(m[0]) : null; const val = parseFloat(r.answer);
+              if (th !== null && isFinite(val)) { isCorrect = val >= th; isWrong = !isCorrect; }
+            } else if (qtype !== 'free_text') {
+              isCorrect = r.answer.toLowerCase() === qu.expected_answer.toLowerCase(); isWrong = !isCorrect;
+            }
+          }
         %>
           <div style="padding:12px 16px;<%= isWrong ? 'background:#fef2f2;' : isCorrect ? 'background:#f0fdf4;' : '' %>">
             <div style="display:flex;align-items:flex-start;gap:12px;">
@@ -95,15 +103,22 @@
                 <div class="text-lg" style="font-weight:500;line-height:1.4;"><%= qu.question %></div>
                 <% if (qu.iso_control_ref) { %><div class="meta" style="margin-top:3px;">→ <%= qu.iso_control_ref %></div><% } %>
               </div>
-              <div style="display:flex;gap:6px;flex-shrink:0;">
-                <% ['yes','partial','no','na'].forEach(opt => { %>
+              <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:55%;">
+                <% if (qtype === 'free_text') { %>
+                  <span class="meta">free text</span>
+                <% } else {
+                     const opts = qtype === 'rating' ? ['1','2','3','4','5'] : (qtype === 'multiple_choice' && qu.options ? qu.options.split(',').map(o => o.trim()).filter(Boolean) : ['yes','partial','no','na']);
+                     opts.forEach(opt => { %>
                   <label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid <%= r.answer === opt ? 'var(--accent)' : 'var(--border-strong)' %>;background:<%= r.answer === opt ? 'var(--accent-soft)' : 'var(--bg)' %>;border-radius:6px;font-size:12px;cursor:pointer;text-transform:capitalize;font-weight:<%= r.answer === opt ? '500' : '400' %>;">
                     <input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %> style="display:none">
                     <%= opt %>
                   </label>
-                <% }) %>
+                <% }) } %>
               </div>
             </div>
+            <% if (qtype === 'free_text') { %>
+              <textarea name="answer_<%= qu.id %>" class="textarea text-base" rows="2" placeholder="Vendor's answer" style="margin-top:8px;"><%= r.answer || '' %></textarea>
+            <% } %>
             <input type="text" name="comment_<%= qu.id %>" class="input text-base" value="<%= r.comment || '' %>" placeholder="Comment / evidence (optional)" style="margin-top:8px;">
             <% const atts = aMap[qu.id] || []; %>
             <% if (atts.length) { %>

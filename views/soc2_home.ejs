@@ -1,0 +1,152 @@
+<%- include('partials/header', { title: 'SOC 2', user, ws, active: 'soc2' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">SOC 2 engagements</h1>
+    <div class="page-subtitle">
+      Trust Services Criteria audits for <%= ws.client_name || 'this client' %>.
+      The consulting team runs the engagement and posts the auditor's request list (PBC); the client uploads evidence against each request.
+    </div>
+  </div>
+  <% if (canManage) { %>
+    <div class="row">
+      <button type="button" onclick="document.getElementById('newEng').showModal()" class="btn btn-primary btn-xs">+ New engagement</button>
+    </div>
+  <% } %>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead>
+      <tr>
+        <th>Engagement</th>
+        <th style="width:90px">Report</th>
+        <th style="width:200px">Scope</th>
+        <th style="width:120px">Status</th>
+        <th style="width:150px;text-align:right;">Requests</th>
+        <th style="width:120px">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!engagements.length) { %>
+        <tr><td colspan="6" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+            <div class="empty-title">No SOC 2 engagements yet</div>
+            <div class="empty-sub">An engagement holds the audit's scope (Security plus any optional categories), the PBC request list, and all evidence the client provides. Security (Common Criteria) is always in scope.</div>
+            <% if (canManage) { %>
+              <button type="button" onclick="document.getElementById('newEng').showModal()" class="btn btn-primary">+ New engagement</button>
+            <% } %>
+          </div>
+        </td></tr>
+      <% } %>
+      <% engagements.forEach(e => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/soc2/engagements/<%= e.id %>'">
+          <td>
+            <strong class="text-lg"><%= e.name %></strong>
+            <% if (e.auditor_firm) { %><div class="meta text-xs" style="margin-top:2px;">Auditor: <%= e.auditor_firm %></div><% } %>
+          </td>
+          <td><span class="tag tag-neutral text-xs"><%= e.report_type === 'type1' ? 'Type I' : 'Type II' %></span></td>
+          <td>
+            <div class="row" style="gap:4px;flex-wrap:wrap;">
+              <% (e.scope || ['security']).forEach(code => { var c = cat.categoryByCode[code]; %>
+                <span class="tag <%= code === 'security' ? 'tag-accent' : 'tag-neutral' %> text-xs" title="<%= c ? c.name : code %>"><%= c ? c.short : code %></span>
+              <% }) %>
+            </div>
+          </td>
+          <td><span class="tag tag-neutral text-xs"><%= ENG_STATUS[e.status] || e.status %></span></td>
+          <td style="text-align:right;">
+            <span class="num text-md"><%= e.req_accepted %> / <%= e.req_total %></span>
+            <div class="meta text-xs" style="margin-top:1px;">accepted</div>
+          </td>
+          <td class="meta text-sm"><%= new Date(e.created_at).toLocaleDateString() %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<% if (canManage) { %>
+<dialog id="newEng" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(680px, 92vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
+  <form method="POST" action="/workspaces/<%= ws.id %>/soc2/engagements">
+    <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+      <div>
+        <h2 style="margin:0;font-size:18px;font-weight:500;letter-spacing:-0.01em;">New SOC 2 engagement</h2>
+        <div class="meta text-sm" style="margin-top:2px;">Security (Common Criteria) is always in scope. Add any of the four optional categories your report will cover.</div>
+      </div>
+      <button type="button" onclick="document.getElementById('newEng').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">&times;</button>
+    </header>
+    <div style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="col-full">
+        <label class="label">Engagement name <span class="meta">required</span></label>
+        <input class="input" name="name" required autofocus placeholder="e.g. 2026 SOC 2 Type II: Security & Availability">
+      </div>
+
+      <div>
+        <label class="label">Report type</label>
+        <select class="select" name="report_type">
+          <option value="type2" selected>Type II: controls over a period</option>
+          <option value="type1">Type I: controls at a point in time</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Auditor firm</label>
+        <input class="input" name="auditor_firm" placeholder="e.g. Prescient Assurance">
+      </div>
+
+      <div class="col-full">
+        <label class="label">Trust Services Criteria in scope</label>
+        <div class="row text-sm" style="gap:16px;flex-wrap:wrap;margin-top:2px;">
+          <% cat.CATEGORIES.forEach(c => { %>
+            <label class="row-center" style="gap:7px;cursor:<%= c.required ? 'not-allowed' : 'pointer' %>;<%= c.required ? 'opacity:0.85;' : '' %>" title="<%= c.blurb %>">
+              <input type="checkbox" name="scope_categories" value="<%= c.code %>" <%= c.required ? 'checked disabled' : '' %>>
+              <span><strong><%= c.name %></strong> <span class="meta"><%= c.short %></span></span>
+            </label>
+          <% }) %>
+        </div>
+        <input type="hidden" name="scope_categories" value="security">
+        <div class="meta text-xs text-tertiary" style="margin-top:6px;">Security is required and submitted automatically. You can change scope later from the engagement.</div>
+      </div>
+
+      <div>
+        <label class="label">Period start</label>
+        <input class="input" type="date" name="period_start">
+      </div>
+      <div>
+        <label class="label">Period end</label>
+        <input class="input" type="date" name="period_end">
+      </div>
+
+      <div>
+        <label class="label">As-of date <span class="meta">Type I</span></label>
+        <input class="input" type="date" name="as_of_date">
+      </div>
+      <div>
+        <label class="label">Auditor contact</label>
+        <input class="input" name="auditor_contact_name" placeholder="Name">
+      </div>
+      <div class="col-full">
+        <label class="label">Auditor contact email</label>
+        <input class="input" type="email" name="auditor_contact_email" placeholder="lead@auditor.example">
+      </div>
+    </div>
+    <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
+      <button type="button" onclick="document.getElementById('newEng').close()" class="btn btn-ghost">Cancel</button>
+      <button type="submit" class="btn btn-primary">Create engagement</button>
+    </footer>
+  </form>
+</dialog>
+<script>
+  (function () {
+    var dlg = document.getElementById('newEng');
+    if (!dlg) return;
+    dlg.addEventListener('click', function (e) {
+      var r = dlg.getBoundingClientRect();
+      var outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      if (outside) dlg.close();
+    });
+  })();
+</script>
+<% } %>
+
+<%- include('partials/footer') %>

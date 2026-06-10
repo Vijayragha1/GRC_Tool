@@ -1,7 +1,8 @@
-<%- include('partials/header', { title: 'Import ' + kind, user, ws, active: kind }) %>
+<%- include('partials/header', { title: 'Import ' + kind, user, ws, active: (kind === 'suppliers' ? 'vendors' : kind) }) %>
 
 <%
   const isAsset = kind === 'assets';
+  const isSupplier = kind === 'suppliers';
   const titleSingular = schema.singular;
   const titlePlural = schema.plural;
   const requiredFields = schema.fields.filter(f => f.required);
@@ -76,6 +77,8 @@
     <div class="page-subtitle">
       <% if (isAsset) { %>
         Bulk-load the asset register from a spreadsheet. We validate every row before anything is written - skipped rows are listed so you can fix and re-upload.
+      <% } else if (isSupplier) { %>
+        Bulk-load the supplier register from a spreadsheet. We validate every row before anything is written; each new supplier gets the standard contract-clause checklist and an auto-computed risk tier.
       <% } else { %>
         Bulk-load the risk register from a spreadsheet. Likelihood and impact are validated against your active methodology; asset names resolve to existing assets in this client.
       <% } %>
@@ -305,6 +308,13 @@
             <th style="width:120px;">Owner</th>
             <th style="width:72px;">CIA</th>
             <th>Issues</th>
+          <% } else if (isSupplier) { %>
+            <th>Name</th>
+            <th style="width:150px;">Service</th>
+            <th style="width:90px;">Tier</th>
+            <th style="width:130px;">Data access</th>
+            <th style="width:110px;">Criticality</th>
+            <th>Issues</th>
           <% } else { %>
             <th>Title</th>
             <th style="width:130px;">Asset</th>
@@ -336,6 +346,12 @@
                 <td><% if (p.classification) { %><span class="tag <%= p.classification === 'restricted' ? 'tag-danger' : p.classification === 'confidential' ? 'tag-warn' : p.classification === 'internal' ? 'tag-info' : 'tag-neutral' %>"><%= p.classification %></span><% } else { %><span class="meta">-</span><% } %></td>
                 <td class="text-secondary text-base"><%= p.owner_name || '-' %></td>
                 <td class="num meta"><%= p.cia_c != null ? p.cia_c : '·' %>·<%= p.cia_i != null ? p.cia_i : '·' %>·<%= p.cia_a != null ? p.cia_a : '·' %></td>
+              <% } else if (isSupplier) { %>
+                <td style="font-weight:500;"><%= p.name || '-' %></td>
+                <td class="text-secondary text-base"><%= p.service_provided || '-' %></td>
+                <td><span class="tag <%= p.tier === 'tier_1' ? 'tag-danger' : p.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (p.tier || 'tier_2').replace('_',' ') %></span></td>
+                <td><% if (p.data_access) { %><span class="tag <%= p.data_access === 'restricted' ? 'tag-danger' : p.data_access === 'confidential' ? 'tag-warn' : 'tag-neutral' %>"><%= p.data_access %></span><% } else { %><span class="meta">-</span><% } %></td>
+                <td class="text-secondary text-base"><%= p.business_criticality || '-' %></td>
               <% } else { %>
                 <td style="font-weight:500;"><%= p.title || '-' %></td>
                 <td class="text-secondary text-base">

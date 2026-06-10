@@ -1,4 +1,4 @@
-// Auditor portal routes — magic-link, no auth required.
+// Auditor portal routes: magic-link, no auth required.
 //
 // Pattern mirrors the supplier questionnaire (/q/:token): the token IS the
 // credential. We don't introduce external user accounts; the consultant mints
@@ -14,6 +14,7 @@
 
 'use strict';
 const crypto = require('crypto');
+const { sanitizeDocHtml } = require('../lib/sanitize');
 
 function register(app, deps) {
   const {
@@ -30,7 +31,10 @@ function register(app, deps) {
   function requireAuditorToken(req, res, next) {
     const token = req.params.token;
     if (!token) return res.status(404).render('error', { user: null, message: 'Auditor link missing token.' });
-    const share = db.prepare(`SELECT * FROM auditor_shares WHERE token=?`).get(token);
+    // Look up by SHA-256(token). The raw token is a bearer credential and is
+    // never stored in the clear, so a DB/backup leak cannot expose live links.
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const share = db.prepare(`SELECT * FROM auditor_shares WHERE token_hash=?`).get(tokenHash);
     if (!share) {
       return res.status(404).render('error', { user: null, message: 'This auditor link is not valid. It may have been revoked or the URL is wrong.' });
     }
@@ -54,6 +58,9 @@ function register(app, deps) {
         { ip: req.ip || '', userAgent: (req.get('user-agent') || '').slice(0, 200) });
     } catch (_) { /* logging is best-effort */ }
 
+    // The stored row holds only the hash; give the views the raw token from the
+    // URL so they can still build /auditor/<token>/... links.
+    share.token = token;
     req.share = share;
     req.workspace = workspace;
     next();
@@ -188,7 +195,7 @@ function register(app, deps) {
       WHERE d.id = ? AND d.workspace_id = ?`).get(req.params.id, req.workspace.id);
     if (!doc) return res.status(404).render('error', { user: null, message: 'Document not found.' });
     const body = enc.decryptIfNeeded(doc.content || '', req.workspace.id);
-    const html = body && /^<[a-z]/i.test(body.trim()) ? body : mdRenderer.render(body || '');
+    const html = sanitizeDocHtml(body && /^<[a-z]/i.test(body.trim()) ? body : mdRenderer.render(body || ''));
     const links = db.prepare(`SELECT dc.iso_item_id, i.title FROM document_controls dc
       INNER JOIN iso_items i ON i.id = dc.iso_item_id WHERE dc.document_id=?
       ORDER BY i.sort_order`).all(doc.id);
@@ -241,7 +248,7 @@ function register(app, deps) {
       res.send(pdf);
     } catch (e) {
       console.error('auditor audit-pack error:', e);
-      res.status(500).render('error', { user: null, message: 'Could not generate the audit pack PDF. Refresh and try again — if it persists, contact the consultant.' });
+      res.status(500).render('error', { user: null, message: 'Could not generate the audit pack PDF. Refresh and try again; if it persists, contact the consultant.' });
     }
   });
 
@@ -253,7 +260,10 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/auditor-access', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
     const shares = db.prepare(`SELECT s.*, u.name AS creator FROM auditor_shares s
       LEFT JOIN users u ON u.id = s.created_by
-      WHERE s.workspace_id = ? ORDER BY (s.revoked_at IS NULL) DESC, s.created_at DESC`).all(req.workspace.id);
+      WHERE s.workspace_id = ? ORDER BY (s.revoked_at IS NULL) DESC, s.created_at DESC`).all(req.workspace.id)
+      // Decrypt the stored token for display only (the view builds the link from
+      // s.token). Plaintext is never persisted; this is the field-encrypted copy.
+      .map(s => ({ ...s, token: s.token_enc ? enc.decrypt(s.token_enc, s.workspace_id) : s.token }));
     // Recent access log for the right-hand pane: every auditor hit across all
     // (active + revoked) shares in this workspace, newest first.
     const recentLog = db.prepare(`SELECT al.created_at, al.action, al.entity_type, al.entity_id, al.details
@@ -269,9 +279,14 @@ function register(app, deps) {
     const label = (req.body.label || '').toString().trim() || 'Auditor share';
     const days = Math.max(1, Math.min(365, parseInt(req.body.expires_days || '30', 10)));
     const token = crypto.randomBytes(24).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenEnc = enc.encrypt(token, req.workspace.id);
     const expiresAt = new Date(Date.now() + days * 86400000).toISOString().replace('T', ' ').slice(0, 19);
-    const id = db.prepare(`INSERT INTO auditor_shares (workspace_id, token, label, expires_at, created_by) VALUES (?, ?, ?, ?, ?)`)
-      .run(req.workspace.id, token, label, expiresAt, req.user.id).lastInsertRowid;
+    // Never store the plaintext token. token_hash is for lookup; token_enc is a
+    // field-encrypted copy so the consultant UI can re-display the link. The
+    // legacy NOT NULL UNIQUE `token` column is satisfied with the hash.
+    const id = db.prepare(`INSERT INTO auditor_shares (workspace_id, token, token_hash, token_enc, label, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(req.workspace.id, tokenHash, tokenHash, tokenEnc, label, expiresAt, req.user.id).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'create_auditor_share', 'auditor_share', id,
       { label, expires_at: expiresAt, days },
       { ip: req.ip || '', userAgent: (req.get('user-agent') || '').slice(0, 200) });

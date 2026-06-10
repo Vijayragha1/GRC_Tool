@@ -47,23 +47,23 @@
 
     <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">User type</label>
     <select class="input" name="user_type" id="invite_user_type" onchange="toggleInviteFields()" style="margin-bottom:12px;">
-      <option value="firm">Firm &mdash; consultant in your team</option>
-      <option value="client">Client-side &mdash; staff at one of your clients</option>
+      <option value="firm">Firm: consultant in your team</option>
+      <option value="client">Client-side: staff at one of your clients</option>
     </select>
 
     <div id="invite_firm_block">
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Firm role</label>
       <select class="input" name="firm_role" style="margin-bottom:12px;">
-        <option value="consultant">Consultant &mdash; engagement work; no approvals, no workspace delete</option>
-        <option value="senior_consultant">Senior consultant &mdash; engagement lead; reviews docs &amp; signs off assessments</option>
-        <option value="manager">Manager &mdash; firm-wide admin; billing, users, all clients</option>
+        <option value="consultant">Consultant: engagement work; no approvals, no workspace delete</option>
+        <option value="senior_consultant">Senior consultant: engagement lead; reviews docs &amp; signs off assessments</option>
+        <option value="manager">Manager: firm-wide admin; billing, users, all clients</option>
       </select>
     </div>
 
     <div id="invite_client_block" style="display:none;">
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Client workspace</label>
       <select class="input" name="workspace_id" style="margin-bottom:12px;">
-        <option value="">— choose a client —</option>
+        <option value="">Choose a client</option>
         <% workspaces.forEach(w => { %>
           <option value="<%= w.id %>"><%= w.client_name %></option>
         <% }) %>
@@ -71,9 +71,9 @@
 
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Workspace role</label>
       <select class="input" name="workspace_role" style="margin-bottom:12px;">
-        <option value="client_owner">Client owner &mdash; executive sponsor; final policy approver</option>
-        <option value="isms_manager">ISMS manager &mdash; day-to-day operator; full workspace access</option>
-        <option value="contributor">Contributor &mdash; SME; uploads evidence on assigned items only</option>
+        <option value="client_owner">Client owner: executive sponsor; final policy approver</option>
+        <option value="isms_manager">ISMS manager: day-to-day operator; full workspace access</option>
+        <option value="contributor">Contributor: SME; uploads evidence on assigned items only</option>
       </select>
     </div>
 
@@ -139,8 +139,8 @@
               Client &middot; <%= (rbac.ROLE_LABELS[inv.workspace_role] || inv.workspace_role || 'member').toLowerCase() %>
             <% } %>
           </td>
-          <td><%= inv.workspace_name || '—' %></td>
-          <td class="meta"><%= inv.invited_by_name || '—' %></td>
+          <td><%= inv.workspace_name || '-' %></td>
+          <td class="meta"><%= inv.invited_by_name || '-' %></td>
           <td class="meta"><%= new Date(inv.expires_at).toLocaleDateString() %></td>
           <td>
             <form method="POST" action="/admin/invitations/<%= inv.id %>/revoke" style="margin:0;">
@@ -247,7 +247,7 @@
             <td><%= u.name %></td>
             <td class="meta"><%= u.email %></td>
             <td class="meta"><%= u.workspaces %></td>
-            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
+            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '-' %></td>
             <td><%= u.active ? 'Active' : 'Disabled' %></td>
             <td>
               <% if (u.active) { %>

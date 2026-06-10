@@ -88,7 +88,7 @@
 <%# ===== SoA changes ===== %>
 <details class="cs-section" <%= data.summary.soa_changes > 0 ? 'open' : '' %>>
   <summary class="cs-section-head">
-    <h2>Statement of Applicability — <%= data.summary.soa_changes %> change<%= data.summary.soa_changes === 1 ? '' : 's' %></h2>
+    <h2>Statement of Applicability: <%= data.summary.soa_changes %> change<%= data.summary.soa_changes === 1 ? '' : 's' %></h2>
     <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
   </summary>
   <div class="cs-section-body">
@@ -97,7 +97,7 @@
         <% if (!data.soa.snapBefore) { %>
           No SoA snapshot exists at or before <%= data.since %>. Capture one to start tracking changes for the next cycle.
         <% } else if (!data.soa.snapAfter || data.soa.snapBefore.id === data.soa.snapAfter.id) { %>
-          Only one SoA snapshot in this period — nothing to diff. Capture a new snapshot before your next audit.
+          Only one SoA snapshot in this period; nothing to diff. Capture a new snapshot before your next audit.
         <% } %>
       </div>
     <% } else { %>
@@ -139,7 +139,7 @@
 <%# ===== Risks added ===== %>
 <details class="cs-section" <%= data.summary.risks_added > 0 ? 'open' : '' %>>
   <summary class="cs-section-head">
-    <h2>Risks added — <%= data.summary.risks_added %></h2>
+    <h2>Risks added: <%= data.summary.risks_added %></h2>
     <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
   </summary>
   <div class="cs-section-body">
@@ -175,7 +175,7 @@
 <%# ===== Evidence added ===== %>
 <details class="cs-section" <%= data.summary.evidence_added > 0 ? 'open' : '' %>>
   <summary class="cs-section-head">
-    <h2>Evidence added — <%= data.summary.evidence_added %></h2>
+    <h2>Evidence added: <%= data.summary.evidence_added %></h2>
     <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
   </summary>
   <div class="cs-section-body">
@@ -201,7 +201,7 @@
         </tbody>
       </table>
       <% if (data.evidence.added.length > 50) { %>
-        <div class="meta text-sm" style="margin-top:6px;">+ <%= data.evidence.added.length - 50 %> more — see the full Evidence library for the complete list.</div>
+        <div class="meta text-sm" style="margin-top:6px;">+ <%= data.evidence.added.length - 50 %> more. See the full Evidence library for the complete list.</div>
       <% } %>
     <% } %>
   </div>
@@ -210,7 +210,7 @@
 <%# ===== Documents ===== %>
 <details class="cs-section" <%= (data.summary.documents_new + data.summary.documents_bumped + data.summary.documents_retired) > 0 ? 'open' : '' %>>
   <summary class="cs-section-head">
-    <h2>Documents — <%= data.summary.documents_new %> new · <%= data.summary.documents_bumped %> version bumps · <%= data.summary.documents_retired %> retired</h2>
+    <h2>Documents: <%= data.summary.documents_new %> new · <%= data.summary.documents_bumped %> version bumps · <%= data.summary.documents_retired %> retired</h2>
     <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
   </summary>
   <div class="cs-section-body">
@@ -265,7 +265,7 @@
 <%# ===== Nonconformities ===== %>
 <details class="cs-section" <%= (data.summary.ncs_opened + data.summary.ncs_closed) > 0 ? 'open' : '' %>>
   <summary class="cs-section-head">
-    <h2>Nonconformities — <%= data.summary.ncs_opened %> opened · <%= data.summary.ncs_closed %> closed · <%= data.ncs.stillOpen %> still open</h2>
+    <h2>Nonconformities: <%= data.summary.ncs_opened %> opened · <%= data.summary.ncs_closed %> closed · <%= data.ncs.stillOpen %> still open</h2>
     <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
   </summary>
   <div class="cs-section-body">
@@ -376,12 +376,12 @@
 <%# ===== Activity roll-up ===== %>
 <details class="cs-section">
   <summary class="cs-section-head">
-    <h2>Audit-log activity — <%= data.activity.total %> events across <%= data.activity.distinctActions %> action types</h2>
+    <h2>Audit-log activity: <%= data.activity.total %> events across <%= data.activity.distinctActions %> action types</h2>
     <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
   </summary>
   <div class="cs-section-body">
     <% if (!data.activity.byAction.length) { %>
-      <div class="cs-empty">No audit-log activity since <%= data.since %>. Activity on this client has gone quiet — likely needs attention.</div>
+      <div class="cs-empty">No audit-log activity since <%= data.since %>. Activity on this client has gone quiet; likely needs attention.</div>
     <% } else { %>
       <table class="t">
         <thead><tr><th>Action</th><th class="num" style="width:80px;">Events</th></tr></thead>

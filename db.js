@@ -8,10 +8,15 @@ const questionnaireTemplates = require('./data/questionnaire-templates');
 const dbPath = process.env.DB_PATH || path.join(__dirname, 'iso27001.db');
 const dbDir = path.dirname(dbPath);
 const fs = require('fs');
+const enc = require('./lib/encryption'); // crypto helpers (sha256/hmac/encrypt); no dependency back on db
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// Without a busy_timeout, any write contention (two firms saving at once, the
+// hourly session-store sweep, or the daily backup) surfaces to the user as an
+// immediate SQLITE_BUSY error mid-save. Wait up to 5s for the writer instead.
+db.pragma('busy_timeout = 5000');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS firms (
@@ -542,6 +547,107 @@ CREATE INDEX IF NOT EXISTS idx_supclauses_supplier ON supplier_clauses(supplier_
 CREATE INDEX IF NOT EXISTS idx_supq_supplier ON supplier_questionnaires(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_supq_responses ON supplier_questionnaire_responses(questionnaire_id);
 
+-- TPRM expansion: contacts, findings, onboarding gate, questionnaire builder versioning + bank, recurring sends.
+CREATE TABLE IF NOT EXISTS supplier_contacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
+  name TEXT,
+  email TEXT,
+  phone TEXT,
+  role TEXT,
+  is_primary INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS supplier_findings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  severity TEXT DEFAULT 'medium',
+  status TEXT DEFAULT 'open',
+  owner TEXT,
+  due_date DATE,
+  source TEXT DEFAULT 'manual',
+  source_questionnaire_id INTEGER,
+  source_review_id INTEGER,
+  nonconformity_id INTEGER,
+  iso_control_ref TEXT,
+  resolution_notes TEXT,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  closed_at DATETIME,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS supplier_onboarding_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
+  supplier_id INTEGER NOT NULL,
+  item_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  required INTEGER DEFAULT 1,
+  done INTEGER DEFAULT 0,
+  done_at DATETIME,
+  notes TEXT,
+  UNIQUE(supplier_id, item_key),
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS questionnaire_template_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_id INTEGER NOT NULL,
+  version_number INTEGER NOT NULL,
+  snapshot TEXT NOT NULL,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (template_id) REFERENCES questionnaire_templates(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS questionnaire_question_bank (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  firm_id INTEGER,
+  section TEXT,
+  question TEXT NOT NULL,
+  question_type TEXT DEFAULT 'yes_no',
+  options TEXT,
+  weight INTEGER DEFAULT 1,
+  expected_answer TEXT,
+  iso_control_ref TEXT,
+  tags TEXT,
+  is_system INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS recurring_questionnaire_schedules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
+  supplier_id INTEGER,
+  tier_filter TEXT,
+  template_id INTEGER NOT NULL,
+  cadence_months INTEGER DEFAULT 12,
+  next_due_date DATE,
+  last_sent_at DATETIME,
+  contact_role TEXT DEFAULT 'security',
+  active INTEGER DEFAULT 1,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (template_id) REFERENCES questionnaire_templates(id) ON DELETE CASCADE,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_supcontacts_supplier ON supplier_contacts(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_supfindings_supplier ON supplier_findings(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_supfindings_status ON supplier_findings(workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_sonboard_supplier ON supplier_onboarding_items(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_qtversions_template ON questionnaire_template_versions(template_id);
+CREATE INDEX IF NOT EXISTS idx_qbank_firm ON questionnaire_question_bank(firm_id);
+CREATE INDEX IF NOT EXISTS idx_recurq_due ON recurring_questionnaire_schedules(active, next_due_date);
+
 -- Multi-entity / business-unit scoping. NULL entity_id on artifacts = workspace-wide.
 CREATE TABLE IF NOT EXISTS entities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -953,7 +1059,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
 
 -- Per-(notification, recipient) email-dispatch ledger. One row means "we have
--- already emailed this user about this notification" — keeps the notify()->email
+-- already emailed this user about this notification". Keeps the notify()->email
 -- bridge idempotent across job re-runs and leaves room for a future daily digest.
 CREATE TABLE IF NOT EXISTS notification_emails (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1462,6 +1568,30 @@ function init() {
   );`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_auditor_shares_ws ON auditor_shares(workspace_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_auditor_shares_token ON auditor_shares(token);`);
+
+  // Auditor share tokens are bearer credentials granting read access to a
+  // client's entire SoA, risks, evidence and documents. Store only a hash (for
+  // lookup) plus a field-encrypted copy (so the UI can re-display the link),
+  // never the plaintext - a DB/backup leak must not hand over live links.
+  addColumnIfMissing('auditor_shares', 'token_hash', 'TEXT');
+  addColumnIfMissing('auditor_shares', 'token_enc', 'TEXT');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_auditor_shares_token_hash ON auditor_shares(token_hash);`);
+  // One-time backfill: hash + encrypt any legacy plaintext token, then overwrite
+  // the plaintext column with the hash so no cleartext remains at rest. Existing
+  // live links keep working because lookup hashes the URL token to match.
+  try {
+    const legacy = db.prepare(`SELECT id, workspace_id, token FROM auditor_shares WHERE token_hash IS NULL AND token IS NOT NULL`).all();
+    if (legacy.length) {
+      const upd = db.prepare(`UPDATE auditor_shares SET token_hash=?, token_enc=?, token=? WHERE id=?`);
+      db.transaction((rows) => {
+        for (const r of rows) {
+          const h = enc.sha256(Buffer.from(r.token));
+          upd.run(h, enc.encrypt(r.token, r.workspace_id), h, r.id);
+        }
+      })(legacy);
+      console.log(`[migrate] hashed + encrypted ${legacy.length} legacy auditor share token(s)`);
+    }
+  } catch (e) { console.error('[migrate] auditor_shares token backfill failed:', e.message); }
 
   // Annex A / clause refs derived from each system template's description.
   // Stored as JSON so the adoption flow can auto-link document_controls without
@@ -2025,7 +2155,7 @@ function init() {
 
   // Per-question evidence attachments on supplier questionnaires. Files may be
   // uploaded by the vendor (anonymous, via the tokenised /q/ link) or by a
-  // consultant during review — hence uploaded_by is nullable (no users FK) and
+  // consultant during review; hence uploaded_by is nullable (no users FK) and
   // a `source` discriminator records who attached it. question_id is nullable
   // so a file can be attached to the questionnaire as a whole if ever needed.
   db.exec(`CREATE TABLE IF NOT EXISTS questionnaire_attachments (
@@ -2127,6 +2257,18 @@ function init() {
   ];
   supplierCols.forEach(([c, d]) => addColumnIfMissing('suppliers', c, d));
 
+  // Migrations: TPRM expansion. Onboarding/approval gate fields on suppliers, questionnaire
+  // builder metadata (versioning + soft-archive), and first-class supplier links from
+  // incidents and risks (SET NULL so those records survive a supplier delete).
+  ['onboarding_started_at DATETIME', 'due_diligence_status TEXT', 'rejection_reason TEXT'].forEach(c => {
+    const [name, ...d] = c.split(' '); addColumnIfMissing('suppliers', name, d.join(' '));
+  });
+  ['version INTEGER DEFAULT 1', 'cloned_from INTEGER', 'updated_at DATETIME', 'archived INTEGER DEFAULT 0', 'workspace_id INTEGER'].forEach(c => {
+    const [name, ...d] = c.split(' '); addColumnIfMissing('questionnaire_templates', name, d.join(' '));
+  });
+  addColumnIfMissing('incidents', 'supplier_id', 'INTEGER REFERENCES suppliers(id) ON DELETE SET NULL');
+  addColumnIfMissing('risks', 'supplier_id', 'INTEGER REFERENCES suppliers(id) ON DELETE SET NULL');
+
   const count = db.prepare('SELECT COUNT(*) as c FROM iso_items').get().c;
   if (count === 0) {
     const insert = db.prepare(`INSERT INTO iso_items
@@ -2186,7 +2328,7 @@ function init() {
   if (brokenFks.length) {
     // better-sqlite3 blocks UPDATEs against sqlite_master even with
     // writable_schema=1 via the prepared-statement path. The only in-process
-    // recovery is to use db.exec with the pragma toggled inline — that
+    // recovery is to use db.exec with the pragma toggled inline; that
     // bypasses the guard in older betters and works around it in newer ones.
     // If even this errors out, surface a clear repair command so the operator
     // can run it from the shell without guessing.
@@ -2199,7 +2341,7 @@ function init() {
         PRAGMA writable_schema = 0;
       `);
       db.pragma('schema_version = ' + (db.pragma('schema_version', { simple: true }) + 1));
-      console.log(`[migration] Repaired ${brokenFks.length} table(s) — FK refs restored to users.`);
+      console.log(`[migration] Repaired ${brokenFks.length} table(s): FK refs restored to users.`);
     } catch (e) {
       console.error(`[migration] Could not auto-repair broken FK refs (${e.message}).`);
       console.error(`[migration] Stop the server and run:  sqlite3 ${dbPath} "PRAGMA writable_schema=1; UPDATE sqlite_master SET sql = REPLACE(sql, 'users_legacy_2026_05', 'users') WHERE sql LIKE '%users_legacy_2026_05%'; PRAGMA writable_schema=0;"`);
@@ -2208,7 +2350,7 @@ function init() {
 
   // Role-naming migration (2026-05-24). Drop the old CHECK constraints on
   // users.firm_role and workspace_members.role (they reference the OLD names
-  // — 'owner', 'lead_consultant', 'client_admin', 'reviewer' — and block
+  // namely 'owner', 'lead_consultant', 'client_admin', 'reviewer', and block
   // updates to the new names). Rewrite values in place. Idempotent: detects
   // whether the migration is needed by sniffing the CREATE TABLE SQL.
   const usersSchema = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='users'`).get();
@@ -2303,7 +2445,7 @@ function init() {
   // Member scopes (Contributor row-level scoping). One row per (member,
   // scoped object) tuple. Queries against controls/risks/assets/documents
   // for a contributor user join through this table and filter to the rows
-  // they're explicitly scoped to. Empty scopes mean "see nothing" — the UI
+  // they're explicitly scoped to. Empty scopes mean "see nothing"; the UI
   // surfaces this so a freshly-invited contributor isn't silently locked
   // out without knowing why.
   db.exec(`
@@ -2371,7 +2513,7 @@ function init() {
   `);
 
   // Seed default firm + placeholder owner. Placeholder password ('!noauth') is a
-  // sentinel — the bootstrap block below promotes it to a real bcrypt hash on
+  // sentinel; the bootstrap block below promotes it to a real bcrypt hash on
   // the next boot once INITIAL_ADMIN_PASSWORD is provided in the env.
   const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
   if (userCount === 0) {
@@ -2392,7 +2534,7 @@ function init() {
     if (!initPw || initPw.length < 8) {
       console.warn(`[auth] ${placeholderUsers.length} user(s) still hold the '!noauth' placeholder. ` +
         `Set INITIAL_ADMIN_PASSWORD (>= 8 chars) in your environment and restart to promote them. ` +
-        `Until then, login is impossible — only seed/no-auth flows work.`);
+        `Until then, login is impossible; only seed/no-auth flows work.`);
     } else {
       const bcrypt = require('bcrypt');
       const hash = bcrypt.hashSync(initPw, 12);
@@ -3242,6 +3384,116 @@ function init() {
     if (e.code !== 'MODULE_NOT_FOUND') console.warn('[content] failed to sync ISO 42001:', e.message);
   }
 
+  // ==================== SOC 2 (Trust Services Criteria) ====================
+  // Fresh, self-contained schema for the SOC 2 audit-collaboration portal: an
+  // auditor <-> consultant <-> client request/evidence exchange. Deliberately
+  // NOT modeled on the ISO/CSF control-assessment tables (iso_items /
+  // control_states / evidence_links). The shape here is a PBC request list with
+  // submitted evidence, threaded comments and an activity trail, not a control
+  // catalog scored per workspace. TSC reference data lives in
+  // data/soc2-catalog.js, so no catalog table is needed. Every table carries
+  // workspace_id so the existing workspace-delete cascade cleans them up.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS soc2_engagements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      report_type TEXT NOT NULL DEFAULT 'type2',             -- 'type1' | 'type2'
+      as_of_date DATE,                                       -- Type I "as of" date
+      period_start DATE,                                     -- Type II observation window start
+      period_end DATE,                                       -- Type II observation window end
+      scope_categories TEXT NOT NULL DEFAULT '["security"]', -- JSON array of TSC category codes
+      auditor_firm TEXT,
+      auditor_contact_name TEXT,
+      auditor_contact_email TEXT,
+      status TEXT NOT NULL DEFAULT 'planning',               -- planning|fieldwork|review|complete|archived
+      lead_consultant_id INTEGER,
+      notes TEXT,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (lead_consultant_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soc2_eng_ws ON soc2_engagements(workspace_id, status);
+
+    CREATE TABLE IF NOT EXISTS soc2_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      engagement_id INTEGER NOT NULL,
+      workspace_id INTEGER NOT NULL,
+      seq INTEGER,                                           -- per-engagement number behind the ref
+      ref TEXT,                                              -- e.g. 'PBC-001'
+      title TEXT NOT NULL,
+      description TEXT,
+      tsc_category TEXT,                                     -- primary category code
+      tsc_criteria TEXT,                                     -- JSON array of criterion codes, e.g. ["CC6.1","CC6.2"]
+      status TEXT NOT NULL DEFAULT 'open',                   -- open|in_progress|submitted|returned|accepted|na
+      priority TEXT DEFAULT 'normal',                        -- low|normal|high
+      due_date DATE,
+      assignee_id INTEGER,                                   -- client-side owner
+      requested_by INTEGER,                                  -- creator (consultant now; auditor later)
+      visibility TEXT NOT NULL DEFAULT 'shared',             -- shared | internal (consultant-only working item)
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      closed_at DATETIME,
+      FOREIGN KEY (engagement_id) REFERENCES soc2_engagements(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (assignee_id) REFERENCES users(id),
+      FOREIGN KEY (requested_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soc2_req_eng ON soc2_requests(engagement_id, status);
+    CREATE INDEX IF NOT EXISTS idx_soc2_req_ws ON soc2_requests(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS soc2_request_evidence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      workspace_id INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'file',                     -- file | url | note
+      file_path TEXT,
+      original_name TEXT,
+      mime_type TEXT,
+      size_bytes INTEGER,
+      url TEXT,
+      note TEXT,
+      submitted_by INTEGER,
+      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES soc2_requests(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (submitted_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soc2_ev_req ON soc2_request_evidence(request_id);
+
+    CREATE TABLE IF NOT EXISTS soc2_request_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      workspace_id INTEGER NOT NULL,
+      author_id INTEGER,
+      body TEXT NOT NULL,
+      visibility TEXT NOT NULL DEFAULT 'shared',             -- shared | internal (consultant-only)
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES soc2_requests(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (author_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soc2_cmt_req ON soc2_request_comments(request_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS soc2_request_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER NOT NULL,
+      workspace_id INTEGER NOT NULL,
+      actor_id INTEGER,
+      action TEXT NOT NULL,                                  -- created|status|assigned|evidence|comment|edited
+      detail TEXT,                                           -- human-readable summary
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (request_id) REFERENCES soc2_requests(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (actor_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soc2_act_req ON soc2_request_activity(request_id, created_at);
+  `);
+
   // ==================== BUSINESS CONTINUITY / BIA (A.5.29, A.5.30) ====================
   db.exec(`
     CREATE TABLE IF NOT EXISTS bcp_processes (
@@ -3418,23 +3670,31 @@ function logAction(userId, workspaceId, action, entityType, entityId, details, c
       }
       userId = ext.id;
     }
-    const info = db.prepare(`INSERT INTO audit_log (
-        workspace_id, entity_scope_id, user_id, action, entity_type, entity_id,
-        details, before_state, after_state, ip_address, user_agent, request_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      workspaceId || null,
-      ctx.entityScopeId || null,
-      userId, action,
-      entityType || null,
-      entityId == null ? null : String(entityId),
-      details ? JSON.stringify(details) : null,
-      ctx.before ? JSON.stringify(ctx.before) : null,
-      ctx.after ? JSON.stringify(ctx.after) : null,
-      ctx.ip || null,
-      ctx.userAgent || null,
-      ctx.requestId || null
-    );
-    appendChain(info.lastInsertRowid);
+    // Insert the log row AND its hash-chain entry atomically. Previously these
+    // were two separate statements, so a crash in between left a log row with
+    // no chain entry - which the integrity check then reports as a (false)
+    // 'no_chain' tamper alarm.
+    const writeLog = db.transaction(() => {
+      const info = db.prepare(`INSERT INTO audit_log (
+          workspace_id, entity_scope_id, user_id, action, entity_type, entity_id,
+          details, before_state, after_state, ip_address, user_agent, request_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        workspaceId || null,
+        ctx.entityScopeId || null,
+        userId, action,
+        entityType || null,
+        entityId == null ? null : String(entityId),
+        details ? JSON.stringify(details) : null,
+        ctx.before ? JSON.stringify(ctx.before) : null,
+        ctx.after ? JSON.stringify(ctx.after) : null,
+        ctx.ip || null,
+        ctx.userAgent || null,
+        ctx.requestId || null
+      );
+      appendChain(info.lastInsertRowid);
+      return info;
+    });
+    writeLog();
     // Touch user last_active
     if (userId) {
       try { db.prepare('UPDATE users SET last_active_at=CURRENT_TIMESTAMP WHERE id=?').run(userId); } catch(_){}

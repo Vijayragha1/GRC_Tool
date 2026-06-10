@@ -133,7 +133,7 @@
 
   // RAG status per metric
   const rag = (v, good, warn) => v >= good ? 'green' : v >= warn ? 'amber' : 'red';
-  const ragLabel = c => c === 'green' ? 'On track' : c === 'amber' ? 'Watch' : c === 'red' ? 'Action' : '—';
+  const ragLabel = c => c === 'green' ? 'On track' : c === 'amber' ? 'Watch' : c === 'red' ? 'Action' : '-';
   const stage1Rag = rag(stage1, 80, 50);
   const stage2Rag = rag(stage2, 80, 50);
   const ncRag = ncOv > 0 ? 'red' : (ncMaj > 0 ? 'amber' : 'green');
@@ -187,7 +187,7 @@
     asks.push({
       priority: 'high',
       title: `Approve resourcing to close ${ncOv} overdue nonconformit${ncOv === 1 ? 'y' : 'ies'}.`,
-      detail: `Overdue NCs are an auditor red flag — they suggest the corrective-action process is not being run. Action owners need explicit time allocation, not "fit it in around BAU."`
+      detail: `Overdue NCs are an auditor red flag; they suggest the corrective-action process is not being run. Action owners need explicit time allocation, not "fit it in around BAU."`
     });
   }
   if (highSev > 0) {
@@ -211,7 +211,7 @@
 
 <div class="pack">
 
-  <%# Classification header — Big-4 board pack always opens with this %>
+  <%# Classification header: Big-4 board pack always opens with this %>
   <div class="pack-classification">
     <span>Confidential · For Board / Audit-Committee use</span>
     <span class="right">Document <%= docId %></span>
@@ -222,7 +222,7 @@
     <div>
       <div class="pack-title-eyebrow"><%= clientName %> · ISO/IEC 27001:2022 engagement</div>
       <h1>Executive brief
-        <span class="sub">Quarterly readiness review &mdash; period ending <%= today %></span>
+        <span class="sub">Quarterly readiness review, period ending <%= today %></span>
       </h1>
     </div>
     <div class="pack-meta-stack">
@@ -271,7 +271,7 @@
         </thead>
         <tbody>
           <tr>
-            <td class="metric">Stage 1 readiness <span class="sub">composite — docs, controls, flags, MRM, audit</span></td>
+            <td class="metric">Stage 1 readiness <span class="sub">composite: docs, controls, flags, MRM, audit</span></td>
             <td class="num"><%= stage1 %>%</td>
             <td class="target">≥ 80%</td>
             <td class="trend"></td>
@@ -297,20 +297,20 @@
             <td class="num"><%= planDone %>/<%= planTotal %></td>
             <td class="target"><%= planPct %>%</td>
             <td class="trend"></td>
-            <td class="status-cell"><span class="rag rag-<%= planRag %>"><%= planRag === 'grey' ? '—' : ragLabel(planRag) %></span></td>
+            <td class="status-cell"><span class="rag rag-<%= planRag %>"><%= planRag === 'grey' ? '-' : ragLabel(planRag) %></span></td>
           </tr>
           <% } %>
           <tr>
             <td class="metric">Schedule pressure <span class="sub">days remaining to certification target</span></td>
-            <td class="num"><%= dtt !== null ? dtt : '—' %></td>
+            <td class="num"><%= dtt !== null ? dtt : '-' %></td>
             <td class="target"><%= ws.target_cert_date || 'not set' %></td>
             <td class="trend"></td>
-            <td class="status-cell"><span class="rag rag-<%= scheduleRag %>"><%= scheduleRag === 'grey' ? '—' : (scheduleRag === 'red' ? (dtt !== null && dtt < 0 ? 'Late' : 'Tight') : scheduleRag === 'amber' ? 'Tight' : 'Comfortable') %></span></td>
+            <td class="status-cell"><span class="rag rag-<%= scheduleRag %>"><%= scheduleRag === 'grey' ? '-' : (scheduleRag === 'red' ? (dtt !== null && dtt < 0 ? 'Late' : 'Tight') : scheduleRag === 'amber' ? 'Tight' : 'Comfortable') %></span></td>
           </tr>
           <tr>
             <td class="metric">Nonconformities <span class="sub">open against the register, including overdue</span></td>
             <td class="num"><%= ncMaj %>m / <%= ncMin %>min</td>
-            <td class="target"><%= ncOv > 0 ? ncOv + ' overdue' : '—' %></td>
+            <td class="target"><%= ncOv > 0 ? ncOv + ' overdue' : '-' %></td>
             <td class="trend"></td>
             <td class="status-cell"><span class="rag rag-<%= ncRag %>"><%= ragLabel(ncRag) %></span></td>
           </tr>
@@ -322,9 +322,9 @@
             <td class="status-cell"><span class="rag rag-<%= flagsRag %>"><%= ragLabel(flagsRag) %></span></td>
           </tr>
           <tr>
-            <td class="metric">Residual annual loss <span class="sub">heuristic across <%= openRiskCount %> open risk<%= openRiskCount === 1 ? '' : 's' %></span></td>
+            <td class="metric"><%= residualBasis === 'inherent' ? 'Annualised loss estimate' : 'Residual annualised loss' %> <span class="sub">heuristic across <%= openRiskCount %> open risk<%= openRiskCount === 1 ? '' : 's' %><%= residualBasis === 'inherent' ? ' · inherent basis: set residual ratings for a truer figure' : residualBasis === 'mixed' ? ' · mixed residual/inherent basis' : '' %></span></td>
             <td class="num">$<%= residualAle.toLocaleString() %></td>
-            <td class="target">—</td>
+            <td class="target">-</td>
             <td class="trend"></td>
             <td class="status-cell"><span class="rag rag-grey">Info</span></td>
           </tr>
@@ -381,7 +381,7 @@
               <tr>
                 <td class="rank"><%= i + 1 %></td>
                 <td class="title-cell"><%= r.title %></td>
-                <td><%= r.owner_name || '—' %></td>
+                <td><%= r.owner_name || '-' %></td>
                 <td class="score" style="color:var(--text-tertiary);"><%= r.likelihood %> × <%= r.impact %></td>
                 <td class="score" style="color:<%= r.score >= 15 ? '#b91c1c' : r.score >= 8 ? '#b45309' : 'var(--text-secondary)' %>;"><%= r.score %></td>
               </tr>
@@ -399,7 +399,7 @@
         <span class="pack-section-meta">Soonest due first</span>
       </div>
       <% if (topNCs.length === 0) { %>
-        <div class="pack-rank-empty">No open nonconformities &mdash; clean bill of health on the NC register.</div>
+        <div class="pack-rank-empty">No open nonconformities: clean bill of health on the NC register.</div>
       <% } else { %>
         <table class="pack-rank">
           <thead>
@@ -418,7 +418,7 @@
                 <td class="rank"><%= i + 1 %></td>
                 <td class="title-cell"><%= n.title %></td>
                 <td><span class="rag rag-<%= n.severity === 'major' ? 'red' : 'amber' %>"><%= n.severity %></span></td>
-                <td style="<%= overdue ? 'color:#b91c1c;font-weight: 500;' : 'color:var(--text-tertiary);' %>font-family:'SF Mono',Menlo,monospace;font-size:12px;font-variant-numeric:tabular-nums;"><%= n.due_date ? (overdue ? 'Overdue ' + n.due_date : n.due_date) : '—' %></td>
+                <td style="<%= overdue ? 'color:#b91c1c;font-weight: 500;' : 'color:var(--text-tertiary);' %>font-family:'SF Mono',Menlo,monospace;font-size:12px;font-variant-numeric:tabular-nums;"><%= n.due_date ? (overdue ? 'Overdue ' + n.due_date : n.due_date) : '-' %></td>
               </tr>
             <% }) %>
           </tbody>
@@ -432,11 +432,11 @@
   <div class="pack-methodology">
     <h3>Appendix · methodology &amp; data sources</h3>
     <dl>
-      <dt>Stage 1 readiness</dt><dd>weighted composite — mandatory documents (30 %), Annex A controls implemented (35 %), absence of high-severity flags (15 %), management review complete (10 %), internal audit complete (10 %).</dd>
+      <dt>Stage 1 readiness</dt><dd>weighted composite: mandatory documents (30 %), Annex A controls implemented (35 %), absence of high-severity flags (15 %), management review complete (10 %), internal audit complete (10 %).</dd>
       <dt>Stage 2 readiness</dt><dd>Stage 1 composite plus operational-evidence depth (10 %).</dd>
       <dt>Velocity</dt><dd>controls moved to <em>Implemented</em> in the last 30 days, against the prior 30-day window.</dd>
-      <dt>Residual annual loss</dt><dd>Σ ( likelihood ÷ 5 × impact × $50 000 ) across open risks. Heuristic; actuals depend on impact tiers your insurer assigns.</dd>
-      <dt>RAG thresholds</dt><dd>Readiness — green ≥ 80 %, amber 50–79 %, red &lt; 50 %. Schedule — green &gt; 90 days, amber 30–90, red &lt; 30. Nonconformities — green 0, amber any open, red any overdue. Trend up requires period-on-period growth.</dd>
+      <dt>Residual annualised loss</dt><dd>Σ ( likelihood ÷ 5 × impact × $50 000 ) across open risks, using <strong>residual</strong> likelihood/impact where the consultant has set them (inherent otherwise). Heuristic; actuals depend on the impact tiers your insurer assigns.</dd>
+      <dt>RAG thresholds</dt><dd>Readiness: green ≥ 80 %, amber 50–79 %, red &lt; 50 %. Schedule: green &gt; 90 days, amber 30–90, red &lt; 30. Nonconformities: green 0, amber any open, red any overdue. Trend up requires period-on-period growth.</dd>
       <dt>Recommendations</dt><dd>derived from the live data above; the engagement lead may edit before formal circulation to the board.</dd>
     </dl>
   </div>

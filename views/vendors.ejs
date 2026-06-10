@@ -12,6 +12,9 @@
       <option value="review" <%= filter==='review'?'selected':'' %>>Review due (30d)</option>
       <option value="high_risk" <%= filter==='high_risk'?'selected':'' %>>High residual risk</option>
     </select>
+    <a href="/workspaces/<%= ws.id %>/vendors/dashboard" class="btn btn-secondary">Dashboard</a>
+    <a href="/workspaces/<%= ws.id %>/vendors/import" class="btn btn-secondary">Import</a>
+    <a href="/workspaces/<%= ws.id %>/export/vendors.csv" class="btn btn-ghost">Export CSV</a>
     <button onclick="document.getElementById('newV').classList.toggle('hidden')" class="btn btn-primary">Add supplier</button>
   </div>
 </div>

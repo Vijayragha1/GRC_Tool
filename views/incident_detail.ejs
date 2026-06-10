@@ -47,6 +47,12 @@
       </select>
     </div>
     <div><label class="label">Affected assets</label><input class="input" name="affected_assets" value="<%= inc.affected_assets || '' %>" placeholder="comma-separated"></div>
+    <div><label class="label">Supplier</label>
+      <select class="select" name="supplier_id">
+        <option value="">- none -</option>
+        <% suppliers.forEach(s => { %><option value="<%= s.id %>" <%= inc.supplier_id == s.id ? 'selected' : '' %>><%= s.name %></option><% }) %>
+      </select>
+    </div>
     <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= inc.description || '' %></textarea></div>
 
     <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;">

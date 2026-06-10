@@ -67,7 +67,7 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 ### Policy template library
 
-`/workspaces/:id/templates`. 74 ISO 27001:2022-aligned policy + procedure starters (organisational, technical, people-physical, forms-roles, bundles), tiered into mandatory ★ / expected ◆ / recommended ·. Each template has a description with Annex A control references extracted at boot — adopting a template auto-links every referenced control to the resulting document. "Adopt all mandatory" bulk action covers the 10 ISO-required documents in one click; preview shows the rendered markdown with client-name substitution before adoption.
+`/workspaces/:id/templates`. 74 ISO 27001:2022-aligned policy + procedure starters (organisational, technical, people-physical, forms-roles, bundles), tiered into mandatory ★ / expected ◆ / recommended ·. Each template has a description with Annex A control references extracted at boot; adopting a template auto-links every referenced control to the resulting document. "Adopt all mandatory" bulk action covers the 10 ISO-required documents in one click; preview shows the rendered markdown with client-name substitution before adoption.
 
 ### Audit pack PDF
 
@@ -75,7 +75,7 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 ### Auditor portal
 
-`/workspaces/:id/auditor-access`. Mint a time-bound magic link to share read-only access with an external auditor — no account, no email setup, no integration. The auditor opens `/auditor/{token}` and sees a stripped-chrome read-only portal: a McKinsey-style cover letter with a Roman-numeral table of contents, then SoA (current or any snapshot), risk register + heatmap, evidence index with per-file download, policies + procedures viewer with control mappings, internal audits + NCs combined, and on-demand audit-pack PDF regen. Every access is timestamped and logged; the consultant sees the access log in the share-management console and can revoke at any time.
+`/workspaces/:id/auditor-access`. Mint a time-bound magic link to share read-only access with an external auditor: no account, no email setup, no integration. The auditor opens `/auditor/{token}` and sees a stripped-chrome read-only portal: a McKinsey-style cover letter with a Roman-numeral table of contents, then SoA (current or any snapshot), risk register + heatmap, evidence index with per-file download, policies + procedures viewer with control mappings, internal audits + NCs combined, and on-demand audit-pack PDF regen. Every access is timestamped and logged; the consultant sees the access log in the share-management console and can revoke at any time.
 
 ### Changes since last audit
 
@@ -109,16 +109,16 @@ Threaded comments on every control assessment (`views/partials/comments_thread.e
 
 ### Email integration
 
-`/admin/email` (Manager-only). Per-firm branded transactional mail — `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. The status strip at the top reflects whichever provider is actually active.
+`/admin/email` (Manager-only). Per-firm branded transactional mail: `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. The status strip at the top reflects whichever provider is actually active.
 
 Three providers supported, picked in this order by the dispatcher:
 
 | Provider | Env vars | Free tier | When it fits |
 |---|---|---|---|
-| **Brevo** (HTTP API) | `BREVO_API_KEY`, optional `BREVO_SENDER_EMAIL` | 300/day, no domain verification | Best for testing real delivery — verify one sender email, done |
-| **Gmail SMTP** | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | ~500/day per personal account | Quickest for solo dev — 2FA + app password, then it works |
+| **Brevo** (HTTP API) | `BREVO_API_KEY`, optional `BREVO_SENDER_EMAIL` | 300/day, no domain verification | Best for testing real delivery: verify one sender email, done |
+| **Gmail SMTP** | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | ~500/day per personal account | Quickest for solo dev: 2FA + app password, then it works |
 | **Resend** (HTTP API) | `RESEND_API_KEY` | 3,000/month | Production fit once you verify your own sending domain |
-| Dev fallback | — | unlimited | Without any of the above, outbound mail is appended to `data/email-dev-outbox.log` and the `email_outbox` row still gets written so flows are testable end-to-end without sending real mail |
+| Dev fallback | - | unlimited | Without any of the above, outbound mail is appended to `data/email-dev-outbox.log` and the `email_outbox` row still gets written so flows are testable end-to-end without sending real mail |
 
 Wired-in use cases: policy submission emails each approver in turn; every sign-off advances the chain (next approver gets nudged); approval or rejection emails the original submitter with the chain summary or rejection reason; invitations (firm + client users) send a one-time accept link; forgot-password sends a one-time reset link; admin-triggered password resets from the duplicate-detection inline action. Configured via env: provider keys above, plus `EMAIL_FROM_DEFAULT` and `APP_BASE_URL`.
 
@@ -135,15 +135,15 @@ Six roles, three on the firm side, three on the client side. Defined in [lib/rba
 | Client | **ISMS manager** | Day-to-day operator. Full workspace access; can approve operational docs. |
 | Client | **Contributor** | Scoped SME (HR, IT, etc.). Uploads evidence + completes assigned items. |
 
-Per-user permission overrides live at `/workspaces/:id/access` — a Manager / Sr consultant / Client owner can grant or revoke any of the ~50 individual permissions on top of the role baseline, per workspace, with an audit-trail reason field.
+Per-user permission overrides live at `/workspaces/:id/access`: a Manager / Sr consultant / Client owner can grant or revoke any of the ~50 individual permissions on top of the role baseline, per workspace, with an audit-trail reason field.
 
 **Provisioning surfaces:**
-- `/admin/users` (Manager-only) — firm-wide. Invite or create firm consultants; invite client-side users scoped to a specific workspace. **Inline firm-role edit** (dropdown per row, with last-active-manager + self-edit guards) and deactivate / reactivate per row.
-- `/workspaces/:id/team` (any firm user) — per-engagement. Pick the lead consultant, add other firm consultants on the engagement, invite client owner / ISMS manager / contributors.
+- `/admin/users` (Manager-only): firm-wide. Invite or create firm consultants; invite client-side users scoped to a specific workspace. **Inline firm-role edit** (dropdown per row, with last-active-manager + self-edit guards) and deactivate / reactivate per row.
+- `/workspaces/:id/team` (any firm user): per-engagement. Pick the lead consultant, add other firm consultants on the engagement, invite client owner / ISMS manager / contributors.
 
 **Duplicate detection** on invites: an active account → inline "Send password reset instead" button; a deactivated account → inline "Reactivate" button; a pending invitation → silently revoked and replaced with a fresh one. No dead-end errors.
 
-**External approvers** (auditors, supplier reviewers) never get accounts — they use one-shot magic links (`/approve/:token`). Same pattern as the auditor portal.
+**External approvers** (auditors, supplier reviewers) never get accounts; they use one-shot magic links (`/approve/:token`). Same pattern as the auditor portal.
 
 ### Registers (clauses 4.2, 6.2)
 
@@ -154,7 +154,7 @@ Interested parties: party, type, needs, how addressed, owner, review cadence, ne
 | File | What it is |
 |---|---|
 | **ISMS Audit Pack (PDF)** | **Branded headline deliverable: cover + exec summary + SoA + risk register + heatmap + evidence index + audits + NCs + MRMs + improvements. Section toggles, brand overrides, Puppeteer-rendered.** |
-| Audit Pack companion ZIP | Raw CSVs + DOCX + evidence files — for an auditor who wants to grep |
+| Audit Pack companion ZIP | Raw CSVs + DOCX + evidence files, for an auditor who wants to grep |
 | Gap Assessment Report (DOCX) | Per-pass: exec summary, gaps identified, full results |
 | Recommendations memo (DOCX) | Ranked remediation list with consultant notes |
 | Risk Treatment Plan (DOCX) | Clause 6.1.3.e document - risks with treatment, owner, controls, actions |
@@ -177,15 +177,15 @@ All 118 items written up in [data/iso-content.js](data/iso-content.js): purpose,
 
 ### Other modules
 
-Asset register · risk register with 59-entry starter library covering ISO 27001 + AI/ML + supply chain + cloud + regulatory change · risk methodology (configurable scales / criteria) · risk-acceptance DOCX export (clause 6.1.3.g audit artefact) · document management with WYSIWYG editor + DOCX export + **review-due snooze with audit-trailed reason** · internal audit programme with **SoA-driven checklist generator** (one observation per applicable control, with auditor-norm sample-size hints, linked-policy / linked-evidence counts, and a finding-wording template — alongside the existing category-based generator) plus an **inline checklist UI**: per-row auditor-notes textarea + save, filter pills (All / Clauses / A.5 / A.6 / A.7 / A.8) with live counts, **promote-to-finding** form (type + severity + description that defaults to the auditor's notes), mark-closed / reopen, and a **Clear open items** reset. Both generators dedupe — re-running doesn't double-insert. · management review with the full **6-of-6 Clause 9.3.2 inputs auto-populated on creation** (a–prior actions / b–context changes / c–performance / d–interested-party feedback / e–risk treatment / f–improvements) and a preview panel on the create form so the consultant sees exactly what will be auto-filled · nonconformities + corrective actions · incidents · suppliers with risk tiering · tasks · compliance calendar (training, comms, competence, supplier reviews, BCP, ISO 42001 cert woven in) · 168-term glossary (with inline-expand on the index plus deep-link detail pages) · cross-client at-risk dashboard with overdue / due-this-week roll-up. Activity log has tabs for Log / Timeline / Anomalies / Verify (hash-chain integrity). Gap-assessment wizard has a left-rail **theme-jump navigator** with per-theme completion meters so the consultant can bounce between Clauses / A.5 / A.6 / A.7 / A.8 instead of walking 118 items linearly.
+Asset register · risk register with 59-entry starter library covering ISO 27001 + AI/ML + supply chain + cloud + regulatory change · risk methodology (configurable scales / criteria) · risk-acceptance DOCX export (clause 6.1.3.g audit artefact) · document management with WYSIWYG editor + DOCX export + **review-due snooze with audit-trailed reason** · internal audit programme with **SoA-driven checklist generator** (one observation per applicable control, with auditor-norm sample-size hints, linked-policy / linked-evidence counts, and a finding-wording template, alongside the existing category-based generator) plus an **inline checklist UI**: per-row auditor-notes textarea + save, filter pills (All / Clauses / A.5 / A.6 / A.7 / A.8) with live counts, **promote-to-finding** form (type + severity + description that defaults to the auditor's notes), mark-closed / reopen, and a **Clear open items** reset. Both generators dedupe; re-running doesn't double-insert. · management review with the full **6-of-6 Clause 9.3.2 inputs auto-populated on creation** (a–prior actions / b–context changes / c–performance / d–interested-party feedback / e–risk treatment / f–improvements) and a preview panel on the create form so the consultant sees exactly what will be auto-filled · nonconformities + corrective actions · incidents · suppliers with risk tiering · tasks · compliance calendar (training, comms, competence, supplier reviews, BCP, ISO 42001 cert woven in) · 168-term glossary (with inline-expand on the index plus deep-link detail pages) · cross-client at-risk dashboard with overdue / due-this-week roll-up. Activity log has tabs for Log / Timeline / Anomalies / Verify (hash-chain integrity). Gap-assessment wizard has a left-rail **theme-jump navigator** with per-theme completion meters so the consultant can bounce between Clauses / A.5 / A.6 / A.7 / A.8 instead of walking 118 items linearly.
 
 ### Multitenancy + security
 
-Each tenant (firm) has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar shows up only when more than one firm exists; almost no consulting practice needs more than one. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`). CSRF protection on every state-changing request - token rotated per session, validated against body / X-CSRF-Token header / query string, auto-stamped into every form by client-side JS (including dynamic forms and multipart uploads). External access — auditors, supplier-questionnaire respondents — uses time-bound magic-link tokens, never accounts; the token IS the credential and every access is logged.
+Each tenant (firm) has its own workspaces, users, evidence storage, audit log. Tenant switcher in the topbar shows up only when more than one firm exists; almost no consulting practice needs more than one. Per-tenant uploads partitioning. Field-level encryption (AES-256-GCM, HKDF-derived per-workspace keys, master key in `data/master.key`). CSRF protection on every state-changing request - token rotated per session, validated against body / X-CSRF-Token header / query string, auto-stamped into every form by client-side JS (including dynamic forms and multipart uploads). External access, auditors and supplier-questionnaire respondents, uses time-bound magic-link tokens, never accounts; the token IS the credential and every access is logged.
 
 ### Design language
 
-Oxblood `#5C0A0A` accent throughout. Display typography in self-hosted Source Serif 4 (variable woff2, 122 KB latin subset) on page titles, section titles, and the audit-pack PDF cover; body and tables in Inter. Status uses bold-weight semantic-coloured text rather than pill chips. Tag chips are outlined-only (no fill). ISO 27001 control + clause references carry a dotted-underline `.iso-ref` treatment in the accent colour — the typographic fingerprint that runs across the consultant app, the auditor portal, and the audit-pack PDF. Empty states are serif-titled prose notes, not centered icon cards.
+Oxblood `#5C0A0A` accent throughout. Display typography in self-hosted Source Serif 4 (variable woff2, 122 KB latin subset) on page titles, section titles, and the audit-pack PDF cover; body and tables in Inter. Status uses bold-weight semantic-coloured text rather than pill chips. Tag chips are outlined-only (no fill). ISO 27001 control + clause references carry a dotted-underline `.iso-ref` treatment in the accent colour, the typographic fingerprint that runs across the consultant app, the auditor portal, and the audit-pack PDF. Empty states are serif-titled prose notes, not centered icon cards.
 
 ## Install
 
@@ -348,14 +348,14 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 
 ## What's still open
 
-- **SSO** (SAML / OIDC) — table stakes above $8K/yr; corporate IT will reject the password-only path.
-- **REST API** — server-rendered only today. Procurement-grade buyers want to pull SoA / control state / evidence list out programmatically.
-- **Contributor row-level scoping** — the `member_scopes` table exists and the Contributor role implies "see only assigned items", but queries don't filter against it yet. Currently capability-restricted (no `risk.delete` etc.) but not row-restricted.
-- **Read-write client portal** (the auditor portal's twin) — currently the client has no self-serve surface for evidence upload or policy review.
+- **SSO** (SAML / OIDC): table stakes above $8K/yr; corporate IT will reject the password-only path.
+- **REST API**: server-rendered only today. Procurement-grade buyers want to pull SoA / control state / evidence list out programmatically.
+- **Contributor row-level scoping**: the `member_scopes` table exists and the Contributor role implies "see only assigned items", but queries don't filter against it yet. Currently capability-restricted (no `risk.delete` etc.) but not row-restricted.
+- **Read-write client portal** (the auditor portal's twin): currently the client has no self-serve surface for evidence upload or policy review.
 - **Cloud evidence integrations** (AWS Config / GCP Asset Inventory / Azure Resource Graph). Today every piece of evidence is hand-uploaded.
 - **AI-assisted editing** (rewrite policy in $client's voice, draft a risk description from asset + threat keywords, suggest controls per risk). Gated on choosing an LLM provider + budget.
-- **Real-time presence** — no "X is editing this" indicator anywhere. Optimistic-concurrency CAS catches conflicts on save, but the UI doesn't warn beforehand.
-- **Continuous compliance flow** — quarterly evidence re-attestation cadence with auto-spawned tasks.
+- **Real-time presence**: no "X is editing this" indicator anywhere. Optimistic-concurrency CAS catches conflicts on save, but the UI doesn't warn beforehand.
+- **Continuous compliance flow**: quarterly evidence re-attestation cadence with auto-spawned tasks.
 - **Time tracking + billing per workspace.**
 - **More route extraction.** `routes/tenants.js`, `routes/engagement.js`, and `routes/auditor.js` prove the pattern (`register(app, deps)`); the rest of `server.js` can follow incrementally.
 

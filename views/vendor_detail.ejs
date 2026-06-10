@@ -12,6 +12,7 @@
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
+    <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/report.docx" class="btn btn-secondary btn-xs">Report</a>
     <span class="tag <%= v.tier === 'tier_1' ? 'tag-danger' : v.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (v.tier || 'tier_2').replace('_',' ') %></span>
     <span class="status s-<%= v.lifecycle_stage === 'terminated' ? 'closed' : 'in_progress' %>"><%= (v.lifecycle_stage || 'active').replace(/_/g,' ') %></span>
   </div>
@@ -44,9 +45,10 @@
 
 <!-- Tabs -->
 <div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);">
-  <% const tabs = [['overview','Overview'],['documents','Documents'],['questionnaires','Questionnaires'],['clauses','Contract clauses'],['controls','Controls handled'],['subprocessors','Sub-processors'],['reviews','Reviews'],['monitoring','Monitoring'],['termination','Termination'],['notes','Notes']]; %>
+  <% const tabs = [['overview','Overview'],['onboarding','Onboarding'],['contacts','Contacts'],['documents','Documents'],['questionnaires','Questionnaires'],['findings','Findings'],['clauses','Contract clauses'],['controls','Controls handled'],['subprocessors','Sub-processors'],['reviews','Reviews'],['monitoring','Monitoring'],['termination','Termination'],['notes','Notes']]; %>
+  <% const openFindings = findings.filter(f => f.status === 'open' || f.status === 'in_progress').length; %>
   <% tabs.forEach(([k, label]) => { %>
-    <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span class="text-xs text-tertiary">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span class="text-xs text-tertiary">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span class="text-xs text-tertiary">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span class="text-xs text-tertiary">(<%= reviews.length %>)</span><% } %></a>
+    <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span class="text-xs text-tertiary">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span class="text-xs text-tertiary">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span class="text-xs text-tertiary">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span class="text-xs text-tertiary">(<%= reviews.length %>)</span><% } %><% if (k === 'contacts' && contacts.length) { %> <span class="text-xs text-tertiary">(<%= contacts.length %>)</span><% } %><% if (k === 'findings' && openFindings) { %> <span class="text-xs" style="color:#b91c1c;">(<%= openFindings %>)</span><% } %></a>
   <% }) %>
 </div>
 
@@ -127,6 +129,194 @@
       </form>
     </div>
   </form>
+</div>
+
+<div class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>Linked records</h2><span class="meta">Risks and incidents tagged to this supplier</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div>
+      <div class="sec-label" style="margin-bottom:6px;">Risks (<%= linkedRisks.length %>)</div>
+      <% if (linkedRisks.length === 0) { %><div class="meta">No risks linked. Tag a supplier on any risk to surface it here.</div><% } else { %>
+        <div class="divide-row">
+          <% linkedRisks.forEach(r => { %>
+            <div style="padding:6px 0;"><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted"><%= r.title %></a> <span class="status s-<%= r.status === 'closed' ? 'done' : r.status === 'accepted' ? 'in_review' : 'open' %>"><%= r.status %></span></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <div>
+      <div class="sec-label" style="margin-bottom:6px;">Incidents (<%= linkedIncidents.length %>)</div>
+      <% if (linkedIncidents.length === 0) { %><div class="meta">No incidents linked.</div><% } else { %>
+        <div class="divide-row">
+          <% linkedIncidents.forEach(i => { %>
+            <div style="padding:6px 0;"><a href="/workspaces/<%= ws.id %>/incidents/<%= i.id %>" class="link-muted"><%= i.title %></a> <span class="tag <%= i.severity === 'critical' || i.severity === 'high' ? 'tag-danger' : 'tag-neutral' %>"><%= i.severity %></span></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<% if (tab === 'contacts') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Add contact</h2><span class="meta">The primary contact receives questionnaire links by default</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/contacts" class="panel-pad" style="display:grid;grid-template-columns:1fr 1.4fr 1fr 1fr auto;gap:10px;align-items:end;">
+    <div><label class="label">Name</label><input class="input" name="name"></div>
+    <div><label class="label">Email</label><input class="input" type="email" name="email"></div>
+    <div><label class="label">Phone</label><input class="input" name="phone"></div>
+    <div><label class="label">Role</label>
+      <select class="select" name="role">
+        <option value="security">Security</option><option value="commercial">Commercial</option>
+        <option value="dpo">Data protection</option><option value="escalation">Escalation</option>
+        <option value="general">General</option>
+      </select>
+    </div>
+    <div style="align-self:end"><label class="text-base row-center"><input type="checkbox" name="is_primary" value="1"> Primary</label><button class="btn btn-primary" style="margin-top:6px;">Add</button></div>
+  </form>
+</div>
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th>Name</th><th>Email</th><th style="width:120px">Phone</th><th style="width:120px">Role</th><th style="width:90px">Primary</th><th style="width:120px"></th></tr></thead>
+    <tbody>
+      <% contacts.forEach(c => { %>
+        <tr>
+          <td style="font-weight:500"><%= c.name || '-' %></td>
+          <td class="text-base"><% if (c.email) { %><a href="mailto:<%= c.email %>" class="link-muted"><%= c.email %></a><% } else { %><span class="meta">-</span><% } %></td>
+          <td class="text-base text-secondary"><%= c.phone || '-' %></td>
+          <td><span class="tag tag-neutral"><%= c.role || 'general' %></span></td>
+          <td><% if (c.is_primary) { %><span class="status s-done">primary</span><% } else { %><span class="meta">-</span><% } %></td>
+          <td style="text-align:right">
+            <details style="display:inline-block;text-align:left;">
+              <summary class="btn btn-secondary btn-xs">Edit</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/contacts/<%= c.id %>" style="margin-top:6px;display:grid;gap:6px;width:260px;">
+                <input class="input" name="name" value="<%= c.name || '' %>" placeholder="Name">
+                <input class="input" type="email" name="email" value="<%= c.email || '' %>" placeholder="Email">
+                <input class="input" name="phone" value="<%= c.phone || '' %>" placeholder="Phone">
+                <select class="select" name="role">
+                  <% ['security','commercial','dpo','escalation','general'].forEach(r => { %><option value="<%= r %>" <%= c.role === r ? 'selected' : '' %>><%= r %></option><% }) %>
+                </select>
+                <label class="text-base row-center"><input type="checkbox" name="is_primary" value="1" <%= c.is_primary ? 'checked' : '' %>> Primary</label>
+                <button class="btn btn-primary btn-xs">Save</button>
+              </form>
+            </details>
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/contacts/<%= c.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete contact?')" style="display:inline">
+              <button class="btn btn-ghost btn-xs text-danger">×</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (contacts.length === 0) { %><tr><td colspan="6" class="t-empty">No contacts yet. Add the security, commercial, and escalation contacts for this supplier.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (tab === 'onboarding') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Onboarding & approval</h2><span class="meta">Current stage: <%= (v.lifecycle_stage || 'prospect').replace(/_/g,' ') %></span></div>
+  <div class="panel-pad">
+    <% if (!v.onboarding_started_at && onboardingItems.length === 0) { %>
+      <div class="meta" style="margin-bottom:10px;">Start onboarding to generate the due-diligence checklist: security questionnaire returned, assurance report on file, DPA signed, sub-processors reviewed, clauses present, risk tier confirmed.</div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/onboarding/start"><button class="btn btn-primary">Start onboarding</button></form>
+    <% } else { %>
+      <% const reqItems = onboardingItems.filter(i => i.required); const doneReq = reqItems.filter(i => i.done).length; %>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div class="num" style="font-size:18px;font-weight:500;color:<%= doneReq === reqItems.length ? '#15803d' : '#a16207' %>;"><%= doneReq %>/<%= reqItems.length %></div>
+        <div class="meta">required items complete<% if (v.approved_at) { %> · approved by <%= v.approved_by %> on <%= v.approved_at.split(' ')[0] %><% } %></div>
+      </div>
+    <% } %>
+  </div>
+</div>
+<% if (onboardingItems.length) { %>
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th style="width:30px"></th><th>Due-diligence item</th><th>Notes</th><th style="width:130px"></th></tr></thead>
+    <tbody>
+      <% onboardingItems.forEach(it => { %>
+        <tr>
+          <td><span style="font-size:18px;color:<%= it.done ? '#16a34a' : '#a1a1aa' %>;"><%= it.done ? '✓' : '○' %></span></td>
+          <td><strong><%= it.label %></strong><% if (!it.required) { %> <span class="meta">(optional)</span><% } %><% if (it.done_at) { %><div class="meta">done <%= it.done_at.split(' ')[0] %></div><% } %></td>
+          <td class="meta"><%= it.notes || '-' %></td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/onboarding/<%= it.id %>" style="display:inline-flex;gap:6px;justify-content:flex-end;">
+              <input type="hidden" name="done" value="<%= it.done ? '' : '1' %>">
+              <button class="btn btn-secondary btn-xs"><%= it.done ? 'Mark undone' : 'Mark done' %></button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <div class="panel-pad" style="border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/approve" onsubmit="return appConfirmForm(event,'Approve this supplier? Required items must be complete with no open critical findings.')"><button class="btn btn-primary">Approve supplier</button></form>
+    <details style="display:inline-block">
+      <summary class="btn btn-danger btn-xs">Reject</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/reject" style="margin-top:6px;display:flex;gap:6px;">
+        <input class="input" name="rejection_reason" placeholder="Reason">
+        <button class="btn btn-danger btn-xs">Confirm reject</button>
+      </form>
+    </details>
+    <% if (v.rejection_reason) { %><span class="meta">Last rejection: <%= v.rejection_reason %></span><% } %>
+  </div>
+</div>
+<% } %>
+<% } %>
+
+<% if (tab === 'findings') { %>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Log a finding</h2><span class="meta">Open high or critical findings raise residual risk until remediated</span></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings" class="panel-pad" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
+    <div><label class="label">Title</label><input class="input" name="title" required></div>
+    <div><label class="label">Severity</label><select class="select" name="severity"><% ['low','medium','high','critical'].forEach(s => { %><option value="<%= s %>" <%= s === 'medium' ? 'selected' : '' %>><%= s %></option><% }) %></select></div>
+    <div><label class="label">Owner</label><input class="input" name="owner"></div>
+    <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
+    <div><button class="btn btn-primary">Add</button></div>
+    <div class="col-full"><label class="label">Description</label><input class="input" name="description" placeholder="What was identified, and the remediation required"></div>
+  </form>
+</div>
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th>Finding</th><th style="width:90px">Severity</th><th style="width:110px">Status</th><th style="width:110px">Owner</th><th style="width:100px">Due</th><th style="width:170px"></th></tr></thead>
+    <tbody>
+      <% const todayStr = new Date().toISOString().split('T')[0]; %>
+      <% findings.forEach(f => { const overdue = f.due_date && (f.status === 'open' || f.status === 'in_progress') && f.due_date < todayStr; %>
+        <tr>
+          <td>
+            <div style="font-weight:500"><%= f.title %></div>
+            <% if (f.description) { %><div class="meta"><%= f.description %></div><% } %>
+            <div class="text-xs text-tertiary"><%= f.source %><% if (f.iso_control_ref) { %> · <%= f.iso_control_ref %><% } %><% if (f.nonconformity_id) { %> · <a href="/workspaces/<%= ws.id %>/nonconformities/<%= f.nonconformity_id %>" class="link-muted">NC #<%= f.nonconformity_id %></a><% } %></div>
+          </td>
+          <td><span class="tag <%= (f.severity === 'critical' || f.severity === 'high') ? 'tag-danger' : f.severity === 'medium' ? 'tag-warn' : 'tag-neutral' %>"><%= f.severity %></span></td>
+          <td><span class="status s-<%= (f.status === 'closed' || f.status === 'remediated') ? 'done' : f.status === 'accepted' ? 'in_review' : 'open' %>"><%= f.status.replace('_',' ') %></span></td>
+          <td class="text-base text-secondary"><%= f.owner || '-' %></td>
+          <td class="num <%= overdue ? 'text-danger' : 'meta' %>"><%= f.due_date || '-' %></td>
+          <td style="text-align:right">
+            <details style="display:inline-block;text-align:left">
+              <summary class="btn btn-secondary btn-xs">Update</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings/<%= f.id %>" style="margin-top:6px;display:grid;gap:6px;width:300px;">
+                <input class="input" name="title" value="<%= f.title %>">
+                <textarea class="textarea" name="description" rows="2" placeholder="Description"><%= f.description || '' %></textarea>
+                <div class="row">
+                  <select class="select" name="severity"><% ['low','medium','high','critical'].forEach(s => { %><option value="<%= s %>" <%= f.severity === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+                  <select class="select" name="status"><% ['open','in_progress','remediated','accepted','closed'].forEach(s => { %><option value="<%= s %>" <%= f.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %></select>
+                </div>
+                <input class="input" name="owner" value="<%= f.owner || '' %>" placeholder="Owner">
+                <input class="input" type="date" name="due_date" value="<%= f.due_date || '' %>">
+                <textarea class="textarea" name="resolution_notes" rows="2" placeholder="Resolution notes"><%= f.resolution_notes || '' %></textarea>
+                <button class="btn btn-primary btn-xs">Save</button>
+              </form>
+            </details>
+            <% if (!f.nonconformity_id) { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings/<%= f.id %>/promote-nc" style="display:inline" onsubmit="return appConfirmForm(event,'Raise a nonconformity from this finding?')"><button class="btn btn-ghost btn-xs">→ NC</button></form>
+            <% } %>
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings/<%= f.id %>/delete" style="display:inline" onsubmit="return appConfirmForm(event,'Delete finding?')"><button class="btn btn-ghost btn-xs text-danger">×</button></form>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (findings.length === 0) { %><tr><td colspan="6" class="t-empty">No findings logged. Raise findings here or from a reviewed questionnaire.</td></tr><% } %>
+    </tbody>
+  </table>
 </div>
 <% } %>
 

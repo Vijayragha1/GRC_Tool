@@ -4,7 +4,7 @@
   <div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);margin-bottom:6px;letter-spacing:0.12em;text-transform:uppercase;">Setup &middot; Step 2 of 3</div>
     <h1 class="page-title">Project team &amp; access</h1>
-    <div class="page-subtitle">Pick the firm consultants on this engagement and invite the client-side contacts they&rsquo;ll work with. You can revisit this page any time &mdash; it&rsquo;s in the sidebar under <strong>Setup</strong>.</div>
+    <div class="page-subtitle">Pick the firm consultants on this engagement and invite the client-side contacts they&rsquo;ll work with. You can revisit this page any time. It&rsquo;s in the sidebar under <strong>Setup</strong>.</div>
   </div>
   <div style="display:flex;gap:8px;">
     <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary btn-xs">← Back to scoping</a>
@@ -42,7 +42,7 @@
       <div style="flex:1;">
         <label class="label">Engagement lead<span class="meta" style="font-weight:400;margin-left:8px;">primary client contact for this workspace; signs off assessments</span></label>
         <select class="select" name="lead_consultant_id" required>
-          <option value="">— pick a lead —</option>
+          <option value="">Pick a lead</option>
           <% firmPool.forEach(u => { %>
             <option value="<%= u.id %>" <%= (leadConsultant && leadConsultant.id === u.id) ? 'selected' : '' %>><%= u.name %> &nbsp;·&nbsp; <%= u.email %><% if (rbac.isManager(u.firm_role)) { %> &nbsp;·&nbsp; Manager<% } %></option>
           <% }) %>
@@ -99,7 +99,7 @@
         <div style="flex:1;">
           <label class="label">Add another consultant</label>
           <select class="select" name="user_id" required>
-            <option value="">— pick a consultant —</option>
+            <option value="">Pick a consultant</option>
             <% addable.forEach(u => { %>
               <option value="<%= u.id %>"><%= u.name %> &nbsp;·&nbsp; <%= u.email %><% if (rbac.isManager(u.firm_role)) { %> &nbsp;·&nbsp; Manager<% } %></option>
             <% }) %>
@@ -144,9 +144,9 @@
       <div>
         <label class="label">Role</label>
         <select class="select" name="workspace_role" required>
-          <option value="client_owner">Client owner &mdash; exec sponsor</option>
-          <option value="isms_manager" selected>ISMS manager &mdash; day-to-day</option>
-          <option value="contributor">Contributor &mdash; scoped SME</option>
+          <option value="client_owner">Client owner: exec sponsor</option>
+          <option value="isms_manager" selected>ISMS manager: day-to-day</option>
+          <option value="contributor">Contributor: scoped SME</option>
         </select>
       </div>
       <button class="btn btn-primary">Send invite</button>
@@ -214,7 +214,7 @@
 
   <% if (!clientMembers.length && !pendingInvites.length) { %>
     <div class="t-empty" style="padding:22px;text-align:center;color:var(--text-tertiary);font-style:italic;font-size:13px;">
-      No client-side accounts yet. Send the first invite above &mdash; or skip and do this later from the sidebar.
+      No client-side accounts yet. Send the first invite above, or skip and do this later from the sidebar.
     </div>
   <% } %>
 </div>
@@ -223,7 +223,7 @@
 <div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:18px;background:#fafaf8;">
   <div style="flex:1;">
     <div style="font-family:Georgia,'Source Serif 4',serif;font-size:16px;font-weight: 500;color:var(--text);">Team set. Ready to start the gap assessment?</div>
-    <div class="meta text-sm" style="margin-top:4px;line-height:1.5;">You can also come back later &mdash; this page lives under <strong>Setup → Team &amp; access</strong> in the sidebar.</div>
+    <div class="meta text-sm" style="margin-top:4px;line-height:1.5;">You can also come back later. This page lives under <strong>Setup → Team &amp; access</strong> in the sidebar.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary">Start gap assessment →</a>
 </div>

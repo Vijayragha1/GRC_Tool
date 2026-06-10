@@ -13,7 +13,7 @@
   <div>
     <h1 class="page-title">Crosswalks</h1>
     <div class="page-subtitle">
-      ISO 27001 Annex A mapped to SOC 2 (TSC), NIST CSF 2.0, and GDPR. One control implemented here typically counts in the named framework too &mdash; use this view to credit evidence across clients.
+      ISO 27001 Annex A mapped to SOC 2 (TSC), NIST CSF 2.0, and GDPR. One control implemented here typically counts in the named framework too; use this view to credit evidence across clients.
     </div>
   </div>
   <div class="row-center">
@@ -74,7 +74,7 @@
 <div class="meta text-base" style="margin-bottom:10px;">
   Showing <strong><%= rowCount %></strong> of <%= totalControls %> Annex A controls.
   <% if (statusFilter === 'unmapped') { %>
-    &middot; These controls have no recorded equivalent in the selected frameworks &mdash; either add a mapping or accept the gap.
+    &middot; These controls have no recorded equivalent in the selected frameworks; either add a mapping or accept the gap.
   <% } %>
 </div>
 
@@ -118,7 +118,7 @@
              const isExcluded = r.applicability === 'excluded';
              const renderRefs = (fw) => {
                const refs = r.mappings[fw] || [];
-               if (!refs.length) return '<span class="meta">&mdash;</span>';
+               if (!refs.length) return '<span class="meta">-</span>';
                return refs.map(m => {
                  const noteAttr = m.notes ? ` title="${(m.notes || '').replace(/"/g,'&quot;')}"` : '';
                  const cursor = m.notes ? 'cursor:help;' : '';

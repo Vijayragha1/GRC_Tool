@@ -39,26 +39,12 @@
   </div>
 </div>
 
-<%# Setup-incomplete banner. Shown when intake has been started but
-    fewer than 8 questions are answered - the overview's readiness +
-    summary numbers won't make sense until basic scoping facts are in.
-    Drops away on its own once the setup gets enough answers. %>
-<% if (typeof setupIncomplete !== 'undefined' && setupIncomplete) { %>
-  <div class="panel" style="margin-bottom:18px;background:rgba(180,83,9,0.06);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:14px 18px;">
-    <div style="width:42px;height:42px;border-radius:10px;background:#b45309;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
-    <div style="min-width:0;">
-      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:#9a3412;margin-bottom:2px;">Client setup is incomplete</div>
-      <div class="text-ink" style="font-size:14px;font-weight:500;letter-spacing:-0.005em;">Only <%= intakeAnswered %> of 25 scoping questions answered. The numbers below will be more meaningful once basic scope, headcount, and crown-jewel assets are captured.</div>
-    </div>
-    <a href="/workspaces/<%= ws.id %>/intake" class="btn btn-secondary" style="white-space:nowrap;">Continue setup →</a>
-  </div>
-<% } %>
-
-<!-- Next-best-action banner. Reads engagement state and points at the single
-     highest-leverage next step. Replaces the "where do I go from here?" gap
-     a new consultant lands on the client overview with. -->
+<!-- Next-best-action banner + onboarding rail. Reads engagement state and
+     points at the single highest-leverage next step. This is the continuous
+     guide - Start -> Finish setup -> Save scope -> Confirm -> Gap assessment
+     -> ... - so it owns the early-setup window too; there's no separate
+     "setup incomplete" card competing with an identical "Continue setup" CTA.
+     The provisional-numbers note below stands in for that retired card. -->
 <% if (typeof nextStep !== 'undefined' && nextStep) { %>
   <div class="panel" style="margin-bottom:18px;background:linear-gradient(135deg,var(--accent-soft) 0%,var(--bg) 60%);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:18px 22px;">
     <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
@@ -68,6 +54,9 @@
       <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
       <div class="text-ink" style="font-size:15px;font-weight: 500;letter-spacing:-0.01em;margin-bottom:4px;"><%= nextStep.title %></div>
       <div class="meta text-md" style="line-height:1.5;"><%= nextStep.why %></div>
+      <% if (nextStep.kind === 'intake' || nextStep.kind === 'intake-partial') { %>
+        <div class="meta text-sm" style="margin-top:5px;">The readiness and gap numbers below stay provisional until scope and key assets are captured.</div>
+      <% } %>
     </div>
     <a href="<%= nextStep.href %>" class="btn btn-primary" style="white-space:nowrap;"><%= nextStep.cta %> →</a>
   </div>
@@ -224,11 +213,11 @@
     <div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Target</span>
-        <span style="color:var(--text);font-weight: 500;"><%= targetDate || '—' %></span>
+        <span style="color:var(--text);font-weight: 500;"><%= targetDate || '-' %></span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Days left</span>
-        <span style="color:<%= dtt !== null && dtt < 90 ? '#b45309' : 'var(--text)' %>;font-weight: 500;"><%= dtt !== null ? dtt : '—' %></span>
+        <span style="color:<%= dtt !== null && dtt < 90 ? '#b45309' : 'var(--text)' %>;font-weight: 500;"><%= dtt !== null ? dtt : '-' %></span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
         <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Stage 2</span>

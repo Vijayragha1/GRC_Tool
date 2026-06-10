@@ -1,0 +1,50 @@
+<%- include('partials/header', { title: 'Questionnaire builder', user, ws: null, active: 'firm-library' }) %>
+
+<a href="/firm/library" class="link-muted text-base">← Firm library</a>
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Questionnaire builder</h1>
+    <div class="page-subtitle">Author and version vendor security questionnaires. System templates are read-only; clone one to tailor it for your practice.</div>
+  </div>
+  <button onclick="document.getElementById('newT').classList.toggle('hidden')" class="btn btn-primary">New template</button>
+</div>
+
+<div id="newT" class="hidden panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>New questionnaire template</h2></div>
+  <form method="POST" action="/firm/questionnaires" class="panel-pad" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end;">
+    <div><label class="label">Name</label><input class="input" name="name" required placeholder="e.g. Vendor security assessment 2026"></div>
+    <div><label class="label">Category</label>
+      <select class="select" name="category"><option value="security">Security</option><option value="privacy">Privacy</option><option value="operational">Operational</option><option value="financial">Financial</option></select>
+    </div>
+    <div><button class="btn btn-primary">Create</button></div>
+    <div class="col-full"><label class="label">Description</label><input class="input" name="description" placeholder="Optional"></div>
+  </form>
+</div>
+
+<div class="panel" style="overflow:hidden">
+  <table class="t">
+    <thead><tr><th>Template</th><th style="width:110px">Category</th><th style="width:80px">Questions</th><th style="width:80px">Version</th><th style="width:70px">In use</th><th style="width:80px">Source</th><th style="width:90px"></th></tr></thead>
+    <tbody>
+      <% templates.forEach(t => { %>
+        <tr style="cursor:pointer" onclick="location='/firm/questionnaires/<%= t.id %>'">
+          <td><div style="font-weight:500"><%= t.name %></div><% if (t.description) { %><div class="meta"><%= t.description %></div><% } %></td>
+          <td><span class="tag tag-neutral"><%= t.category || 'general' %></span></td>
+          <td class="num"><%= t.q_count %></td>
+          <td class="num meta">v<%= t.version || 1 %></td>
+          <td class="num meta"><%= t.use_count %></td>
+          <td><% if (t.is_system) { %><span class="status s-na">system</span><% } else { %><span class="status s-in_progress">firm</span><% } %></td>
+          <td style="text-align:right" onclick="event.stopPropagation()">
+            <% if (t.is_system) { %>
+              <form method="POST" action="/firm/questionnaires/<%= t.id %>/clone" style="display:inline"><button class="btn btn-secondary btn-xs">Clone</button></form>
+            <% } else { %>
+              <a href="/firm/questionnaires/<%= t.id %>" class="btn btn-ghost btn-xs">Edit</a>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (templates.length === 0) { %><tr><td colspan="7" class="t-empty">No templates yet. Create one or clone a system template to start.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

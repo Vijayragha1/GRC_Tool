@@ -1,0 +1,305 @@
+<%- include('partials/header', { title: r.ref + ' · ' + r.title, user, ws, active: 'soc2' }) %>
+<%
+  function fmtSize(b) {
+    if (!b) return '';
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+  var st = REQ_STATUS[r.status] || { label: r.status, tag: 'tag-neutral' };
+  var c = cat.categoryByCode[r.tsc_category];
+  var overdue = r.due_date && r.due_date < today && r.status !== 'accepted' && r.status !== 'na';
+  var statusOpts = canManage ? Object.keys(REQ_STATUS) : ['open', 'in_progress', 'submitted'];
+  if (statusOpts.indexOf(r.status) === -1) statusOpts.unshift(r.status);
+%>
+
+<div class="page-head">
+  <div>
+    <div class="row" style="align-items:center;gap:10px;">
+      <a href="/workspaces/<%= ws.id %>/soc2/engagements/<%= eng.id %>" class="meta text-base" style="text-decoration:none;">&larr; <%= eng.name %></a>
+    </div>
+    <h1 class="page-title" style="margin-top:6px;"><span class="mono text-secondary"><%= r.ref %></span> <%= r.title %></h1>
+    <div class="page-subtitle">
+      <%= c ? c.name : (r.tsc_category || 'Uncategorized') %>
+      <% if (criteria.length) { %> &middot; <%= criteria.length %> criteri<%= criteria.length === 1 ? 'on' : 'a' %><% } %>
+      <% if (r.visibility === 'internal') { %> &middot; <span class="text-warn">Internal</span><% } %>
+    </div>
+  </div>
+  <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+    <span class="tag <%= st.tag %>"><%= st.label %></span>
+    <% if (canManage) { %>
+      <button type="button" onclick="document.getElementById('editReq').showModal()" class="btn btn-secondary btn-xs">Edit</button>
+    <% } %>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start;">
+  <!-- Main column -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <!-- Description -->
+    <div class="panel">
+      <div class="panel-head"><h2>Request</h2></div>
+      <div class="panel-pad text-base" style="line-height:1.65;">
+        <% if (r.description) { %>
+          <div style="white-space:pre-wrap;"><%= r.description %></div>
+        <% } else { %>
+          <span class="meta">No description provided.</span>
+        <% } %>
+        <% if (criteria.length) { %>
+          <div class="row" style="gap:5px;flex-wrap:wrap;margin-top:12px;">
+            <% criteria.forEach(code => { %>
+              <span class="mono text-xs" style="background:var(--bg-subtle);padding:2px 7px;border-radius:4px;border:1px solid var(--border);" title="<%= cat.titleFor(code) %>"><%= code %></span>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Evidence -->
+    <div class="panel">
+      <div class="panel-head"><h2>Evidence</h2><span class="meta text-sm"><%= evidence.length %> item<%= evidence.length === 1 ? '' : 's' %></span></div>
+      <% if (!evidence.length) { %>
+        <div class="panel-pad meta text-md">No evidence yet. Upload a file, link to a document, or leave a note below.</div>
+      <% } else { %>
+        <div class="divide-row">
+          <% evidence.forEach(ev => { %>
+            <div style="padding:10px 14px;display:flex;gap:10px;align-items:flex-start;">
+              <span style="flex-shrink:0;color:var(--text-tertiary);margin-top:2px;">
+                <% if (ev.kind === 'file') { %>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <% } else if (ev.kind === 'url') { %>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <% } else { %>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <% } %>
+              </span>
+              <div style="flex:1;min-width:0;">
+                <% if (ev.kind === 'file') { %>
+                  <a href="/workspaces/<%= ws.id %>/soc2/evidence/<%= ev.id %>/download" class="text-base" style="color:var(--accent);text-decoration:none;font-weight:500;"><%= ev.original_name || 'Download' %></a>
+                  <span class="meta text-xs"><%= fmtSize(ev.size_bytes) %></span>
+                <% } else if (ev.kind === 'url') { %>
+                  <a href="<%= ev.url %>" target="_blank" rel="noopener noreferrer" class="text-base" style="color:var(--accent);text-decoration:none;font-weight:500;word-break:break-all;"><%= ev.url %></a>
+                <% } else { %>
+                  <span class="text-base" style="font-weight:500;">Note</span>
+                <% } %>
+                <% if (ev.note) { %><div class="text-sm text-secondary" style="margin-top:2px;white-space:pre-wrap;"><%= ev.note %></div><% } %>
+                <div class="meta text-xs" style="margin-top:3px;"><%= ev.by_name || 'Someone' %> &middot; <%= new Date(ev.submitted_at).toLocaleString() %></div>
+              </div>
+              <% if (ev.submitted_by === user.id || canManage) { %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/soc2/requests/<%= r.id %>/evidence/<%= ev.id %>/delete" style="flex-shrink:0;" onsubmit="return appConfirmForm(event, 'Remove this evidence?')">
+                  <button class="btn btn-ghost btn-xs text-danger" title="Remove">&times;</button>
+                </form>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <!-- Add evidence -->
+      <form method="POST" action="/workspaces/<%= ws.id %>/soc2/requests/<%= r.id %>/evidence" enctype="multipart/form-data" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;flex-direction:column;gap:10px;">
+        <div class="row" style="gap:16px;">
+          <label class="row-center text-sm" style="gap:7px;cursor:pointer;"><input type="radio" name="kind" value="file" checked> <span>File</span></label>
+          <label class="row-center text-sm" style="gap:7px;cursor:pointer;"><input type="radio" name="kind" value="url"> <span>Link</span></label>
+          <label class="row-center text-sm" style="gap:7px;cursor:pointer;"><input type="radio" name="kind" value="note"> <span>Note</span></label>
+        </div>
+        <div data-ev="file"><input class="input" type="file" name="file"></div>
+        <div data-ev="url" style="display:none;"><input class="input" type="url" name="url" placeholder="https://…"></div>
+        <textarea class="textarea" name="note" rows="2" placeholder="Optional note / caption (required for a note-only entry)"></textarea>
+        <div style="display:flex;justify-content:flex-end;"><button type="submit" class="btn btn-primary btn-xs">Add evidence</button></div>
+      </form>
+    </div>
+
+    <!-- Comments -->
+    <div class="panel">
+      <div class="panel-head"><h2>Discussion</h2><span class="meta text-sm"><%= comments.length %></span></div>
+      <% if (!comments.length) { %>
+        <div class="panel-pad meta text-md">No messages yet.</div>
+      <% } else { %>
+        <div class="divide-row">
+          <% comments.forEach(cm => { %>
+            <div style="padding:10px 14px;">
+              <div class="row" style="gap:6px;align-items:baseline;">
+                <strong class="text-base"><%= cm.author_name || 'Someone' %></strong>
+                <span class="tag tag-neutral text-xs"><%= cm.author_type === 'firm' ? 'Consultant' : 'Client' %></span>
+                <% if (cm.visibility === 'internal') { %><span class="tag tag-warn text-xs" title="Internal, not visible to the client">Internal</span><% } %>
+                <span class="meta text-xs" style="margin-left:auto;"><%= new Date(cm.created_at).toLocaleString() %></span>
+              </div>
+              <div class="text-base text-secondary" style="margin-top:4px;line-height:1.55;white-space:pre-wrap;"><%= cm.body %></div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/soc2/requests/<%= r.id %>/comments" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;flex-direction:column;gap:9px;">
+        <textarea class="textarea" name="body" rows="2" placeholder="Write a message…" required></textarea>
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <% if (canManage) { %>
+            <label class="row-center text-sm" style="gap:7px;cursor:pointer;"><input type="checkbox" name="visibility" value="internal"> <span class="meta">Internal note (consulting team only)</span></label>
+          <% } else { %><span></span><% } %>
+          <button type="submit" class="btn btn-primary btn-xs">Post</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <!-- Status + details -->
+    <div class="panel">
+      <div class="panel-head"><h2>Status</h2></div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/soc2/requests/<%= r.id %>/status" class="panel-pad" style="display:flex;flex-direction:column;gap:9px;">
+        <select class="select" name="status">
+          <% statusOpts.forEach(k => { %>
+            <option value="<%= k %>" <%= r.status === k ? 'selected' : '' %>><%= (REQ_STATUS[k] || {}).label || k %></option>
+          <% }) %>
+        </select>
+        <textarea class="textarea" name="note" rows="2" placeholder="Optional note (posted to the discussion)"></textarea>
+        <button type="submit" class="btn btn-primary btn-xs">Update status</button>
+        <% if (!canManage) { %>
+          <div class="meta text-xs text-tertiary">Accept / Return / N/A are decided by the consulting team.</div>
+        <% } %>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Details</h2></div>
+      <div class="panel-pad text-base" style="line-height:1.7;display:flex;flex-direction:column;gap:5px;">
+        <div class="row" style="justify-content:space-between;"><span class="meta text-sm">Category</span><span><%= c ? c.name : '-' %></span></div>
+        <div class="row" style="justify-content:space-between;"><span class="meta text-sm">Priority</span><span style="text-transform:capitalize;"><%= r.priority %></span></div>
+        <div class="row" style="justify-content:space-between;"><span class="meta text-sm">Assignee</span><span><%= assignee ? assignee.name : '-' %></span></div>
+        <div class="row" style="justify-content:space-between;"><span class="meta text-sm">Due</span><span class="<%= overdue ? 'text-danger' : '' %>"><%= r.due_date ? new Date(r.due_date).toLocaleDateString() : '-' %></span></div>
+        <div class="row" style="justify-content:space-between;"><span class="meta text-sm">Visibility</span><span><%= r.visibility === 'internal' ? 'Internal' : 'Shared' %></span></div>
+        <div class="row" style="justify-content:space-between;"><span class="meta text-sm">Created</span><span><%= new Date(r.created_at).toLocaleDateString() %></span></div>
+        <% if (r.closed_at) { %><div class="row" style="justify-content:space-between;"><span class="meta text-sm">Closed</span><span><%= new Date(r.closed_at).toLocaleDateString() %></span></div><% } %>
+      </div>
+    </div>
+
+    <!-- Activity -->
+    <div class="panel">
+      <div class="panel-head"><h2>Activity</h2></div>
+      <% if (!activity.length) { %>
+        <div class="panel-pad meta text-base">No activity yet.</div>
+      <% } else { %>
+        <div class="divide-row" style="max-height:360px;overflow-y:auto;">
+          <% activity.forEach(a => { %>
+            <div style="padding:8px 14px;line-height:1.45;">
+              <div class="text-sm"><strong><%= a.actor_name || 'Someone' %></strong> <span class="text-secondary"><%= a.detail || a.action %></span></div>
+              <div class="meta text-xs" style="margin-top:1px;"><%= new Date(a.created_at).toLocaleString() %></div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<% if (canManage) { %>
+<!-- Edit request dialog -->
+<dialog id="editReq" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(720px, 94vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
+  <form method="POST" action="/workspaces/<%= ws.id %>/soc2/requests/<%= r.id %>/edit">
+    <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+      <div><h2 style="margin:0;font-size:18px;font-weight:500;letter-spacing:-0.01em;">Edit request <%= r.ref %></h2></div>
+      <button type="button" onclick="document.getElementById('editReq').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">&times;</button>
+    </header>
+    <div style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="col-full">
+        <label class="label">Title</label>
+        <input class="input" name="title" value="<%= r.title %>" required>
+      </div>
+      <div class="col-full">
+        <label class="label">Description</label>
+        <textarea class="textarea" name="description" rows="3"><%= r.description || '' %></textarea>
+      </div>
+      <div>
+        <label class="label">Category</label>
+        <select class="select" name="tsc_category" id="editReqCat">
+          <% cat.CATEGORIES.forEach(ct => { %>
+            <option value="<%= ct.code %>" <%= r.tsc_category === ct.code ? 'selected' : '' %>><%= ct.name %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="label">Priority</label>
+        <select class="select" name="priority">
+          <% ['normal','high','low'].forEach(p => { %>
+            <option value="<%= p %>" <%= r.priority === p ? 'selected' : '' %>><%= p.charAt(0).toUpperCase() + p.slice(1) %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="label">Assignee</label>
+        <select class="select" name="assignee_id">
+          <option value="">Unassigned</option>
+          <% members.forEach(m => { %>
+            <option value="<%= m.id %>" <%= r.assignee_id === m.id ? 'selected' : '' %>><%= m.name %><%= m.user_type === 'firm' ? ' (consultant)' : '' %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="label">Due date</label>
+        <input class="input" type="date" name="due_date" value="<%= r.due_date || '' %>">
+      </div>
+      <div class="col-full">
+        <label class="label">Visibility</label>
+        <div class="row text-sm" style="gap:16px;margin-top:2px;">
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="radio" name="visibility" value="shared" <%= r.visibility !== 'internal' ? 'checked' : '' %>> <span>Shared with client</span></label>
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="radio" name="visibility" value="internal" <%= r.visibility === 'internal' ? 'checked' : '' %>> <span>Internal (consulting team only)</span></label>
+        </div>
+      </div>
+      <div class="col-full">
+        <label class="label">Maps to criteria</label>
+        <div style="border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;padding:8px 10px;background:var(--bg-deep);">
+          <% cat.CATEGORIES.forEach(ct => { %>
+            <div class="soc2-ecrit-group" data-cat="<%= ct.code %>" style="<%= r.tsc_category === ct.code ? '' : 'display:none;' %>">
+              <% cat.groupsFor(ct.code).forEach(g => { %>
+                <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin:8px 0 3px;"><%= g %> · <%= cat.GROUP_LABELS[g] || g %></div>
+                <% cat.criteriaFor(ct.code).filter(cr => cr.group === g).forEach(cr => { %>
+                  <label class="row-center" style="gap:7px;cursor:pointer;padding:2px 0;" title="<%= cr.description %>">
+                    <input type="checkbox" name="tsc_criteria" value="<%= cr.code %>" <%= criteria.indexOf(cr.code) !== -1 ? 'checked' : '' %>>
+                    <span class="text-sm"><span class="mono"><%= cr.code %></span>: <%= cr.title %></span>
+                  </label>
+                <% }) %>
+              <% }) %>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+    <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
+      <button type="button" onclick="document.getElementById('editReq').close()" class="btn btn-ghost">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save changes</button>
+    </footer>
+  </form>
+</dialog>
+<% } %>
+
+<script>
+  (function () {
+    // Evidence kind toggle.
+    document.querySelectorAll('input[name="kind"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        var v = document.querySelector('input[name="kind"]:checked').value;
+        var f = document.querySelector('[data-ev="file"]');
+        var u = document.querySelector('[data-ev="url"]');
+        if (f) f.style.display = (v === 'file') ? '' : 'none';
+        if (u) u.style.display = (v === 'url') ? '' : 'none';
+      });
+    });
+    // Edit-request criteria filter by category.
+    var esel = document.getElementById('editReqCat');
+    function esync() {
+      var v = esel.value;
+      document.querySelectorAll('#editReq .soc2-ecrit-group').forEach(function (g) {
+        g.style.display = (g.getAttribute('data-cat') === v) ? '' : 'none';
+      });
+    }
+    if (esel) { esel.addEventListener('change', esync); esync(); }
+    // Click-outside-to-close.
+    var dlg = document.getElementById('editReq');
+    if (dlg) dlg.addEventListener('click', function (e) {
+      var rc = dlg.getBoundingClientRect();
+      if (e.clientX < rc.left || e.clientX > rc.right || e.clientY < rc.top || e.clientY > rc.bottom) dlg.close();
+    });
+  })();
+</script>
+
+<%- include('partials/footer') %>

@@ -2,14 +2,14 @@
 <%
   const ragColor = r => r === 'green' ? '#15803d' : r === 'amber' ? '#b45309' : r === 'red' ? '#b91c1c' : '#52525b';
   const ragLabel = r => r === 'green' ? 'On target' : r === 'amber' ? 'Near target' : r === 'red' ? 'Off target' : 'No data';
-  const fmt = v => v == null ? '—' : (Math.round(v * 100) / 100).toString();
+  const fmt = v => v == null ? '-' : (Math.round(v * 100) / 100).toString();
   const unitSuffix = (v, u) => v == null ? '' : (u === '%' ? '%' : u === 'days' ? ' d' : '');
 %>
 
 <div class="page-head">
   <div>
     <h1 class="page-title">Adopted metrics</h1>
-    <div class="page-subtitle">The ISO 27004 measures running on this engagement. Each shows its latest reading against the target — feed these into your management review as evidence-backed clause 9.1 inputs.</div>
+    <div class="page-subtitle">The ISO 27004 measures running on this engagement. Each shows its latest reading against the target. Feed these into your management review as evidence-backed clause 9.1 inputs.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/metrics/library" class="btn btn-secondary btn-xs">Browse library →</a>
 </div>
@@ -34,9 +34,9 @@
 
   <% if (upcomingMrms && upcomingMrms.length > 0) { %>
     <div class="panel" style="margin-bottom:14px;">
-      <div class="panel-head"><h2>Feed into management review</h2><span class="meta">clause 9.3.2 c) — performance &amp; effectiveness</span></div>
+      <div class="panel-head"><h2>Feed into management review</h2><span class="meta">clause 9.3.2 c): performance &amp; effectiveness</span></div>
       <div class="panel-pad">
-        <div class="text-base" style="margin-bottom:10px;line-height:1.5;">Append these adopted measures, with their latest readings and targets, into a management review record — alongside auto-computed ISMS KPIs (control coverage, training, incidents, audits).</div>
+        <div class="text-base" style="margin-bottom:10px;line-height:1.5;">Append these adopted measures, with their latest readings and targets, into a management review record, alongside auto-computed ISMS KPIs (control coverage, training, incidents, audits).</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <% upcomingMrms.forEach(mr => { %>
             <form method="POST" action="/workspaces/<%= ws.id %>/metrics/feed-to-mrm/<%= mr.id %>" style="display:inline;">
@@ -72,11 +72,11 @@
                 <div class="meta text-xs"><%= m.ref %> · <%= m.unit %><%= m.direction === 'lower' ? ' · lower is better' : '' %></div>
               </td>
               <td style="font-weight:500;" class="num">
-                <% if (m.latest_value == null) { %><span class="meta">—</span><% } else { %><%= fmt(m.latest_value) %><%= unitSuffix(m.latest_value, m.unit) %><div class="meta text-xs"><%= m.latest_at %></div><% } %>
+                <% if (m.latest_value == null) { %><span class="meta">-</span><% } else { %><%= fmt(m.latest_value) %><%= unitSuffix(m.latest_value, m.unit) %><div class="meta text-xs"><%= m.latest_at %></div><% } %>
               </td>
               <td class="num"><% if (m.target_value == null) { %><span class="meta">not set</span><% } else { %><%= fmt(m.target_value) + unitSuffix(m.target_value, m.unit) %><% } %></td>
               <td><span class="status" style="color:<%= ragColor(m.rag) %>;"><%= ragLabel(m.rag) %></span></td>
-              <td class="meta text-base"><%= m.frequency || '—' %></td>
+              <td class="meta text-base"><%= m.frequency || '-' %></td>
               <td class="num"><%= m.reading_count %></td>
               <td style="white-space:nowrap;text-align:right;">
                 <a href="/workspaces/<%= ws.id %>/metrics/adopted/<%= m.id %>" class="link-muted text-base">Open</a>

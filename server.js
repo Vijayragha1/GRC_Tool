@@ -1,9 +1,17 @@
+// Load .env BEFORE anything reads process.env (DB_PATH, SESSION_SECRET, the
+// email-provider keys, ISMS_MASTER_KEY, APP_BASE_URL). The README documented a
+// .env file but nothing actually read it, so the documented bootstrap silently
+// had no effect (SESSION_SECRET fell back to a random per-boot value, logging
+// everyone out on restart; email stayed in dev-fallback).
+require('dotenv').config();
+
 // Pin the whole app to India Standard Time so "today", date math, scheduled
 // scans and the calendar all operate in IST regardless of the host's timezone.
 // Must run before anything constructs a Date.
 process.env.TZ = 'Asia/Kolkata';
 
 const express = require('express');
+const helmet = require('helmet');
 const session = require('express-session');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
@@ -16,6 +24,7 @@ const mammoth = require('mammoth');
 const { PDFParse } = require('pdf-parse');
 const MarkdownIt = require('markdown-it');
 const htmlToDocx = require('html-to-docx');
+const { sanitizeDocHtml } = require('./lib/sanitize');
 const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: true });
 
 // Heuristic: a string is "markdown-ish" (not yet HTML) when it has no real HTML element tags.
@@ -44,6 +53,7 @@ const reports = require('./lib/reports');
 const backup = require('./lib/backup');
 const keyrotation = require('./lib/keyrotation');
 const csvImport = require('./lib/csv-import');
+const supplierQ = require('./lib/supplier-questionnaires');
 const auditPack = require('./lib/audit-pack');
 const changesSince = require('./lib/changes-since');
 const email = require('./lib/email');
@@ -87,12 +97,49 @@ init();
 
 // Force master key generation eagerly so first request doesn't block.
 enc.masterKey();
-// Start scheduled job runner - every 60 minutes by default.
-jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
-// Start daily backup runner.
-backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
+// NOTE: the scheduled job runner and daily backup timers are started at the
+// bottom of this file, only when it is the process entrypoint
+// (require.main === module). Starting them at require-time created setInterval
+// timers that kept the event loop alive forever, which hung the test suite and
+// any other code that requires the app in-process.
 
 const app = express();
+// Behind the documented Nginx / Lightsail TLS terminator. Without this, req.ip
+// is the proxy's address (so audit-trail IPs and reset-token IPs are wrong),
+// req.protocol is always 'http' (so Secure cookies would never be set), and
+// req.secure is always false. Trust the first proxy hop.
+app.set('trust proxy', 1);
+
+// Security response headers. A buyer's scanner flags the absence of every one
+// of these in the first five minutes. helmet's defaults give us HSTS,
+// X-Content-Type-Options: nosniff, X-Frame-Options (clickjacking), and a
+// Referrer-Policy. The CSP is shipped in REPORT-ONLY mode: the app uses inline
+// event handlers and inline styles throughout, so an enforcing CSP would break
+// it today - report-only lets a scanner see the policy and lets us collect
+// violations to tighten (externalise inline handlers) before flipping to
+// enforce. X-Frame-Options still enforces anti-framing in the meantime.
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    reportOnly: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'blob:'],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  // Don't set COEP - it breaks cross-origin asset/embed loads with no benefit here.
+  crossOriginEmbedderPolicy: false,
+  hsts: { maxAge: 15552000, includeSubDomains: true },
+}));
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -116,7 +163,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'change-me-in-production-' + crypto.randomBytes(8).toString('hex'),
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    httpOnly: true,                                  // JS can't read the session cookie (XSS mitigation)
+    sameSite: 'lax',                                 // CSRF defence-in-depth; 'lax' keeps normal nav working
+    secure: process.env.NODE_ENV === 'production',   // HTTPS-only in prod (works because trust proxy is set)
+  }
 }));
 
 // HTML responses must not be cached by the browser. Without this, CSRF tokens
@@ -220,7 +272,7 @@ function qUploadAny(req, res, next) {
 }
 
 // Resolve the firm (for upload partitioning) from a questionnaire's external
-// token BEFORE multer parses the body — multer's destination() needs
+// token BEFORE multer parses the body; multer's destination() needs
 // req.workspace.firm_id, and req.params.token is available pre-parse. Also
 // short-circuits invalid / completed / expired links with the same status
 // pages the GET route renders, so multer never runs for a dead link. On
@@ -294,7 +346,7 @@ function getActiveFirmId(req) {
     const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
     return first ? first.id : null;
   }
-  // Firm users always operate within their own firm — session value is ignored.
+  // Firm users always operate within their own firm; session value is ignored.
   if (user.user_type === 'firm') return user.firm_id;
   // Client users: honour session value only if they have workspace membership
   // in that firm, otherwise fall back to the first firm they belong to.
@@ -358,7 +410,7 @@ const PUBLIC_AUTH_PATHS = [
 
 function requireAuth(req, res, next) {
   // Reject unauthenticated requests. The no-auth firm-owner fallback was
-  // removed when real login was enabled — currentUser() now returns a user
+  // removed when real login was enabled; currentUser() now returns a user
   // only when req.session.userId is set and that user is still active.
   req.user = currentUser(req);
   if (!req.user) {
@@ -395,7 +447,7 @@ function getWorkspace(workspaceId, user) {
 
 // Allowed framework identifiers. Treated as a closed set so a malformed
 // workspace.frameworks value can't introduce phantom nav groups.
-const ALLOWED_FRAMEWORKS = ['iso27001', 'iso42001', 'csf'];
+const ALLOWED_FRAMEWORKS = ['iso27001', 'iso42001', 'csf', 'soc2'];
 
 // Parse the workspace.frameworks JSON column into an Array. Falls back to
 // "all three" so a workspace created before the column existed (or one
@@ -573,7 +625,7 @@ function redirectBack(req, res, toastMsg, toastKind) {
 app.locals.escapeHtml = escapeHtml;
 // Tier marker as a crisp inline SVG (star/diamond/dot) instead of unicode
 // glyphs (★ ◆ ·), which render inconsistently across fonts. Colour is inherited
-// via currentColor. Safe to emit with <%- %> — no user input.
+// via currentColor. Safe to emit with <%- %>: no user input.
 app.locals.tierIcon = (tier, size = 12) => {
   const open = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="vertical-align:-0.125em;flex-shrink:0;">`;
   if (tier === 'mandatory') return open + '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
@@ -622,7 +674,7 @@ function requirePermission(perm) {
 // Build the audit context from a request - IP, UA, request id, current entity scope.
 function auditCtx(req) {
   return {
-    ip: (req.headers['x-forwarded-for'] || req.connection?.remoteAddress || '').toString().split(',')[0].trim(),
+    ip: req.ip || '',  // accurate + non-spoofable now that trust proxy is set (was raw, forgeable x-forwarded-for)
     userAgent: (req.headers['user-agent'] || '').slice(0, 255),
     requestId: req.id || null,
     entityScopeId: req.entityScopeId || null
@@ -822,7 +874,7 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// /register stays redirected — user provisioning is admin-driven (Phase 3)
+// /register stays redirected; user provisioning is admin-driven (Phase 3)
 // rather than self-signup. Anything posted here goes back to login.
 app.get('/register', (_req, res) => res.redirect('/login'));
 app.post('/register', (_req, res) => res.redirect('/login'));
@@ -953,7 +1005,7 @@ app.post('/admin/users/invite', requireAuth, async (req, res) => {
   const firmRow = db.prepare(`SELECT name FROM firms WHERE id = ?`).get(req.user.firm_id);
   const roleLabel = userType === 'firm'
     ? (rbac.ROLE_LABELS[firmRole] || 'Consultant')
-    : `Client-side — ${rbac.ROLE_LABELS[workspaceRole] || workspaceRole}`;
+    : `Client-side: ${rbac.ROLE_LABELS[workspaceRole] || workspaceRole}`;
 
   let sendError = null;
   try {
@@ -991,7 +1043,7 @@ app.post('/admin/users/create', requireAuth, (req, res) => {
                          VALUES (?, ?, ?, 'firm', ?, ?)`)
     .run(email, hash, name, req.user.firm_id, firmRole).lastInsertRowid;
   try { logAction(req.user.id, null, 'create_consultant', 'user', id, { email, role: firmRole }); } catch (_) {}
-  res.redirect('/admin/users?notice=' + encodeURIComponent(`Created ${email}. Share the temp password with them — they should change it on first sign-in.`));
+  res.redirect('/admin/users?notice=' + encodeURIComponent(`Created ${email}. Share the temp password with them; they should change it on first sign-in.`));
 });
 
 app.post('/admin/users/:id/deactivate', requireAuth, (req, res) => {
@@ -1013,7 +1065,7 @@ app.post('/admin/users/:id/deactivate', requireAuth, (req, res) => {
 });
 
 // Admin-triggered password reset. Same machinery as /forgot but driven from
-// the duplicate-detection inline action — the admin sees "account exists" on
+// the duplicate-detection inline action; the admin sees "account exists" on
 // the invite form, clicks "send reset link", and we generate a fresh token
 // and email it. Always reports success (mirrors /forgot's no-leakage stance).
 app.post('/admin/users/send-reset', requireAuth, async (req, res) => {
@@ -1021,7 +1073,7 @@ app.post('/admin/users/send-reset', requireAuth, async (req, res) => {
   const email = String((req.body && req.body.email) || '').trim().toLowerCase();
   if (!email) return res.redirect('/admin/users?error=' + encodeURIComponent('Missing email.'));
 
-  // Only reset users this firm has a reason to touch — firm users in the same
+  // Only reset users this firm has a reason to touch: firm users in the same
   // firm, or client users who hold at least one workspace_member row in a
   // workspace owned by this firm. Prevents a manager from poking strangers'
   // accounts via crafted form data.
@@ -1058,7 +1110,7 @@ app.post('/admin/users/send-reset', requireAuth, async (req, res) => {
 });
 
 // Reactivate a previously-deactivated user. Mirror of /deactivate with the
-// same firm-scoped permission check. Doesn't issue a reset email — admin can
+// same firm-scoped permission check. Doesn't issue a reset email; admin can
 // trigger that separately if the user has forgotten their password.
 app.post('/admin/users/:id/reactivate', requireAuth, (req, res) => {
   if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
@@ -1084,7 +1136,7 @@ app.post('/admin/invitations/:id/revoke', requireAuth, (req, res) => {
 
 // Update a firm user's role from the Users & Access page. Manager-only,
 // scoped to the same firm. Guards against demoting yourself or removing the
-// last manager — both would lock the firm out of user management.
+// last manager; both would lock the firm out of user management.
 app.post('/admin/users/:id/firm-role', requireAuth, (req, res) => {
   if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
   const newRole = String((req.body && req.body.firm_role) || '').trim();
@@ -1213,7 +1265,7 @@ app.get('/forgot', (req, res) => {
 
 app.post('/forgot', async (req, res) => {
   const email = String((req.body && req.body.email) || '').trim().toLowerCase();
-  // Generic response — never confirm or deny whether an account exists.
+  // Generic response: never confirm or deny whether an account exists.
   const genericNotice = 'If an account exists for that email, a reset link is on its way. It expires in 1 hour.';
   if (!email) {
     return res.status(400).render('auth/forgot', {
@@ -1605,13 +1657,13 @@ app.get('/portfolio', requireAuth, (req, res) => {
 
 // Firm-wide schedule aggregation: every dated / assignable item across ALL of a
 // firm's engagements, normalised into one list. Powers the manager calendar grid,
-// the overdue strip, the KPI counts and the per-consultant workload panel — the
+// the overdue strip, the KPI counts and the per-consultant workload panel, the
 // cross-client sibling of the per-workspace /workspaces/:id/calendar.
 //
 // Each item is { kind, title, date|null, status, open, countsWorkload, wsId, wsName,
 // link, ownerId|null, ownerLabel|null }. "Schedule" items (audits, reviews, cert
 // milestones, vendor deadlines) show on the calendar but don't count as a person's
-// workload — only items with a real per-person owner do (tasks, NCs, improvements,
+// workload; only items with a real per-person owner do (tasks, NCs, improvements,
 // treatment actions, deliberately-assigned controls).
 function collectManagerSchedule(user) {
   const wss = listWorkspaces(user);
@@ -1619,7 +1671,7 @@ function collectManagerSchedule(user) {
   const wsName = {};
   wss.forEach(w => { wsName[w.id] = w.brand_display_name || w.client_name; });
 
-  // Engagement spans — drive the Outlook-style duration bars on the calendar.
+  // Engagement spans: drive the Outlook-style duration bars on the calendar.
   // Each project runs from kickoff (created_at) to its target certification
   // date. The manual `stage` column is unreliable, so derive the live stage.
   const projects = wss.filter(w => w.target_cert_date).map(w => {
@@ -1635,7 +1687,7 @@ function collectManagerSchedule(user) {
     };
   });
 
-  // The firm's people — workload rows are drawn from here, and free-text owner
+  // The firm's people: workload rows are drawn from here, and free-text owner
   // strings (NCs, improvements) are resolved back to a person by name match.
   const people = db.prepare(
     `SELECT id, name, email, firm_role FROM users
@@ -1747,7 +1799,7 @@ function collectManagerSchedule(user) {
                        q.external_expires_at, q.external_completed_at, s.name AS supplier_name
                 FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id = q.supplier_id
                 WHERE q.workspace_id IN (${ph}) AND q.external_expires_at IS NOT NULL`).all(...wsIds).forEach(qr => {
-      if (qr.external_completed_at) return; // vendor already responded — no deadline pressure
+      if (qr.external_completed_at) return; // vendor already responded, no deadline pressure
       push({ kind:'questionnaire', title:`${qr.supplier_name||'Vendor'} · ${qr.template_name||'questionnaire'}`,
         date:String(qr.external_expires_at).slice(0,10), status:qr.status, open:true,
         countsWorkload:false, wsId:qr.workspace_id, wsName:wsName[qr.workspace_id],
@@ -1802,7 +1854,7 @@ app.get('/calendar', requireAuth, (req, res) => {
     monthStr = req.query.month;
     const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
     const monthStart = `${monthStr}-01`;
-    // Local-component formatters — toISOString() is UTC and would roll the
+    // Local-component formatters; toISOString() is UTC and would roll the
     // 1st-of-month back a day (and a month) in IST, breaking the Prev/Next links.
     const nextMoStart = ymdLocal(new Date(yr, mo, 1));
     prevMo = ymLocal(new Date(yr, mo - 2, 1));
@@ -2192,12 +2244,6 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   if (intakeAnswered === 0 && !hasScope && !req.query.skipSetupRedirect) {
     return res.redirect(`/workspaces/${ws.id}/intake`);
   }
-  // Partial setup signal - render overview with a banner. Threshold of
-  // 8 matches "roughly the first two sections of the 25-question intake."
-  // Once the scope is confirmed, the consultant has explicitly moved
-  // past setup, so suppress the banner even if the answer count is low
-  // (they signed off knowing what was captured).
-  const setupIncomplete = intakeAnswered > 0 && intakeAnswered < 8 && !ws.scope_confirmed_at;
 
   const progress = workspaceProgress(ws.id);
 
@@ -2295,7 +2341,7 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     assetCount, evidenceCount, openTasks, actionItems,
     docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
     roadmap, needsAttention, nextStep, activePass,
-    setupIncomplete, intakeAnswered, derivedStage
+    derivedStage
   });
 });
 
@@ -2484,7 +2530,7 @@ app.get('/workspaces/:wsId/team', requireAuth, requireWorkspace, (req, res) => {
     return res.status(403).render('error', { user: req.user, message: 'Only firm consultants can manage the engagement team.' });
   }
   const ws = req.workspace;
-  // Firm users who could be on this engagement — all active firm members of
+  // Firm users who could be on this engagement: all active firm members of
   // the firm that owns this workspace.
   const firmPool = db.prepare(`SELECT id, name, email, firm_role FROM users
      WHERE firm_id = ? AND user_type = 'firm' AND active = 1
@@ -2540,7 +2586,7 @@ app.post('/workspaces/:wsId/team/add-firm-member', requireAuth, requireWorkspace
   if (!exists) return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('Pick a firm consultant.'));
   try {
     db.prepare('INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)').run(req.workspace.id, userId, role);
-  } catch (_) { /* already a member — ignore */ }
+  } catch (_) { /* already a member, ignore */ }
   res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Consultant added to engagement.'));
 });
 
@@ -2560,7 +2606,7 @@ app.post('/workspaces/:wsId/team/invite-client', requireAuth, requireWorkspace, 
     return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('A valid email is required.'));
   }
   // Reuse the duplicate-detection from /admin/users/invite. An active account
-  // gets an inline reset offer on /admin/users — for the team kickoff page we
+  // gets an inline reset offer on /admin/users; for the team kickoff page we
   // keep things simple and just redirect there so the manager handles it once.
   const existing = db.prepare(`SELECT id, active FROM users WHERE email = ?`).get(email);
   if (existing) {
@@ -2569,7 +2615,7 @@ app.post('/workspaces/:wsId/team/invite-client', requireAuth, requireWorkspace, 
       `An ${which} account already exists for ${email}. Open Admin → Users & access to reactivate, reset password, or add them to this workspace.`));
   }
   // Replace any pending invitation for the same email + workspace, same shape
-  // as /admin/users/invite — keeps outstanding list tidy.
+  // as /admin/users/invite, keeps outstanding list tidy.
   db.prepare(`UPDATE user_invitations SET revoked_at = CURRENT_TIMESTAMP
      WHERE firm_id = ? AND workspace_id = ? AND email = ?
        AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP`)
@@ -2590,7 +2636,7 @@ app.post('/workspaces/:wsId/team/invite-client', requireAuth, requireWorkspace, 
     const r = await emailLib.sendInviteEmail({
       toEmail: email, toName: name, inviterName: req.user.name,
       firmName: firmRow && firmRow.name,
-      role: `Client-side — ${rbac.ROLE_LABELS[role] || role}`,
+      role: `Client-side: ${rbac.ROLE_LABELS[role] || role}`,
       token: raw, expiresAt, firmId: req.user.firm_id
     });
     if (!r.ok) sendError = r.error || 'Email delivery failed';
@@ -2753,7 +2799,7 @@ app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, r
   // Re-check open-task existence inside the transaction. The post-assessment
   // summary view filters with `has_open_task` at render time, but two
   // consultants both looking at the same list and both clicking "Spawn" would
-  // each INSERT — duplicate "Remediate A.5.15…" tasks for the same control.
+  // each INSERT: duplicate "Remediate A.5.15…" tasks for the same control.
   // This statement is run per id at commit time, so it catches concurrent
   // spawns no matter when the render happened.
   const hasOpen = db.prepare(`SELECT 1 FROM tasks
@@ -2840,7 +2886,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   const nextById = position < allOrder.length ? allOrder[position].id : null;
 
   // Theme-jump navigator data. A real consultant doesn't walk 118 items
-  // sequentially — they bounce between themes. The nav builds an index of
+  // sequentially; they bounce between themes. The nav builds an index of
   // every clause + control with its current assessment status, grouped into
   // (a) main clauses by section, (b) Annex A by category.
   const navRows = db.prepare(`SELECT i.id, i.type, i.category, i.title, i.sort_order,
@@ -4305,6 +4351,7 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
     WHERE rc.risk_id = ? ORDER BY i.sort_order`).all(risk.id);
   const allControls = db.prepare(`SELECT id, title FROM iso_items WHERE type = 'control' ORDER BY sort_order`).all();
   const assets = db.prepare('SELECT id, name FROM assets WHERE workspace_id = ?').all(req.workspace.id);
+  const suppliers = db.prepare('SELECT id, name FROM suppliers WHERE workspace_id=? AND lifecycle_stage != \'terminated\' ORDER BY name').all(req.workspace.id);
   const methodology = getActiveMethodology(req.workspace.id);
   const inherentBand = methodologyBand(methodology, risk.likelihood, risk.impact);
   const residualBand = (risk.residual_likelihood && risk.residual_impact) ? methodologyBand(methodology, risk.residual_likelihood, risk.residual_impact) : null;
@@ -4315,7 +4362,7 @@ app.get('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePer
   // Tier A.2 - risk acceptance state
   const activeAcceptance = db.prepare(`SELECT * FROM risk_acceptances
     WHERE risk_id=? AND revoked_at IS NULL ORDER BY signed_at DESC LIMIT 1`).get(risk.id);
-  res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, methodology, inherentBand, residualBand, actions, activeAcceptance });
+  res.render('risk_detail', { user: req.user, ws: req.workspace, risk, linked, allControls, assets, suppliers, methodology, inherentBand, residualBand, actions, activeAcceptance });
 });
 
 // Tier 1.1 - Risk treatment plan actions (clause 6.1.3 audit-defensible workflow)
@@ -4547,16 +4594,17 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
 
 app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
   const { title, description, asset_id, threat, vulnerability, likelihood, impact,
-          treatment, owner_name, status, residual_likelihood, residual_impact } = req.body;
+          treatment, owner_name, status, residual_likelihood, residual_impact, supplier_id } = req.body;
   db.prepare(`UPDATE risks SET title=?, description=?, asset_id=?, threat=?, vulnerability=?,
               likelihood=?, impact=?, treatment=?, owner_name=?, status=?,
-              residual_likelihood=?, residual_impact=?
+              residual_likelihood=?, residual_impact=?, supplier_id=?
               WHERE id=? AND workspace_id=?`)
     .run(title, description || null, asset_id || null, threat || null, vulnerability || null,
          parseInt(likelihood) || 3, parseInt(impact) || 3,
          treatment || 'modify', owner_name || null, status || 'open',
          residual_likelihood ? parseInt(residual_likelihood) : null,
          residual_impact ? parseInt(residual_impact) : null,
+         supplier_id || null,
          req.params.id, req.workspace.id);
   fts.refresh(req.workspace.id, 'risk', req.params.id);
   logAction(req.user.id, req.workspace.id, 'update_risk', 'risk', req.params.id, null);
@@ -4796,7 +4844,10 @@ app.get('/workspaces/:wsId/crosswalks', requireAuth, requireWorkspace, requirePe
   // Coverage counters - how many included controls in this workspace are mapped
   // to each framework. Drives the headline KPI tiles.
   const includedIds = new Set(controls.filter(c => c.applicability === 'included').map(c => c.id));
-  const frameworks = ['soc2', 'nist_csf', 'gdpr'];
+  // Iterate the frameworks actually present in the mapping table, not a
+  // hardcoded 3 - otherwise the NIST 800-53 / PCI / HIPAA / DORA mappings the
+  // product already ships never appear in the coverage headline.
+  const frameworks = [...new Set(allMappings.map(m => m.framework))].sort();
   const coverage = {};
   for (const fw of frameworks) {
     const mapped = new Set(allMappings.filter(m => m.framework === fw).map(m => m.iso_item_id));
@@ -5279,7 +5330,9 @@ app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, re
   const docName = (name && name.trim()) || req.file.originalname.replace(/\.[^.]+$/, '');
   const cat = category || 'policy';
   const heading = `<h1>${docName.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</h1>\n<p><em>Imported from: ${req.file.originalname.replace(/&/g,'&amp;').replace(/</g,'&lt;')} (sha256 ${sha.slice(0,12)}…)</em></p>\n${conversionNote}<hr>\n`;
-  const content = heading + bodyHtml;
+  // Sanitise before storing: mammoth emits raw HTML from an untrusted .docx,
+  // which is later rendered unescaped to clients and external auditors.
+  const content = sanitizeDocHtml(heading + bodyHtml);
   const encContent = enc.encryptIfNeeded(content, req.workspace.id, !!req.workspace.encryption_enabled);
 
   const id = db.prepare(`INSERT INTO generated_docs
@@ -5461,7 +5514,7 @@ app.get('/workspaces/:wsId/documents/:id/print', requireAuth, requireWorkspace, 
   if (!docRaw) return res.status(404).send('Not found');
   let plainContent = enc.decryptIfNeeded(docRaw.content, req.workspace.id);
   if (looksLikeMarkdown(plainContent)) plainContent = mdRenderer.render(plainContent);
-  const doc = { ...docRaw, content: plainContent };
+  const doc = { ...docRaw, content: sanitizeDocHtml(plainContent) };
   res.render('document_print', { doc, ws: req.workspace });
 });
 
@@ -5694,7 +5747,7 @@ app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
                            ORDER BY meeting_date DESC, created_at DESC`).all(req.workspace.id);
   // Preview the 9.3.2 input pack so the consultant sees what will be auto-
   // filled before submitting the create form. The same compute is then re-run
-  // server-side on POST — no risk of staleness.
+  // server-side on POST: no risk of staleness.
   const pack932Preview = compute932InputPack(req.workspace.id);
   res.render('mrms', { user: req.user, ws: req.workspace, mrms, pack932Preview });
 });
@@ -5762,29 +5815,29 @@ function compute932InputPack(wsId) {
   }
 
   return {
-    // 9.3.2.a — prior MRM actions
+    // 9.3.2.a: prior MRM actions
     prior_actions_status: lastMrm
       ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
       : 'No prior management review on record. This is the first one.',
 
-    // 9.3.2.b — context changes
+    // 9.3.2.b: context changes
     context_changes: lastMrm
       ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution, and changes in the needs / expectations of interested parties identified during gap assessment.]`
-      : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ISMS — regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
+      : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ISMS: regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
 
-    // 9.3.2.c — performance review (extended with incidents + suppliers)
+    // 9.3.2.c: performance review (extended with incidents + suppliers)
     performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\nIncidents (last 12 months):\n  Total: ${incidents.last12m} (${incidents.open} still open)\n\nSupplier reviews:\n  ${supplierReview.total} suppliers · ${supplierReview.overdue} overdue review${supplierReview.overdue === 1 ? '' : 's'}\n\n[Add commentary on KPIs, monitoring metrics (9.1), trends, root-cause patterns.]`,
 
-    // 9.3.2.d — interested-party feedback. Parties are now captured
+    // 9.3.2.d: interested-party feedback. Parties are now captured
     // during the gap assessment + clause 4.2 work rather than a
     // dedicated register, so the auto-pack just hands the consultant
     // a structured prompt to fill in.
     feedback_interested_parties: `[Summarise feedback received in the period from interested parties identified in clause 4.2 - customer concerns / contractual security asks, regulator queries, employee survey results, supplier feedback, board observations. Quantify where possible (NPS, audit findings against customer SoWs, complaint volumes).]`,
 
-    // 9.3.2.e — risk-treatment status (existing + register diff)
+    // 9.3.2.e: risk-treatment status (existing + register diff)
     risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}${lastMrm ? `\n\nSince last MRM (${lastMrm.meeting_date}):\n  Risks added: ${risksAddedSinceLast}\n  Risks closed/treated: ${risksClosedSinceLast}` : ''}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
 
-    // 9.3.2.f — improvement opportunities
+    // 9.3.2.f: improvement opportunities
     improvement_opportunities: improvementsOpen === 0 && improvementsDone === 0
       ? 'No improvement actions recorded yet. Capture observations from audits, MRMs, incidents, and monitoring under Improvements (Clause 10.1).'
       : `Improvement log:\n  Active: ${improvementsOpen}\n  Completed: ${improvementsDone}${recentImprovements.length ? '\n\nActive items:\n' + recentImprovements.map(i => `  - ${i.title}${i.source ? ' [' + i.source + ']' : ''}`).join('\n') : ''}\n\n[Identify themes from this period's data: recurring NCs, gaps surfaced by audits, technology refresh, training needs, control automation candidates.]`,
@@ -7222,12 +7275,13 @@ app.get('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, (req, 
     runbook = db.prepare('SELECT * FROM runbooks WHERE id=?').get(inc.runbook_id);
     if (runbook) runbook.steps = JSON.parse(runbook.steps);
   }
-  res.render('incident_detail', { user: req.user, ws: req.workspace, inc, events, runbooks, runbook });
+  const suppliers = db.prepare('SELECT id, name FROM suppliers WHERE workspace_id=? AND lifecycle_stage != \'terminated\' ORDER BY name').all(req.workspace.id);
+  res.render('incident_detail', { user: req.user, ws: req.workspace, inc, events, runbooks, runbook, suppliers });
 });
 
 app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
   const f = ['title','category','severity','detected_at','reported_by','status','description','affected_assets',
-            'containment_actions','eradication_actions','recovery_actions','lessons_learned','external_notification'];
+            'containment_actions','eradication_actions','recovery_actions','lessons_learned','external_notification','supplier_id'];
   const set = []; const vals = [];
   f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
   if (req.body.status === 'closed') set.push('closed_at=CURRENT_TIMESTAMP');
@@ -7595,6 +7649,20 @@ const STANDARD_CLAUSES = [
   ['service_levels', 'Service levels and remedies']
 ];
 
+// Due-diligence checklist seeded on supplier creation; gates the approval step.
+const STANDARD_ONBOARDING_ITEMS = [
+  ['security_questionnaire', 'Security questionnaire returned and reviewed'],
+  ['assurance_report', 'Assurance report on file (ISO 27001 / SOC 2)'],
+  ['dpa_signed', 'DPA signed (where personal data is processed)'],
+  ['subprocessors_reviewed', 'Sub-processors reviewed'],
+  ['clauses_present', 'Key contract clauses confirmed present'],
+  ['risk_tier_confirmed', 'Risk tier confirmed by reviewer']
+];
+function seedOnboardingItems(wsId, supplierId) {
+  const ins = db.prepare(`INSERT INTO supplier_onboarding_items (workspace_id, supplier_id, item_key, label) VALUES (?, ?, ?, ?)`);
+  STANDARD_ONBOARDING_ITEMS.forEach(([k, label]) => ins.run(wsId, supplierId, k, label));
+}
+
 // Inherent risk: 1-25 based on data access × business criticality, then add weights for volume / dependency / regulatory exposure
 function computeInherentRisk(s) {
   const dataMap = { none: 1, public: 1, internal: 2, confidential: 4, restricted: 5 };
@@ -7640,7 +7708,18 @@ function computeResidualRisk(supplierId, inherent) {
   if (presentClauses >= 8) credit += 2;
   else if (presentClauses >= 5) credit += 1;
 
-  return Math.max(1, Math.min(25, inherent - credit));
+  // Open findings raise residual risk back up: an unremediated high/critical issue means
+  // the attestations and clauses do not fully hold. Capped so findings cannot dominate.
+  let penalty = 0;
+  const openF = db.prepare(`SELECT severity, COUNT(*) AS c FROM supplier_findings WHERE supplier_id=? AND status IN ('open','in_progress') GROUP BY severity`).all(supplierId);
+  openF.forEach(f => {
+    if (f.severity === 'critical') penalty += 4 * f.c;
+    else if (f.severity === 'high') penalty += 2 * f.c;
+    else if (f.severity === 'medium') penalty += 1 * f.c;
+  });
+  penalty = Math.min(penalty, 6);
+
+  return Math.max(1, Math.min(25, inherent - credit + penalty));
 }
 
 function recomputeSupplierRisk(supplierId, wsId) {
@@ -7655,6 +7734,43 @@ function tierFromRisk(score) {
   if (score >= 18) return 'tier_1';
   if (score >= 10) return 'tier_2';
   return 'tier_3';
+}
+
+// Shared questionnaire scoring. Used by the internal review submit and the external
+// vendor submit so the two paths can never diverge. Scoring by question_type:
+//   yes_no / multiple_choice: full weight when the answer equals expected_answer (case-insensitive)
+//   rating: expected_answer holds a numeric threshold (e.g. '>=4' or '4'); full weight when answer >= threshold
+//   free_text: informational only, excluded from the weighted total
+// Legacy templates are all yes_no, so their scores are unchanged by this refactor.
+function scoreAnswer(q, answer) {
+  const type = q.question_type || 'yes_no';
+  if (type === 'free_text') return { weight: 0, earned: 0 };
+  const weight = q.weight || 0;
+  const exp = (q.expected_answer || '').trim();
+  if (!answer || !exp) return { weight, earned: 0 };
+  if (type === 'rating') {
+    const m = exp.match(/-?\d+(?:\.\d+)?/);
+    const threshold = m ? parseFloat(m[0]) : null;
+    const val = parseFloat(answer);
+    if (threshold === null || !Number.isFinite(val)) return { weight, earned: 0 };
+    return { weight, earned: val >= threshold ? weight : 0 };
+  }
+  return { weight, earned: String(answer).trim().toLowerCase() === exp.toLowerCase() ? weight : 0 };
+}
+function scoreQuestionnaire(questionnaireId, templateId) {
+  const allQ = db.prepare(`SELECT q.id, q.weight, q.question_type, q.expected_answer, r.answer
+    FROM questionnaire_questions q
+    LEFT JOIN supplier_questionnaire_responses r ON r.question_id=q.id AND r.questionnaire_id=?
+    WHERE q.template_id=?`).all(questionnaireId, templateId);
+  let totalWeight = 0, achieved = 0, answered = 0;
+  allQ.forEach(q => {
+    const { weight, earned } = scoreAnswer(q, q.answer);
+    totalWeight += weight; achieved += earned;
+    if (q.answer) answered++;
+  });
+  const score = totalWeight > 0 ? Math.round((achieved / totalWeight) * 100) : null;
+  const rating = score === null ? null : (score >= 80 ? 'low' : score >= 60 ? 'medium' : 'high');
+  return { score, rating, answered };
 }
 
 app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
@@ -7706,9 +7822,10 @@ app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePerm
     dependency_type || 'multi_source', location || null, regulatory_exposure || null
   ).lastInsertRowid;
 
-  // Seed standard contract clauses checklist
+  // Seed standard contract clauses checklist + onboarding due-diligence checklist
   const insClause = db.prepare(`INSERT INTO supplier_clauses (workspace_id, supplier_id, clause_key, clause_label, status) VALUES (?, ?, ?, ?, 'pending')`);
   STANDARD_CLAUSES.forEach(([k, label]) => insClause.run(req.workspace.id, id, k, label));
+  seedOnboardingItems(req.workspace.id, id);
 
   recomputeSupplierRisk(id, req.workspace.id);
   // Auto-tier from inherent risk
@@ -7718,6 +7835,226 @@ app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePerm
 
   logAction(req.user.id, req.workspace.id, 'create_supplier', 'supplier', id, { name });
   res.redirect(withToast('/workspaces/' + req.workspace.id + '/vendors/' + id, 'Supplier added'));
+});
+
+// ---- Vendor register CSV import / export. Registered before /vendors/:id so the literal path wins. ----
+function vendorImportRender(req, mode, result, csv, filename) {
+  return {
+    user: req.user, ws: req.workspace,
+    schema: csvImport.SUPPLIER_SCHEMA, kind: 'suppliers',
+    mode, result, csv: csv || '', filename: filename || '',
+    backUrl: `/workspaces/${req.workspace.id}/vendors`,
+    listUrl: `/workspaces/${req.workspace.id}/vendors`,
+    templateUrl: `/workspaces/${req.workspace.id}/vendors/import/template`,
+    previewUrl: `/workspaces/${req.workspace.id}/vendors/import/preview`,
+    commitUrl: `/workspaces/${req.workspace.id}/vendors/import/commit`,
+    importUrl: `/workspaces/${req.workspace.id}/vendors/import`
+  };
+}
+app.get('/workspaces/:wsId/vendors/import', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  res.render('import', vendorImportRender(req, 'upload', null, '', ''));
+});
+app.get('/workspaces/:wsId/vendors/import/template', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="suppliers_template.csv"');
+  res.send(csvImport.buildTemplate(csvImport.SUPPLIER_SCHEMA));
+});
+app.post('/workspaces/:wsId/vendors/import/preview', requireAuth, requireWorkspace, requirePermission('supplier.manage'), csvUpload.single('file'), (req, res) => {
+  let csv = '', filename = '';
+  if (req.file && req.file.buffer) { csv = req.file.buffer.toString('utf8'); filename = req.file.originalname || 'upload.csv'; }
+  else if (req.body.csv) { csv = String(req.body.csv); filename = 'pasted.csv'; }
+  const result = csvImport.processFile(csv, csvImport.SUPPLIER_SCHEMA, {});
+  res.render('import', vendorImportRender(req, 'preview', result, csv, filename));
+});
+app.post('/workspaces/:wsId/vendors/import/commit', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const csv = String(req.body.csv || '');
+  if (!csv.trim()) return res.redirect(`/workspaces/${req.workspace.id}/vendors/import`);
+  const result = csvImport.processFile(csv, csvImport.SUPPLIER_SCHEMA, {});
+  const valid = result.rows.filter(r => r.valid);
+  if (!valid.length) return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/import`, 'Nothing to import - all rows had errors', 'error'));
+  const ins = db.prepare(`INSERT INTO suppliers
+    (workspace_id, entity_id, name, service_provided, business_criticality, data_access, data_volume,
+     dependency_type, tier, location, industry, parent_company, regulatory_exposure, annual_spend,
+     contract_start, contract_end, next_review_date, website, contact, lifecycle_stage)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prospect')`);
+  const insClause = db.prepare(`INSERT INTO supplier_clauses (workspace_id, supplier_id, clause_key, clause_label, status) VALUES (?, ?, ?, ?, 'pending')`);
+  const insContact = db.prepare(`INSERT INTO supplier_contacts (workspace_id, supplier_id, email, role, is_primary) VALUES (?, ?, ?, 'general', 1)`);
+  const importedIds = [];
+  db.transaction(() => {
+    valid.forEach(r => {
+      const p = r.parsed;
+      const id = ins.run(
+        req.workspace.id, req.entityScopeId || null,
+        p.name, p.service_provided || null, p.business_criticality || 'medium',
+        p.data_access || 'none', p.data_volume || 'low', p.dependency_type || 'multi_source',
+        p.tier || 'tier_2', p.location || null, p.industry || null, p.parent_company || null,
+        p.regulatory_exposure || null, p.annual_spend || null, p.contract_start || null,
+        p.contract_end || null, p.next_review_date || null, p.website || null, p.contact_email || null
+      ).lastInsertRowid;
+      STANDARD_CLAUSES.forEach(([k, label]) => insClause.run(req.workspace.id, id, k, label));
+      seedOnboardingItems(req.workspace.id, id);
+      if (p.contact_email) insContact.run(req.workspace.id, id, p.contact_email);
+      recomputeSupplierRisk(id, req.workspace.id);
+      if (!p.tier) {
+        const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=?`).get(id);
+        db.prepare(`UPDATE suppliers SET tier=? WHERE id=?`).run(tierFromRisk(cur.inherent_risk_score), id);
+      }
+      importedIds.push(id);
+    });
+  })();
+  importedIds.forEach(id => fts.refresh(req.workspace.id, 'supplier', id));
+  logAction(req.user.id, req.workspace.id, 'import_suppliers_csv', 'supplier', null, { count: valid.length, skipped: result.summary.invalid }, auditCtx(req));
+  const msg = result.summary.invalid
+    ? `Imported ${valid.length} supplier${valid.length === 1 ? '' : 's'}, ${result.summary.invalid} row${result.summary.invalid === 1 ? '' : 's'} skipped`
+    : `Imported ${valid.length} supplier${valid.length === 1 ? '' : 's'}`;
+  res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors`, msg));
+});
+app.get('/workspaces/:wsId/export/vendors.csv', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const rows = db.prepare(`SELECT * FROM suppliers WHERE workspace_id=? ORDER BY residual_risk_score DESC, name`).all(req.workspace.id);
+  const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
+  const lines = ['Name,Service,Tier,Inherent,Residual,Lifecycle,Business criticality,Data access,Dependency,Location,Industry,Parent,Regulatory,Annual spend,Contract start,Contract end,Next review,Website,Contact'];
+  rows.forEach(s => {
+    lines.push([s.name, s.service_provided, (s.tier || '').replace('_', ' '), s.inherent_risk_score, s.residual_risk_score,
+                s.lifecycle_stage, s.business_criticality, s.data_access, s.dependency_type, s.location, s.industry,
+                s.parent_company, s.regulatory_exposure, s.annual_spend, s.contract_start, s.contract_end,
+                s.next_review_date, s.website, s.contact].map(esc).join(','));
+  });
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="Vendors-${req.workspace.client_name.replace(/[^\w]/g,'_')}.csv"`);
+  res.send(lines.join('\n'));
+});
+
+// ---- Vendor reports (DOCX via html-to-docx; background-color only renders on table cells) ----
+function tprmEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function tprmRiskWord(n) { return n == null ? '-' : (n >= 18 ? n + '/25 (critical)' : n >= 10 ? n + '/25 (elevated)' : n + '/25 (low)'); }
+function tprmHeadRow(cols) { return '<tr>' + cols.map(h => `<td style="background:#f5f5f0;font-weight:bold;">${tprmEsc(h)}</td>`).join('') + '</tr>'; }
+app.get('/workspaces/:wsId/vendors/:id/report.docx', requireAuth, requireWorkspace, requirePermission('supplier.manage'), async (req, res) => {
+  const v = db.prepare('SELECT * FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+  if (!v) return res.status(404).send('Not found');
+  const clauses = db.prepare('SELECT * FROM supplier_clauses WHERE supplier_id=? ORDER BY id').all(v.id);
+  const qs = db.prepare('SELECT * FROM supplier_questionnaires WHERE supplier_id=? ORDER BY created_at DESC').all(v.id);
+  const findings = db.prepare(`SELECT * FROM supplier_findings WHERE supplier_id=? AND status IN ('open','in_progress') ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`).all(v.id);
+  const subs = db.prepare('SELECT * FROM supplier_subprocessors WHERE supplier_id=? ORDER BY name').all(v.id);
+  const mon = db.prepare('SELECT * FROM supplier_monitoring WHERE supplier_id=? ORDER BY recorded_at DESC LIMIT 6').all(v.id);
+  const contacts = db.prepare('SELECT * FROM supplier_contacts WHERE supplier_id=? ORDER BY is_primary DESC').all(v.id);
+  const today = new Date().toISOString().split('T')[0];
+  const e = tprmEsc;
+  const row = (k, val) => `<tr><td style="background:#f5f5f0;font-weight:bold;width:35%;">${e(k)}</td><td>${e(val)}</td></tr>`;
+  const primary = contacts.find(c => c.is_primary) || contacts[0];
+  let html = `<h1>Supplier risk profile: ${e(v.name)}</h1>`;
+  html += `<p>Generated ${today} for ${e(req.workspace.client_name)}. Reference: ISO/IEC 27001:2022 A.5.19 to A.5.23.</p>`;
+  html += `<h2>Profile</h2><table>`;
+  html += row('Service', v.service_provided) + row('Industry', v.industry) + row('Location', v.location);
+  html += row('Parent company', v.parent_company) + row('Website', v.website);
+  html += row('Lifecycle stage', (v.lifecycle_stage || '').replace(/_/g, ' ')) + row('Tier', (v.tier || '').replace('_', ' '));
+  html += row('Primary contact', primary ? [primary.name, primary.email].filter(Boolean).join(', ') : v.contact);
+  html += `</table>`;
+  html += `<h2>Risk assessment</h2><table>`;
+  html += row('Inherent risk', tprmRiskWord(v.inherent_risk_score)) + row('Residual risk', tprmRiskWord(v.residual_risk_score));
+  html += row('Business criticality', v.business_criticality) + row('Data access', v.data_access) + row('Data volume', v.data_volume);
+  html += row('Dependency', (v.dependency_type || '').replace('_', ' ')) + row('Regulatory exposure', v.regulatory_exposure);
+  html += `</table>`;
+  html += `<h2>Approval</h2><p>${v.approved_at ? 'Approved by ' + e(v.approved_by) + ' on ' + e(v.approved_at.split(' ')[0]) + '.' : 'Not yet approved (stage: ' + e((v.lifecycle_stage || 'prospect').replace(/_/g, ' ')) + ').'}</p>`;
+  html += `<h2>Contract clauses</h2><table>` + tprmHeadRow(['Clause', 'Status']);
+  clauses.forEach(c => { html += `<tr><td>${e(c.clause_label)}</td><td>${e(c.status)}</td></tr>`; });
+  html += `</table>`;
+  html += `<h2>Questionnaires</h2>`;
+  if (qs.length) {
+    html += `<table>` + tprmHeadRow(['Template', 'Status', 'Score', 'Rating']);
+    qs.forEach(q => { html += `<tr><td>${e(q.template_name)}</td><td>${e(q.status)}</td><td>${q.score == null ? '-' : q.score + '%'}</td><td>${e(q.risk_rating || '-')}</td></tr>`; });
+    html += `</table>`;
+  } else html += `<p>No questionnaires issued.</p>`;
+  html += `<h2>Open findings</h2>`;
+  if (findings.length) {
+    html += `<table>` + tprmHeadRow(['Finding', 'Severity', 'Status', 'Owner', 'Due']);
+    findings.forEach(f => { html += `<tr><td>${e(f.title)}</td><td>${e(f.severity)}</td><td>${e(f.status)}</td><td>${e(f.owner || '-')}</td><td>${e(f.due_date || '-')}</td></tr>`; });
+    html += `</table>`;
+  } else html += `<p>No open findings.</p>`;
+  if (subs.length) {
+    html += `<h2>Sub-processors</h2><table>` + tprmHeadRow(['Name', 'Service', 'Location', 'Approved']);
+    subs.forEach(s => { html += `<tr><td>${e(s.name)}</td><td>${e(s.service_provided || '-')}</td><td>${e(s.location || '-')}</td><td>${s.approved ? 'yes' : 'no'}</td></tr>`; });
+    html += `</table>`;
+  }
+  if (mon.length) {
+    html += `<h2>Monitoring</h2><table>` + tprmHeadRow(['Date', 'Source', 'Score', 'Grade']);
+    mon.forEach(m => { html += `<tr><td>${e(m.recorded_at)}</td><td>${e(m.source)}</td><td>${m.score == null ? '-' : e(m.score)}</td><td>${e(m.grade || '-')}</td></tr>`; });
+    html += `</table>`;
+  }
+  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  logAction(req.user.id, req.workspace.id, 'generate_supplier_report', 'supplier', v.id, null, auditCtx(req));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="Supplier-${(v.name || 'vendor').replace(/[^\w]/g, '_')}-${today}.docx"`);
+  res.send(buf);
+});
+app.get('/workspaces/:wsId/export/vendors-report.docx', requireAuth, requireWorkspace, requirePermission('supplier.manage'), async (req, res) => {
+  const wsId = req.workspace.id;
+  const sups = db.prepare(`SELECT * FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' ORDER BY residual_risk_score DESC, name`).all(wsId);
+  const findings = db.prepare(`SELECT f.*, s.name AS supplier_name FROM supplier_findings f JOIN suppliers s ON s.id=f.supplier_id
+    WHERE s.workspace_id=? AND f.status IN ('open','in_progress') ORDER BY CASE f.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`).all(wsId);
+  const today = new Date().toISOString().split('T')[0];
+  const e = tprmEsc;
+  const tier1 = sups.filter(s => (s.residual_risk_score || 0) >= 18).length;
+  const overdue = sups.filter(s => s.next_review_date && s.next_review_date < today).length;
+  let html = `<h1>Third-party risk portfolio</h1>`;
+  html += `<p>Generated ${today} for ${e(req.workspace.client_name)}. Reference: ISO/IEC 27001:2022 A.5.19 to A.5.23.</p>`;
+  html += `<h2>Summary</h2><table>`;
+  html += `<tr><td style="background:#f5f5f0;font-weight:bold;">Active suppliers</td><td>${sups.length}</td></tr>`;
+  html += `<tr><td style="background:#f5f5f0;font-weight:bold;">Critical residual risk (18 or above)</td><td>${tier1}</td></tr>`;
+  html += `<tr><td style="background:#f5f5f0;font-weight:bold;">Reviews overdue</td><td>${overdue}</td></tr>`;
+  html += `<tr><td style="background:#f5f5f0;font-weight:bold;">Open findings</td><td>${findings.length}</td></tr></table>`;
+  html += `<h2>Register</h2><table>` + tprmHeadRow(['Supplier', 'Tier', 'Inherent', 'Residual', 'Stage', 'Next review']);
+  sups.forEach(s => { html += `<tr><td>${e(s.name)}</td><td>${e((s.tier || '').replace('_', ' '))}</td><td>${s.inherent_risk_score || '-'}</td><td>${s.residual_risk_score || '-'}</td><td>${e((s.lifecycle_stage || '').replace(/_/g, ' '))}</td><td>${e(s.next_review_date || '-')}</td></tr>`; });
+  html += `</table>`;
+  if (findings.length) {
+    html += `<h2>Open findings</h2><table>` + tprmHeadRow(['Supplier', 'Finding', 'Severity', 'Owner', 'Due']);
+    findings.forEach(f => { html += `<tr><td>${e(f.supplier_name)}</td><td>${e(f.title)}</td><td>${e(f.severity)}</td><td>${e(f.owner || '-')}</td><td>${e(f.due_date || '-')}</td></tr>`; });
+    html += `</table>`;
+  }
+  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  logAction(req.user.id, req.workspace.id, 'generate_tprm_report', 'supplier', null, null, auditCtx(req));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="TPRM-Portfolio-${(req.workspace.client_name || 'client').replace(/[^\w]/g, '_')}-${today}.docx"`);
+  res.send(buf);
+});
+
+app.get('/workspaces/:wsId/vendors/dashboard', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const wsId = req.workspace.id;
+  const active = db.prepare(`SELECT * FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated'`).all(wsId);
+  const today = new Date().toISOString().split('T')[0];
+  const d30s = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+  const d90s = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+  const summary = {
+    total: active.length,
+    tier1: active.filter(s => (s.residual_risk_score || 0) >= 18).length,
+    expiring: db.prepare(`SELECT COUNT(*) c FROM supplier_documents d JOIN suppliers s ON s.id=d.supplier_id WHERE s.workspace_id=? AND d.expiry_date IS NOT NULL AND d.expiry_date < date('now','+30 days') AND d.expiry_date >= date('now')`).get(wsId).c,
+    overdueReview: active.filter(s => s.next_review_date && s.next_review_date < today).length,
+    openFindings: db.prepare(`SELECT COUNT(*) c FROM supplier_findings f JOIN suppliers s ON s.id=f.supplier_id WHERE s.workspace_id=? AND f.status IN ('open','in_progress')`).get(wsId).c
+  };
+  const tierDist = { tier_1: 0, tier_2: 0, tier_3: 0 };
+  active.forEach(s => { if (tierDist[s.tier] === undefined) tierDist[s.tier] = 0; tierDist[s.tier]++; });
+  const band = n => Math.max(1, Math.min(5, Math.ceil((n || 1) / 5)));
+  const heat = Array.from({ length: 6 }, () => [0, 0, 0, 0, 0, 0]);
+  active.forEach(s => { if (s.inherent_risk_score && s.residual_risk_score) heat[band(s.inherent_risk_score)][band(s.residual_risk_score)]++; });
+  const timeline = { overdue: 0, d30: 0, d90: 0, later: 0, none: 0 };
+  active.forEach(s => {
+    if (!s.next_review_date) timeline.none++;
+    else if (s.next_review_date < today) timeline.overdue++;
+    else if (s.next_review_date <= d30s) timeline.d30++;
+    else if (s.next_review_date <= d90s) timeline.d90++;
+    else timeline.later++;
+  });
+  const funnel = { draft: 0, sent: 0, responded: 0, reviewed: 0 };
+  db.prepare(`SELECT q.status, COUNT(*) c FROM supplier_questionnaires q JOIN suppliers s ON s.id=q.supplier_id WHERE s.workspace_id=? GROUP BY q.status`).all(wsId).forEach(r => { funnel[r.status] = r.c; });
+  const findingsBySev = { critical: 0, high: 0, medium: 0, low: 0 };
+  db.prepare(`SELECT f.severity, COUNT(*) c FROM supplier_findings f JOIN suppliers s ON s.id=f.supplier_id WHERE s.workspace_id=? AND f.status IN ('open','in_progress') GROUP BY f.severity`).all(wsId).forEach(r => { findingsBySev[r.severity] = r.c; });
+  const topRisk = db.prepare(`SELECT id, name, tier, inherent_risk_score, residual_risk_score, next_review_date FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' ORDER BY residual_risk_score DESC, name LIMIT 10`).all(wsId);
+  const trend = db.prepare(`SELECT substr(review_date,1,7) ym, ROUND(AVG(residual_risk),1) avg_res FROM supplier_reviews WHERE workspace_id=? AND review_date IS NOT NULL AND residual_risk IS NOT NULL GROUP BY ym ORDER BY ym DESC LIMIT 6`).all(wsId).reverse();
+  const templates = db.prepare(`SELECT id, name FROM questionnaire_templates WHERE (is_system=1 OR firm_id=?) AND COALESCE(archived,0)=0 ORDER BY name`).all(req.workspace.firm_id);
+  const schedules = db.prepare(`SELECT sc.*, t.name AS template_name, s.name AS supplier_name FROM recurring_questionnaire_schedules sc
+    LEFT JOIN questionnaire_templates t ON t.id=sc.template_id LEFT JOIN suppliers s ON s.id=sc.supplier_id
+    WHERE sc.workspace_id=? ORDER BY sc.active DESC, sc.next_due_date`).all(wsId);
+  const supplierOpts = db.prepare(`SELECT id, name FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' ORDER BY name`).all(wsId);
+  res.render('tprm_dashboard', { user: req.user, ws: req.workspace, summary, tierDist, heat, timeline, funnel, findingsBySev, topRisk, trend, templates, schedules, supplierOpts });
 });
 
 app.get('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, res) => {
@@ -7742,11 +8079,20 @@ app.get('/workspaces/:wsId/vendors/:id', requireAuth, requireWorkspace, (req, re
   const templates = db.prepare(`SELECT id, name, description, category, (SELECT COUNT(*) FROM questionnaire_questions WHERE template_id=questionnaire_templates.id) AS q_count FROM questionnaire_templates WHERE is_system=1 OR firm_id=? ORDER BY name`).all(req.workspace.firm_id);
   const monitoring = db.prepare('SELECT * FROM supplier_monitoring WHERE supplier_id=? ORDER BY recorded_at DESC').all(v.id);
   const terminationItems = db.prepare('SELECT * FROM supplier_termination_items WHERE supplier_id=? ORDER BY id').all(v.id);
+  const contacts = db.prepare('SELECT * FROM supplier_contacts WHERE supplier_id=? ORDER BY is_primary DESC, name').all(v.id);
+  const findings = db.prepare(`SELECT * FROM supplier_findings WHERE supplier_id=? ORDER BY
+    CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'accepted' THEN 2 ELSE 3 END,
+    CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+    due_date IS NULL, due_date`).all(v.id);
+  const onboardingItems = db.prepare('SELECT * FROM supplier_onboarding_items WHERE supplier_id=? ORDER BY id').all(v.id);
+  const linkedIncidents = db.prepare(`SELECT id, title, severity, status, detected_at FROM incidents WHERE supplier_id=? AND workspace_id=? ORDER BY detected_at DESC, id DESC`).all(v.id, req.workspace.id);
+  const linkedRisks = db.prepare(`SELECT id, title, status, treatment FROM risks WHERE supplier_id=? AND workspace_id=? ORDER BY id DESC`).all(v.id, req.workspace.id);
 
   res.render('vendor_detail', {
     user: req.user, ws: req.workspace, v, tab,
     docs, subprocessors, reviews, notes, clauses, questionnaires, templates,
     monitoring, terminationItems, supplierControls, allControlsForVendor,
+    contacts, findings, onboardingItems, linkedIncidents, linkedRisks,
     inherent: v.inherent_risk_score, residual: v.residual_risk_score
   });
 });
@@ -7873,6 +8219,114 @@ app.post('/workspaces/:wsId/vendors/:id/notes/:noteId/delete', requireAuth, requ
   res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=notes');
 });
 
+// Contacts (multiple per supplier; the primary mirrors into legacy suppliers.contact so the share default still works)
+function clearPrimaryContacts(supplierId, wsId) {
+  db.prepare(`UPDATE supplier_contacts SET is_primary=0 WHERE supplier_id=? AND workspace_id=?`).run(supplierId, wsId);
+}
+app.post('/workspaces/:wsId/vendors/:id/contacts', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const { name, email, phone, role, is_primary, notes } = req.body;
+  if (!name && !email) return redirectBack(req, res);
+  db.transaction(() => {
+    if (is_primary) clearPrimaryContacts(req.params.id, req.workspace.id);
+    db.prepare(`INSERT INTO supplier_contacts (workspace_id, supplier_id, name, email, phone, role, is_primary, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(req.workspace.id, req.params.id, name || null, email || null, phone || null, role || 'general', is_primary ? 1 : 0, notes || null);
+    if (is_primary && email) db.prepare(`UPDATE suppliers SET contact=? WHERE id=? AND workspace_id=?`).run(email, req.params.id, req.workspace.id);
+  })();
+  logAction(req.user.id, req.workspace.id, 'add_supplier_contact', 'supplier', req.params.id, { email }, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=contacts');
+});
+app.post('/workspaces/:wsId/vendors/:id/contacts/:cId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const { name, email, phone, role, is_primary, notes } = req.body;
+  db.transaction(() => {
+    if (is_primary) clearPrimaryContacts(req.params.id, req.workspace.id);
+    db.prepare(`UPDATE supplier_contacts SET name=?, email=?, phone=?, role=?, is_primary=?, notes=? WHERE id=? AND supplier_id=? AND workspace_id=?`)
+      .run(name || null, email || null, phone || null, role || 'general', is_primary ? 1 : 0, notes || null, req.params.cId, req.params.id, req.workspace.id);
+    if (is_primary && email) db.prepare(`UPDATE suppliers SET contact=? WHERE id=? AND workspace_id=?`).run(email, req.params.id, req.workspace.id);
+  })();
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=contacts');
+});
+app.post('/workspaces/:wsId/vendors/:id/contacts/:cId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`DELETE FROM supplier_contacts WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.cId, req.params.id, req.workspace.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=contacts');
+});
+
+// Findings / remediation tracker (A.5.22 monitoring + clause 10.2 corrective action bridge)
+app.post('/workspaces/:wsId/vendors/:id/findings', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const { title, description, severity, owner, due_date, source, source_questionnaire_id, iso_control_ref } = req.body;
+  if (!title) return redirectBack(req, res);
+  db.prepare(`INSERT INTO supplier_findings (workspace_id, supplier_id, title, description, severity, status, owner, due_date, source, source_questionnaire_id, iso_control_ref, created_by)
+    VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`).run(
+    req.workspace.id, req.params.id, title, description || null, severity || 'medium',
+    owner || null, due_date || null, source || 'manual', source_questionnaire_id || null, iso_control_ref || null, req.user.id);
+  recomputeSupplierRisk(req.params.id, req.workspace.id);
+  fts.refresh(req.workspace.id, 'supplier', req.params.id);
+  logAction(req.user.id, req.workspace.id, 'add_supplier_finding', 'supplier', req.params.id, { title, severity }, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=findings');
+});
+app.post('/workspaces/:wsId/vendors/:id/findings/:fId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const { title, description, severity, status, owner, due_date, resolution_notes } = req.body;
+  db.prepare(`UPDATE supplier_findings SET title=COALESCE(NULLIF(?,''),title), description=?, severity=?, status=?, owner=?, due_date=?, resolution_notes=?,
+    closed_at=CASE WHEN ? IN ('closed','remediated') AND closed_at IS NULL THEN CURRENT_TIMESTAMP WHEN ? NOT IN ('closed','remediated') THEN NULL ELSE closed_at END
+    WHERE id=? AND supplier_id=? AND workspace_id=?`).run(
+    title || '', description || null, severity || 'medium', status || 'open', owner || null, due_date || null, resolution_notes || null,
+    status || 'open', status || 'open', req.params.fId, req.params.id, req.workspace.id);
+  recomputeSupplierRisk(req.params.id, req.workspace.id);
+  fts.refresh(req.workspace.id, 'supplier', req.params.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=findings');
+});
+app.post('/workspaces/:wsId/vendors/:id/findings/:fId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`DELETE FROM supplier_findings WHERE id=? AND supplier_id=? AND workspace_id=?`).run(req.params.fId, req.params.id, req.workspace.id);
+  recomputeSupplierRisk(req.params.id, req.workspace.id);
+  fts.refresh(req.workspace.id, 'supplier', req.params.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=findings');
+});
+app.post('/workspaces/:wsId/vendors/:id/findings/:fId/promote-nc', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const f = db.prepare(`SELECT f.*, s.name AS supplier_name FROM supplier_findings f JOIN suppliers s ON s.id=f.supplier_id WHERE f.id=? AND f.supplier_id=? AND f.workspace_id=?`).get(req.params.fId, req.params.id, req.workspace.id);
+  if (!f) return redirectBack(req, res);
+  if (f.nonconformity_id) return res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + f.nonconformity_id);
+  const sev = (f.severity === 'critical' || f.severity === 'high') ? 'major' : 'minor';
+  const ncId = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, source_ref, description, severity)
+    VALUES (?, ?, 'supplier', ?, ?, ?)`).run(req.workspace.id, f.supplier_name + ': ' + f.title, 'Supplier #' + f.supplier_id, f.description || f.title, sev).lastInsertRowid;
+  db.prepare(`UPDATE supplier_findings SET nonconformity_id=?, status=CASE WHEN status='open' THEN 'in_progress' ELSE status END WHERE id=?`).run(ncId, f.id);
+  fts.refresh(req.workspace.id, 'nc', ncId);
+  logAction(req.user.id, req.workspace.id, 'promote_finding_nc', 'nonconformity', ncId, { finding_id: f.id }, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
+});
+
+// Onboarding due-diligence checklist + approval gate (drives lifecycle_stage)
+app.post('/workspaces/:wsId/vendors/:id/onboarding/start', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const exists = db.prepare('SELECT COUNT(*) c FROM supplier_onboarding_items WHERE supplier_id=?').get(req.params.id).c;
+  if (!exists) seedOnboardingItems(req.workspace.id, req.params.id);
+  db.prepare(`UPDATE suppliers SET lifecycle_stage='in_review', onboarding_started_at=COALESCE(onboarding_started_at, CURRENT_TIMESTAMP) WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'supplier_lifecycle_change', 'supplier', req.params.id, { to: 'in_review' }, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=onboarding');
+});
+app.post('/workspaces/:wsId/vendors/:id/onboarding/:itemId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const done = req.body.done ? 1 : 0;
+  db.prepare(`UPDATE supplier_onboarding_items SET done=?, done_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END, notes=COALESCE(?, notes)
+    WHERE id=? AND supplier_id=? AND workspace_id=?`).run(done, done, req.body.notes || null, req.params.itemId, req.params.id, req.workspace.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=onboarding');
+});
+app.post('/workspaces/:wsId/vendors/:id/approve', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const dest = '/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=onboarding';
+  const missing = db.prepare(`SELECT label FROM supplier_onboarding_items WHERE supplier_id=? AND workspace_id=? AND required=1 AND done=0`).all(req.params.id, req.workspace.id);
+  const openCrit = db.prepare(`SELECT COUNT(*) c FROM supplier_findings WHERE supplier_id=? AND status IN ('open','in_progress') AND severity='critical'`).get(req.params.id).c;
+  if (missing.length || openCrit) {
+    const reasons = [];
+    if (missing.length) reasons.push(missing.length + ' due-diligence item' + (missing.length === 1 ? '' : 's') + ' outstanding');
+    if (openCrit) reasons.push(openCrit + ' open critical finding' + (openCrit === 1 ? '' : 's'));
+    return res.redirect(withToast(dest, 'Cannot approve: ' + reasons.join('; '), 'error'));
+  }
+  db.prepare(`UPDATE suppliers SET lifecycle_stage='approved', approved_by=?, approved_at=CURRENT_TIMESTAMP, rejection_reason=NULL WHERE id=? AND workspace_id=?`).run(req.user.name, req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'supplier_lifecycle_change', 'supplier', req.params.id, { to: 'approved' }, auditCtx(req));
+  res.redirect(withToast(dest, 'Supplier approved'));
+});
+app.post('/workspaces/:wsId/vendors/:id/reject', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`UPDATE suppliers SET lifecycle_stage='prospect', rejection_reason=? WHERE id=? AND workspace_id=?`).run(req.body.rejection_reason || 'Rejected', req.params.id, req.workspace.id);
+  logAction(req.user.id, req.workspace.id, 'supplier_lifecycle_change', 'supplier', req.params.id, { to: 'prospect', reason: req.body.rejection_reason || null }, auditCtx(req));
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?tab=onboarding');
+});
+
 // Clauses
 app.post('/workspaces/:wsId/vendors/:id/clauses/:clauseId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
   const { status, notes } = req.body;
@@ -7945,17 +8399,17 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
   const ws = req.workspace;
   const qid = req.params.qId;
   const dest = '/workspaces/' + ws.id + '/vendors/' + req.params.id + '/questionnaires/' + qid;
-  const questionnaire = db.prepare('SELECT id FROM supplier_questionnaires WHERE id=? AND workspace_id=?').get(qid, ws.id);
+  const questionnaire = db.prepare('SELECT id, template_id FROM supplier_questionnaires WHERE id=? AND workspace_id=?').get(qid, ws.id);
   if (!questionnaire) return res.status(404).send('Questionnaire not found');
 
   // A multer error (oversize / too many files) aborts parsing mid-stream, so the
-  // body may be partial — bail before saving and tell the consultant to retry.
+  // body may be partial; bail before saving and tell the consultant to retry.
   if (req._uploadError) {
     (req.files || []).forEach(f => { try { fs.unlinkSync(f.path); } catch (_) {} });
     const e = req._uploadError;
-    const msg = e && e.code === 'LIMIT_FILE_SIZE' ? 'A file exceeded the 25 MB limit — nothing was saved. Please attach a smaller file and try again.'
-      : e && e.code === 'LIMIT_FILE_COUNT' ? 'Too many files at once (limit 40) — nothing was saved. Please try again with fewer files.'
-      : 'An attachment could not be processed — nothing was saved. Please try again.';
+    const msg = e && e.code === 'LIMIT_FILE_SIZE' ? 'A file exceeded the 25 MB limit; nothing was saved. Please attach a smaller file and try again.'
+      : e && e.code === 'LIMIT_FILE_COUNT' ? 'Too many files at once (limit 40); nothing was saved. Please try again with fewer files.'
+      : 'An attachment could not be processed; nothing was saved. Please try again.';
     return res.redirect(withToast(dest, msg));
   }
 
@@ -7971,17 +8425,8 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
     if (ans) answered++;
   }
 
-  // Compute score
-  const allQ = db.prepare(`SELECT q.id, q.weight, q.expected_answer, r.answer FROM questionnaire_questions q
-    LEFT JOIN supplier_questionnaire_responses r ON r.question_id=q.id AND r.questionnaire_id=?
-    WHERE q.template_id=(SELECT template_id FROM supplier_questionnaires WHERE id=?)`).all(qid, qid);
-  let totalWeight = 0, achieved = 0;
-  allQ.forEach(q => {
-    totalWeight += q.weight;
-    if (q.answer && q.expected_answer && q.answer.toLowerCase() === q.expected_answer.toLowerCase()) achieved += q.weight;
-  });
-  const finalScore = totalWeight > 0 ? Math.round((achieved / totalWeight) * 100) : null;
-  const rating = finalScore === null ? null : (finalScore >= 80 ? 'low' : finalScore >= 60 ? 'medium' : 'high');
+  // Compute score via the shared scorer (handles every question type).
+  const { score: finalScore, rating, answered: answeredCount } = scoreQuestionnaire(qid, questionnaire.template_id);
 
   const status = req.body.action === 'submit' ? 'responded' : (req.body.action === 'review' ? 'reviewed' : 'draft');
   const reviewer = req.body.reviewer || null;
@@ -7990,7 +8435,7 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
     responded_at=COALESCE(responded_at, CASE WHEN ?='responded' OR ?='reviewed' THEN CURRENT_TIMESTAMP END),
     reviewed_at=CASE WHEN ?='reviewed' THEN CURRENT_TIMESTAMP ELSE reviewed_at END,
     reviewer=COALESCE(?, reviewer), reviewer_comments=COALESCE(?, reviewer_comments)
-    WHERE id=? AND workspace_id=?`).run(allQ.filter(q => q.answer).length, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid, req.workspace.id);
+    WHERE id=? AND workspace_id=?`).run(answeredCount, finalScore, rating, status, status, status, status, reviewer, reviewerComments, qid, req.workspace.id);
   recomputeSupplierRisk(req.params.id, req.workspace.id);
 
   // Persist any evidence the consultant attached during review.
@@ -8011,7 +8456,7 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requi
 });
 
 app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
-  // Unlink attachment files first — the questionnaire_attachments rows cascade
+  // Unlink attachment files first; the questionnaire_attachments rows cascade
   // via FK, but the files on disk would otherwise be orphaned.
   const files = db.prepare(`SELECT a.stored_path FROM questionnaire_attachments a
     INNER JOIN supplier_questionnaires q ON q.id=a.questionnaire_id
@@ -8847,11 +9292,11 @@ function snapshotDocVersion(docId, wsId, status, userId, summary) {
   catch (e) {
     if (e && e.code && e.code.startsWith('SQLITE_CONSTRAINT')) {
       // Concurrent snapshot won the version=N slot. Re-read MAX and retry
-      // once — almost always succeeds because the colliding transaction has
+      // once, almost always succeeds because the colliding transaction has
       // committed by now.
       try { return attempt(); }
       catch (e2) {
-        const wrapped = new Error('Could not save document version — another consultant submitted at the same time. Refresh and try again.');
+        const wrapped = new Error('Could not save document version; another consultant submitted at the same time. Refresh and try again.');
         wrapped.cause = e2; wrapped.code = 'DOC_VERSION_CONFLICT';
         throw wrapped;
       }
@@ -9312,7 +9757,7 @@ app.get('/approve/:token', (req, res) => {
     workspaceName: row.workspace_name,
     docName: row.doc_name,
     docVersion: row.version,
-    docContent: bodyHtml,
+    docContent: sanitizeDocHtml(bodyHtml),  // rendered unescaped to external magic-link approvers
     submitterName: row.submitter_name,
     brandColor: row.brand_primary_color || '#5C0A0A',
     token: req.params.token,
@@ -9339,7 +9784,7 @@ app.post('/approve/:token', (req, res) => {
     });
   }
 
-  const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim() || null;
+  const ip = req.ip || null;  // trust proxy resolves the real client IP from x-forwarded-for
   const ua = (req.get('user-agent') || '').slice(0, 500) || null;
   const decisionVal = decision === 'approve' ? 'approved' : 'rejected';
 
@@ -9913,7 +10358,7 @@ app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) 
                   : ymLocal(new Date());
   const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
   const monthStart = `${monthStr}-01`;
-  // Local-component formatters — toISOString() is UTC and rolls these back a day
+  // Local-component formatters; toISOString() is UTC and rolls these back a day
   // (and the prev-month label back a whole month) in IST, breaking Prev/Next nav
   // and dropping last-of-month events from the exclusive upper bound.
   const nextMo = ymdLocal(new Date(yr, mo, 1)); // first of next month (exclusive bound)
@@ -10221,7 +10666,7 @@ app.get('/workspaces/:wsId/changes-since', requireAuth, requireWorkspace, requir
 
 // ==================== DELIVERABLES INDEX ====================
 // One canonical home for every export this workspace produces. The catalogue
-// lives in views/deliverables.ejs (data-only), not here — adding a new export
+// lives in views/deliverables.ejs (data-only), not here; adding a new export
 // to the product means adding a row there + linking the generator route.
 app.get('/workspaces/:wsId/deliverables', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   // Custom markdown report templates surface here too, so Deliverables is the
@@ -10354,6 +10799,171 @@ app.get('/firm/library', requireAuth, (req, res) => {
     risks: db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c,
   };
   res.render('firm_library', { user: req.user, ws: null, counts }); // firm-level page - firm sidebar
+});
+
+// ==================== QUESTIONNAIRE TEMPLATE BUILDER (firm-scoped) ====================
+// Consultants author, clone and version vendor questionnaires here. System templates
+// (is_system=1) are read-only; clone to edit. Firm templates appear automatically in
+// the per-vendor "send questionnaire" dropdown (filter is_system=1 OR firm_id=?).
+function loadEditableTemplate(tid, firmId) {
+  const t = db.prepare('SELECT * FROM questionnaire_templates WHERE id=?').get(tid);
+  if (!t) return { error: 'not_found' };
+  if (t.is_system || t.firm_id !== firmId) return { error: 'readonly', t };
+  return { t };
+}
+function resequenceQuestions(templateId) {
+  const qs = db.prepare('SELECT id FROM questionnaire_questions WHERE template_id=? ORDER BY question_order, id').all(templateId);
+  const upd = db.prepare('UPDATE questionnaire_questions SET question_order=? WHERE id=?');
+  db.transaction(() => qs.forEach((q, i) => upd.run(i + 1, q.id)))();
+}
+app.get('/firm/questionnaires', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const templates = db.prepare(`SELECT t.*,
+    (SELECT COUNT(*) FROM questionnaire_questions WHERE template_id=t.id) AS q_count,
+    (SELECT COUNT(*) FROM supplier_questionnaires WHERE template_id=t.id) AS use_count
+    FROM questionnaire_templates t
+    WHERE (t.is_system=1 OR t.firm_id=?) AND COALESCE(t.archived,0)=0
+    ORDER BY t.is_system DESC, t.name`).all(firmId);
+  res.render('questionnaire_templates', { user: req.user, ws: null, templates });
+});
+app.post('/firm/questionnaires', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const { name, description, category } = req.body;
+  if (!name) return res.redirect('/firm/questionnaires');
+  const id = db.prepare(`INSERT INTO questionnaire_templates (firm_id, name, description, category, is_system, version) VALUES (?, ?, ?, ?, 0, 1)`)
+    .run(firmId, name, description || null, category || 'security').lastInsertRowid;
+  logAction(req.user.id, null, 'create_questionnaire_template', 'questionnaire_template', id, { name });
+  res.redirect('/firm/questionnaires/' + id);
+});
+app.post('/firm/questionnaires/bank/:bid/delete', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  db.prepare('DELETE FROM questionnaire_question_bank WHERE id=? AND firm_id=?').run(req.params.bid, firmId);
+  res.redirect(req.get('referer') || '/firm/questionnaires');
+});
+app.get('/firm/questionnaires/:tid', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const t = db.prepare('SELECT * FROM questionnaire_templates WHERE id=? AND (is_system=1 OR firm_id=?)').get(req.params.tid, firmId);
+  if (!t) return res.status(404).send('Not found');
+  const questions = db.prepare('SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order, id').all(t.id);
+  const versions = db.prepare('SELECT v.*, u.name AS author FROM questionnaire_template_versions v LEFT JOIN users u ON u.id=v.created_by WHERE v.template_id=? ORDER BY v.version_number DESC').all(t.id);
+  const bank = db.prepare('SELECT * FROM questionnaire_question_bank WHERE firm_id=? OR is_system=1 ORDER BY section, id').all(firmId);
+  const readonly = !!(t.is_system || t.firm_id !== firmId);
+  res.render('questionnaire_builder', { user: req.user, ws: null, t, questions, versions, bank, readonly });
+});
+app.post('/firm/questionnaires/:tid', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  const { name, description, category } = req.body;
+  db.prepare('UPDATE questionnaire_templates SET name=COALESCE(NULLIF(?,\'\'),name), description=?, category=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .run(name || '', description || null, category || null, t.id);
+  res.redirect('/firm/questionnaires/' + t.id);
+});
+app.post('/firm/questionnaires/:tid/clone', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const src = db.prepare('SELECT * FROM questionnaire_templates WHERE id=? AND (is_system=1 OR firm_id=?)').get(req.params.tid, firmId);
+  if (!src) return res.status(404).send('Not found');
+  const newId = db.transaction(() => {
+    const id = db.prepare(`INSERT INTO questionnaire_templates (firm_id, name, description, category, is_system, version, cloned_from)
+      VALUES (?, ?, ?, ?, 0, 1, ?)`).run(firmId, src.name + ' (copy)', src.description, src.category, src.id).lastInsertRowid;
+    const qs = db.prepare('SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order, id').all(src.id);
+    const ins = db.prepare(`INSERT INTO questionnaire_questions (template_id, question_order, section, question, question_type, options, weight, expected_answer, iso_control_ref)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    qs.forEach((q, i) => ins.run(id, i + 1, q.section, q.question, q.question_type, q.options, q.weight, q.expected_answer, q.iso_control_ref));
+    return id;
+  })();
+  logAction(req.user.id, null, 'clone_questionnaire_template', 'questionnaire_template', newId, { from: src.id });
+  res.redirect(withToast('/firm/questionnaires/' + newId, 'Cloned to an editable copy'));
+});
+app.post('/firm/questionnaires/:tid/archive', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires');
+  db.prepare('UPDATE questionnaire_templates SET archived=1 WHERE id=?').run(t.id);
+  res.redirect(withToast('/firm/questionnaires', 'Template archived'));
+});
+app.post('/firm/questionnaires/:tid/publish', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  const qs = db.prepare('SELECT section, question, question_type, options, weight, expected_answer, iso_control_ref FROM questionnaire_questions WHERE template_id=? ORDER BY question_order, id').all(t.id);
+  const ver = t.version || 1;
+  db.transaction(() => {
+    db.prepare('INSERT INTO questionnaire_template_versions (template_id, version_number, snapshot, created_by) VALUES (?, ?, ?, ?)')
+      .run(t.id, ver, JSON.stringify(qs), req.user.id);
+    db.prepare('UPDATE questionnaire_templates SET version=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(ver + 1, t.id);
+  })();
+  res.redirect(withToast('/firm/questionnaires/' + t.id, 'Snapshotted version ' + ver));
+});
+app.post('/firm/questionnaires/:tid/questions', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  const { section, question, question_type, options, weight, expected_answer, iso_control_ref } = req.body;
+  if (!question) return res.redirect('/firm/questionnaires/' + t.id);
+  const maxOrder = db.prepare('SELECT COALESCE(MAX(question_order),0) m FROM questionnaire_questions WHERE template_id=?').get(t.id).m;
+  db.prepare(`INSERT INTO questionnaire_questions (template_id, question_order, section, question, question_type, options, weight, expected_answer, iso_control_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(t.id, maxOrder + 1, section || 'General', question, question_type || 'yes_no', options || null, parseInt(weight) || 1, expected_answer || null, iso_control_ref || null);
+  res.redirect('/firm/questionnaires/' + t.id);
+});
+app.post('/firm/questionnaires/:tid/questions/:qid', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  const { section, question, question_type, options, weight, expected_answer, iso_control_ref } = req.body;
+  db.prepare(`UPDATE questionnaire_questions SET section=?, question=?, question_type=?, options=?, weight=?, expected_answer=?, iso_control_ref=? WHERE id=? AND template_id=?`)
+    .run(section || 'General', question, question_type || 'yes_no', options || null, parseInt(weight) || 1, expected_answer || null, iso_control_ref || null, req.params.qid, t.id);
+  res.redirect('/firm/questionnaires/' + t.id);
+});
+app.post('/firm/questionnaires/:tid/questions/:qid/delete', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  db.prepare('DELETE FROM questionnaire_questions WHERE id=? AND template_id=?').run(req.params.qid, t.id);
+  resequenceQuestions(t.id);
+  res.redirect('/firm/questionnaires/' + t.id);
+});
+app.post('/firm/questionnaires/:tid/questions/:qid/move', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  resequenceQuestions(t.id);
+  const qs = db.prepare('SELECT id, question_order FROM questionnaire_questions WHERE template_id=? ORDER BY question_order').all(t.id);
+  const idx = qs.findIndex(q => q.id == req.params.qid);
+  const swap = req.body.dir === 'up' ? idx - 1 : idx + 1;
+  if (idx >= 0 && swap >= 0 && swap < qs.length) {
+    const a = qs[idx], b = qs[swap];
+    const upd = db.prepare('UPDATE questionnaire_questions SET question_order=? WHERE id=?');
+    db.transaction(() => { upd.run(b.question_order, a.id); upd.run(a.question_order, b.id); })();
+  }
+  res.redirect('/firm/questionnaires/' + t.id);
+});
+app.post('/firm/questionnaires/:tid/questions/:qid/to-bank', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  if (!firmId) return res.redirect('/tenants');
+  const q = db.prepare(`SELECT q.* FROM questionnaire_questions q JOIN questionnaire_templates t ON t.id=q.template_id
+    WHERE q.id=? AND q.template_id=? AND (t.is_system=1 OR t.firm_id=?)`).get(req.params.qid, req.params.tid, firmId);
+  if (!q) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  db.prepare(`INSERT INTO questionnaire_question_bank (firm_id, section, question, question_type, options, weight, expected_answer, iso_control_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(firmId, q.section, q.question, q.question_type, q.options, q.weight, q.expected_answer, q.iso_control_ref);
+  res.redirect(withToast('/firm/questionnaires/' + req.params.tid, 'Saved to question bank'));
+});
+app.post('/firm/questionnaires/:tid/bank-insert', requireAuth, (req, res) => {
+  const firmId = getActiveFirmId(req);
+  const { t, error } = loadEditableTemplate(req.params.tid, firmId);
+  if (error) return res.redirect('/firm/questionnaires/' + req.params.tid);
+  const b = db.prepare('SELECT * FROM questionnaire_question_bank WHERE id=? AND (firm_id=? OR is_system=1)').get(req.body.bank_id, firmId);
+  if (b) {
+    const maxOrder = db.prepare('SELECT COALESCE(MAX(question_order),0) m FROM questionnaire_questions WHERE template_id=?').get(t.id).m;
+    db.prepare(`INSERT INTO questionnaire_questions (template_id, question_order, section, question, question_type, options, weight, expected_answer, iso_control_ref)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(t.id, maxOrder + 1, b.section, b.question, b.question_type, b.options, b.weight, b.expected_answer, b.iso_control_ref);
+  }
+  res.redirect('/firm/questionnaires/' + t.id);
 });
 
 app.get('/firm/library/risks', requireAuth, (req, res) => {
@@ -10562,15 +11172,26 @@ app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res
   // SLE. Tier defaults to $50k * impact (1=$50k, 5=$250k) - configurable
   // via workspace setting later.
   const tierBase = 50000;
-  const openRisks = db.prepare(`SELECT id, title, likelihood, impact, owner_name FROM risks
+  const openRisks = db.prepare(`SELECT id, title, likelihood, impact, residual_likelihood, residual_impact, owner_name FROM risks
     WHERE workspace_id=? AND status NOT IN ('closed','accepted')`).all(ws.id);
+  // Use RESIDUAL likelihood/impact when the consultant has set them; only fall
+  // back to inherent otherwise. Previously this was computed from inherent
+  // values but labelled "residual" - a board-facing misstatement on the most
+  // sponsor-visible page.
   let aleSum = 0;
+  let anyResidual = false, anyInherentFallback = false;
   for (const r of openRisks) {
-    const aro = (r.likelihood || 3) / 5;
-    const sle = (r.impact || 3) * tierBase;
-    aleSum += aro * sle;
+    const hasResidual = r.residual_likelihood != null && r.residual_impact != null;
+    if (hasResidual) anyResidual = true; else anyInherentFallback = true;
+    const l = hasResidual ? r.residual_likelihood : (r.likelihood || 3);
+    const i = hasResidual ? r.residual_impact : (r.impact || 3);
+    aleSum += (l / 5) * (i * tierBase);
   }
   const residualAle = Math.round(aleSum);
+  // Honest basis: 'residual' only when every open risk has residual ratings.
+  const residualBasis = !openRisks.length ? 'none'
+    : (anyResidual && !anyInherentFallback) ? 'residual'
+    : anyResidual ? 'mixed' : 'inherent';
 
   // Top 5 by inherent score
   const topRisks = openRisks
@@ -10600,7 +11221,7 @@ app.get('/workspaces/:wsId/exec-brief', requireAuth, requireWorkspace, (req, res
     user: req.user, ws,
     readiness,
     velocityNow: velNow, velocityPrior: velPrior, velocityDelta,
-    residualAle, openRiskCount: openRisks.length,
+    residualAle, residualBasis, openRiskCount: openRisks.length,
     topRisks, topNCs, ncTotals,
     planTotal, planDone, planPct: planTotal ? Math.round(planDone / planTotal * 100) : 0,
     derivedStage: computeClientStage(ws),
@@ -12590,6 +13211,42 @@ app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth,
   res.redirect(withToast(base, `External link ready (expires in 30 days): ${link}`));
 });
 
+// ---- Bulk send + recurring re-attestation schedules (paths avoid the /vendors/:id param) ----
+app.post('/workspaces/:wsId/vendor-bulk-send', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const { template_id, tier_filter, contact_role } = req.body;
+  if (!template_id) return redirectBack(req, res);
+  let q = `SELECT id FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated'`;
+  const params = [req.workspace.id];
+  if (tier_filter && tier_filter !== 'all') { q += ` AND tier=?`; params.push(tier_filter); }
+  const targets = db.prepare(q).all(...params);
+  const brandName = req.workspace.brand_display_name || req.workspace.client_name;
+  let sent = 0, noEmail = 0;
+  targets.forEach(s => {
+    const r = supplierQ.issueQuestionnaire({ workspaceId: req.workspace.id, supplierId: s.id, templateId: template_id, contactRole: contact_role || null, brandName, firmId: req.workspace.firm_id });
+    if (r) { sent++; if (!r.emailedTo) noEmail++; }
+  });
+  logAction(req.user.id, req.workspace.id, 'bulk_send_questionnaire', 'supplier', null, { template_id, count: sent, tier_filter: tier_filter || 'all' }, auditCtx(req));
+  const msg = `Issued ${sent} questionnaire${sent === 1 ? '' : 's'}` + (noEmail ? `, ${noEmail} had no contact email (link created, not emailed)` : '');
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/vendors/dashboard', sent ? msg : 'No matching suppliers to send to'));
+});
+app.post('/workspaces/:wsId/vendor-schedules', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  const { template_id, tier_filter, supplier_id, cadence_months, next_due_date, contact_role } = req.body;
+  if (!template_id) return redirectBack(req, res);
+  db.prepare(`INSERT INTO recurring_questionnaire_schedules (workspace_id, supplier_id, tier_filter, template_id, cadence_months, next_due_date, contact_role, active, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
+    req.workspace.id, supplier_id || null, (supplier_id ? null : (tier_filter || 'all')), template_id,
+    parseInt(cadence_months) || 12, next_due_date || null, contact_role || 'security', req.user.id);
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/vendors/dashboard', 'Recurring schedule created'));
+});
+app.post('/workspaces/:wsId/vendor-schedules/:sid/toggle', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`UPDATE recurring_questionnaire_schedules SET active=1-active WHERE id=? AND workspace_id=?`).run(req.params.sid, req.workspace.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/dashboard');
+});
+app.post('/workspaces/:wsId/vendor-schedules/:sid/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  db.prepare(`DELETE FROM recurring_questionnaire_schedules WHERE id=? AND workspace_id=?`).run(req.params.sid, req.workspace.id);
+  res.redirect('/workspaces/' + req.workspace.id + '/vendors/dashboard');
+});
+
 app.get('/q/:token', (req, res) => {
   const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description,
       COALESCE(w.brand_display_name, w.client_name) AS requester_name
@@ -12615,17 +13272,17 @@ app.post('/q/:token', resolveQuestionnaireFirm, qUploadAny, (req, res) => {
   const q = req._questionnaire; // guaranteed open by resolveQuestionnaireFirm
 
   // An upload error (oversize / too many files) aborts multer mid-parse, so the
-  // body may be incomplete — don't risk a partial save. Show a clear retry
+  // body may be incomplete; don't risk a partial save. Show a clear retry
   // message with the answers still on screen; the link stays open.
   if (req._uploadError) {
     const e = req._uploadError;
     const tooBig = e && e.code === 'LIMIT_FILE_SIZE';
     const tooMany = e && e.code === 'LIMIT_FILE_COUNT';
     const uploadMsg = tooBig
-      ? 'One of your files is larger than 25 MB. Please attach a smaller file (or split it) and submit again — your answers were not saved yet.'
+      ? 'One of your files is larger than 25 MB. Please attach a smaller file (or split it) and submit again; your answers were not saved yet.'
       : tooMany
-        ? 'Too many files were attached at once (limit 40). Please reduce the number of attachments and submit again — your answers were not saved yet.'
-        : 'We could not process one of your attachments. Please remove it and submit again — your answers were not saved yet.';
+        ? 'Too many files were attached at once (limit 40). Please reduce the number of attachments and submit again; your answers were not saved yet.'
+        : 'We could not process one of your attachments. Please remove it and submit again; your answers were not saved yet.';
     // Clean up any partial temp files multer did manage to write.
     (req.files || []).forEach(f => { try { fs.unlinkSync(f.path); } catch (_) {} });
     return res.status(413).render('external_questionnaire', {
@@ -12639,19 +13296,10 @@ app.post('/q/:token', resolveQuestionnaireFirm, qUploadAny, (req, res) => {
   for (const qid of qIds) {
     upsert.run(q.id, qid, req.body['answer_' + qid] || null, req.body['comment_' + qid] || null);
   }
-  // Score
-  const allQ = db.prepare(`SELECT q.id, q.weight, q.expected_answer, r.answer FROM questionnaire_questions q
-    LEFT JOIN supplier_questionnaire_responses r ON r.question_id=q.id AND r.questionnaire_id=?
-    WHERE q.template_id=?`).all(q.id, q.template_id);
-  let totalWeight = 0, achieved = 0;
-  allQ.forEach(qu => {
-    totalWeight += qu.weight;
-    if (qu.answer && qu.expected_answer && qu.answer.toLowerCase() === qu.expected_answer.toLowerCase()) achieved += qu.weight;
-  });
-  const score = totalWeight ? Math.round((achieved / totalWeight) * 100) : null;
-  const rating = score === null ? null : (score >= 80 ? 'low' : score >= 60 ? 'medium' : 'high');
+  // Score via the shared scorer (handles every question type).
+  const { score, rating, answered: answeredCount } = scoreQuestionnaire(q.id, q.template_id);
   db.prepare(`UPDATE supplier_questionnaires SET answered_questions=?, score=?, risk_rating=?, status='responded', responded_at=CURRENT_TIMESTAMP, external_completed_at=CURRENT_TIMESTAMP WHERE id=?`)
-    .run(allQ.filter(qu => qu.answer).length, score, rating, q.id);
+    .run(answeredCount, score, rating, q.id);
   logAction(0, q.workspace_id, 'external_questionnaire_submit', 'questionnaire', q.id, { score, rating }, { ip: (req.ip || ''), userAgent: req.get('user-agent') || '' });
 
   // Persist any per-question evidence the vendor attached. Field names follow
@@ -13267,7 +13915,7 @@ app.get('/workspaces/:wsId/reports', requireAuth, requireWorkspace, requirePermi
 });
 
 app.get('/workspaces/:wsId/reports/:id', requireAuth, requireWorkspace, requirePermission('workspace.export'), (req, res) => {
-  const tpl = db.prepare(`SELECT * FROM report_templates WHERE id=?`).get(req.params.id);
+  const tpl = db.prepare(`SELECT * FROM report_templates WHERE id=? AND (workspace_id IS NULL OR workspace_id=? OR firm_id=?)`).get(req.params.id, req.workspace.id, req.workspace.firm_id);
   if (!tpl) return res.status(404).send('Not found');
   const ctx = reports.buildContext(req.workspace.id);
   const body = reports.render(tpl.body, ctx);
@@ -13275,7 +13923,7 @@ app.get('/workspaces/:wsId/reports/:id', requireAuth, requireWorkspace, requireP
 });
 
 app.get('/workspaces/:wsId/reports/:id/docx', requireAuth, requireWorkspace, requirePermission('workspace.export'), async (req, res) => {
-  const tpl = db.prepare(`SELECT * FROM report_templates WHERE id=?`).get(req.params.id);
+  const tpl = db.prepare(`SELECT * FROM report_templates WHERE id=? AND (workspace_id IS NULL OR workspace_id=? OR firm_id=?)`).get(req.params.id, req.workspace.id, req.workspace.firm_id);
   if (!tpl) return res.status(404).send('Not found');
   const ctx = reports.buildContext(req.workspace.id);
   const body = reports.render(tpl.body, ctx);
@@ -13305,13 +13953,13 @@ app.post('/workspaces/:wsId/reports', requireAuth, requireWorkspace, requirePerm
 // workspace has marked applicable + included on the SoA, with evidence-linkage
 // counts pulled in and sample-size suggestions based on the control family.
 // Mirrors the category-based generator below but is the right choice once the
-// SoA has been worked through — auditors shouldn't be testing excluded controls.
+// SoA has been worked through; auditors shouldn't be testing excluded controls.
 
 // Sample-size heuristics keyed to Annex A control prefixes. Each entry returns
 // guidance the auditor pastes into the observation. Numbers are auditor-norms
 // (BSI / IRCA guidance) not standards-mandated.
 const SAMPLE_SIZE_HINTS = {
-  // Access control — clauses where "5 users" is the typical sample
+  // Access control: clauses where "5 users" is the typical sample
   'annex-a.5.15': 'Sample 10 users (mix of joiner / mover / leaver).',
   'annex-a.5.16': 'Sample 10 user accounts created in the last 6 months.',
   'annex-a.5.17': 'Sample 5 authentication records (MFA enrolment, password reset).',
@@ -14956,6 +15604,313 @@ app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/notes', requireAu
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/engagement-plan`);
 });
 
+// ==================== SOC 2 (audit-collaboration portal) ====================
+// Fresh, self-contained module: engagements -> PBC requests -> evidence /
+// comments / activity. The consulting firm (firm user) runs the audit; client
+// members respond. TSC reference lives in data/soc2-catalog.js; schema in db.js
+// (soc2_* tables). Not built on the iso/csf control-assessment tables.
+const soc2cat = require('./data/soc2-catalog');
+
+// Consultant-only gate (manage engagements/requests, accept/return, internal items)
+function soc2RequireFirm(req, res, next) {
+  if (!isFirmUser(req.user)) {
+    return res.status(403).render('error', { user: req.user, message: 'Only the consulting team can manage SOC 2 engagements.' });
+  }
+  next();
+}
+
+const SOC2_REQ_STATUS = {
+  open:        { label: 'Open',        tag: 'tag-neutral' },
+  in_progress: { label: 'In progress', tag: 'tag-info' },
+  submitted:   { label: 'Submitted',   tag: 'tag-accent' },
+  returned:    { label: 'Returned',    tag: 'tag-warn' },
+  accepted:    { label: 'Accepted',    tag: 'tag-success' },
+  na:          { label: 'N/A',         tag: 'tag-neutral' },
+};
+const SOC2_ENG_STATUS = { planning: 'Planning', fieldwork: 'Fieldwork', review: 'Review', complete: 'Complete', archived: 'Archived' };
+
+function getSoc2Engagement(wsId, engId) {
+  return db.prepare('SELECT * FROM soc2_engagements WHERE id=? AND workspace_id=?').get(engId, wsId);
+}
+function soc2Scope(eng) {
+  try { const a = JSON.parse(eng.scope_categories || '[]'); return Array.isArray(a) && a.length ? a : ['security']; }
+  catch (_) { return ['security']; }
+}
+function soc2Criteria(r) {
+  try { const a = JSON.parse(r.tsc_criteria || '[]'); return Array.isArray(a) ? a : []; }
+  catch (_) { return []; }
+}
+function soc2Activity(requestId, wsId, actorId, action, detail) {
+  db.prepare('INSERT INTO soc2_request_activity (request_id, workspace_id, actor_id, action, detail) VALUES (?,?,?,?,?)')
+    .run(requestId, wsId, actorId, action, detail || null);
+}
+function soc2ReqUrl(wsId, r) {
+  return '/workspaces/' + wsId + '/soc2/engagements/' + r.engagement_id + '/requests/' + r.id;
+}
+function soc2WorkspaceMembers(wsId) {
+  return db.prepare(`SELECT u.id, u.name, u.email, u.user_type FROM workspace_members m
+    JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.active=1 ORDER BY u.name`).all(wsId);
+}
+
+// ---- SOC 2 home: engagement list ----
+app.get('/workspaces/:wsId/soc2', requireAuth, requireWorkspace, (req, res) => {
+  if (!req.workspace.frameworks.includes('soc2')) {
+    return res.status(404).render('error', { user: req.user, message: 'SOC 2 is not enabled for this client.' });
+  }
+  const canManage = isFirmUser(req.user);
+  const vis = canManage ? '' : " AND visibility='shared'";
+  const engagements = db.prepare('SELECT * FROM soc2_engagements WHERE workspace_id=? ORDER BY created_at DESC').all(req.workspace.id);
+  for (const e of engagements) {
+    const c = db.prepare(`SELECT COUNT(*) n, SUM(status='accepted') acc FROM soc2_requests WHERE engagement_id=?${vis}`).get(e.id);
+    e.req_total = c.n || 0;
+    e.req_accepted = c.acc || 0;
+    e.scope = soc2Scope(e);
+  }
+  res.render('soc2_home', {
+    user: req.user, ws: req.workspace, engagements, cat: soc2cat,
+    ENG_STATUS: SOC2_ENG_STATUS, canManage,
+  });
+});
+
+// ---- create engagement (consultant) ----
+app.post('/workspaces/:wsId/soc2/engagements', requireAuth, requireWorkspace, soc2RequireFirm, (req, res) => {
+  if (!req.workspace.frameworks.includes('soc2')) {
+    return res.status(404).render('error', { user: req.user, message: 'SOC 2 is not enabled for this client.' });
+  }
+  const name = (req.body.name || '').trim();
+  if (!name) return res.redirect(withToast('/workspaces/' + req.workspace.id + '/soc2', 'Engagement name is required.', 'error'));
+  const reportType = req.body.report_type === 'type1' ? 'type1' : 'type2';
+  let scope = [].concat(req.body.scope_categories || []).filter(c => soc2cat.categoryByCode[c]);
+  if (!scope.includes('security')) scope.unshift('security');
+  const info = db.prepare(`INSERT INTO soc2_engagements
+    (workspace_id, name, report_type, as_of_date, period_start, period_end, scope_categories, auditor_firm, auditor_contact_name, auditor_contact_email, status, lead_consultant_id, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    req.workspace.id, name, reportType,
+    req.body.as_of_date || null, req.body.period_start || null, req.body.period_end || null,
+    JSON.stringify(scope),
+    (req.body.auditor_firm || '').trim() || null,
+    (req.body.auditor_contact_name || '').trim() || null,
+    (req.body.auditor_contact_email || '').trim() || null,
+    'planning', req.user.id, req.user.id
+  );
+  logAction(req.user.id, req.workspace.id, 'soc2_engagement_create', 'soc2_engagement', info.lastInsertRowid, { name });
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/soc2/engagements/' + info.lastInsertRowid, 'Engagement created.', 'success'));
+});
+
+// ---- engagement overview + PBC request list ----
+app.get('/workspaces/:wsId/soc2/engagements/:engId', requireAuth, requireWorkspace, (req, res) => {
+  const eng = getSoc2Engagement(req.workspace.id, req.params.engId);
+  if (!eng) return res.status(404).render('error', { user: req.user, message: 'Engagement not found.' });
+  const canManage = isFirmUser(req.user);
+  const vis = canManage ? '' : " AND r.visibility='shared'";
+  const requests = db.prepare(`SELECT r.*, u.name AS assignee_name FROM soc2_requests r
+    LEFT JOIN users u ON u.id=r.assignee_id
+    WHERE r.engagement_id=?${vis} ORDER BY r.sort_order, r.seq`).all(eng.id);
+  const statusCounts = {};
+  for (const k of Object.keys(SOC2_REQ_STATUS)) statusCounts[k] = 0;
+  const acceptedCrit = new Set();
+  for (const r of requests) {
+    statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+    if (r.status === 'accepted') soc2Criteria(r).forEach(c => acceptedCrit.add(c));
+    r._criteria = soc2Criteria(r);
+  }
+  const scope = soc2Scope(eng);
+  const readiness = scope.map(catCode => {
+    const crit = soc2cat.criteriaFor(catCode);
+    return {
+      code: catCode,
+      name: (soc2cat.categoryByCode[catCode] || {}).name || catCode,
+      total: crit.length,
+      covered: crit.filter(c => acceptedCrit.has(c.code)).length,
+    };
+  });
+  res.render('soc2_engagement', {
+    user: req.user, ws: req.workspace, eng, requests, statusCounts, readiness, scope,
+    members: soc2WorkspaceMembers(req.workspace.id), cat: soc2cat,
+    REQ_STATUS: SOC2_REQ_STATUS, ENG_STATUS: SOC2_ENG_STATUS, canManage,
+    today: ymdLocal(new Date()),
+  });
+});
+
+// ---- edit engagement (consultant) ----
+app.post('/workspaces/:wsId/soc2/engagements/:engId/edit', requireAuth, requireWorkspace, soc2RequireFirm, (req, res) => {
+  const eng = getSoc2Engagement(req.workspace.id, req.params.engId);
+  if (!eng) return res.status(404).render('error', { user: req.user, message: 'Engagement not found.' });
+  const name = (req.body.name || '').trim() || eng.name;
+  const reportType = req.body.report_type === 'type1' ? 'type1' : 'type2';
+  const status = SOC2_ENG_STATUS[req.body.status] ? req.body.status : eng.status;
+  let scope = [].concat(req.body.scope_categories || []).filter(c => soc2cat.categoryByCode[c]);
+  if (!scope.includes('security')) scope.unshift('security');
+  db.prepare(`UPDATE soc2_engagements SET name=?, report_type=?, as_of_date=?, period_start=?, period_end=?, scope_categories=?, auditor_firm=?, auditor_contact_name=?, auditor_contact_email=?, status=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(
+    name, reportType, req.body.as_of_date || null, req.body.period_start || null, req.body.period_end || null,
+    JSON.stringify(scope),
+    (req.body.auditor_firm || '').trim() || null, (req.body.auditor_contact_name || '').trim() || null, (req.body.auditor_contact_email || '').trim() || null,
+    status, (req.body.notes || '').trim() || null, eng.id
+  );
+  logAction(req.user.id, req.workspace.id, 'soc2_engagement_edit', 'soc2_engagement', eng.id, { status });
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/soc2/engagements/' + eng.id, 'Engagement updated.', 'success'));
+});
+
+// ---- create PBC request (consultant) ----
+app.post('/workspaces/:wsId/soc2/engagements/:engId/requests', requireAuth, requireWorkspace, soc2RequireFirm, (req, res) => {
+  const eng = getSoc2Engagement(req.workspace.id, req.params.engId);
+  if (!eng) return res.status(404).render('error', { user: req.user, message: 'Engagement not found.' });
+  const title = (req.body.title || '').trim();
+  if (!title) return res.redirect(withToast('/workspaces/' + req.workspace.id + '/soc2/engagements/' + eng.id, 'Request title is required.', 'error'));
+  const criteria = soc2cat.validCodes([].concat(req.body.tsc_criteria || []).filter(Boolean));
+  const category = soc2cat.categoryByCode[req.body.tsc_category]
+    ? req.body.tsc_category
+    : (criteria[0] ? soc2cat.byCode[criteria[0]].category : 'security');
+  const priority = ['low', 'normal', 'high'].includes(req.body.priority) ? req.body.priority : 'normal';
+  const visibility = req.body.visibility === 'internal' ? 'internal' : 'shared';
+  let assignee = parseInt(req.body.assignee_id, 10); if (!assignee) assignee = null;
+  const maxSeq = db.prepare('SELECT COALESCE(MAX(seq),0) m FROM soc2_requests WHERE engagement_id=?').get(eng.id).m;
+  const seq = maxSeq + 1;
+  const ref = 'PBC-' + String(seq).padStart(3, '0');
+  const info = db.prepare(`INSERT INTO soc2_requests
+    (engagement_id, workspace_id, seq, ref, title, description, tsc_category, tsc_criteria, status, priority, due_date, assignee_id, requested_by, visibility, sort_order)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    eng.id, req.workspace.id, seq, ref, title, (req.body.description || '').trim() || null,
+    category, JSON.stringify(criteria), 'open', priority, req.body.due_date || null,
+    assignee, req.user.id, visibility, seq
+  );
+  soc2Activity(info.lastInsertRowid, req.workspace.id, req.user.id, 'created', ref + ' created');
+  logAction(req.user.id, req.workspace.id, 'soc2_request_create', 'soc2_request', info.lastInsertRowid, { ref, title });
+  res.redirect(withToast('/workspaces/' + req.workspace.id + '/soc2/engagements/' + eng.id + '/requests/' + info.lastInsertRowid, ref + ' added.', 'success'));
+});
+
+// ---- PBC request detail ----
+app.get('/workspaces/:wsId/soc2/engagements/:engId/requests/:reqId', requireAuth, requireWorkspace, (req, res) => {
+  const eng = getSoc2Engagement(req.workspace.id, req.params.engId);
+  if (!eng) return res.status(404).render('error', { user: req.user, message: 'Engagement not found.' });
+  const r = db.prepare('SELECT * FROM soc2_requests WHERE id=? AND engagement_id=?').get(req.params.reqId, eng.id);
+  if (!r) return res.status(404).render('error', { user: req.user, message: 'Request not found.' });
+  const canManage = isFirmUser(req.user);
+  if (r.visibility === 'internal' && !canManage) return res.status(403).render('error', { user: req.user, message: 'This item is not shared with you.' });
+  const evidence = db.prepare(`SELECT e.*, u.name AS by_name FROM soc2_request_evidence e
+    LEFT JOIN users u ON u.id=e.submitted_by WHERE e.request_id=? ORDER BY e.submitted_at DESC`).all(r.id);
+  const cvis = canManage ? '' : " AND c.visibility='shared'";
+  const comments = db.prepare(`SELECT c.*, u.name AS author_name, u.user_type AS author_type FROM soc2_request_comments c
+    LEFT JOIN users u ON u.id=c.author_id WHERE c.request_id=?${cvis} ORDER BY c.created_at`).all(r.id);
+  const activity = db.prepare(`SELECT a.*, u.name AS actor_name FROM soc2_request_activity a
+    LEFT JOIN users u ON u.id=a.actor_id WHERE a.request_id=? ORDER BY a.created_at DESC`).all(r.id);
+  const assignee = r.assignee_id ? db.prepare('SELECT id,name,email FROM users WHERE id=?').get(r.assignee_id) : null;
+  res.render('soc2_request', {
+    user: req.user, ws: req.workspace, eng, r, evidence, comments, activity, assignee,
+    members: soc2WorkspaceMembers(req.workspace.id), criteria: soc2Criteria(r), cat: soc2cat,
+    REQ_STATUS: SOC2_REQ_STATUS, canManage, today: ymdLocal(new Date()),
+  });
+});
+
+// ---- edit request (consultant) ----
+app.post('/workspaces/:wsId/soc2/requests/:reqId/edit', requireAuth, requireWorkspace, soc2RequireFirm, (req, res) => {
+  const r = db.prepare('SELECT * FROM soc2_requests WHERE id=? AND workspace_id=?').get(req.params.reqId, req.workspace.id);
+  if (!r) return res.status(404).render('error', { user: req.user, message: 'Request not found.' });
+  const title = (req.body.title || '').trim() || r.title;
+  const criteria = soc2cat.validCodes([].concat(req.body.tsc_criteria || []).filter(Boolean));
+  const category = soc2cat.categoryByCode[req.body.tsc_category] ? req.body.tsc_category : r.tsc_category;
+  const priority = ['low', 'normal', 'high'].includes(req.body.priority) ? req.body.priority : r.priority;
+  const visibility = req.body.visibility === 'internal' ? 'internal' : 'shared';
+  let assignee = parseInt(req.body.assignee_id, 10); if (!assignee) assignee = null;
+  db.prepare(`UPDATE soc2_requests SET title=?, description=?, tsc_category=?, tsc_criteria=?, priority=?, due_date=?, assignee_id=?, visibility=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(
+    title, (req.body.description || '').trim() || null, category, JSON.stringify(criteria), priority,
+    req.body.due_date || null, assignee, visibility, r.id
+  );
+  soc2Activity(r.id, req.workspace.id, req.user.id, 'edited', 'Request details updated');
+  logAction(req.user.id, req.workspace.id, 'soc2_request_edit', 'soc2_request', r.id, {});
+  res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'Request updated.', 'success'));
+});
+
+// ---- change request status ----
+app.post('/workspaces/:wsId/soc2/requests/:reqId/status', requireAuth, requireWorkspace, (req, res) => {
+  const r = db.prepare('SELECT * FROM soc2_requests WHERE id=? AND workspace_id=?').get(req.params.reqId, req.workspace.id);
+  if (!r) return res.status(404).render('error', { user: req.user, message: 'Request not found.' });
+  if (r.visibility === 'internal' && !isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'Not shared with you.' });
+  const next = req.body.status;
+  if (!SOC2_REQ_STATUS[next]) return res.redirect(soc2ReqUrl(req.workspace.id, r));
+  if (['accepted', 'returned', 'na'].includes(next) && !isFirmUser(req.user)) {
+    return res.status(403).render('error', { user: req.user, message: 'Only the consulting team can accept, return, or mark N/A.' });
+  }
+  const closedExpr = (next === 'accepted' || next === 'na') ? 'CURRENT_TIMESTAMP' : 'NULL';
+  db.prepare(`UPDATE soc2_requests SET status=?, closed_at=${closedExpr}, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(next, r.id);
+  soc2Activity(r.id, req.workspace.id, req.user.id, 'status', ((SOC2_REQ_STATUS[r.status] || {}).label || r.status) + ' → ' + SOC2_REQ_STATUS[next].label);
+  const note = (req.body.note || '').trim();
+  if (note) {
+    db.prepare('INSERT INTO soc2_request_comments (request_id, workspace_id, author_id, body, visibility) VALUES (?,?,?,?,?)').run(r.id, req.workspace.id, req.user.id, note, 'shared');
+    soc2Activity(r.id, req.workspace.id, req.user.id, 'comment', 'Comment added');
+  }
+  logAction(req.user.id, req.workspace.id, 'soc2_request_status', 'soc2_request', r.id, { from: r.status, to: next });
+  res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'Status updated to ' + SOC2_REQ_STATUS[next].label + '.', 'success'));
+});
+
+// ---- add evidence (any workspace member) ----
+app.post('/workspaces/:wsId/soc2/requests/:reqId/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
+  const r = db.prepare('SELECT * FROM soc2_requests WHERE id=? AND workspace_id=?').get(req.params.reqId, req.workspace.id);
+  if (!r) return res.status(404).render('error', { user: req.user, message: 'Request not found.' });
+  if (r.visibility === 'internal' && !isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'Not shared with you.' });
+  const kind = ['file', 'url', 'note'].includes(req.body.kind) ? req.body.kind : (req.file ? 'file' : (req.body.url ? 'url' : 'note'));
+  const note = (req.body.note || '').trim() || null;
+  if (kind === 'file') {
+    if (!req.file) return res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'No file selected.', 'error'));
+    db.prepare(`INSERT INTO soc2_request_evidence (request_id, workspace_id, kind, file_path, original_name, mime_type, size_bytes, note, submitted_by) VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(r.id, req.workspace.id, 'file', req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, note, req.user.id);
+  } else if (kind === 'url') {
+    const url = (req.body.url || '').trim();
+    if (!url) return res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'No link provided.', 'error'));
+    db.prepare(`INSERT INTO soc2_request_evidence (request_id, workspace_id, kind, url, note, submitted_by) VALUES (?,?,?,?,?,?)`)
+      .run(r.id, req.workspace.id, 'url', url, note, req.user.id);
+  } else {
+    if (!note) return res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'Nothing to add.', 'error'));
+    db.prepare(`INSERT INTO soc2_request_evidence (request_id, workspace_id, kind, note, submitted_by) VALUES (?,?,?,?,?)`)
+      .run(r.id, req.workspace.id, 'note', note, req.user.id);
+  }
+  soc2Activity(r.id, req.workspace.id, req.user.id, 'evidence', 'Evidence added (' + kind + ')');
+  logAction(req.user.id, req.workspace.id, 'soc2_evidence_add', 'soc2_request', r.id, { kind });
+  res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'Evidence added.', 'success'));
+});
+
+// ---- delete evidence (uploader or consultant) ----
+app.post('/workspaces/:wsId/soc2/requests/:reqId/evidence/:evId/delete', requireAuth, requireWorkspace, (req, res) => {
+  const r = db.prepare('SELECT * FROM soc2_requests WHERE id=? AND workspace_id=?').get(req.params.reqId, req.workspace.id);
+  if (!r) return res.status(404).render('error', { user: req.user, message: 'Request not found.' });
+  const ev = db.prepare('SELECT * FROM soc2_request_evidence WHERE id=? AND request_id=?').get(req.params.evId, r.id);
+  if (!ev) return res.redirect(soc2ReqUrl(req.workspace.id, r));
+  if (ev.submitted_by !== req.user.id && !isFirmUser(req.user)) {
+    return res.status(403).render('error', { user: req.user, message: 'You can only remove evidence you added.' });
+  }
+  if (ev.kind === 'file' && ev.file_path) {
+    try { const fp = resolveUploadPath(ev.file_path, req.workspace.firm_id); if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) {}
+  }
+  db.prepare('DELETE FROM soc2_request_evidence WHERE id=?').run(ev.id);
+  soc2Activity(r.id, req.workspace.id, req.user.id, 'evidence', 'Evidence removed');
+  res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'Evidence removed.', 'success'));
+});
+
+// ---- download evidence file ----
+app.get('/workspaces/:wsId/soc2/evidence/:evId/download', requireAuth, requireWorkspace, (req, res) => {
+  const ev = db.prepare('SELECT * FROM soc2_request_evidence WHERE id=? AND workspace_id=?').get(req.params.evId, req.workspace.id);
+  if (!ev || ev.kind !== 'file' || !ev.file_path) return res.status(404).send('Not found');
+  const r = db.prepare('SELECT visibility FROM soc2_requests WHERE id=?').get(ev.request_id);
+  if (r && r.visibility === 'internal' && !isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  const fp = resolveUploadPath(ev.file_path, req.workspace.firm_id);
+  if (!fp || !fs.existsSync(fp)) return res.status(404).send('File missing');
+  res.download(fp, ev.original_name || 'evidence');
+});
+
+// ---- add comment (any member; consultant can mark internal) ----
+app.post('/workspaces/:wsId/soc2/requests/:reqId/comments', requireAuth, requireWorkspace, (req, res) => {
+  const r = db.prepare('SELECT * FROM soc2_requests WHERE id=? AND workspace_id=?').get(req.params.reqId, req.workspace.id);
+  if (!r) return res.status(404).render('error', { user: req.user, message: 'Request not found.' });
+  if (r.visibility === 'internal' && !isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'Not shared with you.' });
+  const body = (req.body.body || '').trim();
+  if (!body) return res.redirect(soc2ReqUrl(req.workspace.id, r));
+  const visibility = (isFirmUser(req.user) && req.body.visibility === 'internal') ? 'internal' : 'shared';
+  db.prepare('INSERT INTO soc2_request_comments (request_id, workspace_id, author_id, body, visibility) VALUES (?,?,?,?,?)').run(r.id, req.workspace.id, req.user.id, body, visibility);
+  soc2Activity(r.id, req.workspace.id, req.user.id, 'comment', visibility === 'internal' ? 'Internal note added' : 'Comment added');
+  logAction(req.user.id, req.workspace.id, 'soc2_comment_add', 'soc2_request', r.id, { visibility });
+  res.redirect(withToast(soc2ReqUrl(req.workspace.id, r), 'Comment added.', 'success'));
+});
+
 // ==================== ERROR HANDLERS ====================
 app.use((req, res) => {
   res.status(404).render('error', { user: currentUser(req), message: 'Page not found.' });
@@ -14972,8 +15927,52 @@ module.exports = { app, db };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
+
+  // Background timers run only for the real server process - never when the app
+  // is required in-process (tests, scripts), where they would keep the event
+  // loop alive forever.
+  jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
+  backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
+
+  const server = app.listen(PORT, () => {
     console.log(`\nCompliance Sphere running at http://localhost:${PORT}`);
     console.log(`First time? Visit /register to create your firm account.\n`);
+  });
+
+  // Graceful shutdown: stop accepting connections, drain in-flight requests,
+  // checkpoint the WAL, and close the DB before exit. Without this, a deploy
+  // (docker compose up --build sends SIGTERM) or Ctrl-C hard-kills the process
+  // mid-write - an interrupted PDF render, backup, or multi-row SoA save.
+  let shuttingDown = false;
+  function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n[shutdown] ${signal} received - draining in-flight requests...`);
+    const force = setTimeout(() => {
+      console.error('[shutdown] drain timed out after 10s - forcing exit');
+      process.exit(1);
+    }, 10_000);
+    server.close(() => {
+      try { if (jobs.stop) jobs.stop(); } catch (_) {}
+      try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) { console.error('[shutdown] checkpoint failed:', e.message); }
+      try { db.close(); } catch (_) {}
+      clearTimeout(force);
+      console.log('[shutdown] clean exit');
+      process.exit(0);
+    });
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // One unhandled rejection/exception must not silently wedge the process.
+  // Log structured; for an uncaught exception the process state is unknown, so
+  // drain and let the restart policy (Docker `restart: unless-stopped`) bring
+  // us back clean rather than limp along.
+  process.on('unhandledRejection', (reason) => {
+    console.error('[fatal] unhandledRejection:', (reason && reason.stack) || reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[fatal] uncaughtException:', (err && err.stack) || err);
+    shutdown('uncaughtException');
   });
 }

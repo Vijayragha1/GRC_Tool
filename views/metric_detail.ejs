@@ -2,7 +2,7 @@
 <%
   const ragColor = r => r === 'green' ? '#15803d' : r === 'amber' ? '#b45309' : r === 'red' ? '#b91c1c' : '#52525b';
   const ragLabel = r => r === 'green' ? 'On target' : r === 'amber' ? 'Near target' : r === 'red' ? 'Off target' : 'No target set';
-  const fmt = v => v == null ? '—' : (Math.round(v * 100) / 100).toString();
+  const fmt = v => v == null ? '-' : (Math.round(v * 100) / 100).toString();
   const unitSuffix = (v, u) => v == null ? '' : (u === '%' ? '%' : u === 'days' ? ' d' : '');
   const today = new Date().toISOString().slice(0, 10);
   // Trend geometry
@@ -40,12 +40,12 @@
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
       <div class="panel kpi">
         <div class="kpi-label text-eyebrow">Latest reading</div>
-        <div class="kpi-num"><%= latest ? fmt(latest.value) + unitSuffix(latest.value, metric.unit) : '—' %></div>
+        <div class="kpi-num"><%= latest ? fmt(latest.value) + unitSuffix(latest.value, metric.unit) : '-' %></div>
         <div class="kpi-meta"><%= latest ? latest.measured_at : 'no readings yet' %></div>
       </div>
       <div class="panel kpi">
         <div class="kpi-label text-eyebrow">Target</div>
-        <div class="kpi-num"><%= metric.target_value == null ? '—' : fmt(metric.target_value) + unitSuffix(metric.target_value, metric.unit) %></div>
+        <div class="kpi-num"><%= metric.target_value == null ? '-' : fmt(metric.target_value) + unitSuffix(metric.target_value, metric.unit) %></div>
         <div class="kpi-meta"><%= metric.direction === 'lower' ? 'lower is better' : 'higher is better' %></div>
       </div>
       <div class="panel kpi">
@@ -117,7 +117,7 @@
                 <td class="num" style="font-weight:500;"><%= fmt(r.value) %><%= unitSuffix(r.value, metric.unit) %></td>
                 <td><span class="status" style="color:<%= ragColor(r.rag) %>;"><%= ragLabel(r.rag) %></span></td>
                 <td class="text-base"><%= r.notes || '' %></td>
-                <td class="meta text-base"><%= r.recorder || '—' %></td>
+                <td class="meta text-base"><%= r.recorder || '-' %></td>
               </tr>
             <% }) %>
           </tbody>

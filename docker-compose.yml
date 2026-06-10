@@ -4,6 +4,8 @@ services:
     image: iso27001-tool:latest
     container_name: iso27001-tool
     restart: unless-stopped
+    # Chromium (audit-pack PDF) needs more than Docker's default 64MB /dev/shm.
+    shm_size: "256m"
     ports:
       - "3000:3000"
     env_file:

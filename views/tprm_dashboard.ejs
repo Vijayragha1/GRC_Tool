@@ -1,0 +1,186 @@
+<%- include('partials/header', { title: 'TPRM dashboard', user, ws, active: 'vendors' }) %>
+
+<a href="/workspaces/<%= ws.id %>/vendors" class="link-muted text-base">← All suppliers</a>
+<div class="page-head" style="margin-top:8px">
+  <div>
+    <h1 class="page-title">Third-party risk dashboard</h1>
+    <div class="page-subtitle">Portfolio view of supplier risk across the register: tiering, residual exposure, review cadence, assessment progress, and open findings.</div>
+  </div>
+  <div class="row">
+    <a href="/workspaces/<%= ws.id %>/export/vendors-report.docx" class="btn btn-secondary">Portfolio report</a>
+    <a href="/workspaces/<%= ws.id %>/export/vendors.csv" class="btn btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+  <div class="panel kpi"><div class="kpi-num num"><%= summary.total %></div><div class="kpi-label">Active suppliers</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.tier1 > 0 ? '#b91c1c' : 'var(--text)' %>"><%= summary.tier1 %></div><div class="kpi-label">Critical residual (≥18)</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.overdueReview > 0 ? '#b91c1c' : 'var(--text)' %>"><%= summary.overdueReview %></div><div class="kpi-label">Reviews overdue</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.expiring > 0 ? '#a16207' : 'var(--text)' %>"><%= summary.expiring %></div><div class="kpi-label">Docs expiring (30d)</div></div>
+  <div class="panel kpi"><div class="kpi-num num" style="color:<%= summary.openFindings > 0 ? '#a16207' : 'var(--text)' %>"><%= summary.openFindings %></div><div class="kpi-label">Open findings</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Inherent vs residual</h2><span class="meta">count of suppliers per risk band</span></div>
+    <div class="panel-pad">
+      <table style="border-collapse:collapse;margin:0 auto;">
+        <% for (let inh = 5; inh >= 1; inh--) { %>
+          <tr>
+            <td class="meta" style="padding-right:8px;text-align:right;font-size:11px;">I<%= inh %></td>
+            <% for (let r = 1; r <= 5; r++) { const cnt = heat[inh][r]; const sev = r >= 4 ? '#b91c1c' : r === 3 ? '#a16207' : '#15803d'; %>
+              <td style="width:46px;height:40px;text-align:center;border:1px solid var(--border);background:<%= cnt ? sev + '22' : 'transparent' %>;color:<%= cnt ? sev : 'var(--text-tertiary)' %>;font-weight:<%= cnt ? '600' : '400' %>;font-variant-numeric:tabular-nums;"><%= cnt || '' %></td>
+            <% } %>
+          </tr>
+        <% } %>
+        <tr><td></td><% for (let r = 1; r <= 5; r++) { %><td class="meta" style="text-align:center;font-size:11px;padding-top:4px;">R<%= r %></td><% } %></tr>
+      </table>
+      <div class="meta" style="text-align:center;margin-top:8px;">Rows: inherent band (I1 low to I5 critical). Columns: residual band (R1 to R5).</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Tier distribution</h2></div>
+    <div class="panel-pad">
+      <% const tierMeta = [['tier_1','Tier 1 (critical)','#b91c1c'],['tier_2','Tier 2 (high)','#a16207'],['tier_3','Tier 3 (standard)','#52525b']]; const tierTotal = (tierDist.tier_1||0)+(tierDist.tier_2||0)+(tierDist.tier_3||0) || 1; %>
+      <% tierMeta.forEach(([k, label, color]) => { const c = tierDist[k] || 0; const pct = Math.round(c / tierTotal * 100); %>
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span><%= label %></span><span class="num" style="font-weight:500;"><%= c %></span></div>
+          <div style="height:8px;background:var(--bg-muted);border-radius:4px;overflow:hidden;"><div style="height:100%;width:<%= pct %>%;background:<%= color %>;"></div></div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Review cadence</h2></div>
+    <div class="panel-pad">
+      <% const tl = [['overdue','Overdue','#b91c1c'],['d30','Due in 30 days','#a16207'],['d90','Due in 90 days','#1d4ed8'],['later','Later','#15803d'],['none','No date set','#52525b']]; %>
+      <% tl.forEach(([k, label, color]) => { %>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span class="text-base"><%= label %></span><span class="num" style="font-weight:500;color:<%= timeline[k] ? color : 'var(--text-tertiary)' %>;"><%= timeline[k] %></span>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h2>Questionnaire funnel</h2></div>
+    <div class="panel-pad">
+      <% const fn = [['draft','Draft'],['sent','Sent, awaiting'],['responded','Responded'],['reviewed','Reviewed']]; %>
+      <% fn.forEach(([k, label]) => { %>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span class="text-base"><%= label %></span><span class="num" style="font-weight:500;"><%= funnel[k] || 0 %></span>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h2>Open findings</h2></div>
+    <div class="panel-pad">
+      <% const sv = [['critical','Critical','#b91c1c'],['high','High','#b91c1c'],['medium','Medium','#a16207'],['low','Low','#52525b']]; %>
+      <% sv.forEach(([k, label, color]) => { %>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span class="text-base"><%= label %></span><span class="num" style="font-weight:500;color:<%= findingsBySev[k] ? color : 'var(--text-tertiary)' %>;"><%= findingsBySev[k] || 0 %></span>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<% if (trend && trend.length >= 2) { %>
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><h2>Average residual risk trend</h2><span class="meta">mean residual score across logged reviews, by month</span></div>
+  <div class="panel-pad">
+    <%
+      const W = 520, H = 90, pad = 8; const maxV = 25;
+      const step = trend.length > 1 ? (W - pad * 2) / (trend.length - 1) : 0;
+      const pts = trend.map((t, i) => { const x = pad + i * step; const y = H - pad - ((t.avg_res || 0) / maxV) * (H - pad * 2); return (Math.round(x)) + ',' + (Math.round(y)); }).join(' ');
+    %>
+    <svg viewBox="0 0 <%= W %> <%= H %>" style="width:100%;max-width:<%= W %>px;height:<%= H %>px;">
+      <polyline points="<%= pts %>" fill="none" stroke="var(--accent)" stroke-width="2" />
+      <% trend.forEach((t, i) => { const x = pad + i * step; const y = H - pad - ((t.avg_res || 0) / maxV) * (H - pad * 2); %>
+        <circle cx="<%= Math.round(x) %>" cy="<%= Math.round(y) %>" r="3" fill="var(--accent)" />
+      <% }) %>
+    </svg>
+    <div style="display:flex;justify-content:space-between;margin-top:4px;">
+      <% trend.forEach(t => { %><span class="meta" style="font-size:11px;"><%= t.ym %> (<%= t.avg_res %>)</span><% }) %>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Assessments: bulk send & recurring re-attestation</h2><span class="meta">Issue a questionnaire to many suppliers at once, or schedule periodic re-attestation</span></div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendor-bulk-send" onsubmit="return appConfirmForm(event,'Send this questionnaire to all matching suppliers now?')" style="display:grid;gap:8px;align-content:start;">
+      <div class="sec-label">Bulk send now</div>
+      <div><label class="label">Template</label><select class="select" name="template_id" required><option value="">- pick -</option><% templates.forEach(t => { %><option value="<%= t.id %>"><%= t.name %></option><% }) %></select></div>
+      <div class="row">
+        <div style="flex:1"><label class="label">Tier filter</label><select class="select" name="tier_filter"><option value="all">All active</option><option value="tier_1">Tier 1</option><option value="tier_2">Tier 2</option><option value="tier_3">Tier 3</option></select></div>
+        <div style="flex:1"><label class="label">Send to role</label><select class="select" name="contact_role"><option value="security">Security</option><option value="general">General</option><option value="commercial">Commercial</option><option value="dpo">Data protection</option></select></div>
+      </div>
+      <div><button class="btn btn-primary">Send now</button></div>
+    </form>
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendor-schedules" style="display:grid;gap:8px;align-content:start;">
+      <div class="sec-label">New recurring schedule</div>
+      <div><label class="label">Template</label><select class="select" name="template_id" required><option value="">- pick -</option><% templates.forEach(t => { %><option value="<%= t.id %>"><%= t.name %></option><% }) %></select></div>
+      <div class="row">
+        <div style="flex:1"><label class="label">Specific supplier</label><select class="select" name="supplier_id"><option value="">All in tier</option><% supplierOpts.forEach(s => { %><option value="<%= s.id %>"><%= s.name %></option><% }) %></select></div>
+        <div style="flex:1"><label class="label">Tier (if all)</label><select class="select" name="tier_filter"><option value="all">All</option><option value="tier_1">Tier 1</option><option value="tier_2">Tier 2</option><option value="tier_3">Tier 3</option></select></div>
+      </div>
+      <div class="row">
+        <div style="flex:1"><label class="label">Cadence (months)</label><input class="input" type="number" name="cadence_months" value="12"></div>
+        <div style="flex:1"><label class="label">Next due</label><input class="input" type="date" name="next_due_date"></div>
+      </div>
+      <div><button class="btn btn-secondary">Create schedule</button></div>
+    </form>
+  </div>
+</div>
+
+<% if (schedules.length) { %>
+<div class="panel" style="margin-bottom:16px;overflow:hidden">
+  <div class="panel-head"><h2>Recurring schedules</h2></div>
+  <table class="t">
+    <thead><tr><th>Template</th><th>Scope</th><th style="width:90px">Cadence</th><th style="width:110px">Next due</th><th style="width:90px">Status</th><th style="width:120px"></th></tr></thead>
+    <tbody>
+      <% schedules.forEach(sc => { %>
+        <tr>
+          <td style="font-weight:500"><%= sc.template_name || ('template #' + sc.template_id) %></td>
+          <td class="text-base text-secondary"><%= sc.supplier_name ? sc.supplier_name : ((sc.tier_filter && sc.tier_filter !== 'all') ? sc.tier_filter.replace('_',' ') : 'All active') %></td>
+          <td class="num meta">every <%= sc.cadence_months %>m</td>
+          <td class="num meta"><%= sc.next_due_date || '-' %></td>
+          <td><span class="status s-<%= sc.active ? 'in_progress' : 'na' %>"><%= sc.active ? 'active' : 'paused' %></span></td>
+          <td style="text-align:right">
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendor-schedules/<%= sc.id %>/toggle" style="display:inline"><button class="btn btn-ghost btn-xs"><%= sc.active ? 'Pause' : 'Resume' %></button></form>
+            <form method="POST" action="/workspaces/<%= ws.id %>/vendor-schedules/<%= sc.id %>/delete" style="display:inline" onsubmit="return appConfirmForm(event,'Delete schedule?')"><button class="btn btn-ghost btn-xs text-danger">×</button></form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<div class="panel" style="overflow:hidden">
+  <div class="panel-head"><h2>Highest residual risk</h2></div>
+  <table class="t">
+    <thead><tr><th>Supplier</th><th style="width:90px">Tier</th><th style="width:100px">Inherent</th><th style="width:100px">Residual</th><th style="width:120px">Next review</th></tr></thead>
+    <tbody>
+      <% const todayStr = new Date().toISOString().split('T')[0]; %>
+      <% topRisk.forEach(s => { %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= s.id %>'">
+          <td style="font-weight:500"><%= s.name %></td>
+          <td><span class="tag <%= s.tier === 'tier_1' ? 'tag-danger' : s.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (s.tier || 'tier_2').replace('_',' ') %></span></td>
+          <td class="num" style="color:<%= (s.inherent_risk_score||0) >= 18 ? '#b91c1c' : (s.inherent_risk_score||0) >= 10 ? '#a16207' : '#15803d' %>"><%= s.inherent_risk_score || '-' %></td>
+          <td class="num" style="color:<%= (s.residual_risk_score||0) >= 18 ? '#b91c1c' : (s.residual_risk_score||0) >= 10 ? '#a16207' : '#15803d' %>"><%= s.residual_risk_score || '-' %></td>
+          <td class="num <%= s.next_review_date && s.next_review_date < todayStr ? 'text-danger' : 'meta' %>"><%= s.next_review_date || '-' %></td>
+        </tr>
+      <% }) %>
+      <% if (topRisk.length === 0) { %><tr><td colspan="5" class="t-empty">No suppliers yet.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('partials/footer') %>

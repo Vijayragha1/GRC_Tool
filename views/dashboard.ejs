@@ -209,7 +209,7 @@
     <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
       <div>
         <h2 style="margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight: 500;letter-spacing:-0.01em;">New client</h2>
-        <div class="meta text-sm" style="margin-top:2px;">Just the basics here — scope, stakeholders, and the rest of the 25 scoping questions come on the next page.</div>
+        <div class="meta text-sm" style="margin-top:2px;">Just the basics here: scope, stakeholders, and the rest of the 25 scoping questions come on the next page.</div>
       </div>
       <button type="button" onclick="document.getElementById('newWs').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">×</button>
     </header>
@@ -237,6 +237,10 @@
             <label class="row-center" style="gap:8px;cursor:pointer;">
               <input type="checkbox" name="frameworks" value="csf">
               <span><strong>NIST CSF 2.0</strong> <span class="meta">Cybersecurity Framework</span></span>
+            </label>
+            <label class="row-center" style="gap:8px;cursor:pointer;">
+              <input type="checkbox" name="frameworks" value="soc2">
+              <span><strong>SOC 2</strong> <span class="meta">Trust Services Criteria audit</span></span>
             </label>
           </div>
         </details>

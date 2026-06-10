@@ -107,13 +107,28 @@
         <div class="q">
           <div class="q-text"><%= qu.question %></div>
           <% if (qu.iso_control_ref) { %><div class="q-ref"><%= qu.iso_control_ref %></div><% } %>
-          <div class="opts">
-            <% ['yes','partial','no','na'].forEach(opt => { %>
-              <label class="opt <%= r.answer === opt ? 'selected' : '' %>">
-                <input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %>><%= OPT_LABEL[opt] %>
-              </label>
-            <% }) %>
-          </div>
+          <% const qtype = qu.question_type || 'yes_no'; %>
+          <% if (qtype === 'free_text') { %>
+            <textarea class="cmt" name="answer_<%= qu.id %>" rows="3" style="margin-top:10px;" placeholder="Your answer"><%= r.answer || '' %></textarea>
+          <% } else if (qtype === 'rating') { %>
+            <div class="opts">
+              <% [1,2,3,4,5].forEach(n => { const nv = String(n); %>
+                <label class="opt <%= r.answer === nv ? 'selected' : '' %>"><input type="radio" name="answer_<%= qu.id %>" value="<%= nv %>" <%= r.answer === nv ? 'checked' : '' %>><%= n %></label>
+              <% }) %>
+            </div>
+          <% } else if (qtype === 'multiple_choice' && qu.options) { %>
+            <div class="opts">
+              <% qu.options.split(',').map(o => o.trim()).filter(Boolean).forEach(opt => { %>
+                <label class="opt <%= r.answer === opt ? 'selected' : '' %>"><input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %>><%= opt %></label>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div class="opts">
+              <% ['yes','partial','no','na'].forEach(opt => { %>
+                <label class="opt <%= r.answer === opt ? 'selected' : '' %>"><input type="radio" name="answer_<%= qu.id %>" value="<%= opt %>" <%= r.answer === opt ? 'checked' : '' %>><%= OPT_LABEL[opt] %></label>
+              <% }) %>
+            </div>
+          <% } %>
           <input type="text" class="cmt" name="comment_<%= qu.id %>" value="<%= r.comment || '' %>" placeholder="Add a comment or point to evidence (optional)">
           <% const existing = aMap[qu.id] || []; %>
           <% if (existing.length) { %>
@@ -123,7 +138,7 @@
           <% } %>
           <div class="attach">
             <input type="file" name="file_<%= qu.id %>" multiple>
-            <span class="attach-hint">Attach evidence — PDF, Office docs, images or zip · up to 25&nbsp;MB each</span>
+            <span class="attach-hint">Attach evidence: PDF, Office docs, images or zip · up to 25&nbsp;MB each</span>
           </div>
         </div>
       <% }) %>
@@ -132,7 +147,7 @@
 
     <div class="card" style="margin-top:14px;">
       <div class="pad footer-card">
-        <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account — this link is your secure access.</div>
+        <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account. This link is your secure access.</div>
         <button class="btn" type="submit">Submit responses</button>
       </div>
     </div>
@@ -156,14 +171,14 @@
     const savedCount = (typeof attachSaved !== 'undefined' && attachSaved) ? attachSaved : 0;
     let heading, message;
     if (st === 'submitted') {
-      heading = 'Thank you — your responses are in';
+      heading = 'Thank you, your responses are in';
       message = (requester ? requester : 'The requesting organisation') + ' has received your answers' +
         (savedCount ? ' and ' + savedCount + ' attached file' + (savedCount === 1 ? '' : 's') : '') +
-        '. There is nothing more you need to do — you can safely close this tab.';
+        '. There is nothing more you need to do. You can safely close this tab.';
     } else if (st === 'uploaderror') {
       heading = 'Your submission didn\'t go through';
       message = (typeof uploadMsg !== 'undefined' && uploadMsg) ? uploadMsg
-        : 'We could not process one of your attachments. Please remove it and submit again — your answers were not saved yet.';
+        : 'We could not process one of your attachments. Please remove it and submit again. Your answers were not saved yet.';
     } else if (st === 'done') {
       heading = 'This questionnaire is already complete';
       message = 'Our records show a response was already submitted using this link. If you think this is a mistake, reach out to your ' + (requester ? requester : 'requesting') + ' contact.';

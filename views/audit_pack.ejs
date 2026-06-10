@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>ISMS Audit Pack — <%= preparedFor %></title>
+<title>ISMS Audit Pack: <%= preparedFor %></title>
 <style>
   <% if (typeof serifDataUri !== 'undefined' && serifDataUri) { %>
-  /* Source Serif 4 inlined as data URI — the PDF is rendered by Puppeteer's
+  /* Source Serif 4 inlined as data URI. The PDF is rendered by Puppeteer's
      setContent which doesn't resolve relative URLs, so the font must travel
      with the markup. Falls back to system serif if the inline read failed. */
   @font-face {
@@ -48,7 +48,7 @@
   .num { font-variant-numeric: tabular-nums; }
   .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
 
-  /* ISO control / clause reference — dotted-underline in oxblood. The product's
+  /* ISO control / clause reference: dotted-underline in oxblood. The product's
      typographic fingerprint, applied wherever an A.X.Y or Cl.X.Y appears. */
   .iso-ref {
     font-family: 'SF Mono', ui-monospace, Menlo, monospace;
@@ -79,7 +79,7 @@
 
   /* COVER */
   .cover { height: calc(297mm - 22mm - 20mm); display: flex; flex-direction: column; padding-top: 4mm; }
-  /* Hairline rule under the firm wordmark — McKinsey-cover energy, not v0
+  /* Hairline rule under the firm wordmark, McKinsey-cover energy, not v0
      gradient-bar energy. */
   .cover-firm-wordmark {
     font-family: 'Source Serif 4', Georgia, serif;
@@ -494,7 +494,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;margin-bottom:3mm;">
           <div>
             <h3 style="margin-bottom:1.5mm;"><%= a.title %></h3>
-            <div class="mini"><%= fmt(a.audit_date) || 'No date' %> · Auditor: <%= a.auditor_name || '—' %> · <span style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '—' %></span></div>
+            <div class="mini"><%= fmt(a.audit_date) || 'No date' %> · Auditor: <%= a.auditor_name || '-' %> · <span style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '-' %></span></div>
           </div>
           <%- chip(a.lifecycle_stage || a.status, statusChipKind(a.lifecycle_stage || a.status)) %>
         </div>
@@ -512,7 +512,7 @@
             <tbody>
               <% a.findings.forEach(f => { %>
                 <tr>
-                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '—' %></span></td>
+                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '-' %></span></td>
                   <td><%= f.description %><% if (f.iso_item_id) { %><div class="mini" style="margin-top:1mm;"><%= String(f.iso_item_id).replace('annex-','').toUpperCase() %></div><% } %></td>
                   <td><%- chip(f.severity, severityChipKind(f.severity)) %></td>
                   <td><%- chip(f.status, statusChipKind(f.status)) %></td>

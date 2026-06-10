@@ -40,6 +40,12 @@
       </select>
     </div>
     <div><label class="label">Owner</label><input class="input" name="owner_name" value="<%= risk.owner_name || '' %>"></div>
+    <div><label class="label">Supplier</label>
+      <select class="select" name="supplier_id">
+        <option value="">- none -</option>
+        <% suppliers.forEach(s => { %><option value="<%= s.id %>" <%= risk.supplier_id == s.id ? 'selected' : '' %>><%= s.name %></option><% }) %>
+      </select>
+    </div>
     <div><label class="label">Threat</label><input class="input" name="threat" value="<%= risk.threat || '' %>"></div>
     <div><label class="label">Vulnerability</label><input class="input" name="vulnerability" value="<%= risk.vulnerability || '' %>"></div>
     <div><label class="label">Likelihood</label>

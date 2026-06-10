@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/fonts/source-serif-4.css">
 <style>
   /*
-   * Approval portal — minimal stripped-chrome view for external approvers
+   * Approval portal: minimal stripped-chrome view for external approvers
    * arriving from a magic link. No sidebar, no nav, no edit affordances.
    * One page, one decision, one button. Reads as "official document for
    * sign-off" not "another SaaS dashboard."
@@ -152,7 +152,7 @@
         <div class="eyebrow">Your decision</div>
         <div class="question">Do you approve "<%= docName %>" v<%= docVersion %>?</div>
         <label for="reason">Reason or comment (optional for approve, recommended for reject)</label>
-        <textarea name="reason" id="reason" placeholder="e.g. Approved — looks good / Reject because Section 4 needs the new vendor list"></textarea>
+        <textarea name="reason" id="reason" placeholder="e.g. Approved, looks good / Reject because Section 4 needs the new vendor list"></textarea>
         <div class="btn-row">
           <button name="decision" value="approve" class="btn btn-approve">Approve this document</button>
           <button name="decision" value="reject" class="btn btn-reject" onclick="return confirm('Reject and send back to draft?')">Reject</button>
@@ -161,12 +161,12 @@
     <% } else { %>
       <div class="wait-card">
         <h2 class="headline">Waiting on an earlier approver</h2>
-        <p>You'll be able to decide on this document once approver(s) before you in the chain have signed off. You'll receive a fresh email link when it's your turn — no need to revisit this page until then.</p>
+        <p>You'll be able to decide on this document once approver(s) before you in the chain have signed off. You'll receive a fresh email link when it's your turn; no need to revisit this page until then.</p>
       </div>
     <% } %>
 
     <div class="legal">
-      Your decision is recorded with the IP address you're connecting from and the time of your action, and appears in the document's audit trail and signature manifest. This page does not require an account; the link in your email is what authorises the decision. Treat it like a password — do not forward.
+      Your decision is recorded with the IP address you're connecting from and the time of your action, and appears in the document's audit trail and signature manifest. This page does not require an account; the link in your email is what authorises the decision. Treat it like a password; do not forward.
     </div>
   </div>
 </body>

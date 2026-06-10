@@ -1,4 +1,4 @@
-// Seed two realistic ISO 27001 engagements for demos. Idempotent —
+// Seed two realistic ISO 27001 engagements for demos. Idempotent:
 // re-running deletes the previous demo client (by client_name) and recreates
 // everything fresh. Run with: node scripts/seed-demo-clients.js
 //
@@ -343,7 +343,7 @@ function seedNorthwind() {
 
   // Assets
   const assets = [
-    { name: 'Customer banking platform', type: 'information', classification: 'restricted', owner_name: 'CTO', cia_c: 3, cia_i: 3, cia_a: 3, description: 'Customer-facing fintech application — accounts, payments, statements.', business_criticality: 'critical', rto_hours: 2, rpo_hours: 1, bia_notes: 'Loss of service results in immediate regulatory + revenue impact.' },
+    { name: 'Customer banking platform', type: 'information', classification: 'restricted', owner_name: 'CTO', cia_c: 3, cia_i: 3, cia_a: 3, description: 'Customer-facing fintech application: accounts, payments, statements.', business_criticality: 'critical', rto_hours: 2, rpo_hours: 1, bia_notes: 'Loss of service results in immediate regulatory + revenue impact.' },
     { name: 'Customer KYC database',     type: 'information', classification: 'restricted', owner_name: 'CISO', cia_c: 3, cia_i: 3, cia_a: 2, description: 'Identity verification records, encrypted at rest.', business_criticality: 'critical', rto_hours: 4, rpo_hours: 1, bia_notes: 'Required for AML compliance.' },
     { name: 'Payment processing service', type: 'service', classification: 'restricted', owner_name: 'Head of Payments', cia_c: 3, cia_i: 3, cia_a: 3, description: 'PSP integration handling card-not-present transactions.', business_criticality: 'critical', rto_hours: 1, rpo_hours: 0, bia_notes: 'PSD2 and PCI-DSS in scope.' },
     { name: 'AWS production environment', type: 'service', classification: 'confidential', owner_name: 'Head of Platform', cia_c: 3, cia_i: 3, cia_a: 3, description: 'Production VPCs, RDS, S3, EKS.', business_criticality: 'critical', rto_hours: 4, rpo_hours: 1, bia_notes: 'Single AWS region today; multi-region DR planned.' },
@@ -368,7 +368,7 @@ function seedNorthwind() {
     { title: 'Ransomware encrypts production data',                description: 'Threat actor reaches production EKS via compromised CI runner.', asset: 'AWS production environment', threat: 'Ransomware-as-a-service group', vulnerability: 'Long-lived IAM roles + over-permissioned CI', likelihood: 2, impact: 5, treatment: 'modify', owner_name: 'Head of Platform', status: 'open', residual_likelihood: 1, residual_impact: 4 },
     { title: 'BEC fraud via spoofed CFO email',                    description: 'Finance approves a fraudulent wire on the basis of a spoofed instruction.', asset: 'Office 365 tenant', threat: 'Business email compromise', vulnerability: 'No out-of-band payment verification policy', likelihood: 4, impact: 4, treatment: 'modify', owner_name: 'CFO', status: 'treated', residual_likelihood: 2, residual_impact: 3 },
     { title: 'Cloud misconfiguration exposes S3 bucket',           description: 'Public-read on a backup bucket leaks customer statements.', asset: 'Backup storage (S3 + Glacier)', threat: 'Internet-facing data theft', vulnerability: 'Manual S3 policy with no AWS Config rule', likelihood: 3, impact: 4, treatment: 'modify', owner_name: 'Head of Platform', status: 'open', residual_likelihood: 2, residual_impact: 3 },
-    { title: 'Insider threat — engineer exfiltrates source code',  description: 'Departing engineer downloads the monorepo before leaving.', asset: 'Source code repository (GitHub)', threat: 'Malicious insider', vulnerability: 'No DLP on git clone events', likelihood: 2, impact: 4, treatment: 'modify', owner_name: 'CTO', status: 'open', residual_likelihood: 2, residual_impact: 3 },
+    { title: 'Insider threat: engineer exfiltrates source code',  description: 'Departing engineer downloads the monorepo before leaving.', asset: 'Source code repository (GitHub)', threat: 'Malicious insider', vulnerability: 'No DLP on git clone events', likelihood: 2, impact: 4, treatment: 'modify', owner_name: 'CTO', status: 'open', residual_likelihood: 2, residual_impact: 3 },
     { title: 'Supply-chain compromise via npm dependency',         description: 'Compromised package pushes credential-stealer into build.', asset: 'Source code repository (GitHub)', threat: 'Supply-chain attack', vulnerability: 'No deps lockfile review; auto-merging dependabot', likelihood: 3, impact: 4, treatment: 'modify', owner_name: 'CTO', status: 'open', residual_likelihood: 2, residual_impact: 3 },
     { title: 'DDoS knocks customer banking platform offline',      description: 'L7 flood against the API gateway saturates origin.', asset: 'Customer banking platform', threat: 'Hacktivist / extortion DDoS', vulnerability: 'CDN-side WAF without rate-limit profiles tuned for our endpoints', likelihood: 3, impact: 4, treatment: 'modify', owner_name: 'Head of Platform', status: 'treated', residual_likelihood: 2, residual_impact: 2 },
     { title: 'GDPR / FCA regulatory non-compliance',               description: 'Material breach triggers ICO investigation + FCA finding.', asset: 'Customer KYC database', threat: 'Regulatory action', vulnerability: 'No formal records-of-processing review since acquisition', likelihood: 3, impact: 5, treatment: 'modify', owner_name: 'Head of Legal', status: 'open', residual_likelihood: 2, residual_impact: 4 },
@@ -380,12 +380,12 @@ function seedNorthwind() {
   seedRisks(wsId, risks, assetIdByName);
   console.log(`  ${risks.length} risks`);
 
-  // SoA — mature workspace. Most included + implemented; a few in progress
+  // SoA: mature workspace. Most included + implemented; a few in progress
   // + a small number of in-scope exclusions for the org categories that
   // touch development (no in-house custom hardware, for example).
   seedSoA(wsId, {
     org: {
-      inclusionJust: 'In scope — applies to the ISMS as governance.',
+      inclusionJust: 'In scope: applies to the ISMS as governance.',
       exclusionJust: '',
       slots: [
         { applicability: 'included', status: 'Implemented' },
@@ -438,14 +438,14 @@ function seedNorthwind() {
   const extra = seedDocuments(wsId, ws, null, expectedNames);
   console.log(`  documents adopted: ${docs.adopted + extra.adopted}, controls auto-linked: ${docs.linked + extra.linked}`);
 
-  // Evidence — DB rows referencing fake files (audit-pack PDF won't try to
+  // Evidence: DB rows referencing fake files (audit-pack PDF won't try to
   // download these; only the auditor portal would, and that's by-token).
   const evidence = [
     { iso_item_id: 'annex-a.5.1',  filename: 'ISMS-Policy-v2.1-signed.pdf',        size_bytes: 245678, description: 'Top-management-signed ISMS policy (Clause 5.2 deliverable).' },
     { iso_item_id: 'annex-a.5.15', filename: 'Access-control-policy-v1.3.pdf',     size_bytes: 187543, description: 'Approved access control policy + procedure.' },
-    { iso_item_id: 'annex-a.5.18', filename: 'JML-process-quarterly-review.xlsx',  size_bytes: 56234,  description: 'Q1 2026 joiner/mover/leaver review evidence — 14 leavers, 100% access revoked within SLA.' },
+    { iso_item_id: 'annex-a.5.18', filename: 'JML-process-quarterly-review.xlsx',  size_bytes: 56234,  description: 'Q1 2026 joiner/mover/leaver review evidence: 14 leavers, 100% access revoked within SLA.' },
     { iso_item_id: 'annex-a.5.24', filename: 'Incident-response-runbook-v2.docx',  size_bytes: 312890, description: 'Step-by-step IR runbook; last tabletop exercise 2026-03-15.' },
-    { iso_item_id: 'annex-a.5.25', filename: 'Incident-log-2026-Q1.csv',            size_bytes: 8923,   description: 'All security events recorded in Q1 — 3 minor incidents, all resolved within SLA.' },
+    { iso_item_id: 'annex-a.5.25', filename: 'Incident-log-2026-Q1.csv',            size_bytes: 8923,   description: 'All security events recorded in Q1: 3 minor incidents, all resolved within SLA.' },
     { iso_item_id: 'annex-a.6.3',  filename: 'Awareness-training-completions-Q1.pdf', size_bytes: 76432, description: '98% completion rate for mandatory security awareness module.' },
     { iso_item_id: 'annex-a.8.5',  filename: 'MFA-enrolment-evidence.png',          size_bytes: 145678, description: 'Entra ID conditional-access policy enforcing phishing-resistant MFA on admin paths.' },
     { iso_item_id: 'annex-a.8.13', filename: 'Backup-restore-test-2026-04-02.pdf',  size_bytes: 234567, description: 'Successful restore test of production RDS snapshot to staging; RTO met (3h12m).' },
@@ -460,13 +460,13 @@ function seedNorthwind() {
   // Internal audit + findings
   seedAudits(wsId, [
     {
-      title: 'Internal audit — Q1 2026 (Pre-Stage-1)',
-      scope: 'Full ISMS — all clauses + Annex A controls applicable per the SoA. Sample-based testing of access, change management, supplier, backup, and incident processes.',
+      title: 'Internal audit: Q1 2026 (Pre-Stage-1)',
+      scope: 'Full ISMS: all clauses + Annex A controls applicable per the SoA. Sample-based testing of access, change management, supplier, backup, and incident processes.',
       audit_date: offsetDate(-60),
       auditor_name: 'Sarah Mitchell, ISO 27001 LA (independent)',
       status: 'reported',
       lifecycle_stage: 'reported',
-      summary: 'ISMS is broadly operating effectively. Five findings raised — one minor NC on supplier review cadence, two observations on patch SLA adherence, two opportunities for improvement on KPI dashboarding and tabletop frequency.',
+      summary: 'ISMS is broadly operating effectively. Five findings raised: one minor NC on supplier review cadence, two observations on patch SLA adherence, two opportunities for improvement on KPI dashboarding and tabletop frequency.',
       findings: [
         { iso_item_id: 'annex-a.5.19', finding_type: 'minor_nc', severity: 'minor', status: 'open', description: '3 of 8 tier-2 suppliers had no recorded annual review in the last 12 months. Procedure A.5.19 calls for annual review; sample showed inconsistent execution.' },
         { iso_item_id: 'annex-a.8.8',  finding_type: 'observation', severity: 'medium', status: 'open', description: 'Patch SLA of 14 days for High-severity CVEs documented but exceeded for 4 of 12 sampled patches in Q4 2025.' },
@@ -506,12 +506,12 @@ function seedNorthwind() {
       meeting_date: offsetDate(-15), attendees: 'CEO, CTO, CISO, COO, Head of Legal', status: 'complete',
       prior_actions_status: 'Crisis Comms Plan v1.0 drafted; SOC analyst hired and onboarded; Stage 1 audit confirmed for 2026-09-15.',
       context_changes: 'Q1 2026: signed 2 enterprise customers requiring SOC 2 Type II in addition to ISO 27001. Initial scoping done; gap analysis in progress.',
-      performance_review: 'Internal audit Q1 completed with 5 findings. Patch SLA breaches identified — corrective action in progress. NC closure rate trending positively.',
+      performance_review: 'Internal audit Q1 completed with 5 findings. Patch SLA breaches identified; corrective action in progress. NC closure rate trending positively.',
       feedback_interested_parties: 'Two enterprise customers requested DPAs with custom breach-notification timelines.',
       risk_treatment_status: 'New risk added this quarter: vendor breach exposing payment metadata (treated via stronger contractual clauses).',
       improvement_opportunities: 'Aggregate ISMS KPIs into a dashboard; raise tabletop frequency to quarterly.',
       decisions: '(1) Adopt the ISMS KPI dashboard recommendation from internal audit. (2) Move to quarterly tabletops starting Q2.',
-      action_items: '(1) CISO: define KPI list + dashboard mock-up for review next MRM. (2) CTO: pick tabletop scenario for Q2 — production ransomware. (3) Head of Legal: review breach-notification clauses across top-10 suppliers.'
+      action_items: '(1) CISO: define KPI list + dashboard mock-up for review next MRM. (2) CTO: pick tabletop scenario for Q2: production ransomware. (3) Head of Legal: review breach-notification clauses across top-10 suppliers.'
     }
   ]);
   console.log(`  2 MRMs held`);
@@ -519,7 +519,7 @@ function seedNorthwind() {
   // Improvements
   seedImprovements(wsId, [
     { title: 'Build ISMS KPI dashboard',                description: 'Aggregate monitoring KPIs into a single dashboard for management review.', source: 'internal_audit', source_ref: 'IA-2026-Q1-F4', owner_name: 'CISO', due_date: offsetDate(60), status: 'in_progress', impact_notes: 'Improves Clause 9.1 + 9.3 cadence.' },
-    { title: 'Move to quarterly tabletop exercises',    description: 'Run quarterly IR tabletop with rotating scenarios — ransomware, BEC, data-leak, third-party.', source: 'internal_audit', source_ref: 'IA-2026-Q1-F3', owner_name: 'CTO', due_date: offsetDate(80), status: 'open', impact_notes: 'Matures crisis comms readiness.' },
+    { title: 'Move to quarterly tabletop exercises',    description: 'Run quarterly IR tabletop with rotating scenarios: ransomware, BEC, data-leak, third-party.', source: 'internal_audit', source_ref: 'IA-2026-Q1-F3', owner_name: 'CTO', due_date: offsetDate(80), status: 'open', impact_notes: 'Matures crisis comms readiness.' },
     { title: 'Secret-scanning on all repos',            description: 'Enable GitHub Advanced Security secret scanning across all org repos + push-protection.', source: 'monitoring', source_ref: '', owner_name: 'Head of Platform', due_date: offsetDate(-30), status: 'done', closed_at: offsetDate(-10), impact_notes: 'Addresses recurring CVE-class risk.' },
     { title: 'Migrate evidence collection to workspace tool', description: 'Move from SharePoint to the ISO 27001 workspace as single source-of-truth for evidence.', source: 'mrm', source_ref: 'MRM-2025-Q4', owner_name: 'CISO', due_date: offsetDate(-60), status: 'done', closed_at: offsetDate(-30), impact_notes: 'Reduced audit-prep time by ~70%.' }
   ]);
@@ -546,7 +546,7 @@ function seedNorthwind() {
   ]);
   console.log(`  5 security objectives`);
 
-  // SoA snapshots — baseline + post-audit
+  // SoA snapshots: baseline + post-audit
   captureSnapshot(wsId, 'Baseline (initial gap)', 'Captured at the end of Pass 1 gap assessment.');
   captureSnapshot(wsId, 'Pre-internal-audit',    'Captured before Q1 internal audit for diff reference.');
   console.log(`  2 SoA snapshots`);
@@ -597,13 +597,13 @@ function seedHelio() {
     { title: 'Phishing against engineering staff yields AWS credentials',    description: 'Spear-phish steals an engineer\'s SSO creds.', asset: 'AWS account (production)', threat: 'Targeted phishing', vulnerability: 'No phishing-resistant MFA on AWS console',                                                              likelihood: 3, impact: 4, treatment: 'modify', owner_name: 'CTO', status: 'open' },
     { title: 'Stolen laptop with cached customer data',                       description: 'A founding-team laptop is stolen abroad.', asset: 'Employee laptops', threat: 'Opportunistic theft', vulnerability: 'Some legacy laptops not yet MDM-enrolled',                                                                       likelihood: 3, impact: 3, treatment: 'modify', owner_name: 'COO', status: 'open' },
     { title: 'Third-party SaaS breach exposes Helio customer data',           description: 'A downstream SaaS that processes our data is breached.', asset: 'Customer support (Zendesk)', threat: 'Vendor compromise', vulnerability: 'No formal supplier security review programme',                                       likelihood: 2, impact: 3, treatment: 'share', owner_name: 'COO', status: 'open' },
-    { title: 'Insider threat — engineer exfiltrates source code',             description: 'Departing engineer pulls the repo.', asset: 'GitHub organisation', threat: 'Malicious insider', vulnerability: 'No off-boarding revocation SLA',                                                                                  likelihood: 2, impact: 4, treatment: 'modify', owner_name: 'CTO', status: 'open' },
+    { title: 'Insider threat: engineer exfiltrates source code',             description: 'Departing engineer pulls the repo.', asset: 'GitHub organisation', threat: 'Malicious insider', vulnerability: 'No off-boarding revocation SLA',                                                                                  likelihood: 2, impact: 4, treatment: 'modify', owner_name: 'CTO', status: 'open' },
     { title: 'DDoS knocks the SaaS platform offline',                          description: 'Sustained L7 flood saturates customer-facing API.', asset: 'AWS account (production)', threat: 'DDoS', vulnerability: 'No WAF rules tuned for known attack patterns',                                                          likelihood: 3, impact: 3, treatment: 'modify', owner_name: 'CTO', status: 'open' }
   ];
   seedRisks(wsId, risks, assetIdByName);
   console.log(`  ${risks.length} risks`);
 
-  // SoA — early stage. ~70 controls included, many still undecided/in-progress
+  // SoA: early stage. ~70 controls included, many still undecided/in-progress
   // because the gap-assessment hasn't completed every theme.
   seedSoA(wsId, {
     org: {
@@ -657,9 +657,9 @@ function seedHelio() {
 
   // Minimal evidence
   const evidence = [
-    { iso_item_id: 'annex-a.5.1', filename: 'ISMS-Policy-draft.docx',            size_bytes: 132456, description: 'Draft ISMS policy — pending top-management approval.' },
+    { iso_item_id: 'annex-a.5.1', filename: 'ISMS-Policy-draft.docx',            size_bytes: 132456, description: 'Draft ISMS policy: pending top-management approval.' },
     { iso_item_id: 'annex-a.8.5', filename: 'MFA-policy-WIP.docx',                size_bytes: 89234,  description: 'MFA policy under review; enforcement is partial today.' },
-    { iso_item_id: 'annex-a.6.3', filename: 'Awareness-training-tracker.xlsx',    size_bytes: 23456,  description: 'Onboarding awareness module — 22 of 50 staff complete.' }
+    { iso_item_id: 'annex-a.6.3', filename: 'Awareness-training-tracker.xlsx',    size_bytes: 23456,  description: 'Onboarding awareness module: 22 of 50 staff complete.' }
   ];
   seedEvidence(wsId, evidence);
   console.log(`  ${evidence.length} evidence entries`);

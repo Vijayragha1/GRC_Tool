@@ -1,0 +1,303 @@
+<%- include('partials/header', { title: eng.name, user, ws, active: 'soc2' }) %>
+
+<div class="page-head">
+  <div>
+    <div class="row" style="align-items:center;gap:10px;">
+      <a href="/workspaces/<%= ws.id %>/soc2" class="meta text-base" style="text-decoration:none;">&larr; SOC 2 engagements</a>
+    </div>
+    <h1 class="page-title" style="margin-top:6px;"><%= eng.name %></h1>
+    <div class="page-subtitle">
+      <%= eng.report_type === 'type1' ? 'Type I' : 'Type II' %>
+      <% if (eng.report_type === 'type1' && eng.as_of_date) { %> &middot; as of <%= new Date(eng.as_of_date).toLocaleDateString() %>
+      <% } else if (eng.period_start || eng.period_end) { %> &middot; <%= eng.period_start || '-' %> &rarr; <%= eng.period_end || '-' %><% } %>
+      <% if (eng.auditor_firm) { %> &middot; <%= eng.auditor_firm %><% } %>
+    </div>
+  </div>
+  <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+    <span class="tag tag-neutral"><%= ENG_STATUS[eng.status] || eng.status %></span>
+    <% if (canManage) { %>
+      <button type="button" onclick="document.getElementById('editEng').showModal()" class="btn btn-secondary btn-xs">Edit</button>
+      <button type="button" onclick="document.getElementById('newReq').showModal()" class="btn btn-primary btn-xs">+ Add request</button>
+    <% } %>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:14px;">
+  <!-- Evidence coverage by in-scope category -->
+  <div class="panel">
+    <div class="panel-head"><h2>Evidence coverage</h2><span class="meta text-sm">criteria with accepted evidence</span></div>
+    <div class="panel-pad" style="display:flex;flex-direction:column;gap:12px;">
+      <% readiness.forEach(cv => { var pct = cv.total ? Math.round((cv.covered / cv.total) * 100) : 0; %>
+        <div>
+          <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+            <span class="text-base"><%= cv.name %><% if (cv.code === 'security') { %> <span class="meta text-xs">required</span><% } %></span>
+            <span class="num text-sm"><%= cv.covered %> / <%= cv.total %> &middot; <%= pct %>%</span>
+          </div>
+          <div style="height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:<%= pct %>%;background:<%= pct >= 100 ? '#15803d' : pct > 0 ? '#0891b2' : 'var(--border-strong)' %>;"></div>
+          </div>
+        </div>
+      <% }) %>
+      <div class="meta text-xs text-tertiary">A criterion counts as covered once at least one request mapped to it is accepted. This is a readiness signal, not the auditor's opinion.</div>
+    </div>
+  </div>
+
+  <!-- Request status rollup -->
+  <div class="panel">
+    <div class="panel-head"><h2>Requests</h2><span class="meta text-sm"><%= requests.length %> total</span></div>
+    <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+      <% Object.keys(REQ_STATUS).forEach(k => { %>
+        <div>
+          <div class="kpi-num num"><%= statusCounts[k] || 0 %></div>
+          <div class="kpi-label"><%= REQ_STATUS[k].label %></div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</div>
+
+<!-- PBC request list -->
+<div class="panel" style="overflow:hidden">
+  <div class="panel-head">
+    <h2>Request list (PBC)</h2>
+    <% if (canManage) { %><button type="button" onclick="document.getElementById('newReq').showModal()" class="btn btn-secondary btn-xs">+ Add request</button><% } %>
+  </div>
+  <table class="t">
+    <thead>
+      <tr>
+        <th style="width:78px">Ref</th>
+        <th>Request</th>
+        <th style="width:120px">Category</th>
+        <th style="width:140px">Assignee</th>
+        <th style="width:110px">Due</th>
+        <th style="width:120px">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!requests.length) { %>
+        <tr><td colspan="6" style="padding:0;">
+          <div class="empty-state">
+            <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg></div>
+            <div class="empty-title">No requests yet</div>
+            <div class="empty-sub">Add the auditor's evidence requests (the PBC list). Each request can map to one or more Trust Services Criteria, and the client uploads evidence against it.</div>
+            <% if (canManage) { %><button type="button" onclick="document.getElementById('newReq').showModal()" class="btn btn-primary">+ Add request</button><% } %>
+          </div>
+        </td></tr>
+      <% } %>
+      <% requests.forEach(r => {
+           var st = REQ_STATUS[r.status] || { label: r.status, tag: 'tag-neutral' };
+           var c = cat.categoryByCode[r.tsc_category];
+           var overdue = r.due_date && r.due_date < today && r.status !== 'accepted' && r.status !== 'na';
+      %>
+        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/soc2/engagements/<%= eng.id %>/requests/<%= r.id %>'">
+          <td class="mono text-sm"><%= r.ref %></td>
+          <td>
+            <strong class="text-base"><%= r.title %></strong>
+            <% if (r.visibility === 'internal') { %><span class="tag tag-warn text-xs" style="margin-left:5px;" title="Internal, not visible to the client">Internal</span><% } %>
+            <% if (r.priority === 'high') { %><span class="tag tag-danger text-xs" style="margin-left:5px;">High</span><% } %>
+            <% if (r._criteria && r._criteria.length) { %>
+              <div class="row" style="gap:4px;flex-wrap:wrap;margin-top:3px;">
+                <% r._criteria.slice(0, 4).forEach(code => { %>
+                  <span class="mono text-xs" style="background:var(--bg-subtle);padding:1px 6px;border-radius:4px;border:1px solid var(--border);" title="<%= cat.titleFor(code) %>"><%= code %></span>
+                <% }) %>
+                <% if (r._criteria.length > 4) { %><span class="meta text-xs" style="align-self:center;">+<%= r._criteria.length - 4 %></span><% } %>
+              </div>
+            <% } %>
+          </td>
+          <td class="meta text-sm"><%= c ? c.short : (r.tsc_category || '-') %></td>
+          <td class="meta text-sm"><%= r.assignee_name || '-' %></td>
+          <td class="text-sm <%= overdue ? 'text-danger' : 'meta' %>"><%= r.due_date ? new Date(r.due_date).toLocaleDateString() : '-' %></td>
+          <td><span class="tag <%= st.tag %> text-xs"><%= st.label %></span></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+
+<% if (canManage) { %>
+<!-- Create request dialog -->
+<dialog id="newReq" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(720px, 94vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
+  <form method="POST" action="/workspaces/<%= ws.id %>/soc2/engagements/<%= eng.id %>/requests">
+    <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+      <div>
+        <h2 style="margin:0;font-size:18px;font-weight:500;letter-spacing:-0.01em;">Add PBC request</h2>
+        <div class="meta text-sm" style="margin-top:2px;">A single evidence request from the auditor's list. Map it to the criteria it supports.</div>
+      </div>
+      <button type="button" onclick="document.getElementById('newReq').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">&times;</button>
+    </header>
+    <div style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="col-full">
+        <label class="label">Title <span class="meta">required</span></label>
+        <input class="input" name="title" required autofocus placeholder="e.g. Provide the access review for Q1 2026">
+      </div>
+      <div class="col-full">
+        <label class="label">Description</label>
+        <textarea class="textarea" name="description" rows="3" placeholder="What the auditor is asking for, format, period covered…"></textarea>
+      </div>
+
+      <div>
+        <label class="label">Category</label>
+        <select class="select" name="tsc_category" id="reqCat">
+          <% scope.forEach(code => { var c = cat.categoryByCode[code]; %>
+            <option value="<%= code %>"><%= c ? c.name : code %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="label">Priority</label>
+        <select class="select" name="priority">
+          <option value="normal" selected>Normal</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="label">Assignee <span class="meta">client side</span></label>
+        <select class="select" name="assignee_id">
+          <option value="">Unassigned</option>
+          <% members.forEach(m => { %>
+            <option value="<%= m.id %>"><%= m.name %><%= m.user_type === 'firm' ? ' (consultant)' : '' %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="label">Due date</label>
+        <input class="input" type="date" name="due_date">
+      </div>
+
+      <div class="col-full">
+        <label class="label">Visibility</label>
+        <div class="row text-sm" style="gap:16px;margin-top:2px;">
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="radio" name="visibility" value="shared" checked> <span>Shared with client</span></label>
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="radio" name="visibility" value="internal"> <span>Internal (consulting team only)</span></label>
+        </div>
+      </div>
+
+      <div class="col-full">
+        <label class="label">Maps to criteria</label>
+        <div style="border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;padding:8px 10px;background:var(--bg-deep);">
+          <% scope.forEach(code => { %>
+            <div class="soc2-crit-group" data-cat="<%= code %>" style="<%= code === scope[0] ? '' : 'display:none;' %>">
+              <% cat.groupsFor(code).forEach(g => { %>
+                <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin:8px 0 3px;"><%= g %> · <%= cat.GROUP_LABELS[g] || g %></div>
+                <% cat.criteriaFor(code).filter(cr => cr.group === g).forEach(cr => { %>
+                  <label class="row-center" style="gap:7px;cursor:pointer;padding:2px 0;" title="<%= cr.description %>">
+                    <input type="checkbox" name="tsc_criteria" value="<%= cr.code %>">
+                    <span class="text-sm"><span class="mono"><%= cr.code %></span>: <%= cr.title %></span>
+                  </label>
+                <% }) %>
+              <% }) %>
+            </div>
+          <% }) %>
+        </div>
+        <div class="meta text-xs text-tertiary" style="margin-top:5px;">The list follows the category above. Leave blank if the request isn't tied to a specific criterion yet.</div>
+      </div>
+    </div>
+    <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
+      <button type="button" onclick="document.getElementById('newReq').close()" class="btn btn-ghost">Cancel</button>
+      <button type="submit" class="btn btn-primary">Add request</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Edit engagement dialog -->
+<dialog id="editEng" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(680px, 92vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
+  <form method="POST" action="/workspaces/<%= ws.id %>/soc2/engagements/<%= eng.id %>/edit">
+    <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+      <div><h2 style="margin:0;font-size:18px;font-weight:500;letter-spacing:-0.01em;">Edit engagement</h2></div>
+      <button type="button" onclick="document.getElementById('editEng').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">&times;</button>
+    </header>
+    <div style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="col-full">
+        <label class="label">Engagement name</label>
+        <input class="input" name="name" value="<%= eng.name %>" required>
+      </div>
+      <div>
+        <label class="label">Report type</label>
+        <select class="select" name="report_type">
+          <option value="type2" <%= eng.report_type !== 'type1' ? 'selected' : '' %>>Type II</option>
+          <option value="type1" <%= eng.report_type === 'type1' ? 'selected' : '' %>>Type I</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Status</label>
+        <select class="select" name="status">
+          <% Object.keys(ENG_STATUS).forEach(k => { %>
+            <option value="<%= k %>" <%= eng.status === k ? 'selected' : '' %>><%= ENG_STATUS[k] %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-full">
+        <label class="label">Trust Services Criteria in scope</label>
+        <div class="row text-sm" style="gap:16px;flex-wrap:wrap;margin-top:2px;">
+          <% cat.CATEGORIES.forEach(c => { var on = scope.includes(c.code); %>
+            <label class="row-center" style="gap:7px;cursor:<%= c.required ? 'not-allowed' : 'pointer' %>;<%= c.required ? 'opacity:0.85;' : '' %>" title="<%= c.blurb %>">
+              <input type="checkbox" name="scope_categories" value="<%= c.code %>" <%= (c.required || on) ? 'checked' : '' %> <%= c.required ? 'disabled' : '' %>>
+              <span><strong><%= c.name %></strong> <span class="meta"><%= c.short %></span></span>
+            </label>
+          <% }) %>
+        </div>
+        <input type="hidden" name="scope_categories" value="security">
+      </div>
+      <div>
+        <label class="label">Period start</label>
+        <input class="input" type="date" name="period_start" value="<%= eng.period_start || '' %>">
+      </div>
+      <div>
+        <label class="label">Period end</label>
+        <input class="input" type="date" name="period_end" value="<%= eng.period_end || '' %>">
+      </div>
+      <div>
+        <label class="label">As-of date</label>
+        <input class="input" type="date" name="as_of_date" value="<%= eng.as_of_date || '' %>">
+      </div>
+      <div>
+        <label class="label">Auditor firm</label>
+        <input class="input" name="auditor_firm" value="<%= eng.auditor_firm || '' %>">
+      </div>
+      <div>
+        <label class="label">Auditor contact</label>
+        <input class="input" name="auditor_contact_name" value="<%= eng.auditor_contact_name || '' %>">
+      </div>
+      <div>
+        <label class="label">Auditor email</label>
+        <input class="input" type="email" name="auditor_contact_email" value="<%= eng.auditor_contact_email || '' %>">
+      </div>
+      <div class="col-full">
+        <label class="label">Notes</label>
+        <textarea class="textarea" name="notes" rows="2"><%= eng.notes || '' %></textarea>
+      </div>
+    </div>
+    <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
+      <button type="button" onclick="document.getElementById('editEng').close()" class="btn btn-ghost">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save changes</button>
+    </footer>
+  </form>
+</dialog>
+
+<script>
+  (function () {
+    // Filter the criteria checklist to the selected category.
+    var sel = document.getElementById('reqCat');
+    function sync() {
+      var v = sel.value;
+      document.querySelectorAll('#newReq .soc2-crit-group').forEach(function (g) {
+        g.style.display = (g.getAttribute('data-cat') === v) ? '' : 'none';
+      });
+    }
+    if (sel) { sel.addEventListener('change', sync); sync(); }
+    // Click-outside-to-close for both dialogs.
+    ['newReq', 'editEng'].forEach(function (id) {
+      var dlg = document.getElementById(id);
+      if (!dlg) return;
+      dlg.addEventListener('click', function (e) {
+        var r = dlg.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+      });
+    });
+  })();
+</script>
+<% } %>
+
+<%- include('partials/footer') %>
