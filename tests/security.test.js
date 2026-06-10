@@ -3,8 +3,9 @@
 // Run: node --test tests/security.test.js
 //
 // These boot the real server in-process (no spawn) against a tmp DB so each
-// test owns isolated state. Auth is currently disabled - the auth tests
-// exercise the route shape so they keep working when auth is turned on.
+// test owns isolated state. Auth is enforced now: the harness logs in (see
+// bootClient in helpers.js), and these tests exercise the live CSRF / XSS /
+// auth controls against an authenticated session.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -28,17 +29,24 @@ test('CSRF - POST with wrong token is rejected with 403', async (t) => {
   assert.equal(r.status, 403);
 });
 
-test('CSRF - POST with correct token + cookie is accepted', async (t) => {
+test('CSRF - authenticated state-changing POST is rejected without a token and accepted with one', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const r = await client.post('/tenants', { name: 'LegitCorp' });
-  // Successful tenant creation redirects to /onboarding.
-  assert.equal(r.status, 302);
-  assert.match(r.location, /\/onboarding/);
+  // The control must FIRE for an authenticated request. A state-changing POST
+  // with no token is rejected by CSRF (the body proves it is CSRF, not auth).
+  const noToken = await client.post('/tenants', { name: 'NoTokenCorp' }, { csrf: false });
+  assert.equal(noToken.status, 403, 'authenticated POST without a CSRF token must be 403');
+  assert.match(noToken.text, /CSRF token missing or invalid/, 'rejection must come from CSRF, not auth');
+  assert.doesNotMatch(noToken.text, /auth_required/, 'must not be an auth (401) failure masquerading as a CSRF pass');
+
+  // The same request WITH the auto-injected token is accepted.
+  const withToken = await client.post('/tenants', { name: 'LegitCorp' });
+  assert.equal(withToken.status, 302);
+  assert.match(withToken.location, /\/onboarding/);
 });
 
-test('CSRF - GET requests do not require a token (safe method)', async (t) => {
+test('CSRF - safe GET requests do not require a token', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -48,7 +56,7 @@ test('CSRF - GET requests do not require a token (safe method)', async (t) => {
   }
 });
 
-test('CSRF - token is exposed in <meta name="csrf-token">', async (t) => {
+test('CSRF - token is exposed as a 64-hex meta tag on rendered pages', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
@@ -58,14 +66,15 @@ test('CSRF - token is exposed in <meta name="csrf-token">', async (t) => {
   assert.equal(m[1].length, 64, 'token should be 64 hex chars');
 });
 
-test('CSRF - token is stable across the same session', async (t) => {
+test('CSRF - token is stable across requests in the same session', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
   const a = await client.get('/dashboard');
   const b = await client.get('/glossary');
-  const ta = a.text.match(/name="csrf-token" content="([a-f0-9]+)"/)[1];
-  const tb = b.text.match(/name="csrf-token" content="([a-f0-9]+)"/)[1];
+  const ta = (a.text.match(/name="csrf-token" content="([a-f0-9]+)"/) || [])[1];
+  const tb = (b.text.match(/name="csrf-token" content="([a-f0-9]+)"/) || [])[1];
+  assert.ok(ta && tb, 'both pages must expose a token');
   assert.equal(ta, tb, 'token must persist for the lifetime of the session');
 });
 
@@ -76,6 +85,8 @@ test('CSRF - different sessions get different tokens', async (t) => {
 
   const t1 = c1.getCsrfToken();
   const t2 = c2.getCsrfToken();
+  assert.ok(t1 && t1.length === 64, 'session 1 must have a 64-hex token');
+  assert.ok(t2 && t2.length === 64, 'session 2 must have a 64-hex token');
   assert.notEqual(t1, t2, 'sessions must not share tokens');
 });
 
