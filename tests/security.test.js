@@ -9,7 +9,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { bootClient } = require('./helpers');
+const { bootClient, makeClient } = require('./helpers');
 
 test('CSRF - POST without token is rejected with 403', async (t) => {
   const { client } = await bootClient();
@@ -131,13 +131,25 @@ test('XSS - an attribute-breakout payload in a client name cannot escape its ele
   assert.ok(dash.text.includes('&quot;') || dash.text.includes('&#34;') || dash.text.includes('&#x22;'), 'the breakout quote must be HTML-escaped');
 });
 
-test('Auth - default user lookup never returns null on bare-DB fallback', async (t) => {
-  // Auth is disabled per README; the fallback in currentUser must always
-  // resolve a user so requireAuth doesn't 500. This test pins that contract.
-  const { client } = await bootClient();
+test('Auth - protected pages require authentication (no default-user bypass)', async (t) => {
+  // The old assertion pinned a no-auth "default user" fallback so /dashboard
+  // returned 200 without logging in. That bypass was removed when real
+  // email/password auth was enabled (currentUser returns null with no session).
+  // This test now proves auth is ENFORCED: an unauthenticated request is
+  // challenged, and an authenticated one is served.
+  const { client, app } = await bootClient();
   t.after(() => client.close());
 
-  const r = await client.get('/dashboard');
-  assert.equal(r.status, 200, 'default-user fallback must succeed on a fresh DB');
-  assert.ok(!/No default user found/.test(r.text), 'must not show no-user error');
+  // Authenticated session works and shows no "no user" error.
+  const authed = await client.get('/dashboard');
+  assert.equal(authed.status, 200, 'authenticated dashboard must render');
+  assert.ok(!/No default user found/.test(authed.text), 'must not show a no-user error');
+
+  // A fresh, unauthenticated client on the same app must be redirected to login.
+  // Regression guard: if a default-user bypass is ever reintroduced, this 200s.
+  const anon = makeClient(app);
+  t.after(() => anon.close());
+  const r = await anon.get('/dashboard');
+  assert.equal(r.status, 302, 'unauthenticated dashboard must redirect, not serve a default user');
+  assert.match(r.location, /\/login/, 'must redirect to /login');
 });
