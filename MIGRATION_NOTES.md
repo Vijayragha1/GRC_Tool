@@ -9,7 +9,7 @@ Schema of record: `schema_current.sql` (regenerated at the end of Phase 7).
 - **Single instance of record:** local `iso27001.db` (dev). **AWS is out of scope** — removed from all gates and outstanding items. There is no second environment.
 - **Runner is the single source of truth for schema:** no manual schema changes outside the `migrations/` runner; `schema_migrations` is authoritative.
 - **Deferred migrations are permanently fixture-only:** `006` (responses-blob), `007` (CSF engine port), `009` (DDQ history) have NO legacy data anywhere. They stay in the replay chain as **no-op-safe insurance** only. The `006` blob-keying assumption is now **untestable and irrelevant** (no real answer blobs exist to validate against).
-- **Cutover gate:** `fix/audit-hardening-2026-06` merged + full test suite green. (No AWS precondition.)
+- **Cutover gate:** full test suite green on `main`. Satisfied once the test-only security-suite fix (PR #24, branch `fix/security-test-suite`) merges to `main`: that branch makes `tests/security.test.js` green (8 fixes; harness authenticates, CSRF/XSS/auth controls proven to fire) with a diff limited to `tests/`. `fix/audit-hardening-2026-06` is **decoupled from this gate** and continues as ordinary feature work; it is no longer a cutover precondition (the security-test fixes it originated were cherry-picked to `main` independently). (No AWS precondition.)
 - **Demolition gate:** per-module cutover parity passes + Vijay's explicit approval per item + the latest `backup_runs` row is `status='ok'` and under 24h old at execution time. Verify with: `SELECT status='ok' AND (julianday('now')-julianday(ran_at))<1 FROM backup_runs ORDER BY id DESC LIMIT 1;` (must return 1). No AWS precondition.
 - **Standing pre-cutover rule:** immediately before any cutover, re-run that phase's idempotent backfill so the new tables are current (point-in-time).
 - **Cutover order:** one module at a time, smallest blast radius first: evidence reads → evidence writes → control instances → engine → remediation. No feature work on a module during its cutover window.
@@ -289,7 +289,7 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
-## Cleanup pass — GATED (post-merge of `fix/audit-hardening-2026-06` + full suite green; then per demolition: per-module cutover parity + latest `backup_runs` `ok` and under 24h + Vijay's explicit approval. AWS descoped.)
+## Cleanup pass — GATED (cutover gate: full test suite green on `main`, satisfied once PR #24 merges; then per demolition: per-module cutover parity + latest `backup_runs` `ok` and under 24h + Vijay's explicit approval. `fix/audit-hardening-2026-06` decoupled. AWS descoped.)
 
 Demolitions in dependency order (none executed):
 1. **Phase 2:** drop `evidence_controls` + its 3 `evctrl_to_evlinks_*` triggers, then `evidence_links`.
