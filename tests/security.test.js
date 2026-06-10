@@ -90,33 +90,45 @@ test('CSRF - different sessions get different tokens', async (t) => {
   assert.notEqual(t1, t2, 'sessions must not share tokens');
 });
 
-test('XSS - script tag in tenant name is escaped on render', async (t) => {
+test('XSS - a script payload in a client name is HTML-escaped on render', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const payload = '<script>window.__pwn=true</script>';
-  const post = await client.post('/tenants', { name: payload });
-  assert.equal(post.status, 302);
+  // Distinctive canary: the XSSCANARY marker survives escaping (so we can prove
+  // the name was actually rendered, not silently dropped), while the <script>
+  // proves neutralisation. The client list on /dashboard is a surface the test
+  // user genuinely sees (unlike /tenants firm creation, which the original test
+  // posted to but never rendered for a normal user - a false pass waiting to happen).
+  const CANARY = 'XSSCANARY<script>window.__xss_canary=1</script>END';
+  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001' });
+  assert.equal(post.status, 302, 'client creation should redirect');
 
-  // The new tenant page lists tenants in an HTML table. The script tag must
-  // be escaped - appear as &lt; not <.
-  const list = await client.get('/tenants');
-  assert.equal(list.status, 200);
-  assert.ok(!list.text.includes(payload), 'raw script tag must not render');
-  assert.ok(list.text.includes('&lt;script&gt;'), 'angle brackets must be escaped');
+  const dash = await client.get('/dashboard');
+  assert.equal(dash.status, 200);
+  // (a) the raw executable payload must never reach the response. The marker is
+  //     distinctive enough that a partial-strip bypass (e.g. <scr<script>ipt>)
+  //     would still leave a raw "<script" for this substring check to catch.
+  assert.ok(!dash.text.includes('<script>window.__xss_canary'), 'raw script must not render');
+  // (b) the name must be present AND escaped - so the test fails if escaping is
+  //     dropped OR the surface silently stops rendering user input.
+  assert.ok(dash.text.includes('XSSCANARY'), 'the client name must be rendered');
+  assert.ok(dash.text.includes('&lt;script&gt;'), 'angle brackets must be HTML-escaped');
 });
 
-test('XSS - event-handler attribute payload is escaped', async (t) => {
+test('XSS - an attribute-breakout payload in a client name cannot escape its element', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const payload = '" onclick="window.__pwn=true"';
-  const post = await client.post('/tenants', { name: 'X' + payload });
+  const CANARY = 'XSSATTR" onclick="window.__xss_pwn=1"';
+  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001' });
   assert.equal(post.status, 302);
 
-  const list = await client.get('/tenants');
-  // The payload's quote-and-attribute must not break out of the value="" attribute.
-  assert.ok(!/value="X"\s+onclick=/.test(list.text), 'attribute injection must be neutralised');
+  const dash = await client.get('/dashboard');
+  assert.ok(dash.text.includes('XSSATTR'), 'the client name must be rendered');
+  // The raw event handler must never appear as live markup, and the quote that
+  // would start a new attribute must be HTML-escaped (EJS emits &#34;).
+  assert.ok(!/onclick="window\.__xss_pwn/.test(dash.text), 'attribute injection must be neutralised');
+  assert.ok(dash.text.includes('&quot;') || dash.text.includes('&#34;') || dash.text.includes('&#x22;'), 'the breakout quote must be HTML-escaped');
 });
 
 test('Auth - default user lookup never returns null on bare-DB fallback', async (t) => {
