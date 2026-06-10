@@ -5,14 +5,16 @@ Schema of record: `schema_current.sql` (regenerated at the end of Phase 7).
 
 ---
 
-## Environments & cutover policy (standing — Vijay, 2026-06-10)
-- **Environments:** local `iso27001.db` (dev) and an AWS instance. **Both hold TEST data only; there is no real client data in any environment** (this corrects the earlier note that AWS held production data).
-- **AWS = replay target.** AWS is migrated only after dev is fully cut over. It then gets its own backup + a brief discovery + a reconciliation pass, run via the same `migrations/` runner.
-- **Runner is the single source of truth for schema.** From 2026-06-10 on, no manual schema changes happen on AWS (or dev) outside the runner; `schema_migrations` must match in both environments.
-- **Sequencing:** additive data halves of Phases 3-7 proceed on dev now. **All app-integration halves (read/write cutovers + legacy demolition) are gated until branch `fix/audit-hardening-2026-06` is merged AND the full test suite is green.**
-- **Standing pre-cutover rule:** immediately before any cutover, re-run that phase's idempotent backfill so the new tables are current. Backfills are point-in-time; cutovers must not trust stale ones.
-- **Cutover order (when it begins):** one module at a time, smallest blast radius first: evidence reads → evidence writes → control instances → engine → remediation. No feature work on a module during its cutover window. Demolition only after that module's parity checks pass.
-- **Quarantine approvals:** Phase 1 (65: 60 resolved `None` + 5 open) and Phase 2 (53) approved by Vijay. The 22 orphaned-evidence-reference rows are logged as a data-quality signal to **re-check during the AWS pass**.
+## Environments & cutover policy (standing — Vijay; AWS DESCOPED 2026-06-10)
+- **Single instance of record:** local `iso27001.db` (dev). **AWS is out of scope** — removed from all gates and outstanding items. There is no second environment.
+- **Runner is the single source of truth for schema:** no manual schema changes outside the `migrations/` runner; `schema_migrations` is authoritative.
+- **Deferred migrations are permanently fixture-only:** `006` (responses-blob), `007` (CSF engine port), `009` (DDQ history) have NO legacy data anywhere. They stay in the replay chain as **no-op-safe insurance** only. The `006` blob-keying assumption is now **untestable and irrelevant** (no real answer blobs exist to validate against).
+- **Cutover gate:** `fix/audit-hardening-2026-06` merged + full test suite green. (No AWS precondition.)
+- **Demolition gate:** per-module cutover parity passes + Vijay's explicit approval per item. (No AWS precondition.)
+- **Standing pre-cutover rule:** immediately before any cutover, re-run that phase's idempotent backfill so the new tables are current (point-in-time).
+- **Cutover order:** one module at a time, smallest blast radius first: evidence reads → evidence writes → control instances → engine → remediation. No feature work on a module during its cutover window.
+- **Backup discipline (dev = single instance of record):** the app backup job (`npm run backup` → `backup_runs`) is now the ONLY recovery path; there is no second environment to recover schema shape from. **Confirm rotation is current before cutovers begin.** Status 2026-06-10: latest `full` backup `ok` today, but cadence is irregular (06-04 → 06-09 → 06-10) — put it on a reliable (ideally daily) schedule before any demolition.
+- **Quarantine approvals:** Phase 1 (65), Phase 2 (53), Phase 6 (3) approved by Vijay. The 22 orphaned-evidence + 14 orphaned-document references stand as dev data-quality findings (no second environment to cross-check).
 
 ---
 
@@ -58,7 +60,7 @@ Schema of record: `schema_current.sql` (regenerated at the end of Phase 7).
 5. `risk_treatments` vs `risk_treatment_actions` survivor (design-only; both tables empty).
 
 ### Gate sign-off — Vijay, 2026-06-10
-1. **Empty `assessment_answers`:** confirmed this is a demo/dev DB; the real data is on the **AWS production** deployment. The empty-answers / "history-not-authoritative" findings are local artifacts. **Phase 4's blob migration is NOT a no-op against prod** and must be validated there. Open follow-up: how to get prod data/schema for discovery (see below).
+1. **Empty `assessment_answers`:** confirmed dev has no answer data anywhere and dev is the single instance of record. (Superseded: an earlier note speculated the real data lived on an AWS prod/test instance; AWS was fully descoped 2026-06-10.) Phase 4's blob migration is therefore permanently fixture-only.
 2. **Status/applicability normalization maps:** approved as written in `phase0-findings.md` (incl. `included → applicable`, `Not Assessed → not_assessed`, etc.). Apply in Phase 3.
 3. **212 orphaned CSF assessments:** ran the requested forensic check → **seed data** (106 subcats × 2 engagements, contiguous ids 1–212, single-second timestamps, one templated "Acme" narrative). Quarantined all 212 via `migrations/data/001_phase0_quarantine_csf_orphans.sql` with reason `orphaned seed data`; **source rows preserved, not deleted**. Related orphaned CSF rows (`csf_weighting_profile_items` 212, `csf_evidence_items` 31, `csf_findings` 2, `csf_recommendations` 2) belong to the same demo engagements and will be triaged in the Phase 4 CSF port.
 4. **framework_mappings:** approved default (option b) — keep `framework_mappings` for the crosswalk screen; mirror only the resolvable subset (`soc2`, matchable `nist_csf`) into `requirement_mappings`; the ~143 rows targeting unloaded frameworks stay in `framework_mappings` only.
@@ -154,7 +156,7 @@ These are deferred because they modify the heavily-WIP `server.js` and must be f
 - History exact: 2 == 2. Doc-link reconciliation exact: 207 == 193 + 14. FK integrity: 0 dangling. Smoke 45/45.
 
 ### Quarantine — 14 (phase='phase3')
-- 14 × `document_controls` orphaned `document_id` (deleted documents). Same legacy-integrity-drift pattern as Phase 2's orphaned evidence; **re-check on the AWS pass**.
+- 14 × `document_controls` orphaned `document_id` (deleted documents). Same legacy-integrity-drift pattern as Phase 2's orphaned evidence; logged as a dev data-quality finding (no second environment).
 
 ### Deferred (gated app-integration half)
 - Compatibility views `v_control_states` / `v_iso42001_control_states` (need status DE-normalization to reproduce legacy strings).
@@ -168,7 +170,7 @@ These are deferred because they modify the heavily-WIP `server.js` and must be f
 
 ## Phase 4 — Assessment engine + ISO/CSF data scripts (2026-06-10)
 
-Amendment (Vijay): defer the responses/CSF **data** to the AWS pass, **not the code**. So the structural half is applied to dev; the data scripts are written now and proven against fixtures + a full-chain dry run; only the real-data execution is deferred.
+Amendment (Vijay): the structural half is applied to dev; the data scripts (`006`/`007`) are written and proven against fixtures + a full-chain dry run. AWS was later descoped (2026-06-10), so no real-data execution exists anywhere: these scripts are permanently fixture-only, kept in the replay chain as no-op-safe insurance.
 
 ### Structural half (applied to dev)
 - Backup: `backups/2026-06-10-pre-phase-4.db` (integrity `ok`).
@@ -176,27 +178,21 @@ Amendment (Vijay): defer the responses/CSF **data** to the AWS pass, **not the c
 - Backfill `migrations/data/005_phase4_structural_backfill.js` (idempotent): system conformity scoring model; **ISO 27001:2022 gap question set = 159 questions exploded from `iso_items.questions` across all 118 items** (`stable_key='{id}:q{n}'`, each mapped to its requirement; per-item count report produced, 0 empty items); **5 organization entities**; **2 shell assessments** from `assessment_passes`.
 - Structural gate PASS: questions 159 / qr_maps 159 (every question → exactly 1 requirement) / org entities 5 == workspaces 5 / assessments 2 / responses 0; idempotent.
 
-### Data scripts (written; DATA execution deferred to AWS pass)
-- `006_phase4_responses_blob.js`: explodes `control_state_history` (by pass) + current `control_states` blob → `responses`. Routing: pass_id → that pass's assessment; null pass_id → synthetic "Pre-passes import"; current blob → synthetic "Working"; retired-item rows + malformed JSON + out-of-range entries → quarantine. **ASSUMED blob shape documented** (array positional 1-based / numeric-key 1-based / `qN` keys) — **TO BE CONFIRMED against the AWS snapshot**. Reconciliation: `entries == responses + entry_quarantine + dedup`.
+### Data scripts (written; permanently fixture-only, AWS descoped)
+- `006_phase4_responses_blob.js`: explodes `control_state_history` (by pass) + current `control_states` blob → `responses`. Routing: pass_id → that pass's assessment; null pass_id → synthetic "Pre-passes import"; current blob → synthetic "Working"; retired-item rows + malformed JSON + out-of-range entries → quarantine. **ASSUMED blob shape documented** (array positional 1-based / numeric-key 1-based / `qN` keys) — now untestable and moot (AWS descoped, no real blobs exist). Reconciliation: `entries == responses + entry_quarantine + dedup`.
 - `007_phase4_csf_engine.js`: creates system maturity model + NIST CSF 2.0 question set (one question per subcategory → requirement); `csf_engagements`→`assessments`, `csf_subcategory_assessments`→`responses`, `csf_engagement_versions`→`assessment_versions`, `csf_subcategory_assessment_snapshots`→`response_snapshots`; orphaned subcat assessments skipped if Phase-0 seed-quarantined, else quarantined. Reconciliation: `subcat == responses + orphan_q + dedup + seed_skip`.
 
 ### Fixture validation `migrations/fixtures/phase4_validate.js` — ALL PASS
 Synthetic fixtures on a scratch copy covering: normal array blob (4q→4 resp), object numeric-key blob (3q→3), null pass_id (→pre-passes synthetic, 2 resp), out-of-range answer index (→entry quarantine), malformed JSON (→row quarantine), retired-item ref (→row quarantine), and a CSF engagement with 3 subcat assessments + 1 version + 3 snapshots. Both reconciliation gates PASS; all 11 routing assertions PASS.
 
 ### Dry-run replay `migrations/replay.js` — full chain on a pristine legacy-state copy
-Ran the entire chain (schema 001-005 + data 001-007) against a copy of `backups/2026-06-10-pre-phase-0.db` (legacy state, 0 converged tables). All steps clean; both Phase 4 reconciliations PASS; deterministic converged result: frameworks 4, requirements 403, requirement_mappings 422, evidence_requirement_links 165, control_instances 434, control_instance_history 2, document_requirement_links 193, question_sets 2, questions 265 (159 ISO + 106 CSF), assessments 2, responses 0, versions 0, snapshots 0; quarantine phase0 212 / phase1 65 / phase2 53 / phase3 14. **This is the exact procedure the AWS pass will re-execute.**
+Ran the entire chain (schema 001-005 + data 001-007) against a copy of `backups/2026-06-10-pre-phase-0.db` (legacy state, 0 converged tables). All steps clean; both Phase 4 reconciliations PASS; deterministic converged result: frameworks 4, requirements 403, requirement_mappings 422, evidence_requirement_links 165, control_instances 434, control_instance_history 2, document_requirement_links 193, question_sets 2, questions 265 (159 ISO + 106 CSF), assessments 2, responses 0, versions 0, snapshots 0; quarantine phase0 212 / phase1 65 / phase2 53 / phase3 14. **Deterministic dev replay; retained as no-op-safe insurance (AWS descoped).**
 
 ### Dev state: STRUCTURAL ONLY (data deferred)
 006/007 were NOT run against dev's real tables (no answer data; CSF is seed). Dev: `question_sets`=1 (ISO), `questions`=159, `responses`=0. Smoke 45/45.
 
-### AWS dry run — BLOCKED on snapshot (action: Vijay)
-This environment has no AWS access. Vijay pulls the snapshot via `sqlite3 .backup` (not a raw file copy, given WAL) into `backups/` and provides the path.
-
-**AWS pass procedure (Vijay's standing order):**
-1. Re-run the **orphaned-CSF forensic** (timestamp clustering + content) BEFORE accepting the `'orphaned seed data'` label that `migrations/data/001` applies — orphaned-but-real CSF work must not be mislabeled.
-2. Run the full proven chain: `DB_PATH=<snapshot> node migrations/replay.js`, with per-step reconciliation.
-3. Report: the **`006` blob-keying verdict** (does the assumed array/numeric/`qN` shape match real AWS answer blobs?) and whether AWS **orphan / integrity-drift counts match dev's pattern** (the 22 orphaned-evidence + 14 orphaned-document references).
-4. **Gate:** the AWS dry run must complete and reconcile before ANY app-integration cutover begins.
+### AWS — DESCOPED (Vijay, 2026-06-10)
+AWS is no longer in scope; the AWS replay/dry-run is removed from all gates and outstanding items. Consequence: `006` (responses-blob), `007` (CSF engine port), `009` (DDQ history) are **permanently fixture-only** — no legacy answer/CSF/DDQ data exists anywhere. They remain in the replay chain as **no-op-safe insurance**. The `006` blob-keying assumption is now **untestable and moot**. The orphaned-CSF seed forensic was already completed on dev (Phase 0); there is no second dataset to re-run it against.
 
 ### Reversibility
 `DELETE FROM response_snapshots, assessment_versions, responses, assessments, question_requirement_map, questions, question_sets, scoring_models; DELETE FROM migration_quarantine WHERE phase='phase4';` drop the 9 new tables + remove migration 005 files. `entities.attributes` column is additive/harmless and may stay. No pre-existing table altered.
@@ -205,15 +201,15 @@ This environment has no AWS access. Vijay pulls the snapshot via `sqlite3 .backu
 
 ## Phase 5 — Supplier/DDQ convergence (2026-06-10)
 
-Structural half applied to dev; DDQ-history + schedules scripts written and fixture-proven; the DDQ/schedule **data** is deferred to the AWS pass (dev has 0 questionnaires / 0 schedules).
+Structural half applied to dev; DDQ-history + schedules scripts written and fixture-proven; the DDQ/schedule **data** is permanently fixture-only (no legacy data anywhere; AWS descoped).
 
 ### Structural half (dev)
 - Backup: `backups/2026-06-10-pre-phase-5.db` (integrity `ok`).
 - Schema `migrations/006_phase5_supplier_ddq.sql` (`question_sets.cloned_from`, `questions.tags`, `external_assessment_tokens`) + `migrations/007_phase5_schedule_lineage.sql` (`assessment_schedules.migrated_from`).
 - Backfill `migrations/data/008_phase5_structural.js` (idempotent): **14 supplier entities** + `suppliers.entity_id` backfilled (0 null); **weighted_risk scoring model** reproducing `scoreQuestionnaire` (server.js:7745-7773); 3 `questionnaire_templates` → `question_sets` (`target_entity_type='supplier'`, clone lineage); 66 `questionnaire_questions` → `questions` (`stable_key='qqid:{id}'`); `iso_control_ref` → `question_requirement_map` (A.x→annex-a.x, N.M→clause-N.M, comma-split, parent-clause expansion): **64/66 questions mapped, 73 maps, 0 unresolved**.
-- **`questionnaire_template_versions` + `questionnaire_question_bank` (gap closed 2026-06-10):** 0 rows in dev, but 008 now migrates them when populated (AWS may have data): `questionnaire_template_versions.snapshot` (JSON array per server.js:10894) → a **retired** `question_sets` version with exploded `questions`; `questionnaire_question_bank` → a firm-scoped (or system, when `is_system`) **"Question Bank"** `question_set` with `tags` → `questions.tags` and `iso_control_ref` → `question_requirement_map`. Both proven on populated fixtures (an earlier header comment claimed these were "handled by 009/AWS" — that was wrong; now genuinely implemented). **CONFIRMED (Vijay, 2026-06-10): one Question Bank `question_set` per firm + the system set (`is_system` → firm_id NULL). No change to 008.**
+- **`questionnaire_template_versions` + `questionnaire_question_bank` (gap closed 2026-06-10):** 0 rows in dev, but 008 still migrates them if such data ever exists (no-op-safe insurance): `questionnaire_template_versions.snapshot` (JSON array per server.js:10894) → a **retired** `question_sets` version with exploded `questions`; `questionnaire_question_bank` → a firm-scoped (or system, when `is_system`) **"Question Bank"** `question_set` with `tags` → `questions.tags` and `iso_control_ref` → `question_requirement_map`. Both proven on populated fixtures (an earlier header comment claimed these were "handled by 009/AWS" — that was wrong; now genuinely implemented). **CONFIRMED (Vijay, 2026-06-10): one Question Bank `question_set` per firm + the system set (`is_system` → firm_id NULL). No change to 008.**
 
-### Data scripts (written; DATA deferred to AWS pass)
+### Data scripts (written; permanently fixture-only, AWS descoped)
 - `009_phase5_ddq_history.js`: `supplier_questionnaires` → finalized read-only assessments; `supplier_questionnaire_responses` → responses (`respondent_kind='external'`); **recomputes score/risk_rating with the exact legacy math and diffs vs stored** (mismatch → quarantine); `external_assessment_tokens` from `external_*` (token stored as sha256 hash, expiry/completion preserved); finalized DDQs → `evidence` on the A.5.19-A.5.23 family + `proposed_changes` (`source='external_respondent'`, never direct status writes).
 - `010_phase5_schedules.js`: `recurring_questionnaire_schedules` + `supplier_reviews` → `assessment_schedules` (`cadence_months`→`cadence`, `tier_filter`/`contact_role`→`trigger_rule` JSON). Retirement of `recurring_questionnaire_schedules` (view-then-drop) is deferred/gated.
 
@@ -227,7 +223,7 @@ Match DDQ (stored == recomputed) → not quarantined, finalized assessment + 15 
 009/010 not run on dev (0 questionnaires/schedules). Dev: 14 supplier entities, 3 supplier question_sets, 0 DDQ assessments / tokens / schedules, phase5 quarantine 0. Smoke 45/45.
 
 ### Gate
-- Score recompute: validated exact on fixtures; real historical diff runs on the AWS pass (mismatches → quarantine for Vijay).
+- Score recompute: validated exact on fixtures; no real historical DDQ data exists anywhere (AWS descoped), so the fixture diff is the only validation.
 - External-token flow: issue / answer / expire / revoke fields preserved + represented (lifecycle fixture PASS).
 
 ### Reversibility
@@ -269,7 +265,7 @@ Match DDQ (stored == recomputed) → not quarantined, finalized assessment + 15 
 - **id 2** (`"2 of 12 sampled accounts exceeded the 1-day leaver-revocation SLA"`, `annex-a.5.18`) → **migrated** as genuine: `source_id=NULL`, description prefixed `[lost parent audit_id=2]`, `migrated_from='audit_findings:2'`, landed in ws16 (derived from the iso requirement's control instances).
 
 ### Fixture validation `migrations/fixtures/phase6_validate.js` — 8/8 PASS
-Real CSF `engagement→finding→recommendation→remediation_status` chain migrates end-to-end (so the AWS replay re-executes a proven CSF path); `supplier_finding` with matching `nonconformity_id` → **merged into the existing NC finding, no duplicate** + DEDUP quarantine note; dangling `nonconformity_id` → AMBIGUOUS quarantine; `risk_treatment_action` → per-risk `source_type='risk'` finding + `remediation_action`.
+Real CSF `engagement→finding→recommendation→remediation_status` chain migrates end-to-end (so the replay chain re-executes a proven CSF path as no-op-safe insurance); `supplier_finding` with matching `nonconformity_id` → **merged into the existing NC finding, no duplicate** + DEDUP quarantine note; dangling `nonconformity_id` → AMBIGUOUS quarantine; `risk_treatment_action` → per-risk `source_type='risk'` finding + `remediation_action`.
 
 ### Dry-run replay + dev state
 `replay.js` updated to run 011. Full chain on a pristine legacy copy → findings 71, finding_controls 53, phase6 quarantine 3 (matches dev). Smoke 45/45.
@@ -293,12 +289,12 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
-## Cleanup pass — GATED (post-merge of `fix/audit-hardening-2026-06`, full suite green, AWS replay reconciled; each demolition needs explicit written approval)
+## Cleanup pass — GATED (post-merge of `fix/audit-hardening-2026-06` + full suite green; then per-module cutover parity + Vijay's explicit approval per demolition. AWS descoped — no AWS precondition.)
 
 Demolitions in dependency order (none executed):
 1. **Phase 2:** drop `evidence_controls` + its 3 `evctrl_to_evlinks_*` triggers, then `evidence_links`.
 2. **Phase 3:** drop `control_states`, `entity_control_states`, `iso42001_control_states`, `control_state_history`, `iso42001_control_state_history`, `document_controls`, `iso42001_document_controls`.
-3. **Phase 4:** drop `assessment_answers` columns, `assessment_passes` (+ `iso42001_assessment_passes`), and the `csf_*` engine tables — only after the CSF port runs on real data (AWS).
+3. **Phase 4:** drop `assessment_answers` columns, `assessment_passes` (+ `iso42001_assessment_passes`), and the `csf_*` engine tables. The CSF port is fixture-only (no real data; AWS descoped).
 4. **Phase 5:** drop `recurring_questionnaire_schedules`, `supplier_questionnaires`(+responses), `questionnaire_templates`/`_questions`/`_template_versions`/`_question_bank`, `supplier_reviews` — after the DDQ cutover.
 5. **Phase 6:** drop `csf_findings`/`csf_recommendations`/`csf_remediation_status`, `audit_findings`/`audit_observations`, `nonconformities`, `risk_treatment_actions`, `risk_treatments`, `improvements`, `supplier_findings`.
 6. `framework_mappings` is **retained** (option b: the crosswalk screen still reads it) unless/until that screen is re-pointed at `requirement_mappings`.

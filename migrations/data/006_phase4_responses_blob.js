@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * 006_phase4_responses_blob.js  (DATA op; proven on fixtures, data deferred to AWS pass)
+ * 006_phase4_responses_blob.js  (DATA op; fixture-proven, permanently fixture-only)
  *
  * Explodes control_state_history.assessment_answers (by pass) and the current
  * control_states.assessment_answers blob into `responses`.
  *
- * ASSUMED blob shape (item-scoped; control_state* rows are per (workspace,item)).
- * TO BE CONFIRMED against the AWS snapshot dry run:
+ * NOTE (AWS descoped 2026-06-10): dev is the single instance of record and has NO
+ * answer blobs anywhere, so this script is permanently fixture-only and stays in
+ * the replay chain as no-op-safe insurance. The assumed blob shape below is now
+ * UNTESTABLE AND MOOT (kept only to document the contract the fixtures exercise):
  *   - JSON array   ["ans0","ans1",...]            -> positional, 1-based: index i -> '{item}:q{i+1}'
  *   - JSON object  {"1":"..","2":".."}            -> numeric keys, 1-based:  key k -> '{item}:q{k}'
  *   - JSON object  {"q1":"..","q2":".."}          -> 'qN' keys map straight through

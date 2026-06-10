@@ -2,18 +2,14 @@
 /**
  * replay.js  — run the full converged-migration chain against a target DB.
  *
- * This is the SAME sequence the AWS pass will run: a legacy-state database in,
- * the converged schema + backfills out, every reconciliation gate printed. Used
- * both for the local dry run (against a pristine pre-phase-0 copy) and, later,
- * for the AWS replay (against the AWS snapshot). The AWS replay must be a
- * re-execution of these proven scripts, never a first authored run.
+ * Runs the whole sequence (schema + backfills) against a target, printing every
+ * reconciliation gate. Used to prove the chain replays deterministically from a
+ * pristine pre-phase-0 copy. AWS is descoped (2026-06-10): dev is the single
+ * instance of record, so this exists as a verification/insurance harness rather
+ * than a second-environment replay. The deferred data scripts (006/007/009) have
+ * no legacy data anywhere and run as no-op-safe steps.
  *
  *   DB_PATH=/path/to/target.db node migrations/replay.js
- *
- * CAVEAT (AWS): migrations/data/001 quarantines ALL orphaned csf_subcategory_
- * assessments as 'orphaned seed data'. That label was a dev-data judgment from a
- * forensic check. On AWS, re-run the forensic (timestamp clustering + content)
- * BEFORE accepting that label; orphaned-but-real CSF work must not be mislabeled.
  */
 const { execSync } = require('child_process');
 const path = require('path');
