@@ -49,6 +49,7 @@ const changesSince = require('./lib/changes-since');
 const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
 const evReads = require('./lib/evidence-reads');
+const evWrites = require('./lib/evidence-writes');
 
 init();
 
@@ -3662,8 +3663,8 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePer
   if (existing) {
     try { fs.unlinkSync(req.file.path); } catch (_) {}
     if (isoIds.length) {
-      const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-      const tx = db.transaction(() => { for (const id of isoIds) ins.run(existing.id, id, clause_section || null); });
+      const wconv = evWrites.writesConverged(db, req.workspace.id);
+      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, existing.id, id, clause_section || null); });
       try { tx(); } catch (_) {}
     }
     logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, { sha, link_count: isoIds.length });
@@ -3680,8 +3681,8 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePer
          valid_from || null, valid_until || null, period_label || null, clause_section || null,
          tags || null).lastInsertRowid;
   if (isoIds.length) {
-    const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-    const tx = db.transaction(() => { for (const id of isoIds) ins.run(evId, id, clause_section || null); });
+    const wconv = evWrites.writesConverged(db, req.workspace.id);
+    const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, evId, id, clause_section || null); });
     try { tx(); } catch (_) {}
   }
   logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', primaryId, { filename: req.file.originalname, link_count: isoIds.length });
@@ -3707,8 +3708,8 @@ app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requi
     if (existing) {
       try { fs.unlinkSync(f.path); } catch (_) {}
       if (isoIds.length) {
-        const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-        const tx = db.transaction(() => { for (const id of isoIds) ins.run(existing.id, id, null); });
+        const wconv = evWrites.writesConverged(db, req.workspace.id);
+        const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, existing.id, id, null); });
         try { tx(); } catch (_) {}
       }
       deduped++;
@@ -3722,8 +3723,8 @@ app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requi
            description || null, valid_from || null, valid_until || null, period_label || null,
            tags || null).lastInsertRowid;
     if (isoIds.length) {
-      const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-      const tx = db.transaction(() => { for (const id of isoIds) ins.run(evId, id, null); });
+      const wconv = evWrites.writesConverged(db, req.workspace.id);
+      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, evId, id, null); });
       try { tx(); } catch (_) {}
     }
     created++;
@@ -3756,13 +3757,11 @@ app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspa
          req.user.id, description || old.description || null,
          valid_from || null, valid_until || null, period_label || null, old.clause_section || null,
          old.id, tags).lastInsertRowid;
-  // Copy links from old to new.
-  const oldLinks = db.prepare(`SELECT iso_item_id, section_ref FROM evidence_controls WHERE evidence_id=?`).all(old.id);
-  if (oldLinks.length) {
-    const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-    const tx = db.transaction(() => { for (const l of oldLinks) ins.run(newId, l.iso_item_id, l.section_ref); });
-    try { tx(); } catch (_) {}
-  }
+  // Copy links from old to new (legacy evidence_controls or converged erl per the
+  // per-workspace write flag; the erl_to_legacy_* trigger mirrors converged copies).
+  const wconv = evWrites.writesConverged(db, req.workspace.id);
+  const tx = db.transaction(() => { evWrites.copyControlLinks(db, wconv, old.id, newId); });
+  try { tx(); } catch (_) {}
   // Mark old as superseded - kept for audit trail but hidden from active view.
   db.prepare(`UPDATE evidence SET superseded_at=datetime('now'), superseded_by_id=? WHERE id=?`).run(newId, old.id);
   logAction(req.user.id, req.workspace.id, 'supersede_evidence', 'evidence', old.id, { new_id: newId, filename: req.file.originalname });
@@ -3862,9 +3861,9 @@ app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, 
   }
   const filtered = refs.filter(r => valid.has(r));
   if (!filtered.length) return redirectBack(req, res);
-  const ins = db.prepare(`INSERT OR IGNORE INTO evidence_links (evidence_id, framework, item_ref, section_ref) VALUES (?, ?, ?, ?)`);
+  const wconv = evWrites.writesConverged(db, req.workspace.id);
   const tx = db.transaction(() => {
-    for (const ref of filtered) ins.run(ev.id, framework, ref, req.body.section_ref || null);
+    for (const ref of filtered) evWrites.attachCrossLink(db, wconv, ev.id, framework, ref, req.body.section_ref || null);
   });
   try { tx(); } catch (_) {}
   logAction(req.user.id, req.workspace.id, 'link_evidence_cross_framework', 'evidence', ev.id,
@@ -3878,10 +3877,9 @@ app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, req
   if (!ev) return res.status(404).send('Not found');
   // Don't touch iso27001 rows from this route - those belong to the legacy
   // /controls flow which has additional primary-key bookkeeping.
-  const link = db.prepare(`SELECT * FROM evidence_links WHERE id=? AND evidence_id=? AND framework != 'iso27001'`)
-                 .get(req.params.linkId, ev.id);
+  const wconv = evWrites.writesConverged(db, req.workspace.id);
+  const link = evWrites.unlinkCrossLink(db, wconv, ev.id, req.params.linkId);
   if (link) {
-    db.prepare(`DELETE FROM evidence_links WHERE id=?`).run(link.id);
     logAction(req.user.id, req.workspace.id, 'unlink_evidence_cross_framework', 'evidence', ev.id,
               { framework: link.framework, item_ref: link.item_ref }, auditCtx(req));
   }
@@ -3894,12 +3892,12 @@ app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspac
   const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return redirectBack(req, res);
   const sharedSectionRef = req.body.section_ref || null;
-  const ins = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+  const wconv = evWrites.writesConverged(db, req.workspace.id);
   const tx = db.transaction(() => {
     for (const id of ids) {
       const perLinkKey = 'section_ref_for_' + id.replace(/[^a-z0-9.-]/gi, '_');
       const ref = (req.body[perLinkKey] || sharedSectionRef || null);
-      ins.run(ev.id, id, ref);
+      evWrites.attachIsoControl(db, wconv, ev.id, id, ref);
     }
   });
   try { tx(); } catch (_) {}
@@ -3913,20 +3911,18 @@ app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth,
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const newRef = (req.body.section_ref || '').toString().trim() || null;
-  db.prepare(`UPDATE evidence_controls SET section_ref=? WHERE id=? AND evidence_id=?`)
-    .run(newRef, req.params.linkId, ev.id);
+  evWrites.updateIsoSection(db, evWrites.writesConverged(db, req.workspace.id), ev.id, req.params.linkId, newRef);
   redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare(`SELECT id, iso_item_id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
-  const link = db.prepare(`SELECT * FROM evidence_controls WHERE id=? AND evidence_id=?`).get(req.params.linkId, ev.id);
-  if (link) {
-    db.prepare(`DELETE FROM evidence_controls WHERE id=?`).run(link.id);
+  const removedIso = evWrites.unlinkIsoControl(db, evWrites.writesConverged(db, req.workspace.id), ev.id, req.params.linkId);
+  if (removedIso) {
     // If the deleted link was the primary, also clear evidence.iso_item_id
     // so the legacy column doesn't drift back into existence on next render.
-    if (ev.iso_item_id === link.iso_item_id) {
+    if (ev.iso_item_id === removedIso) {
       db.prepare(`UPDATE evidence SET iso_item_id=NULL WHERE id=?`).run(ev.id);
     }
   }
