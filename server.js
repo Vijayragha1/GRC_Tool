@@ -50,6 +50,7 @@ const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
 const evReads = require('./lib/evidence-reads');
 const ctlReads = require('./lib/control-reads');
+const ctlWrites = require('./lib/control-writes');
 const evWrites = require('./lib/evidence-writes');
 
 init();
@@ -528,6 +529,21 @@ function computeClientStage(ws) {
 }
 
 function getOrCreateState(wsId, isoId) {
+  // Cutover 4 (W1, lazy create): on a write-flipped workspace the AUTHORITATIVE
+  // create goes to the converged control_instances (whole-org, entity_id NULL);
+  // migration 014 mirrors the new row back into control_states. We still read the
+  // return value back from control_states because callers (the assess-wizard
+  // render) read assessment_answers + review_* columns the converged compat view
+  // does not carry (deferred). The legacy ensure below also covers any drift and,
+  // when the flag is off, is the unchanged original path. Fail-safe: an unmapped
+  // item or missing converged schema falls through to the legacy path.
+  if (ctlWrites.converged(db, wsId)) {
+    const reqId = ctlWrites.requirementId(db, 'iso27001', isoId);
+    if (reqId) {
+      db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
+        .run(wsId, reqId);
+    }
+  }
   let s = db.prepare('SELECT * FROM control_states WHERE workspace_id = ? AND iso_item_id = ?')
     .get(wsId, isoId);
   if (!s) {
@@ -13514,6 +13530,17 @@ app.post('/workspaces/:wsId/comments/:id/mentions', requireAuth, requireWorkspac
 // engagement-plan/exec-brief will follow.
 
 function getOrCreate42State(wsId, isoId) {
+  // Cutover 4 (W1, lazy create) for ISO 42001: authoritative create goes to the
+  // converged control_instances on a write-flipped workspace (014 mirrors it back
+  // to iso42001_control_states); the legacy ensure + readback preserve the return
+  // contract and the unchanged flag-off path. Fail-safe to legacy when unmapped.
+  if (ctlWrites.converged(db, wsId)) {
+    const reqId = ctlWrites.requirementId(db, 'iso42001', isoId);
+    if (reqId) {
+      db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
+        .run(wsId, reqId);
+    }
+  }
   db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(wsId, isoId);
   return db.prepare(`SELECT * FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
 }
@@ -14921,7 +14948,7 @@ app.use((err, req, res, next) => {
 
 // Export the configured app so tests can mount it without calling listen().
 // When run directly (node server.js), bind a port and start serving.
-module.exports = { app, db, computeReadiness, computeIso42001Readiness };
+module.exports = { app, db, computeReadiness, computeIso42001Readiness, getOrCreateState, getOrCreate42State };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
