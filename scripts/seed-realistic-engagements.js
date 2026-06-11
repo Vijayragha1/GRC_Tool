@@ -56,7 +56,7 @@ function wipeClient(clientName) {
   safe(`DELETE FROM audit_observations WHERE audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`);
   safe(`DELETE FROM document_controls WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id=?)`);
   safe(`DELETE FROM doc_versions WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id=?)`);
-  safe(`DELETE FROM evidence_controls WHERE evidence_id IN (SELECT id FROM evidence WHERE workspace_id=?)`);
+  safe(`DELETE FROM evidence_requirement_links WHERE evidence_id IN (SELECT id FROM evidence WHERE workspace_id=?)`);
   safe(`DELETE FROM risk_treatment_actions WHERE workspace_id=?`);
   safe(`DELETE FROM tasks WHERE workspace_id=?`);
   safe(`DELETE FROM suppliers WHERE workspace_id=?`);
@@ -227,14 +227,14 @@ function seedEvidenceOnEveryControl(wsId, mode) {
   const insEv = db.prepare(`INSERT INTO evidence
     (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  const link = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id) VALUES (?, ?)`);
+  const evWrites = require('../lib/evidence-writes');
   db.transaction(() => {
     controls.forEach(c => {
       const cleanTitle = c.title.replace(/^A\.[0-9.]+ /, '').replace(/[^\w]+/g, '-').toLowerCase();
       const fname = `${c.id.replace('annex-', '').replace('clause-', '').toUpperCase()}-${cleanTitle}-evidence.pdf`;
       const id = insEv.run(wsId, c.id, fname, `seed/${fname}`, randomSha(), 100000 + Math.floor(Math.random() * 500000),
         1, `Evidence demonstrating ${c.title} - approved on ${offsetDate(-Math.floor(Math.random() * 90))}.`).lastInsertRowid;
-      link.run(id, c.id);
+      evWrites.attachIsoControl(db, id, c.id);
     });
   })();
   console.log(`  ${controls.length} evidence entries linked one-per-control`);

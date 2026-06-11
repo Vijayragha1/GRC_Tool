@@ -189,12 +189,12 @@ function seedEvidence(wsId, evidence) {
     (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes,
      uploaded_by, description)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  const link = db.prepare(`INSERT OR IGNORE INTO evidence_controls (evidence_id, iso_item_id) VALUES (?, ?)`);
+  const evWrites = require('../lib/evidence-writes');
   db.transaction(() => {
     for (const e of evidence) {
       const id = ins.run(wsId, e.iso_item_id || null, e.filename,
         `seed/${e.filename}`, randomSha(), e.size_bytes, USER_ID, e.description).lastInsertRowid;
-      if (e.iso_item_id) link.run(id, e.iso_item_id);
+      if (e.iso_item_id) evWrites.attachIsoControl(db, id, e.iso_item_id);
     }
   })();
 }

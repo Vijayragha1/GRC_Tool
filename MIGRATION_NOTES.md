@@ -342,10 +342,36 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
+## Phase 2 demolition — evidence join tables (branch `feat/phase2-demolition-evidence`, 2026-06-11)
+
+The FIRST demolition of the program; it sets the playbook below.
+
+**Preconditions (met):** `backup_runs` 239 `ok` (< 24h); `cutover2_consistency_check.js` 0/0 symmetric difference + 0 section drift on live dev; full code-reference audit of `evidence_controls` / `evidence_links` (every live reference repointed; see the audit in the cutover-2 handoff).
+
+**Architectural finding + decision:** `db.js init()` (run on every server start, server.js) recreated `evidence_controls` / `evidence_links` + the `evctrl_to_evlinks_*` triggers on every boot, and did NOT build the converged schema (whose catalog seed lives in a manual data backfill). So a migration-only drop would be undone on the next restart (proven empirically). Decision (Vijay, Option 2): **wire the migration runner into app startup so the chain is the single source of truth for the schema**, and remove the legacy DDL from `db.js`.
+
+**What changed:**
+- `migrations/run.js`: extracted `applyPending(db)`; `db.js init()` now calls it after the hand-written core schema. Only PENDING migrations run (warm boots near-instant); a pristine DB runs the full chain once. It THROWS on the first failing migration, so a half-migrated DB refuses to serve (fail loud).
+- `db.js init()`: removed the `evidence_controls` / `evidence_links` CREATE + indexes + backfills + the three `evctrl_to_evlinks_*` triggers.
+- `migrations/011_phase2_demolition_evidence_joins.sql`: drops the six triggers (`erl_to_legacy_*` + `evctrl_to_evlinks_*`) then `evidence_controls` + `evidence_links`, all `IF EXISTS`. Coherent on both the warm dev DB and a pristine DB (CREATE TRIGGER resolves referenced tables lazily, so migration 010 still applies before 011 drops it).
+- `lib/evidence-reads.js` + `lib/evidence-writes.js`: collapsed to erl-only (legacy branches + the feature-flag check removed). The actionable link handle is now `evidence_requirement_links.id` (erl-native); unlink / section-edit operate on erl directly.
+- `server.js`: read/write sites call the erl-only helpers; demo seeders (`seed-demo-clients.js`, `seed-realistic-engagements.js`) repointed to erl via `attachIsoControl` / `evidence_requirement_links`; coverage help text updated. `cutover2_consistency_check.js` is now historical (it reads the dropped tables).
+
+**Verification:**
+- Suite green: smoke 45/0, node:test 25/0. Fresh test boots run the FULL chain including the demolition, so the suite exercises the erl-only end state.
+- Timing: cold fresh-boot `init()` total (core schema + seed + full 11-migration chain) 120 ms; warm chain 0.2 ms (0 pending). Under the ~2s threshold, so no baseline-snapshot optimization built (per the standing decision).
+- Post-drop E2E (real app on a snapshot copy where 011 auto-applied at boot): **12/12 PASS**. `evidence_controls` + `evidence_links` gone, no sync triggers remain, and upload → link → edit note → supersede → unlink → delete all work erl-only; the library renders 200.
+
+**Execution model (why the live DB is not yet demolished):** the drop is a pending migration; it AUTO-APPLIES at the first boot of the merged code (db.init -> applyPending -> 011). It was applied + proven only on a COPY. The live instance of record still has `evidence_controls` / `evidence_links` (consistency 0/0), so during review it works under both `main` and this branch and stays fully revertible (backup 239). The live drop happens when the merged code first boots, after approval.
+
+**DEMOLITION PLAYBOOK (standing, Vijay):** every subsequent module demolition = drop the legacy tables via the runner + remove that module's legacy DDL from `db.js init()` in the SAME PR, so `init()` shrinks monotonically toward zero hand-written legacy DDL while the migration chain remains the single source of truth. End-state note: once all demolitions land, consider collapsing the chain into a single baseline migration for fresh installs (decide then, not now).
+
+---
+
 ## Cleanup pass — GATED (cutover gate: full test suite green on `main`, satisfied once PR #24 merges; then per demolition: per-module cutover parity + latest `backup_runs` `ok` and under 24h + Vijay's explicit approval. `fix/audit-hardening-2026-06` decoupled. AWS descoped.)
 
-Demolitions in dependency order (none executed):
-1. **Phase 2:** drop `evidence_controls` + its 3 `evctrl_to_evlinks_*` triggers + the 3 `erl_to_legacy_*` sync triggers (migration 010), then `evidence_links`. In the same change, switch the evidence-library link handle from the legacy `evidence_controls.id`/`evidence_links.id` to `evidence_requirement_links.id` and drop the legacy-handle resolution in `lib/evidence-writes.js` (unlink / section-edit). Gated on cutover 2 landing on `main`.
+Demolitions in dependency order:
+1. ~~**Phase 2:** drop `evidence_controls` + `evidence_links` + the 6 triggers; switch the link handle to `evidence_requirement_links.id`.~~ **DONE** (2026-06-11, migration 011 + `db.js` legacy DDL removed + erl-native code). Executes on live at the first boot after merge. See "Phase 2 demolition" above. This established the demolition playbook (drop via runner + remove legacy DDL from `db.js init()` in the same PR).
 2. **Phase 3:** drop `control_states`, `entity_control_states`, `iso42001_control_states`, `control_state_history`, `iso42001_control_state_history`, `document_controls`, `iso42001_document_controls`.
 3. **Phase 4:** drop `assessment_answers` columns, `assessment_passes` (+ `iso42001_assessment_passes`), and the `csf_*` engine tables. The CSF port is fixture-only (no real data; AWS descoped).
 4. **Phase 5:** drop `recurring_questionnaire_schedules`, `supplier_questionnaires`(+responses), `questionnaire_templates`/`_questions`/`_template_versions`/`_question_bank`, `supplier_reviews` — after the DDQ cutover.
