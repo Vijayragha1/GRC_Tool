@@ -293,6 +293,30 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
+## Cutover 1 of 5 — evidence reads (branch `feat/cutover-1-evidence-reads`, 2026-06-11)
+
+**Scope:** switch evidence→control/requirement READ paths off the demolition-scheduled join tables (`evidence_controls`, `evidence_links`) onto the converged `evidence_requirement_links`, behind the per-workspace flag `evidence_reads_converged`. WRITES STAY LEGACY (that is cutover 2). Smallest blast radius first per the standing cutover order.
+
+**Procedure executed:**
+- Backup gate: `backups/iso27001-20260610-211444` via `scripts/dev-backup.js`; `backup_runs` id 237 `status='ok'`, freshness query returns 1.
+- Re-ran the idempotent Phase 2 backfill (`migrations/data/003_phase2_backfill.js`): no change (erl 165 → 165; 165 ec ok / 21 orphaned-evidence quarantined, 165 el ok / 1 quarantined, 31 CSF seed). Link-set symmetric difference legacy vs converged = 0/0.
+- Code: `lib/evidence-reads.js` (per-workspace flag helper + converged read functions; `readsConverged` FAILS SAFE to legacy when `feature_flags` / the converged schema is absent, e.g. a fresh boot or the test harness) plus 8 read sites in `server.js` dual-pathed. Legacy SQL is preserved verbatim on the `converged=false` branch. The two write-coupled surfaces (evidence-library unlink / section-edit) keep the legacy `link_id` handle on the converged path so the still-legacy writes keep working.
+
+**Read sites switched (→ screen):** evidence-library `link_count` + ISO chips + cross-framework chips (`/workspaces/:id/evidence`); control-detail evidence panel (`/controls/assess/:isoId`); evidence-coverage matrix + CSV (`/evidence-coverage[.csv]`); evidence pack + readiness-pack manifests (`evidence/pack.zip`, `export/readiness-pack.zip`); audit checklist-from-soa counts. Sites that read only the core `evidence` table (file counts, primary-path `evidence.iso_item_id`, audit-pack index, auditor portal) are already framework-agnostic and were left untouched; the coverage `UNION ALL` keeps its primary-path half (core table) and switches only the join half, preserving the legacy double-count exactly.
+
+**Parity proof (the gate):**
+- Query-level (`migrations/fixtures/cutover1_evidence_parity.js`, read-only, flag-independent): legacy vs converged deep-equal across **all 5 workspaces × 6 read surfaces = 30/30 identical**; pack manifests byte-identical.
+- Render-level (real app booted against a consistent `.backup` snapshot copy; pilot ws16; flag ON vs OFF in one session): **4/4 evidence screens render byte-identical HTML** (evidence library 1,156,049 B, coverage 213,361 B, coverage CSV 8,429 B, control-detail panel identical apart from one per-request random widget id `data-mention-id`, which differs between any two renders).
+- Suite: smoke 45/0, node:test 25/0; zero new failures vs the `b7deabf` baseline.
+
+**Flip state:** pilot ws16 flipped and proven first, then the rest. `feature_flags.evidence_reads_converged=1` for ws 16/17/30/31/32 (every current workspace). New workspaces default to legacy (no row) until flipped. Revert is instant and data-safe: set the flags to 0 (or delete the rows) and reads fall back to legacy.
+
+**Caveat, and the dependency on cutover 2 (writes):** while reads are converged but writes are legacy, a NEW link write (upload / link / supersede) updates `evidence_controls`/`evidence_links` but NOT `evidence_requirement_links`, so converged reads will not reflect it until the backfill re-runs. Cutover 1 therefore relies on the standing "no feature work on a module during its cutover window" freeze (linkage writes quiesced), and must be followed by cutover 2 (writes → erl, or an `evidence_controls→erl` sync trigger mirroring the existing `evctrl_to_evlinks_*` triggers) to lift the freeze. Interim mitigation if a linkage write does happen: re-run the Phase 2 backfill to resync.
+
+**Gate status:** parity PASS (query 30/30 + render 4/4), suite green, backup fresh. STOPPED at the verification gate for review before cutover 2. Phase 2 demolition (drop `evidence_controls`/`evidence_links` + the `evctrl_to_evlinks_*` triggers) stays gated on cutover 2 plus the standing demolition gate.
+
+---
+
 ## Cleanup pass — GATED (cutover gate: full test suite green on `main`, satisfied once PR #24 merges; then per demolition: per-module cutover parity + latest `backup_runs` `ok` and under 24h + Vijay's explicit approval. `fix/audit-hardening-2026-06` decoupled. AWS descoped.)
 
 Demolitions in dependency order (none executed):

@@ -48,6 +48,7 @@ const auditPack = require('./lib/audit-pack');
 const changesSince = require('./lib/changes-since');
 const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
+const evReads = require('./lib/evidence-reads');
 
 init();
 
@@ -2883,18 +2884,8 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   // (evidence.iso_item_id) OR the new evidence_controls join. UNION + DISTINCT
   // because the primary is also seeded into the join, but a non-primary join
   // entry might exist independently.
-  const evidenceList = db.prepare(`
-    SELECT e.id, e.filename, e.size_bytes, e.description, e.uploaded_at,
-           e.valid_from, e.valid_until, e.period_label, e.clause_section,
-           u.name AS uploader,
-           (SELECT COUNT(*) FROM evidence_controls ec WHERE ec.evidence_id = e.id) AS link_count
-    FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
-    WHERE e.workspace_id=? AND e.id IN (
-      SELECT id FROM evidence WHERE workspace_id=? AND iso_item_id=?
-      UNION
-      SELECT evidence_id FROM evidence_controls WHERE iso_item_id=?
-    )
-    ORDER BY e.uploaded_at DESC`).all(req.workspace.id, req.workspace.id, item.id, item.id);
+  const evidenceList = evReads.controlPanelEvidence(
+    db, req.workspace.id, item.id, evReads.readsConverged(db, req.workspace.id));
 
   // Linked risks, documents, and open NCs - read-only summary panels.
   const linkedRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.status
@@ -3553,13 +3544,16 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
   const tag = (req.query.tag || '').toString().trim().toLowerCase();
   const today = new Date().toISOString().slice(0, 10);
   const expSoon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  // Evidence-read cutover flag (per-workspace): switches linkage reads from the
+  // legacy join tables to evidence_requirement_links. Writes stay legacy.
+  const convergedReads = evReads.readsConverged(db, req.workspace.id);
 
   // Active (non-superseded) evidence only on the live view. Superseded rows
   // are still visible from the version-chain expander on each row.
   const allEvidence = db.prepare(`
     SELECT e.*,
            u.name AS uploader,
-           (SELECT COUNT(*) FROM evidence_controls ec WHERE ec.evidence_id = e.id) AS link_count,
+           ${evReads.linkCountSubquery(convergedReads)} AS link_count,
            sup.filename AS superseded_filename
     FROM evidence e
     LEFT JOIN users u ON u.id = e.uploaded_by
@@ -3590,47 +3584,14 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
     );
   }
 
-  // Linked controls for the visible rows.
-  const linksByEvidence = {};
-  // Cross-framework link counts and per-row link details for the visible rows.
+  // Linked controls (ISO 27001 chips) + cross-framework link details for the
+  // visible rows. Sourced from the legacy join tables or the converged
+  // evidence_requirement_links per the per-workspace cutover flag; the legacy
+  // link_id handle is preserved on both paths so the still-legacy unlink /
+  // section-edit writes keep working. See lib/evidence-reads.js.
   // crossLinksByEvidence[evId] = { iso27001: [...], iso42001: [...], csf: [...] }
-  const crossLinksByEvidence = {};
-  if (evidenceList.length) {
-    const ids = evidenceList.map(e => e.id);
-    const placeholders = ids.map(() => '?').join(',');
-    const links = db.prepare(`
-      SELECT ec.id AS link_id, ec.evidence_id, ec.iso_item_id, ec.section_ref,
-             i.title AS iso_title, i.type AS iso_type
-      FROM evidence_controls ec
-      INNER JOIN iso_items i ON i.id = ec.iso_item_id
-      WHERE ec.evidence_id IN (${placeholders})
-      ORDER BY i.sort_order ASC
-    `).all(...ids);
-    for (const l of links) {
-      if (!linksByEvidence[l.evidence_id]) linksByEvidence[l.evidence_id] = [];
-      linksByEvidence[l.evidence_id].push(l);
-    }
-    // Pull every evidence_links row for these evidence ids. We resolve the
-    // human-readable title for ISO 42001 and CSF by joining each framework's
-    // own catalog. Done as two LEFT JOINs because SQLite doesn't have CASE-
-    // dependent joins.
-    const allLinks = db.prepare(`
-      SELECT el.id AS link_id, el.evidence_id, el.framework, el.item_ref, el.section_ref,
-             ai.title AS iso42001_title,
-             cs.description AS csf_description
-      FROM evidence_links el
-      LEFT JOIN iso42001_items ai ON el.framework='iso42001' AND ai.id = el.item_ref
-      LEFT JOIN csf_subcategories cs ON el.framework='csf' AND cs.code = el.item_ref
-      WHERE el.evidence_id IN (${placeholders})
-      ORDER BY el.framework, el.item_ref
-    `).all(...ids);
-    for (const l of allLinks) {
-      if (!crossLinksByEvidence[l.evidence_id]) {
-        crossLinksByEvidence[l.evidence_id] = { iso27001: [], iso42001: [], csf: [] };
-      }
-      crossLinksByEvidence[l.evidence_id][l.framework].push(l);
-    }
-  }
+  const { linksByEvidence, crossLinksByEvidence } = evReads.libraryLinks(
+    db, evidenceList.map(e => e.id), convergedReads);
 
   // Aggregate counters across all *active* evidence (the filter pills).
   const counters = {
@@ -3818,7 +3779,7 @@ app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace, (r
   if (dateFrom) { where += ' AND date(e.uploaded_at) >= date(?)'; params.push(dateFrom); }
   if (dateTo)   { where += ' AND date(e.uploaded_at) <= date(?)'; params.push(dateTo); }
   const items = db.prepare(`SELECT e.*, u.name AS uploader,
-    (SELECT GROUP_CONCAT(iso_item_id, '; ') FROM evidence_controls WHERE evidence_id=e.id) AS linked_controls
+    ${evReads.linkedControlsSubquery(evReads.readsConverged(db, req.workspace.id))} AS linked_controls
     FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
     WHERE ${where} ORDER BY e.uploaded_at ASC`).all(...params);
 
@@ -8498,21 +8459,10 @@ app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace, re
     WHERE i.type='control'
     ORDER BY i.sort_order`).all(wsId);
 
-  // For each control, count attached evidence (live, not superseded).
-  // Two link paths to consider: primary evidence.iso_item_id, and evidence_controls join.
-  // UNION on evidence ids first then count.
-  const evidenceByControl = {};
-  const evRows = db.prepare(`
-    SELECT iso_item_id, MAX(uploaded_at) AS last_uploaded_at, COUNT(*) AS attached
-    FROM (
-      SELECT iso_item_id, uploaded_at FROM evidence WHERE workspace_id=? AND iso_item_id IS NOT NULL AND superseded_at IS NULL
-      UNION ALL
-      SELECT ec.iso_item_id AS iso_item_id, e.uploaded_at FROM evidence_controls ec
-        INNER JOIN evidence e ON e.id=ec.evidence_id
-        WHERE e.workspace_id=? AND e.superseded_at IS NULL
-    )
-    GROUP BY iso_item_id`).all(wsId, wsId);
-  evRows.forEach(r => { evidenceByControl[r.iso_item_id] = { attached: r.attached, last_uploaded_at: r.last_uploaded_at }; });
+  // For each control, count attached evidence (live, not superseded). Two link
+  // paths: primary evidence.iso_item_id (core table, unchanged) + the join
+  // table, which switches to evidence_requirement_links per the cutover flag.
+  const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId, evReads.readsConverged(db, wsId));
 
   // Build the matrix.
   const matrix = rows.map(r => {
@@ -8564,12 +8514,7 @@ app.get('/workspaces/:wsId/evidence-coverage.csv', requireAuth, requireWorkspace
     FROM iso_items i
     LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
-  const evidenceByControl = {};
-  db.prepare(`SELECT iso_item_id, MAX(uploaded_at) AS last_uploaded_at, COUNT(*) AS attached FROM (
-      SELECT iso_item_id, uploaded_at FROM evidence WHERE workspace_id=? AND iso_item_id IS NOT NULL AND superseded_at IS NULL
-      UNION ALL
-      SELECT ec.iso_item_id, e.uploaded_at FROM evidence_controls ec INNER JOIN evidence e ON e.id=ec.evidence_id WHERE e.workspace_id=? AND e.superseded_at IS NULL
-    ) GROUP BY iso_item_id`).all(wsId, wsId).forEach(r => { evidenceByControl[r.iso_item_id] = r; });
+  const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId, evReads.readsConverged(db, wsId));
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
   const lines = ['Code,Title,Category,Applicability,Expected count,Attached count,Last upload,Stale (>12mo),Status band'];
   for (const r of rows) {
@@ -12359,7 +12304,7 @@ app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorks
 
   // 7. Evidence files (active only) + manifest CSV
   const evidence = db.prepare(`SELECT e.*, u.name AS uploader,
-    (SELECT GROUP_CONCAT(iso_item_id, '; ') FROM evidence_controls WHERE evidence_id=e.id) AS linked_controls
+    ${evReads.linkedControlsSubquery(evReads.readsConverged(db, ws.id))} AS linked_controls
     FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
     WHERE e.workspace_id=? AND e.superseded_at IS NULL ORDER BY e.uploaded_at`).all(ws.id);
   const evCsv = ['id,filename,sha256,uploader,uploaded_at,period,valid_from,valid_until,linked_controls,description'];
@@ -13358,8 +13303,7 @@ app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, require
       (SELECT COUNT(*) FROM document_controls dc INNER JOIN generated_docs gd
         ON gd.id = dc.document_id WHERE dc.iso_item_id = i.id AND gd.workspace_id = ?
         AND gd.retired_at IS NULL) AS doc_count,
-      (SELECT COUNT(*) FROM evidence_controls ec INNER JOIN evidence e
-        ON e.id = ec.evidence_id WHERE ec.iso_item_id = i.id AND e.workspace_id = ?) AS evi_count
+      ${evReads.checklistEvidenceCountSubquery(evReads.readsConverged(db, req.workspace.id))} AS evi_count
     FROM iso_items i
     INNER JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control' AND cs.applicability='included'
