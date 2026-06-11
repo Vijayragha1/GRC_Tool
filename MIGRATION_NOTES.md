@@ -317,10 +317,35 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
+## Cutover 2 of 5 — evidence writes (branch `feat/cutover-2-evidence-writes`, 2026-06-11)
+
+**Scope:** move evidence-linkage WRITES (create, link, edit note, supersede, unlink, delete) off the legacy join tables onto `evidence_requirement_links` (erl), behind a second per-workspace flag `evidence_writes_converged`. A temporary new→legacy trigger keeps the legacy tables a faithful shadow of erl so they can still be demolished safely. This lifts the cutover-1 read/write-split freeze.
+
+**Pre-cutover-2 confirmations:** (1) cutover-1 parity evidence is in this file (query 30/30 + render 4/4, pilot ws16, full flip). (2) all 5 workspaces have `evidence_reads_converged=1`. (3) the `recurringQuestionnaires` scheduler job does NOT exist on `main` (it is WIP-only on `fix/audit-hardening-2026-06`); the only questionnaire job on main, `questionnaireResponseReminders`, just reads + notifies and nothing writes `recurring_questionnaire_schedules`, so there is no scheduler job on the cutover line to disable. The freeze rule stays recorded for the Phase 5 rebuild.
+
+**Procedure executed:**
+- Backup gate: `backups/iso27001-20260611-030755` via `scripts/dev-backup.js`; `backup_runs` 238 `status='ok'`, freshness query = 1.
+- Sync trigger: migration `010_cutover2_evidence_write_sync.sql` (applied via the runner; `schema_migrations` records it). Creates `erl_to_legacy_ins` / `_del` / `_upd` AFTER triggers on `evidence_requirement_links` that mirror every erl write into `evidence_controls` (ISO 27001) and `evidence_links` (all frameworks). `recursive_triggers` is OFF, so they write both legacy tables directly rather than chaining through `evctrl_to_evlinks_*`; `INSERT OR IGNORE` keeps them idempotent. **DEMOLITION DATE: drop these three triggers at the Phase 2 demolition step, together with `evidence_controls` + `evidence_links` (recorded at creation time per the standing rule).**
+- Final idempotent Phase 2 backfill re-run (point-in-time current at switch): erl 165, link-set symmetric difference 0/0.
+- Code: `lib/evidence-writes.js` (per-workspace `writesConverged` flag helper, fails safe to legacy; one helper per write op, legacy SQL verbatim on the `conv=false` branch) wired into 8 write routes in `server.js`. The hard-delete route is unchanged: deleting the `evidence` row FK-cascades to erl + ec + el (with `recursive_triggers` OFF the cascade does not re-fire the sync trigger). Writes resolve the legacy `link_id` handle (which the cutover-1 read still exposes) to the erl row; the trigger mirrors the change back to legacy.
+
+**Verification (the gate):**
+- E2E write consistency (real app booted on a snapshot copy, pilot ws16 write-flipped, driven through the live HTTP routes): **18/18 checks PASS** across upload → link → edit note → supersede → unlink → delete; after EVERY operation the legacy join tables and erl are row-consistent (link-set symmetric difference 0 and `section_ref` aligned), and the specific link appears in erl + `evidence_controls` + `evidence_links`. Created test files cleaned up; the live dev DB was not touched by the E2E (it ran on a copy).
+- Committed read-only checker `migrations/fixtures/cutover2_consistency_check.js`: link-set symmetric difference 0/0 + ISO/cross-framework `section_ref` drift 0 on the live dev DB. Re-run this before demolition.
+- Suite: smoke 45/0, node:test 25/0; zero new failures vs the `b7deabf` baseline (fresh boots / tests have no `feature_flags` table, so `writesConverged` returns false and writes stay legacy).
+
+**Flip state:** pilot ws16 flipped + proven first (per-workspace gating confirmed: ws16 writes=true, others false), then ws 17/30/31/32. `feature_flags.evidence_writes_converged=1` for every current workspace (alongside the cutover-1 read flags). New workspaces default to legacy writes until flipped. Revert is data-safe: set the write flags to 0 and writes fall back to legacy (the trigger simply stops receiving erl writes; legacy stays current because legacy writes resume).
+
+**Transitional note for demolition:** the unlink / section-edit converged writes resolve the legacy `evidence_controls.id` / `evidence_links.id` handle that the cutover-1 read still renders. At Phase 2 demolition the read must switch to an erl-native handle (`evidence_requirement_links.id`) and that legacy resolution be removed, in the same change that drops the legacy tables + all four triggers.
+
+**Gate status:** E2E consistency PASS (18/18), checker PASS, suite green, backup fresh. STOPPED at the verification gate for review. Phase 2 demolition stays gated on this cutover landing on `main` plus the standing demolition gate (per-module parity + latest `backup_runs` ok and < 24h + Vijay's approval).
+
+---
+
 ## Cleanup pass — GATED (cutover gate: full test suite green on `main`, satisfied once PR #24 merges; then per demolition: per-module cutover parity + latest `backup_runs` `ok` and under 24h + Vijay's explicit approval. `fix/audit-hardening-2026-06` decoupled. AWS descoped.)
 
 Demolitions in dependency order (none executed):
-1. **Phase 2:** drop `evidence_controls` + its 3 `evctrl_to_evlinks_*` triggers, then `evidence_links`.
+1. **Phase 2:** drop `evidence_controls` + its 3 `evctrl_to_evlinks_*` triggers + the 3 `erl_to_legacy_*` sync triggers (migration 010), then `evidence_links`. In the same change, switch the evidence-library link handle from the legacy `evidence_controls.id`/`evidence_links.id` to `evidence_requirement_links.id` and drop the legacy-handle resolution in `lib/evidence-writes.js` (unlink / section-edit). Gated on cutover 2 landing on `main`.
 2. **Phase 3:** drop `control_states`, `entity_control_states`, `iso42001_control_states`, `control_state_history`, `iso42001_control_state_history`, `document_controls`, `iso42001_document_controls`.
 3. **Phase 4:** drop `assessment_answers` columns, `assessment_passes` (+ `iso42001_assessment_passes`), and the `csf_*` engine tables. The CSF port is fixture-only (no real data; AWS descoped).
 4. **Phase 5:** drop `recurring_questionnaire_schedules`, `supplier_questionnaires`(+responses), `questionnaire_templates`/`_questions`/`_template_versions`/`_question_bank`, `supplier_reviews` — after the DDQ cutover.
