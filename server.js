@@ -3223,7 +3223,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
 
   // Total clauses + controls for progress denominator.
   const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items WHERE type IN ('clause','control')`).get().c;
-  const assessedNow = db.prepare(`SELECT COUNT(*) c FROM control_states
+  const assessedNow = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs}
     WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
 
   // Find the next un-assessed item (continue button target).
@@ -3294,7 +3294,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
   const themeRows = db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.maturity
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control'`).all(wsId);
   const heatmap = { '5':[], '6':[], '7':[], '8':[] };
   for (const r of themeRows) {
@@ -4399,19 +4399,20 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
   const wsId = req.workspace.id;
 
   const dist = { Implemented: 0, 'Partially Implemented': 0, 'Work In Progress': 0, 'Not Implemented': 0, 'Not Applicable': 0, 'Not Assessed': 0 };
+  const Tg = ctlReads.tables(db, wsId);
   db.prepare(`SELECT COALESCE(cs.status,'Not Assessed') AS s, COUNT(*) AS c FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${Tg.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') GROUP BY s`).all(wsId).forEach(r => { dist[r.s] = r.c; });
   const total = Object.values(dist).reduce((a,b) => a+b, 0);
 
   const gaps = db.prepare(`SELECT i.id, i.type, i.title, cs.status, cs.maturity, cs.scope_pct, cs.notes
-    FROM iso_items i INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i INNER JOIN ${Tg.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
     ORDER BY i.sort_order`).all(wsId);
 
   const evidenceAsks = db.prepare(`SELECT i.id, i.title FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${Tg.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') AND cs.status='Implemented'
       AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.iso_item_id=i.id AND e.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
@@ -13995,7 +13996,7 @@ app.get('/workspaces/:wsId/iso42001/gap-assessment', requireAuth, requireWorkspa
       SUM(CASE WHEN cs.status='Not Applicable' THEN 1 ELSE 0 END) AS na,
       SUM(CASE WHEN cs.status IS NULL OR cs.status='Not Assessed' THEN 1 ELSE 0 END) AS unassessed,
       COUNT(i.id) AS total
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
+    FROM iso42001_items i LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
   res.render('iso42001_gap_assessment', { user: req.user, ws: req.workspace, passes, counts });
 });
 
