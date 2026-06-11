@@ -6020,12 +6020,12 @@ const MANDATORY_RECORDS = [
     detect: (ws, db) => !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND lower(name) LIKE '%risk%' AND lower(name) LIKE '%treatment%' LIMIT 1`).get(ws.id) ||
                         !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND lower(name) LIKE '%risk management%' LIMIT 1`).get(ws.id) },
   { key: 'soa', tier: 'mandatory', clause: '6.1.3 d)', name: 'Statement of Applicability',
-    detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND applicability IN ('included','excluded')`).get(ws.id).c >= 93 },
+    detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, ws.id).cs} WHERE workspace_id=? AND applicability IN ('included','excluded')`).get(ws.id).c >= 93 },
   { key: 'risk_treatment_plan', tier: 'mandatory', clause: '6.1.3 e) / 8.3', name: 'Risk treatment plan',
     detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND treatment IS NOT NULL`).get(ws.id).c > 0 },
   { key: 'objectives', tier: 'mandatory', clause: '6.2', name: 'Information security objectives',
     detect: (ws, db) => {
-      const cs = db.prepare(`SELECT notes FROM control_states WHERE workspace_id=? AND iso_item_id='clause-6.2'`).get(ws.id);
+      const cs = db.prepare(`SELECT notes FROM ${ctlReads.tables(db, ws.id).cs} WHERE workspace_id=? AND iso_item_id='clause-6.2'`).get(ws.id);
       return !!(cs && cs.notes && cs.notes.length > 30);
     } },
   { key: 'competence', tier: 'mandatory', clause: '7.2', name: 'Records of competence',
@@ -6048,7 +6048,7 @@ const MANDATORY_RECORDS = [
     detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`).get(ws.id).c > 0 },
   { key: 'legal_register', tier: 'expected', clause: 'A.5.31', name: 'Register of legal, regulatory, contractual requirements',
     detect: (ws, db) => {
-      const cs = db.prepare(`SELECT notes FROM control_states WHERE workspace_id=? AND iso_item_id='annex-a.5.31'`).get(ws.id);
+      const cs = db.prepare(`SELECT notes FROM ${ctlReads.tables(db, ws.id).cs} WHERE workspace_id=? AND iso_item_id='annex-a.5.31'`).get(ws.id);
       return !!(cs && cs.notes && cs.notes.length > 30);
     } },
   { key: 'access_control', tier: 'expected', clause: 'A.5.15', name: 'Topic-specific policy on access control',
@@ -6077,7 +6077,8 @@ function computeRoadmap(ws, scalars) {
   const clausesTotal = stateRows.filter(r => r.type === 'clause').length;
   const allAssessed = annexAssessed + clausesAssessed;
   const allTotal = annexTotal + clausesTotal;
-  const soaDecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const Tns = ctlReads.tables(db, ws.id);
+  const soaDecided = db.prepare(`SELECT COUNT(*) c FROM ${Tns.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(ws.id).c;
   const approvedDocs = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(ws.id).c;
@@ -6100,10 +6101,10 @@ function computeRoadmap(ws, scalars) {
 
   const methodologyActive = db.prepare(`SELECT COUNT(*) c FROM risk_methodologies
     WHERE workspace_id=? AND is_active=1`).get(ws.id).c;
-  const includedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const includedControls = db.prepare(`SELECT COUNT(*) c FROM ${Tns.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).get(ws.id).c;
-  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM ${Tns.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
       AND cs.status='Implemented'`).get(ws.id).c;
@@ -6213,42 +6214,47 @@ function computeReadiness(ws) {
 
   // Validation flags - actionable issues, not tutorials
   const flags = [];
+  const T = ctlReads.tables(db, ws.id);
 
   const implNoEvidence = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.status='Implemented'
     AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.workspace_id=? AND e.iso_item_id=cs.iso_item_id)
+    ORDER BY i.sort_order
   `).all(ws.id, ws.id);
   if (implNoEvidence.length) flags.push({ kind: 'implemented_no_evidence', severity: 'high',
     label: `${implNoEvidence.length} controls marked Implemented without evidence`,
     items: implNoEvidence.slice(0, 10) });
 
   const implNoOwner = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.status IN ('Implemented','Partially Implemented') AND cs.owner_id IS NULL
+    ORDER BY i.sort_order
   `).all(ws.id);
   if (implNoOwner.length) flags.push({ kind: 'no_owner', severity: 'medium',
     label: `${implNoOwner.length} active controls without an owner`,
     items: implNoOwner.slice(0, 10) });
 
   const includedNoRisk = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.applicability='included' AND i.type='control'
     AND NOT EXISTS (SELECT 1 FROM risk_controls rc INNER JOIN risks r ON r.id=rc.risk_id WHERE rc.iso_item_id=i.id AND r.workspace_id=?)
     AND (cs.inclusion_justification IS NULL OR length(cs.inclusion_justification) < 10)
+    ORDER BY i.sort_order
   `).all(ws.id, ws.id);
   if (includedNoRisk.length) flags.push({ kind: 'included_no_basis', severity: 'high',
     label: `${includedNoRisk.length} SoA-included controls have no driving risk and no justification`,
     items: includedNoRisk.slice(0, 10) });
 
   const excludedNoJust = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.applicability='excluded' AND i.type='control'
     AND (cs.exclusion_justification IS NULL OR length(cs.exclusion_justification) < 10)
+    ORDER BY i.sort_order
   `).all(ws.id);
   if (excludedNoJust.length) flags.push({ kind: 'excluded_no_basis', severity: 'high',
     label: `${excludedNoJust.length} SoA-excluded controls without justification`,
@@ -6256,7 +6262,7 @@ function computeReadiness(ws) {
 
   const undecidedSoA = db.prepare(`
     SELECT COUNT(*) c FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND COALESCE(cs.applicability,'undecided')='undecided'
   `).get(ws.id).c;
   if (undecidedSoA > 0) flags.push({ kind: 'undecided_soa', severity: 'medium',
@@ -6318,10 +6324,11 @@ function computeReadiness(ws) {
     items: tier1NoAttestation.slice(0, 10) });
 
   const overdueAccessReview = db.prepare(`
-    SELECT i.id, i.title, cs.last_updated FROM control_states cs
+    SELECT i.id, i.title, cs.last_updated FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.iso_item_id IN ('annex-a.5.15','annex-a.5.18','annex-a.8.2')
     AND cs.status='Implemented' AND cs.last_updated < datetime('now','-180 days')
+    ORDER BY i.sort_order
   `).all(ws.id);
   if (overdueAccessReview.length) flags.push({ kind: 'stale_access_review', severity: 'medium',
     label: `Access controls reviewed > 180 days ago`,
@@ -6336,10 +6343,10 @@ function computeReadiness(ws) {
     SUM(CASE WHEN status='Not Applicable' THEN 1 ELSE 0 END) AS na,
     AVG(CASE WHEN maturity > 0 THEN maturity END) AS avg_maturity,
     COUNT(*) AS total
-    FROM control_states WHERE workspace_id=?`).get(ws.id) || {};
+    FROM ${T.cs} WHERE workspace_id=?`).get(ws.id) || {};
 
   const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items`).get().c;
-  const assessed = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`).get(ws.id).c;
+  const assessed = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(ws.id).c;
 
   // =====================================================================
   // TWO-LAYER READINESS MODEL (per the ISO 27001:2022 readiness rubric,
@@ -6359,13 +6366,13 @@ function computeReadiness(ws) {
     return !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND (${where}) AND status IN ('approved','published') LIMIT 1`).get(wsId, ...likeClauses);
   };
   const itemHasSubstance = (isoId) => {
-    const cs = db.prepare(`SELECT notes, maturity FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
+    const cs = db.prepare(`SELECT notes, maturity FROM ${T.cs} WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
     return !!(cs && ((cs.notes && cs.notes.trim().length > 30) || (cs.maturity && cs.maturity >= 2)));
   };
-  const annexADecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const annexADecided = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(wsId).c;
-  const soaJustGaps = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const soaJustGaps = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control'
       AND ((cs.applicability='included' AND (cs.inclusion_justification IS NULL OR length(trim(cs.inclusion_justification)) < 10))
@@ -6472,7 +6479,7 @@ function computeReadiness(ws) {
   ];
 
   // ----- Layer 2: maturity % across applicable Annex A controls -----
-  const maturityRows = db.prepare(`SELECT cs.maturity FROM control_states cs
+  const maturityRows = db.prepare(`SELECT cs.maturity FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).all(wsId);
   const applicableControls = maturityRows.length;
@@ -6490,7 +6497,7 @@ function computeReadiness(ws) {
   const stage1Blocked = !stage1Ready;
 
   // ----- Layer 1: Stage 2 hard gate (9 items, rubric §3.2) -----
-  const controlsWithOwnerAndEvidence = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const controlsWithOwnerAndEvidence = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
       AND cs.owner_id IS NOT NULL
@@ -6566,7 +6573,7 @@ function computeReadiness(ws) {
   // four Annex A themes.
   const themeStateRows = db.prepare(`SELECT i.id, i.type, i.category, COALESCE(cs.status,'Not Assessed') AS status
                                      FROM iso_items i
-                                     LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`).all(ws.id);
+                                     LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`).all(ws.id);
   const themes = {
     requirements: { label: 'Requirements', total: 0, assessed: 0, implemented: 0 },
     org:          { label: 'A.5 Org',      total: 0, assessed: 0, implemented: 0 },
@@ -6642,11 +6649,12 @@ app.get('/api/workspaces/:wsId/readiness', requireAuth, requireWorkspace, (req, 
 app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
   const blockers = [];
+  const T = ctlReads.tables(db, wsId);
 
   // 1. Controls marked Implemented but no evidence files attached
   const implNoEvidence = db.prepare(`
     SELECT i.id, i.title FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id = i.id
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id = i.id
     WHERE i.type='control' AND cs.workspace_id=? AND cs.status='Implemented'
       AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.iso_item_id=i.id AND e.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
@@ -6662,7 +6670,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
   // 2. SoA controls without inclusion or exclusion justification
   const soaUnjustified = db.prepare(`
     SELECT i.id, i.title, COALESCE(cs.applicability,'undecided') AS applicability FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id=?
     WHERE i.type='control' AND (
       (cs.applicability='included' AND (cs.inclusion_justification IS NULL OR cs.inclusion_justification=''))
       OR (cs.applicability='excluded' AND (cs.exclusion_justification IS NULL OR cs.exclusion_justification=''))
@@ -6763,7 +6771,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
   const notAssessedRow = db.prepare(`SELECT
     SUM(CASE WHEN i.type='clause' AND (cs.status IS NULL OR cs.status='Not Assessed') THEN 1 ELSE 0 END) AS clauses,
     SUM(CASE WHEN i.type='control' AND (cs.status IS NULL OR cs.status='Not Assessed') THEN 1 ELSE 0 END) AS controls
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')`).get(wsId);
   const notAssessed = (notAssessedRow.clauses || 0) + (notAssessedRow.controls || 0);
   if (notAssessed > 0) {
@@ -14909,7 +14917,7 @@ app.use((err, req, res, next) => {
 
 // Export the configured app so tests can mount it without calling listen().
 // When run directly (node server.js), bind a port and start serving.
-module.exports = { app, db };
+module.exports = { app, db, computeReadiness };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
