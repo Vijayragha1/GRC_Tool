@@ -344,6 +344,38 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
+## Cutover 3 of 5: control-instance reads (branch `feat/cutover-3-instance-reads`, 2026-06-11)
+
+**Scope:** switch control-state + document-link READ paths off `control_states` / `iso42001_control_states` / `document_controls` / `iso42001_document_controls` onto the converged `control_instances` / `document_requirement_links`, behind the per-workspace flag `control_reads_converged`. Widest blast radius in the program (~100 read sites), run in stages. WRITES stay legacy (cutover 4). Control-state HISTORY reads deferred to Phase 4 (see manifest).
+
+**Mechanism:** compatibility views (migration `012_phase3_compat_views.sql`): `v_control_states` / `v_iso42001_control_states` present `control_instances` with the LEGACY column names and DE-NORMALIZED display values (whole-org only, `entity_id IS NULL`); `v_document_controls` / `v_iso42001_document_controls` present `document_requirement_links`. De-normalization FAILS LOUD (`'!!UNMAPPED:<value>'`, never a silent fallback). Reads swap the table NAME via `lib/control-reads.js` (`control_reads_converged`, fail-safe to legacy), so query structure and rendered output are unchanged. Views applied at merge-boot via the startup runner (not run on live dev pre-merge, to avoid prematurely executing the still-pending evidence-demolition 011).
+
+**Stage 1:** backup gate ok; Phase 3 backfill idempotent (`control_instances` 434/0 quarantined, `document_requirement_links` 193/14 orphan); **histogram reconciliation 0 mismatched status/applicability buckets, 0 `!!UNMAPPED`, doc-links 193=193**; view-vs-legacy parity 0/0 on display columns, `last_updated` preserved.
+
+**Stage 2 (Increment 1) converted + verified:** SoA (27001+42001 render + CSV + auditor + snapshot/metadata), control list/detail screens, crosswalks, controls_assess_summary, dashboard/roadmap/badge/progress, `computeReadiness`, `computeIso42001Readiness`, iso42001/roadmap, ISMS performance metrics + 30-day trends, evidence-coverage matrix + CSV, SoA snapshot capture, audit-pack/recommendations/controls/kanban CSV exports, member-profile + asset-detail panels, `computeNextStep` + `computeNeedsAttention`, documents-library tagged-items, `lib/reports.js`, `lib/audit-pack.js`, `lib/fts.js` (drift COUNT + refresh + rebuildAll), auditor + documents-library doc consumers. **(Increment 2)** gap-assessment CURRENT-STATE reads (assessedNow, Annex A heatmap, summary.docx, iso42001 gap counts).
+
+**Evidence ledger:**
+- **SoA byte-comparison** (pilot ws16, flag OFF vs ON, both frameworks): 4/4 BYTE-IDENTICAL (with the backfill re-run at switch).
+- **Function deep-diff** (flag OFF vs ON, JSON equality, ALL 5 workspaces): `computeReadiness` + `buildContext` + `computeIso42001Readiness` identical.
+- **Render parity** (flag OFF vs ON, ALL 5 workspaces): dashboard, controls list, summary, crosswalks, documents, review-queue, readiness/auditor, roadmap, gap-assessment byte-identical.
+- **FTS** drift COUNT + `rebuildAll` control index match; **`lib/reports` buildContext** byte-identical.
+- Suite green throughout (smoke 45/0, node:test 25/0).
+
+**Findings (recorded as doctrine):** (1) `'Work In Progress'` was app-producible but missing from the Phase 3 STATUS map -> closed in backfill + views; writable-vocabulary audit confirms all 6 statuses + 3 applicabilities round-trip. (2) Re-backfill-at-switch is load-bearing (the 42001 SoA `last_updated` failure). (3) Truncation-without-ordering: `computeReadiness` flag item-lists differed on ws31/ws32 only (no `ORDER BY`); fixed; bug-class hunt run across all unconverted reads (no second instance).
+
+**Stage 3:** backup `backup_runs` 242 ok; re-backfill at switch; **all 5 workspaces flipped** `control_reads_converged=1`; full suite green.
+
+### DEFERRAL MANIFEST (reads intentionally left on legacy; the Phase 4 / cutover-4 cutovers inherit these)
+- **Write / read-modify-write paths -> cutover 4 (writes):** `getOrCreateState` (27001 + 42001); `nextUnassessedItem` / `nextUnassessed42` wizard nav; the assess-wizard detail reads; control status/review save; SoA save/bulk/auto-justify; doc-link add/unlink writes and the control-detail doc panels that render the actionable `link_id`; checklist-from-soa (creates `audit_observations`); control-save `last_updated` reads.
+- **Review-workflow columns -> cutover 4 (or a review-converged design):** review-queue (27001 + 42001) and review-detail read `review_requested_by` / `reviewed_by` / `reviewed_at` / `review_reason`, which `control_instances` does NOT track (the compat view exposes them as NULL). Converting would change rendered output, so they stay legacy until the review workflow is modelled on the converged schema.
+- **`assessment_passes` / `control_state_history` coupled -> Phase 4 (assessment-engine cutover):** the control-history screen, gap-assessment diff / trend / velocity / orientation / controlsTouched. They read `control_state_history` JOIN `assessment_passes` (pass-snapshot model). The converged `control_instance_history` is a change-log with no `pass_id`, so these are not byte-equivalent until the engine cutover. ~20 `control_state_history` read sites.
+
+**Demolition split (later):** `control_states` / `iso42001_control_states` / `entity_control_states` (dead) / `document_controls` / `iso42001_document_controls` demolish after cutover 4 (writes) + the standing demolition gate; `control_state_history` / `iso42001_control_state_history` demolish only after the Phase 4 engine cutover lifts the manifest's history items.
+
+**Gate status:** Stages 1-3 complete; SoA byte 4/4, deep-diff + render parity across all workspaces, suite green, backup fresh, flags flipped. STOPPED at the verification gate for review. Views + flags activate at merge-boot.
+
+---
+
 ## Phase 2 demolition — evidence join tables (branch `feat/phase2-demolition-evidence`, 2026-06-11)
 
 The FIRST demolition of the program; it sets the playbook below.
