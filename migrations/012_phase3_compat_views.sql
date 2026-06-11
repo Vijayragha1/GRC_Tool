@@ -33,6 +33,7 @@ SELECT
   CASE ci.status
     WHEN 'implemented'           THEN 'Implemented'
     WHEN 'partially_implemented' THEN 'Partially Implemented'
+    WHEN 'work_in_progress'      THEN 'Work In Progress'
     WHEN 'not_implemented'       THEN 'Not Implemented'
     WHEN 'not_applicable'        THEN 'Not Applicable'
     WHEN 'not_assessed'          THEN 'Not Assessed'
@@ -75,6 +76,7 @@ SELECT
   CASE ci.status
     WHEN 'implemented'           THEN 'Implemented'
     WHEN 'partially_implemented' THEN 'Partially Implemented'
+    WHEN 'work_in_progress'      THEN 'Work In Progress'
     WHEN 'not_implemented'       THEN 'Not Implemented'
     WHEN 'not_applicable'        THEN 'Not Applicable'
     WHEN 'not_assessed'          THEN 'Not Assessed'
