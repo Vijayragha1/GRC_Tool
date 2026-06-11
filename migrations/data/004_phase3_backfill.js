@@ -25,8 +25,13 @@ const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 
 // --- approved normalization maps (Phase 0 census -> Vijay sign-off) ---
+// 'Work In Progress' added during cutover 3: it is app-producible
+// (suggestStatusFromAnswers) and was previously absent from the census/map, so a
+// WIP control would have been quarantined and gone missing from control_instances.
+// No live rows had it at cutover-3 time, so re-running is a no-op on current data.
 const STATUS = {
   'Implemented': 'implemented', 'Partially Implemented': 'partially_implemented',
+  'Work In Progress': 'work_in_progress',
   'Not Assessed': 'not_assessed', 'Not Implemented': 'not_implemented', 'Not Applicable': 'not_applicable',
 };
 const APPLIC = { 'included': 'applicable', 'undecided': 'undecided', 'excluded': 'excluded' };

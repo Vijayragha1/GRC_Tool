@@ -49,6 +49,7 @@ const changesSince = require('./lib/changes-since');
 const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
 const evReads = require('./lib/evidence-reads');
+const ctlReads = require('./lib/control-reads');
 const evWrites = require('./lib/evidence-writes');
 
 init();
@@ -437,8 +438,9 @@ function requireWorkspace(req, res, next) {
   } catch (_) { res.locals.unreadNotifications = 0; }
   // Open review-queue count for the sidebar badge.
   try {
-    const a = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
-    const b = db.prepare(`SELECT COUNT(*) c FROM iso42001_control_states WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
+    const T = ctlReads.tables(db, ws.id);
+    const a = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
+    const b = db.prepare(`SELECT COUNT(*) c FROM ${T.cs42} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
     res.locals.openReviewCount = a + b;
   } catch (_) { res.locals.openReviewCount = 0; }
   next();
@@ -465,7 +467,7 @@ function listWorkspaces(user) {
 
 function workspaceProgress(wsId) {
   const total = db.prepare('SELECT COUNT(*) AS c FROM iso_items').get().c;
-  const assessed = db.prepare(`SELECT COUNT(*) AS c FROM control_states
+  const assessed = db.prepare(`SELECT COUNT(*) AS c FROM ${ctlReads.tables(db, wsId).cs}
     WHERE workspace_id = ? AND status != 'Not Assessed'`).get(wsId).c;
   return { total, assessed, percent: total ? Math.round((assessed / total) * 100) : 0 };
 }
@@ -513,7 +515,7 @@ function computeClientStage(ws) {
 
   if (internal) return { key: 'internal_audit', label: 'Internal audit done' };
 
-  const assessed = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
+  const assessed = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
   if (assessed >= 20) return { key: 'implementing', label: 'Implementing' };
 
   const approved = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(wsId).c;
@@ -1371,7 +1373,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
   const portfolioRisk = workspacesWithProgress.map(w => {
     const lastPass = db.prepare(`SELECT pass_number, status, started_at, completed_at
       FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(w.id);
-    const staleControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+    const staleControls = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, w.id).cs} cs
       INNER JOIN iso_items i ON i.id = cs.iso_item_id
       WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
         AND (cs.last_verified_at IS NULL OR cs.last_verified_at < datetime('now','-365 days'))
@@ -1523,7 +1525,7 @@ function computeEngagementHealth(w) {
 
   const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
   const majorNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(w.id).c;
-  const staleControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const staleControls = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, w.id).cs} cs
       INNER JOIN iso_items i ON i.id = cs.iso_item_id
       WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
         AND (cs.last_verified_at IS NULL OR cs.last_verified_at < datetime('now','-365 days'))
@@ -2204,10 +2206,11 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const progress = workspaceProgress(ws.id);
 
   // Status breakdown
+  const T = ctlReads.tables(db, ws.id);
   const STATUSES = ['Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable','Not Assessed'];
   const stateRows = db.prepare(`SELECT i.id, i.type, i.category, COALESCE(cs.status,'Not Assessed') AS status
                                 FROM iso_items i
-                                LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`)
+                                LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`)
     .all(ws.id);
 
   const breakdown = { clauses: {}, annex: {} };
@@ -2248,7 +2251,7 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     WHERE t.workspace_id = ? AND t.status NOT IN ('done') ORDER BY t.due_date ASC LIMIT 10`).all(ws.id);
 
   const actionItems = db.prepare(`SELECT i.id, i.title, cs.status FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id = i.id
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id = i.id
     WHERE cs.workspace_id = ? AND cs.status IN ('Not Implemented','Partially Implemented')
     ORDER BY i.sort_order LIMIT 20`).all(ws.id);
 
@@ -2307,7 +2310,7 @@ app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) =
   const ws = req.workspace;
   // Prepare the scalars computeRoadmap needs.
   const stateRows = db.prepare(`SELECT cs.iso_item_id, cs.status, i.type
-    FROM control_states cs INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    FROM ${ctlReads.tables(db, ws.id).cs} cs INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=?`).all(ws.id);
   const assetCount = db.prepare('SELECT COUNT(*) c FROM assets WHERE workspace_id=?').get(ws.id).c;
   const riskCount = db.prepare('SELECT COUNT(*) c FROM risks WHERE workspace_id=?').get(ws.id).c;
@@ -2618,11 +2621,12 @@ app.post('/workspaces/:wsId/team/revoke-invite/:invId', requireAuth, requireWork
 app.get('/workspaces/:wsId/controls', requireAuth, requireWorkspace, (req, res) => {
   const filter = req.query.filter || 'all';
   const search = (req.query.q || '').trim().toLowerCase();
+  const T = ctlReads.tables(db, req.workspace.id);
   let rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       cs.applicability, cs.maturity, cs.owner_id, cs.due_date,
       (SELECT name FROM users WHERE id = cs.owner_id) AS owner_name
       FROM iso_items i
-      LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       ORDER BY i.sort_order`).all(req.workspace.id);
 
   if (filter === 'clauses') rows = rows.filter(r => r.type === 'clause');
@@ -2679,6 +2683,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
   // (clauses + controls). Excludes Not Applicable and Not Assessed (those are different problems).
   // max_risk_score is the worst L*I across linked risks - used to bump priority for
   // Not-Implemented controls protecting high-impact risks.
+  const T = ctlReads.tables(db, wsId);
   const gaps = db.prepare(`
     SELECT i.id, i.type, i.title, i.category, cs.status, cs.maturity, cs.notes,
       EXISTS (SELECT 1 FROM tasks t WHERE t.workspace_id=? AND t.iso_item_id=i.id AND t.status NOT IN ('done')) AS has_open_task,
@@ -2686,30 +2691,30 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
        INNER JOIN risks r ON r.id = rc.risk_id
        WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS max_risk_score
     FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
     ORDER BY i.sort_order`).all(wsId, wsId, wsId);
 
   // Items still Not Assessed
   const notAssessedCount = db.prepare(`SELECT COUNT(*) c FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') AND (cs.status IS NULL OR cs.status='Not Assessed')`).get(wsId).c;
 
   // Items needing a policy/procedure: status not Implemented AND no document linked
   const docGaps = db.prepare(`
     SELECT i.id, i.type, i.title, cs.status FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
-      AND NOT EXISTS (SELECT 1 FROM document_controls dc INNER JOIN generated_docs d ON d.id=dc.document_id
+      AND NOT EXISTS (SELECT 1 FROM ${T.doc} dc INNER JOIN generated_docs d ON d.id=dc.document_id
                       WHERE dc.iso_item_id=i.id AND d.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
 
   // Items marked Implemented but with NO evidence files attached - auditor will press on these
   const evidenceAsks = db.prepare(`
     SELECT i.id, i.type, i.title FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') AND cs.status='Implemented'
       AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.iso_item_id=i.id AND e.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
@@ -2720,7 +2725,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
       GROUP_CONCAT(DISTINCT i.id || '|' || cs.status) AS blocking_controls
     FROM risks r INNER JOIN risk_controls rc ON rc.risk_id=r.id
     INNER JOIN iso_items i ON i.id=rc.iso_item_id
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE r.workspace_id=? AND r.status='open'
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
     GROUP BY r.id, r.title, r.likelihood, r.impact, r.status
@@ -2729,7 +2734,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
   // Status distribution for header
   const dist = { Implemented: 0, 'Partially Implemented': 0, 'Work In Progress': 0, 'Not Implemented': 0, 'Not Applicable': 0, 'Not Assessed': 0 };
   db.prepare(`SELECT COALESCE(cs.status,'Not Assessed') AS s, COUNT(*) AS c
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') GROUP BY s`).all(wsId).forEach(r => { dist[r.s] = r.c; });
 
   res.render('controls_assess_summary', {
@@ -3218,7 +3223,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
 
   // Total clauses + controls for progress denominator.
   const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items WHERE type IN ('clause','control')`).get().c;
-  const assessedNow = db.prepare(`SELECT COUNT(*) c FROM control_states
+  const assessedNow = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs}
     WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
 
   // Find the next un-assessed item (continue button target).
@@ -3289,7 +3294,7 @@ app.get('/workspaces/:wsId/gap-assessment', requireAuth, requireWorkspace, (req,
   const themeRows = db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.maturity
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control'`).all(wsId);
   const heatmap = { '5':[], '6':[], '7':[], '8':[] };
   for (const r of themeRows) {
@@ -4394,19 +4399,20 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
   const wsId = req.workspace.id;
 
   const dist = { Implemented: 0, 'Partially Implemented': 0, 'Work In Progress': 0, 'Not Implemented': 0, 'Not Applicable': 0, 'Not Assessed': 0 };
+  const Tg = ctlReads.tables(db, wsId);
   db.prepare(`SELECT COALESCE(cs.status,'Not Assessed') AS s, COUNT(*) AS c FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${Tg.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') GROUP BY s`).all(wsId).forEach(r => { dist[r.s] = r.c; });
   const total = Object.values(dist).reduce((a,b) => a+b, 0);
 
   const gaps = db.prepare(`SELECT i.id, i.type, i.title, cs.status, cs.maturity, cs.scope_pct, cs.notes
-    FROM iso_items i INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i INNER JOIN ${Tg.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
     ORDER BY i.sort_order`).all(wsId);
 
   const evidenceAsks = db.prepare(`SELECT i.id, i.title FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${Tg.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') AND cs.status='Implemented'
       AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.iso_item_id=i.id AND e.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
@@ -4544,6 +4550,10 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
               SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
 
+  // Cutover 3: control-state + doc-link reads come from legacy tables or the
+  // converged compatibility views per the per-workspace control_reads_converged
+  // flag (views de-normalize to byte-identical display values). Writes above stay legacy.
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification,
@@ -4555,14 +4565,14 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
       (SELECT COUNT(*) FROM nonconformities n WHERE n.iso_item_id = i.id AND n.workspace_id = ?
         AND n.created_at > datetime('now','-12 months')) AS systemic_count
       FROM iso_items i
-      LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control'
       ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id, req.workspace.id, req.workspace.id, req.workspace.id);
 
   // Phase A: linked documents per control (only docs in this workspace)
   const docLinks = db.prepare(`
     SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
-    FROM document_controls dc
+    FROM ${T.doc} dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
     WHERE d.workspace_id = ?
     ORDER BY d.name
@@ -4714,12 +4724,13 @@ app.get('/workspaces/:wsId/crosswalks', requireAuth, requireWorkspace, requirePe
   const q = (req.query.q || '').toString().trim().toLowerCase();
 
   // Annex A controls only. Clauses don't carry crosswalks.
+  const T = ctlReads.tables(db, req.workspace.id);
   const controls = db.prepare(
     `SELECT i.id, i.title, i.category, i.sort_order,
             COALESCE(cs.applicability, 'undecided') AS applicability,
             COALESCE(cs.status, 'Not Assessed')     AS status
      FROM iso_items i
-     LEFT JOIN control_states cs
+     LEFT JOIN ${T.cs} cs
        ON cs.iso_item_id = i.id AND cs.workspace_id = ?
      WHERE i.type = 'control'
      ORDER BY i.sort_order ASC`
@@ -4865,6 +4876,7 @@ app.get('/workspaces/:wsId/activity', requireAuth, requireWorkspace, (req, res) 
 
 // ==================== EXPORTS ====================
 app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.id, i.title, i.category,
     COALESCE(cs.applicability,'undecided') AS applicability,
     COALESCE(cs.status,'Not Assessed') AS status,
@@ -4873,7 +4885,7 @@ app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req,
      INNER JOIN risks r ON r.id = rc.risk_id
      WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS risks_treated
     FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type = 'control' ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id);
 
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
@@ -4925,13 +4937,14 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   // clause/control. Drives the auditor-side question "which documents cover
   // A.5.15?" without leaving the documents list.
   const tagFilter = req.query.tag || '';
+  const T = ctlReads.tables(db, req.workspace.id);
   const docFilterClause = tagFilter
-    ? `AND d.id IN (SELECT document_id FROM document_controls WHERE iso_item_id = ?)`
+    ? `AND d.id IN (SELECT document_id FROM ${T.doc} WHERE iso_item_id = ?)`
     : '';
   const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
 
   const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name,
-    (SELECT COUNT(*) FROM document_controls dc WHERE dc.document_id = d.id) AS tag_count,
+    (SELECT COUNT(*) FROM ${T.doc} dc WHERE dc.document_id = d.id) AS tag_count,
     (CASE
        WHEN d.next_review_date IS NULL THEN NULL
        WHEN d.next_review_date < date('now') THEN 'overdue'
@@ -4951,14 +4964,14 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   if (docs.length) {
     const placeholders = docs.map(() => '?').join(',');
     const tagRows = db.prepare(`SELECT dc.document_id, dc.iso_item_id, dc.section_ref, i.type
-      FROM document_controls dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
+      FROM ${T.doc} dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
       WHERE dc.document_id IN (${placeholders}) ORDER BY i.sort_order`).all(...docs.map(d => d.id));
     tagRows.forEach(r => { (tagsByDoc[r.document_id] = tagsByDoc[r.document_id] || []).push(r); });
   }
 
   // Distinct tagged iso_items in this workspace - for the filter dropdown.
   const taggedItems = db.prepare(`SELECT DISTINCT i.id, i.type, i.title
-    FROM document_controls dc
+    FROM ${ctlReads.tables(db, req.workspace.id).doc} dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
     INNER JOIN iso_items i ON i.id = dc.iso_item_id
     WHERE d.workspace_id = ? ORDER BY i.sort_order`).all(req.workspace.id);
@@ -6008,12 +6021,12 @@ const MANDATORY_RECORDS = [
     detect: (ws, db) => !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND lower(name) LIKE '%risk%' AND lower(name) LIKE '%treatment%' LIMIT 1`).get(ws.id) ||
                         !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND lower(name) LIKE '%risk management%' LIMIT 1`).get(ws.id) },
   { key: 'soa', tier: 'mandatory', clause: '6.1.3 d)', name: 'Statement of Applicability',
-    detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND applicability IN ('included','excluded')`).get(ws.id).c >= 93 },
+    detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, ws.id).cs} WHERE workspace_id=? AND applicability IN ('included','excluded')`).get(ws.id).c >= 93 },
   { key: 'risk_treatment_plan', tier: 'mandatory', clause: '6.1.3 e) / 8.3', name: 'Risk treatment plan',
     detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND treatment IS NOT NULL`).get(ws.id).c > 0 },
   { key: 'objectives', tier: 'mandatory', clause: '6.2', name: 'Information security objectives',
     detect: (ws, db) => {
-      const cs = db.prepare(`SELECT notes FROM control_states WHERE workspace_id=? AND iso_item_id='clause-6.2'`).get(ws.id);
+      const cs = db.prepare(`SELECT notes FROM ${ctlReads.tables(db, ws.id).cs} WHERE workspace_id=? AND iso_item_id='clause-6.2'`).get(ws.id);
       return !!(cs && cs.notes && cs.notes.length > 30);
     } },
   { key: 'competence', tier: 'mandatory', clause: '7.2', name: 'Records of competence',
@@ -6036,7 +6049,7 @@ const MANDATORY_RECORDS = [
     detect: (ws, db) => db.prepare(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`).get(ws.id).c > 0 },
   { key: 'legal_register', tier: 'expected', clause: 'A.5.31', name: 'Register of legal, regulatory, contractual requirements',
     detect: (ws, db) => {
-      const cs = db.prepare(`SELECT notes FROM control_states WHERE workspace_id=? AND iso_item_id='annex-a.5.31'`).get(ws.id);
+      const cs = db.prepare(`SELECT notes FROM ${ctlReads.tables(db, ws.id).cs} WHERE workspace_id=? AND iso_item_id='annex-a.5.31'`).get(ws.id);
       return !!(cs && cs.notes && cs.notes.length > 30);
     } },
   { key: 'access_control', tier: 'expected', clause: 'A.5.15', name: 'Topic-specific policy on access control',
@@ -6065,7 +6078,8 @@ function computeRoadmap(ws, scalars) {
   const clausesTotal = stateRows.filter(r => r.type === 'clause').length;
   const allAssessed = annexAssessed + clausesAssessed;
   const allTotal = annexTotal + clausesTotal;
-  const soaDecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const Tns = ctlReads.tables(db, ws.id);
+  const soaDecided = db.prepare(`SELECT COUNT(*) c FROM ${Tns.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(ws.id).c;
   const approvedDocs = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(ws.id).c;
@@ -6088,10 +6102,10 @@ function computeRoadmap(ws, scalars) {
 
   const methodologyActive = db.prepare(`SELECT COUNT(*) c FROM risk_methodologies
     WHERE workspace_id=? AND is_active=1`).get(ws.id).c;
-  const includedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const includedControls = db.prepare(`SELECT COUNT(*) c FROM ${Tns.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).get(ws.id).c;
-  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const implementedControls = db.prepare(`SELECT COUNT(*) c FROM ${Tns.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
       AND cs.status='Implemented'`).get(ws.id).c;
@@ -6201,42 +6215,47 @@ function computeReadiness(ws) {
 
   // Validation flags - actionable issues, not tutorials
   const flags = [];
+  const T = ctlReads.tables(db, ws.id);
 
   const implNoEvidence = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.status='Implemented'
     AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.workspace_id=? AND e.iso_item_id=cs.iso_item_id)
+    ORDER BY i.sort_order
   `).all(ws.id, ws.id);
   if (implNoEvidence.length) flags.push({ kind: 'implemented_no_evidence', severity: 'high',
     label: `${implNoEvidence.length} controls marked Implemented without evidence`,
     items: implNoEvidence.slice(0, 10) });
 
   const implNoOwner = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.status IN ('Implemented','Partially Implemented') AND cs.owner_id IS NULL
+    ORDER BY i.sort_order
   `).all(ws.id);
   if (implNoOwner.length) flags.push({ kind: 'no_owner', severity: 'medium',
     label: `${implNoOwner.length} active controls without an owner`,
     items: implNoOwner.slice(0, 10) });
 
   const includedNoRisk = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.applicability='included' AND i.type='control'
     AND NOT EXISTS (SELECT 1 FROM risk_controls rc INNER JOIN risks r ON r.id=rc.risk_id WHERE rc.iso_item_id=i.id AND r.workspace_id=?)
     AND (cs.inclusion_justification IS NULL OR length(cs.inclusion_justification) < 10)
+    ORDER BY i.sort_order
   `).all(ws.id, ws.id);
   if (includedNoRisk.length) flags.push({ kind: 'included_no_basis', severity: 'high',
     label: `${includedNoRisk.length} SoA-included controls have no driving risk and no justification`,
     items: includedNoRisk.slice(0, 10) });
 
   const excludedNoJust = db.prepare(`
-    SELECT i.id, i.title FROM control_states cs
+    SELECT i.id, i.title FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.applicability='excluded' AND i.type='control'
     AND (cs.exclusion_justification IS NULL OR length(cs.exclusion_justification) < 10)
+    ORDER BY i.sort_order
   `).all(ws.id);
   if (excludedNoJust.length) flags.push({ kind: 'excluded_no_basis', severity: 'high',
     label: `${excludedNoJust.length} SoA-excluded controls without justification`,
@@ -6244,7 +6263,7 @@ function computeReadiness(ws) {
 
   const undecidedSoA = db.prepare(`
     SELECT COUNT(*) c FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND COALESCE(cs.applicability,'undecided')='undecided'
   `).get(ws.id).c;
   if (undecidedSoA > 0) flags.push({ kind: 'undecided_soa', severity: 'medium',
@@ -6306,10 +6325,11 @@ function computeReadiness(ws) {
     items: tier1NoAttestation.slice(0, 10) });
 
   const overdueAccessReview = db.prepare(`
-    SELECT i.id, i.title, cs.last_updated FROM control_states cs
+    SELECT i.id, i.title, cs.last_updated FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND cs.iso_item_id IN ('annex-a.5.15','annex-a.5.18','annex-a.8.2')
     AND cs.status='Implemented' AND cs.last_updated < datetime('now','-180 days')
+    ORDER BY i.sort_order
   `).all(ws.id);
   if (overdueAccessReview.length) flags.push({ kind: 'stale_access_review', severity: 'medium',
     label: `Access controls reviewed > 180 days ago`,
@@ -6324,10 +6344,10 @@ function computeReadiness(ws) {
     SUM(CASE WHEN status='Not Applicable' THEN 1 ELSE 0 END) AS na,
     AVG(CASE WHEN maturity > 0 THEN maturity END) AS avg_maturity,
     COUNT(*) AS total
-    FROM control_states WHERE workspace_id=?`).get(ws.id) || {};
+    FROM ${T.cs} WHERE workspace_id=?`).get(ws.id) || {};
 
   const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items`).get().c;
-  const assessed = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`).get(ws.id).c;
+  const assessed = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(ws.id).c;
 
   // =====================================================================
   // TWO-LAYER READINESS MODEL (per the ISO 27001:2022 readiness rubric,
@@ -6347,13 +6367,13 @@ function computeReadiness(ws) {
     return !!db.prepare(`SELECT 1 FROM generated_docs WHERE workspace_id=? AND (${where}) AND status IN ('approved','published') LIMIT 1`).get(wsId, ...likeClauses);
   };
   const itemHasSubstance = (isoId) => {
-    const cs = db.prepare(`SELECT notes, maturity FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
+    const cs = db.prepare(`SELECT notes, maturity FROM ${T.cs} WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
     return !!(cs && ((cs.notes && cs.notes.trim().length > 30) || (cs.maturity && cs.maturity >= 2)));
   };
-  const annexADecided = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const annexADecided = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability IN ('included','excluded')`).get(wsId).c;
-  const soaJustGaps = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const soaJustGaps = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control'
       AND ((cs.applicability='included' AND (cs.inclusion_justification IS NULL OR length(trim(cs.inclusion_justification)) < 10))
@@ -6460,7 +6480,7 @@ function computeReadiness(ws) {
   ];
 
   // ----- Layer 2: maturity % across applicable Annex A controls -----
-  const maturityRows = db.prepare(`SELECT cs.maturity FROM control_states cs
+  const maturityRows = db.prepare(`SELECT cs.maturity FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'`).all(wsId);
   const applicableControls = maturityRows.length;
@@ -6478,7 +6498,7 @@ function computeReadiness(ws) {
   const stage1Blocked = !stage1Ready;
 
   // ----- Layer 1: Stage 2 hard gate (9 items, rubric §3.2) -----
-  const controlsWithOwnerAndEvidence = db.prepare(`SELECT COUNT(*) c FROM control_states cs
+  const controlsWithOwnerAndEvidence = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id=cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
       AND cs.owner_id IS NOT NULL
@@ -6554,7 +6574,7 @@ function computeReadiness(ws) {
   // four Annex A themes.
   const themeStateRows = db.prepare(`SELECT i.id, i.type, i.category, COALESCE(cs.status,'Not Assessed') AS status
                                      FROM iso_items i
-                                     LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`).all(ws.id);
+                                     LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`).all(ws.id);
   const themes = {
     requirements: { label: 'Requirements', total: 0, assessed: 0, implemented: 0 },
     org:          { label: 'A.5 Org',      total: 0, assessed: 0, implemented: 0 },
@@ -6630,11 +6650,12 @@ app.get('/api/workspaces/:wsId/readiness', requireAuth, requireWorkspace, (req, 
 app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
   const blockers = [];
+  const T = ctlReads.tables(db, wsId);
 
   // 1. Controls marked Implemented but no evidence files attached
   const implNoEvidence = db.prepare(`
     SELECT i.id, i.title FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id = i.id
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id = i.id
     WHERE i.type='control' AND cs.workspace_id=? AND cs.status='Implemented'
       AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.iso_item_id=i.id AND e.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
@@ -6650,7 +6671,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
   // 2. SoA controls without inclusion or exclusion justification
   const soaUnjustified = db.prepare(`
     SELECT i.id, i.title, COALESCE(cs.applicability,'undecided') AS applicability FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id=?
     WHERE i.type='control' AND (
       (cs.applicability='included' AND (cs.inclusion_justification IS NULL OR cs.inclusion_justification=''))
       OR (cs.applicability='excluded' AND (cs.exclusion_justification IS NULL OR cs.exclusion_justification=''))
@@ -6751,7 +6772,7 @@ app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (
   const notAssessedRow = db.prepare(`SELECT
     SUM(CASE WHEN i.type='clause' AND (cs.status IS NULL OR cs.status='Not Assessed') THEN 1 ELSE 0 END) AS clauses,
     SUM(CASE WHEN i.type='control' AND (cs.status IS NULL OR cs.status='Not Assessed') THEN 1 ELSE 0 END) AS controls
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')`).get(wsId);
   const notAssessed = (notAssessedRow.clauses || 0) + (notAssessedRow.controls || 0);
   if (notAssessed > 0) {
@@ -7035,7 +7056,7 @@ app.get('/workspaces/:wsId/audit-pack/zip', requireAuth, requireWorkspace, async
     COALESCE(cs.status,'Not Assessed') AS status,
     cs.inclusion_justification, cs.exclusion_justification
     FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN ${ctlReads.tables(db, ws.id).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type = 'control' ORDER BY i.sort_order`).all(ws.id);
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
   let soaCsv = 'Control ID,Title,Category,Applicability,Status,Inclusion Justification,Exclusion Justification\n';
@@ -8012,7 +8033,7 @@ app.get('/api/workspaces/:wsId/trends', requireAuth, requireWorkspace, (req, res
   }
   res.json({
     risks: dayCounts(`SELECT date(created_at) AS d, COUNT(*) AS c FROM risks WHERE workspace_id=? AND created_at >= date('now','-29 days') GROUP BY date(created_at)`, wsId),
-    controls: dayCounts(`SELECT date(last_updated) AS d, COUNT(*) AS c FROM control_states WHERE workspace_id=? AND status='Implemented' AND last_updated >= date('now','-29 days') GROUP BY date(last_updated)`, wsId),
+    controls: dayCounts(`SELECT date(last_updated) AS d, COUNT(*) AS c FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status='Implemented' AND last_updated >= date('now','-29 days') GROUP BY date(last_updated)`, wsId),
     ncs_open: dayCounts(`SELECT date(created_at) AS d, COUNT(*) AS c FROM nonconformities WHERE workspace_id=? AND created_at >= date('now','-29 days') GROUP BY date(created_at)`, wsId),
     ncs_closed: dayCounts(`SELECT date(closed_at) AS d, COUNT(*) AS c FROM nonconformities WHERE workspace_id=? AND closed_at >= date('now','-29 days') GROUP BY date(closed_at)`, wsId)
   });
@@ -8081,10 +8102,11 @@ function computeIsmsMetrics(wsId) {
   const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
   const cnt = (sql, ...args) => { try { return db.prepare(sql).get(wsId, ...args)?.c || 0; } catch (_) { return 0; } };
   const safeAll = (sql, ...args) => { try { return db.prepare(sql).all(wsId, ...args); } catch (_) { return []; } };
+  const Tm = ctlReads.tables(db, wsId);
 
   // 1. Control implementation %
-  const controlImpl = cnt(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status='Implemented' AND applicability='included'`);
-  const controlIncluded = cnt(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND applicability='included'`);
+  const controlImpl = cnt(`SELECT COUNT(*) c FROM ${Tm.cs} WHERE workspace_id=? AND status='Implemented' AND applicability='included'`);
+  const controlIncluded = cnt(`SELECT COUNT(*) c FROM ${Tm.cs} WHERE workspace_id=? AND applicability='included'`);
 
   // 2. Training completion %
   const trainAssigned = cnt(`SELECT COUNT(*) c FROM training_records WHERE workspace_id=?`);
@@ -8124,7 +8146,7 @@ function computeIsmsMetrics(wsId) {
     const rows = db.prepare(`SELECT i.id,
         (SELECT MAX(uploaded_at) FROM evidence WHERE workspace_id=? AND iso_item_id=i.id AND superseded_at IS NULL) AS last_ev
       FROM iso_items i
-      INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+      INNER JOIN ${Tm.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
       WHERE i.type='control' AND cs.applicability='included'`).all(wsId, wsId);
     evidenceTotalCtl = rows.length;
     evidenceFresh = rows.filter(r => r.last_ev && r.last_ev >= oneYearAgo).length;
@@ -8436,7 +8458,7 @@ app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace, re
       COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability
     FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control'
     ORDER BY i.sort_order`).all(wsId);
 
@@ -8493,7 +8515,7 @@ app.get('/workspaces/:wsId/evidence-coverage.csv', requireAuth, requireWorkspace
   const rows = db.prepare(`SELECT i.id, i.title, i.category, i.evidence_to_look_for,
       COALESCE(cs.applicability,'undecided') AS applicability
     FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
   const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId);
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
@@ -9594,7 +9616,7 @@ function computeNextStep(ws) {
   }
 
   // 4. Gap pass started but only partially complete (< 20 items assessed).
-  const passAssessed = cnt(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`);
+  const passAssessed = cnt(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`);
   if (passAssessed < 20) {
     return {
       kind: 'pass-1-partial', title: `Continue the gap assessment (${passAssessed}/118 assessed)`,
@@ -9626,7 +9648,7 @@ function computeNextStep(ws) {
   }
 
   // 7. SoA has many Undecided controls - auditor blocker.
-  const undecided = cnt(`SELECT COUNT(*) c FROM control_states cs INNER JOIN iso_items i ON i.id=cs.iso_item_id WHERE cs.workspace_id=? AND i.id LIKE 'annex-a.%' AND (cs.applicability IS NULL OR cs.applicability='undecided')`);
+  const undecided = cnt(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs} cs INNER JOIN iso_items i ON i.id=cs.iso_item_id WHERE cs.workspace_id=? AND i.id LIKE 'annex-a.%' AND (cs.applicability IS NULL OR cs.applicability='undecided')`);
   if (undecided > 30) {
     return {
       kind: 'soa-bulk', title: `Decide SoA applicability for ${undecided} controls`,
@@ -9731,7 +9753,7 @@ function computeNeedsAttention(wsId) {
   // Stale-control signals - controls included in SoA whose last_verified_at
   // is > 12 months ago (or never verified). Drives the re-engagement scope.
   const stale = db.prepare(`SELECT cs.iso_item_id, cs.last_verified_at, i.title
-    FROM control_states cs
+    FROM ${ctlReads.tables(db, wsId).cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
       AND cs.status NOT IN ('Not Assessed','Not Applicable')
@@ -10004,7 +10026,7 @@ function captureSoASnapshot(wsId, userId, entityId, label, reason) {
     COALESCE(cs.applicability,'undecided') AS applicability,
     COALESCE(cs.status,'Not Assessed') AS status,
     cs.inclusion_justification, cs.exclusion_justification
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
   const payload = JSON.stringify(rows);
   const hash = enc.sha256(payload);
@@ -12183,7 +12205,7 @@ app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWor
   // Pull rows where status is Not Implemented / Partially / WIP - ordered by severity.
   const items = db.prepare(`SELECT i.id, i.type, i.title, COALESCE(cs.status,'Not Assessed') AS status,
       cs.maturity, cs.notes
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, ws.id).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control') AND COALESCE(cs.status,'Not Assessed') IN ('Not Implemented','Partially Implemented','Work In Progress')
     ORDER BY (CASE COALESCE(cs.status,'Not Assessed')
       WHEN 'Not Implemented' THEN 0
@@ -12227,7 +12249,7 @@ app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorks
   const soaRows = db.prepare(`SELECT i.id, i.title, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, ws.id).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' ORDER BY i.sort_order`).all(ws.id);
   const customRows = db.prepare(`SELECT * FROM soa_custom_controls WHERE workspace_id=? ORDER BY code`).all(ws.id);
   const csvLines = ['id,title,applicability,status,justification'];
@@ -12663,11 +12685,11 @@ app.get('/workspaces/:wsId/assets/:id', requireAuth, requireWorkspace, requirePe
     SELECT DISTINCT i.id, i.title, i.category,
       COALESCE(cs.applicability,'undecided') AS applicability,
       COALESCE(cs.status,'Not Assessed') AS status,
-      (SELECT COUNT(*) FROM document_controls dc INNER JOIN generated_docs d ON d.id=dc.document_id WHERE dc.iso_item_id=i.id AND d.workspace_id=?) AS doc_count
+      (SELECT COUNT(*) FROM ${ctlReads.tables(db, req.workspace.id).doc} dc INNER JOIN generated_docs d ON d.id=dc.document_id WHERE dc.iso_item_id=i.id AND d.workspace_id=?) AS doc_count
     FROM iso_items i
     INNER JOIN risk_controls rc ON rc.iso_item_id = i.id
     INNER JOIN risks r ON r.id = rc.risk_id
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE r.asset_id = ? AND r.workspace_id = ?
     ORDER BY i.sort_order
   `).all(req.workspace.id, req.workspace.id, asset.id, req.workspace.id);
@@ -12707,7 +12729,7 @@ app.get('/workspaces/:wsId/members/:userId/stats', requireAuth, requireWorkspace
   const u = db.prepare('SELECT id, name, email, last_active_at FROM users WHERE id=?').get(req.params.userId);
   if (!u) return res.status(404).send('Not found');
   const stats = {
-    controls_owned: db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND owner_id=?`).get(req.workspace.id, u.id).c,
+    controls_owned: db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, req.workspace.id).cs} WHERE workspace_id=? AND owner_id=?`).get(req.workspace.id, u.id).c,
     docs_created: db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND created_by=?`).get(req.workspace.id, u.id).c,
     evidence_uploaded: db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=? AND uploaded_by=?`).get(req.workspace.id, u.id).c,
     tasks_owned: db.prepare(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND assignee_id=?`).get(req.workspace.id, u.id).c,
@@ -12854,7 +12876,7 @@ app.get('/workspaces/:wsId/readiness/auditor', requireAuth, requireWorkspace, re
     cs.status, cs.applicability, cs.last_updated, cs.notes,
     (SELECT COUNT(*) FROM evidence e WHERE e.workspace_id=? AND e.iso_item_id=i.id) AS evidence_count,
     (SELECT COUNT(*) FROM risk_controls rc INNER JOIN risks r ON r.id=rc.risk_id WHERE rc.iso_item_id=i.id AND r.workspace_id=?) AS risk_links
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id, req.workspace.id);
   res.render('readiness_auditor', { user: req.user, ws: req.workspace, items });
 });
@@ -12866,7 +12888,7 @@ app.get('/workspaces/:wsId/controls/export.csv', requireAuth, requireWorkspace, 
     COALESCE(cs.applicability,'undecided') AS applicability,
     cs.maturity, cs.notes, cs.due_date,
     (SELECT name FROM users WHERE id=cs.owner_id) AS owner
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     ORDER BY i.sort_order`).all(req.workspace.id);
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g,'""')}"`;
   const lines = ['id,type,category,title,status,applicability,maturity,notes,due_date,owner'];
@@ -12909,7 +12931,7 @@ app.get('/workspaces/:wsId/controls/kanban', requireAuth, requireWorkspace, requ
   const rows = db.prepare(`SELECT i.id, i.title, i.type, i.category,
     COALESCE(cs.status,'Not Assessed') AS status, cs.maturity,
     (SELECT name FROM users WHERE id=cs.owner_id) AS owner
-    FROM iso_items i LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso_items i LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' ORDER BY i.sort_order`).all(req.workspace.id);
   res.render('controls_kanban', { user: req.user, ws: req.workspace, rows });
 });
@@ -13513,11 +13535,12 @@ app.get('/workspaces/:wsId/iso42001', requireAuth, requireWorkspace, (req, res) 
 app.get('/workspaces/:wsId/iso42001/controls', requireAuth, requireWorkspace, (req, res) => {
   const filter = req.query.filter || 'all';
   const search = (req.query.q || '').trim().toLowerCase();
+  const T = ctlReads.tables(db, req.workspace.id);
   let rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       cs.applicability, cs.maturity, cs.owner_id, cs.due_date,
       (SELECT name FROM users WHERE id = cs.owner_id) AS owner_name
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       ORDER BY i.sort_order`).all(req.workspace.id);
   if (filter === 'clauses') rows = rows.filter(r => r.type === 'clause');
   else if (filter === 'annex') rows = rows.filter(r => r.type === 'control');
@@ -13558,12 +13581,13 @@ app.post('/workspaces/:wsId/iso42001/bulk-controls', requireAuth, requireWorkspa
 app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
               SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification,
       cs.last_updated
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control'
       ORDER BY i.sort_order`).all(req.workspace.id);
 
@@ -13578,7 +13602,7 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
 
   // Documents linked to each control via iso42001_document_controls
   const docLinks = db.prepare(`SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
-      FROM iso42001_document_controls dc
+      FROM ${T.doc42} dc
       INNER JOIN generated_docs d ON d.id = dc.document_id
       WHERE d.workspace_id = ?
       ORDER BY d.name`).all(req.workspace.id);
@@ -13599,11 +13623,12 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
 
 // SoA snapshot capture - immutable, hashed payload.
 app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control'
       ORDER BY i.sort_order`).all(req.workspace.id);
   const customs = db.prepare(`SELECT * FROM iso42001_soa_custom_controls WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
@@ -13635,7 +13660,7 @@ app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspac
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control' ORDER BY i.sort_order`).all(req.workspace.id);
   const customs = db.prepare(`SELECT * FROM iso42001_soa_custom_controls WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
   const payload = JSON.stringify({ rows, customs });
@@ -13764,12 +13789,13 @@ app.get('/workspaces/:wsId/iso42001/soa/snapshots/diff', requireAuth, requireWor
 
 // SoA CSV export
 app.get('/workspaces/:wsId/iso42001/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.id, i.title, i.category,
       COALESCE(cs.applicability,'undecided') AS applicability,
       COALESCE(cs.status,'Not Assessed') AS status,
       cs.inclusion_justification, cs.exclusion_justification
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type='control'
       ORDER BY i.sort_order`).all(req.workspace.id);
   const customs = db.prepare(`SELECT code, title, source, applicability, status, inclusion_justification, exclusion_justification
@@ -13970,7 +13996,7 @@ app.get('/workspaces/:wsId/iso42001/gap-assessment', requireAuth, requireWorkspa
       SUM(CASE WHEN cs.status='Not Applicable' THEN 1 ELSE 0 END) AS na,
       SUM(CASE WHEN cs.status IS NULL OR cs.status='Not Assessed' THEN 1 ELSE 0 END) AS unassessed,
       COUNT(i.id) AS total
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
+    FROM iso42001_items i LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
   res.render('iso42001_gap_assessment', { user: req.user, ws: req.workspace, passes, counts });
 });
 
@@ -14267,12 +14293,13 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', 
 // --- Roadmap ---
 app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
+  const T = ctlReads.tables(db, wsId);
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.maturity, cs.owner_id, cs.due_date, cs.roadmap_phase,
       (SELECT name FROM users WHERE id = cs.owner_id) AS owner_name
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type='control'
       ORDER BY i.sort_order`).all(wsId);
   const phases = [
@@ -14291,7 +14318,7 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
 
   // Overdue
   db.prepare(`SELECT i.id, i.title, cs.due_date FROM iso42001_items i
-    INNER JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND cs.due_date < ? AND cs.status != 'Implemented'
     ORDER BY cs.due_date LIMIT 5`).all(wsId, today).forEach(r => {
       needsAttention.push({ severity: 'high', category: 'Overdue',
@@ -14301,7 +14328,7 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
 
   // Due soon
   db.prepare(`SELECT i.id, i.title, cs.due_date FROM iso42001_items i
-    INNER JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND cs.due_date >= ? AND cs.due_date < ? AND cs.status != 'Implemented'
     ORDER BY cs.due_date LIMIT 5`).all(wsId, today, soon).forEach(r => {
       needsAttention.push({ severity: 'medium', category: 'Due soon',
@@ -14311,7 +14338,7 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
 
   // Mandatory clauses not implemented
   db.prepare(`SELECT i.id, i.title FROM iso42001_items i
-    LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='clause' AND (cs.status IS NULL OR cs.status != 'Implemented')
     ORDER BY i.sort_order LIMIT 5`).all(wsId).forEach(r => {
       needsAttention.push({ severity: 'high', category: 'Clause',
@@ -14331,13 +14358,13 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
   // Implementation roadmap milestones - data-driven PDCA
   const clauseStatus = {};
   db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS s FROM iso42001_items i
-    LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).all(wsId)
+    LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).all(wsId)
     .forEach(r => { clauseStatus[r.id] = r.s; });
   const ctlStats = db.prepare(`SELECT
       SUM(CASE WHEN cs.status='Implemented' THEN 1 ELSE 0 END) AS impl,
       SUM(CASE WHEN COALESCE(cs.applicability,'undecided')='included' THEN 1 ELSE 0 END) AS included,
       COUNT(*) AS total
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control'`).get(wsId);
   const ncOpen = db.prepare(`SELECT COUNT(*) AS c FROM nonconformities WHERE workspace_id=? AND iso_item_id LIKE 'ai-%' AND status != 'closed'`).get(wsId).c;
   const ncTotal = db.prepare(`SELECT COUNT(*) AS c FROM nonconformities WHERE workspace_id=? AND iso_item_id LIKE 'ai-%'`).get(wsId).c;
@@ -14419,6 +14446,7 @@ app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, require
 
 // --- Readiness (computed scorecard) ---
 function computeIso42001Readiness(wsId) {
+  const T = ctlReads.tables(db, wsId);
   // Aggregate control-state numbers
   const m = db.prepare(`SELECT
       SUM(CASE WHEN i.type='clause' AND cs.status='Implemented' THEN 1 ELSE 0 END) AS clauseImpl,
@@ -14431,13 +14459,13 @@ function computeIso42001Readiness(wsId) {
       SUM(CASE WHEN i.type='control' AND COALESCE(cs.status,'Not Assessed')='Not Assessed' THEN 1 ELSE 0 END) AS unassessed,
       SUM(CASE WHEN i.type='control' THEN 1 ELSE 0 END) AS ctlTotal,
       AVG(CASE WHEN i.type='control' AND cs.maturity > 0 THEN cs.maturity END) AS avgMaturity
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(wsId);
+    FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(wsId);
 
   // Stage 1 = documentation / framework. Heuristic: clauses (4-10) + policy / governance controls (A.2, A.3, A.5).
   const stage1 = db.prepare(`SELECT
       SUM(CASE WHEN cs.status='Implemented' THEN 1 ELSE 0 END) AS impl,
       COUNT(*) AS total
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='clause' OR i.category IN ('a-policies','b-internal-organization','d-impact-assessment')`).get(wsId);
   const stage1Pct = stage1.total ? Math.round((stage1.impl / stage1.total) * 100) : 0;
 
@@ -14445,7 +14473,7 @@ function computeIso42001Readiness(wsId) {
   const stage2 = db.prepare(`SELECT
       SUM(CASE WHEN cs.status='Implemented' THEN 1 ELSE 0 END) AS impl,
       COUNT(*) AS total
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control'
       AND i.category NOT IN ('a-policies','b-internal-organization','d-impact-assessment')
       AND COALESCE(cs.applicability,'undecided') != 'excluded'`).get(wsId);
@@ -14454,11 +14482,11 @@ function computeIso42001Readiness(wsId) {
   // Documented information: heuristic detection via clause status (Implemented = doc exists).
   const clauseStatusById = {};
   db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS status
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='clause'`).all(wsId).forEach(r => { clauseStatusById[r.id] = r.status; });
   const controlStatusById = {};
   db.prepare(`SELECT i.id, COALESCE(cs.status,'Not Assessed') AS status, COALESCE(cs.applicability,'undecided') AS applicability
-    FROM iso42001_items i LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control'`).all(wsId).forEach(r => { controlStatusById[r.id] = r; });
 
   const docCheck = (clauseId, name) => ({ name, clause: clauseId.replace('ai-clause-',''), found: clauseStatusById[clauseId] === 'Implemented' });
@@ -14499,7 +14527,7 @@ function computeIso42001Readiness(wsId) {
   const flags = [];
   // Included controls with no risk linkage (weak 6.1.3 traceability)
   const unjustified = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
-    INNER JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND cs.applicability='included'
       AND NOT EXISTS (SELECT 1 FROM iso42001_risk_controls rc INNER JOIN risks r ON r.id=rc.risk_id WHERE rc.iso_item_id=i.id AND r.workspace_id=?)
     ORDER BY i.sort_order LIMIT 20`).all(wsId, wsId);
@@ -14507,7 +14535,7 @@ function computeIso42001Readiness(wsId) {
 
   // Annex A controls Included but Not Implemented / Partial
   const notReady = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
-    INNER JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND cs.applicability='included'
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
     ORDER BY i.sort_order LIMIT 20`).all(wsId);
@@ -14515,14 +14543,14 @@ function computeIso42001Readiness(wsId) {
 
   // Unassessed clauses (mandatory)
   const unassessedClauses = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
-    LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='clause' AND (cs.status IS NULL OR cs.status='Not Assessed')
     ORDER BY i.sort_order`).all(wsId);
   if (unassessedClauses.length) flags.push({ kind: 'unassessed_clauses', label: 'Mandatory clauses not yet assessed', severity: 'high', items: unassessedClauses });
 
   // Undecided applicability
   const undecided = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
-    LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND COALESCE(cs.applicability,'undecided')='undecided'
     ORDER BY i.sort_order LIMIT 10`).all(wsId);
   if (undecided.length) flags.push({ kind: 'undecided_soa', label: 'Annex A controls with undecided applicability', severity: 'medium', items: undecided });
@@ -14893,7 +14921,7 @@ app.use((err, req, res, next) => {
 
 // Export the configured app so tests can mount it without calling listen().
 // When run directly (node server.js), bind a port and start serving.
-module.exports = { app, db };
+module.exports = { app, db, computeReadiness, computeIso42001Readiness };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
