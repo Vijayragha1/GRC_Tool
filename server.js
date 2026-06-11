@@ -2881,12 +2881,11 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
 
   // Evidence files attached to this control - displayed in a panel on the wizard
   // since the standalone control detail page was removed and there's no other home.
-  // Evidence linked to this control via either the legacy primary
-  // (evidence.iso_item_id) OR the new evidence_controls join. UNION + DISTINCT
-  // because the primary is also seeded into the join, but a non-primary join
+  // Evidence linked to this control via either the primary
+  // (evidence.iso_item_id) OR the converged evidence_requirement_links join. UNION
+  // because the primary is also represented in erl, but a non-primary join
   // entry might exist independently.
-  const evidenceList = evReads.controlPanelEvidence(
-    db, req.workspace.id, item.id, evReads.readsConverged(db, req.workspace.id));
+  const evidenceList = evReads.controlPanelEvidence(db, req.workspace.id, item.id);
 
   // Linked risks, documents, and open NCs - read-only summary panels.
   const linkedRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.status
@@ -3545,16 +3544,12 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
   const tag = (req.query.tag || '').toString().trim().toLowerCase();
   const today = new Date().toISOString().slice(0, 10);
   const expSoon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-  // Evidence-read cutover flag (per-workspace): switches linkage reads from the
-  // legacy join tables to evidence_requirement_links. Writes stay legacy.
-  const convergedReads = evReads.readsConverged(db, req.workspace.id);
-
   // Active (non-superseded) evidence only on the live view. Superseded rows
   // are still visible from the version-chain expander on each row.
   const allEvidence = db.prepare(`
     SELECT e.*,
            u.name AS uploader,
-           ${evReads.linkCountSubquery(convergedReads)} AS link_count,
+           ${evReads.linkCountSubquery()} AS link_count,
            sup.filename AS superseded_filename
     FROM evidence e
     LEFT JOIN users u ON u.id = e.uploaded_by
@@ -3592,7 +3587,7 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
   // section-edit writes keep working. See lib/evidence-reads.js.
   // crossLinksByEvidence[evId] = { iso27001: [...], iso42001: [...], csf: [...] }
   const { linksByEvidence, crossLinksByEvidence } = evReads.libraryLinks(
-    db, evidenceList.map(e => e.id), convergedReads);
+    db, evidenceList.map(e => e.id));
 
   // Aggregate counters across all *active* evidence (the filter pills).
   const counters = {
@@ -3663,8 +3658,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePer
   if (existing) {
     try { fs.unlinkSync(req.file.path); } catch (_) {}
     if (isoIds.length) {
-      const wconv = evWrites.writesConverged(db, req.workspace.id);
-      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, existing.id, id, clause_section || null); });
+      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, existing.id, id, clause_section || null); });
       try { tx(); } catch (_) {}
     }
     logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, { sha, link_count: isoIds.length });
@@ -3681,8 +3675,7 @@ app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePer
          valid_from || null, valid_until || null, period_label || null, clause_section || null,
          tags || null).lastInsertRowid;
   if (isoIds.length) {
-    const wconv = evWrites.writesConverged(db, req.workspace.id);
-    const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, evId, id, clause_section || null); });
+    const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, evId, id, clause_section || null); });
     try { tx(); } catch (_) {}
   }
   logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', primaryId, { filename: req.file.originalname, link_count: isoIds.length });
@@ -3708,8 +3701,7 @@ app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requi
     if (existing) {
       try { fs.unlinkSync(f.path); } catch (_) {}
       if (isoIds.length) {
-        const wconv = evWrites.writesConverged(db, req.workspace.id);
-        const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, existing.id, id, null); });
+        const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, existing.id, id, null); });
         try { tx(); } catch (_) {}
       }
       deduped++;
@@ -3723,8 +3715,7 @@ app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requi
            description || null, valid_from || null, valid_until || null, period_label || null,
            tags || null).lastInsertRowid;
     if (isoIds.length) {
-      const wconv = evWrites.writesConverged(db, req.workspace.id);
-      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, wconv, evId, id, null); });
+      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, evId, id, null); });
       try { tx(); } catch (_) {}
     }
     created++;
@@ -3757,10 +3748,8 @@ app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspa
          req.user.id, description || old.description || null,
          valid_from || null, valid_until || null, period_label || null, old.clause_section || null,
          old.id, tags).lastInsertRowid;
-  // Copy links from old to new (legacy evidence_controls or converged erl per the
-  // per-workspace write flag; the erl_to_legacy_* trigger mirrors converged copies).
-  const wconv = evWrites.writesConverged(db, req.workspace.id);
-  const tx = db.transaction(() => { evWrites.copyControlLinks(db, wconv, old.id, newId); });
+  // Copy links from old to new (evidence_requirement_links).
+  const tx = db.transaction(() => { evWrites.copyControlLinks(db, old.id, newId); });
   try { tx(); } catch (_) {}
   // Mark old as superseded - kept for audit trail but hidden from active view.
   db.prepare(`UPDATE evidence SET superseded_at=datetime('now'), superseded_by_id=? WHERE id=?`).run(newId, old.id);
@@ -3778,7 +3767,7 @@ app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace, (r
   if (dateFrom) { where += ' AND date(e.uploaded_at) >= date(?)'; params.push(dateFrom); }
   if (dateTo)   { where += ' AND date(e.uploaded_at) <= date(?)'; params.push(dateTo); }
   const items = db.prepare(`SELECT e.*, u.name AS uploader,
-    ${evReads.linkedControlsSubquery(evReads.readsConverged(db, req.workspace.id))} AS linked_controls
+    ${evReads.linkedControlsSubquery()} AS linked_controls
     FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
     WHERE ${where} ORDER BY e.uploaded_at ASC`).all(...params);
 
@@ -3835,9 +3824,8 @@ artefacts. SHA-256 lets you verify nothing was tampered with after export.
 // section_ref may be either a single shared value (form: section_ref=...) or
 // per-link via a parallel array section_ref_for_<isoId>=... - the latter wins.
 // Cross-framework link route. Accepts framework=iso42001|csf and one or more
-// item_ref values, writes them into evidence_links directly. The existing
-// /controls endpoint stays for ISO 27001 (it writes to evidence_controls and
-// the sync trigger mirrors into evidence_links).
+// item_ref values, writing them to evidence_requirement_links. The /controls
+// endpoint is the ISO 27001 equivalent; both resolve their ref to a requirement.
 app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
@@ -3861,9 +3849,8 @@ app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, 
   }
   const filtered = refs.filter(r => valid.has(r));
   if (!filtered.length) return redirectBack(req, res);
-  const wconv = evWrites.writesConverged(db, req.workspace.id);
   const tx = db.transaction(() => {
-    for (const ref of filtered) evWrites.attachCrossLink(db, wconv, ev.id, framework, ref, req.body.section_ref || null);
+    for (const ref of filtered) evWrites.attachCrossLink(db, ev.id, framework, ref, req.body.section_ref || null);
   });
   try { tx(); } catch (_) {}
   logAction(req.user.id, req.workspace.id, 'link_evidence_cross_framework', 'evidence', ev.id,
@@ -3877,8 +3864,7 @@ app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, req
   if (!ev) return res.status(404).send('Not found');
   // Don't touch iso27001 rows from this route - those belong to the legacy
   // /controls flow which has additional primary-key bookkeeping.
-  const wconv = evWrites.writesConverged(db, req.workspace.id);
-  const link = evWrites.unlinkCrossLink(db, wconv, ev.id, req.params.linkId);
+  const link = evWrites.unlinkCrossLink(db, ev.id, req.params.linkId);
   if (link) {
     logAction(req.user.id, req.workspace.id, 'unlink_evidence_cross_framework', 'evidence', ev.id,
               { framework: link.framework, item_ref: link.item_ref }, auditCtx(req));
@@ -3892,12 +3878,11 @@ app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspac
   const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return redirectBack(req, res);
   const sharedSectionRef = req.body.section_ref || null;
-  const wconv = evWrites.writesConverged(db, req.workspace.id);
   const tx = db.transaction(() => {
     for (const id of ids) {
       const perLinkKey = 'section_ref_for_' + id.replace(/[^a-z0-9.-]/gi, '_');
       const ref = (req.body[perLinkKey] || sharedSectionRef || null);
-      evWrites.attachIsoControl(db, wconv, ev.id, id, ref);
+      evWrites.attachIsoControl(db, ev.id, id, ref);
     }
   });
   try { tx(); } catch (_) {}
@@ -3911,14 +3896,14 @@ app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth,
   const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
   const newRef = (req.body.section_ref || '').toString().trim() || null;
-  evWrites.updateIsoSection(db, evWrites.writesConverged(db, req.workspace.id), ev.id, req.params.linkId, newRef);
+  evWrites.updateSection(db, ev.id, req.params.linkId, newRef);
   redirectBack(req, res);
 });
 
 app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
   const ev = db.prepare(`SELECT id, iso_item_id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
   if (!ev) return res.status(404).send('Not found');
-  const removedIso = evWrites.unlinkIsoControl(db, evWrites.writesConverged(db, req.workspace.id), ev.id, req.params.linkId);
+  const removedIso = evWrites.unlinkIsoControl(db, ev.id, req.params.linkId);
   if (removedIso) {
     // If the deleted link was the primary, also clear evidence.iso_item_id
     // so the legacy column doesn't drift back into existence on next render.
@@ -8458,7 +8443,7 @@ app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace, re
   // For each control, count attached evidence (live, not superseded). Two link
   // paths: primary evidence.iso_item_id (core table, unchanged) + the join
   // table, which switches to evidence_requirement_links per the cutover flag.
-  const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId, evReads.readsConverged(db, wsId));
+  const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId);
 
   // Build the matrix.
   const matrix = rows.map(r => {
@@ -8510,7 +8495,7 @@ app.get('/workspaces/:wsId/evidence-coverage.csv', requireAuth, requireWorkspace
     FROM iso_items i
     LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
-  const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId, evReads.readsConverged(db, wsId));
+  const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId);
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
   const lines = ['Code,Title,Category,Applicability,Expected count,Attached count,Last upload,Stale (>12mo),Status band'];
   for (const r of rows) {
@@ -12300,7 +12285,7 @@ app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorks
 
   // 7. Evidence files (active only) + manifest CSV
   const evidence = db.prepare(`SELECT e.*, u.name AS uploader,
-    ${evReads.linkedControlsSubquery(evReads.readsConverged(db, ws.id))} AS linked_controls
+    ${evReads.linkedControlsSubquery()} AS linked_controls
     FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
     WHERE e.workspace_id=? AND e.superseded_at IS NULL ORDER BY e.uploaded_at`).all(ws.id);
   const evCsv = ['id,filename,sha256,uploader,uploaded_at,period,valid_from,valid_until,linked_controls,description'];
@@ -13299,7 +13284,7 @@ app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, require
       (SELECT COUNT(*) FROM document_controls dc INNER JOIN generated_docs gd
         ON gd.id = dc.document_id WHERE dc.iso_item_id = i.id AND gd.workspace_id = ?
         AND gd.retired_at IS NULL) AS doc_count,
-      ${evReads.checklistEvidenceCountSubquery(evReads.readsConverged(db, req.workspace.id))} AS evi_count
+      ${evReads.checklistEvidenceCountSubquery()} AS evi_count
     FROM iso_items i
     INNER JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control' AND cs.applicability='included'
