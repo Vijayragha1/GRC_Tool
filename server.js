@@ -49,6 +49,7 @@ const changesSince = require('./lib/changes-since');
 const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
 const evReads = require('./lib/evidence-reads');
+const ctlReads = require('./lib/control-reads');
 const evWrites = require('./lib/evidence-writes');
 
 init();
@@ -4544,6 +4545,10 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
               SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
 
+  // Cutover 3: control-state + doc-link reads come from legacy tables or the
+  // converged compatibility views per the per-workspace control_reads_converged
+  // flag (views de-normalize to byte-identical display values). Writes above stay legacy.
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification,
@@ -4555,14 +4560,14 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
       (SELECT COUNT(*) FROM nonconformities n WHERE n.iso_item_id = i.id AND n.workspace_id = ?
         AND n.created_at > datetime('now','-12 months')) AS systemic_count
       FROM iso_items i
-      LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control'
       ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id, req.workspace.id, req.workspace.id, req.workspace.id);
 
   // Phase A: linked documents per control (only docs in this workspace)
   const docLinks = db.prepare(`
     SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
-    FROM document_controls dc
+    FROM ${T.doc} dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
     WHERE d.workspace_id = ?
     ORDER BY d.name
@@ -4865,6 +4870,7 @@ app.get('/workspaces/:wsId/activity', requireAuth, requireWorkspace, (req, res) 
 
 // ==================== EXPORTS ====================
 app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.id, i.title, i.category,
     COALESCE(cs.applicability,'undecided') AS applicability,
     COALESCE(cs.status,'Not Assessed') AS status,
@@ -4873,7 +4879,7 @@ app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req,
      INNER JOIN risks r ON r.id = rc.risk_id
      WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS risks_treated
     FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type = 'control' ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id);
 
   const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
@@ -13558,12 +13564,13 @@ app.post('/workspaces/:wsId/iso42001/bulk-controls', requireAuth, requireWorkspa
 app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, res) => {
   db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
               SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification,
       cs.last_updated
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control'
       ORDER BY i.sort_order`).all(req.workspace.id);
 
@@ -13578,7 +13585,7 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
 
   // Documents linked to each control via iso42001_document_controls
   const docLinks = db.prepare(`SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
-      FROM iso42001_document_controls dc
+      FROM ${T.doc42} dc
       INNER JOIN generated_docs d ON d.id = dc.document_id
       WHERE d.workspace_id = ?
       ORDER BY d.name`).all(req.workspace.id);
@@ -13599,11 +13606,12 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
 
 // SoA snapshot capture - immutable, hashed payload.
 app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
       cs.inclusion_justification, cs.exclusion_justification
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type = 'control'
       ORDER BY i.sort_order`).all(req.workspace.id);
   const customs = db.prepare(`SELECT * FROM iso42001_soa_custom_controls WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
@@ -13764,12 +13772,13 @@ app.get('/workspaces/:wsId/iso42001/soa/snapshots/diff', requireAuth, requireWor
 
 // SoA CSV export
 app.get('/workspaces/:wsId/iso42001/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
+  const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.id, i.title, i.category,
       COALESCE(cs.applicability,'undecided') AS applicability,
       COALESCE(cs.status,'Not Assessed') AS status,
       cs.inclusion_justification, cs.exclusion_justification
       FROM iso42001_items i
-      LEFT JOIN iso42001_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+      LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
       WHERE i.type='control'
       ORDER BY i.sort_order`).all(req.workspace.id);
   const customs = db.prepare(`SELECT code, title, source, applicability, status, inclusion_justification, exclusion_justification

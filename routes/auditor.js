@@ -14,6 +14,7 @@
 
 'use strict';
 const crypto = require('crypto');
+const ctlReads = require('../lib/control-reads');
 
 function register(app, deps) {
   const {
@@ -103,12 +104,13 @@ function register(app, deps) {
       try { rows = JSON.parse(enc.decryptIfNeeded(snapshot.payload, req.workspace.id)); from = 'snapshot'; } catch (_) {}
     }
     if (from === 'live') {
+      const T = ctlReads.tables(db, req.workspace.id);
       rows = db.prepare(`SELECT i.id, i.title, i.category,
             COALESCE(cs.applicability,'undecided') AS applicability,
             COALESCE(cs.status,'Not Assessed') AS status,
             cs.inclusion_justification, cs.exclusion_justification
           FROM iso_items i
-          LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+          LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
           WHERE i.type='control'
           ORDER BY i.sort_order`).all(req.workspace.id);
     }
