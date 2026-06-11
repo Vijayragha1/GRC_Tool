@@ -438,8 +438,9 @@ function requireWorkspace(req, res, next) {
   } catch (_) { res.locals.unreadNotifications = 0; }
   // Open review-queue count for the sidebar badge.
   try {
-    const a = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
-    const b = db.prepare(`SELECT COUNT(*) c FROM iso42001_control_states WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
+    const T = ctlReads.tables(db, ws.id);
+    const a = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
+    const b = db.prepare(`SELECT COUNT(*) c FROM ${T.cs42} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
     res.locals.openReviewCount = a + b;
   } catch (_) { res.locals.openReviewCount = 0; }
   next();
@@ -466,7 +467,7 @@ function listWorkspaces(user) {
 
 function workspaceProgress(wsId) {
   const total = db.prepare('SELECT COUNT(*) AS c FROM iso_items').get().c;
-  const assessed = db.prepare(`SELECT COUNT(*) AS c FROM control_states
+  const assessed = db.prepare(`SELECT COUNT(*) AS c FROM ${ctlReads.tables(db, wsId).cs}
     WHERE workspace_id = ? AND status != 'Not Assessed'`).get(wsId).c;
   return { total, assessed, percent: total ? Math.round((assessed / total) * 100) : 0 };
 }
@@ -514,7 +515,7 @@ function computeClientStage(ws) {
 
   if (internal) return { key: 'internal_audit', label: 'Internal audit done' };
 
-  const assessed = db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
+  const assessed = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
   if (assessed >= 20) return { key: 'implementing', label: 'Implementing' };
 
   const approved = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(wsId).c;
@@ -2205,10 +2206,11 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
   const progress = workspaceProgress(ws.id);
 
   // Status breakdown
+  const T = ctlReads.tables(db, ws.id);
   const STATUSES = ['Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable','Not Assessed'];
   const stateRows = db.prepare(`SELECT i.id, i.type, i.category, COALESCE(cs.status,'Not Assessed') AS status
                                 FROM iso_items i
-                                LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`)
+                                LEFT JOIN ${T.cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?`)
     .all(ws.id);
 
   const breakdown = { clauses: {}, annex: {} };
@@ -2249,7 +2251,7 @@ app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     WHERE t.workspace_id = ? AND t.status NOT IN ('done') ORDER BY t.due_date ASC LIMIT 10`).all(ws.id);
 
   const actionItems = db.prepare(`SELECT i.id, i.title, cs.status FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id = i.id
+    INNER JOIN ${T.cs} cs ON cs.iso_item_id = i.id
     WHERE cs.workspace_id = ? AND cs.status IN ('Not Implemented','Partially Implemented')
     ORDER BY i.sort_order LIMIT 20`).all(ws.id);
 
@@ -2308,7 +2310,7 @@ app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) =
   const ws = req.workspace;
   // Prepare the scalars computeRoadmap needs.
   const stateRows = db.prepare(`SELECT cs.iso_item_id, cs.status, i.type
-    FROM control_states cs INNER JOIN iso_items i ON i.id = cs.iso_item_id
+    FROM ${ctlReads.tables(db, ws.id).cs} cs INNER JOIN iso_items i ON i.id = cs.iso_item_id
     WHERE cs.workspace_id=?`).all(ws.id);
   const assetCount = db.prepare('SELECT COUNT(*) c FROM assets WHERE workspace_id=?').get(ws.id).c;
   const riskCount = db.prepare('SELECT COUNT(*) c FROM risks WHERE workspace_id=?').get(ws.id).c;
@@ -4934,13 +4936,14 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   // clause/control. Drives the auditor-side question "which documents cover
   // A.5.15?" without leaving the documents list.
   const tagFilter = req.query.tag || '';
+  const T = ctlReads.tables(db, req.workspace.id);
   const docFilterClause = tagFilter
-    ? `AND d.id IN (SELECT document_id FROM document_controls WHERE iso_item_id = ?)`
+    ? `AND d.id IN (SELECT document_id FROM ${T.doc} WHERE iso_item_id = ?)`
     : '';
   const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
 
   const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name,
-    (SELECT COUNT(*) FROM document_controls dc WHERE dc.document_id = d.id) AS tag_count,
+    (SELECT COUNT(*) FROM ${T.doc} dc WHERE dc.document_id = d.id) AS tag_count,
     (CASE
        WHEN d.next_review_date IS NULL THEN NULL
        WHEN d.next_review_date < date('now') THEN 'overdue'
@@ -4960,7 +4963,7 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   if (docs.length) {
     const placeholders = docs.map(() => '?').join(',');
     const tagRows = db.prepare(`SELECT dc.document_id, dc.iso_item_id, dc.section_ref, i.type
-      FROM document_controls dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
+      FROM ${T.doc} dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
       WHERE dc.document_id IN (${placeholders}) ORDER BY i.sort_order`).all(...docs.map(d => d.id));
     tagRows.forEach(r => { (tagsByDoc[r.document_id] = tagsByDoc[r.document_id] || []).push(r); });
   }
