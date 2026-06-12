@@ -50,6 +50,7 @@ const email = require('./lib/email');
 const docApprovals = require('./lib/doc-approvals');
 const evReads = require('./lib/evidence-reads');
 const ctlReads = require('./lib/control-reads');
+const ctlWrites = require('./lib/control-writes');
 const evWrites = require('./lib/evidence-writes');
 
 init();
@@ -528,6 +529,21 @@ function computeClientStage(ws) {
 }
 
 function getOrCreateState(wsId, isoId) {
+  // Cutover 4 (W1, lazy create): on a write-flipped workspace the AUTHORITATIVE
+  // create goes to the converged control_instances (whole-org, entity_id NULL);
+  // migration 014 mirrors the new row back into control_states. We still read the
+  // return value back from control_states because callers (the assess-wizard
+  // render) read assessment_answers + review_* columns the converged compat view
+  // does not carry (deferred). The legacy ensure below also covers any drift and,
+  // when the flag is off, is the unchanged original path. Fail-safe: an unmapped
+  // item or missing converged schema falls through to the legacy path.
+  if (ctlWrites.converged(db, wsId)) {
+    const reqId = ctlWrites.requirementId(db, 'iso27001', isoId);
+    if (reqId) {
+      db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
+        .run(wsId, reqId);
+    }
+  }
   let s = db.prepare('SELECT * FROM control_states WHERE workspace_id = ? AND iso_item_id = ?')
     .get(wsId, isoId);
   if (!s) {
@@ -3034,13 +3050,38 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   // overwriting the new state. Pre-CAS form posts (no hidden field) fall
   // through to the old last-writer-wins behaviour for backwards compat.
   const usingCAS = !!last_updated_snapshot;
-  let updateSQL = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
-  vals.push(req.workspace.id, item.id);
-  if (usingCAS) {
-    updateSQL += ` AND last_updated = ?`;
-    vals.push(last_updated_snapshot);
+  // Cutover 4 (W2): on a write-flipped workspace the AUTHORITATIVE state write goes
+  // to the converged control_instances (whole-org row); migration 014 mirrors it to
+  // control_states. The optimistic-concurrency CAS runs against
+  // control_instances.last_updated (the value the form rendered with came from the
+  // converged read view), so the conflict path is enforced on the converged table.
+  // assessment_answers has no converged column (deferred), so convergeSets drops it
+  // and we persist it to legacy control_states. The history INSERT below stays
+  // legacy with pass_id per the Phase 4 manifest (it reads `cur` from control_states,
+  // kept fresh by the 014 mirror). Fail-safe to the unchanged legacy path otherwise.
+  const wConverged = ctlWrites.converged(db, req.workspace.id);
+  const wReqId = wConverged ? ctlWrites.requirementId(db, 'iso27001', item.id) : null;
+  let result;
+  if (wConverged && wReqId) {
+    const c = ctlWrites.convergeSets(sets, vals);
+    const cVals = c.vals.slice();
+    let sql = `UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`;
+    cVals.push(req.workspace.id, wReqId);
+    if (usingCAS) { sql += ` AND last_updated = ?`; cVals.push(last_updated_snapshot); }
+    result = db.prepare(sql).run(...cVals);
+    if (!(usingCAS && result.changes === 0) && Object.keys(answers).length) {
+      db.prepare(`UPDATE control_states SET assessment_answers=? WHERE workspace_id=? AND iso_item_id=?`)
+        .run(JSON.stringify(answers), req.workspace.id, item.id);
+    }
+  } else {
+    let updateSQL = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
+    vals.push(req.workspace.id, item.id);
+    if (usingCAS) {
+      updateSQL += ` AND last_updated = ?`;
+      vals.push(last_updated_snapshot);
+    }
+    result = db.prepare(updateSQL).run(...vals);
   }
-  const result = db.prepare(updateSQL).run(...vals);
   if (usingCAS && result.changes === 0) {
     return res.status(409).render('error', {
       user: req.user,
@@ -13514,6 +13555,17 @@ app.post('/workspaces/:wsId/comments/:id/mentions', requireAuth, requireWorkspac
 // engagement-plan/exec-brief will follow.
 
 function getOrCreate42State(wsId, isoId) {
+  // Cutover 4 (W1, lazy create) for ISO 42001: authoritative create goes to the
+  // converged control_instances on a write-flipped workspace (014 mirrors it back
+  // to iso42001_control_states); the legacy ensure + readback preserve the return
+  // contract and the unchanged flag-off path. Fail-safe to legacy when unmapped.
+  if (ctlWrites.converged(db, wsId)) {
+    const reqId = ctlWrites.requirementId(db, 'iso42001', isoId);
+    if (reqId) {
+      db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
+        .run(wsId, reqId);
+    }
+  }
   db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(wsId, isoId);
   return db.prepare(`SELECT * FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
 }
@@ -14163,24 +14215,54 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace,
   const suggested = suggestStatus42(answers, questions.length);
   const { status, notes, maturity, applicability, inclusion_justification, exclusion_justification } = req.body;
 
-  db.prepare(`UPDATE iso42001_control_states
-              SET assessment_answers=?,
-                  status = COALESCE(?, ?, status),
-                  notes = COALESCE(?, notes),
-                  maturity = COALESCE(?, maturity),
-                  applicability = COALESCE(?, applicability),
-                  inclusion_justification = COALESCE(?, inclusion_justification),
-                  exclusion_justification = COALESCE(?, exclusion_justification),
-                  last_updated = CURRENT_TIMESTAMP
-              WHERE workspace_id=? AND iso_item_id=?`)
-    .run(JSON.stringify(answers),
-         status || null, suggested,
-         notes || null,
-         maturity != null && maturity !== '' ? parseInt(maturity, 10) : null,
-         applicability || null,
-         inclusion_justification || null,
-         exclusion_justification || null,
-         req.workspace.id, item.id);
+  // Cutover 4 (W2, ISO 42001): on a write-flipped workspace the authoritative state
+  // write goes to the converged control_instances (status/applicability normalized
+  // to tokens; same COALESCE partial-update semantics, the keep-current fallback now
+  // references control_instances); 014 mirrors it to iso42001_control_states.
+  // assessment_answers has no converged column (deferred), so it is persisted to the
+  // legacy table directly. The history INSERT below stays legacy with pass_id per the
+  // Phase 4 manifest (reads `cur` from iso42001_control_states, kept fresh by 014).
+  const wConverged42 = ctlWrites.converged(db, req.workspace.id);
+  const wReqId42 = wConverged42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
+  if (wConverged42 && wReqId42) {
+    db.prepare(`UPDATE control_instances
+                SET status = COALESCE(?, ?, status),
+                    notes = COALESCE(?, notes),
+                    maturity = COALESCE(?, maturity),
+                    applicability = COALESCE(?, applicability),
+                    inclusion_justification = COALESCE(?, inclusion_justification),
+                    exclusion_justification = COALESCE(?, exclusion_justification),
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(ctlWrites.normStatus(status || null), ctlWrites.normStatus(suggested),
+           notes || null,
+           maturity != null && maturity !== '' ? parseInt(maturity, 10) : null,
+           ctlWrites.normApplic(applicability || null),
+           inclusion_justification || null,
+           exclusion_justification || null,
+           req.workspace.id, wReqId42);
+    db.prepare(`UPDATE iso42001_control_states SET assessment_answers=? WHERE workspace_id=? AND iso_item_id=?`)
+      .run(JSON.stringify(answers), req.workspace.id, item.id);
+  } else {
+    db.prepare(`UPDATE iso42001_control_states
+                SET assessment_answers=?,
+                    status = COALESCE(?, ?, status),
+                    notes = COALESCE(?, notes),
+                    maturity = COALESCE(?, maturity),
+                    applicability = COALESCE(?, applicability),
+                    inclusion_justification = COALESCE(?, inclusion_justification),
+                    exclusion_justification = COALESCE(?, exclusion_justification),
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE workspace_id=? AND iso_item_id=?`)
+      .run(JSON.stringify(answers),
+           status || null, suggested,
+           notes || null,
+           maturity != null && maturity !== '' ? parseInt(maturity, 10) : null,
+           applicability || null,
+           inclusion_justification || null,
+           exclusion_justification || null,
+           req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'assess_iso42001', 'iso42001_item', item.id, { suggested });
 
   // Snapshot to history. pass_id ties the snapshot to the active pass if any.
@@ -14921,7 +15003,7 @@ app.use((err, req, res, next) => {
 
 // Export the configured app so tests can mount it without calling listen().
 // When run directly (node server.js), bind a port and start serving.
-module.exports = { app, db, computeReadiness, computeIso42001Readiness };
+module.exports = { app, db, computeReadiness, computeIso42001Readiness, getOrCreateState, getOrCreate42State };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;

@@ -66,8 +66,10 @@ try {
   });
   popReq();
 
-  // sanity: triggers + views + requirements present
-  const trigN = db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE '%_to_%'").get().n;
+  // sanity: triggers + views + requirements present. Count only the 013-direction
+  // (legacy->converged) triggers by name so the check is robust whether or not the
+  // cutover-4 014 (converged->legacy) triggers are also present in the chain.
+  const trigN = db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND (name LIKE '%_to_ci_%' OR name LIKE '%_to_drl_%')").get().n;
   check('013 sync triggers installed (10)', trigN === 10, `found ${trigN}`);
   const reqN = db.prepare("SELECT COUNT(*) n FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id WHERE f.code='iso27001'").get().n;
   check('iso27001 requirements populated', reqN > 0, `${reqN} requirements`);
