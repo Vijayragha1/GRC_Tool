@@ -6062,10 +6062,19 @@ app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace,
     if (closing) {
       const ncRow = db.prepare('SELECT iso_item_id FROM nonconformities WHERE id=?').get(req.params.id);
       if (ncRow && ncRow.iso_item_id) {
-        db.prepare(`INSERT INTO control_states (workspace_id, iso_item_id, last_verified_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(workspace_id, iso_item_id) DO UPDATE SET last_verified_at = CURRENT_TIMESTAMP`)
-          .run(req.workspace.id, ncRow.iso_item_id);
+        // Cutover 4 (W5): bump last_verified_at on the converged row when flipped
+        // (014 mirrors to legacy). entity_id IS NULL is not ON-CONFLICT-safe, so
+        // ensure-then-update. Fail-safe to the legacy upsert otherwise.
+        const ridNc = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso27001', ncRow.iso_item_id) : null;
+        if (ridNc) {
+          db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)`).run(req.workspace.id, ridNc);
+          db.prepare(`UPDATE control_instances SET last_verified_at = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(req.workspace.id, ridNc);
+        } else {
+          db.prepare(`INSERT INTO control_states (workspace_id, iso_item_id, last_verified_at)
+                      VALUES (?, ?, CURRENT_TIMESTAMP)
+                      ON CONFLICT(workspace_id, iso_item_id) DO UPDATE SET last_verified_at = CURRENT_TIMESTAMP`)
+            .run(req.workspace.id, ncRow.iso_item_id);
+        }
       }
     }
   }
@@ -6096,6 +6105,9 @@ app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWor
 app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const { ids, status, applicability, owner_id } = req.body;
   const idList = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+  // Cutover 4 (W5): converged-authoritative bulk-controls; convergeSets normalizes
+  // status/applicability per row (014 mirrors each).
+  const wcBulkCtl = ctlWrites.converged(db, req.workspace.id);
   let count = 0;
   for (const id of idList) {
     getOrCreateState(req.workspace.id, id);
@@ -6105,8 +6117,14 @@ app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requi
     if (owner_id !== undefined && owner_id !== '') { sets.push('owner_id=?'); vals.push(owner_id); }
     if (sets.length) {
       sets.push('last_updated=CURRENT_TIMESTAMP');
-      vals.push(req.workspace.id, id);
-      db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      const rid = wcBulkCtl ? ctlWrites.requirementId(db, 'iso27001', id) : null;
+      if (wcBulkCtl && rid) {
+        const c = ctlWrites.convergeSets(sets, vals);
+        db.prepare(`UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(...c.vals, req.workspace.id, rid);
+      } else {
+        vals.push(req.workspace.id, id);
+        db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      }
       count++;
     }
   }
@@ -6134,21 +6152,38 @@ app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorks
   // the old last-writer-wins path so this change doesn't break them.
   const clientStamp = req.body.last_updated || null;
   sets.push('last_updated=CURRENT_TIMESTAMP');
-  vals.push(req.workspace.id, req.params.isoId);
-  let sql = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
-  if (clientStamp) { sql += ` AND last_updated = ?`; vals.push(clientStamp); }
-  const result = db.prepare(sql).run(...vals);
+  // Cutover 4 (W5): autosave is a W2-class write WITH optimistic-concurrency. On a
+  // write-flipped workspace it writes the converged control_instances (convergeSets
+  // normalizes status/applicability) and the CAS runs against
+  // control_instances.last_updated; 014 mirrors to legacy. Fail-safe otherwise.
+  const wcAuto = ctlWrites.converged(db, req.workspace.id);
+  const ridAuto = wcAuto ? ctlWrites.requirementId(db, 'iso27001', req.params.isoId) : null;
+  let result;
+  const curStamp = (wcAuto && ridAuto)
+    ? () => db.prepare(`SELECT last_updated FROM control_instances WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).get(req.workspace.id, ridAuto)
+    : () => db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, req.params.isoId);
+  if (wcAuto && ridAuto) {
+    const c = ctlWrites.convergeSets(sets, vals);
+    const cVals = c.vals.slice();
+    let sql = `UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`;
+    cVals.push(req.workspace.id, ridAuto);
+    if (clientStamp) { sql += ` AND last_updated = ?`; cVals.push(clientStamp); }
+    result = db.prepare(sql).run(...cVals);
+  } else {
+    vals.push(req.workspace.id, req.params.isoId);
+    let sql = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
+    if (clientStamp) { sql += ` AND last_updated = ?`; vals.push(clientStamp); }
+    result = db.prepare(sql).run(...vals);
+  }
   if (clientStamp && result.changes === 0) {
-    const current = db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`)
-      .get(req.workspace.id, req.params.isoId);
+    const current = curStamp();
     return res.status(409).json({
       ok: false, conflict: true,
       message: 'Another consultant updated this control. Reload to see their changes.',
       current_last_updated: current ? current.last_updated : null
     });
   }
-  const cur = db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`)
-    .get(req.workspace.id, req.params.isoId);
+  const cur = curStamp();
   res.json({ ok: true, saved_at: new Date().toISOString(), last_updated: cur ? cur.last_updated : null });
 });
 
@@ -13072,6 +13107,10 @@ app.post('/workspaces/:wsId/controls/import', requireAuth, requireWorkspace, req
   if (!lines.length) return redirectBack(req, res);
   const header = lines.shift().split(',').map(s => s.trim().toLowerCase());
   const ix = (k) => header.indexOf(k);
+  // Cutover 4 (W5): converged-authoritative CSV import; convergeSets normalizes
+  // status/applicability per row (014 mirrors each). Unmapped CSV values pass
+  // through and surface fail-loud in reads, matching the doctrine.
+  const wcImp = ctlWrites.converged(db, req.workspace.id);
   let updated = 0;
   for (const ln of lines) {
     // Naive CSV - values may be quoted; handle simple unquote
@@ -13086,8 +13125,14 @@ app.post('/workspaces/:wsId/controls/import', requireAuth, requireWorkspace, req
     if (ix('notes') >= 0 && parts[ix('notes')]) { set.push('notes=?'); vals.push(parts[ix('notes')]); }
     if (set.length) {
       set.push('last_updated=CURRENT_TIMESTAMP');
-      vals.push(req.workspace.id, id);
-      db.prepare(`UPDATE control_states SET ${set.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      const rid = wcImp ? ctlWrites.requirementId(db, 'iso27001', id) : null;
+      if (wcImp && rid) {
+        const c = ctlWrites.convergeSets(set, vals);
+        db.prepare(`UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(...c.vals, req.workspace.id, rid);
+      } else {
+        vals.push(req.workspace.id, id);
+        db.prepare(`UPDATE control_states SET ${set.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      }
       updated++;
     }
   }
@@ -13744,11 +13789,20 @@ app.post('/workspaces/:wsId/iso42001/bulk-controls', requireAuth, requireWorkspa
   const ids = parseFormArray(req.body.ids);
   const { status, applicability } = req.body;
   if (!ids.length || (!status && !applicability)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/controls`);
+  // Cutover 4 (W5): converged-authoritative 42001 bulk toggle; status/applicability
+  // normalized (014 mirrors each). Fail-safe to legacy when unmapped.
+  const wcB42 = ctlWrites.converged(db, req.workspace.id);
   const tx = db.transaction(() => {
     for (const id of ids) {
       getOrCreate42State(req.workspace.id, id);
-      if (status) db.prepare(`UPDATE iso42001_control_states SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(status, req.workspace.id, id);
-      if (applicability) db.prepare(`UPDATE iso42001_control_states SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(applicability, req.workspace.id, id);
+      const rid = wcB42 ? ctlWrites.requirementId(db, 'iso42001', id) : null;
+      if (wcB42 && rid) {
+        if (status) db.prepare(`UPDATE control_instances SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(ctlWrites.normStatus(status), req.workspace.id, rid);
+        if (applicability) db.prepare(`UPDATE control_instances SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(ctlWrites.normApplic(applicability), req.workspace.id, rid);
+      } else {
+        if (status) db.prepare(`UPDATE iso42001_control_states SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(status, req.workspace.id, id);
+        if (applicability) db.prepare(`UPDATE iso42001_control_states SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(applicability, req.workspace.id, id);
+      }
     }
   });
   tx();
