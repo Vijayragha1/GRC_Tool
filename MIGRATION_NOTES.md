@@ -379,6 +379,43 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 **Gate status:** Stages 1-3 complete; SoA byte 4/4, deep-diff + render parity across all workspaces, `013` sync proven 24/24, suite green, backup fresh, flags flipped. STOPPED at the verification gate for review. Views + flags + the `013` sync triggers activate at merge-boot; from then the converged reads stay fresh against ongoing legacy writes with no staleness window.
 
+**Merge-race correction (PR #30):** PR #29 was merged at the docs commit, before the `013` amendment landed, so main briefly lacked the sync. PR #30 cherry-picked `013` onto main to restore self-consistency before any boot. Cutover 4 was rebased onto the corrected main (the duplicate `013` dropped as already-present; both sync checks re-run green post-rebase).
+
+---
+
+## Cutover 4 of 5: control-instance writes (branch `feat/cutover-4-instance-writes`, 2026-06-12)
+
+**Scope:** move control-state + doc-link WRITES off the legacy tables onto the converged `control_instances` / `document_requirement_links`, behind the per-workspace flag `control_writes_converged` (fail-safe to legacy). Reads already converged (cutover 3).
+
+**Mechanism:** migration `014_cutover4_converged_to_legacy_sync.sql` adds the converged->legacy mirror (8 triggers), completing the bidirectional sync with `013`. With `recursive_triggers = 0` and one-table-per-workspace writes, `013`+`014` cannot loop or double-apply, so BOTH tables stay row-consistent regardless of how many sites are flipped. `lib/control-writes.js` carries the flag, the `iso_item_id`->`requirement_id` mapping, `normStatus` / `normApplic` (display<->token, fail-loud passthrough matching the views), and `convergeSets(sets, vals)` (maps a legacy UPDATE spec to the converged one; drops `assessment_answers`).
+
+**Write groups converted (all authoritative to `control_instances`; 014 mirrors to legacy):**
+- **W1 lazy-create:** `getOrCreateState` / `getOrCreate42State` (returns the full legacy-shaped row so the wizard keeps `assessment_answers`).
+- **W2 gap-assessment save:** 27001 assess (CAS against `control_instances.last_updated`) + 42001 full save. History INSERT stays legacy with `pass_id` per the Phase 4 manifest (reads `cur` from the legacy table, kept fresh by 014). `assessment_answers` (no converged column) persisted to legacy.
+- **W4 SoA writes:** risk auto-include, single save, batch (per-row), set-based bulk (include_all / include_undecided / apply / exclude), auto-justify; 42001 equivalents. Set-based bulk WHERE maps `iso_item_id`->`requirement_id`; SQLite triggers are FOR EACH ROW so 014 fires per affected row.
+- **W6 doc links:** add + unlink on `document_requirement_links`. The actionable link_id panels (deferred from cutover 3) now read drl-native via the views when `control_writes_converged`, so the rendered id matches the unlink target; 014 mirrors add/delete to legacy.
+- **W5 bulk-controls / autosave / verify / CSV import / 42001 toggle:** autosave is a second W2-class CAS path (now converged); NC-close `last_verified_at` bump converged (ensure+update, not ON-CONFLICT-safe with NULL entity_id).
+
+**STAYS LEGACY (no converged column; recorded for the manifest):**
+- Review save (`review_status` / `reviewed_by` / `reviewed_at` / `review_reason`) -> the review-convergence mini-step (already a recorded demolition prerequisite).
+- `roadmap_phase` -> `control_instances` has no `roadmap_phase` column; deferred like `assessment_answers`. The control-state demolition must not drop the legacy tables while review OR roadmap_phase depend on their columns.
+
+**Doctrine (per the review guidance):** every embedded applicability/status literal routes through `normApplic` / `normStatus`; no raw legacy literal is ever written to `control_instances` (proven by grep). Bulk writes are verified by a FULL per-row mirror diff (not a count match), since that is where a mirror trigger could silently miss edge rows.
+
+**Verification (self-contained throwaway-DB harnesses + a route-level E2E):**
+- `cutover4_sync_check.js` 20/20 (014 de-norm, no-loop, no-dup, 42001, doc links).
+- `cutover4_w1_check.js` 9/9 (real server.js fns; authoritative-source proof).
+- `cutover4_w2_check.js` 11/11 (CAS conflict, every status both directions).
+- `cutover4_w4_check.js` 10/10 (per-row bulk mirror, 0 missed rows).
+- `cutover4_w6_check.js` 9/9 (add->014 mirror; rendered link_id IS drl.id; unlink both-ways).
+- `cutover4_w5_check.js` 6/6 (autosave CAS, bulk-controls per-row, last_verified_at, 42001 toggle).
+- **`cutover4_e2e.js` 7/7 ROUTE-LEVEL** (boots the real server on a live-DB copy): every status via the real assess route (014 direction); CAS via the real route returns HTTP 409 on a stale snapshot; a writes-OFF workspace's legacy POST mirrors to converged (013 direction); SoA via route. Both sync directions + every status + CAS through the actual HTTP routes.
+- Full suite green after every group (smoke 45/0, node:test 25/0); the flag-off legacy path is byte-unchanged.
+
+**Rollout note (differs from cutover 3):** `control_writes_converged` is NOT inert when set without `014` present (it would send writes to `control_instances` with no mirror, drifting legacy). So unlike the cutover-3 read flag, it is NOT pre-set on live dev. The pilot flip (ws16 first, then all) is a POST-MERGE operational step, performed only after `014` boots via the runner. `control_writes_converged` is OFF on live until then; the E2E above demonstrates the pilot (converged ws) + flag-off ws + both directions.
+
+**Gate status:** all five write groups converged + verified; route-level E2E 7/7; suite green. STOPPED at the verification gate for review. `014` + the write path activate at merge-boot; the live write-flag flip is a post-merge step.
+
 ---
 
 ## Phase 2 demolition — evidence join tables (branch `feat/phase2-demolition-evidence`, 2026-06-11)
