@@ -51,6 +51,7 @@ const docApprovals = require('./lib/doc-approvals');
 const evReads = require('./lib/evidence-reads');
 const ctlReads = require('./lib/control-reads');
 const ctlWrites = require('./lib/control-writes');
+const docLinks = require('./lib/doc-links');
 const evWrites = require('./lib/evidence-writes');
 
 init();
@@ -2723,7 +2724,7 @@ app.get('/workspaces/:wsId/controls/assess/summary', requireAuth, requireWorkspa
     INNER JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND cs.status IN ('Not Implemented','Partially Implemented','Work In Progress')
-      AND NOT EXISTS (SELECT 1 FROM ${T.doc} dc INNER JOIN generated_docs d ON d.id=dc.document_id
+      AND NOT EXISTS (SELECT 1 FROM ${docLinks.docControlsExpr('iso27001')} dc INNER JOIN generated_docs d ON d.id=dc.document_id
                       WHERE dc.iso_item_id=i.id AND d.workspace_id=?)
     ORDER BY i.sort_order`).all(wsId, wsId);
 
@@ -2914,18 +2915,13 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE rc.iso_item_id=? AND r.workspace_id=?
     ORDER BY (r.likelihood * r.impact) DESC`).all(item.id, req.workspace.id);
 
-  // Cutover 4 (W6): the actionable link_id must track the WRITE flag (it is what the
-  // unlink route deletes), so this panel reads drl-native via v_document_controls
-  // when control_writes_converged; the view returns drl.id AS id. (This is the
-  // panel cutover 3 deferred for exactly this reason.)
-  const docTLd = ctlWrites.converged(db, req.workspace.id) ? 'v_document_controls' : 'document_controls';
-  const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status, dc.section_ref, dc.id AS link_id
-    FROM ${docTLd} dc INNER JOIN generated_docs d ON d.id=dc.document_id
-    WHERE dc.iso_item_id=? AND d.workspace_id=? ORDER BY d.name`).all(item.id, req.workspace.id);
+  // Doc links are drl-native (document_controls demolished, migration 018).
+  // link_id = drl.id, which the unlink route deletes.
+  const linkedDocs = docLinks.linkedDocsForControl(db, 'iso27001', item.id, req.workspace.id);
   // Workspace's documents that aren't already linked - the add-link dropdown.
   const linkableDocs = db.prepare(`SELECT id, name, category, status FROM generated_docs
-    WHERE workspace_id=? AND id NOT IN (SELECT document_id FROM document_controls WHERE iso_item_id=?)
-    ORDER BY name`).all(req.workspace.id, item.id);
+    WHERE workspace_id=? AND id NOT IN (${docLinks.linkedDocIdsSubquery()})
+    ORDER BY name`).all(req.workspace.id, 'iso27001', item.id);
 
   const openNCs = db.prepare(`SELECT id, title, severity, status, due_date FROM nonconformities
     WHERE iso_item_id=? AND workspace_id=? AND status NOT IN ('closed','verified')
@@ -4658,15 +4654,15 @@ app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
       ORDER BY i.sort_order`).all(req.workspace.id, req.workspace.id, req.workspace.id, req.workspace.id, req.workspace.id);
 
   // Phase A: linked documents per control (only docs in this workspace)
-  const docLinks = db.prepare(`
+  const soaDocLinks = db.prepare(`
     SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
-    FROM ${T.doc} dc
+    FROM ${docLinks.docControlsExpr('iso27001')} dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
     WHERE d.workspace_id = ?
     ORDER BY d.name
   `).all(req.workspace.id);
   const docsByControl = {};
-  docLinks.forEach(l => { (docsByControl[l.iso_item_id] = docsByControl[l.iso_item_id] || []).push(l); });
+  soaDocLinks.forEach(l => { (docsByControl[l.iso_item_id] = docsByControl[l.iso_item_id] || []).push(l); });
 
   // ISO 27001 6.1.3.d.1: SoA must show which risks make each control "necessary".
   // Pull the actual risks linked to each control so the auditor can see the chain
@@ -5087,12 +5083,12 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   const tagFilter = req.query.tag || '';
   const T = ctlReads.tables(db, req.workspace.id);
   const docFilterClause = tagFilter
-    ? `AND d.id IN (SELECT document_id FROM ${T.doc} WHERE iso_item_id = ?)`
+    ? `AND d.id IN (SELECT document_id FROM ${docLinks.docControlsExpr('iso27001')} WHERE iso_item_id = ?)`
     : '';
   const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
 
   const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name,
-    (SELECT COUNT(*) FROM ${T.doc} dc WHERE dc.document_id = d.id) AS tag_count,
+    (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc WHERE dc.document_id = d.id) AS tag_count,
     (CASE
        WHEN d.next_review_date IS NULL THEN NULL
        WHEN d.next_review_date < date('now') THEN 'overdue'
@@ -5112,14 +5108,14 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
   if (docs.length) {
     const placeholders = docs.map(() => '?').join(',');
     const tagRows = db.prepare(`SELECT dc.document_id, dc.iso_item_id, dc.section_ref, i.type
-      FROM ${T.doc} dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
+      FROM ${docLinks.docControlsExpr('iso27001')} dc INNER JOIN iso_items i ON i.id = dc.iso_item_id
       WHERE dc.document_id IN (${placeholders}) ORDER BY i.sort_order`).all(...docs.map(d => d.id));
     tagRows.forEach(r => { (tagsByDoc[r.document_id] = tagsByDoc[r.document_id] || []).push(r); });
   }
 
   // Distinct tagged iso_items in this workspace - for the filter dropdown.
   const taggedItems = db.prepare(`SELECT DISTINCT i.id, i.type, i.title
-    FROM ${ctlReads.tables(db, req.workspace.id).doc} dc
+    FROM ${docLinks.docControlsExpr('iso27001')} dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
     INNER JOIN iso_items i ON i.id = dc.iso_item_id
     WHERE d.workspace_id = ? ORDER BY i.sort_order`).all(req.workspace.id);
@@ -5304,16 +5300,12 @@ function adoptTemplateForWorkspace(tpl, workspace, user, entityScopeId, override
   try { (JSON.parse(tpl.controls || '[]')).forEach(c => linkRefs.push(c)); } catch (_) {}
   try { (JSON.parse(tpl.clauses || '[]')).forEach(c => linkRefs.push(c)); } catch (_) {}
   if (linkRefs.length) {
-    // Cutover 4 (W6): converged-authoritative doc-link create on a write-flipped
-    // workspace (014 mirrors to document_controls). Fail-safe to legacy when unmapped.
-    const wcDoc = ctlWrites.converged(db, workspace.id);
+    // drl-native doc-link create (document_controls demolished). addLink no-ops for
+    // a ref with no requirement mapping.
     const exists = db.prepare(`SELECT 1 FROM iso_items WHERE id = ?`);
-    const linkIns = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id) VALUES (?, ?)`);
-    const linkInsCi = db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id) VALUES (?, ?)`);
     linkRefs.forEach(ref => {
       if (exists.get(ref)) {
-        const rid = wcDoc ? ctlWrites.requirementId(db, 'iso27001', ref) : null;
-        const r = (wcDoc && rid) ? linkInsCi.run(docId, rid) : linkIns.run(docId, ref);
+        const r = docLinks.addLink(db, 'iso27001', docId, ref, null);
         if (r.changes) linkedControls++;
       }
     });
@@ -5447,17 +5439,9 @@ app.get('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requir
     WHERE (m.workspace_id=? OR (u.firm_id=? AND u.user_type='firm' AND u.active=1))
     ORDER BY u.name`).all(req.workspace.id, req.workspace.firm_id);
 
-  // Linked Annex A controls + clauses (Phase A: doc <-> control bidirectional mapping)
-  // Cutover 4 (W6): actionable link_id tracks the WRITE flag (drl.id via the view)
-  // so the unlink route deletes the right row.
-  const docTLc = ctlWrites.converged(db, req.workspace.id) ? 'v_document_controls' : 'document_controls';
-  const linkedControls = db.prepare(`
-    SELECT dc.id AS link_id, dc.iso_item_id, dc.section_ref, i.title, i.category, i.type
-    FROM ${docTLc} dc
-    INNER JOIN iso_items i ON i.id = dc.iso_item_id
-    WHERE dc.document_id = ?
-    ORDER BY i.sort_order
-  `).all(doc.id);
+  // Linked Annex A controls + clauses (Phase A: doc <-> control bidirectional mapping).
+  // drl-native (document_controls demolished); link_id = drl.id.
+  const linkedControls = docLinks.linkedControlsForDoc(db, 'iso27001', doc.id);
   const allControls = db.prepare(`SELECT id, title, category, type FROM iso_items
     WHERE type IN ('control','clause') ORDER BY sort_order`).all();
 
@@ -5480,16 +5464,11 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
   const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return redirectBack(req, res);
   const sectionRef = req.body.section_ref || null;
-  // Cutover 4 (W6): converged-authoritative doc-link add (014 mirrors per row).
-  const wcDl = ctlWrites.converged(db, req.workspace.id);
-  const ins = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
-  const insCi = db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id, section_ref) VALUES (?, ?, ?)`);
+  // drl-native doc-link add (document_controls demolished).
   let added = 0;
   const tx = db.transaction(() => {
     for (const id of ids) {
-      const rid = wcDl ? ctlWrites.requirementId(db, 'iso27001', id) : null;
-      const r = (wcDl && rid) ? insCi.run(doc.id, rid, sectionRef) : ins.run(doc.id, id, sectionRef);
-      if (r.changes > 0) added++;
+      if (docLinks.addLink(db, 'iso27001', doc.id, id, sectionRef).changes > 0) added++;
     }
   });
   try { tx(); } catch (_) {}
@@ -5500,21 +5479,11 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
 app.post('/workspaces/:wsId/documents/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return res.status(404).send('Not found');
-  // Cutover 4 (W6): when writes-converged the panel rendered drl.id (via the view),
-  // so resolve + delete the converged link; 014 mirrors the delete to the legacy
-  // document_controls. Fail-safe to legacy id otherwise.
-  if (ctlWrites.converged(db, req.workspace.id)) {
-    const link = db.prepare('SELECT * FROM v_document_controls WHERE id=? AND document_id=?').get(req.params.linkId, doc.id);
-    if (link) {
-      db.prepare('DELETE FROM document_requirement_links WHERE id=?').run(link.id);
-      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
-    }
-  } else {
-    const link = db.prepare('SELECT * FROM document_controls WHERE id=? AND document_id=?').get(req.params.linkId, doc.id);
-    if (link) {
-      db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
-      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
-    }
+  // drl-native unlink (document_controls demolished); :linkId is drl.id.
+  const link = docLinks.resolveLinkByDoc(db, req.params.linkId, doc.id);
+  if (link) {
+    docLinks.deleteLink(db, link.id);
+    logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
   }
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
@@ -5531,15 +5500,8 @@ app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWork
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(document_id, req.workspace.id);
   if (!doc) return redirectBack(req, res);
   try {
-    // Cutover 4 (W6): converged-authoritative doc-link (014 mirrors to legacy).
-    const ridDl = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso27001', item.id) : null;
-    if (ridDl) {
-      db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id, section_ref) VALUES (?, ?, ?)`)
-        .run(doc.id, ridDl, section_ref || null);
-    } else {
-      db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
-        .run(doc.id, item.id, section_ref || null);
-    }
+    // drl-native doc-link (document_controls demolished).
+    docLinks.addLink(db, 'iso27001', doc.id, item.id, section_ref || null);
     logAction(req.user.id, req.workspace.id, 'link_doc_control', 'control', item.id, { document_id: doc.id, section_ref: section_ref || null }, auditCtx(req));
   } catch (_) { /* ignore unique-constraint conflict */ }
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
@@ -5547,24 +5509,11 @@ app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWork
 
 app.post('/workspaces/:wsId/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   // Verify the link belongs to a doc in this workspace before deleting.
-  // Cutover 4 (W6): when writes-converged the panel rendered drl.id (via the view);
-  // resolve + delete the converged link, 014 mirrors the delete to legacy.
-  if (ctlWrites.converged(db, req.workspace.id)) {
-    const link = db.prepare(`SELECT dc.* FROM v_document_controls dc
-      INNER JOIN generated_docs d ON d.id = dc.document_id
-      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
-    if (link) {
-      db.prepare('DELETE FROM document_requirement_links WHERE id=?').run(link.id);
-      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
-    }
-  } else {
-    const link = db.prepare(`SELECT dc.* FROM document_controls dc
-      INNER JOIN generated_docs d ON d.id = dc.document_id
-      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
-    if (link) {
-      db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
-      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
-    }
+  // drl-native unlink (document_controls demolished); :linkId is drl.id.
+  const link = docLinks.resolveLinkByControl(db, req.params.linkId, req.params.isoId, req.workspace.id);
+  if (link) {
+    docLinks.deleteLink(db, link.id);
+    logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
   }
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${req.params.isoId}`);
 });
@@ -12923,7 +12872,7 @@ app.get('/workspaces/:wsId/assets/:id', requireAuth, requireWorkspace, requirePe
     SELECT DISTINCT i.id, i.title, i.category,
       COALESCE(cs.applicability,'undecided') AS applicability,
       COALESCE(cs.status,'Not Assessed') AS status,
-      (SELECT COUNT(*) FROM ${ctlReads.tables(db, req.workspace.id).doc} dc INNER JOIN generated_docs d ON d.id=dc.document_id WHERE dc.iso_item_id=i.id AND d.workspace_id=?) AS doc_count
+      (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc INNER JOIN generated_docs d ON d.id=dc.document_id WHERE dc.iso_item_id=i.id AND d.workspace_id=?) AS doc_count
     FROM iso_items i
     INNER JOIN risk_controls rc ON rc.iso_item_id = i.id
     INNER JOIN risks r ON r.id = rc.risk_id
@@ -13358,7 +13307,7 @@ app.get('/workspaces/:wsId/handover', requireAuth, requireWorkspace, requirePerm
     'audits','audit_findings','audit_observations','audit_programmes',
     'mrms','nonconformities','incidents','incident_events',
     'suppliers','supplier_documents','supplier_subprocessors','supplier_reviews','supplier_notes','supplier_clauses','supplier_controls','supplier_questionnaires','supplier_questionnaire_responses','supplier_monitoring','supplier_termination_items',
-    'document_controls',
+    'document_requirement_links',
     'tasks','task_templates',
     'asset_relationships',
     'workspace_members','workspace_role_overrides','access_reviews','access_review_items',
@@ -13551,9 +13500,7 @@ app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, require
   const rows = db.prepare(`
     SELECT i.id, i.title, i.category,
       cs.status,
-      (SELECT COUNT(*) FROM document_controls dc INNER JOIN generated_docs gd
-        ON gd.id = dc.document_id WHERE dc.iso_item_id = i.id AND gd.workspace_id = ?
-        AND gd.retired_at IS NULL) AS doc_count,
+      ${docLinks.docCountSubquery('iso27001')} AS doc_count,
       ${evReads.checklistEvidenceCountSubquery()} AS evi_count
     FROM iso_items i
     INNER JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
@@ -13868,14 +13815,14 @@ app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, r
   const risksByControl = {};
   riskLinks.forEach(l => { (risksByControl[l.iso_item_id] = risksByControl[l.iso_item_id] || []).push(l); });
 
-  // Documents linked to each control via iso42001_document_controls
-  const docLinks = db.prepare(`SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
-      FROM ${T.doc42} dc
+  // Documents linked to each control (drl-native; iso42001_document_controls demolished)
+  const soaDocLinks42 = db.prepare(`SELECT dc.iso_item_id, dc.section_ref, d.id AS doc_id, d.name AS doc_name, d.status AS doc_status, d.category
+      FROM ${docLinks.docControlsExpr('iso42001')} dc
       INNER JOIN generated_docs d ON d.id = dc.document_id
       WHERE d.workspace_id = ?
       ORDER BY d.name`).all(req.workspace.id);
   const docsByControl = {};
-  docLinks.forEach(l => { (docsByControl[l.iso_item_id] = docsByControl[l.iso_item_id] || []).push(l); });
+  soaDocLinks42.forEach(l => { (docsByControl[l.iso_item_id] = docsByControl[l.iso_item_id] || []).push(l); });
 
   // Custom (non-Annex-A) controls
   const customControls = db.prepare(`SELECT * FROM iso42001_soa_custom_controls
@@ -14401,22 +14348,14 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
     WHERE r.workspace_id=? AND rc.iso_item_id=?
     ORDER BY (r.likelihood * r.impact) DESC`).all(req.workspace.id, item.id);
 
-  // Linked documents via parallel iso42001_document_controls table.
-  // Cutover 4 (W6): actionable link_id tracks the WRITE flag (drl.id via the
-  // v_iso42001_document_controls view) so the unlink deletes the right row.
-  const docT42Ld = ctlWrites.converged(db, req.workspace.id) ? 'v_iso42001_document_controls' : 'iso42001_document_controls';
-  const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status,
-      dc.id AS link_id, dc.section_ref
-    FROM ${docT42Ld} dc
-    INNER JOIN generated_docs d ON d.id = dc.document_id
-    WHERE d.workspace_id=? AND dc.iso_item_id=?
-    ORDER BY d.name`).all(req.workspace.id, item.id);
+  // Linked documents, drl-native (iso42001_document_controls demolished);
+  // link_id = drl.id.
+  const linkedDocs = docLinks.linkedDocsForControl(db, 'iso42001', item.id, req.workspace.id);
 
   // Documents this workspace has that aren't yet linked - candidates for the link dropdown.
   const linkableDocs = db.prepare(`SELECT id, name, status FROM generated_docs
-    WHERE workspace_id=? AND id NOT IN (
-      SELECT document_id FROM iso42001_document_controls WHERE iso_item_id=?
-    ) ORDER BY name`).all(req.workspace.id, item.id);
+    WHERE workspace_id=? AND id NOT IN (${docLinks.linkedDocIdsSubquery()})
+    ORDER BY name`).all(req.workspace.id, 'iso42001', item.id);
 
   // Risks not yet linked to this control - candidates for the link dropdown.
   const linkableRisks = db.prepare(`SELECT id, title, likelihood, impact FROM risks
@@ -14561,15 +14500,8 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, re
   // Sanity check the doc belongs to this workspace.
   const doc = db.prepare(`SELECT id FROM generated_docs WHERE id=? AND workspace_id=?`).get(document_id, req.workspace.id);
   if (!doc) return res.status(404).send('Document not found');
-  // Cutover 4 (W6): converged-authoritative 42001 doc-link (014 mirrors to legacy).
-  const ridDl42 = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso42001', req.params.isoId) : null;
-  if (ridDl42) {
-    db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id, section_ref) VALUES (?, ?, ?)`)
-      .run(document_id, ridDl42, section_ref || null);
-  } else {
-    db.prepare(`INSERT OR IGNORE INTO iso42001_document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
-      .run(document_id, req.params.isoId, section_ref || null);
-  }
+  // drl-native 42001 doc-link (iso42001_document_controls demolished).
+  docLinks.addLink(db, 'iso42001', document_id, req.params.isoId, section_ref || null);
   logAction(req.user.id, req.workspace.id, 'link_iso42001_doc', 'iso42001_item', req.params.isoId, { document_id });
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
@@ -14653,23 +14585,9 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId/clear-flag', requireAuth, requir
 
 app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   // Verify the link belongs to a doc in this workspace before deleting.
-  // Cutover 4 (W6): when writes-converged the panel rendered drl.id (via the view);
-  // resolve + delete the converged link, 014 mirrors the delete to legacy.
-  if (ctlWrites.converged(db, req.workspace.id)) {
-    const link = db.prepare(`SELECT dc.* FROM v_iso42001_document_controls dc
-      INNER JOIN generated_docs d ON d.id = dc.document_id
-      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
-    if (link) {
-      db.prepare(`DELETE FROM document_requirement_links WHERE id=?`).run(link.id);
-    }
-  } else {
-    const link = db.prepare(`SELECT dc.* FROM iso42001_document_controls dc
-      INNER JOIN generated_docs d ON d.id = dc.document_id
-      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
-    if (link) {
-      db.prepare(`DELETE FROM iso42001_document_controls WHERE id=?`).run(link.id);
-    }
-  }
+  // drl-native unlink (iso42001_document_controls demolished); :linkId is drl.id.
+  const link = docLinks.resolveLinkByControl(db, req.params.linkId, req.params.isoId, req.workspace.id);
+  if (link) docLinks.deleteLink(db, link.id);
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
 

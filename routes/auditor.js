@@ -15,6 +15,7 @@
 'use strict';
 const crypto = require('crypto');
 const ctlReads = require('../lib/control-reads');
+const docLinks = require('../lib/doc-links');
 
 function register(app, deps) {
   const {
@@ -176,7 +177,7 @@ function register(app, deps) {
   app.get('/auditor/:token/documents', requireAuditorToken, (req, res) => {
     const docs = db.prepare(`SELECT d.id, d.name, d.category, d.status, d.version, d.next_review_date,
         d.published_at, d.approved_at, u.name AS approver,
-        (SELECT COUNT(*) FROM ${ctlReads.tables(db, req.workspace.id).doc} dc WHERE dc.document_id = d.id) AS control_count
+        (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc WHERE dc.document_id = d.id) AS control_count
       FROM generated_docs d
       LEFT JOIN users u ON u.id = d.approved_by
       WHERE d.workspace_id = ? AND d.retired_at IS NULL
@@ -191,7 +192,7 @@ function register(app, deps) {
     if (!doc) return res.status(404).render('error', { user: null, message: 'Document not found.' });
     const body = enc.decryptIfNeeded(doc.content || '', req.workspace.id);
     const html = body && /^<[a-z]/i.test(body.trim()) ? body : mdRenderer.render(body || '');
-    const links = db.prepare(`SELECT dc.iso_item_id, i.title FROM ${ctlReads.tables(db, req.workspace.id).doc} dc
+    const links = db.prepare(`SELECT dc.iso_item_id, i.title FROM ${docLinks.docControlsExpr('iso27001')} dc
       INNER JOIN iso_items i ON i.id = dc.iso_item_id WHERE dc.document_id=?
       ORDER BY i.sort_order`).all(doc.id);
     renderAuditorView(res, 'auditor_document_detail', { share: req.share, workspace: req.workspace, doc, html, links });

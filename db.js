@@ -134,6 +134,15 @@ CREATE TABLE IF NOT EXISTS risk_controls (
   FOREIGN KEY (iso_item_id) REFERENCES iso_items(id)
 );
 
+-- document_controls is DEMOLISHED at runtime by migration 018 (doc<->control
+-- links converged to document_requirement_links; reads/writes drl-native via
+-- lib/doc-links.js). The CREATE stays here as transient chain-scaffolding ONLY:
+-- the immutable applied migrations 013/014 attach sync triggers ON this table, so
+-- it must exist when they run on a fresh boot; 018 then drops it (+ triggers +
+-- views) at the end of the chain, so it is gone at runtime. (Unlike the evidence
+-- demolition, whose on-legacy triggers lived here in db.js and were removed
+-- together, these triggers live in a migration and cannot be removed; full DDL
+-- removal awaits a chain baseline/squash.)
 CREATE TABLE IF NOT EXISTS document_controls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   document_id INTEGER NOT NULL,
@@ -3044,6 +3053,11 @@ function init() {
       FOREIGN KEY (iso_item_id) REFERENCES iso42001_items(id) ON DELETE CASCADE
     );
 
+    -- iso42001_document_controls is DEMOLISHED at runtime by migration 018
+    -- (converged to document_requirement_links; reads/writes drl-native). The
+    -- CREATE stays as transient chain-scaffolding: immutable migrations 013/014
+    -- attach sync triggers ON it, so it must exist when they run on a fresh boot;
+    -- 018 drops it at the end of the chain. Gone at runtime.
     CREATE TABLE IF NOT EXISTS iso42001_document_controls (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       document_id INTEGER NOT NULL,

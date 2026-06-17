@@ -443,6 +443,26 @@ So closing the control-state room fully needs `assessment_answers` + `roadmap_ph
 
 ---
 
+## Demolition: document-link join tables (branch `feat/demolish-doc-links`, 2026-06-17)
+
+**Second demolition of the program** (after evidence); a genuinely complete room. Drops `document_controls` / `iso42001_document_controls`, their 10 sync triggers, and the `v_document_controls` / `v_iso42001_document_controls` compat views. Doc<->control links are fully converged to `document_requirement_links` (drl); reads + writes are drl-native (`lib/doc-links.js`).
+
+**Gate (all met):** cutover 4 W6 on main (drl is the write source); `backup_runs` id 255 `ok` < 24h; drl<->legacy parity (drl 193 = the 193 VALID legacy rows; the 14 legacy-only rows are orphans whose `generated_doc` was deleted, intentionally excluded by the Phase 3 backfill); reference audit reviewed; Vijay's approval.
+
+**What changed:**
+- `lib/doc-links.js` (NEW): drl-native reads (`linkedDocsForControl`, `linkedControlsForDoc`, `linkedDocIdsSubquery`, `docCountSubquery`, `docControlsExpr` = a drop-in subquery reproducing the old view shape) + writes (`addLink`, `resolveLinkByDoc/Control`, `deleteLink`).
+- `server.js` + `routes/auditor.js`: all doc-link reads/writes repointed to drl-native; the W6 flag-gated legacy branches collapsed (doc links are unconditionally converged now); the handover export lists `document_requirement_links`; `lib/control-reads.js` drops its `doc`/`doc42` keys (no longer routed through it).
+- `018_demolish_doc_link_tables.sql`: drop the 10 doc-link triggers, then the 2 views, then the 2 tables (triggers first; all `IF EXISTS`).
+- `db.js`: the `document_controls` / `iso42001_document_controls` CREATEs STAY as transient chain-scaffolding (annotated). PLAYBOOK EXCEPTION: unlike evidence (whose on-legacy triggers lived in db.js and were removed together), migrations 013/014 attach sync triggers ON these tables; since applied migrations are immutable, the tables must exist when 013/014 run on a fresh boot. 018 drops them at the END of the chain, so they are gone at runtime. Full DDL removal awaits a chain baseline/squash.
+
+**Finding (reference-audit doctrine):** the first audit grepped the literal `document_controls` and missed ~8 reads that referenced the COMPAT VIEW via the helper (`ctlReads.tables(...).doc`, `${T.doc}`). The suite caught them (SoA + summary 500s) before merge. DOCTRINE: a demolition reference audit must grep the table name AND every alias/view/helper that resolves to it (here: `.doc`/`.doc42`/`v_document_controls`), not just the raw table name. Also hit a JS name-shadow: a module `const docLinks = require(...)` collided with two local `const docLinks` query-result vars (TDZ 500); renamed the locals.
+
+**Verification:** `demolish_doc_links_check.js` (route-level, real server on a live-DB copy where 018 auto-applied at boot): legacy tables + views gone, drl + control views survive; control-side add -> drl row, the assess panel renders the drl-native unlink `link_id`, unlink by it removes the drl row; 42001 add/unlink drl-native: **12/12**. Full suite green (smoke 45/0, node:test 25/0). The pre-demolition `cutover4_sync_check.js` / `cutover4_w6_check.js` fixtures are now HISTORICAL (they reference the dropped tables), like `cutover2_consistency_check.js` after the evidence demolition.
+
+**Result:** the document-link room is fully closed. Remaining for the control-state room: `assessment_answers` + `roadmap_phase` convergence, then the control-state-table demolition; history tables wait on Phase 4.
+
+---
+
 ## Phase 2 demolition — evidence join tables (branch `feat/phase2-demolition-evidence`, 2026-06-11)
 
 The FIRST demolition of the program; it sets the playbook below.
