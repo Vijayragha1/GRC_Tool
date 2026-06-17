@@ -2964,6 +2964,19 @@ function init() {
       assessment_answers TEXT,
       roadmap_phase TEXT,
       last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      -- Review-workflow columns. These are added on every boot for control_states
+      -- and iso42001_control_states via addColumnIfMissing (above), but that loop
+      -- runs BEFORE this CREATE, so on a FRESH boot iso42001_control_states was
+      -- created without them (the live DB has them because the table persists across
+      -- boots and the loop back-filled it). Declared here so fresh and live match;
+      -- reconcile schema drift, never code around it. Required so the 013/014 review
+      -- sync triggers can reference these columns uniformly.
+      review_status TEXT DEFAULT 'none',
+      review_requested_by INTEGER REFERENCES users(id),
+      review_requested_at DATETIME,
+      review_reason TEXT,
+      reviewed_by INTEGER REFERENCES users(id),
+      reviewed_at DATETIME,
       UNIQUE(workspace_id, iso_item_id),
       FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
       FOREIGN KEY (iso_item_id) REFERENCES iso42001_items(id),

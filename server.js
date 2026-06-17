@@ -3161,12 +3161,24 @@ function notifyReviewers(wsId, requesterUserId, item, reason, framework) {
 app.post('/workspaces/:wsId/controls/assess/:isoId/flag-for-review', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
-  db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(req.workspace.id, item.id);
-  db.prepare(`UPDATE control_states
-    SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
-        reviewed_by=NULL, reviewed_at=NULL
-    WHERE workspace_id=? AND iso_item_id=?`)
-    .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
+  // Review-convergence: write the converged review columns when control_writes_converged
+  // (014 mirrors to legacy). getOrCreateState ensures both rows exist.
+  getOrCreateState(req.workspace.id, item.id);
+  const wcFr = ctlWrites.converged(db, req.workspace.id);
+  const ridFr = wcFr ? ctlWrites.requirementId(db, 'iso27001', item.id) : null;
+  if (wcFr && ridFr) {
+    db.prepare(`UPDATE control_instances
+      SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(req.user.id, req.body.reason || null, req.workspace.id, ridFr);
+  } else {
+    db.prepare(`UPDATE control_states
+      SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND iso_item_id=?`)
+      .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'flag_for_review', 'control', item.id, { reason: req.body.reason }, auditCtx(req));
   notifyReviewers(req.workspace.id, req.user.id, item, req.body.reason, 'iso27001');
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
@@ -3178,9 +3190,19 @@ app.post('/workspaces/:wsId/controls/assess/:isoId/review-action', requireAuth, 
   const action = req.body.action; // 'approve' or 'send_back'
   if (!['approve', 'send_back'].includes(action)) return res.status(400).send('Bad action');
   const newStatus = action === 'approve' ? 'reviewed' : 'needs_changes';
-  const cur = db.prepare(`SELECT review_requested_by FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
-  db.prepare(`UPDATE control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
-    WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
+  // Review-convergence: converged write + read when control_writes_converged.
+  const wcRa = ctlWrites.converged(db, req.workspace.id);
+  const ridRa = wcRa ? ctlWrites.requirementId(db, 'iso27001', item.id) : null;
+  let cur;
+  if (wcRa && ridRa) {
+    cur = db.prepare(`SELECT review_requested_by FROM control_instances WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).get(req.workspace.id, ridRa);
+    db.prepare(`UPDATE control_instances SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(newStatus, req.user.id, req.workspace.id, ridRa);
+  } else {
+    cur = db.prepare(`SELECT review_requested_by FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+    db.prepare(`UPDATE control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
+      WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'review_action', 'control', item.id, { action, note: req.body.note }, auditCtx(req));
   // Notify the requester that the review is done.
   if (cur && cur.review_requested_by && cur.review_requested_by !== req.user.id) {
@@ -3196,10 +3218,20 @@ app.post('/workspaces/:wsId/controls/assess/:isoId/review-action', requireAuth, 
 app.post('/workspaces/:wsId/controls/assess/:isoId/clear-flag', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
-  db.prepare(`UPDATE control_states
-    SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
-        reviewed_by=NULL, reviewed_at=NULL
-    WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
+  // Review-convergence: clear the converged review state when control_writes_converged.
+  const wcCf = ctlWrites.converged(db, req.workspace.id);
+  const ridCf = wcCf ? ctlWrites.requirementId(db, 'iso27001', item.id) : null;
+  if (wcCf && ridCf) {
+    db.prepare(`UPDATE control_instances
+      SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(req.workspace.id, ridCf);
+  } else {
+    db.prepare(`UPDATE control_states
+      SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'clear_review_flag', 'control', item.id, null, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
 });
@@ -9680,11 +9712,14 @@ app.post('/workspaces/:wsId/documents/:id/new-version', requireAuth, requireWork
 app.get('/workspaces/:wsId/review-queue', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
   const filter = req.query.filter || 'open'; // 'open' = requested + needs_changes; 'all' = everything non-none
   const wsId = req.workspace.id;
+  // Review-convergence: review reads come from the converged compat views when
+  // control_reads_converged (the views now expose the review_* columns).
+  const T = ctlReads.tables(db, wsId);
 
   const iso27 = db.prepare(`SELECT cs.iso_item_id AS item_id, i.title, cs.review_status, cs.review_requested_at,
       cs.reviewed_at, cs.review_reason,
       ru.name AS requested_by_name, rv.name AS reviewed_by_name
-    FROM control_states cs
+    FROM ${T.cs} cs
     INNER JOIN iso_items i ON i.id = cs.iso_item_id
     LEFT JOIN users ru ON ru.id = cs.review_requested_by
     LEFT JOIN users rv ON rv.id = cs.reviewed_by
@@ -9694,7 +9729,7 @@ app.get('/workspaces/:wsId/review-queue', requireAuth, requireWorkspace, require
   const iso42 = db.prepare(`SELECT cs.iso_item_id AS item_id, i.title, cs.review_status, cs.review_requested_at,
       cs.reviewed_at, cs.review_reason,
       ru.name AS requested_by_name, rv.name AS reviewed_by_name
-    FROM iso42001_control_states cs
+    FROM ${T.cs42} cs
     INNER JOIN iso42001_items i ON i.id = cs.iso_item_id
     LEFT JOIN users ru ON ru.id = cs.review_requested_by
     LEFT JOIN users rv ON rv.id = cs.reviewed_by
@@ -14543,12 +14578,23 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, re
 app.post('/workspaces/:wsId/iso42001/gap/:isoId/flag-for-review', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
-  db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(req.workspace.id, item.id);
-  db.prepare(`UPDATE iso42001_control_states
-    SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
-        reviewed_by=NULL, reviewed_at=NULL
-    WHERE workspace_id=? AND iso_item_id=?`)
-    .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
+  // Review-convergence: converged write when control_writes_converged (014 mirrors).
+  getOrCreate42State(req.workspace.id, item.id);
+  const wcFr42 = ctlWrites.converged(db, req.workspace.id);
+  const ridFr42 = wcFr42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
+  if (wcFr42 && ridFr42) {
+    db.prepare(`UPDATE control_instances
+      SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(req.user.id, req.body.reason || null, req.workspace.id, ridFr42);
+  } else {
+    db.prepare(`UPDATE iso42001_control_states
+      SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND iso_item_id=?`)
+      .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'flag_for_review', 'iso42001_item', item.id, { reason: req.body.reason }, auditCtx(req));
   notifyReviewers(req.workspace.id, req.user.id, item, req.body.reason, 'iso42001');
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
@@ -14560,9 +14606,19 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId/review-action', requireAuth, req
   const action = req.body.action;
   if (!['approve', 'send_back'].includes(action)) return res.status(400).send('Bad action');
   const newStatus = action === 'approve' ? 'reviewed' : 'needs_changes';
-  const cur = db.prepare(`SELECT review_requested_by FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
-  db.prepare(`UPDATE iso42001_control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
-    WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
+  // Review-convergence: converged write + read when control_writes_converged.
+  const wcRa42 = ctlWrites.converged(db, req.workspace.id);
+  const ridRa42 = wcRa42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
+  let cur;
+  if (wcRa42 && ridRa42) {
+    cur = db.prepare(`SELECT review_requested_by FROM control_instances WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).get(req.workspace.id, ridRa42);
+    db.prepare(`UPDATE control_instances SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(newStatus, req.user.id, req.workspace.id, ridRa42);
+  } else {
+    cur = db.prepare(`SELECT review_requested_by FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+    db.prepare(`UPDATE iso42001_control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
+      WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'review_action', 'iso42001_item', item.id, { action, note: req.body.note }, auditCtx(req));
   if (cur && cur.review_requested_by && cur.review_requested_by !== req.user.id) {
     const code = item.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.');
@@ -14577,10 +14633,20 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId/review-action', requireAuth, req
 app.post('/workspaces/:wsId/iso42001/gap/:isoId/clear-flag', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
   if (!item) return res.status(404).send('Not found');
-  db.prepare(`UPDATE iso42001_control_states
-    SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
-        reviewed_by=NULL, reviewed_at=NULL
-    WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
+  // Review-convergence: clear converged review state when control_writes_converged.
+  const wcCf42 = ctlWrites.converged(db, req.workspace.id);
+  const ridCf42 = wcCf42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
+  if (wcCf42 && ridCf42) {
+    db.prepare(`UPDATE control_instances
+      SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(req.workspace.id, ridCf42);
+  } else {
+    db.prepare(`UPDATE iso42001_control_states
+      SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
+          reviewed_by=NULL, reviewed_at=NULL
+      WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
+  }
   logAction(req.user.id, req.workspace.id, 'clear_review_flag', 'iso42001_item', item.id, null, auditCtx(req));
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
 });
