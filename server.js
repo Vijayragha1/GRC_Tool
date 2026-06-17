@@ -530,28 +530,16 @@ function computeClientStage(ws) {
 }
 
 function getOrCreateState(wsId, isoId) {
-  // Cutover 4 (W1, lazy create): on a write-flipped workspace the AUTHORITATIVE
-  // create goes to the converged control_instances (whole-org, entity_id NULL);
-  // migration 014 mirrors the new row back into control_states. We still read the
-  // return value back from control_states because callers (the assess-wizard
-  // render) read assessment_answers + review_* columns the converged compat view
-  // does not carry (deferred). The legacy ensure below also covers any drift and,
-  // when the flag is off, is the unchanged original path. Fail-safe: an unmapped
-  // item or missing converged schema falls through to the legacy path.
-  if (ctlWrites.converged(db, wsId)) {
-    const reqId = ctlWrites.requirementId(db, 'iso27001', isoId);
-    if (reqId) {
-      db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
-        .run(wsId, reqId);
-    }
+  // Post control-state demolition (migration 019): control_states is gone. Ensure
+  // the converged whole-org control_instances row, then return the legacy-shaped
+  // row from v_control_states (the view exposes every column callers read;
+  // assessment_answers is NULL, which is dead data).
+  const reqId = ctlWrites.requirementId(db, 'iso27001', isoId);
+  if (reqId) {
+    db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
+      .run(wsId, reqId);
   }
-  let s = db.prepare('SELECT * FROM control_states WHERE workspace_id = ? AND iso_item_id = ?')
-    .get(wsId, isoId);
-  if (!s) {
-    db.prepare('INSERT INTO control_states (workspace_id, iso_item_id) VALUES (?, ?)').run(wsId, isoId);
-    s = db.prepare('SELECT * FROM control_states WHERE workspace_id = ? AND iso_item_id = ?').get(wsId, isoId);
-  }
-  return s;
+  return db.prepare('SELECT * FROM v_control_states WHERE workspace_id = ? AND iso_item_id = ?').get(wsId, isoId);
 }
 
 function escapeHtml(str) {
@@ -1710,7 +1698,7 @@ function collectManagerSchedule(user) {
 
   // 5. Control reviews (owner_id FK; only deliberately-assigned controls) ----
   db.prepare(`SELECT workspace_id, iso_item_id, due_date, status, owner_id, applicability
-              FROM control_states WHERE workspace_id IN (${ph}) AND owner_id IS NOT NULL`).all(...wsIds).forEach(c => {
+              FROM v_control_states WHERE workspace_id IN (${ph}) AND owner_id IS NOT NULL`).all(...wsIds).forEach(c => {
     push({ kind:'control', title:`Control ${c.iso_item_id}`, date:c.due_date||null, status:c.status,
       open:(c.status!=='Implemented'&&c.applicability!=='excluded'),
       countsWorkload:true, wsId:c.workspace_id, wsName:wsName[c.workspace_id],
@@ -3070,10 +3058,8 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
     cVals.push(req.workspace.id, wReqId);
     if (usingCAS) { sql += ` AND last_updated = ?`; cVals.push(last_updated_snapshot); }
     result = db.prepare(sql).run(...cVals);
-    if (!(usingCAS && result.changes === 0) && Object.keys(answers).length) {
-      db.prepare(`UPDATE control_states SET assessment_answers=? WHERE workspace_id=? AND iso_item_id=?`)
-        .run(JSON.stringify(answers), req.workspace.id, item.id);
-    }
+    // assessment_answers is dead (deferred-drop, control-state demolition 019): no
+    // converged home, persistence removed. The diagnostic answers are not stored.
   } else {
     let updateSQL = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
     vals.push(req.workspace.id, item.id);
@@ -3091,10 +3077,13 @@ app.post('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspa
   }
 
   // Append-only history snapshot - written after the UPDATE so it captures the new
-  // values exactly. An auditor can later request the timeline for any control.
+  // values exactly. Post control-state demolition (019): cur sources from the
+  // converged view (control_states is gone); values are equivalent (the view
+  // de-normalizes control_instances), assessment_answers is NULL (dead). The
+  // control_state_history table + pass_id coupling are untouched (Phase 4).
   const cur = db.prepare(`SELECT status, applicability, maturity, scope_pct,
     inclusion_justification, exclusion_justification, notes, assessment_answers
-    FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+    FROM v_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
   if (cur) {
     // Tag the snapshot with the active pass (auto-creates Pass 1 lazily on
     // the very first wizard save in a fresh workspace, so passes always exist).
@@ -4631,8 +4620,11 @@ app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, re
 app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
   // Ensure every Annex A control has a control_states row so subsequent SoA
   // POSTs and bulk operations can UPDATE without silent no-ops. Idempotent.
-  db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
-              SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
+  // Ensure a converged whole-org control_instances row for every Annex A control
+  // so the SoA can render + bulk-update them (control_states demolished, 019).
+  db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id)
+              SELECT ?, rq.id, NULL FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
+              WHERE f.code='iso27001' AND rq.req_type='control'`).run(req.workspace.id);
 
   // Cutover 3: control-state + doc-link reads come from legacy tables or the
   // converged compatibility views per the per-workspace control_reads_converged
@@ -13709,19 +13701,16 @@ app.post('/workspaces/:wsId/comments/:id/mentions', requireAuth, requireWorkspac
 // engagement-plan/exec-brief will follow.
 
 function getOrCreate42State(wsId, isoId) {
-  // Cutover 4 (W1, lazy create) for ISO 42001: authoritative create goes to the
-  // converged control_instances on a write-flipped workspace (014 mirrors it back
-  // to iso42001_control_states); the legacy ensure + readback preserve the return
-  // contract and the unchanged flag-off path. Fail-safe to legacy when unmapped.
-  if (ctlWrites.converged(db, wsId)) {
-    const reqId = ctlWrites.requirementId(db, 'iso42001', isoId);
-    if (reqId) {
-      db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
-        .run(wsId, reqId);
-    }
+  // Post control-state demolition (migration 019): iso42001_control_states is gone.
+  // Ensure the converged whole-org control_instances row, return the legacy-shaped
+  // row from v_iso42001_control_states (assessment_answers / roadmap_phase are not
+  // exposed; callers guard for them).
+  const reqId = ctlWrites.requirementId(db, 'iso42001', isoId);
+  if (reqId) {
+    db.prepare('INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)')
+      .run(wsId, reqId);
   }
-  db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id) VALUES (?, ?)`).run(wsId, isoId);
-  return db.prepare(`SELECT * FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
+  return db.prepare(`SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(wsId, isoId);
 }
 
 // Catalog browser - read-only reference page showing all 27 clauses + 38 Annex A controls.
@@ -13794,8 +13783,11 @@ app.post('/workspaces/:wsId/iso42001/bulk-controls', requireAuth, requireWorkspa
 
 // SoA - Statement of Applicability for the 38 Annex A controls.
 app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, res) => {
-  db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
-              SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  // Ensure converged whole-org rows for every 42001 Annex A control (iso42001_control_states
+  // demolished, 019).
+  db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id)
+              SELECT ?, rq.id, NULL FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
+              JOIN iso42001_items ii ON ii.id=rq.ref WHERE f.code='iso42001' AND ii.type='control'`).run(req.workspace.id);
   const T = ctlReads.tables(db, req.workspace.id);
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
@@ -14450,8 +14442,7 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace,
            inclusion_justification || null,
            exclusion_justification || null,
            req.workspace.id, wReqId42);
-    db.prepare(`UPDATE iso42001_control_states SET assessment_answers=? WHERE workspace_id=? AND iso_item_id=?`)
-      .run(JSON.stringify(answers), req.workspace.id, item.id);
+    // assessment_answers is dead (deferred-drop, demolition 019): persistence removed.
   } else {
     db.prepare(`UPDATE iso42001_control_states
                 SET assessment_answers=?,
@@ -14475,7 +14466,10 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace,
   logAction(req.user.id, req.workspace.id, 'assess_iso42001', 'iso42001_item', item.id, { suggested });
 
   // Snapshot to history. pass_id ties the snapshot to the active pass if any.
-  const cur = db.prepare(`SELECT * FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
+  // Post control-state demolition (019): cur sources from the converged view
+  // (iso42001_control_states is gone). The view does not expose assessment_answers
+  // (dead), so the snapshot records NULL for it. History table + pass_id untouched.
+  const cur = db.prepare(`SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
   const activePass = db.prepare(`SELECT id FROM iso42001_assessment_passes
     WHERE workspace_id=? AND status='open' ORDER BY pass_number DESC LIMIT 1`).get(req.workspace.id);
   db.prepare(`INSERT INTO iso42001_control_state_history
@@ -14485,7 +14479,7 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace,
     .run(req.workspace.id, item.id, activePass ? activePass.id : null, req.user.id,
          cur.status, cur.applicability, cur.maturity,
          cur.inclusion_justification, cur.exclusion_justification,
-         cur.notes, cur.assessment_answers);
+         cur.notes, null);
 
   if (action === 'save' && nextItem) {
     return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${nextItem.id}`);
@@ -14613,9 +14607,12 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', 
 app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (req, res) => {
   const wsId = req.workspace.id;
   const T = ctlReads.tables(db, wsId);
+  // roadmap_phase was demolished with iso42001_control_states (019, deferred-drop):
+  // no converged home, so it is no longer selected; all controls group as
+  // Unscheduled until/unless the roadmap feature is rebuilt converged.
   const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
-      cs.maturity, cs.owner_id, cs.due_date, cs.roadmap_phase,
+      cs.maturity, cs.owner_id, cs.due_date, NULL AS roadmap_phase,
       (SELECT name FROM users WHERE id = cs.owner_id) AS owner_name
       FROM iso42001_items i
       LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
@@ -14755,10 +14752,9 @@ app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (re
 });
 
 app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-  getOrCreate42State(req.workspace.id, req.params.isoId);
-  db.prepare(`UPDATE iso42001_control_states SET roadmap_phase = ?, last_updated = CURRENT_TIMESTAMP
-              WHERE workspace_id=? AND iso_item_id=?`)
-    .run(req.body.phase || null, req.workspace.id, req.params.isoId);
+  // roadmap_phase was demolished with iso42001_control_states (019, deferred-drop):
+  // no converged home, so phase assignment is no longer persisted. Route kept as a
+  // no-op so the UI does not 404; rebuild converged if the roadmap feature is wanted.
   if (req.query.ajax === '1') return res.status(204).end();
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/roadmap`);
 });
@@ -15155,20 +15151,22 @@ app.post('/workspaces/:wsId/iso42001/intake/apply', requireAuth, requireWorkspac
 
   // Seed clause 4.3 (AIMS scope) - update notes and bump status to Partially Implemented if Not Assessed.
   getOrCreate42State(wsId, 'ai-clause-4.3');
-  db.prepare(`UPDATE iso42001_control_states
+  db.prepare(`UPDATE control_instances
     SET notes = CASE WHEN COALESCE(notes,'') = '' THEN ? ELSE notes END,
-        status = CASE WHEN COALESCE(status,'Not Assessed')='Not Assessed' THEN 'Partially Implemented' ELSE status END,
+        status = CASE WHEN status='not_assessed' THEN 'partially_implemented' ELSE status END,
         last_updated = CURRENT_TIMESTAMP
-    WHERE workspace_id=? AND iso_item_id='ai-clause-4.3'`).run(draftScope, wsId);
+    WHERE workspace_id=? AND entity_id IS NULL
+      AND requirement_id=(SELECT rq.id FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id WHERE f.code='iso42001' AND rq.ref='ai-clause-4.3')`).run(draftScope, wsId);
 
   // Seed clause 4.2 (interested parties) notes if blank
   if ((answers['interested-parties'] || '').trim()) {
     getOrCreate42State(wsId, 'ai-clause-4.2');
-    db.prepare(`UPDATE iso42001_control_states
+    db.prepare(`UPDATE control_instances
       SET notes = CASE WHEN COALESCE(notes,'') = '' THEN ? ELSE notes END,
-          status = CASE WHEN COALESCE(status,'Not Assessed')='Not Assessed' THEN 'Partially Implemented' ELSE status END,
+          status = CASE WHEN status='not_assessed' THEN 'partially_implemented' ELSE status END,
           last_updated = CURRENT_TIMESTAMP
-      WHERE workspace_id=? AND iso_item_id='ai-clause-4.2'`).run(answers['interested-parties'], wsId);
+      WHERE workspace_id=? AND entity_id IS NULL
+        AND requirement_id=(SELECT rq.id FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id WHERE f.code='iso42001' AND rq.ref='ai-clause-4.2')`).run(answers['interested-parties'], wsId);
   }
 
   // Seed clause 4.1 (context) notes if blank
@@ -15179,11 +15177,12 @@ app.post('/workspaces/:wsId/iso42001/intake/apply', requireAuth, requireWorkspac
   ].filter(Boolean).join('\n');
   if (contextNote) {
     getOrCreate42State(wsId, 'ai-clause-4.1');
-    db.prepare(`UPDATE iso42001_control_states
+    db.prepare(`UPDATE control_instances
       SET notes = CASE WHEN COALESCE(notes,'') = '' THEN ? ELSE notes END,
-          status = CASE WHEN COALESCE(status,'Not Assessed')='Not Assessed' THEN 'Partially Implemented' ELSE status END,
+          status = CASE WHEN status='not_assessed' THEN 'partially_implemented' ELSE status END,
           last_updated = CURRENT_TIMESTAMP
-      WHERE workspace_id=? AND iso_item_id='ai-clause-4.1'`).run(contextNote, wsId);
+      WHERE workspace_id=? AND entity_id IS NULL
+        AND requirement_id=(SELECT rq.id FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id WHERE f.code='iso42001' AND rq.ref='ai-clause-4.1')`).run(contextNote, wsId);
   }
 
   // Target cert date - push to workspaces.target_cert_date if not already set
