@@ -2914,8 +2914,13 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
     WHERE rc.iso_item_id=? AND r.workspace_id=?
     ORDER BY (r.likelihood * r.impact) DESC`).all(item.id, req.workspace.id);
 
+  // Cutover 4 (W6): the actionable link_id must track the WRITE flag (it is what the
+  // unlink route deletes), so this panel reads drl-native via v_document_controls
+  // when control_writes_converged; the view returns drl.id AS id. (This is the
+  // panel cutover 3 deferred for exactly this reason.)
+  const docTLd = ctlWrites.converged(db, req.workspace.id) ? 'v_document_controls' : 'document_controls';
   const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status, dc.section_ref, dc.id AS link_id
-    FROM document_controls dc INNER JOIN generated_docs d ON d.id=dc.document_id
+    FROM ${docTLd} dc INNER JOIN generated_docs d ON d.id=dc.document_id
     WHERE dc.iso_item_id=? AND d.workspace_id=? ORDER BY d.name`).all(item.id, req.workspace.id);
   // Workspace's documents that aren't already linked - the add-link dropdown.
   const linkableDocs = db.prepare(`SELECT id, name, category, status FROM generated_docs
@@ -4560,11 +4565,21 @@ app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, requ
     try {
       db.prepare('INSERT INTO risk_controls (risk_id, iso_item_id) VALUES (?, ?)')
         .run(req.params.id, iso_item_id);
-      // Auto-mark control as included in SoA when a risk drives it
+      // Auto-mark control as included in SoA when a risk drives it.
+      // Cutover 4 (W4): converged write normalizes 'included' -> token; the WHERE
+      // filter compares the converged token. 014 mirrors back to legacy.
       getOrCreateState(req.workspace.id, iso_item_id);
-      db.prepare(`UPDATE control_states SET applicability = 'included'
-                  WHERE workspace_id = ? AND iso_item_id = ? AND applicability = 'undecided'`)
-        .run(req.workspace.id, iso_item_id);
+      const wcRl = ctlWrites.converged(db, req.workspace.id);
+      const ridRl = wcRl ? ctlWrites.requirementId(db, 'iso27001', iso_item_id) : null;
+      if (wcRl && ridRl) {
+        db.prepare(`UPDATE control_instances SET applicability=?
+                    WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL AND applicability=?`)
+          .run(ctlWrites.normApplic('included'), req.workspace.id, ridRl, ctlWrites.normApplic('undecided'));
+      } else {
+        db.prepare(`UPDATE control_states SET applicability = 'included'
+                    WHERE workspace_id = ? AND iso_item_id = ? AND applicability = 'undecided'`)
+          .run(req.workspace.id, iso_item_id);
+      }
     } catch (e) { /* dup */ }
   }
   res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
@@ -4666,12 +4681,25 @@ app.post('/workspaces/:wsId/soa/:isoId', requireAuth, requireWorkspace, requireP
   if (['snapshot','auto-justify','snapshots','bulk','custom-controls','metadata'].includes(req.params.isoId)) return nextMw();
   getOrCreateState(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
-  db.prepare(`UPDATE control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
-              status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
-              WHERE workspace_id=? AND iso_item_id=?`)
-    .run(applicability || 'undecided',
-         inclusion_justification || null, exclusion_justification || null,
-         status || null, req.workspace.id, req.params.isoId);
+  // Cutover 4 (W4): converged-authoritative SoA save; applicability/status normalized
+  // to tokens (014 mirrors back to legacy display values).
+  const wcSoa = ctlWrites.converged(db, req.workspace.id);
+  const ridSoa = wcSoa ? ctlWrites.requirementId(db, 'iso27001', req.params.isoId) : null;
+  if (wcSoa && ridSoa) {
+    db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification=?, exclusion_justification=?,
+                status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+                WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(ctlWrites.normApplic(applicability || 'undecided'),
+           inclusion_justification || null, exclusion_justification || null,
+           ctlWrites.normStatus(status || null), req.workspace.id, ridSoa);
+  } else {
+    db.prepare(`UPDATE control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
+                status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+                WHERE workspace_id=? AND iso_item_id=?`)
+      .run(applicability || 'undecided',
+           inclusion_justification || null, exclusion_justification || null,
+           status || null, req.workspace.id, req.params.isoId);
+  }
   logAction(req.user.id, req.workspace.id, 'update_soa', 'control', req.params.isoId, null);
   // Autosave fetches use ?ajax=1 so they don't follow a redirect they don't need.
   if (req.query.ajax === '1') return res.status(204).end();
@@ -4697,16 +4725,36 @@ app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, requirePe
       applicability = ?, inclusion_justification = ?, exclusion_justification = ?,
       status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
     WHERE workspace_id = ? AND iso_item_id = ?`);
+  // Cutover 4 (W4): per-row converged-authoritative batch save on a write-flipped
+  // workspace; each row's applicability/status normalized (014 mirrors per row).
+  const wcBatch = ctlWrites.converged(db, req.workspace.id);
+  const upsertCi = db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)`);
+  const updateCi = db.prepare(`UPDATE control_instances SET
+      applicability = ?, inclusion_justification = ?, exclusion_justification = ?,
+      status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+    WHERE workspace_id = ? AND requirement_id = ? AND entity_id IS NULL`);
   const tx = db.transaction(() => {
     valid.forEach(r => {
-      upsertState.run(req.workspace.id, r.iso_item_id);
-      update.run(
-        r.applicability || 'undecided',
-        r.inclusion_justification || null,
-        r.exclusion_justification || null,
-        r.status || null,
-        req.workspace.id, r.iso_item_id
-      );
+      const rid = wcBatch ? ctlWrites.requirementId(db, 'iso27001', r.iso_item_id) : null;
+      if (wcBatch && rid) {
+        upsertCi.run(req.workspace.id, rid);
+        updateCi.run(
+          ctlWrites.normApplic(r.applicability || 'undecided'),
+          r.inclusion_justification || null,
+          r.exclusion_justification || null,
+          ctlWrites.normStatus(r.status || null),
+          req.workspace.id, rid
+        );
+      } else {
+        upsertState.run(req.workspace.id, r.iso_item_id);
+        update.run(
+          r.applicability || 'undecided',
+          r.inclusion_justification || null,
+          r.exclusion_justification || null,
+          r.status || null,
+          req.workspace.id, r.iso_item_id
+        );
+      }
     });
   });
   tx();
@@ -4722,32 +4770,59 @@ app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, requirePe
 app.post('/workspaces/:wsId/soa/bulk', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const { action, justification } = req.body;
   const ids = parseFormArray(req.body.iso_id);
-  // Make sure every Annex A control has a control_states row to update.
-  db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
-              SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
+  // Cutover 4 (W4): set-based bulk writes go converged-authoritative on a
+  // write-flipped workspace. The WHERE filter maps iso_item_id -> requirement_id
+  // (entity_id IS NULL whole-org rows); every applicability literal routes through
+  // normApplic (never raw to the converged table). 014 fires per affected row
+  // (SQLite triggers are FOR EACH ROW), so the legacy mirror stays consistent.
+  const wcBulk = ctlWrites.converged(db, req.workspace.id);
+  // 27001 control requirement_ids (matches iso_items WHERE type='control').
+  const CTL_REQ = `SELECT rq.id FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id WHERE f.code='iso27001' AND rq.req_type='control'`;
+  if (wcBulk) {
+    db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id)
+                SELECT ?, rq.id, NULL FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
+                WHERE f.code='iso27001' AND rq.req_type='control'`).run(req.workspace.id);
+  } else {
+    db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id)
+                SELECT ?, id FROM iso_items WHERE type='control'`).run(req.workspace.id);
+  }
   let affected = 0;
   if (action === 'include_all') {
-    affected = db.prepare(`UPDATE control_states SET applicability='included',
-                           inclusion_justification = COALESCE(?, inclusion_justification),
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND iso_item_id IN (SELECT id FROM iso_items WHERE type='control')`)
-      .run(justification || null, req.workspace.id).changes;
+    affected = wcBulk
+      ? db.prepare(`UPDATE control_instances SET applicability=?,
+                    inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND entity_id IS NULL AND requirement_id IN (${CTL_REQ})`)
+          .run(ctlWrites.normApplic('included'), justification || null, req.workspace.id).changes
+      : db.prepare(`UPDATE control_states SET applicability='included',
+                    inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND iso_item_id IN (SELECT id FROM iso_items WHERE type='control')`)
+          .run(justification || null, req.workspace.id).changes;
   } else if (action === 'include_undecided') {
-    affected = db.prepare(`UPDATE control_states SET applicability='included',
-                           inclusion_justification = COALESCE(?, inclusion_justification),
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND applicability IN ('undecided','')
-                             AND iso_item_id IN (SELECT id FROM iso_items WHERE type='control')`)
-      .run(justification || null, req.workspace.id).changes;
+    affected = wcBulk
+      ? db.prepare(`UPDATE control_instances SET applicability=?,
+                    inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND entity_id IS NULL AND applicability=? AND requirement_id IN (${CTL_REQ})`)
+          .run(ctlWrites.normApplic('included'), justification || null, req.workspace.id, ctlWrites.normApplic('undecided')).changes
+      : db.prepare(`UPDATE control_states SET applicability='included',
+                    inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND applicability IN ('undecided','')
+                      AND iso_item_id IN (SELECT id FROM iso_items WHERE type='control')`)
+          .run(justification || null, req.workspace.id).changes;
   } else if ((action === 'apply_to_selected' || action === 'exclude_selected') && ids.length) {
     const placeholders = ids.map(() => '?').join(',');
     const applicability = action === 'exclude_selected' ? 'excluded' : 'included';
     const justCol = applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification';
-    affected = db.prepare(`UPDATE control_states SET applicability=?,
-                           ${justCol} = COALESCE(?, ${justCol}),
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND iso_item_id IN (${placeholders})`)
-      .run(applicability, justification || null, req.workspace.id, ...ids).changes;
+    affected = wcBulk
+      ? db.prepare(`UPDATE control_instances SET applicability=?,
+                    ${justCol} = COALESCE(?, ${justCol}), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND entity_id IS NULL
+                      AND requirement_id IN (SELECT rq.id FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
+                                             WHERE f.code='iso27001' AND rq.ref IN (${placeholders}))`)
+          .run(ctlWrites.normApplic(applicability), justification || null, req.workspace.id, ...ids).changes
+      : db.prepare(`UPDATE control_states SET applicability=?,
+                    ${justCol} = COALESCE(?, ${justCol}), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND iso_item_id IN (${placeholders})`)
+          .run(applicability, justification || null, req.workspace.id, ...ids).changes;
   }
   logAction(req.user.id, req.workspace.id, 'soa_bulk', 'soa', null, { action, affected, count: ids.length }, auditCtx(req));
   res.redirect(withToast(`/workspaces/${req.workspace.id}/soa`, `${affected} control${affected === 1 ? '' : 's'} updated`));
@@ -5197,11 +5272,16 @@ function adoptTemplateForWorkspace(tpl, workspace, user, entityScopeId, override
   try { (JSON.parse(tpl.controls || '[]')).forEach(c => linkRefs.push(c)); } catch (_) {}
   try { (JSON.parse(tpl.clauses || '[]')).forEach(c => linkRefs.push(c)); } catch (_) {}
   if (linkRefs.length) {
+    // Cutover 4 (W6): converged-authoritative doc-link create on a write-flipped
+    // workspace (014 mirrors to document_controls). Fail-safe to legacy when unmapped.
+    const wcDoc = ctlWrites.converged(db, workspace.id);
     const exists = db.prepare(`SELECT 1 FROM iso_items WHERE id = ?`);
     const linkIns = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id) VALUES (?, ?)`);
+    const linkInsCi = db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id) VALUES (?, ?)`);
     linkRefs.forEach(ref => {
       if (exists.get(ref)) {
-        const r = linkIns.run(docId, ref);
+        const rid = wcDoc ? ctlWrites.requirementId(db, 'iso27001', ref) : null;
+        const r = (wcDoc && rid) ? linkInsCi.run(docId, rid) : linkIns.run(docId, ref);
         if (r.changes) linkedControls++;
       }
     });
@@ -5336,9 +5416,12 @@ app.get('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requir
     ORDER BY u.name`).all(req.workspace.id, req.workspace.firm_id);
 
   // Linked Annex A controls + clauses (Phase A: doc <-> control bidirectional mapping)
+  // Cutover 4 (W6): actionable link_id tracks the WRITE flag (drl.id via the view)
+  // so the unlink route deletes the right row.
+  const docTLc = ctlWrites.converged(db, req.workspace.id) ? 'v_document_controls' : 'document_controls';
   const linkedControls = db.prepare(`
     SELECT dc.id AS link_id, dc.iso_item_id, dc.section_ref, i.title, i.category, i.type
-    FROM document_controls dc
+    FROM ${docTLc} dc
     INNER JOIN iso_items i ON i.id = dc.iso_item_id
     WHERE dc.document_id = ?
     ORDER BY i.sort_order
@@ -5365,11 +5448,15 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
   const ids = parseFormArray(req.body.iso_item_id);
   if (!ids.length) return redirectBack(req, res);
   const sectionRef = req.body.section_ref || null;
+  // Cutover 4 (W6): converged-authoritative doc-link add (014 mirrors per row).
+  const wcDl = ctlWrites.converged(db, req.workspace.id);
   const ins = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`);
+  const insCi = db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id, section_ref) VALUES (?, ?, ?)`);
   let added = 0;
   const tx = db.transaction(() => {
     for (const id of ids) {
-      const r = ins.run(doc.id, id, sectionRef);
+      const rid = wcDl ? ctlWrites.requirementId(db, 'iso27001', id) : null;
+      const r = (wcDl && rid) ? insCi.run(doc.id, rid, sectionRef) : ins.run(doc.id, id, sectionRef);
       if (r.changes > 0) added++;
     }
   });
@@ -5381,10 +5468,21 @@ app.post('/workspaces/:wsId/documents/:id/controls', requireAuth, requireWorkspa
 app.post('/workspaces/:wsId/documents/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
   if (!doc) return res.status(404).send('Not found');
-  const link = db.prepare('SELECT * FROM document_controls WHERE id=? AND document_id=?').get(req.params.linkId, doc.id);
-  if (link) {
-    db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
-    logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
+  // Cutover 4 (W6): when writes-converged the panel rendered drl.id (via the view),
+  // so resolve + delete the converged link; 014 mirrors the delete to the legacy
+  // document_controls. Fail-safe to legacy id otherwise.
+  if (ctlWrites.converged(db, req.workspace.id)) {
+    const link = db.prepare('SELECT * FROM v_document_controls WHERE id=? AND document_id=?').get(req.params.linkId, doc.id);
+    if (link) {
+      db.prepare('DELETE FROM document_requirement_links WHERE id=?').run(link.id);
+      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
+    }
+  } else {
+    const link = db.prepare('SELECT * FROM document_controls WHERE id=? AND document_id=?').get(req.params.linkId, doc.id);
+    if (link) {
+      db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
+      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'document', doc.id, { iso_item_id: link.iso_item_id }, auditCtx(req));
+    }
   }
   res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
 });
@@ -5401,8 +5499,15 @@ app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWork
   const doc = db.prepare('SELECT id FROM generated_docs WHERE id=? AND workspace_id=?').get(document_id, req.workspace.id);
   if (!doc) return redirectBack(req, res);
   try {
-    db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
-      .run(doc.id, item.id, section_ref || null);
+    // Cutover 4 (W6): converged-authoritative doc-link (014 mirrors to legacy).
+    const ridDl = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso27001', item.id) : null;
+    if (ridDl) {
+      db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id, section_ref) VALUES (?, ?, ?)`)
+        .run(doc.id, ridDl, section_ref || null);
+    } else {
+      db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
+        .run(doc.id, item.id, section_ref || null);
+    }
     logAction(req.user.id, req.workspace.id, 'link_doc_control', 'control', item.id, { document_id: doc.id, section_ref: section_ref || null }, auditCtx(req));
   } catch (_) { /* ignore unique-constraint conflict */ }
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
@@ -5410,12 +5515,24 @@ app.post('/workspaces/:wsId/controls/:isoId/documents', requireAuth, requireWork
 
 app.post('/workspaces/:wsId/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
   // Verify the link belongs to a doc in this workspace before deleting.
-  const link = db.prepare(`SELECT dc.* FROM document_controls dc
-    INNER JOIN generated_docs d ON d.id = dc.document_id
-    WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
-  if (link) {
-    db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
-    logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
+  // Cutover 4 (W6): when writes-converged the panel rendered drl.id (via the view);
+  // resolve + delete the converged link, 014 mirrors the delete to legacy.
+  if (ctlWrites.converged(db, req.workspace.id)) {
+    const link = db.prepare(`SELECT dc.* FROM v_document_controls dc
+      INNER JOIN generated_docs d ON d.id = dc.document_id
+      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+    if (link) {
+      db.prepare('DELETE FROM document_requirement_links WHERE id=?').run(link.id);
+      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
+    }
+  } else {
+    const link = db.prepare(`SELECT dc.* FROM document_controls dc
+      INNER JOIN generated_docs d ON d.id = dc.document_id
+      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+    if (link) {
+      db.prepare('DELETE FROM document_controls WHERE id=?').run(link.id);
+      logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
+    }
   }
   res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${req.params.isoId}`);
 });
@@ -5945,10 +6062,19 @@ app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace,
     if (closing) {
       const ncRow = db.prepare('SELECT iso_item_id FROM nonconformities WHERE id=?').get(req.params.id);
       if (ncRow && ncRow.iso_item_id) {
-        db.prepare(`INSERT INTO control_states (workspace_id, iso_item_id, last_verified_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(workspace_id, iso_item_id) DO UPDATE SET last_verified_at = CURRENT_TIMESTAMP`)
-          .run(req.workspace.id, ncRow.iso_item_id);
+        // Cutover 4 (W5): bump last_verified_at on the converged row when flipped
+        // (014 mirrors to legacy). entity_id IS NULL is not ON-CONFLICT-safe, so
+        // ensure-then-update. Fail-safe to the legacy upsert otherwise.
+        const ridNc = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso27001', ncRow.iso_item_id) : null;
+        if (ridNc) {
+          db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)`).run(req.workspace.id, ridNc);
+          db.prepare(`UPDATE control_instances SET last_verified_at = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(req.workspace.id, ridNc);
+        } else {
+          db.prepare(`INSERT INTO control_states (workspace_id, iso_item_id, last_verified_at)
+                      VALUES (?, ?, CURRENT_TIMESTAMP)
+                      ON CONFLICT(workspace_id, iso_item_id) DO UPDATE SET last_verified_at = CURRENT_TIMESTAMP`)
+            .run(req.workspace.id, ncRow.iso_item_id);
+        }
       }
     }
   }
@@ -5979,6 +6105,9 @@ app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWor
 app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const { ids, status, applicability, owner_id } = req.body;
   const idList = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+  // Cutover 4 (W5): converged-authoritative bulk-controls; convergeSets normalizes
+  // status/applicability per row (014 mirrors each).
+  const wcBulkCtl = ctlWrites.converged(db, req.workspace.id);
   let count = 0;
   for (const id of idList) {
     getOrCreateState(req.workspace.id, id);
@@ -5988,8 +6117,14 @@ app.post('/workspaces/:wsId/bulk-controls', requireAuth, requireWorkspace, requi
     if (owner_id !== undefined && owner_id !== '') { sets.push('owner_id=?'); vals.push(owner_id); }
     if (sets.length) {
       sets.push('last_updated=CURRENT_TIMESTAMP');
-      vals.push(req.workspace.id, id);
-      db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      const rid = wcBulkCtl ? ctlWrites.requirementId(db, 'iso27001', id) : null;
+      if (wcBulkCtl && rid) {
+        const c = ctlWrites.convergeSets(sets, vals);
+        db.prepare(`UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(...c.vals, req.workspace.id, rid);
+      } else {
+        vals.push(req.workspace.id, id);
+        db.prepare(`UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      }
       count++;
     }
   }
@@ -6017,21 +6152,38 @@ app.post('/workspaces/:wsId/controls/:isoId/autosave', requireAuth, requireWorks
   // the old last-writer-wins path so this change doesn't break them.
   const clientStamp = req.body.last_updated || null;
   sets.push('last_updated=CURRENT_TIMESTAMP');
-  vals.push(req.workspace.id, req.params.isoId);
-  let sql = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
-  if (clientStamp) { sql += ` AND last_updated = ?`; vals.push(clientStamp); }
-  const result = db.prepare(sql).run(...vals);
+  // Cutover 4 (W5): autosave is a W2-class write WITH optimistic-concurrency. On a
+  // write-flipped workspace it writes the converged control_instances (convergeSets
+  // normalizes status/applicability) and the CAS runs against
+  // control_instances.last_updated; 014 mirrors to legacy. Fail-safe otherwise.
+  const wcAuto = ctlWrites.converged(db, req.workspace.id);
+  const ridAuto = wcAuto ? ctlWrites.requirementId(db, 'iso27001', req.params.isoId) : null;
+  let result;
+  const curStamp = (wcAuto && ridAuto)
+    ? () => db.prepare(`SELECT last_updated FROM control_instances WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).get(req.workspace.id, ridAuto)
+    : () => db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, req.params.isoId);
+  if (wcAuto && ridAuto) {
+    const c = ctlWrites.convergeSets(sets, vals);
+    const cVals = c.vals.slice();
+    let sql = `UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`;
+    cVals.push(req.workspace.id, ridAuto);
+    if (clientStamp) { sql += ` AND last_updated = ?`; cVals.push(clientStamp); }
+    result = db.prepare(sql).run(...cVals);
+  } else {
+    vals.push(req.workspace.id, req.params.isoId);
+    let sql = `UPDATE control_states SET ${sets.join(',')} WHERE workspace_id=? AND iso_item_id=?`;
+    if (clientStamp) { sql += ` AND last_updated = ?`; vals.push(clientStamp); }
+    result = db.prepare(sql).run(...vals);
+  }
   if (clientStamp && result.changes === 0) {
-    const current = db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`)
-      .get(req.workspace.id, req.params.isoId);
+    const current = curStamp();
     return res.status(409).json({
       ok: false, conflict: true,
       message: 'Another consultant updated this control. Reload to see their changes.',
       current_last_updated: current ? current.last_updated : null
     });
   }
-  const cur = db.prepare(`SELECT last_updated FROM control_states WHERE workspace_id=? AND iso_item_id=?`)
-    .get(req.workspace.id, req.params.isoId);
+  const cur = curStamp();
   res.json({ ok: true, saved_at: new Date().toISOString(), last_updated: cur ? cur.last_updated : null });
 });
 
@@ -10146,13 +10298,23 @@ app.post('/workspaces/:wsId/soa/auto-justify', requireAuth, requireWorkspace, re
     INNER JOIN risks r ON r.id=rc.risk_id
     WHERE i.type='control' AND r.workspace_id=?
     GROUP BY i.id`).all(req.workspace.id);
+  // Cutover 4 (W4): converged-authoritative auto-justify; 'included'/'excluded'
+  // literals route through normApplic; 014 mirrors each row to legacy.
+  const wcAj = ctlWrites.converged(db, req.workspace.id);
   let updated = 0;
   for (const c of linked) {
     getOrCreateState(req.workspace.id, c.id);
     const just = `Driven by risks: ${c.risks}`;
-    db.prepare(`UPDATE control_states SET applicability='included', inclusion_justification=COALESCE(inclusion_justification, ?), last_updated=CURRENT_TIMESTAMP
-      WHERE workspace_id=? AND iso_item_id=? AND applicability != 'excluded'`)
-      .run(just, req.workspace.id, c.id);
+    const ridAj = wcAj ? ctlWrites.requirementId(db, 'iso27001', c.id) : null;
+    if (wcAj && ridAj) {
+      db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification=COALESCE(inclusion_justification, ?), last_updated=CURRENT_TIMESTAMP
+        WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL AND applicability != ?`)
+        .run(ctlWrites.normApplic('included'), just, req.workspace.id, ridAj, ctlWrites.normApplic('excluded'));
+    } else {
+      db.prepare(`UPDATE control_states SET applicability='included', inclusion_justification=COALESCE(inclusion_justification, ?), last_updated=CURRENT_TIMESTAMP
+        WHERE workspace_id=? AND iso_item_id=? AND applicability != 'excluded'`)
+        .run(just, req.workspace.id, c.id);
+    }
     updated++;
   }
   logAction(req.user.id, req.workspace.id, 'soa_auto_justify', 'soa', null, { updated }, auditCtx(req));
@@ -12945,6 +13107,10 @@ app.post('/workspaces/:wsId/controls/import', requireAuth, requireWorkspace, req
   if (!lines.length) return redirectBack(req, res);
   const header = lines.shift().split(',').map(s => s.trim().toLowerCase());
   const ix = (k) => header.indexOf(k);
+  // Cutover 4 (W5): converged-authoritative CSV import; convergeSets normalizes
+  // status/applicability per row (014 mirrors each). Unmapped CSV values pass
+  // through and surface fail-loud in reads, matching the doctrine.
+  const wcImp = ctlWrites.converged(db, req.workspace.id);
   let updated = 0;
   for (const ln of lines) {
     // Naive CSV - values may be quoted; handle simple unquote
@@ -12959,8 +13125,14 @@ app.post('/workspaces/:wsId/controls/import', requireAuth, requireWorkspace, req
     if (ix('notes') >= 0 && parts[ix('notes')]) { set.push('notes=?'); vals.push(parts[ix('notes')]); }
     if (set.length) {
       set.push('last_updated=CURRENT_TIMESTAMP');
-      vals.push(req.workspace.id, id);
-      db.prepare(`UPDATE control_states SET ${set.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      const rid = wcImp ? ctlWrites.requirementId(db, 'iso27001', id) : null;
+      if (wcImp && rid) {
+        const c = ctlWrites.convergeSets(set, vals);
+        db.prepare(`UPDATE control_instances SET ${c.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(...c.vals, req.workspace.id, rid);
+      } else {
+        vals.push(req.workspace.id, id);
+        db.prepare(`UPDATE control_states SET ${set.join(',')} WHERE workspace_id=? AND iso_item_id=?`).run(...vals);
+      }
       updated++;
     }
   }
@@ -13617,11 +13789,20 @@ app.post('/workspaces/:wsId/iso42001/bulk-controls', requireAuth, requireWorkspa
   const ids = parseFormArray(req.body.ids);
   const { status, applicability } = req.body;
   if (!ids.length || (!status && !applicability)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/controls`);
+  // Cutover 4 (W5): converged-authoritative 42001 bulk toggle; status/applicability
+  // normalized (014 mirrors each). Fail-safe to legacy when unmapped.
+  const wcB42 = ctlWrites.converged(db, req.workspace.id);
   const tx = db.transaction(() => {
     for (const id of ids) {
       getOrCreate42State(req.workspace.id, id);
-      if (status) db.prepare(`UPDATE iso42001_control_states SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(status, req.workspace.id, id);
-      if (applicability) db.prepare(`UPDATE iso42001_control_states SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(applicability, req.workspace.id, id);
+      const rid = wcB42 ? ctlWrites.requirementId(db, 'iso42001', id) : null;
+      if (wcB42 && rid) {
+        if (status) db.prepare(`UPDATE control_instances SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(ctlWrites.normStatus(status), req.workspace.id, rid);
+        if (applicability) db.prepare(`UPDATE control_instances SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(ctlWrites.normApplic(applicability), req.workspace.id, rid);
+      } else {
+        if (status) db.prepare(`UPDATE iso42001_control_states SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(status, req.workspace.id, id);
+        if (applicability) db.prepare(`UPDATE iso42001_control_states SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(applicability, req.workspace.id, id);
+      }
     }
   });
   tx();
@@ -13735,8 +13916,18 @@ app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspac
 // Auto-justify SoA: for every Annex A control that any open risk treats, mark it
 // Included and pre-fill an inclusion justification of the form "Treats {risk titles}".
 app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-  db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
-              SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  // Cutover 4 (W4): converged-authoritative on a write-flipped workspace. 'included'
+  // routes through normApplic; per-row 014 mirror keeps iso42001_control_states fresh.
+  const wcAj42 = ctlWrites.converged(db, req.workspace.id);
+  if (wcAj42) {
+    db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id)
+                SELECT ?, rq.id, NULL FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
+                JOIN iso42001_items ii ON ii.id=rq.ref
+                WHERE f.code='iso42001' AND ii.type='control'`).run(req.workspace.id);
+  } else {
+    db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
+                SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  }
   // For each control with at least one open risk link, build "Treats R-1, R-2..." text and mark included.
   const links = db.prepare(`SELECT rc.iso_item_id, r.id AS risk_id, r.title AS risk_title
       FROM iso42001_risk_controls rc
@@ -13750,12 +13941,20 @@ app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWork
         inclusion_justification = COALESCE(NULLIF(inclusion_justification, ''), ?),
         last_updated = CURRENT_TIMESTAMP
     WHERE workspace_id=? AND iso_item_id=?`);
+  const updCi = db.prepare(`UPDATE control_instances
+    SET applicability=?,
+        inclusion_justification = COALESCE(NULLIF(inclusion_justification, ''), ?),
+        last_updated = CURRENT_TIMESTAMP
+    WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`);
   let affected = 0;
   const tx = db.transaction(() => {
     for (const [ctlId, risks] of Object.entries(byCtl)) {
       const titles = risks.map(r => `R-${r.risk_id}`).join(', ');
       const just = `Treats ${titles}`;
-      const r = upd.run(just, req.workspace.id, ctlId);
+      const rid = wcAj42 ? ctlWrites.requirementId(db, 'iso42001', ctlId) : null;
+      const r = (wcAj42 && rid)
+        ? updCi.run(ctlWrites.normApplic('included'), just, req.workspace.id, rid)
+        : upd.run(just, req.workspace.id, ctlId);
       if (r.changes > 0) affected++;
     }
   });
@@ -13873,12 +14072,25 @@ app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace,
   if (['bulk'].includes(req.params.isoId)) return nextMw();
   getOrCreate42State(req.workspace.id, req.params.isoId);
   const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
-  db.prepare(`UPDATE iso42001_control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
-              status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
-              WHERE workspace_id=? AND iso_item_id=?`)
-    .run(applicability || 'undecided',
-         inclusion_justification || null, exclusion_justification || null,
-         status || null, req.workspace.id, req.params.isoId);
+  // Cutover 4 (W4): converged-authoritative 42001 SoA save; applicability/status
+  // normalized to tokens (014 mirrors back to iso42001_control_states).
+  const wcSoa42 = ctlWrites.converged(db, req.workspace.id);
+  const ridSoa42 = wcSoa42 ? ctlWrites.requirementId(db, 'iso42001', req.params.isoId) : null;
+  if (wcSoa42 && ridSoa42) {
+    db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification=?, exclusion_justification=?,
+                status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+                WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(ctlWrites.normApplic(applicability || 'undecided'),
+           inclusion_justification || null, exclusion_justification || null,
+           ctlWrites.normStatus(status || null), req.workspace.id, ridSoa42);
+  } else {
+    db.prepare(`UPDATE iso42001_control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
+                status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
+                WHERE workspace_id=? AND iso_item_id=?`)
+      .run(applicability || 'undecided',
+           inclusion_justification || null, exclusion_justification || null,
+           status || null, req.workspace.id, req.params.isoId);
+  }
   logAction(req.user.id, req.workspace.id, 'update_iso42001_soa', 'iso42001_item', req.params.isoId, null);
   if (req.query.ajax === '1') return res.status(204).end();
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
@@ -13888,35 +14100,55 @@ app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace,
 app.post('/workspaces/:wsId/iso42001/soa/bulk', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
   const { action, justification } = req.body;
   const ids = parseFormArray(req.body.iso_id);
-  db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
-              SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  // Cutover 4 (W4): converged-authoritative 42001 bulk SoA. WHERE maps iso_item_id ->
+  // requirement_id (entity_id IS NULL); applicability literals via normApplic; 014
+  // fires per affected row to keep iso42001_control_states consistent.
+  const wcBulk42 = ctlWrites.converged(db, req.workspace.id);
+  const CTL_REQ42 = `SELECT rq.id FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id JOIN iso42001_items ii ON ii.id=rq.ref WHERE f.code='iso42001' AND ii.type='control'`;
+  if (wcBulk42) {
+    db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id)
+                SELECT ?, rq.id, NULL FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
+                JOIN iso42001_items ii ON ii.id=rq.ref WHERE f.code='iso42001' AND ii.type='control'`).run(req.workspace.id);
+  } else {
+    db.prepare(`INSERT OR IGNORE INTO iso42001_control_states (workspace_id, iso_item_id)
+                SELECT ?, id FROM iso42001_items WHERE type='control'`).run(req.workspace.id);
+  }
   let affected = 0;
   if (action === 'include_all') {
-    affected = db.prepare(`UPDATE iso42001_control_states SET applicability='included',
-                           inclusion_justification = COALESCE(?, inclusion_justification),
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND iso_item_id IN (SELECT id FROM iso42001_items WHERE type='control')`)
-      .run(justification || null, req.workspace.id).changes;
+    affected = wcBulk42
+      ? db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND entity_id IS NULL AND requirement_id IN (${CTL_REQ42})`)
+          .run(ctlWrites.normApplic('included'), justification || null, req.workspace.id).changes
+      : db.prepare(`UPDATE iso42001_control_states SET applicability='included', inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND iso_item_id IN (SELECT id FROM iso42001_items WHERE type='control')`)
+          .run(justification || null, req.workspace.id).changes;
   } else if (action === 'include_undecided') {
-    affected = db.prepare(`UPDATE iso42001_control_states SET applicability='included',
-                           inclusion_justification = COALESCE(?, inclusion_justification),
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND applicability='undecided'
-                           AND iso_item_id IN (SELECT id FROM iso42001_items WHERE type='control')`)
-      .run(justification || null, req.workspace.id).changes;
+    affected = wcBulk42
+      ? db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND entity_id IS NULL AND applicability=? AND requirement_id IN (${CTL_REQ42})`)
+          .run(ctlWrites.normApplic('included'), justification || null, req.workspace.id, ctlWrites.normApplic('undecided')).changes
+      : db.prepare(`UPDATE iso42001_control_states SET applicability='included', inclusion_justification = COALESCE(?, inclusion_justification), last_updated = CURRENT_TIMESTAMP
+                    WHERE workspace_id=? AND applicability='undecided' AND iso_item_id IN (SELECT id FROM iso42001_items WHERE type='control')`)
+          .run(justification || null, req.workspace.id).changes;
   } else if (action === 'apply_to_selected' && ids.length) {
-    const upd = db.prepare(`UPDATE iso42001_control_states SET applicability='included',
-                           inclusion_justification = ?,
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND iso_item_id=?`);
-    const tx = db.transaction(() => ids.forEach(id => { affected += upd.run(justification || null, req.workspace.id, id).changes; }));
+    const updL = db.prepare(`UPDATE iso42001_control_states SET applicability='included', inclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`);
+    const updC = db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`);
+    const tx = db.transaction(() => ids.forEach(id => {
+      const rid = wcBulk42 ? ctlWrites.requirementId(db, 'iso42001', id) : null;
+      affected += (wcBulk42 && rid)
+        ? updC.run(ctlWrites.normApplic('included'), justification || null, req.workspace.id, rid).changes
+        : updL.run(justification || null, req.workspace.id, id).changes;
+    }));
     tx();
   } else if (action === 'exclude_selected' && ids.length) {
-    const upd = db.prepare(`UPDATE iso42001_control_states SET applicability='excluded',
-                           exclusion_justification = ?,
-                           last_updated = CURRENT_TIMESTAMP
-                           WHERE workspace_id=? AND iso_item_id=?`);
-    const tx = db.transaction(() => ids.forEach(id => { affected += upd.run(justification || null, req.workspace.id, id).changes; }));
+    const updL = db.prepare(`UPDATE iso42001_control_states SET applicability='excluded', exclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`);
+    const updC = db.prepare(`UPDATE control_instances SET applicability=?, exclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`);
+    const tx = db.transaction(() => ids.forEach(id => {
+      const rid = wcBulk42 ? ctlWrites.requirementId(db, 'iso42001', id) : null;
+      affected += (wcBulk42 && rid)
+        ? updC.run(ctlWrites.normApplic('excluded'), justification || null, req.workspace.id, rid).changes
+        : updL.run(justification || null, req.workspace.id, id).changes;
+    }));
     tx();
   }
   logAction(req.user.id, req.workspace.id, 'bulk_iso42001_soa', 'iso42001_item', null, { action, affected });
@@ -14135,9 +14367,12 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
     ORDER BY (r.likelihood * r.impact) DESC`).all(req.workspace.id, item.id);
 
   // Linked documents via parallel iso42001_document_controls table.
+  // Cutover 4 (W6): actionable link_id tracks the WRITE flag (drl.id via the
+  // v_iso42001_document_controls view) so the unlink deletes the right row.
+  const docT42Ld = ctlWrites.converged(db, req.workspace.id) ? 'v_iso42001_document_controls' : 'iso42001_document_controls';
   const linkedDocs = db.prepare(`SELECT d.id, d.name, d.category, d.status,
       dc.id AS link_id, dc.section_ref
-    FROM iso42001_document_controls dc
+    FROM ${docT42Ld} dc
     INNER JOIN generated_docs d ON d.id = dc.document_id
     WHERE d.workspace_id=? AND dc.iso_item_id=?
     ORDER BY d.name`).all(req.workspace.id, item.id);
@@ -14291,8 +14526,15 @@ app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents', requireAuth, re
   // Sanity check the doc belongs to this workspace.
   const doc = db.prepare(`SELECT id FROM generated_docs WHERE id=? AND workspace_id=?`).get(document_id, req.workspace.id);
   if (!doc) return res.status(404).send('Document not found');
-  db.prepare(`INSERT OR IGNORE INTO iso42001_document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
-    .run(document_id, req.params.isoId, section_ref || null);
+  // Cutover 4 (W6): converged-authoritative 42001 doc-link (014 mirrors to legacy).
+  const ridDl42 = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso42001', req.params.isoId) : null;
+  if (ridDl42) {
+    db.prepare(`INSERT OR IGNORE INTO document_requirement_links (document_id, requirement_id, section_ref) VALUES (?, ?, ?)`)
+      .run(document_id, ridDl42, section_ref || null);
+  } else {
+    db.prepare(`INSERT OR IGNORE INTO iso42001_document_controls (document_id, iso_item_id, section_ref) VALUES (?, ?, ?)`)
+      .run(document_id, req.params.isoId, section_ref || null);
+  }
   logAction(req.user.id, req.workspace.id, 'link_iso42001_doc', 'iso42001_item', req.params.isoId, { document_id });
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
@@ -14345,11 +14587,22 @@ app.post('/workspaces/:wsId/iso42001/gap/:isoId/clear-flag', requireAuth, requir
 
 app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
   // Verify the link belongs to a doc in this workspace before deleting.
-  const link = db.prepare(`SELECT dc.* FROM iso42001_document_controls dc
-    INNER JOIN generated_docs d ON d.id = dc.document_id
-    WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
-  if (link) {
-    db.prepare(`DELETE FROM iso42001_document_controls WHERE id=?`).run(link.id);
+  // Cutover 4 (W6): when writes-converged the panel rendered drl.id (via the view);
+  // resolve + delete the converged link, 014 mirrors the delete to legacy.
+  if (ctlWrites.converged(db, req.workspace.id)) {
+    const link = db.prepare(`SELECT dc.* FROM v_iso42001_document_controls dc
+      INNER JOIN generated_docs d ON d.id = dc.document_id
+      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+    if (link) {
+      db.prepare(`DELETE FROM document_requirement_links WHERE id=?`).run(link.id);
+    }
+  } else {
+    const link = db.prepare(`SELECT dc.* FROM iso42001_document_controls dc
+      INNER JOIN generated_docs d ON d.id = dc.document_id
+      WHERE dc.id=? AND dc.iso_item_id=? AND d.workspace_id=?`).get(req.params.linkId, req.params.isoId, req.workspace.id);
+    if (link) {
+      db.prepare(`DELETE FROM iso42001_document_controls WHERE id=?`).run(link.id);
+    }
   }
   res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
 });
