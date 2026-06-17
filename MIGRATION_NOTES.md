@@ -418,6 +418,31 @@ Real CSF `engagement→finding→recommendation→remediation_status` chain migr
 
 ---
 
+## Review-convergence mini-step (branch `feat/review-convergence`, 2026-06-17)
+
+**Why:** the review workflow's `review_*` columns were the last review dependency keeping `control_states` / `iso42001_control_states` alive (cutover 3 deferred the review reads, cutover 4 the review writes). This converges review reads + writes so those tables become demolition-eligible. Recorded as a hard prerequisite of the control-state demolition.
+
+**Schema-drift finding + doctrine (Vijay):** `iso42001_control_states` had `review_*` on the live DB but NOT on a fresh `db.js` boot, because db.js's `addColumnIfMissing` review loop runs BEFORE the table's `CREATE` (so the loop no-ops on a fresh boot; live got them because the table persists across boots and the loop back-filled it). DOCTRINE: schema drift between live and fresh-boot is RECONCILED, never coded around. The fix declares `review_*` directly on the `iso42001_control_states` CREATE so live and fresh match; the 013/014 42001 triggers now sync `review_*` uniformly (the cutover-3 exclusion is removed).
+
+**What changed:**
+- `015_review_convergence_columns.sql`: `ALTER control_instances ADD` the five review columns (`review_status` already existed from 004).
+- `db.js`: `review_*` added to the `iso42001_control_states` CREATE (fresh-boot reconciliation).
+- `016_review_convergence_views.sql`: recreate `v_control_states` / `v_iso42001_control_states` to expose `ci.review_*` instead of the cutover-3 NULL placeholders (`assessment_answers` stays NULL, still Phase 4).
+- `017_review_convergence_sync.sql`: drop + recreate the 8 control-state sync triggers carrying the full `review_*` set both directions; 42001 now syncs review too.
+- `server.js`: review reads (`review-queue`, both frameworks) read the converged views via `control_reads_converged`; review writes (`flag-for-review`, `review-action`, `clear-flag`, both frameworks) write `control_instances` review columns via `control_writes_converged` (014 mirrors to legacy). The assess-page badge reads via `getOrCreateState`'s 014-mirrored row, unchanged. Review flips with the workspace under the EXISTING flags; no third flag (decision 2). `review_status` is its own enum (identical in both tables), so no normalization is applied to review columns.
+
+**Verification:** `review_convergence_check.js` (route-level, real server on a live-DB copy): request -> approve -> clear via the actual HTTP routes, converged columns authoritative + legacy mirror matching (014) after each; review-queue renders; **review-queue read parity (view == legacy) across all 5 workspaces**: 11/11. Full suite green (smoke 45/0, node:test 25/0); flag-off legacy path unchanged.
+
+**Gate status:** review converged + verified. STOPPED at the verification gate.
+
+**Demolition-eligibility, accurately:** review was the LAST review dependency, but it is not the only legacy-only column on the control-state tables. `document_controls` / `iso42001_document_controls` ARE now demolition-eligible (fully converged via cutover 4 W6 + the doc views; subject only to the standing gate). `control_states` / `iso42001_control_states` are NOT yet fully eligible: two legacy-only columns with no converged home remain:
+- `assessment_answers` (both tables) -> written by W2 to legacy, read by the wizard; convergence deferred. Couples to the Phase 4 engine cutover (assessment model).
+- `roadmap_phase` (`iso42001_control_states` only) -> the 42001 roadmap write stays legacy; needs a converged home or a small convergence step.
+
+So closing the control-state room fully needs `assessment_answers` + `roadmap_phase` convergence (small mini-steps, or folded into Phase 4) ON TOP of this review step, then the standing demolition gate. History tables wait on the Phase 4 engine cutover. The doc-link tables can demolish first as their own gated step.
+
+---
+
 ## Phase 2 demolition — evidence join tables (branch `feat/phase2-demolition-evidence`, 2026-06-11)
 
 The FIRST demolition of the program; it sets the playbook below.
