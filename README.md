@@ -331,9 +331,9 @@ npm run test:security   # node:test - CSRF, XSS, auth gating, rbac matrix
 npm run test:browser    # puppeteer crawler - every sidebar route, every button
 ```
 
-- **Smoke** (21 assertions, bare-node): boots a fresh tmp DB, walks the wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering. Discovers workspace IDs at runtime + auto-stamps CSRF tokens, so it survives schema changes.
+- **Smoke** (45 assertions, bare-node): boots a fresh tmp DB through the full migration chain, walks the wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering, and reads converged control state via the compat views. Discovers workspace IDs at runtime + auto-stamps CSRF tokens, so it survives schema changes.
 - **Security** (10 tests, `node:test`): CSRF reject without token, accept with valid token + cookie, token stability across requests, distinct tokens per session, XSS escape on tenant name + attribute injection, default-user fallback contract.
-- **Rbac** (13 tests, `node:test`): pins the role permission matrix. Catches accidental privilege grants and unreferenced permissions.
+- **Rbac** (15 tests, `node:test`): pins the role permission matrix. Catches accidental privilege grants and unreferenced permissions.
 - **Browser crawler** (`tests/browser-ui.js`): puppeteer-core driving headless Chrome through every sidebar route. Counts buttons, clicks every non-submit, validates modals, captures screenshots, asserts no console / network / page errors. 40 pages, ~450 buttons.
 
 ## What's not in it (and why)
@@ -368,7 +368,11 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 ```
 .
 ├── server.js                       # Express app - most routes (extraction in progress)
-├── db.js                           # Schema, migrations, content sync, seeding
+├── db.js                           # Core schema + seeding; runs the migration chain on boot (init -> applyPending)
+├── migrations/                     # Numbered SQL/data migrations (the runner is the source of truth for schema)
+│   ├── run.js                      # applyPending(): runs only pending migrations, fails loud
+│   └── fixtures/                   # Standalone post-cutover / post-demolition verification harnesses
+├── schema_current.sql              # Schema of record (regenerated from a fresh boot at program close)
 ├── data/                           # Content + templates (edit here, syncs on boot)
 │   ├── iso-content.js              # Per-clause / control writeups (118 items)
 │   ├── assessment-questions.js     # Diagnostic Y/P/N questions per item
@@ -384,6 +388,11 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   ├── engagement.js               # Intake + scope confirm + 12-week plan
 │   └── auditor.js                  # Magic-link auditor portal (token middleware + 8 read-only views)
 ├── lib/
+│   ├── control-reads.js            # Converged control-state reads (the v_control_states / v_iso42001_control_states compat views over control_instances)
+│   ├── control-writes.js           # Converged control-state writes (normalize display<->token, convergeSets)
+│   ├── doc-links.js                # Document<->control links, drl-native (document_requirement_links)
+│   ├── evidence-reads.js           # Evidence<->control links, erl-native (evidence_requirement_links)
+│   ├── evidence-writes.js          # Evidence link writes, erl-native
 │   ├── encryption.js               # AES-256-GCM + HKDF
 │   ├── csrf.js                     # Per-session token + validate middleware
 │   ├── rbac.js                     # Permissions model (ready for auth-on)
@@ -406,7 +415,7 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   ├── content-staleness.js        # Walk data/content-meta.js; CI gate for overdue content
 │   └── seed-realistic-engagements.js  # Demo seed - 5 users + 2 engagements (100% / 60%)
 ├── tests/
-│   ├── smoke.test.js               # Smoke suite (21 bare-node assertions)
+│   ├── smoke.test.js               # Smoke suite (45 bare-node assertions)
 │   ├── security.test.js            # CSRF + XSS + auth (node:test)
 │   ├── rbac.test.js                # Role permission matrix (node:test)
 │   ├── helpers.js                  # In-process app boot, cookie + CSRF jar
