@@ -485,7 +485,31 @@ So closing the control-state room fully needs `assessment_answers` + `roadmap_ph
 
 **Verification:** `019_demolish_control_state_tables.sql` drops 8 triggers + 2 tables (triggers first). Fresh-boot chain end state confirmed: tables + triggers gone; views + `control_instances` + history + `assessment_passes` survive. `demolish_control_state_check.js` (route-level, real server on a demolished live-DB copy): tables/triggers gone, 10 table-backed pages render 200, assess save -> `control_instances` + history snapshot, SoA + review lifecycle + 42001 save converged: **14/14**. Full suite green (smoke 45/0, node:test 25/0); the smoke persistence check reads the converged view. The `cutover4_*` / `cutover3_sync` / `review_convergence` fixtures that asserted the 014 mirror are now HISTORICAL (reference the dropped tables / triggers).
 
-**Result:** the control-state CURRENT-STATE room is closed (tables gone). Remaining: **cutover 5 (Phase 4 engine cutover)** lifts the history deferral and lets `control_state_history` / `iso42001_control_state_history` / `assessment_passes` demolish; that is the last room.
+**Result:** the control-state CURRENT-STATE room is closed (tables gone). Remaining: **cutover 5 (assessment-history engine)** below. (Note: cutover 5's finding REVERSED the forward plan here: the history tables + `assessment_passes` are RETAINED as the converged engine, not demolished.)
+
+---
+
+## Cutover 5: assessment-history engine (branch `feat/cutover5-history-engine`, 2026-06-18)
+
+**The last cutover.** A read-only investigation REVERSED the assumed plan, so cutover 5 is a small, low-risk cleanup rather than a big engine migration.
+
+**Finding:** the converged change-log `control_instance_history` (Phase-3 design: a delta log with `old/new_*` + a `source` enum) was **never adopted live** -- a full cross-codebase audit (server.js / routes / lib) found ZERO live readers and ZERO live writers; its only writer is the one-time Phase-3 data backfill. The ACTUAL, working assessment-history engine is the **pass-snapshot model**: `control_state_history` / `iso42001_control_state_history` (full-state snapshots tagged with `pass_id` + `snapshot_at`) + `assessment_passes` (the pass register), which drive the gap-assessment diff / trend / velocity analytics (`endOfPassState`, pass-diff) and the per-control history screen. Crucially, `control_state_history` keys on `iso_item_id` / `pass_id` -- it has NO dependency on the demolished `control_states`, so it stands on its own.
+
+**Decision (Vijay):** keep the working pass-snapshot model as the converged history engine of record; drop the vestigial change-log. Don't force the analytics onto a model lacking the snapshot fields (notes/justifications) they need (ruled out adopting the change-log), and don't re-key the snapshots for schema purity alone at this stage. **The pass-snapshot tables are now explicitly the converged history model, superseding the abandoned Phase-3 change-log design -- the schema-of-record and any future Postgres move carry the decision, not the abandoned intent.**
+
+**Three gating requirements (all met):**
+1. `control_instance_history` proven dead: ZERO live readers + ZERO live writers across server.js / routes / lib (only the 004 backfill writes it). Audit shown.
+2. Model decision recorded (this section) so it supersedes the change-log intent in the schema-of-record.
+3. Source-attribution (which source changed a control: assessment/audit/remediation/manual) -- the capability the change-log's `source` column was meant to provide -- LIVES in `proposed_changes` (its own `source` enum: assessment/audit/remediation/evidence/external_respondent/ai_suggestion), used by the arbitration model. Dropping the change-log loses NO active capability. `proposed_changes` is untouched.
+
+**What changed:**
+- `020_drop_vestigial_history.sql`: `DROP TABLE control_instance_history` (vestigial) + `entity_control_states` (dead). No inbound FK to either, so clean.
+- `db.js`: removed the `entity_control_states` CREATE (dead; no migration attaches, so removal is clean, unlike `control_states`). `control_instance_history` is 004-created (transient: 004 creates it on a fresh boot, 020 drops it at chain-end).
+- `server.js`: the client-handover export listed the now-demolished `control_states` / `entity_control_states`; the per-table dump is `try/catch`-guarded so it did not 500, but it SILENTLY OMITTED control state. Fixed: the list now dumps `control_instances` + the pass-snapshot history tables (handover completeness; a latent gap from the 019 demolition).
+
+**Verification:** fresh-boot end state: `control_instance_history` + `entity_control_states` gone; `control_state_history` / `iso42001_control_state_history` + `assessment_passes` + `control_instances` + the views + `proposed_changes` survive. `cutover5_history_check.js` (route-level, real server on a copy where 020 applied at boot): vestigial/dead tables gone, engine survives, **client handover renders 200, gap-assessment analytics render 200, history screen renders -- 7/7**. Full suite green (smoke 45/0, node:test 25/0).
+
+**Result: the migration program is COMPLETE.** Current state lives on `control_instances` (read via the compat views); document/evidence links are drl/erl-native; review is converged; the assessment-history engine is the pass-snapshot model. Remaining legacy is by deliberate decision, not deferral: the pass-snapshot history tables + `assessment_passes` (kept as the engine), and the fixture-only `006`/`007`/`009` insurance migrations + the `csf_*` engine (no real data; AWS descoped).
 
 ---
 
@@ -519,8 +543,8 @@ The FIRST demolition of the program; it sets the playbook below.
 
 Demolitions in dependency order:
 1. ~~**Phase 2:** drop `evidence_controls` + `evidence_links` + the 6 triggers; switch the link handle to `evidence_requirement_links.id`.~~ **DONE** (2026-06-11, migration 011 + `db.js` legacy DDL removed + erl-native code). Executes on live at the first boot after merge. See "Phase 2 demolition" above. This established the demolition playbook (drop via runner + remove legacy DDL from `db.js init()` in the same PR).
-2. **Phase 3:** ~~drop `document_controls`, `iso42001_document_controls`~~ **DONE** (2026-06-17, migration 018, drl-native; see "Demolition: document-link join tables"). ~~drop `control_states`, `iso42001_control_states`~~ **DONE** (2026-06-18, migration 019, converged-only; see "Demolition: control-state current-state tables"). REMAINING: `control_state_history`, `iso42001_control_state_history` (blocked on the Phase 4 engine cutover, item 3), and `entity_control_states` (dead, no read surfaces; drop with the Phase 4 cleanup).
-3. **Phase 4:** drop `assessment_answers` columns, `assessment_passes` (+ `iso42001_assessment_passes`), and the `csf_*` engine tables. The CSF port is fixture-only (no real data; AWS descoped).
+2. **Phase 3:** ~~drop `document_controls`, `iso42001_document_controls`~~ **DONE** (migration 018, drl-native). ~~drop `control_states`, `iso42001_control_states`~~ **DONE** (migration 019, converged-only). ~~drop `entity_control_states`~~ **DONE** (migration 020, dead). `control_state_history` / `iso42001_control_state_history` are **RETAINED by decision** as the converged assessment-history engine (cutover 5), NOT dropped.
+3. **Phase 4 / cutover 5:** ~~drop `assessment_answers` columns~~ **DONE** (gone with the control-state tables, 019; deferred-drop, 0 live data). ~~drop `control_instance_history`~~ **DONE** (migration 020, vestigial change-log never adopted live). `assessment_passes` (+ `iso42001_assessment_passes`) are **RETAINED by decision** as the pass register of the converged history engine, NOT dropped. The `csf_*` engine tables stay fixture-only (no real data; AWS descoped). **The migration program is COMPLETE; remaining legacy is by deliberate decision (the engine) or fixture-only insurance, not deferral.**
 4. **Phase 5:** drop `recurring_questionnaire_schedules`, `supplier_questionnaires`(+responses), `questionnaire_templates`/`_questions`/`_template_versions`/`_question_bank`, `supplier_reviews` — after the DDQ cutover.
 5. **Phase 6:** drop `csf_findings`/`csf_recommendations`/`csf_remediation_status`, `audit_findings`/`audit_observations`, `nonconformities`, `risk_treatment_actions`, `risk_treatments`, `improvements`, `supplier_findings`.
 6. `framework_mappings` is **retained** (option b: the crosswalk screen still reads it) unless/until that screen is re-pointed at `requirement_mappings`.

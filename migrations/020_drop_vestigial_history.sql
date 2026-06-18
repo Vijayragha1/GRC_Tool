@@ -1,0 +1,32 @@
+-- 020_drop_vestigial_history.sql
+-- Cutover 5 (assessment-history engine): drop the VESTIGIAL converged change-log
+-- control_instance_history and the dead entity_control_states.
+--
+-- DECISION (Vijay): the live assessment-history engine is the PASS-SNAPSHOT model
+-- (control_state_history / iso42001_control_state_history + assessment_passes),
+-- which drives the gap-assessment diff / trend / velocity analytics and is already
+-- independent of the demolished control_states. The Phase-3 converged change-log
+-- (control_instance_history) was a design bet the live app NEVER adopted: a full
+-- cross-codebase audit (server.js / routes / lib) found ZERO live readers and ZERO
+-- live writers; its only writer is the one-time Phase-3 data backfill. So the
+-- pass-snapshot tables are now the converged history model of record, superseding
+-- the abandoned change-log. control_state_history KEYS on iso_item_id (not
+-- control_states), so it stands on its own; it is NOT dropped here.
+--
+-- Source-attribution check (the change-log's `source` column was meant to record
+-- which source changed a control): that capability lives in `proposed_changes`
+-- (its own `source` enum: assessment/audit/remediation/evidence/external_respondent/
+-- ai_suggestion), which the arbitration model uses. Dropping the change-log loses
+-- NO active capability.
+--
+-- entity_control_states: dead (no live read/write surfaces; the only reference was
+-- a stale handover-export list entry, fixed in this PR). No inbound FK to either
+-- table, so the drops are clean.
+--
+-- control_instance_history is created by migration 004 (transient on a fresh boot:
+-- 004 creates it, 020 drops it at chain-end). entity_control_states's db.js CREATE
+-- is removed in this PR, so it is gone at the source on fresh boots; this DROP
+-- handles the live DB. Both IF EXISTS.
+
+DROP TABLE IF EXISTS control_instance_history;
+DROP TABLE IF EXISTS entity_control_states;

@@ -741,22 +741,10 @@ CREATE TABLE IF NOT EXISTS soa_snapshots (
 CREATE INDEX IF NOT EXISTS idx_soa_ws ON soa_snapshots(workspace_id);
 
 -- Per-entity SoA overrides (control state can differ per entity)
-CREATE TABLE IF NOT EXISTS entity_control_states (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id INTEGER NOT NULL,
-  entity_id INTEGER NOT NULL,
-  iso_item_id TEXT NOT NULL,
-  applicability TEXT,
-  status TEXT,
-  inclusion_justification TEXT,
-  exclusion_justification TEXT,
-  notes TEXT,
-  last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(entity_id, iso_item_id),
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-  FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_ecs ON entity_control_states(entity_id, iso_item_id);
+-- entity_control_states was DEAD (no live read/write surfaces) and is dropped by
+-- migration 020 (cutover 5). DDL removed from db.js per the demolition playbook; no
+-- migration attaches to it, so removal is clean (unlike control_states, whose
+-- triggers forced a transient CREATE).
 
 -- ========== Document hierarchy (parent_doc_id self-ref) ==========
 -- column added via migration
