@@ -13276,7 +13276,9 @@ app.get('/workspaces/:wsId/handover', requireAuth, requireWorkspace, requirePerm
   // Dump every workspace-scoped table as JSON
   const tables = [
     'workspaces','entities','assets','risks','risk_treatments','risk_acceptances','risk_methodologies','risk_appetites',
-    'control_states','entity_control_states','soa_snapshots',
+    // control state converged to control_instances (control_states/entity_control_states
+    // demolished, 019/020); history is the pass-snapshot tables (cutover 5 decision).
+    'control_instances','control_state_history','iso42001_control_state_history','soa_snapshots',
     'generated_docs','doc_versions','doc_approvers','doc_signatures',
     'evidence','comments','comment_mentions',
     'audits','audit_findings','audit_observations','audit_programmes',
