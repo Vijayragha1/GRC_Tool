@@ -2672,7 +2672,7 @@ function suggestStatusFromAnswers(answers, totalQuestions) {
 
 function nextUnassessedItem(wsId, afterSortOrder) {
   return db.prepare(`SELECT i.id FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN v_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND (cs.status IS NULL OR cs.status='Not Assessed')
       AND i.sort_order > ?
@@ -2779,7 +2779,7 @@ app.post('/workspaces/:wsId/controls/assess/summary/spawn-tasks', requireAuth, r
          INNER JOIN risks r ON r.id = rc.risk_id
          WHERE rc.iso_item_id = i.id AND r.workspace_id = ?) AS max_risk_score
         FROM iso_items i
-        LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+        LEFT JOIN v_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
         WHERE i.id=?`).get(req.workspace.id, req.workspace.id, id);
       if (!item) continue;
       const cleanTitle = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
@@ -2840,9 +2840,9 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   const totals = db.prepare(`SELECT
     (SELECT COUNT(*) FROM iso_items WHERE type='clause') AS clausesTotal,
     (SELECT COUNT(*) FROM iso_items WHERE type='control') AS controlsTotal,
-    (SELECT COUNT(*) FROM iso_items i INNER JOIN control_states cs ON cs.iso_item_id=i.id
+    (SELECT COUNT(*) FROM iso_items i INNER JOIN v_control_states cs ON cs.iso_item_id=i.id
      WHERE i.type='clause' AND cs.workspace_id=? AND cs.status NOT IN ('Not Assessed')) AS clausesAssessed,
-    (SELECT COUNT(*) FROM iso_items i INNER JOIN control_states cs ON cs.iso_item_id=i.id
+    (SELECT COUNT(*) FROM iso_items i INNER JOIN v_control_states cs ON cs.iso_item_id=i.id
      WHERE i.type='control' AND cs.workspace_id=? AND cs.status NOT IN ('Not Assessed')) AS controlsAssessed`).get(req.workspace.id, req.workspace.id);
 
   // Sequential nav across all clause+control items.
@@ -2858,7 +2858,7 @@ app.get('/workspaces/:wsId/controls/assess/:isoId', requireAuth, requireWorkspac
   const navRows = db.prepare(`SELECT i.id, i.type, i.category, i.title, i.sort_order,
       COALESCE(cs.status, 'Not Assessed') AS status
     FROM iso_items i
-    LEFT JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    LEFT JOIN v_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type IN ('clause','control')
     ORDER BY i.sort_order`).all(req.workspace.id);
   const navGroups = [
@@ -4740,14 +4740,7 @@ app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, requirePe
   // Guard against junk: cap batch size; reject rows missing iso_item_id.
   if (rows.length > 250) return res.status(400).json({ ok: false, message: 'Batch too large.' });
   const valid = rows.filter(r => r && typeof r.iso_item_id === 'string' && r.iso_item_id);
-  const upsertState = db.prepare(`INSERT OR IGNORE INTO control_states (workspace_id, iso_item_id) VALUES (?, ?)`);
-  const update = db.prepare(`UPDATE control_states SET
-      applicability = ?, inclusion_justification = ?, exclusion_justification = ?,
-      status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
-    WHERE workspace_id = ? AND iso_item_id = ?`);
-  // Cutover 4 (W4): per-row converged-authoritative batch save on a write-flipped
-  // workspace; each row's applicability/status normalized (014 mirrors per row).
-  const wcBatch = ctlWrites.converged(db, req.workspace.id);
+  // Converged-only per-row batch save (control_states demolished, 019).
   const upsertCi = db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)`);
   const updateCi = db.prepare(`UPDATE control_instances SET
       applicability = ?, inclusion_justification = ?, exclusion_justification = ?,
@@ -4755,26 +4748,16 @@ app.post('/workspaces/:wsId/soa/batch', requireAuth, requireWorkspace, requirePe
     WHERE workspace_id = ? AND requirement_id = ? AND entity_id IS NULL`);
   const tx = db.transaction(() => {
     valid.forEach(r => {
-      const rid = wcBatch ? ctlWrites.requirementId(db, 'iso27001', r.iso_item_id) : null;
-      if (wcBatch && rid) {
-        upsertCi.run(req.workspace.id, rid);
-        updateCi.run(
-          ctlWrites.normApplic(r.applicability || 'undecided'),
-          r.inclusion_justification || null,
-          r.exclusion_justification || null,
-          ctlWrites.normStatus(r.status || null),
-          req.workspace.id, rid
-        );
-      } else {
-        upsertState.run(req.workspace.id, r.iso_item_id);
-        update.run(
-          r.applicability || 'undecided',
-          r.inclusion_justification || null,
-          r.exclusion_justification || null,
-          r.status || null,
-          req.workspace.id, r.iso_item_id
-        );
-      }
+      const rid = ctlWrites.requirementId(db, 'iso27001', r.iso_item_id);
+      if (!rid) return;
+      upsertCi.run(req.workspace.id, rid);
+      updateCi.run(
+        ctlWrites.normApplic(r.applicability || 'undecided'),
+        r.inclusion_justification || null,
+        r.exclusion_justification || null,
+        ctlWrites.normStatus(r.status || null),
+        req.workspace.id, rid
+      );
     });
   });
   tx();
@@ -13495,7 +13478,7 @@ app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, require
       ${docLinks.docCountSubquery('iso27001')} AS doc_count,
       ${evReads.checklistEvidenceCountSubquery()} AS evi_count
     FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+    INNER JOIN v_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
     WHERE i.type='control' AND cs.applicability='included'
     ORDER BY i.sort_order
   `).all(req.workspace.id, req.workspace.id, req.workspace.id);
@@ -13910,11 +13893,7 @@ app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWork
       ORDER BY rc.iso_item_id, r.id`).all(req.workspace.id);
   const byCtl = {};
   links.forEach(l => { (byCtl[l.iso_item_id] = byCtl[l.iso_item_id] || []).push(l); });
-  const upd = db.prepare(`UPDATE iso42001_control_states
-    SET applicability='included',
-        inclusion_justification = COALESCE(NULLIF(inclusion_justification, ''), ?),
-        last_updated = CURRENT_TIMESTAMP
-    WHERE workspace_id=? AND iso_item_id=?`);
+  // Converged-only (iso42001_control_states demolished, 019).
   const updCi = db.prepare(`UPDATE control_instances
     SET applicability=?,
         inclusion_justification = COALESCE(NULLIF(inclusion_justification, ''), ?),
@@ -13925,11 +13904,9 @@ app.post('/workspaces/:wsId/iso42001/soa/auto-justify', requireAuth, requireWork
     for (const [ctlId, risks] of Object.entries(byCtl)) {
       const titles = risks.map(r => `R-${r.risk_id}`).join(', ');
       const just = `Treats ${titles}`;
-      const rid = wcAj42 ? ctlWrites.requirementId(db, 'iso42001', ctlId) : null;
-      const r = (wcAj42 && rid)
-        ? updCi.run(ctlWrites.normApplic('included'), just, req.workspace.id, rid)
-        : upd.run(just, req.workspace.id, ctlId);
-      if (r.changes > 0) affected++;
+      const rid = ctlWrites.requirementId(db, 'iso42001', ctlId);
+      if (!rid) continue;
+      if (updCi.run(ctlWrites.normApplic('included'), just, req.workspace.id, rid).changes > 0) affected++;
     }
   });
   tx();
@@ -14105,23 +14082,17 @@ app.post('/workspaces/:wsId/iso42001/soa/bulk', requireAuth, requireWorkspace, r
                     WHERE workspace_id=? AND applicability='undecided' AND iso_item_id IN (SELECT id FROM iso42001_items WHERE type='control')`)
           .run(justification || null, req.workspace.id).changes;
   } else if (action === 'apply_to_selected' && ids.length) {
-    const updL = db.prepare(`UPDATE iso42001_control_states SET applicability='included', inclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`);
     const updC = db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`);
     const tx = db.transaction(() => ids.forEach(id => {
-      const rid = wcBulk42 ? ctlWrites.requirementId(db, 'iso42001', id) : null;
-      affected += (wcBulk42 && rid)
-        ? updC.run(ctlWrites.normApplic('included'), justification || null, req.workspace.id, rid).changes
-        : updL.run(justification || null, req.workspace.id, id).changes;
+      const rid = ctlWrites.requirementId(db, 'iso42001', id);
+      if (rid) affected += updC.run(ctlWrites.normApplic('included'), justification || null, req.workspace.id, rid).changes;
     }));
     tx();
   } else if (action === 'exclude_selected' && ids.length) {
-    const updL = db.prepare(`UPDATE iso42001_control_states SET applicability='excluded', exclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`);
     const updC = db.prepare(`UPDATE control_instances SET applicability=?, exclusion_justification = ?, last_updated = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`);
     const tx = db.transaction(() => ids.forEach(id => {
-      const rid = wcBulk42 ? ctlWrites.requirementId(db, 'iso42001', id) : null;
-      affected += (wcBulk42 && rid)
-        ? updC.run(ctlWrites.normApplic('excluded'), justification || null, req.workspace.id, rid).changes
-        : updL.run(justification || null, req.workspace.id, id).changes;
+      const rid = ctlWrites.requirementId(db, 'iso42001', id);
+      if (rid) affected += updC.run(ctlWrites.normApplic('excluded'), justification || null, req.workspace.id, rid).changes;
     }));
     tx();
   }
@@ -14235,7 +14206,7 @@ function suggestStatus42(answers, total) {
 
 function nextUnassessed42(wsId, afterSortOrder) {
   return db.prepare(`SELECT i.id FROM iso42001_items i
-    LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    LEFT JOIN v_iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type IN ('clause','control')
       AND (cs.status IS NULL OR cs.status='Not Assessed')
       AND i.sort_order > ?
@@ -14314,7 +14285,7 @@ app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, 
       SUM(CASE WHEN i.type='clause' AND cs.status IS NOT NULL AND cs.status!='Not Assessed' THEN 1 ELSE 0 END) AS clausesAssessed,
       SUM(CASE WHEN i.type='control' AND cs.status IS NOT NULL AND cs.status!='Not Assessed' THEN 1 ELSE 0 END) AS controlsAssessed
     FROM iso42001_items i
-    LEFT JOIN iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
+    LEFT JOIN v_iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
   const sectionPosition = db.prepare(`SELECT COUNT(*) AS c FROM iso42001_items WHERE type=? AND sort_order <= ?`).get(item.type, item.sort_order).c;
 
   // Evidence files attached to this item (reuses the existing evidence table -

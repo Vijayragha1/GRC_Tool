@@ -232,10 +232,12 @@ function stopServer() {
     const dbCheck = new Database(TMP_DB, { readonly: true });
     const after = dbCheck.prepare(`SELECT COUNT(*) c FROM control_state_history WHERE workspace_id=? AND iso_item_id='clause-5.1'`).get(wsId).c;
     ok('history snapshot was appended', after === before + 1, `before=${before}, after=${after}`);
-    const cur = dbCheck.prepare(`SELECT status, scope_pct, notes FROM control_states WHERE workspace_id=? AND iso_item_id='clause-5.1'`).get(wsId);
-    ok('control_states.status persisted', cur && cur.status === 'Partially Implemented', JSON.stringify(cur));
-    ok('control_states.scope_pct persisted', cur && cur.scope_pct === 70, JSON.stringify(cur));
-    ok('control_states.notes persisted', cur && cur.notes === 'smoke-test note', JSON.stringify(cur));
+    // control_states was demolished (migration 019); persistence is read from the
+    // converged compat view over control_instances.
+    const cur = dbCheck.prepare(`SELECT status, scope_pct, notes FROM v_control_states WHERE workspace_id=? AND iso_item_id='clause-5.1'`).get(wsId);
+    ok('control state status persisted (converged)', cur && cur.status === 'Partially Implemented', JSON.stringify(cur));
+    ok('control state scope_pct persisted (converged)', cur && cur.scope_pct === 70, JSON.stringify(cur));
+    ok('control state notes persisted (converged)', cur && cur.notes === 'smoke-test note', JSON.stringify(cur));
     dbCheck.close();
 
     console.log('\ncontrol history page');
