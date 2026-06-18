@@ -463,6 +463,32 @@ So closing the control-state room fully needs `assessment_answers` + `roadmap_ph
 
 ---
 
+## Demolition: control-state current-state tables (branch `feat/demolish-control-state-tables`, 2026-06-18)
+
+**Largest demolition in the program** (control state is the core domain object). Drops `control_states` / `iso42001_control_states` and their 8 bidirectional sync triggers. `control_instances` is now the sole source of truth; reads go through the compat views (`v_control_states` / `v_iso42001_control_states`, which read `control_instances` and SURVIVE the drop); writes are converged-only. Folds in the dead-column work (`assessment_answers` + `roadmap_phase`).
+
+**TOTAL vs PARTIAL (required, Vijay):** this is **TOTAL for the CURRENT-STATE tables** and **PARTIAL for the control-state domain.**
+- DROP NOW: `control_states`, `iso42001_control_states`, the 8 sync triggers (`cs_to_ci_*`, `ci_to_cs_*`, `cs42_to_ci_*`, `ci_to_cs42_*`).
+- SURVIVE: `v_control_states` / `v_iso42001_control_states` (read `control_instances`); `control_instances`; **`control_state_history` / `iso42001_control_state_history` + `assessment_passes` REMAIN, blocked on the Phase 4 engine cutover** (the pass-snapshot read model). The W2 history WRITE was repointed to source `cur` from the converged view, so it no longer reads the dropped tables; it records `assessment_answers` as NULL (dead). "room closed" here means the CURRENT-STATE tables are gone; the HISTORY tables are not.
+
+**Dead-column fold (deferred-drops, confirmed by Phase-0/live data):**
+- `assessment_answers`: 0/434 non-empty on 27001 live; absent on live 42001. No converged home needed. W2 side-writes removed; the wizard `savedAnswers` reads default to `{}`; the history snapshot records NULL. The column physically vanishes with the table.
+- `roadmap_phase` (42001): absent on live, 0 rows; feature code inert. Read neutralized (`NULL AS roadmap_phase`, all controls group Unscheduled), the phase-save route is a documented no-op. Decision: DROP (rebuild converged if wanted).
+
+**Schema-drift doctrine (again):** live `iso42001_control_states` lacked `assessment_answers` + `roadmap_phase` (fresh-boot had them); since both are deferred-drops, the reconciliation IS the drop.
+
+**Reference-audit findings (the playbook earned its keep twice):** the cross-codebase audit (server.js / routes / lib) found ~82 direct refs. Two classes the first pass missed, both caught by the suite/E2E before merge: (1) the audit grepped `FROM <table>` and missed **JOINs** (`INNER/LEFT JOIN control_states`) in the progress `totals`, `nextUnassessedItem` / `nextUnassessed42` (deferred wizard nav), and several list reads; (2) the **smoke test itself** read `control_states`. DOCTRINE: a demolition audit must grep the table name in ALL positions (`FROM`, `JOIN`, subqueries) AND every alias/view/helper that resolves to it, AND the test suite. Repointed all live reads to the views; app-wide ungated reads (`routes/tenants.js`, `routes/auditor.js`, `lib/jobs.js`, the exec-brief aggregation, the 42001 intake-wizard seeds) converged.
+
+**Prepare-time safety (key finding):** "converged-always + dead `else`-branch" is only safe if the dead legacy `db.prepare('...control_states...')` is INSIDE the branch (never prepared). FIVE legacy prepares were UNCONDITIONAL at handler-top (SoA batch, 42001 auto-justify, 42001 apply/exclude-selected) and would throw at PREPARE time on the dropped table even though never executed; those handlers were collapsed to converged-only. All other ~24 legacy refs are confirmed-dead (inside `else`/ternary, never prepared).
+
+**db.js (playbook exception, same as doc-links):** the `control_states` / `iso42001_control_states` CREATEs STAY as transient chain-scaffolding because the immutable migrations 013/017 attach sync triggers ON these tables (they must exist when 013/017 run on a fresh boot); migration `019` drops them at the end of the chain, so they are gone at runtime. Full DDL removal awaits a chain baseline.
+
+**Verification:** `019_demolish_control_state_tables.sql` drops 8 triggers + 2 tables (triggers first). Fresh-boot chain end state confirmed: tables + triggers gone; views + `control_instances` + history + `assessment_passes` survive. `demolish_control_state_check.js` (route-level, real server on a demolished live-DB copy): tables/triggers gone, 10 table-backed pages render 200, assess save -> `control_instances` + history snapshot, SoA + review lifecycle + 42001 save converged: **14/14**. Full suite green (smoke 45/0, node:test 25/0); the smoke persistence check reads the converged view. The `cutover4_*` / `cutover3_sync` / `review_convergence` fixtures that asserted the 014 mirror are now HISTORICAL (reference the dropped tables / triggers).
+
+**Result:** the control-state CURRENT-STATE room is closed (tables gone). Remaining: **cutover 5 (Phase 4 engine cutover)** lifts the history deferral and lets `control_state_history` / `iso42001_control_state_history` / `assessment_passes` demolish; that is the last room.
+
+---
+
 ## Phase 2 demolition — evidence join tables (branch `feat/phase2-demolition-evidence`, 2026-06-11)
 
 The FIRST demolition of the program; it sets the playbook below.
@@ -493,7 +519,7 @@ The FIRST demolition of the program; it sets the playbook below.
 
 Demolitions in dependency order:
 1. ~~**Phase 2:** drop `evidence_controls` + `evidence_links` + the 6 triggers; switch the link handle to `evidence_requirement_links.id`.~~ **DONE** (2026-06-11, migration 011 + `db.js` legacy DDL removed + erl-native code). Executes on live at the first boot after merge. See "Phase 2 demolition" above. This established the demolition playbook (drop via runner + remove legacy DDL from `db.js init()` in the same PR).
-2. **Phase 3:** drop `control_states`, `entity_control_states`, `iso42001_control_states`, `control_state_history`, `iso42001_control_state_history`, `document_controls`, `iso42001_document_controls`.
+2. **Phase 3:** ~~drop `document_controls`, `iso42001_document_controls`~~ **DONE** (2026-06-17, migration 018, drl-native; see "Demolition: document-link join tables"). ~~drop `control_states`, `iso42001_control_states`~~ **DONE** (2026-06-18, migration 019, converged-only; see "Demolition: control-state current-state tables"). REMAINING: `control_state_history`, `iso42001_control_state_history` (blocked on the Phase 4 engine cutover, item 3), and `entity_control_states` (dead, no read surfaces; drop with the Phase 4 cleanup).
 3. **Phase 4:** drop `assessment_answers` columns, `assessment_passes` (+ `iso42001_assessment_passes`), and the `csf_*` engine tables. The CSF port is fixture-only (no real data; AWS descoped).
 4. **Phase 5:** drop `recurring_questionnaire_schedules`, `supplier_questionnaires`(+responses), `questionnaire_templates`/`_questions`/`_template_versions`/`_question_bank`, `supplier_reviews` — after the DDQ cutover.
 5. **Phase 6:** drop `csf_findings`/`csf_recommendations`/`csf_remediation_status`, `audit_findings`/`audit_observations`, `nonconformities`, `risk_treatment_actions`, `risk_treatments`, `improvements`, `supplier_findings`.

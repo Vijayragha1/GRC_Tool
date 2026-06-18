@@ -49,7 +49,7 @@ function buildOnboardingSteps(db) {
     { num: 5, title: 'Run the gap assessment',
       desc: 'Walk every clause and Annex A control, scoring current state. The wizard takes you through all 118 items.',
       cta: 'Open wizard',
-      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM control_states cs INNER JOIN workspaces w ON w.id=cs.workspace_id WHERE w.firm_id=? AND cs.status != 'Not Assessed'`).get(firmId).c >= 20,
+      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM v_control_states cs INNER JOIN workspaces w ON w.id=cs.workspace_id WHERE w.firm_id=? AND cs.status != 'Not Assessed'`).get(firmId).c >= 20,
       href: 'first-ws-assess'
     },
     { num: 6, title: 'Plan the certification cycle',

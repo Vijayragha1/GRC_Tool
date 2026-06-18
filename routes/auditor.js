@@ -79,7 +79,7 @@ function register(app, deps) {
     // Roll-up counts for the section tiles so the auditor sees scope at a
     // glance before clicking through.
     const counts = {
-      soa_total: db.prepare(`SELECT COUNT(*) c FROM control_states WHERE workspace_id=?`).get(req.workspace.id).c,
+      soa_total: db.prepare(`SELECT COUNT(*) c FROM v_control_states WHERE workspace_id=?`).get(req.workspace.id).c,
       soa_snapshots: db.prepare(`SELECT COUNT(*) c FROM soa_snapshots WHERE workspace_id=?`).get(req.workspace.id).c,
       risks: db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(req.workspace.id).c,
       risks_open: db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status='open'`).get(req.workspace.id).c,
