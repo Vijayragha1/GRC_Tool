@@ -1,7 +1,32 @@
 # MIGRATION_NOTES
 
 Running log of the converged GRC schema migration. Newest phase last.
-Schema of record: `schema_current.sql` (regenerated at the end of Phase 7).
+Schema of record: `schema_current.sql` (regenerated at program close, 2026-06-18).
+
+---
+
+## MIGRATION PROGRAM: CLOSED (2026-06-18)
+
+The converged GRC schema migration is **complete**. All five cutovers + the demolitions landed on `main`; the full suite is green; `schema_current.sql` is the regenerated schema of record. Detailed per-phase records are below.
+
+**What is CONVERGED (the new model):**
+- **Current control state:** `control_instances` (whole-org, `entity_id IS NULL`), read everywhere via the compat views `v_control_states` / `v_iso42001_control_states`; writes are converged-only. The legacy `control_states` / `iso42001_control_states` are demolished (migration 019).
+- **Document<->control links:** `document_requirement_links` (drl), drl-native reads/writes (`lib/doc-links.js`). Legacy `document_controls` / `iso42001_document_controls` demolished (018).
+- **Evidence<->control links:** `evidence_requirement_links` (erl), erl-native. Legacy `evidence_controls` / `evidence_links` demolished (011).
+- **Framework catalog:** `frameworks` + `requirements` + `requirement_mappings` (the unified catalog the views/writes key on).
+- **Review workflow:** converged onto `control_instances` (`review_*` columns) + the views.
+- **Arbitration / source attribution:** `proposed_changes` (its own `source` enum), unchanged.
+
+**What is DELIBERATE-LEGACY (kept by decision, not deferral):**
+- **Assessment-history engine:** the **pass-snapshot model** -- `control_state_history` / `iso42001_control_state_history` (full-state snapshots tagged with `pass_id`) + `assessment_passes` (the pass register). This is the live engine driving the gap-assessment diff / trend / velocity analytics; it keys on `iso_item_id` / `pass_id` and is independent of the demolished current-state tables. Cutover 5 made this the converged history model of record, superseding the abandoned Phase-3 change-log (`control_instance_history`, dropped as vestigial in 020).
+- **db.js transient CREATEs:** `control_states` / `iso42001_control_states` are still CREATE'd in `db.js` ONLY as transient chain-scaffolding, because the immutable applied migrations 013/017 attach sync triggers ON them (they must exist when those run on a fresh boot); migration 019 drops them at chain-end, so they are gone at runtime. These vanish at the baseline collapse (below).
+
+**What is FIXTURE-ONLY INSURANCE (no real data anywhere):**
+- Migrations `006` (responses-blob), `007` (CSF engine port), `009` (DDQ history) + the `csf_*` engine tables. No legacy data exists to migrate; they stay in the replay chain as no-op-safe insurance. AWS descoped.
+
+**Deferred by deliberate decision (NOT now): the baseline collapse.** The full migration chain is kept as the **auditable build record**. The baseline cut -- collapse the chain into a single baseline migration AND remove the transient `control_states` / `iso42001_control_states` CREATEs from `db.js init()` -- is done deliberately **before the Postgres move OR the first production client, whichever comes first** (Vijay, 2026-06-18). It is housekeeping, not a cutover.
+
+**Standing-down on migration work as of 2026-06-18.**
 
 ---
 
