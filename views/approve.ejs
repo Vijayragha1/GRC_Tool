@@ -31,7 +31,7 @@
   html, body { margin: 0; padding: 0; background: var(--bg-subtle); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
   .wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 48px; }
   .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-  .brand-mark { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; color: #fff; font-family: var(--serif); font-weight: 500; font-size: 14px; }
+  .brand-mark { width: 28px; height: 28px; flex-shrink: 0; }
   .brand-text { font-family: var(--serif); font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
   .brand-sub { color: var(--text-tertiary); font-size: 12px; margin-left: auto; }
 
@@ -96,7 +96,11 @@
 <body>
   <div class="wrap">
     <div class="brand">
-      <div class="brand-mark"><%= workspaceName.charAt(0).toUpperCase() %></div>
+      <svg class="brand-mark" width="28" height="28" viewBox="0 0 22 22" aria-hidden="true" style="flex-shrink:0;">
+        <circle cx="11" cy="11" r="9.5" fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+        <circle cx="11" cy="11" r="6"   fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+        <circle cx="11" cy="11" r="2.5" fill="#1a1a1a"/>
+      </svg>
       <div class="brand-text"><%= workspaceName %></div>
       <div class="brand-sub">Document approval portal</div>
     </div>

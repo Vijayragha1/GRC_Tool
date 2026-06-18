@@ -76,17 +76,9 @@
     display: inline-flex; align-items: center; gap: 10px;
     text-decoration: none; color: var(--ink);
   }
-  /* No gradient tile. A thin outlined square in oxblood with a serif glyph
-     reads as professional-services wordmark, not v0 SaaS demo. */
-  .a-brand-mark {
-    width: 30px; height: 30px; border-radius: 3px;
-    background: var(--bg);
-    border: 1px solid var(--accent);
-    display: inline-flex; align-items: center; justify-content: center;
-    color: var(--accent); font-weight: 500; font-size: 15px;
-    font-family: 'Source Serif 4', Georgia, serif;
-    font-variation-settings: "opsz" 40;
-  }
+  /* Compliance Sphere mark, charcoal on transparent: one product icon
+     everywhere, matching the in-app header and auth pages. */
+  .a-brand-mark { width: 28px; height: 28px; flex-shrink: 0; }
   .a-brand-name { font-size: 16px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; }
   .a-brand-sub  { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
   .a-spacer { flex: 1; }
@@ -204,7 +196,11 @@
   <div class="a-container">
     <div class="a-top-row">
       <a href="/auditor/<%= token %>" class="a-brand">
-        <span class="a-brand-mark"><%= (workspace.client_name || 'A').slice(0,1).toUpperCase() %></span>
+        <svg class="a-brand-mark" width="28" height="28" viewBox="0 0 22 22" aria-hidden="true" style="flex-shrink:0;">
+          <circle cx="11" cy="11" r="9.5" fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+          <circle cx="11" cy="11" r="6"   fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+          <circle cx="11" cy="11" r="2.5" fill="#1a1a1a"/>
+        </svg>
         <span>
           <div class="a-brand-name"><%= workspace.client_name %> · ISMS</div>
           <div class="a-brand-sub">ISO/IEC 27001:2022<% if (workspace.scope) { %> · <%= workspace.scope.slice(0, 80) %><%= workspace.scope.length > 80 ? '…' : '' %><% } %></div>
