@@ -19,7 +19,11 @@
       <button class="btn btn-secondary" title="Clone every entry from your firm's curated library">+ Firm library</button>
     </form>
     <a href="/workspaces/<%= ws.id %>/risks/library" class="btn btn-secondary">+ Starter library</a>
-    <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
+    <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-secondary">New risk</button>
+    <a href="/workspaces/<%= ws.id %>/risks/guided" class="btn btn-primary" title="Step-by-step, AI-assisted risk assessment">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;vertical-align:-2px;"><path d="M12 3l1.9 5.8L20 10l-5.1 2.2L12 18l-1.9-5.8L4 10l6.1-1.2z"/></svg>
+      Guided assessment
+    </a>
   </div>
 </div>
 
@@ -143,7 +147,8 @@
             <div class="empty-sub">Identify risks to confidentiality, integrity, and availability. Linking each risk to Annex A controls drives the Statement of Applicability automatically.</div>
             <div class="row" style="justify-content:center;">
               <a href="/workspaces/<%= ws.id %>/risks/import" class="btn btn-secondary">Import from CSV</a>
-              <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
+              <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-secondary">New risk</button>
+              <a href="/workspaces/<%= ws.id %>/risks/guided" class="btn btn-primary">Start a guided assessment</a>
             </div>
           </div>
         </td></tr>

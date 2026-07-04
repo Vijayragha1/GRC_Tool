@@ -1,0 +1,354 @@
+<%- include('partials/header', { title: 'Guided risk assessment', user, ws, active: 'risks' }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Guided risk assessment</h1>
+    <div class="page-subtitle">A step-by-step way to build a defensible ISO 27001 risk register. Confirm what we know about the client, let the assistant draft tailored risks, then review and keep the ones that fit.</div>
+  </div>
+  <a href="/workspaces/<%= ws.id %>/risks" class="btn btn-secondary btn-xs">Back to register</a>
+</div>
+
+<%- include('partials/risk_tabs', { ws, active: 'register' }) %>
+
+<!-- Stepper -->
+<div class="row" id="gStepper" style="gap:0;margin:4px 0 18px;">
+  <% [['1','Confirm context'],['2','Review suggestions'],['3','Add to register']].forEach((s, n) => { %>
+    <div class="g-step <%= n === 0 ? 'is-active' : '' %>" data-step="<%= n+1 %>" style="display:flex;align-items:center;gap:8px;padding:0 14px 0 0;">
+      <span class="g-step-num" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;border:1px solid var(--border);font-size:12px;font-variant-numeric:tabular-nums;"><%= s[0] %></span>
+      <span class="text-md" style="letter-spacing:0.02em;"><%= s[1] %></span>
+      <% if (n < 2) { %><span class="text-tertiary" style="margin-left:14px;">›</span><% } %>
+    </div>
+  <% }) %>
+</div>
+
+<!-- ============ STEP 1: CONTEXT ============ -->
+<section id="step1">
+  <% if (!aiConfigured) { %>
+    <div class="panel" style="margin-bottom:16px;background:var(--bg-subtle);">
+      <div class="panel-pad">
+        <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:500;margin-bottom:6px;">Assistant not configured</div>
+        <div class="text-md text-secondary" style="line-height:1.55;">AI suggestions are turned off because no <span class="mono">ANTHROPIC_API_KEY</span> is set. You can still build the register manually with the <a class="link" href="/workspaces/<%= ws.id %>/risks/library">starter library</a> or <a class="link" href="/workspaces/<%= ws.id %>/risks">New risk</a>. To turn the assistant on, add <span class="mono">ANTHROPIC_API_KEY</span> to <span class="mono">.env</span> and restart.</div>
+      </div>
+    </div>
+  <% } %>
+
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="panel-head"><h2>Step 1 · What do we know about this client?</h2></div>
+    <div class="panel-pad">
+      <div class="text-md text-secondary" style="line-height:1.6;margin-bottom:14px;">
+        The more the assistant knows, the more relevant the risks. We've pre-filled this from the client record and engagement intake. Add anything else that matters: key systems, customer data types, regulatory drivers, recent incidents, crown-jewel assets.
+      </div>
+      <label class="label">Client context</label>
+      <textarea id="ctxBox" class="textarea" rows="10" style="font-family:inherit;line-height:1.5;"><%= prefillContext %></textarea>
+
+      <div class="row" style="margin-top:14px;align-items:flex-end;justify-content:space-between;">
+        <div>
+          <label class="label">How many risks to draft?</label>
+          <select id="ctxCount" class="select" style="width:auto;">
+            <option value="8">8</option>
+            <option value="12" selected>12</option>
+            <option value="16">16</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+        <button id="genBtn" class="btn btn-primary" <%= aiConfigured ? '' : 'disabled' %>>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;vertical-align:-2px;"><path d="M12 3l1.9 5.8L20 10l-5.1 2.2L12 18l-1.9-5.8L4 10l6.1-1.2z"/></svg>
+          Draft risks with the assistant
+        </button>
+      </div>
+      <div class="text-xs text-tertiary" style="margin-top:8px;">The assistant proposes risks scored against this workspace's <strong><%= methodology.name %></strong> methodology. Nothing is saved until you review and add them in step 3.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ generating / error states ============ -->
+<div id="genStatus" class="panel" style="display:none;margin-bottom:16px;">
+  <div class="panel-pad" style="display:flex;align-items:center;gap:12px;">
+    <span class="g-spinner" style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:999px;display:inline-block;animation:gspin 0.7s linear infinite;"></span>
+    <span class="text-md text-secondary" id="genStatusText">Analysing the client and drafting tailored risks… this usually takes 15-30 seconds.</span>
+  </div>
+</div>
+<div id="genError" class="panel" style="display:none;margin-bottom:16px;background:rgba(185,28,28,0.05);">
+  <div class="panel-pad text-md" style="color:var(--danger,#b91c1c);" id="genErrorText"></div>
+</div>
+
+<!-- ============ STEP 2/3: REVIEW + COMMIT ============ -->
+<section id="step2" style="display:none;">
+  <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <h2 style="margin:0;">Step 2 · Review the suggestions</h2>
+    <button id="regenBtn" class="btn btn-secondary btn-xs">Start over</button>
+  </div>
+  <div class="text-md text-secondary" style="line-height:1.6;margin-bottom:14px;">
+    Each card is a proposed risk with a suggested score and the reasoning behind it. <strong>Keep</strong> the ones that fit, edit anything that's off, and <strong>untick</strong> the rest. Every kept risk is linked to its Annex A controls, which feeds your Statement of Applicability automatically.
+  </div>
+
+  <div id="cards"></div>
+
+  <!-- sticky commit bar -->
+  <form id="commitForm" method="POST" action="/workspaces/<%= ws.id %>/risks/guided/commit" onsubmit="return buildPayload()">
+    <input type="hidden" name="payload" id="commitPayload">
+    <div style="position:sticky;bottom:0;background:var(--bg-deep);border-top:1px solid var(--border);padding:12px 0;margin-top:8px;display:flex;align-items:center;justify-content:space-between;z-index:5;">
+      <div class="meta"><span id="selCount">0</span> of <span id="totalCount">0</span> selected</div>
+      <div class="row">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="setAllSelected(true)">Select all</button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="setAllSelected(false)">Clear</button>
+        <button type="submit" class="btn btn-primary" id="commitBtn">Add selected to register</button>
+      </div>
+    </div>
+  </form>
+</section>
+
+<style>
+@keyframes gspin { to { transform: rotate(360deg); } }
+.risk-card { margin-bottom:14px; transition: opacity 0.15s ease; }
+.risk-card.deselected { opacity:0.5; }
+.ctrl-chip { display:inline-flex;align-items:center;gap:5px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11.5px;margin:2px 4px 2px 0; }
+.ctrl-chip button { border:none;background:none;cursor:pointer;color:var(--text-tertiary);font-size:13px;line-height:1;padding:0; }
+.why-box { background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-top:10px; }
+</style>
+
+<script>
+(function () {
+  var MJ = {
+    likelihood: <%- JSON.stringify(methodology.likelihood_scale) %>,
+    impact: <%- JSON.stringify(methodology.impact_scale) %>,
+    matrix: <%- JSON.stringify(methodology.matrix) %>,
+    thresholds: <%- JSON.stringify(methodology.thresholds) %>
+  };
+  var CONTROLS = <%- JSON.stringify(controls.map(function(c){ return { id: c.id, title: c.title }; })) %>;
+  var WS_ID = '<%= ws.id %>';
+  var ctrlTitle = {};
+  CONTROLS.forEach(function (c) { ctrlTitle[c.id] = c.title; });
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function bandFor(l, i) {
+    var li = Math.max(1, Math.min(MJ.matrix.length, l));
+    var ii = Math.max(1, Math.min(MJ.matrix[0].length, i));
+    return MJ.matrix[li - 1][ii - 1];
+  }
+  function bandColor(b) { return (MJ.thresholds[b] && MJ.thresholds[b].color) || '#71717a'; }
+  function scaleOptions(scale, sel) {
+    return scale.map(function (s) {
+      return '<option value="' + s.value + '"' + (s.value === sel ? ' selected' : '') + '>' + s.value + ' · ' + esc(s.label) + '</option>';
+    }).join('');
+  }
+  function controlSelectOptions() {
+    return '<option value="">+ add control…</option>' + CONTROLS.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.title) + '</option>';
+    }).join('');
+  }
+
+  function bandTagHtml(b) {
+    var c = bandColor(b);
+    return '<span class="tag band-tag" style="background:' + c + '1a;color:' + c + ';border-color:' + c + '40;text-transform:uppercase;font-size:10.5px;letter-spacing:0.04em;">' + esc(b) + '</span>';
+  }
+
+  function cardHtml(r, idx) {
+    var band = bandFor(r.likelihood, r.impact);
+    var ciaHtml = (r.cia || []).map(function (x) {
+      return '<span class="tag" style="font-size:10.5px;">' + esc(x[0]) + '</span>';
+    }).join(' ');
+    var chips = (r.suggested_controls || []).map(function (cid) {
+      return '<span class="ctrl-chip" data-cid="' + esc(cid) + '">' + esc(ctrlTitle[cid] || cid) + ' <button type="button" title="Remove" onclick="this.parentNode.remove()">×</button></span>';
+    }).join('');
+    var treatments = [['modify', 'Modify (apply controls)'], ['retain', 'Retain (accept)'], ['avoid', 'Avoid (eliminate)'], ['share', 'Share (transfer)']];
+    var trHtml = treatments.map(function (t) {
+      return '<option value="' + t[0] + '"' + (t[0] === r.treatment ? ' selected' : '') + '>' + t[1] + '</option>';
+    }).join('');
+
+    return '' +
+      '<div class="risk-card panel" data-idx="' + idx + '">' +
+        '<div class="panel-pad">' +
+          '<div class="row" style="align-items:flex-start;gap:10px;">' +
+            '<input type="checkbox" class="sel" checked style="margin-top:7px;width:16px;height:16px;flex:none;">' +
+            '<div style="flex:1;">' +
+              '<input class="input f-title" value="' + esc(r.title) + '" style="font-weight:500;">' +
+            '</div>' +
+            '<div style="flex:none;text-align:right;min-width:64px;">' + bandTagHtml(band) + '</div>' +
+          '</div>' +
+
+          '<div class="grid-2" style="margin-top:10px;">' +
+            '<div><label class="label">Threat</label><input class="input f-threat" value="' + esc(r.threat) + '"></div>' +
+            '<div><label class="label">Vulnerability</label><input class="input f-vuln" value="' + esc(r.vulnerability) + '"></div>' +
+          '</div>' +
+
+          '<div style="margin-top:10px;"><label class="label">Description</label><textarea class="textarea f-desc" rows="2">' + esc(r.description) + '</textarea></div>' +
+
+          '<div class="row" style="margin-top:10px;gap:16px;align-items:flex-end;">' +
+            '<div><label class="label">Likelihood</label><select class="select f-l">' + scaleOptions(MJ.likelihood, r.likelihood) + '</select></div>' +
+            '<div><label class="label">Impact</label><select class="select f-i">' + scaleOptions(MJ.impact, r.impact) + '</select></div>' +
+            '<div><label class="label">Treatment</label><select class="select f-treat">' + trHtml + '</select></div>' +
+            '<div style="flex:1;"></div>' +
+            (ciaHtml ? '<div style="text-align:right;"><div class="label">Affects</div>' + ciaHtml + '</div>' : '') +
+          '</div>' +
+
+          ((r.likelihood_rationale || r.impact_rationale) ?
+            '<div class="text-xs text-tertiary" style="margin-top:8px;line-height:1.5;">' +
+              (r.likelihood_rationale ? '<div><strong>Likelihood:</strong> ' + esc(r.likelihood_rationale) + '</div>' : '') +
+              (r.impact_rationale ? '<div><strong>Impact:</strong> ' + esc(r.impact_rationale) + '</div>' : '') +
+            '</div>' : '') +
+
+          (r.why_it_matters ?
+            '<div class="why-box">' +
+              '<div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:500;margin-bottom:4px;">Why this matters</div>' +
+              '<div class="text-md" style="line-height:1.55;">' + esc(r.why_it_matters) + '</div>' +
+            '</div>' : '') +
+
+          '<div style="margin-top:12px;">' +
+            '<div class="label">Annex A controls</div>' +
+            '<div class="chips">' + chips + '</div>' +
+            '<select class="select ctrl-add" style="margin-top:6px;width:auto;max-width:100%;">' + controlSelectOptions() + '</select>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  var cardsEl = document.getElementById('cards');
+  var step1 = document.getElementById('step1');
+  var step2 = document.getElementById('step2');
+  var genBtn = document.getElementById('genBtn');
+  var genStatus = document.getElementById('genStatus');
+  var genError = document.getElementById('genError');
+
+  function recountSelected() {
+    var cards = cardsEl.querySelectorAll('.risk-card');
+    var n = 0;
+    cards.forEach(function (c) {
+      var on = c.querySelector('.sel').checked;
+      c.classList.toggle('deselected', !on);
+      if (on) n++;
+    });
+    document.getElementById('selCount').textContent = n;
+    document.getElementById('totalCount').textContent = cards.length;
+    var btn = document.getElementById('commitBtn');
+    btn.disabled = n === 0;
+    btn.textContent = n ? ('Add ' + n + ' risk' + (n === 1 ? '' : 's') + ' to register') : 'Add selected to register';
+  }
+
+  function liveBand(card) {
+    var l = parseInt(card.querySelector('.f-l').value, 10);
+    var i = parseInt(card.querySelector('.f-i').value, 10);
+    var b = bandFor(l, i);
+    var tag = card.querySelector('.band-tag');
+    var c = bandColor(b);
+    tag.textContent = b;
+    tag.style.background = c + '1a';
+    tag.style.color = c;
+    tag.style.borderColor = c + '40';
+  }
+
+  function wireCard(card) {
+    card.querySelector('.sel').addEventListener('change', recountSelected);
+    card.querySelector('.f-l').addEventListener('change', function () { liveBand(card); });
+    card.querySelector('.f-i').addEventListener('change', function () { liveBand(card); });
+    var add = card.querySelector('.ctrl-add');
+    add.addEventListener('change', function () {
+      var cid = add.value;
+      add.value = '';
+      if (!cid) return;
+      var chipWrap = card.querySelector('.chips');
+      if (chipWrap.querySelector('[data-cid="' + cid + '"]')) return; // already there
+      var span = document.createElement('span');
+      span.className = 'ctrl-chip';
+      span.setAttribute('data-cid', cid);
+      span.innerHTML = esc(ctrlTitle[cid] || cid) + ' <button type="button" title="Remove">×</button>';
+      span.querySelector('button').addEventListener('click', function () { span.remove(); });
+      chipWrap.appendChild(span);
+    });
+  }
+
+  function renderCards(risks) {
+    cardsEl.innerHTML = risks.map(cardHtml).join('');
+    cardsEl.querySelectorAll('.risk-card').forEach(wireCard);
+    recountSelected();
+  }
+
+  function setStep(n) {
+    document.querySelectorAll('#gStepper .g-step').forEach(function (el) {
+      el.classList.toggle('is-active', parseInt(el.getAttribute('data-step'), 10) <= n);
+    });
+  }
+  window.setAllSelected = function (on) {
+    cardsEl.querySelectorAll('.risk-card .sel').forEach(function (cb) { cb.checked = on; });
+    recountSelected();
+  };
+
+  // Build the commit payload from the (possibly edited) cards.
+  window.buildPayload = function () {
+    var out = [];
+    cardsEl.querySelectorAll('.risk-card').forEach(function (card) {
+      if (!card.querySelector('.sel').checked) return;
+      var controls = [];
+      card.querySelectorAll('.ctrl-chip[data-cid]').forEach(function (ch) { controls.push(ch.getAttribute('data-cid')); });
+      out.push({
+        title: card.querySelector('.f-title').value,
+        threat: card.querySelector('.f-threat').value,
+        vulnerability: card.querySelector('.f-vuln').value,
+        description: card.querySelector('.f-desc').value,
+        likelihood: parseInt(card.querySelector('.f-l').value, 10),
+        impact: parseInt(card.querySelector('.f-i').value, 10),
+        treatment: card.querySelector('.f-treat').value,
+        suggested_controls: controls
+      });
+    });
+    if (!out.length) {
+      if (window.toast) toast('Select at least one risk to add', 'error');
+      return false;
+    }
+    document.getElementById('commitPayload').value = JSON.stringify(out);
+    if (window._markBusy) _markBusy(document.getElementById('commitForm'), 'Adding…');
+    return true;
+  };
+
+  async function generate() {
+    genError.style.display = 'none';
+    genStatus.style.display = '';
+    genBtn.disabled = true;
+    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || window._csrfToken || '';
+    try {
+      var res = await fetch('/workspaces/' + WS_ID + '/risks/guided/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          context: document.getElementById('ctxBox').value,
+          count: parseInt(document.getElementById('ctxCount').value, 10)
+        })
+      });
+      var data = await res.json().catch(function () { return { ok: false, error: 'Unexpected response.' }; });
+      genStatus.style.display = 'none';
+      genBtn.disabled = false;
+      if (!data.ok || !data.risks || !data.risks.length) {
+        genError.style.display = '';
+        document.getElementById('genErrorText').textContent = (data && data.error) || 'No risks were returned. Try adding more context and generating again.';
+        return;
+      }
+      renderCards(data.risks);
+      step1.style.display = 'none';
+      step2.style.display = '';
+      setStep(2);
+      step2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {
+      genStatus.style.display = 'none';
+      genBtn.disabled = false;
+      genError.style.display = '';
+      document.getElementById('genErrorText').textContent = 'Could not reach the assistant. Check your connection and try again.';
+    }
+  }
+
+  if (genBtn) genBtn.addEventListener('click', generate);
+  var regen = document.getElementById('regenBtn');
+  if (regen) regen.addEventListener('click', function () {
+    step2.style.display = 'none';
+    step1.style.display = '';
+    setStep(1);
+    step1.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+})();
+</script>
+
+<%- include('partials/footer') %>
