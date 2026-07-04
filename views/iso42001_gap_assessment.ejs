@@ -7,7 +7,7 @@
   </div>
   <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/start">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <button class="btn btn-primary">▶ Start a new pass</button>
+    <button class="btn btn-primary">Start a new pass</button>
   </form>
 </div>
 

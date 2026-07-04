@@ -80,7 +80,7 @@
 // Used for the audit-pack PDF render (Puppeteer cold-start is ~2 s) and the
 // bulk-adopt-mandatory wizard (10 inserts + control links). Keeps the user
 // from double-clicking and signals "we heard you, working on it." No global
-// spinner / skeleton chrome — the button itself is the indicator.
+// spinner / skeleton chrome; the button itself is the indicator.
 window._markBusy = function (form, label) {
   if (!form || form._isBusy) return false;
   form._isBusy = true;

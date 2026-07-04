@@ -372,7 +372,7 @@
   <div class="panel" style="margin-bottom:14px;background:rgba(202,138,4,0.06);padding:14px 18px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
       <div style="flex:1;">
-        <div style="font-weight: 500;color:#a16207;font-size:13px;margin-bottom:3px;">🚩 Flagged for senior review</div>
+        <div style="font-weight: 500;color:#a16207;font-size:13px;margin-bottom:3px;display:flex;align-items:center;gap:6px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Flagged for senior review</div>
         <div class="meta" style="font-size:12px;line-height:1.5;">
           Requested by <strong><%= requestedByName || 'someone' %></strong> on <%= state.review_requested_at %>.
           <% if (state.review_reason) { %><br><em>"<%= state.review_reason %>"</em><% } %>
@@ -411,9 +411,9 @@
     </div>
   </div>
 <% } else { %>
-  <details class="panel" style="margin-bottom:14px;border-left:3px dashed var(--border-strong);">
+  <details class="panel" style="margin-bottom:14px;border-style:dashed;">
     <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);">
-      🚩 Flag for senior review
+      Flag for senior review
       <span class="meta" style="font-weight:400;font-size:12px;margin-left:6px;">- ask a senior to review your assessment before signoff</span>
     </summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/flag-for-review" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">

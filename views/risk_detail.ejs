@@ -97,7 +97,7 @@
         <div class="meta">L<%= risk.likelihood %> · I<%= risk.impact %></div>
       </div>
       <div class="text-tertiary" style="font-size:24px;">→</div>
-      <div style="text-align:center;padding:14px;background:#eef2ff;border-radius:8px;border:1px dashed var(--accent);">
+      <div style="text-align:center;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px dashed var(--accent);">
         <div class="meta">Controls applied</div>
         <div style="font-size:18px;font-weight: 500;color:var(--accent);"><%= reduction > 0 ? '−' : '+' %><%= Math.abs(reduction) %></div>
         <div class="meta"><%= pctReduction %>% reduction</div>

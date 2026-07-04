@@ -9,10 +9,10 @@
     'treatment':     '#ea580c',
     'control':       '#6b7280',
     'audit':         '#0891b2',
-    'mrm':           '#7c3aed',
+    'mrm':           '#475569',
     'cert':          '#16a34a',
     'doc-review':    '#a16207',
-    'supplier':      '#9333ea',
+    'supplier':      '#475569',
     'questionnaire': '#c026d3'
   };
   const kindLabel = {
@@ -22,9 +22,9 @@
   };
   const prettyRole = r => r ? String(r).replace(/_/g, ' ') : '';
   const daysAgo = d => Math.max(1, Math.round((Date.parse(today) - Date.parse(d)) / 86400000));
-  // Soft tints for engagement duration bars — deliberately lighter than the
+  // Soft tints for engagement duration bars: deliberately lighter than the
   // event chips so they read as background context, not as work items.
-  const projPalette = ['#dbeafe', '#dcfce7', '#fef3c7', '#ede9fe', '#cffafe', '#fce7f3', '#ffedd5', '#e0e7ff'];
+  const projPalette = ['#dbeafe', '#dcfce7', '#fef3c7', '#e7e5e4', '#cffafe', '#fce7f3', '#ffedd5', '#e2e8f0'];
   const projColor = i => projPalette[i % projPalette.length];
   const prettyDate = d => d ? new Date(d + 'T00:00:00').toLocaleString('en', { day: 'numeric', month: 'short' }) : '';
 %>
@@ -47,9 +47,9 @@
   .mc-mcard:hover { background:var(--bg-subtle); }
   .mc-mcard.is-current { background:rgba(37,99,235,0.05); }
   .mc-mcard-head { display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:4px; }
-  .mc-mcard-name { font-weight:600; font-size:15px; color:var(--text); letter-spacing:-0.01em; }
+  .mc-mcard-name { font-weight:500; font-size:15px; color:var(--text); letter-spacing:-0.01em; }
   .mc-mcard-count { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; flex-shrink:0; }
-  .mc-now-tag { font-size:9px; font-weight:600; color:var(--bg); background:var(--accent); border-radius:3px;
+  .mc-now-tag { font-size:9px; font-weight:500; color:var(--bg); background:var(--accent); border-radius:3px;
                 padding:1px 5px; margin-left:6px; vertical-align:1px; letter-spacing:0.04em; text-transform:uppercase; }
   /* Engagement bars overlaid across each year-row, just below the month names */
   .mc-yspan { position:absolute; left:0; right:0; top:36px; display:grid;
@@ -94,7 +94,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Calendar</h1>
-    <div class="page-subtitle"><% if (view === 'year') { %>A year at a glance — engagement timelines and deadlines across every client. Click any month to open its day-by-day view.<% } else { %>Day-by-day view for the month. Bars show how long each project runs to its target certification; chips mark audits, reviews and assigned work.<% } %></div>
+    <div class="page-subtitle"><% if (view === 'year') { %>A year at a glance: engagement timelines and deadlines across every client. Click any month to open its day-by-day view.<% } else { %>Day-by-day view for the month. Bars show how long each project runs to its target certification; chips mark audits, reviews and assigned work.<% } %></div>
   </div>
   <div class="row-center">
     <% if (view === 'year') { %>
@@ -150,7 +150,7 @@
               <a href="?month=<%= row.months[b.startCol].ym %>"
                  class="mc-ybar<%= b.capLeft ? ' cap-l' : '' %><%= b.capRight ? ' cap-r' : '' %>"
                  style="grid-row:<%= b.lane + 1 %>;grid-column:<%= b.startCol + 1 %> / <%= b.endCol + 2 %>;background:<%= projColor(b.lane) %>;"
-                 title="<%= b.name %><%= b.stage ? ' — ' + b.stage : '' %> · <%= prettyDate(b.start) %> → <%= prettyDate(b.end) %> (<%= b.daysToCert >= 0 ? b.daysToCert + ' days to target cert' : Math.abs(b.daysToCert) + ' days past target' %>)">
+                 title="<%= b.name %><%= b.stage ? ' · ' + b.stage : '' %> · <%= prettyDate(b.start) %> → <%= prettyDate(b.end) %> (<%= b.daysToCert >= 0 ? b.daysToCert + ' days to target cert' : Math.abs(b.daysToCert) + ' days past target' %>)">
                 <% if (b.labelHere) { %><%= b.name %><% if (b.capLeft && b.stage) { %> <span style="opacity:.65;">· <%= b.stage %></span><% } %><% } %>
               </a>
             <% }) %>
@@ -192,7 +192,7 @@
               <a href="<%= b.link %>"
                  class="mc-span<%= b.capLeft ? ' cap-l' : '' %><%= b.capRight ? ' cap-r' : '' %>"
                  style="grid-row:<%= b.lane + 1 %>;grid-column:<%= b.startCol + 1 %> / <%= b.endCol + 2 %>;background:<%= projColor(b.lane) %>;"
-                 title="<%= b.name %><%= b.stage ? ' — ' + b.stage : '' %> · <%= prettyDate(b.start) %> → <%= prettyDate(b.end) %> (<%= b.daysToCert >= 0 ? b.daysToCert + ' days to target cert' : Math.abs(b.daysToCert) + ' days past target' %>)">
+                 title="<%= b.name %><%= b.stage ? ' · ' + b.stage : '' %> · <%= prettyDate(b.start) %> → <%= prettyDate(b.end) %> (<%= b.daysToCert >= 0 ? b.daysToCert + ' days to target cert' : Math.abs(b.daysToCert) + ' days past target' %>)">
                 <% if (b.labelHere) { %><%= b.name %><% if (b.capLeft && b.stage) { %> <span style="opacity:.65;">· <%= b.stage %></span><% } %><% } %>
               </a>
             <% }) %>
@@ -202,10 +202,10 @@
           <% wk.days.forEach((c, colIdx) => { const isToday = c && c.date === today; %>
             <div class="mc-cell" style="<%= colIdx < 6 ? 'border-right:1px solid var(--border);' : '' %><%= isToday ? 'background:rgba(37,99,235,0.05);' : '' %>">
               <% if (c) { %>
-                <div class="mc-daynum" style="<%= isToday ? 'color:#2563eb;font-weight:700;' : '' %>"><%= c.day %></div>
+                <div class="mc-daynum" style="<%= isToday ? 'color:#2563eb;font-weight:500;' : '' %>"><%= c.day %></div>
                 <% if (wk.laneRows) { %><div style="height:<%= wk.laneRows * 16 %>px;" aria-hidden="true"></div><% } %>
                 <% c.events.slice(0, 3).forEach(e => { %>
-                  <a href="<%= e.link %>" class="mc-chip" style="background:<%= kindColor[e.kind] || '#666' %>;" title="<%= e.wsName %> — <%= kindLabel[e.kind] || e.kind %>: <%= e.title %>"><%= e.title %></a>
+                  <a href="<%= e.link %>" class="mc-chip" style="background:<%= kindColor[e.kind] || '#666' %>;" title="<%= e.wsName %> · <%= kindLabel[e.kind] || e.kind %>: <%= e.title %>"><%= e.title %></a>
                 <% }) %>
                 <% if (c.events.length > 3) { %><div class="meta" style="font-size:10px;">+ <%= c.events.length - 3 %> more</div><% } %>
               <% } %>

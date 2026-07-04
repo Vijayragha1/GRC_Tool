@@ -6,7 +6,7 @@
     <div class="page-subtitle">Mandatory ISO 27001 document (clause 6.1.3.d). Applicability and justification for all 93 Annex A controls, plus any non-Annex-A controls you've added.</div>
   </div>
   <div class="row">
-    <button type="button" id="soaSaveAll" class="btn btn-primary btn-xs" style="display:none;" title="Flush every pending row change in one batched request. Useful at the end of a sweep — beats waiting for the per-row debounce to settle.">Save all changes <span id="soaSaveAllCount" class="num"></span></button>
+    <button type="button" id="soaSaveAll" class="btn btn-primary btn-xs" style="display:none;" title="Flush every pending row change in one batched request. Useful at the end of a sweep; beats waiting for the per-row debounce to settle.">Save all changes <span id="soaSaveAllCount" class="num"></span></button>
     <span class="text-xs" id="soaAutosaveStatus" style="line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle" title="Edits to applicability, status, and justification autosave ~500ms after you stop typing. Use Save all changes to flush immediately.">All changes saved</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/auto-justify" style="display:inline" onsubmit="return appConfirmForm(event, 'For every Annex A control that any open risk has selected as a treatment, mark it Included and pre-fill an inclusion justification of the form &quot;Treats {risk titles}&quot;. Existing justifications are not overwritten. This is the fastest way to a defensible first-pass SoA. You can edit each justification afterwards. Continue?')"><button class="btn btn-secondary btn-xs" title="For every control linked to a risk: mark Included + write justification of the form 'Treats X, Y, Z'. Existing justifications kept. Idempotent.">Auto-justify from risks</button></form>
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs" title="Capture an immutable, hashed copy of the current SoA state. Auditors compare snapshots over time - capture before each MRM and before each audit.">Capture snapshot</button></form>
@@ -295,12 +295,12 @@
   // Collect every dirty form into a single payload and POST to /soa/batch.
   // Used by the "Save all changes" button: cancels pending debounced submits
   // and applies the batch in one server round-trip + transaction. Falls back
-  // gracefully — on error, individual autosaves will retry.
+  // gracefully: on error, individual autosaves will retry.
   async function saveAll() {
     if (!saveAllBtn || dirty.size === 0) return;
     const wsMatch = location.pathname.match(/\/workspaces\/(\d+)/);
     if (!wsMatch) return;
-    // Cancel pending debounces — we're flushing now.
+    // Cancel pending debounces: we're flushing now.
     dirty.forEach(form => clearTimeout(timers.get(form)));
     const rows = [];
     dirty.forEach(form => {

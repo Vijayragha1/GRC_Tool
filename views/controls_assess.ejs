@@ -35,7 +35,7 @@
 <style>
   /* Two-column layout: theme-jump navigator on the left (220 px sticky),
      assessment content on the right. The navigator is the answer to "walking
-     118 items linearly is painful" — consultants bounce between themes. */
+     118 items linearly is painful": consultants bounce between themes. */
   .assess-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
   @media (max-width: 1100px) { .assess-shell { grid-template-columns: 1fr; } .nav-jump { position: static !important; max-height: none !important; } }
 </style>
@@ -450,7 +450,7 @@
   <div class="panel" style="margin-bottom:14px;background:rgba(202,138,4,0.06);padding:14px 18px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
       <div style="flex:1;">
-        <div style="font-weight: 500;color:#a16207;font-size:13px;margin-bottom:3px;">🚩 Flagged for senior review</div>
+        <div style="font-weight: 500;color:#a16207;font-size:13px;margin-bottom:3px;display:flex;align-items:center;gap:6px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Flagged for senior review</div>
         <div class="meta" style="font-size:12px;line-height:1.5;">
           Requested by <strong><%= requestedByName || 'someone' %></strong> on <%= state.review_requested_at %>.
           <% if (state.review_reason) { %><br><em>"<%= state.review_reason %>"</em><% } %>
@@ -489,9 +489,9 @@
     </div>
   </div>
 <% } else { %>
-  <details class="panel" style="margin-bottom:14px;border-left:3px dashed var(--border-strong);">
+  <details class="panel" style="margin-bottom:14px;border-style:dashed;">
     <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);">
-      🚩 Flag for senior review
+      Flag for senior review
       <span class="meta" style="font-weight:400;font-size:12px;margin-left:6px;">- ask a senior to review your assessment before signoff</span>
     </summary>
     <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/flag-for-review" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
@@ -547,7 +547,7 @@
                 <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
                 <% if (badgeLabel) { %><span style="font-size:9px;font-weight: 500;color:white;background:<%= badgeColor %>;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;"><%= badgeLabel %></span><% } %>
                 <% if (e.clause_section) { %><span class="mono meta text-eyebrow" style="background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
-                <% if (e.link_count && e.link_count > 1) { %><span class="mono text-xxs" style="color:#7c3aed;background:rgba(124,58,237,0.10);padding:1px 5px;border-radius:3px;" title="Linked to <%= e.link_count %> controls/clauses">×<%= e.link_count %></span><% } %>
+                <% if (e.link_count && e.link_count > 1) { %><span class="mono text-xxs" style="color:#475569;background:rgba(71,85,105,0.10);padding:1px 5px;border-radius:3px;" title="Linked to <%= e.link_count %> controls/clauses">×<%= e.link_count %></span><% } %>
               </div>
               <div class="meta text-xs"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
             </div>

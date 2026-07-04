@@ -8,7 +8,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Inbox</h1>
-    <div class="page-subtitle">Everything needing your attention on this client — live items computed from your data, your notifications, and a 30-day plan.</div>
+    <div class="page-subtitle">Everything needing your attention on this client: live items computed from your data, your notifications, and a 30-day plan.</div>
   </div>
 </div>
 
@@ -55,14 +55,14 @@
             <input type="hidden" name="return" value="/workspaces/<%= ws.id %>/inbox<%= filter === 'all' ? '?filter=all' : '' %>">
             <span class="meta text-xs">Email me</span>
             <button name="value" value="immediate" class="btn <%= emailOff ? 'btn-secondary' : 'btn-primary' %> btn-xs" title="Email me when a new notification is raised">On</button>
-            <button name="value" value="off" class="btn <%= emailOff ? 'btn-primary' : 'btn-secondary' %> btn-xs" title="In-app only — no emails">Off</button>
+            <button name="value" value="off" class="btn <%= emailOff ? 'btn-primary' : 'btn-secondary' %> btn-xs" title="In-app only, no emails">Off</button>
           </form>
         </div>
       </div>
       <% if (notifications.length === 0) { %>
         <div class="t-empty" style="padding:28px 20px;text-align:center;line-height:1.6;">
           <div style="font-weight:500;color:var(--text);">All caught up</div>
-          <div class="meta">No <%= filter === 'unread' ? 'unread ' : '' %>notifications<% if (computed.length > 0) { %> — see live items above<% } %>.</div>
+          <div class="meta">No <%= filter === 'unread' ? 'unread ' : '' %>notifications<% if (computed.length > 0) { %>; see live items above<% } %>.</div>
         </div>
       <% } else { %>
         <% notifications.forEach(n => { %>
@@ -99,7 +99,7 @@
         <span class="meta text-xs" id="planSavedBadge">&nbsp;</span>
       </div>
       <div style="padding:12px 14px;">
-        <textarea name="monthly_plan" id="monthlyPlan" rows="14" placeholder="What you want to get done on this client over the next 30 days. Free-form — checklist, narrative, copy-paste from email, whatever fits. Auto-saves on blur." style="width:100%;border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px;line-height:1.6;color:var(--text);background:var(--bg);resize:vertical;"><%= monthlyPlan %></textarea>
+        <textarea name="monthly_plan" id="monthlyPlan" rows="14" placeholder="What you want to get done on this client over the next 30 days. Free-form: checklist, narrative, copy-paste from email, whatever fits. Auto-saves on blur." style="width:100%;border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px;line-height:1.6;color:var(--text);background:var(--bg);resize:vertical;"><%= monthlyPlan %></textarea>
         <div class="meta text-xs" style="margin-top:8px;">Saves on blur.</div>
       </div>
     </form>

@@ -51,10 +51,7 @@
             <option value="20">20</option>
           </select>
         </div>
-        <button id="genBtn" class="btn btn-primary" <%= aiConfigured ? '' : 'disabled' %>>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;vertical-align:-2px;"><path d="M12 3l1.9 5.8L20 10l-5.1 2.2L12 18l-1.9-5.8L4 10l6.1-1.2z"/></svg>
-          Draft risks with the assistant
-        </button>
+        <button id="genBtn" class="btn btn-primary" <%= aiConfigured ? '' : 'disabled' %>>Draft risks with the assistant</button>
       </div>
       <div class="text-xs text-tertiary" style="margin-top:8px;">The assistant proposes risks scored against this workspace's <strong><%= methodology.name %></strong> methodology. Nothing is saved until you review and add them in step 3.</div>
     </div>

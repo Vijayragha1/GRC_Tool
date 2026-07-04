@@ -123,7 +123,7 @@
   const clientName = ws.brand_display_name || ws.client_name;
   const docId = 'ISMS-CRR-' + String(ws.id).padStart(4, '0') + '-' + today.replace(/-/g, '');
 
-  // Verdict logic — driven by the two-layer model (Layer 1 hard gate
+  // Verdict logic: driven by the two-layer model (Layer 1 hard gate
   // decides Ready/Not-Ready; Layer 2 maturity is secondary).
   const stage1Pass = !!r.stage1Ready;
   const stage2Pass = !!r.stage2Ready;
@@ -138,7 +138,7 @@
     narrative = 'The Stage 1 hard gate is clear and maturity meets the 60% floor. Close the Stage 2 hard-gate items and lift maturity to 75% before a Stage 2 visit.';
   } else if (r.stage1GateClear && !r.stage1MaturityOk) {
     verdict = 'caution'; verdictWord = 'In progress';
-    narrative = 'Every Stage 1 hard-gate item passes but average control maturity (' + r.maturityPct + '%) is below the 60% Stage 1 floor — aggregated minors risk escalating to a major. Lift maturity before booking Stage 1.';
+    narrative = 'Every Stage 1 hard-gate item passes but average control maturity (' + r.maturityPct + '%) is below the 60% Stage 1 floor; aggregated minors risk escalating to a major. Lift maturity before booking Stage 1.';
   } else {
     verdict = 'stop'; verdictWord = 'Not ready';
     narrative = (r.stage1GateTotal - r.stage1GatePassed) + ' of ' + r.stage1GateTotal + ' Stage 1 hard-gate items are still failing. Any single Layer 1 failure blocks readiness regardless of maturity (ISO/IEC 17021-1 §9.5.2).';
@@ -174,7 +174,7 @@
     { label: 'Implemented',          sub: 'Counts toward audit-ready coverage',                count: r.metrics.implemented, dot: 'green',  evidence: 'Yes, when evidenced' },
     { label: 'Partially Implemented', sub: 'Coverage gap on existing control',                 count: r.metrics.partial,     dot: 'amber',  evidence: 'No' },
     { label: 'Work In Progress',     sub: 'Implementation under way',                          count: r.metrics.wip,         dot: 'orange', evidence: 'No' },
-    { label: 'Not Implemented',      sub: 'Absent — gap requiring action',                     count: r.metrics.notImpl,     dot: 'red',    evidence: 'No' },
+    { label: 'Not Implemented',      sub: 'Absent: gap requiring action',                     count: r.metrics.notImpl,     dot: 'red',    evidence: 'No' },
     { label: 'Not Applicable',       sub: 'Excluded with documented justification',            count: r.metrics.na,          dot: 'hollow', evidence: 'N/A' }
   ];
 
@@ -427,7 +427,7 @@
           const dot = c.pass ? passDot : failDot;
           const action = c.pass
             ? '<span style="color:var(--text-tertiary);font-style:italic;">' + c.detail + '</span>'
-            : c.detail + ' — <a href="' + c.href + '" style="color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;">' + c.action + '</a>';
+            : c.detail + ' · <a href="' + c.href + '" style="color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;">' + c.action + '</a>';
           html += '<tr>'
                 + '<td class="num dim">' + (i + 1) + '</td>'
                 + '<td class="ref">' + c.clause + '</td>'
@@ -487,7 +487,7 @@
           const dot = c.pass ? passDot : failDot;
           const status = c.pass
             ? '<span style="color:var(--text-tertiary);">' + c.detail + '</span>'
-            : c.detail + (c.action ? ' — <a href="' + c.href + '" style="color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;">' + c.action + '</a>' : '');
+            : c.detail + (c.action ? ' · <a href="' + c.href + '" style="color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor;">' + c.action + '</a>' : '');
           // Requirement name links to where it's evidenced/fixed.
           const nameCell = c.href
             ? '<a href="' + c.href + '" style="color:var(--text);text-decoration:none;border-bottom:1px solid transparent;" onmouseover="this.style.borderBottomColor=\'var(--accent)\'" onmouseout="this.style.borderBottomColor=\'transparent\'">' + c.name + '</a>'
@@ -528,21 +528,21 @@
       };
     %>
 
-    <%# Section 1 — Stage 1 readiness: Layer 1 hard gate + Layer 2 maturity %>
+    <%# Section 1 · Stage 1 readiness: Layer 1 hard gate + Layer 2 maturity %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">1</span>
-        <h2 class="pack-section-title">Stage 1 — design &amp; documentation</h2>
+        <h2 class="pack-section-title">Stage 1: design &amp; documentation</h2>
         <span class="pack-section-meta">verdict: <%= r.stage1Ready ? 'Ready' : 'Not ready' %> · maturity <%= r.maturityPct %>%</span>
       </div>
 
       <%- verdictBanner(r.stage1Ready, r.stage1GateClear, r.stage1MaturityOk, r.maturityPct, 60, r.stage1GatePassed, r.stage1GateTotal) %>
 
-      <div class="pack-caption"><span>Layer 1 — hard gate</span><span class="label">17 items · any FAIL = Not ready</span></div>
+      <div class="pack-caption"><span>Layer 1: hard gate</span><span class="label">17 items · any FAIL = Not ready</span></div>
       <%- renderGateTable(r.stage1Gate || [], r.stage1GatePassed, r.stage1GateTotal) %>
       <div class="pack-source"><strong>Methodology</strong> Boolean presence + substantive-compliance checks drawn from the documented-information requirements of clauses 4-10 and the procedural requirements of §9.2/§9.3. Mirrors 17021-1 §9.5.2: certification cannot be granted while any major nonconformity remains.</div>
 
-      <div class="pack-caption" style="margin-top:22px;"><span>Layer 2 — maturity</span><span class="label">0-5 averaged across applicable Annex A controls</span></div>
+      <div class="pack-caption" style="margin-top:22px;"><span>Layer 2: maturity</span><span class="label">0-5 averaged across applicable Annex A controls</span></div>
       <div style="border:1px solid var(--border);background:#fafaf8;padding:16px 18px;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;">
         <div style="text-align:center;border-right:1px solid var(--border);padding-right:20px;">
           <div class="num" style="font-size:34px;font-weight:500;line-height:1;color:<%= r.maturityPct >= 60 ? '#166534' : '#b91c1c' %>;"><%= r.maturityPct %>%</div>
@@ -550,7 +550,7 @@
         </div>
         <div style="font-size:12.5px;line-height:1.6;color:var(--text-secondary);">
           Average maturity across <strong style="color:var(--text);font-weight:500;"><%= r.applicableControls %></strong> applicable Annex A controls, on the 0-5 ISO/IEC 33020 scale.
-          <% if (r.maturityPct < 60) { %><br><span style="color:#b91c1c;">Below the 60% Stage 1 floor — aggregated minor nonconformities risk escalating to major (§3.12 Note 1).</span><% } else { %><br>Meets the 60% Stage 1 floor.<% } %>
+          <% if (r.maturityPct < 60) { %><br><span style="color:#b91c1c;">Below the 60% Stage 1 floor; aggregated minor nonconformities risk escalating to major (§3.12 Note 1).</span><% } else { %><br>Meets the 60% Stage 1 floor.<% } %>
           Unassessed applicable controls count as 0. Set per-control maturity in the gap-assessment wizard.
         </div>
       </div>
@@ -560,11 +560,11 @@
       <%- renderStatsPanel() %>
     </div>
 
-    <%# Section 2 — Stage 2 readiness: Layer 1 hard gate + Layer 2 maturity (75% floor) %>
+    <%# Section 2 · Stage 2 readiness: Layer 1 hard gate + Layer 2 maturity (75% floor) %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">2</span>
-        <h2 class="pack-section-title">Stage 2 — implementation &amp; effectiveness</h2>
+        <h2 class="pack-section-title">Stage 2: implementation &amp; effectiveness</h2>
         <span class="pack-section-meta">verdict: <%= r.stage2Ready ? 'Ready' : 'Not ready' %> · maturity <%= r.maturityPct %>%</span>
       </div>
 
@@ -577,11 +577,11 @@
         <%- verdictBanner(r.stage2Ready, r.stage2GateClear, r.stage2MaturityOk, r.maturityPct, 75, r.stage2GatePassed, r.stage2GateTotal) %>
       <% } %>
 
-      <div class="pack-caption"><span>Layer 1 — hard gate</span><span class="label">9 items · requires Stage 1 Ready first</span></div>
+      <div class="pack-caption"><span>Layer 1: hard gate</span><span class="label">9 items · requires Stage 1 Ready first</span></div>
       <%- renderGateTable(r.stage2Gate || [], r.stage2GatePassed, r.stage2GateTotal) %>
       <div class="pack-source"><strong>Methodology</strong> Stage 2 evaluates implementation + effectiveness (17021-1 §9.3.1.3): operating records, ≥2 evidence samples per applicable control, monitoring outputs, a closed internal-audit cycle, a recent MRM, root-cause + effectiveness in the NC register, legal register current, and BCP + IR tests performed.</div>
 
-      <div class="pack-caption" style="margin-top:22px;"><span>Layer 2 — maturity</span><span class="label">Floor 75% · no control at 0 or 1</span></div>
+      <div class="pack-caption" style="margin-top:22px;"><span>Layer 2: maturity</span><span class="label">Floor 75% · no control at 0 or 1</span></div>
       <div style="border:1px solid var(--border);background:#fafaf8;padding:16px 18px;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;">
         <div style="text-align:center;border-right:1px solid var(--border);padding-right:20px;">
           <div class="num" style="font-size:34px;font-weight:500;line-height:1;color:<%= (r.maturityPct >= 75 && r.controlsAtZeroOrOne === 0) ? '#166534' : '#b91c1c' %>;"><%= r.maturityPct %>%</div>
@@ -589,7 +589,7 @@
         </div>
         <div style="font-size:12.5px;line-height:1.6;color:var(--text-secondary);">
           <% if (r.maturityPct < 75) { %><span style="color:#b91c1c;">Maturity <%= r.maturityPct %>% is below the 75% Stage 2 floor.</span>
-          <% } else if (r.controlsAtZeroOrOne > 0) { %><span style="color:#b91c1c;"><%= r.controlsAtZeroOrOne %> applicable control<%= r.controlsAtZeroOrOne === 1 ? ' is' : 's are' %> still at maturity 0 or 1 — Stage 2 requires every applicable control at ≥ 2.</span>
+          <% } else if (r.controlsAtZeroOrOne > 0) { %><span style="color:#b91c1c;"><%= r.controlsAtZeroOrOne %> applicable control<%= r.controlsAtZeroOrOne === 1 ? ' is' : 's are' %> still at maturity 0 or 1; Stage 2 requires every applicable control at ≥ 2.</span>
           <% } else { %>Meets the 75% floor with no applicable control at 0 or 1.<% } %>
         </div>
       </div>
@@ -669,7 +669,7 @@
           <tbody>
             <% let rowNum = 0; %>
             <% if (flagsHigh.length) { %>
-              <tr class="group"><td colspan="5">High severity &mdash; will be cited as a nonconformity (<%= flagsHigh.length %>)</td></tr>
+              <tr class="group"><td colspan="5">High severity: will be cited as a nonconformity (<%= flagsHigh.length %>)</td></tr>
               <% flagsHigh.forEach(f => { rowNum++; const r = renderFlagRow(f, rowNum); %>
                 <tr>
                   <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight: 500;"><%= rowNum %></td>
@@ -681,7 +681,7 @@
               <% }) %>
             <% } %>
             <% if (flagsMedium.length) { %>
-              <tr class="group"><td colspan="5">Medium severity &mdash; tighten before Stage 2 (<%= flagsMedium.length %>)</td></tr>
+              <tr class="group"><td colspan="5">Medium severity: tighten before Stage 2 (<%= flagsMedium.length %>)</td></tr>
               <% flagsMedium.forEach(f => { rowNum++; const r = renderFlagRow(f, rowNum); %>
                 <tr>
                   <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight: 500;"><%= rowNum %></td>
@@ -762,7 +762,7 @@
           <% }) %>
         </tbody>
       </table>
-      <div class="pack-source"><strong>Caveat</strong> Detection is heuristic &mdash; based on document type, naming patterns, and presence of linked records. Mark a record as present in the underlying register if the heuristic misses it.</div>
+      <div class="pack-source"><strong>Caveat</strong> Detection is heuristic: based on document type, naming patterns, and presence of linked records. Mark a record as present in the underlying register if the heuristic misses it.</div>
       </div>
     </details>
 
@@ -810,7 +810,7 @@
 
   </div>
 
-  <%# Appendix (collapsed drill-down — methodology + formulas) %>
+  <%# Appendix (collapsed drill-down: methodology + formulas) %>
   <details class="pack-appendix">
     <summary class="pack-appendix-head" style="cursor:pointer;list-style:none;">
       <div class="pack-appendix-eyebrow">App. A</div>
@@ -820,7 +820,7 @@
 
     <div class="pack-appendix-grid">
 
-      <%# A.1 — Verdict rules %>
+      <%# A.1 · Verdict rules %>
       <div>
         <div class="pack-caption"><span>A.1 &nbsp;·&nbsp; Reviewer verdict logic</span><span class="label">3 outcomes</span></div>
         <table class="wp">
@@ -849,7 +849,7 @@
         </table>
       </div>
 
-      <%# A.2 — Scoring formulas %>
+      <%# A.2 · Scoring formulas %>
       <div>
         <div class="pack-caption"><span>A.2 &nbsp;·&nbsp; Stage 1 and Stage 2 score composition</span><span class="label">2 formulas</span></div>
         <table class="wp">
@@ -871,17 +871,17 @@
             <tr><td class="numref" style="font-size:11px;">f</td><td class="term">Evidence coverage<span class="meta">Files / 0.6 × items</span></td><td class="num">—</td><td class="num">10%</td><td class="def">Capped at 1.0 once evidence count reaches 60% of total controls. Stage 2 only.</td></tr>
           </tbody>
         </table>
-        <div class="pack-source"><strong>Note</strong> Stage 1 weights sum to 100%. Stage 2 weights also sum to 100% &mdash; the operational evidence component (f) is added at the cost of reduced weight on records and flags.</div>
+        <div class="pack-source"><strong>Note</strong> Stage 1 weights sum to 100%. Stage 2 weights also sum to 100%; the operational evidence component (f) is added at the cost of reduced weight on records and flags.</div>
       </div>
 
-      <%# A.3 — Documented information detection %>
+      <%# A.3 · Documented information detection %>
       <div>
         <div class="pack-caption"><span>A.3 &nbsp;·&nbsp; Documented-information detection caveat</span><span class="label">Heuristic basis</span></div>
         <table class="wp">
           <tbody>
             <tr>
               <td class="term" style="width:200px;">Detection method<span class="meta">How presence is inferred</span></td>
-              <td class="def">Each row in Exhibit 3.1 and 3.2 carries a deterministic <code>detect()</code> function. Most check for the presence of a typed record (e.g. an MRM, a risk-assessment iteration, a documented procedure) rather than searching prose. Detection is binary &mdash; quality of the record is assessed separately.</td>
+              <td class="def">Each row in Exhibit 3.1 and 3.2 carries a deterministic <code>detect()</code> function. Most check for the presence of a typed record (e.g. an MRM, a risk-assessment iteration, a documented procedure) rather than searching prose. Detection is binary; quality of the record is assessed separately.</td>
             </tr>
             <tr>
               <td class="term">False negatives<span class="meta">Heuristic misses</span></td>
@@ -889,7 +889,7 @@
             </tr>
             <tr>
               <td class="term">Expected vs Mandatory<span class="meta">Tiering</span></td>
-              <td class="def"><em>Mandatory</em> records are required by Clauses 4–10 regardless of scope. <em>Expected</em> records are only required if the related Annex A control is included on the SoA &mdash; if the linked control is excluded, the row is informational only.</td>
+              <td class="def"><em>Mandatory</em> records are required by Clauses 4–10 regardless of scope. <em>Expected</em> records are only required if the related Annex A control is included on the SoA; if the linked control is excluded, the row is informational only.</td>
             </tr>
           </tbody>
         </table>

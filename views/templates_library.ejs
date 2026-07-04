@@ -60,7 +60,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Policy library</h1>
-    <div class="page-subtitle">Adopt a template — the relevant Annex A controls auto-link.</div>
+    <div class="page-subtitle">Adopt a template; the relevant Annex A controls auto-link.</div>
   </div>
   <div class="row">
     <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs" title="Go to the documents list">View documents</a>
@@ -159,7 +159,7 @@
         <div class="tpl-card-desc"><%= t.description || '(no description)' %></div>
         <div class="tpl-card-controls">
           <% if (t.controls.length === 0 && t.clauses.length === 0) { %>
-            <span class="tpl-card-control empty">No auto-link mappings — adopt and link manually</span>
+            <span class="tpl-card-control empty">No auto-link mappings; adopt and link manually</span>
           <% } else { %>
             <% (t.controls.slice(0, 5)).forEach(c => { %>
               <span class="tpl-card-control"><%= c.replace('annex-a.','A.').toUpperCase() %></span>

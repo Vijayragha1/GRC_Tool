@@ -6,7 +6,7 @@
     <% if (from === 'snapshot' && snapshot) { %>
       Frozen snapshot <strong><%= snapshot.label || '(unlabelled)' %></strong> captured <%= fmtDate(snapshot.created_at) %>. SHA-256 <span class="hash"><%= snapshot.payload_hash %></span>.
     <% } else { %>
-      <strong>Live state</strong> — no snapshot has been captured yet, so this reflects the SoA at the moment of viewing.
+      <strong>Live state</strong>: no snapshot has been captured yet, so this reflects the SoA at the moment of viewing.
     <% } %>
   </div>
 </div>
@@ -53,7 +53,7 @@
 <% if (!rows.length) { %>
   <div class="empty-pane">
     <div class="empty-pane-title">No controls assessed yet</div>
-    <div>The SoA is empty — the client has not yet started Annex A applicability decisions.</div>
+    <div>The SoA is empty: the client has not yet started Annex A applicability decisions.</div>
   </div>
 <% } else { %>
   <div class="panel">

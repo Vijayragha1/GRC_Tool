@@ -32,7 +32,7 @@
   .pack-section-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
 
   /* === Executive summary callout === */
-  .pack-summary { background: var(--bg-subtle); border-left: 6px solid var(--accent); padding: 22px 26px; margin-bottom: 6px; }
+  .pack-summary { background: var(--bg-subtle); border-top: 2px solid var(--accent); border-bottom: 1px solid var(--border); padding: 22px 26px; margin-bottom: 6px; }
   .pack-summary-head { font-size: 10.5px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
   .pack-summary-headline { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; line-height: 1.3; font-weight: 500; letter-spacing: -0.012em; color: var(--text); margin: 0 0 14px; }
   .pack-summary-headline em { font-style: normal; color: var(--accent); }
@@ -44,7 +44,7 @@
   .pack-scorecard { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .pack-scorecard thead th { text-align: left; padding: 10px 12px; background: #1a1a1a; color: #fff; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; border: 0; }
   .pack-scorecard thead th.num { text-align: right; }
-  .pack-scorecard thead th.status { text-align: center; width: 88px; }
+  .pack-scorecard thead th.status-col { text-align: center; width: 88px; }
   .pack-scorecard tbody tr { border-bottom: 1px solid var(--border); }
   .pack-scorecard tbody tr:hover { background: var(--bg-subtle); }
   .pack-scorecard tbody td { padding: 11px 12px; vertical-align: middle; }
@@ -64,10 +64,7 @@
 
   /* === Board recommendation cards === */
   .pack-asks { display: flex; flex-direction: column; gap: 10px; }
-  .pack-ask { display: grid; grid-template-columns: 64px 1fr 100px; gap: 16px; padding: 16px 20px; border: 1px solid var(--border); background: #fff; border-left: 4px solid; }
-  .pack-ask.high   { border-left-color: #b91c1c; }
-  .pack-ask.medium { border-left-color: #b45309; }
-  .pack-ask.low    { border-left-color: #15803d; }
+  .pack-ask { display: grid; grid-template-columns: 64px 1fr 100px; gap: 16px; padding: 16px 20px; border: 1px solid var(--border); background: #fff; }
   .pack-ask-num { font-family: 'Source Serif 4', Georgia, serif; font-size: 30px; font-weight: 500; color: var(--text-tertiary); line-height: 1; letter-spacing: -0.02em; }
   .pack-ask-body { font-size: 13px; line-height: 1.6; color: var(--text); }
   .pack-ask-body .title { display: block; font-weight: 500; color: var(--text); margin-bottom: 4px; font-size: 13.5px; }
@@ -187,7 +184,7 @@
     asks.push({
       priority: 'high',
       title: `Approve resourcing to close ${ncOv} overdue nonconformit${ncOv === 1 ? 'y' : 'ies'}.`,
-      detail: `Overdue NCs are an auditor red flag — they suggest the corrective-action process is not being run. Action owners need explicit time allocation, not "fit it in around BAU."`
+      detail: `Overdue NCs are an auditor red flag: they suggest the corrective-action process is not being run. Action owners need explicit time allocation, not "fit it in around BAU."`
     });
   }
   if (highSev > 0) {
@@ -211,7 +208,7 @@
 
 <div class="pack">
 
-  <%# Classification header — Big-4 board pack always opens with this %>
+  <%# Classification header: Big-4 board pack always opens with this %>
   <div class="pack-classification">
     <span>Confidential · For Board / Audit-Committee use</span>
     <span class="right">Document <%= docId %></span>
@@ -222,7 +219,7 @@
     <div>
       <div class="pack-title-eyebrow"><%= clientName %> · ISO/IEC 27001:2022 engagement</div>
       <h1>Executive brief
-        <span class="sub">Quarterly readiness review &mdash; period ending <%= today %></span>
+        <span class="sub">Quarterly readiness review &middot; period ending <%= today %></span>
       </h1>
     </div>
     <div class="pack-meta-stack">
@@ -266,12 +263,12 @@
             <th class="num">Current</th>
             <th class="num">Target</th>
             <th>Trend</th>
-            <th class="status">Status</th>
+            <th class="status-col">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td class="metric">Stage 1 readiness <span class="sub">composite — docs, controls, flags, MRM, audit</span></td>
+            <td class="metric">Stage 1 readiness <span class="sub">composite: docs, controls, flags, MRM, audit</span></td>
             <td class="num"><%= stage1 %>%</td>
             <td class="target">≥ 80%</td>
             <td class="trend"></td>
@@ -399,7 +396,7 @@
         <span class="pack-section-meta">Soonest due first</span>
       </div>
       <% if (topNCs.length === 0) { %>
-        <div class="pack-rank-empty">No open nonconformities &mdash; clean bill of health on the NC register.</div>
+        <div class="pack-rank-empty">No open nonconformities: clean bill of health on the NC register.</div>
       <% } else { %>
         <table class="pack-rank">
           <thead>
@@ -432,11 +429,11 @@
   <div class="pack-methodology">
     <h3>Appendix · methodology &amp; data sources</h3>
     <dl>
-      <dt>Stage 1 readiness</dt><dd>weighted composite — mandatory documents (30 %), Annex A controls implemented (35 %), absence of high-severity flags (15 %), management review complete (10 %), internal audit complete (10 %).</dd>
+      <dt>Stage 1 readiness</dt><dd>weighted composite: mandatory documents (30 %), Annex A controls implemented (35 %), absence of high-severity flags (15 %), management review complete (10 %), internal audit complete (10 %).</dd>
       <dt>Stage 2 readiness</dt><dd>Stage 1 composite plus operational-evidence depth (10 %).</dd>
       <dt>Velocity</dt><dd>controls moved to <em>Implemented</em> in the last 30 days, against the prior 30-day window.</dd>
       <dt>Residual annual loss</dt><dd>Σ ( likelihood ÷ 5 × impact × $50 000 ) across open risks. Heuristic; actuals depend on impact tiers your insurer assigns.</dd>
-      <dt>RAG thresholds</dt><dd>Readiness — green ≥ 80 %, amber 50–79 %, red &lt; 50 %. Schedule — green &gt; 90 days, amber 30–90, red &lt; 30. Nonconformities — green 0, amber any open, red any overdue. Trend up requires period-on-period growth.</dd>
+      <dt>RAG thresholds</dt><dd>Readiness: green ≥ 80 %, amber 50–79 %, red &lt; 50 %. Schedule: green &gt; 90 days, amber 30–90, red &lt; 30. Nonconformities: green 0, amber any open, red any overdue. Trend up requires period-on-period growth.</dd>
       <dt>Recommendations</dt><dd>derived from the live data above; the engagement lead may edit before formal circulation to the board.</dd>
     </dl>
   </div>

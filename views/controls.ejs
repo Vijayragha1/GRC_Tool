@@ -6,7 +6,7 @@
     <div class="page-subtitle">25 ISMS clauses (4–10) and 93 Annex A controls. Bulk-edit with checkboxes, or run the guided gap assessment for a structured walk through Annex A.</div>
   </div>
   <form class="row-center" method="GET">
-    <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-primary btn-xs" title="Walk Annex A one control at a time with prompts">▶ Start gap assessment</a>
+    <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-primary btn-xs" title="Walk Annex A one control at a time with prompts">Start gap assessment</a>
     <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
     <select name="filter" class="select" style="width:200px" onchange="this.form.submit()">
       <option value="all" <%= filter==='all'?'selected':'' %>>All items</option>

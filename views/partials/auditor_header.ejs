@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/fonts/source-serif-4.css">
 <style>
   /*
-   * Auditor portal stylesheet — deliberately distinct from the consultant
+   * Auditor portal stylesheet: deliberately distinct from the consultant
    * app. No sidebar, no edit affordances, no theme toggle. The portal is a
    * read-only audit-readiness deliverable: clean, calm, easy to navigate at
    * 14:00 on the second day of an audit when the auditor is fatigued.
@@ -24,9 +24,9 @@
     --text: #18181b;
     --text-secondary: #51525c;
     --text-tertiary: #71717a;
-    --accent: <%= workspace.brand_primary_color || '#5C0A0A' %>;
-    --accent-soft: <%= (workspace.brand_primary_color || '#5C0A0A') + '14' %>;
-    --accent-deep: <%= workspace.brand_primary_color || '#3D0606' %>;
+    --accent: <%= workspace.brand_primary_color || '#1a1a1a' %>;
+    --accent-soft: <%= (workspace.brand_primary_color || '#1a1a1a') + '14' %>;
+    --accent-deep: <%= workspace.brand_primary_color || '#000000' %>;
     --ink: #0f0f12;
     --good: #15803d; --good-soft: rgba(22,163,74,0.10);
     --warn: #b45309; --warn-soft: rgba(202,138,4,0.10);
@@ -52,7 +52,7 @@
   .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
   .num { font-variant-numeric: tabular-nums; }
 
-  /* ISO clause/Annex A reference — the product's typographic fingerprint.
+  /* ISO clause/Annex A reference: the product's typographic fingerprint.
      Dotted-underline accent treatment; subtle but instantly distinctive. */
   .iso-ref {
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -129,7 +129,7 @@
   table.t tbody tr:hover { background: var(--bg-subtle); }
   th.num, td.num { text-align: right; }
 
-  /* Status text — quiet, bold, in-flow. No pills. Auditor docs benefit
+  /* Status text: quiet, bold, in-flow. No pills. Auditor docs benefit
      especially from this: bare typography reads as "audit report" not
      "Vanta dashboard." */
   .chip {
