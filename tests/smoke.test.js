@@ -109,10 +109,20 @@ async function waitFor(predicate, timeoutMs = 8000, intervalMs = 150) {
 }
 
 async function startServer() {
-  // Copy a freshly-seeded DB from the live one - gives us an Acme workspace + iso_items.
+  // Copy a freshly-seeded DB from the live one - gives us a workspace + iso_items.
   // db.js honours DB_PATH so the server writes its migrations to the tmp copy.
+  // In CI (no live DB, it's gitignored) build a seeded DB instead;
+  // FORCE_BUILT_DB=1 exercises that path locally.
   const seedDb = path.join(ROOT, 'iso27001.db');
-  if (fs.existsSync(seedDb)) fs.copyFileSync(seedDb, TMP_DB);
+  if (fs.existsSync(seedDb) && process.env.FORCE_BUILT_DB !== '1') {
+    fs.copyFileSync(seedDb, TMP_DB);
+  } else {
+    console.log('smoke.test: no live DB (or FORCE_BUILT_DB=1); building a seeded one…');
+    const build = require('child_process').spawnSync(process.execPath,
+      [path.join(ROOT, 'scripts', 'build-test-db.js'), TMP_DB],
+      { env: { ...process.env, ISMS_KEY_FILE: ENV.ISMS_KEY_FILE }, stdio: ['ignore', 'ignore', 'pipe'] });
+    if (build.status !== 0) throw new Error('build-test-db failed:\n' + build.stderr);
+  }
 
   // Auth is real now (commit a573539). Seed a known test user with a known
   // password so the test can log in before walking the assertions. Reuse the

@@ -103,16 +103,28 @@ function extractGetRoutes() {
 }
 
 (async () => {
-  // Fresh copy of the live DB so seeded workspaces/risks/items exist.
+  // Prefer a copy of the live DB (richest data). In CI the live DB is
+  // gitignored and absent, so build a seeded one instead. FORCE_BUILT_DB=1
+  // exercises the CI path locally.
   const seedDb = path.join(ROOT, 'iso27001.db');
-  if (!fs.existsSync(seedDb)) { console.error('routes.test: no iso27001.db to copy; aborting'); process.exit(1); }
-  fs.copyFileSync(seedDb, TMP_DB);
-
-  // Copy the real master key alongside: the DB copy holds field-encrypted
-  // content, and a fresh key would make every decrypt throw instead of
-  // exercising the happy path.
-  const liveKey = path.join(ROOT, 'data', 'master.key');
-  if (fs.existsSync(liveKey)) fs.copyFileSync(liveKey, ENV.ISMS_KEY_FILE);
+  const useLive = fs.existsSync(seedDb) && process.env.FORCE_BUILT_DB !== '1';
+  if (useLive) {
+    fs.copyFileSync(seedDb, TMP_DB);
+    // Copy the real master key alongside: the DB copy holds field-encrypted
+    // content, and a fresh key would make every decrypt throw instead of
+    // exercising the happy path.
+    const liveKey = path.join(ROOT, 'data', 'master.key');
+    if (fs.existsSync(liveKey)) fs.copyFileSync(liveKey, ENV.ISMS_KEY_FILE);
+  } else {
+    console.log('routes.test: no live DB (or FORCE_BUILT_DB=1); building a seeded one…');
+    const build = require('child_process').spawnSync(process.execPath,
+      [path.join(ROOT, 'scripts', 'build-test-db.js'), TMP_DB],
+      { env: { ...process.env, ISMS_KEY_FILE: ENV.ISMS_KEY_FILE }, stdio: ['ignore', 'ignore', 'pipe'] });
+    if (build.status !== 0) {
+      console.error('routes.test: build-test-db failed:\n' + build.stderr);
+      process.exit(1);
+    }
+  }
 
   const bcrypt = require('bcrypt');
   const Database = require('better-sqlite3');
