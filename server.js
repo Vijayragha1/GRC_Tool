@@ -163,6 +163,19 @@ app.use('/vendor/tinymce', express.static(path.join(__dirname, 'node_modules/tin
 // Quiet the favicon 404 - no icon yet, just respond with No Content.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
+// Liveness probe for uptime monitors and orchestrators. Mounted before the
+// session middleware so probes never create session rows; unauthenticated
+// because it leaks nothing beyond liveness.
+app.get('/healthz', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ ok: true, version: app.locals.assetVersion, uptime: Math.round(process.uptime()) });
+  } catch (_) {
+    res.status(503).json({ ok: false, error: 'database unavailable' });
+  }
+});
+
 // Persistent session store. The default MemoryStore loses every session on
 // every restart, which makes "Keep me signed in for 30 days" a lie - users
 // get bounced back to /login the moment the container restarts (healthcheck,
