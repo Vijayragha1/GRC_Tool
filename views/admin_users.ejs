@@ -17,12 +17,12 @@
       <form method="POST" action="/admin/users/send-reset" style="margin:0;flex-shrink:0;">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <input type="hidden" name="email" value="<%= errorEmail %>">
-        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight: 500;cursor:pointer;white-space:nowrap;">Send password-reset link instead →</button>
+        <button type="submit" class="btn btn-primary btn-xs" style="white-space:nowrap;">Send password-reset link instead →</button>
       </form>
     <% } else if (typeof errorAction !== 'undefined' && errorAction === 'offer_reactivate' && errorUserId) { %>
       <form method="POST" action="/admin/users/<%= errorUserId %>/reactivate" style="margin:0;flex-shrink:0;" onsubmit="return confirm('Reactivate this account? They will be able to sign in with their previous password.');">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <button type="submit" class="btn btn-xs" style="background:#5C0A0A;color:#fff;border:0;padding:6px 12px;font-weight: 500;cursor:pointer;white-space:nowrap;">Reactivate account →</button>
+        <button type="submit" class="btn btn-primary btn-xs" style="white-space:nowrap;">Reactivate account →</button>
       </form>
     <% } %>
   </div>
@@ -47,16 +47,16 @@
 
     <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">User type</label>
     <select class="input" name="user_type" id="invite_user_type" onchange="toggleInviteFields()" style="margin-bottom:12px;">
-      <option value="firm">Firm &mdash; consultant in your team</option>
-      <option value="client">Client-side &mdash; staff at one of your clients</option>
+      <option value="firm">Firm &middot; consultant in your team</option>
+      <option value="client">Client-side &middot; staff at one of your clients</option>
     </select>
 
     <div id="invite_firm_block">
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Firm role</label>
       <select class="input" name="firm_role" style="margin-bottom:12px;">
-        <option value="consultant">Consultant &mdash; engagement work; no approvals, no workspace delete</option>
-        <option value="senior_consultant">Senior consultant &mdash; engagement lead; reviews docs &amp; signs off assessments</option>
-        <option value="manager">Manager &mdash; firm-wide admin; billing, users, all clients</option>
+        <option value="consultant">Consultant &middot; engagement work; no approvals, no workspace delete</option>
+        <option value="senior_consultant">Senior consultant &middot; engagement lead; reviews docs &amp; signs off assessments</option>
+        <option value="manager">Manager &middot; firm-wide admin; billing, users, all clients</option>
       </select>
     </div>
 
@@ -71,9 +71,9 @@
 
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Workspace role</label>
       <select class="input" name="workspace_role" style="margin-bottom:12px;">
-        <option value="client_owner">Client owner &mdash; executive sponsor; final policy approver</option>
-        <option value="isms_manager">ISMS manager &mdash; day-to-day operator; full workspace access</option>
-        <option value="contributor">Contributor &mdash; SME; uploads evidence on assigned items only</option>
+        <option value="client_owner">Client owner &middot; executive sponsor; final policy approver</option>
+        <option value="isms_manager">ISMS manager &middot; day-to-day operator; full workspace access</option>
+        <option value="contributor">Contributor &middot; SME; uploads evidence on assigned items only</option>
       </select>
     </div>
 

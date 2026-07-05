@@ -68,7 +68,7 @@
                    const available = grp[t].filter(c => !linkedIds.has(c.id));
                    if (!available.length) return;
               %>
-                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
+                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:<%= t === 'clause' ? '#0891b2' : '#475569' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
                   <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
                 </div>
                 <% available.forEach(c => {
@@ -176,7 +176,7 @@
             <% Object.keys(grp).forEach(t => {
                  const available = grp[t].filter(c => !linkedIds.has(c.id));
                  if (!available.length) return; %>
-              <div class="meta" style="font-weight: 500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t === 'clause' ? '#0891b2' : '#7c3aed' %>;">
+              <div class="meta" style="font-weight: 500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t === 'clause' ? '#0891b2' : '#475569' %>;">
                 <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;">

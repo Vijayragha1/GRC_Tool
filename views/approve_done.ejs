@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Decision recorded · <%= docName %></title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/fonts/source-serif-4.css">
 <style>
   :root {
@@ -48,7 +48,7 @@
       <strong><%= docName %></strong> · v<%= docVersion %><br>
       <%= workspaceName %>
     </div>
-    <div class="footer">You can close this tab. The approval link is now spent — if you need to undo, contact the submitter directly.</div>
+    <div class="footer">You can close this tab. The approval link is now spent; if you need to undo, contact the submitter directly.</div>
   </div>
 </body>
 </html>

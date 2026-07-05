@@ -6,7 +6,7 @@
     <div class="page-subtitle">27 clauses (4-10) and 38 Annex A controls. Bulk-edit with checkboxes or click into a control to assess.</div>
   </div>
   <form class="row-center" method="GET">
-    <a href="/workspaces/<%= ws.id %>/iso42001/gap" class="btn btn-primary btn-xs" title="Walk clauses + Annex A one item at a time with prompts">▶ Start gap assessment</a>
+    <a href="/workspaces/<%= ws.id %>/iso42001/gap" class="btn btn-primary btn-xs" title="Walk clauses + Annex A one item at a time with prompts">Start gap assessment</a>
     <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
     <select name="filter" class="select" style="width:240px" onchange="this.form.submit()">
       <option value="all" <%= filter==='all'?'selected':'' %>>All items</option>

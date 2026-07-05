@@ -4,186 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><%= typeof title !== 'undefined' ? title : 'Auditor view' %> · <%= workspace.client_name %></title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/fonts/source-serif-4.css">
+<link rel="stylesheet" href="/auditor.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<% if (workspace.brand_primary_color) { %>
 <style>
-  /*
-   * Auditor portal stylesheet — deliberately distinct from the consultant
-   * app. No sidebar, no edit affordances, no theme toggle. The portal is a
-   * read-only audit-readiness deliverable: clean, calm, easy to navigate at
-   * 14:00 on the second day of an audit when the auditor is fatigued.
-   */
   :root {
-    --bg: #ffffff;
-    --bg-subtle: #fafafa;
-    --bg-muted: #f4f4f5;
-    --bg-deep: #f7f7f8;
-    --border: #ececef;
-    --border-strong: #d6d6db;
-    --text: #18181b;
-    --text-secondary: #51525c;
-    --text-tertiary: #71717a;
-    --accent: <%= workspace.brand_primary_color || '#5C0A0A' %>;
-    --accent-soft: <%= (workspace.brand_primary_color || '#5C0A0A') + '14' %>;
-    --accent-deep: <%= workspace.brand_primary_color || '#3D0606' %>;
-    --ink: #0f0f12;
-    --good: #15803d; --good-soft: rgba(22,163,74,0.10);
-    --warn: #b45309; --warn-soft: rgba(202,138,4,0.10);
-    --bad:  #b91c1c; --bad-soft:  rgba(220,38,38,0.10);
-    --shadow-sm: 0 1px 2px rgba(15,15,18,0.04);
-    --shadow-md: 0 1px 3px rgba(15,15,18,0.05), 0 1px 2px rgba(15,15,18,0.03);
-    --shadow-lg: 0 4px 12px rgba(15,15,18,0.06), 0 1px 3px rgba(15,15,18,0.04);
-    --radius: 8px;
-    --radius-sm: 6px;
+    --accent: <%= workspace.brand_primary_color %>;
+    --accent-soft: <%= workspace.brand_primary_color + '14' %>;
+    --accent-deep: <%= workspace.brand_primary_color %>;
   }
-  html { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
-  @supports (font-variation-settings: normal) { html { font-family: 'Inter var', system-ui, sans-serif; } }
-  body { background: var(--bg-deep); color: var(--text); font-size: 14px; line-height: 1.5; margin: 0; }
-
-  /* Display serif for titles + the wordmark. Same family as the consultant
-     app so the brand voice is consistent when an auditor switches devices. */
-  .a-page-title, .a-brand-name {
-    font-family: 'Source Serif 4', 'Iowan Old Style', Charter, Georgia, serif;
-    font-variation-settings: "opsz" 32;
-    letter-spacing: -0.005em;
-  }
-  *, *::before, *::after { box-sizing: border-box; }
-  .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
-  .num { font-variant-numeric: tabular-nums; }
-
-  /* ISO clause/Annex A reference — the product's typographic fingerprint.
-     Dotted-underline accent treatment; subtle but instantly distinctive. */
-  .iso-ref {
-    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-    font-size: 0.92em; font-weight: 500;
-    color: var(--accent);
-    text-decoration: underline dotted var(--accent);
-    text-underline-offset: 3px;
-    text-decoration-thickness: 1px;
-  }
-
-  /* ---- top bar ---- */
-  .a-topbar {
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    padding: 14px 0;
-    position: sticky; top: 0; z-index: 50;
-  }
-  .a-container { max-width: 1280px; margin: 0 auto; padding: 0 28px; }
-  .a-top-row { display: flex; align-items: center; gap: 14px; }
-  .a-brand {
-    display: inline-flex; align-items: center; gap: 10px;
-    text-decoration: none; color: var(--ink);
-  }
-  /* No gradient tile. A thin outlined square in oxblood with a serif glyph
-     reads as professional-services wordmark, not v0 SaaS demo. */
-  .a-brand-mark {
-    width: 30px; height: 30px; border-radius: 3px;
-    background: var(--bg);
-    border: 1px solid var(--accent);
-    display: inline-flex; align-items: center; justify-content: center;
-    color: var(--accent); font-weight: 500; font-size: 15px;
-    font-family: 'Source Serif 4', Georgia, serif;
-    font-variation-settings: "opsz" 40;
-  }
-  .a-brand-name { font-size: 16px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; }
-  .a-brand-sub  { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
-  .a-spacer { flex: 1; }
-  .a-mode-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 4px 10px; border-radius: 999px;
-    font-size: 11px; font-weight: 500; letter-spacing: 0.04em;
-    background: var(--accent-soft); color: var(--accent-deep);
-    border: 1px solid var(--accent);
-  }
-  .a-share-meta { font-size: 11.5px; color: var(--text-tertiary); }
-  .a-share-meta strong { color: var(--text); font-weight: 500; }
-
-  /* ---- tabs ---- */
-  .a-tabs {
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    padding: 0; position: sticky; top: 60px; z-index: 49;
-  }
-  .a-tabs-row { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; }
-  .a-tab {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 12px 14px; text-decoration: none;
-    font-size: 13px; font-weight: 500; color: var(--text-secondary);
-    border-bottom: 2px solid transparent; transition: all 0.12s;
-    white-space: nowrap;
-  }
-  .a-tab:hover { color: var(--text); background: var(--bg-subtle); }
-  .a-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .a-tab svg { width: 14px; height: 14px; opacity: 0.7; }
-  .a-tab.active svg { opacity: 1; }
-
-  /* ---- main + content primitives ---- */
-  .a-main { max-width: 1280px; margin: 0 auto; padding: 22px 28px 48px; }
-  .a-page-head { margin-bottom: 20px; }
-  .a-page-title { font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.2; }
-  .a-page-sub { font-size: 13px; color: var(--text-secondary); margin-top: 6px; max-width: 720px; }
-
-  .panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
-  .panel-pad { padding: 14px 16px; }
-  .panel-head { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .panel-head h2 { font-size: 13px; font-weight: 500; margin: 0; color: var(--ink); }
-
-  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.t thead th { text-align: left; padding: 7px 14px; font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
-  table.t tbody td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  table.t tbody tr:last-child td { border-bottom: none; }
-  table.t tbody tr:hover { background: var(--bg-subtle); }
-  th.num, td.num { text-align: right; }
-
-  /* Status text — quiet, bold, in-flow. No pills. Auditor docs benefit
-     especially from this: bare typography reads as "audit report" not
-     "Vanta dashboard." */
-  .chip {
-    display: inline; font-size: 12px; font-weight: 500;
-    letter-spacing: 0.005em; text-transform: capitalize;
-  }
-  .chip-good { color: var(--good); }
-  .chip-warn { color: var(--warn); }
-  .chip-bad  { color: var(--bad);  }
-  .chip-neutral { color: #52525b; }
-  .chip-accent  { color: var(--accent-deep); }
-
-  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-  .kpi { padding: 14px 18px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; position: relative; overflow: hidden; }
-  .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--border-strong); }
-  .kpi.brand::before { background: var(--accent); }
-  .kpi.good::before  { background: var(--good); }
-  .kpi.warn::before  { background: var(--warn); }
-  .kpi.bad::before   { background: var(--bad);  }
-  .kpi-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
-  .kpi-num { font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 4px; }
-  .kpi-meta { font-size: 11.5px; color: var(--text-tertiary); margin-top: 4px; }
-
-  .meta { color: var(--text-tertiary); font-size: 12px; }
-  .text-sm  { font-size: 12px; }
-  .text-md  { font-size: 13px; }
-  .text-eyebrow { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
-
-  a.link-muted { color: var(--text-secondary); text-decoration: none; transition: color 0.12s; }
-  a.link-muted:hover { color: var(--accent); }
-  a.btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 13px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
-    text-decoration: none; transition: all 0.12s;
-    border: 1px solid transparent; white-space: nowrap;
-  }
-  a.btn-primary { background: var(--accent); color: #fff; }
-  a.btn-primary:hover { background: var(--accent-deep); }
-  a.btn-secondary { background: var(--bg); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
-  a.btn-secondary:hover { background: var(--bg-subtle); border-color: var(--text-tertiary); }
-  a.btn-xs { padding: 4px 10px; font-size: 12px; }
-
-  .hash { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-secondary); }
-  .empty-pane { padding: 40px; text-align: center; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-tertiary); }
-  .empty-pane-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
 </style>
+<% } %>
 </head>
 <body>
 
@@ -204,7 +37,11 @@
   <div class="a-container">
     <div class="a-top-row">
       <a href="/auditor/<%= token %>" class="a-brand">
-        <span class="a-brand-mark"><%= (workspace.client_name || 'A').slice(0,1).toUpperCase() %></span>
+        <svg class="a-brand-mark" width="28" height="28" viewBox="0 0 22 22" aria-hidden="true" style="flex-shrink:0;">
+          <circle cx="11" cy="11" r="9.5" fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+          <circle cx="11" cy="11" r="6"   fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
+          <circle cx="11" cy="11" r="2.5" fill="#1a1a1a"/>
+        </svg>
         <span>
           <div class="a-brand-name"><%= workspace.client_name %> · ISMS</div>
           <div class="a-brand-sub">ISO/IEC 27001:2022<% if (workspace.scope) { %> · <%= workspace.scope.slice(0, 80) %><%= workspace.scope.length > 80 ? '…' : '' %><% } %></div>

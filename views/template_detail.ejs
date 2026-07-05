@@ -48,7 +48,7 @@
       <% if (controls.length || clauses.length) { %>
         <span class="meta text-md">· <%= controls.length %> Annex A control<%= controls.length === 1 ? '' : 's' %><%= clauses.length ? ' · ' + clauses.length + ' clause' + (clauses.length === 1 ? '' : 's') : '' %> auto-linked on adopt</span>
       <% } else { %>
-        <span class="meta text-md">· no auto-link mapping — link manually after adoption</span>
+        <span class="meta text-md">· no auto-link mapping; link manually after adoption</span>
       <% } %>
     </div>
   </div>
@@ -121,7 +121,7 @@
         <div class="panel-pad">
           <div class="text-eyebrow text-tertiary" style="margin-bottom:6px;">No mappings</div>
           <div class="meta text-md" style="line-height:1.55;">
-            This template is cross-cutting — it doesn't tie to a specific Annex A control or clause. After adopting, link controls manually on the document detail page.
+            This template is cross-cutting: it doesn't tie to a specific Annex A control or clause. After adopting, link controls manually on the document detail page.
           </div>
         </div>
       </div>

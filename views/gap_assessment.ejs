@@ -8,7 +8,7 @@
 </div>
 
 <% if (typeof orientation !== 'undefined' && orientation) { /* Re-engagement orientation panel - what's changed since the prior pass closed */ %>
-  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(79,70,229,0.25);">
+  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(71,85,105,0.25);">
     <div class="panel-pad">
       <div class="sec-label" style="color:var(--accent-deep);">Re-engagement orientation</div>
       <div class="text-md" style="margin-top:4px;line-height:1.5;">
@@ -182,7 +182,7 @@
 <!-- Trend across passes - average maturity per Annex A theme -->
 <% if (typeof trend !== 'undefined' && trend && trend.length > 0) {
      const themeKeys = ['5','6','7','8'];
-     const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
+     const themeColors = { '5':'#0891b2', '6':'#475569', '7':'#a16207', '8':'#16a34a' };
 %>
   <div class="panel" style="margin-top:18px;">
     <div class="panel-head"><h3>Trend across passes <span class="meta text-base" style="font-weight:400;">- average maturity (0–4) per Annex A theme</span></h3></div>
@@ -232,7 +232,7 @@
 <!-- Annex A heatmap - current coverage per theme -->
 <% if (typeof heatmap !== 'undefined' && heatmap) {
      const themeKeys = ['5','6','7','8'];
-     const themeColors = { '5':'#0891b2', '6':'#7c3aed', '7':'#a16207', '8':'#16a34a' };
+     const themeColors = { '5':'#0891b2', '6':'#475569', '7':'#a16207', '8':'#16a34a' };
      function statusFill(r) {
        if (r.applicability === 'excluded' || r.status === 'Not Applicable') return '#cbd5e1';
        if (r.status === 'Implemented') return '#16a34a';

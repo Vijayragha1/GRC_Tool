@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Security questionnaire<% if (typeof q !== 'undefined' && q && q.supplier_name) { %> · <%= q.supplier_name %><% } %></title>
-<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <style>
   :root{
     --bg:#f5f3ed; --card:#ffffff; --border:#e7e4dc; --border-strong:#d8d6cf;
@@ -123,7 +123,7 @@
           <% } %>
           <div class="attach">
             <input type="file" name="file_<%= qu.id %>" multiple>
-            <span class="attach-hint">Attach evidence — PDF, Office docs, images or zip · up to 25&nbsp;MB each</span>
+            <span class="attach-hint">Attach evidence: PDF, Office docs, images or zip · up to 25&nbsp;MB each</span>
           </div>
         </div>
       <% }) %>
@@ -132,7 +132,7 @@
 
     <div class="card" style="margin-top:14px;">
       <div class="pad footer-card">
-        <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account — this link is your secure access.</div>
+        <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account; this link is your secure access.</div>
         <button class="btn" type="submit">Submit responses</button>
       </div>
     </div>
@@ -156,14 +156,14 @@
     const savedCount = (typeof attachSaved !== 'undefined' && attachSaved) ? attachSaved : 0;
     let heading, message;
     if (st === 'submitted') {
-      heading = 'Thank you — your responses are in';
+      heading = 'Thank you, your responses are in';
       message = (requester ? requester : 'The requesting organisation') + ' has received your answers' +
         (savedCount ? ' and ' + savedCount + ' attached file' + (savedCount === 1 ? '' : 's') : '') +
-        '. There is nothing more you need to do — you can safely close this tab.';
+        '. There is nothing more you need to do; you can safely close this tab.';
     } else if (st === 'uploaderror') {
       heading = 'Your submission didn\'t go through';
       message = (typeof uploadMsg !== 'undefined' && uploadMsg) ? uploadMsg
-        : 'We could not process one of your attachments. Please remove it and submit again — your answers were not saved yet.';
+        : 'We could not process one of your attachments. Please remove it and submit again; your answers were not saved yet.';
     } else if (st === 'done') {
       heading = 'This questionnaire is already complete';
       message = 'Our records show a response was already submitted using this link. If you think this is a mistake, reach out to your ' + (requester ? requester : 'requesting') + ' contact.';

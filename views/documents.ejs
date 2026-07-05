@@ -202,7 +202,7 @@
                      const code = t.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase();
                      const isClause = t.type === 'clause';
                 %>
-                  <a href="?tag=<%= t.iso_item_id %>" class="mono" style="font-size:10.5px;font-weight:500;padding:1px 6px;border-radius:3px;text-decoration:none;background:<%= isClause ? 'rgba(8,145,178,0.10)' : 'rgba(124,58,237,0.10)' %>;color:<%= isClause ? '#0891b2' : '#7c3aed' %>;" title="<%= t.section_ref ? '§' + t.section_ref : '' %>"><%= code %></a>
+                  <a href="?tag=<%= t.iso_item_id %>" class="mono" style="font-size:10.5px;font-weight:500;padding:1px 6px;border-radius:3px;text-decoration:none;background:<%= isClause ? 'rgba(8,145,178,0.10)' : 'rgba(71,85,105,0.10)' %>;color:<%= isClause ? '#0891b2' : '#475569' %>;" title="<%= t.section_ref ? '§' + t.section_ref : '' %>"><%= code %></a>
                 <% }) %>
                 <% if (hiddenCount > 0) { %>
                   <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="meta text-eyebrow" style="text-decoration:none;padding:1px 4px;">+<%= hiddenCount %></a>
@@ -246,5 +246,7 @@
     </tbody>
   </table>
 </div>
+
+<% if (typeof pg !== 'undefined' && pg) { %><%- include('partials/pager', { pg, pagerHref }) %><% } %>
 
 <%- include('partials/footer') %>

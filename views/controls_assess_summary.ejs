@@ -28,12 +28,12 @@
   .pack-section-meta { font-size: 10.5px; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
 
   /* Inline alert for incomplete assessment */
-  .pack-alert { padding: 14px 18px; border-left: 4px solid #b91c1c; background: rgba(185,28,28,0.06); margin-bottom: 20px; font-size: 13px; line-height: 1.55; color: var(--text); display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+  .pack-alert { padding: 14px 18px; border: 1px solid rgba(185,28,28,0.25); border-radius: 6px; background: rgba(185,28,28,0.06); margin-bottom: 20px; font-size: 13px; line-height: 1.55; color: var(--text); display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
   .pack-alert strong { color: #b91c1c; font-weight: 500; }
   .pack-alert a { color: #b91c1c; font-weight: 500; text-decoration: none; }
   .pack-alert a:hover { text-decoration: underline; }
 
-  /* Workpaper-table styling — heavier rules, double-rule motifs picked up from
+  /* Workpaper-table styling: heavier rules, double-rule motifs picked up from
      the title block, totals rows, footnoted text indicators rather than pills.
      Reads as a Big-4 audit exhibit, not a SaaS list. */
 
@@ -68,7 +68,7 @@
   .wp td.center { text-align: center; }
   .wp td.pick { text-align: center; padding: 8px 6px; }
 
-  /* Textual RAG indicators — workpapers use marks and footnotes, not coloured chips */
+  /* Textual RAG indicators: workpapers use marks and footnotes, not coloured chips */
   .mark { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; color: var(--text); white-space: nowrap; letter-spacing: 0; }
   .mark .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .mark .dot.red    { background: #b91c1c; }
@@ -82,7 +82,7 @@
 
   .footref { font-size: 9.5px; vertical-align: super; color: var(--accent); font-weight: 500; margin-left: 2px; font-family: 'Source Serif 4', Georgia, serif; line-height: 0; }
 
-  /* Action toolbar for the spawn-tasks form — sits above the workpaper, looks like a worksheet header strip */
+  /* Action toolbar for the spawn-tasks form: sits above the workpaper, looks like a worksheet header strip */
   .pack-toolbar { display: flex; align-items: center; gap: 10px; padding: 9px 0 9px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--border); margin-bottom: 0; }
   .pack-toolbar .spacer { flex: 1; }
   .pack-toolbar .counter { color: var(--text-tertiary); font-weight: 500; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -95,7 +95,7 @@
 
   .pack-empty { padding: 18px 14px; text-align: center; color: var(--text-tertiary); font-style: italic; font-size: 12.5px; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); }
 
-  /* Appendix — same workpaper idiom as the body, sits on a faint paper tint to
+  /* Appendix: same workpaper idiom as the body, sits on a faint paper tint to
      close the document. Two stacked exhibits: numbered notes (matching the
      footnote refs in the body) and the priority-derivation rules. */
   .pack-appendix { background: #fafaf8; border-top: 4px double var(--text); padding: 28px 32px 32px; }
@@ -170,7 +170,7 @@
       </div>
     <% } %>
 
-    <%# Section 1 — Status distribution %>
+    <%# Section 1 · Status distribution %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">1</span>
@@ -194,7 +194,7 @@
               { label: 'Implemented', sub: 'Control demonstrably in place and evidenced.', count: dist.Implemented || 0, dot: 'green', gap: 'No', note: '1' },
               { label: 'Partially Implemented', sub: 'Control exists but coverage or consistency gaps remain.', count: dist['Partially Implemented'] || 0, dot: 'amber', gap: 'Yes', note: '2' },
               { label: 'Work In Progress', sub: 'Implementation under way, not yet complete.', count: dist['Work In Progress'] || 0, dot: 'orange', gap: 'Yes', note: '2' },
-              { label: 'Not Implemented', sub: 'Control absent — gap requiring action.', count: dist['Not Implemented'] || 0, dot: 'red', gap: 'Yes', note: '2' },
+              { label: 'Not Implemented', sub: 'Control absent: gap requiring action.', count: dist['Not Implemented'] || 0, dot: 'red', gap: 'Yes', note: '2' },
               { label: 'Not Applicable', sub: 'Scoped out with documented justification on the SoA.', count: dist['Not Applicable'] || 0, dot: 'hollow', gap: 'No', note: '3' },
               { label: 'Not Assessed', sub: 'Wizard has not yet reached this item.', count: notAssessedCount || 0, dot: 'grey', gap: 'Excluded', note: '4' }
             ]; %>
@@ -220,14 +220,14 @@
       </table>
       <div class="pack-source">
         <strong>Notes</strong>
-        <sup style="color:var(--accent);font-weight: 500;">1</sup> Implemented items still need evidence on file — see Section 4.&nbsp;
+        <sup style="color:var(--accent);font-weight: 500;">1</sup> Implemented items still need evidence on file; see Section 4.&nbsp;
         <sup style="color:var(--accent);font-weight: 500;">2</sup> Gap items roll up into the remediation worklist (Section 2).&nbsp;
         <sup style="color:var(--accent);font-weight: 500;">3</sup> N/A determinations require justification on the Statement of Applicability.&nbsp;
         <sup style="color:var(--accent);font-weight: 500;">4</sup> Not-Assessed items are excluded from posture maths; complete the wizard to retire them.
       </div>
     </div>
 
-    <%# Section 2 — Remediation tasks (gap items) %>
+    <%# Section 2 · Remediation tasks (gap items) %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">2</span>
@@ -282,7 +282,7 @@
             </thead>
             <tbody>
               <% if (clauseGaps.length) { %>
-                <tr class="group"><td colspan="7">Clauses 4–10 &mdash; management-system requirements (<%= clauseGaps.length %>)</td></tr>
+                <tr class="group"><td colspan="7">Clauses 4–10 &middot; management-system requirements (<%= clauseGaps.length %>)</td></tr>
                 <% clauseGaps.forEach(g => {
                      const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
                      const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
@@ -301,7 +301,7 @@
                 <% }) %>
               <% } %>
               <% if (annexGaps.length) { %>
-                <tr class="group"><td colspan="7">Annex A &mdash; technical &amp; operational controls (<%= annexGaps.length %>)</td></tr>
+                <tr class="group"><td colspan="7">Annex A &middot; technical &amp; operational controls (<%= annexGaps.length %>)</td></tr>
                 <% annexGaps.forEach(g => {
                      const refCode = g.id.replace('annex-','').replace('clause-','').toUpperCase();
                      const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
@@ -326,7 +326,7 @@
       <% } %>
     </div>
 
-    <%# Section 3 — Documents to generate %>
+    <%# Section 3 · Documents to generate %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">3</span>
@@ -374,7 +374,7 @@
       <% } %>
     </div>
 
-    <%# Section 4 — Evidence asks %>
+    <%# Section 4 · Evidence asks %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">4</span>
@@ -415,7 +415,7 @@
       <% } %>
     </div>
 
-    <%# Section 5 — Risks blocked by gap controls %>
+    <%# Section 5 · Risks blocked by gap controls %>
     <div class="pack-section">
       <div class="pack-section-head">
         <span class="pack-section-num">5</span>
@@ -461,7 +461,7 @@
 
   </div>
 
-  <%# Appendix — workpaper-style notes + priority-derivation rules %>
+  <%# Appendix: workpaper-style notes + priority-derivation rules %>
   <div class="pack-appendix">
     <div class="pack-appendix-head">
       <div class="pack-appendix-eyebrow">App. A</div>
@@ -471,7 +471,7 @@
 
     <div class="pack-appendix-grid">
 
-      <%# A.1 — Notes that match the footnote refs in Exhibit 1.1 %>
+      <%# A.1 · Notes that match the footnote refs in Exhibit 1.1 %>
       <div>
         <div class="pack-caption"><span>A.1 &nbsp;·&nbsp; Notes referenced in Exhibit 1.1</span><span class="label">4 notes</span></div>
         <table class="wp">
@@ -479,7 +479,7 @@
             <tr>
               <td class="numref">1</td>
               <td class="term">Implemented<span class="meta">Counted as in-place</span></td>
-              <td class="def">Control demonstrably in place and evidenced. These items still appear in Exhibit 4.1 if no evidence file is attached &mdash; an Implemented status without supporting artefacts is the first thing an auditor will challenge.</td>
+              <td class="def">Control demonstrably in place and evidenced. These items still appear in Exhibit 4.1 if no evidence file is attached; an Implemented status without supporting artefacts is the first thing an auditor will challenge.</td>
             </tr>
             <tr>
               <td class="numref">2</td>
@@ -494,13 +494,13 @@
             <tr>
               <td class="numref">4</td>
               <td class="term">Not Assessed<span class="meta">Excluded from maths</span></td>
-              <td class="def">Items the wizard has not yet reached. They are excluded from posture percentages and from the total assessed perimeter. Complete the wizard to retire them &mdash; until then, treat the findings as provisional.</td>
+              <td class="def">Items the wizard has not yet reached. They are excluded from posture percentages and from the total assessed perimeter. Complete the wizard to retire them; until then, treat the findings as provisional.</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <%# A.2 — Priority derivation rules used in Exhibit 2.1 %>
+      <%# A.2 · Priority derivation rules used in Exhibit 2.1 %>
       <div>
         <div class="pack-caption"><span>A.2 &nbsp;·&nbsp; Priority derivation used in Exhibit 2.1</span><span class="label">5 rules</span></div>
         <table class="wp">
@@ -541,7 +541,7 @@
               <td class="numref" style="font-size:11px;">v</td>
               <td class="def" style="padding-top:9px;">Status = <code>Work In Progress</code></td>
               <td><span class="mark"><span class="dot grey"></span><span class="lbl">Low</span></span></td>
-              <td class="def">Implementation already under way. Track to completion, but do not create a duplicate task &mdash; rows with an open task are dimmed and skipped by <em>Select all</em>.</td>
+              <td class="def">Implementation already under way. Track to completion, but do not create a duplicate task; rows with an open task are dimmed and skipped by <em>Select all</em>.</td>
             </tr>
           </tbody>
         </table>

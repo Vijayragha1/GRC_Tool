@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # No Chromium download: no test launches Puppeteer, and the install is
+      # the slowest part of npm ci without this.
+      PUPPETEER_SKIP_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The live iso27001.db is gitignored; the suites detect its absence and
+      # build a migrated, seeded DB via scripts/build-test-db.js.
+      - run: npm test
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: |
+            npm-debug.log
+          if-no-files-found: ignore

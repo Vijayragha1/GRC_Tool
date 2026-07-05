@@ -13,7 +13,11 @@
  */
 const Database = require('better-sqlite3');
 const path = require('path');
-const soc2 = require('../../data/soc2-catalog.js');
+// data/soc2-catalog.js was removed pending approval; the SOC 2 sections below
+// are skipped when it is absent. The iso27001 / iso42001 / csf catalog (which
+// the app cannot run without, post-019) loads regardless.
+let soc2 = null;
+try { soc2 = require('../../data/soc2-catalog.js'); } catch (_) { /* absent: skip SOC 2 rows */ }
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '..', '..', 'iso27001.db');
 const db = new Database(dbPath);
@@ -125,6 +129,7 @@ const run = db.transaction(() => {
   // --- SOC 2 TSC from data/soc2-catalog.js (PENDING VIJAY APPROVAL) ---
   // 5 top categories (req_type=category, parent NULL); 20 groups (category, parent=top cat);
   // 61 criteria (control, parent=group). Refs are the codes so Phase 2b tsc_criteria resolve.
+  if (soc2) {
   soc2.CATEGORIES.forEach((c, i) => {
     insReq.run({ framework_id: fwSoc2, ref: c.code, parent_ref: null, req_type: 'category',
       title: c.name, summary: c.blurb, guidance: JSON.stringify({ short: c.short, required: !!c.required }), sort_order: i });
@@ -140,6 +145,7 @@ const run = db.transaction(() => {
     insReq.run({ framework_id: fwSoc2, ref: cr.code, parent_ref: cr.group, req_type: 'control',
       title: cr.title, summary: cr.description, guidance: JSON.stringify({ category: cr.category, group: cr.group }), sort_order: 1000 + i });
   });
+  }
 
   // --- requirement_mappings: framework_mappings (soc2, nist_csf) ; ISO = canonical ---
   let fmMapped = 0, fmQuar = 0;

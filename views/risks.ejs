@@ -19,7 +19,8 @@
       <button class="btn btn-secondary" title="Clone every entry from your firm's curated library">+ Firm library</button>
     </form>
     <a href="/workspaces/<%= ws.id %>/risks/library" class="btn btn-secondary">+ Starter library</a>
-    <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
+    <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-secondary">New risk</button>
+    <a href="/workspaces/<%= ws.id %>/risks/guided" class="btn btn-primary" title="Step-by-step, AI-assisted risk assessment">Guided assessment</a>
   </div>
 </div>
 
@@ -74,7 +75,7 @@
   </form>
 </div>
 
-<% if (risks.length > 0) { %>
+<% if (heatRisks.length > 0) { %>
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Risk heatmap</h2><span class="meta">Inherent risk · per active methodology</span></div>
   <div class="panel-pad">
@@ -87,7 +88,7 @@
             <% iScale.forEach((iL, ii) => {
                  const band = methodology.matrix[li][ii];
                  const c = bands[band].color;
-                 const cellRisks = risks.filter(r => r.likelihood === l.value && r.impact === iL.value);
+                 const cellRisks = heatRisks.filter(r => r.likelihood === l.value && r.impact === iL.value);
             %>
               <td style="text-align:center;background:<%= c %>22;color:<%= c %>;font-weight: 500;">
                 <% if (cellRisks.length) { %>
@@ -123,7 +124,7 @@
            const bandColor = bands[r.band] ? bands[r.band].color : '#71717a';
       %>
         <tr>
-          <td class="mono meta">R-<%= String(r.id).padStart(3, '0') %></td>
+          <td class="mono meta" style="white-space:nowrap;">R-<%= String(r.id).padStart(3, '0') %></td>
           <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="font-weight:500;"><%= r.title %></a></td>
           <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %><td class="meta"><%= r.entity_name || '-' %></td><% } %>
           <td class="text-secondary text-base"><%= r.asset_name || '-' %></td>
@@ -143,7 +144,8 @@
             <div class="empty-sub">Identify risks to confidentiality, integrity, and availability. Linking each risk to Annex A controls drives the Statement of Applicability automatically.</div>
             <div class="row" style="justify-content:center;">
               <a href="/workspaces/<%= ws.id %>/risks/import" class="btn btn-secondary">Import from CSV</a>
-              <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-primary">New risk</button>
+              <button onclick="document.getElementById('newRisk').classList.toggle('hidden')" class="btn btn-secondary">New risk</button>
+              <a href="/workspaces/<%= ws.id %>/risks/guided" class="btn btn-primary">Start a guided assessment</a>
             </div>
           </div>
         </td></tr>
@@ -151,5 +153,7 @@
     </tbody>
   </table>
 </div>
+
+<% if (typeof pg !== 'undefined' && pg) { %><%- include('partials/pager', { pg, pagerHref }) %><% } %>
 
 <%- include('partials/footer') %>

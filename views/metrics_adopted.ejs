@@ -9,7 +9,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Adopted metrics</h1>
-    <div class="page-subtitle">The ISO 27004 measures running on this engagement. Each shows its latest reading against the target — feed these into your management review as evidence-backed clause 9.1 inputs.</div>
+    <div class="page-subtitle">The ISO 27004 measures running on this engagement. Each shows its latest reading against the target; feed these into your management review as evidence-backed clause 9.1 inputs.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/metrics/library" class="btn btn-secondary btn-xs">Browse library →</a>
 </div>
@@ -34,9 +34,9 @@
 
   <% if (upcomingMrms && upcomingMrms.length > 0) { %>
     <div class="panel" style="margin-bottom:14px;">
-      <div class="panel-head"><h2>Feed into management review</h2><span class="meta">clause 9.3.2 c) — performance &amp; effectiveness</span></div>
+      <div class="panel-head"><h2>Feed into management review</h2><span class="meta">clause 9.3.2 c) · performance &amp; effectiveness</span></div>
       <div class="panel-pad">
-        <div class="text-base" style="margin-bottom:10px;line-height:1.5;">Append these adopted measures, with their latest readings and targets, into a management review record — alongside auto-computed ISMS KPIs (control coverage, training, incidents, audits).</div>
+        <div class="text-base" style="margin-bottom:10px;line-height:1.5;">Append these adopted measures, with their latest readings and targets, into a management review record, alongside auto-computed ISMS KPIs (control coverage, training, incidents, audits).</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <% upcomingMrms.forEach(mr => { %>
             <form method="POST" action="/workspaces/<%= ws.id %>/metrics/feed-to-mrm/<%= mr.id %>" style="display:inline;">

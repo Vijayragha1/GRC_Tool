@@ -11,6 +11,10 @@ const fs = require('fs');
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
+// With WAL on, readers never block the writer; busy_timeout makes the rare
+// writer-vs-writer collision (worker threads, backup, key rotation) retry for
+// up to 5s instead of throwing SQLITE_BUSY at the first request.
+db.pragma('busy_timeout = 5000');
 db.pragma('foreign_keys = ON');
 
 const SCHEMA = `
@@ -3347,6 +3351,27 @@ function init() {
   // once. applyPending() THROWS on the first failing migration, so a half-migrated
   // database refuses to start serving rather than coming up in a broken state.
   require('./migrations/run').applyPending(db);
+
+  // Fresh-boot catalog backfill. The schema chain creates the converged
+  // catalog tables, but the frameworks/requirements REFERENCE data lives in
+  // the idempotent data op migrations/data/002_phase1_backfill.js, which was
+  // only ever run manually against the live DB. Post control-state demolition
+  // (019) the app cannot function without the catalog: every control read and
+  // write maps iso_item ids through `requirements`. Gate on an empty
+  // frameworks table so this is a strict no-op on any already-backfilled DB;
+  // run in a child process because the script owns its own connection.
+  try {
+    const fwCount = db.prepare('SELECT COUNT(*) c FROM frameworks').get().c;
+    const isoCount = db.prepare('SELECT COUNT(*) c FROM iso_items').get().c;
+    if (fwCount === 0 && isoCount > 0) {
+      console.log('[db] frameworks catalog is empty (fresh boot); running data backfill 002…');
+      require('child_process').execFileSync(process.execPath,
+        [path.join(__dirname, 'migrations', 'data', '002_phase1_backfill.js')],
+        { stdio: 'inherit', env: { ...process.env, DB_PATH: dbPath } });
+    }
+  } catch (e) {
+    console.error('[db] fresh-boot catalog backfill failed:', e.message);
+  }
 }
 
 const crypto = require('crypto');

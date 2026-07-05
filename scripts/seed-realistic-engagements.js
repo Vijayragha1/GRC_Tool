@@ -8,7 +8,7 @@
 // client_owner roles, with cross-engagement assignments so each user wears
 // more than one role.
 //
-// Login as any seeded user with password: demo1234
+// Login as any seeded user with the password in PASSWORD below.
 
 'use strict';
 
@@ -55,6 +55,7 @@ function wipeClient(clientName) {
   safe(`DELETE FROM audit_findings WHERE audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`);
   safe(`DELETE FROM audit_observations WHERE audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`);
   safe(`DELETE FROM document_controls WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id=?)`);
+  safe(`DELETE FROM document_requirement_links WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id=?)`);
   safe(`DELETE FROM doc_versions WHERE document_id IN (SELECT id FROM generated_docs WHERE workspace_id=?)`);
   safe(`DELETE FROM evidence_requirement_links WHERE evidence_id IN (SELECT id FROM evidence WHERE workspace_id=?)`);
   safe(`DELETE FROM risk_treatment_actions WHERE workspace_id=?`);
@@ -124,54 +125,57 @@ function seedRisks(wsId, risks, assetIdByName) {
   })();
 }
 
-// Stamp every applicable control_state for the workspace.
+// Stamp every applicable control instance for the workspace.
+// Post control-state demolition (019): control_states is gone; writes target
+// converged control_instances keyed by requirement_id, reads come back through
+// the v_control_states view. Display values normalize via lib/control-writes.
 // `mode` controls the mix:
 //   'full'   - all controls included + Implemented (100%)
 //   'sixty'  - mix landing at ~60% Implemented across included controls
 function seedSoA(wsId, mode) {
-  const controls = db.prepare(`SELECT id, category FROM iso_items WHERE type='control' ORDER BY sort_order`).all();
-  const ins = db.prepare(`INSERT OR REPLACE INTO control_states
-    (workspace_id, iso_item_id, applicability, status, maturity,
+  const ctlWrites = require('../lib/control-writes');
+  const items = db.prepare(`SELECT id, type FROM iso_items WHERE type IN ('control','clause') ORDER BY sort_order`).all();
+  const ins = db.prepare(`INSERT INTO control_instances
+    (workspace_id, requirement_id, entity_id, applicability, status, maturity,
      inclusion_justification, exclusion_justification, last_updated)
-    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`);
+    VALUES (?, ?, NULL, ?, ?, ?, ?, ?, datetime('now'))`);
+  // UNIQUE(workspace_id, requirement_id, entity_id) treats NULL entity_id rows
+  // as distinct, so INSERT OR REPLACE cannot dedupe; clear first instead.
+  db.prepare(`DELETE FROM control_instances WHERE workspace_id=? AND entity_id IS NULL`).run(wsId);
 
   const incJust = 'In scope of the ISMS; treats risks identified in the risk register.';
-  const excJust = 'Not applicable - no in-house custom hardware or related operations in scope.';
+  const clauseJust = 'Mandatory clause - applies to every certified ISMS.';
 
   db.transaction(() => {
-    let included = 0, implemented = 0;
-    controls.forEach((c, i) => {
-      let applicability, status, maturity;
-      if (mode === 'full') {
+    let included = 0, implemented = 0, unmapped = 0, ci = 0;
+    for (const it of items) {
+      const rid = ctlWrites.requirementId(db, 'iso27001', it.id);
+      if (!rid) { unmapped++; continue; }
+      let status, maturity;
+      if (it.type === 'clause') {
+        status = mode === 'full' ? 'Implemented' : (Math.random() < 0.7 ? 'Implemented' : 'Partially Implemented');
+        maturity = mode === 'full' ? 4 : 3;
+      } else if (mode === 'full') {
         // 100% client: optimized. Maturity 4-5 (mostly 4, every 3rd a 5)
         // so the average clears the Stage 2 floor (75%) with no 0/1.
-        applicability = 'included';
         status = 'Implemented';
-        maturity = (i % 3 === 0) ? 5 : 4;
+        maturity = (ci % 3 === 0) ? 5 : 4;
         included++; implemented++;
       } else {
         // 60% client: mixed. Implemented -> 3, Partial -> 2, Not Impl -> 1.
         // Averages around 50-55% (below the 60% Stage 1 floor) with some
         // controls still at 1 so the Stage 2 no-0/1 rule also bites.
-        applicability = 'included';
         included++;
-        const cycle = i % 10;
+        const cycle = ci % 10;
         if (cycle < 6) { status = 'Implemented'; maturity = 3; implemented++; }
         else if (cycle < 9) { status = 'Partially Implemented'; maturity = 2; }
         else { status = 'Not Implemented'; maturity = 1; }
       }
-      ins.run(wsId, c.id, applicability, status, maturity,
-        applicability === 'included' ? incJust : null,
-        applicability === 'excluded' ? excJust : null);
-    });
-    // Also stamp clauses as Implemented for completeness on the dashboard.
-    const clauses = db.prepare(`SELECT id FROM iso_items WHERE type='clause'`).all();
-    clauses.forEach(cl => {
-      const status = mode === 'full' ? 'Implemented' : (Math.random() < 0.7 ? 'Implemented' : 'Partially Implemented');
-      const maturity = mode === 'full' ? 4 : 3;
-      ins.run(wsId, cl.id, 'included', status, maturity, 'Mandatory clause - applies to every certified ISMS.', null);
-    });
-    console.log(`  control_states: ${included} included, ${implemented} Implemented (mode=${mode})`);
+      if (it.type === 'control') ci++;
+      ins.run(wsId, rid, ctlWrites.normApplic('included'), ctlWrites.normStatus(status), maturity,
+        it.type === 'clause' ? clauseJust : incJust, null);
+    }
+    console.log(`  control_instances: ${included} controls included, ${implemented} Implemented (mode=${mode})${unmapped ? `, ${unmapped} unmapped refs skipped` : ''}`);
   })();
 }
 
@@ -184,7 +188,7 @@ function seedDocuments(wsId, workspace, tier) {
   const insVer = db.prepare(`INSERT INTO doc_versions
     (document_id, workspace_id, version, name, status, content, content_hash, created_by, change_summary)
     VALUES (?, ?, 1, ?, 'approved', ?, ?, ?, 'Seeded from template')`);
-  const insLink = db.prepare(`INSERT OR IGNORE INTO document_controls (document_id, iso_item_id) VALUES (?, ?)`);
+  const docLinks = require('../lib/doc-links'); // drl-native (document_controls demolished, 018)
   const isoExists = db.prepare(`SELECT 1 FROM iso_items WHERE id=?`);
   let total = 0, linked = 0;
   db.transaction(() => {
@@ -203,7 +207,7 @@ function seedDocuments(wsId, workspace, tier) {
       const refs = [...JSON.parse(t.controls || '[]'), ...JSON.parse(t.clauses || '[]')];
       for (const ref of refs) {
         if (isoExists.get(ref)) {
-          const r = insLink.run(docId, ref);
+          const r = docLinks.addLink(db, 'iso27001', docId, ref, null);
           if (r.changes) linked++;
         }
       }
@@ -222,7 +226,7 @@ function seedEvidenceOnEveryControl(wsId, mode) {
     : `cs.applicability='included' AND cs.status='Implemented'`;
   const controls = db.prepare(`
     SELECT i.id, i.title FROM iso_items i
-    INNER JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+    INNER JOIN v_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
     WHERE i.type='control' AND ${where}`).all(wsId);
   const insEv = db.prepare(`INSERT INTO evidence
     (workspace_id, iso_item_id, filename, stored_path, sha256, size_bytes, uploaded_by, description)
@@ -334,7 +338,7 @@ function captureSnapshot(wsId, label, reason) {
         COALESCE(cs.status,'Not Assessed') AS status,
         cs.inclusion_justification, cs.exclusion_justification
       FROM iso_items i
-      LEFT JOIN control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+      LEFT JOIN v_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
       WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
   const payload = JSON.stringify(rows);
   const hash = crypto.createHash('sha256').update(payload).digest('hex');
