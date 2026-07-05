@@ -1460,7 +1460,8 @@ require('./routes/glossary').register(app, { db, requireAuth, listWorkspaces });
 // ==================== WORKSPACE LIFECYCLE ====================
 // Lives in routes/workspaces.js (slice 15): CRUD, members, team setup.
 require('./routes/workspaces').register(app, { db, requireAuth, requireWorkspace, requirePermission,
-  logAction, isFirmUser, computeReadiness });
+  logAction, isFirmUser, computeReadiness, workspaceProgress, computeNextStep,
+  computeRoadmap, computeClientStage, computeNeedsAttention, resolveUploadPath });
 
 // ==================== CONTROLS + GAP ASSESSMENT ====================
 // Lives in routes/controls.js (slice 7): controls list + detail, guided gap

@@ -4,13 +4,15 @@
 // Shares the invite token scheme with routes/auth.js.
 
 const rbac = require('../lib/rbac');
+const ctlReads = require('../lib/control-reads');
 const email = require('../lib/email');
 const { hashToken, INVITE_TTL_MS } = require('./auth');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
-          isFirmUser, computeReadiness } = deps;
+          isFirmUser, computeReadiness, workspaceProgress, computeNextStep,
+          computeRoadmap, computeClientStage, computeNeedsAttention, resolveUploadPath } = deps;
 
   // ==================== WORKSPACE CRUD ====================
   app.get('/workspaces/new', requireAuth, (req, res) => {
