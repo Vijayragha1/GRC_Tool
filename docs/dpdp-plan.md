@@ -51,11 +51,14 @@ ends with a gate, same discipline as docs/tool-hardening-plan.md.
   row; per-client state in `control_instances` keyed by requirement id. If
   a read view is needed (the iso27001 pages read `v_control_states`), that
   is one migration through the runner, nothing else touches schema.
-- **Applicability is first-class, not an afterthought.** DPDP differs from
-  ISO here: whole sections switch off depending on role (Data Fiduciary vs
-  Processor vs Consent Manager), SDF designation, children's data, and
-  cross-border flows. The screening drives requirement applicability
-  automatically; the consultant confirms rather than hand-toggles 54 rows.
+- **Applicability is first-class, not an afterthought.** Per the worksheet,
+  exactly two blocks are structurally conditional: 2B (Consent Manager
+  obligations, only if the client is or registers as one) and Section 6
+  (SDF, only if notified under §10(1)). Everything else is core; the
+  Section 0 screening can still mark individual items Not Applicable (for
+  example no children's data, no cross-border flows), with the screening
+  answer recorded as the justification. The screening derives all of this;
+  the consultant confirms rather than hand-toggling 54 rows.
 - **Statutory fidelity is a hard rule.** Catalog entries carry their
   citation verbatim; anything the Act leaves to future notification stays
   marked conditional. Vijay reviews the catalog before it ships (he supplied
