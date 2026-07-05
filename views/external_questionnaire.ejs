@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Security questionnaire<% if (typeof q !== 'undefined' && q && q.supplier_name) { %> · <%= q.supplier_name %><% } %></title>
-<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <style>
   :root{
     --bg:#f5f3ed; --card:#ffffff; --border:#e7e4dc; --border-strong:#d8d6cf;

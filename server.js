@@ -1,3 +1,7 @@
+// Load .env before anything reads process.env. Ambient environment variables
+// take precedence over the file, so deploys that inject real env still win.
+try { process.loadEnvFile(); } catch (_) { /* no .env present */ }
+
 // Pin the whole app to India Standard Time so "today", date math, scheduled
 // scans and the calendar all operate in IST regardless of the host's timezone.
 // Must run before anything constructs a Date.
@@ -57,6 +61,18 @@ const evWrites = require('./lib/evidence-writes');
 init();
 
 // ---------------------------------------------------------------------------
+// Process-level safety net. Express 4 does not catch throws inside async route
+// handlers; without this, one throwing request kills the process for every
+// logged-in user (observed: an undecryptable document aborting the audit-pack
+// zip took the whole server down). The offending request may hang and time out
+// client-side; that is strictly better than a full crash. Individual handlers
+// should still try/catch - this is the last line, not the pattern.
+// ---------------------------------------------------------------------------
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err && err.stack ? err.stack : err);
+});
+
+// ---------------------------------------------------------------------------
 // Startup secret validation
 // ---------------------------------------------------------------------------
 (function validateSecrets() {
@@ -100,9 +116,49 @@ backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+if (process.env.NODE_ENV === 'production') app.set('view cache', true);
+
+// Security headers + gzip. The CSP allows 'unsafe-inline' for now because the
+// views still carry inline <script> blocks and style= attributes; tightening
+// to nonces means sweeping those first. HSTS only when actually behind TLS.
+const helmet = require('helmet');
+const compression = require('compression');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:'],
+      fontSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'self'"],
+      // The views still use inline onclick/onchange handlers; helmet's default
+      // script-src-attr 'none' would break every one of them.
+      scriptSrcAttr: ["'unsafe-inline'"],
+      ...(process.env.NODE_ENV === 'production' ? {} : { upgradeInsecureRequests: null }),
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  hsts: process.env.NODE_ENV === 'production' ? undefined : false,
+}));
+app.use(compression());
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Content-hash version for fingerprinted static assets. Views link them as
+// /app.css?v=<%= assetVersion %>, so the 7-day static cache below can never
+// serve a stale stylesheet or favicon after a change.
+app.locals.assetVersion = (() => {
+  const h = crypto.createHash('md5');
+  for (const f of ['public/app.css', 'public/auditor.css', 'public/favicon.svg', 'public/fonts/inter.css']) {
+    try { h.update(fs.readFileSync(path.join(__dirname, f))); } catch (_) {}
+  }
+  return h.digest('hex').slice(0, 8);
+})();
+
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
 app.use('/vendor/tinymce', express.static(path.join(__dirname, 'node_modules/tinymce')));
 // Quiet the favicon 404 - no icon yet, just respond with No Content.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
@@ -2023,124 +2079,10 @@ app.post('/firm/users/:id/deactivate', requireAuth, (req, res) => {
 });
 
 // ==================== GLOSSARY ====================
-// Workspace-agnostic learning resource. Static content, no DB.
-const GLOSSARY = require('./data/glossary');
+// Lives in routes/glossary.js - register(app, deps) pattern, second slice of
+// the modularization after routes/tenants.js.
+require('./routes/glossary').register(app, { db, requireAuth, listWorkspaces });
 
-// Set of valid iso_items.id values, computed once at boot. Used to decide
-// whether a clause/Annex-A reference in glossary text resolves to a real
-// page in the tool - only resolvable refs become clickable.
-const ISO_ITEM_IDS = new Set(db.prepare('SELECT id FROM iso_items').all().map(r => r.id));
-
-function escapeHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-// Render a clauseRef string with recognised refs as <a> links. Caller passes
-// the workspace ID to use as the link target. If wsId is missing, returns
-// plain escaped text - refs are not clickable without a workspace.
-function renderClauseRefHtml(text, wsId) {
-  const escaped = escapeHtml(text);
-  if (!text || !wsId) return escaped;
-  let html = escaped;
-  // Annex A - match A.X or A.X.Y. Longer match attempted first.
-  html = html.replace(/A\.\d+(?:\.\d+)?/g, (m) => {
-    const slug = 'annex-' + m.toLowerCase();
-    if (ISO_ITEM_IDS.has(slug)) {
-      return `<a href="/workspaces/${wsId}/controls/${slug}" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">${m}</a>`;
-    }
-    return m;
-  });
-  // Clause refs - match "Clause(s) N[, N, …]" where each N is a dotted number
-  // optionally followed by a sub-section letter. Resolves each number to the
-  // longest existing clause-id prefix and wraps it in a link.
-  function linkClauseToken(token) {
-    // token might be "6.1.2" or "6.1.3.d.1". The slug uses only the digit prefix.
-    const digitMatch = token.match(/^\d+(?:\.\d+){0,2}/);
-    if (!digitMatch) return token;
-    const parts = digitMatch[0].split('.');
-    while (parts.length > 0) {
-      const candidate = 'clause-' + parts.join('.');
-      if (ISO_ITEM_IDS.has(candidate)) {
-        return `<a href="/workspaces/${wsId}/controls/${candidate}" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">${token}</a>`;
-      }
-      parts.pop();
-    }
-    return token;
-  }
-  html = html.replace(/(Clauses?\s+)(\d+(?:\.\d+){0,2}(?:\.[a-z](?:\.\d+)?)?(?:\s*,\s*\d+(?:\.\d+){0,2}(?:\.[a-z](?:\.\d+)?)?)*)/g,
-    (whole, prefix, list) => prefix + list.replace(/\d+(?:\.\d+){0,2}(?:\.[a-z](?:\.\d+)?)?/g, linkClauseToken)
-  );
-  return html;
-}
-
-function firstWorkspaceIdFor(user) {
-  const ws = listWorkspaces(user)[0];
-  return ws ? ws.id : null;
-}
-
-app.get('/glossary', requireAuth, (req, res) => {
-  const q = (req.query.q || '').toString();
-  const category = (req.query.category || 'all').toString();
-  const letter = (req.query.letter || 'all').toString();
-  const results = GLOSSARY.searchEntries(q, category, letter)
-    .slice()
-    .sort((a, b) => a.term.localeCompare(b.term));
-  // Letter buckets - only show letters that have entries (post-filter, so the bar reflects what's available).
-  const letterCounts = {};
-  for (const e of GLOSSARY.ENTRIES) {
-    const first = /[A-Z]/.test(e.term[0]) ? e.term[0].toUpperCase() : '#';
-    letterCounts[first] = (letterCounts[first] || 0) + 1;
-  }
-  // Category counts (across full corpus, ignoring search filter - so users see what's available).
-  const categoryCounts = {};
-  for (const e of GLOSSARY.ENTRIES) categoryCounts[e.category] = (categoryCounts[e.category] || 0) + 1;
-  const starter = GLOSSARY.STARTER_TERMS
-    .map(slug => GLOSSARY.ENTRIES.find(e => e.slug === slug))
-    .filter(Boolean);
-  const linkWsId = firstWorkspaceIdFor(req.user);
-  // Firm-level reference page: always render with the firm sidebar. The Glossary
-  // nav link only appears in the firm-level nav, so inheriting a sticky
-  // last-visited workspace would strand the user in a client's chrome - the
-  // active nav item vanishes and it reads as "landing in a client page". The
-  // client switcher still highlights the last-viewed workspace via
-  // res.locals.lastWs, so no context is lost.
-  res.render('glossary', {
-    user: req.user,
-    ws: null,
-    title: 'Glossary',
-    active: 'glossary',
-    q, category, letter,
-    results,
-    total: GLOSSARY.ENTRIES.length,
-    letterCounts,
-    categoryCounts,
-    categories: GLOSSARY.CATEGORIES,
-    starter,
-    renderClauseRef: (t) => renderClauseRefHtml(t, linkWsId)
-  });
-});
-
-app.get('/glossary/:slug', requireAuth, (req, res) => {
-  const idx = GLOSSARY.indexBySlug();
-  const entry = idx[req.params.slug];
-  if (!entry) return res.status(404).render('error', { user: req.user, message: 'No glossary entry with that slug. The 168 terms shipped with the tool are listed at /glossary - try searching there.' });
-  const related = (entry.related || []).map(s => idx[s]).filter(Boolean);
-  const categoryLabel = (GLOSSARY.CATEGORIES.find(c => c.key === entry.category) || {}).label || entry.category;
-  const linkWsId = firstWorkspaceIdFor(req.user);
-  res.render('glossary_detail', {
-    user: req.user,
-    ws: null, // firm-level reference page - see GET /glossary note
-    title: entry.term,
-    active: 'glossary',
-    entry,
-    related,
-    categoryLabel,
-    categories: GLOSSARY.CATEGORIES,
-    renderClauseRef: (t) => renderClauseRefHtml(t, linkWsId)
-  });
-});
 
 // ==================== WORKSPACE CRUD ====================
 app.get('/workspaces/new', requireAuth, (req, res) => {
@@ -7377,8 +7319,10 @@ app.get('/workspaces/:wsId/audit-pack/zip', requireAuth, requireWorkspace, async
   // Approved/published documents as .docx
   const docs = db.prepare(`SELECT * FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published') ORDER BY name`).all(ws.id);
   for (const dRaw of docs) {
-    const d = { ...dRaw, content: enc.decryptIfNeeded(dRaw.content, ws.id) };
     try {
+      // decrypt inside the try: a single undecryptable document (e.g. after a
+      // key mishap) must skip that doc, not abort the pack or crash the process.
+      const d = { ...dRaw, content: enc.decryptIfNeeded(dRaw.content, ws.id) };
       const buf = await generateDocxBuffer(d, ws);
       zip.append(buf, { name: `04_Documents/${d.name.replace(/[^\w\- ]+/g,'_')}.docx` });
       manifest.push(`  04_Documents/${d.name}.docx`);
@@ -7395,7 +7339,7 @@ app.get('/workspaces/:wsId/audit-pack/zip', requireAuth, requireWorkspace, async
           zip.append(sigTxt, { name: `04_Documents/${d.name.replace(/[^\w\- ]+/g,'_')}__signatures.txt` });
         }
       }
-    } catch (e) { console.error('docx gen failed', d.id, e.message); }
+    } catch (e) { console.error('docx gen failed', dRaw.id, e.message); }
   }
   if (docs.length === 0) manifest.push(`  04_Documents/ (no approved documents yet)`);
 
@@ -9285,8 +9229,8 @@ app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWo
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;border:1px solid #ececef;border-radius:6px;">
             <tr><td style="padding:14px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">
               <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin-bottom:6px;">Document</div>
-              <div style="font-size:15px;font-weight:600;color:#0a0a0a;margin-bottom:10px;">${email.escapeHtml(doc.name)} <span style="color:#9c9ca5;font-weight:400;">· v${v.version}</span></div>
-              ${summary ? `<div style="font-size:13px;line-height:1.5;color:#51525c;border-left:2px solid #5C0A0A;padding-left:10px;">${email.escapeHtml(summary)}</div>` : ''}
+              <div style="font-size:15px;font-weight:500;color:#0a0a0a;margin-bottom:10px;">${email.escapeHtml(doc.name)} <span style="color:#9c9ca5;font-weight:400;">· v${v.version}</span></div>
+              ${summary ? `<div style="font-size:13px;line-height:1.5;color:#51525c;border-left:2px solid #1a1a1a;padding-left:10px;">${email.escapeHtml(summary)}</div>` : ''}
             </td></tr>
           </table>`;
         email.sendEmail({
@@ -9406,7 +9350,7 @@ function notifyRejection(versionId, doc, workspace, rejectorDisplay, reason) {
   const wsName = workspace.client_name;
   const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
   const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>${email.escapeHtml(rejectorDisplay)}</strong> rejected v${version.version} of "${email.escapeHtml(doc.name)}".</p>
-    ${reason ? `<div style="margin:12px 0;padding:12px 14px;background:#fafafa;border-left:2px solid #5C0A0A;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>Reason:</strong> ${email.escapeHtml(reason)}</div>` : ''}
+    ${reason ? `<div style="margin:12px 0;padding:12px 14px;background:#fafafa;border-left:2px solid #1a1a1a;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>Reason:</strong> ${email.escapeHtml(reason)}</div>` : ''}
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">The document is back in draft so you can address the feedback and resubmit.</p>`;
   email.sendEmail({
     to: submitter.email,
@@ -9558,7 +9502,7 @@ app.get('/approve/:token', (req, res) => {
     docVersion: row.version,
     docContent: bodyHtml,
     submitterName: row.submitter_name,
-    brandColor: row.brand_primary_color || '#5C0A0A',
+    brandColor: row.brand_primary_color || '#1a1a1a',
     token: req.params.token,
     csrfToken: '' // route is CSRF-skipped (token is the credential)
   });
@@ -9663,7 +9607,7 @@ app.post('/approve/:token', (req, res) => {
     docName: row.doc_name,
     docVersion: row.version,
     workspaceName: row.workspace_name,
-    brandColor: row.brand_primary_color || '#5C0A0A',
+    brandColor: row.brand_primary_color || '#1a1a1a',
     approverName: row.name
   });
 });
@@ -12254,8 +12198,8 @@ function deliverableCss(ws) {
     .meta{color:#71717A;font-size:9.5pt;}
     table{border-collapse:collapse;width:100%;margin:6pt 0;font-size:9.5pt;}
     th,td{border:1pt solid #D6D6DB;padding:4pt 6pt;text-align:left;vertical-align:top;}
-    th{background:#F4F4F5;color:#0F0F12;font-weight:600;}
-    .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:600;}
+    th{background:#F4F4F5;color:#0F0F12;font-weight:500;}
+    .tag{display:inline-block;padding:1pt 5pt;border-radius:3pt;font-size:8.5pt;font-weight:500;}
     .tag-impl{background:#dcfce7;color:#15803d;}
     .tag-partial{background:#fef3c7;color:#a16207;}
     .tag-wip{background:#dbeafe;color:#1d4ed8;}
@@ -12301,7 +12245,7 @@ function deliverableCoverHtml(title, ws) {
       <tr>
         <td style="background-color:${accent};color:#FFFFFF;padding:48pt 40pt 48pt 40pt;border:none;">
           ${logoLine}
-          <p style="margin:0 0 6pt 0;font-size:10pt;font-weight:600;color:#FFFFFF;letter-spacing:0.10em;">${escHtml(title.toUpperCase())}</p>
+          <p style="margin:0 0 6pt 0;font-size:10pt;font-weight:500;color:#FFFFFF;letter-spacing:0.10em;">${escHtml(title.toUpperCase())}</p>
           <p style="margin:0;font-size:30pt;font-weight:700;line-height:1.15;color:#FFFFFF;">${clientName}</p>
         </td>
       </tr>

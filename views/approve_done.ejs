@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Decision recorded · <%= docName %></title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
-<link rel="stylesheet" href="/fonts/inter.css">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/fonts/source-serif-4.css">
 <style>
   :root {

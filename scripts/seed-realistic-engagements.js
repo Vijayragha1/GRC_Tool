@@ -8,7 +8,7 @@
 // client_owner roles, with cross-engagement assignments so each user wears
 // more than one role.
 //
-// Login as any seeded user with password: demo1234
+// Login as any seeded user with the password in PASSWORD below.
 
 'use strict';
 

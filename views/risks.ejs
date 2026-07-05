@@ -124,7 +124,7 @@
            const bandColor = bands[r.band] ? bands[r.band].color : '#71717a';
       %>
         <tr>
-          <td class="mono meta">R-<%= String(r.id).padStart(3, '0') %></td>
+          <td class="mono meta" style="white-space:nowrap;">R-<%= String(r.id).padStart(3, '0') %></td>
           <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="font-weight:500;"><%= r.title %></a></td>
           <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %><td class="meta"><%= r.entity_name || '-' %></td><% } %>
           <td class="text-secondary text-base"><%= r.asset_name || '-' %></td>
