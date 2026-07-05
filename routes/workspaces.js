@@ -7,6 +7,7 @@ const rbac = require('../lib/rbac');
 const ctlReads = require('../lib/control-reads');
 const email = require('../lib/email');
 const { hashToken, INVITE_TTL_MS } = require('./auth');
+const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
 function register(app, deps) {
