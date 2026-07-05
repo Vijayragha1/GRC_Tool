@@ -38,7 +38,7 @@ function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           getActiveFirmId, isFirmUser, isFirmOwner, getOrCreateState,
           getActiveMethodology, methodologyBand, activeEntityFilter,
-          resolveUploadPath, upload, csvUpload, qUploadAny, resolveQuestionnaireFirm, computeClientStage, permissionsFor,
+          resolveUploadPath, upload, csvUpload, qUploadAny, resolveQuestionnaireFirm, computeClientStage, permissionsFor, persistQuestionnaireFiles,
           verifyAuditChain, listWorkspaces, workspaceProgress } = deps;
 
   // ==================== EXEC BRIEF (one-page CISO/board readout) ====================

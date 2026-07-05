@@ -8,7 +8,7 @@ const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
 function register(app, deps) {
-  const { db, requireAuth, requireWorkspace, requirePermission, logAction } = deps;
+  const { db, requireAuth, requireWorkspace, requirePermission, logAction, workspaceProgress } = deps;
 
   // ==================== INTERNAL AUDITS ====================
   app.get('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) => {

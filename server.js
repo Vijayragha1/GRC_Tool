@@ -829,7 +829,7 @@ require('./routes/risks').register(app, { db, requireAuth, requireWorkspace, req
 // ==================== SOA + CROSSWALKS ====================
 // Lives in routes/soa.js (slice 6): SoA single/batch/bulk updates and the
 // cross-framework mapping view.
-require('./routes/soa').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction });
+require('./routes/soa').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, getOrCreateState });
 
 // ==================== EXPORTS + AUDIT PACK ====================
 // Lives in routes/exports.js (slice 17): CSV/DOCX exports, audit-pack zip,
@@ -841,11 +841,11 @@ require('./routes/exports').register(app, { db, requireAuth, requireWorkspace, r
 // Lives in routes/documents.js (slice 12): list/detail, template library,
 // versioning + approvals + e-signatures, magic-link approval portal.
 require('./routes/documents').register(app, { db, requireAuth, requireWorkspace, requirePermission,
-  logAction, upload, resolveUploadPath });
+  logAction, upload, resolveUploadPath, isFirmUser, diffObjects });
 
 // Lives in routes/governance.js (slice 9): internal audits + findings,
 // improvements, management reviews, nonconformities/CAPA.
-require('./routes/governance').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction });
+require('./routes/governance').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, workspaceProgress });
 
 // ==================== WORKSPACE OPS (BATCH B) ====================
 // Lives in routes/workspace-ops-b.js: bulk control update, autosave,
@@ -866,7 +866,7 @@ require('./routes/readiness').register(app, { db, requireAuth, requireWorkspace 
 // Lives in routes/registers.js (slice 10): incidents, BCP/BIA, change
 // management, vendors (TPRM) + questionnaires + external vendor links.
 require('./routes/registers').register(app, { db, requireAuth, requireWorkspace, requirePermission,
-  logAction, upload, resolveUploadPath, activeEntityFilter, qUploadAny });
+  logAction, upload, resolveUploadPath, activeEntityFilter, qUploadAny, persistQuestionnaireFiles });
 
 // ==================== PERFORMANCE + PEOPLE ====================
 // Lives in routes/performance.js (slice 11): ISMS metrics + 27004 library,
@@ -896,7 +896,7 @@ require('./routes/notifications').register(app, { db, requireAuth, requireWorksp
 require('./routes/engagement-ops').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, getActiveFirmId, isFirmUser, isFirmOwner, getOrCreateState, getActiveMethodology,
   methodologyBand, activeEntityFilter, resolveUploadPath, upload, csvUpload, qUploadAny,
-  resolveQuestionnaireFirm, computeClientStage, permissionsFor, verifyAuditChain, listWorkspaces, workspaceProgress });
+  resolveQuestionnaireFirm, computeClientStage, permissionsFor, persistQuestionnaireFiles, verifyAuditChain, listWorkspaces, workspaceProgress });
 
 // ==================== ENGAGEMENT INTAKE + 12-WEEK PLAN ====================
 // Extracted to routes/engagement.js. Same dependency-injection pattern as

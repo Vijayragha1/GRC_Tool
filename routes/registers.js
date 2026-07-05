@@ -12,7 +12,7 @@ const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-h
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
-          upload, resolveUploadPath, activeEntityFilter, qUploadAny } = deps;
+          upload, resolveUploadPath, activeEntityFilter, qUploadAny, persistQuestionnaireFiles } = deps;
 
   // ==================== INCIDENTS ====================
   app.get('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res) => {

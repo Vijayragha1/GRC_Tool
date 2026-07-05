@@ -19,7 +19,7 @@ const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: tru
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
-          upload, resolveUploadPath } = deps;
+          upload, resolveUploadPath, isFirmUser, diffObjects } = deps;
 
   // ==================== DOCUMENTS ====================
   function substitutePlaceholders(content, vars) {

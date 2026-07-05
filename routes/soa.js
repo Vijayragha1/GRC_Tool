@@ -9,7 +9,7 @@ const docLinks = require('../lib/doc-links');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
 function register(app, deps) {
-  const { db, requireAuth, requireWorkspace, requirePermission, logAction } = deps;
+  const { db, requireAuth, requireWorkspace, requirePermission, logAction, getOrCreateState } = deps;
 
   app.get('/workspaces/:wsId/soa', requireAuth, requireWorkspace, (req, res) => {
     // Ensure every Annex A control has a control_states row so subsequent SoA
