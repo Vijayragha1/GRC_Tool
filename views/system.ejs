@@ -9,6 +9,17 @@
   <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
     <div><div class="meta">Master key fingerprint</div><div class="mono text-xl" style="font-weight: 500;"><%= masterFp %></div></div>
     <div><div class="meta">Backup retention</div><div class="text-xl" style="font-weight: 500;">Last <%= backups.length %> backups</div></div>
+    <div><div class="meta">Last restore drill</div>
+      <% if (typeof lastDrill !== 'undefined' && lastDrill) { %>
+        <div class="text-xl" style="font-weight: 500;color:<%= lastDrill.status === 'ok' ? '#15803d' : '#b91c1c' %>;">
+          <%= lastDrill.status === 'ok' ? 'Passed' : 'Failed' %> · <%= (lastDrill.ran_at || '').slice(0, 10) %>
+        </div>
+        <% if (lastDrill.status !== 'ok' && lastDrill.error) { %><div class="meta text-sm"><%= lastDrill.error %></div><% } %>
+      <% } else { %>
+        <div class="text-xl" style="font-weight: 500;color:var(--text-tertiary);">Never run</div>
+        <div class="meta text-sm">Runs monthly; or npm run restore-check</div>
+      <% } %>
+    </div>
   </div>
 </div>
 

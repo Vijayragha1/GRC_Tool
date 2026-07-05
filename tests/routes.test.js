@@ -19,7 +19,7 @@ const http = require('http');
 const ROOT = path.resolve(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'iso27001-routes-'));
 const TMP_DB = path.join(TMP, 'iso27001.db');
-const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), DB_PATH: TMP_DB,
+const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), ISMS_BACKUP_DIR: path.join(TMP, 'backups'), DB_PATH: TMP_DB,
   SESSION_SECRET: 'routes-test-fixed-secret-for-deterministic-cookies-only',
   DISABLE_CSRF: '1', PORT: '3345' };
 

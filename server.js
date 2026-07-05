@@ -13744,7 +13744,8 @@ app.get('/workspaces/:wsId/system', requireAuth, requireWorkspace, (req, res) =>
   const backups = backup.listBackups();
   const rotations = db.prepare(`SELECT * FROM key_rotations ORDER BY id DESC LIMIT 50`).all();
   const masterFp = keyrotation.fingerprint(enc.masterKey());
-  res.render('system', { user: req.user, ws: req.workspace, backups, rotations, masterFp });
+  const lastDrill = require('./lib/restore-check').lastDrill();
+  res.render('system', { user: req.user, ws: req.workspace, backups, rotations, masterFp, lastDrill });
 });
 
 app.post('/workspaces/:wsId/system/backup', requireAuth, requireWorkspace, async (req, res) => {

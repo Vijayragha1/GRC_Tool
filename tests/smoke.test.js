@@ -26,7 +26,7 @@ const TMP_DB = path.join(TMP, 'iso27001.db');
 // the server's built-in test escape hatch - the body parser and CSRF middleware
 // have a chicken-and-egg with multi-request cookie capture in this bare-node
 // test, so we turn CSRF off and rely on the security.test.js suite to cover it.
-const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), DB_PATH: TMP_DB,
+const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), ISMS_BACKUP_DIR: path.join(TMP, 'backups'), DB_PATH: TMP_DB,
   SESSION_SECRET: 'smoke-test-fixed-secret-for-deterministic-cookies-only',
   DISABLE_CSRF: '1' };
 

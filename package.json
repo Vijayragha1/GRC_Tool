@@ -13,6 +13,7 @@
     "content-staleness": "node scripts/content-staleness.js",
     "test": "node tests/smoke.test.js && node tests/routes.test.js && node --test tests/security.test.js tests/rbac.test.js",
     "test:routes": "node tests/routes.test.js",
+    "restore-check": "node scripts/restore-check.js",
     "test:security": "node --test tests/security.test.js tests/rbac.test.js",
     "test:browser": "node tests/browser-ui.js"
   },
