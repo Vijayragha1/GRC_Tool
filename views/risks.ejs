@@ -75,7 +75,7 @@
   </form>
 </div>
 
-<% if (risks.length > 0) { %>
+<% if (heatRisks.length > 0) { %>
 <div class="panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>Risk heatmap</h2><span class="meta">Inherent risk · per active methodology</span></div>
   <div class="panel-pad">
@@ -88,7 +88,7 @@
             <% iScale.forEach((iL, ii) => {
                  const band = methodology.matrix[li][ii];
                  const c = bands[band].color;
-                 const cellRisks = risks.filter(r => r.likelihood === l.value && r.impact === iL.value);
+                 const cellRisks = heatRisks.filter(r => r.likelihood === l.value && r.impact === iL.value);
             %>
               <td style="text-align:center;background:<%= c %>22;color:<%= c %>;font-weight: 500;">
                 <% if (cellRisks.length) { %>
@@ -153,5 +153,7 @@
     </tbody>
   </table>
 </div>
+
+<% if (typeof pg !== 'undefined' && pg) { %><%- include('partials/pager', { pg, pagerHref }) %><% } %>
 
 <%- include('partials/footer') %>

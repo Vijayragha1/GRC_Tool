@@ -42,6 +42,7 @@ function ymLocal(d) {
 const { db, init, logAction, verifyAuditChain, defaultMethodology, ensureWorkspaceMethodology, getActiveMethodology, methodologyBand } = require('./db');
 const enc = require('./lib/encryption');
 const rbac = require('./lib/rbac');
+const { paginate, pageHref } = require('./lib/paginate');
 const jobs = require('./lib/jobs');
 const fts = require('./lib/fts');
 const reports = require('./lib/reports');
@@ -1567,20 +1568,23 @@ app.get('/admin/activity', requireAuth, (req, res) => {
   }
   const wsIds = db.prepare(`SELECT id FROM workspaces WHERE firm_id = ?`).all(req.user.firm_id).map(r => r.id);
   let recentActivity = [];
+  let pg = null;
   if (wsIds.length > 0) {
     const placeholders = wsIds.map(() => '?').join(',');
-    recentActivity = db.prepare(
-      `SELECT a.created_at, a.action, a.entity_type, a.entity_id, a.workspace_id,
-              u.name AS user_name, w.client_name
-       FROM audit_log a
+    const whereSql = `FROM audit_log a
        LEFT JOIN users u ON u.id = a.user_id
        INNER JOIN workspaces w ON w.id = a.workspace_id
        WHERE a.workspace_id IN (${placeholders})
-         AND a.created_at >= date('now','-90 days')
-       ORDER BY a.created_at DESC LIMIT 200`
-    ).all(...wsIds);
+         AND a.created_at >= date('now','-90 days')`;
+    pg = paginate(db, req, {
+      count: `SELECT COUNT(*) c ${whereSql}`,
+      rows: `SELECT a.created_at, a.action, a.entity_type, a.entity_id, a.workspace_id,
+              u.name AS user_name, w.client_name ${whereSql} ORDER BY a.created_at DESC`,
+      params: wsIds, perPage: 100,
+    });
+    recentActivity = pg.rows;
   }
-  res.render('admin_activity', { user: req.user, ws: null, active: 'admin-activity', recentActivity });
+  res.render('admin_activity', { user: req.user, ws: null, active: 'admin-activity', recentActivity, pg, pagerHref: p => pageHref(req, p) });
 });
 
 // ==================== PORTFOLIO HEALTH (manager triage board) ====================
@@ -3603,6 +3607,11 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
     );
   }
 
+  // Paginate the filtered list; counters and the tag cloud below stay
+  // full-set on purpose (the filter pills describe the library, not the page).
+  const pgEv = require('./lib/paginate').paginateArray(req, evidenceList, 50);
+  evidenceList = pgEv.rows;
+
   // Linked controls (ISO 27001 chips) + cross-framework link details for the
   // visible rows. Sourced from the legacy join tables or the converged
   // evidence_requirement_links per the per-workspace cutover flag; the legacy
@@ -3647,7 +3656,8 @@ app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) 
     crossLinksByEvidence,
     allIsoItems, allIso42001Items, allCsfSubcats,
     q, filter, tag, today, expSoon,
-    tagList
+    tagList,
+    pg: pgEv, pagerHref: p => pageHref(req, p)
   });
 });
 
@@ -4090,15 +4100,23 @@ app.post('/workspaces/:wsId/assets/import/commit', requireAuth, requireWorkspace
 // ==================== RISKS ====================
 app.get('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
   const ef = activeEntityFilter(req, 'r');
-  const risks = db.prepare(`SELECT r.*, a.name AS asset_name, e.name AS entity_name FROM risks r
+  // Heatmap aggregates span the FULL register; only the table paginates.
+  const heatRisks = db.prepare(`SELECT likelihood, impact FROM risks r
+    WHERE r.workspace_id = ?${ef.sql}`).all(req.workspace.id, ...ef.params);
+  const pgRisks = paginate(db, req, {
+    count: `SELECT COUNT(*) c FROM risks r WHERE r.workspace_id = ?${ef.sql}`,
+    rows: `SELECT r.*, a.name AS asset_name, e.name AS entity_name FROM risks r
     LEFT JOIN assets a ON a.id = r.asset_id
     LEFT JOIN entities e ON e.id = r.entity_id
-    WHERE r.workspace_id = ?${ef.sql} ORDER BY (r.likelihood * r.impact) DESC`).all(req.workspace.id, ...ef.params);
+    WHERE r.workspace_id = ?${ef.sql} ORDER BY (r.likelihood * r.impact) DESC`,
+    params: [req.workspace.id, ...ef.params], perPage: 100,
+  });
   const assets = db.prepare('SELECT id, name FROM assets WHERE workspace_id = ? ORDER BY name').all(req.workspace.id);
   const methodology = getActiveMethodology(req.workspace.id);
   // Compute band per risk
-  const enriched = risks.map(r => ({ ...r, band: methodologyBand(methodology, r.likelihood, r.impact) }));
-  res.render('risks', { user: req.user, ws: req.workspace, risks: enriched, assets, methodology });
+  const enriched = pgRisks.rows.map(r => ({ ...r, band: methodologyBand(methodology, r.likelihood, r.impact) }));
+  res.render('risks', { user: req.user, ws: req.workspace, risks: enriched, heatRisks, assets, methodology,
+    pg: pgRisks, pagerHref: p => pageHref(req, p) });
 });
 
 app.post('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
@@ -5044,13 +5062,18 @@ app.get('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => 
            WHERE t.workspace_id = ?`;
   if (filter === 'mine') q += ` AND t.assignee_id = ${req.user.id}`;
   if (filter === 'open') q += ` AND t.status NOT IN ('done')`;
-  q += ` ORDER BY t.due_date IS NULL, t.due_date ASC, t.created_at DESC`;
-  const tasks = db.prepare(q).all(req.workspace.id);
+  const pgT = paginate(db, req, {
+    count: q.replace(/SELECT t\.\*.*?FROM tasks t/s, 'SELECT COUNT(*) c FROM tasks t'),
+    rows: q + ` ORDER BY t.due_date IS NULL, t.due_date ASC, t.created_at DESC`,
+    params: [req.workspace.id], perPage: 100,
+  });
+  const tasks = pgT.rows;
   const wsUsers = db.prepare(`SELECT u.id, u.name FROM users u
     INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
     UNION SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1`)
     .all(req.workspace.id, req.workspace.firm_id);
-  res.render('tasks', { user: req.user, ws: req.workspace, tasks, filter, wsUsers });
+  res.render('tasks', { user: req.user, ws: req.workspace, tasks, filter, wsUsers,
+    pg: pgT, pagerHref: p => pageHref(req, p) });
 });
 
 app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
@@ -5164,7 +5187,9 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
     : '';
   const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
 
-  const docs = db.prepare(`SELECT d.*, u.name AS creator, t.name AS template_name,
+  const pgDocs = paginate(db, req, {
+    count: `SELECT COUNT(*) c FROM generated_docs d WHERE d.workspace_id = ? ${docFilterClause}`,
+    rows: `SELECT d.*, u.name AS creator, t.name AS template_name,
     (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc WHERE dc.document_id = d.id) AS tag_count,
     (CASE
        WHEN d.next_review_date IS NULL THEN NULL
@@ -5176,7 +5201,10 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
     LEFT JOIN users u ON u.id = d.created_by
     LEFT JOIN doc_templates t ON t.id = d.template_id
     WHERE d.workspace_id = ? ${docFilterClause}
-    ORDER BY d.updated_at DESC`).all(...params);
+    ORDER BY d.updated_at DESC`,
+    params, perPage: 50,
+  });
+  const docs = pgDocs.rows;
 
   // Pull the tag chips for each doc - keep the per-doc list small (top 4 +
   // "and N more" overflow) so the table stays compact even on heavily-tagged
@@ -5207,7 +5235,8 @@ app.get('/workspaces/:wsId/documents', requireAuth, requireWorkspace, (req, res)
 
   res.render('documents', {
     user: req.user, ws: req.workspace, docs, templates,
-    tagsByDoc, taggedItems, tagFilter, registers
+    tagsByDoc, taggedItems, tagFilter, registers,
+    pg: pgDocs, pagerHref: p => pageHref(req, p)
   });
 });
 
@@ -5724,9 +5753,13 @@ app.get('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, (req, r
   const filter = req.query.filter || 'open';
   let q = `SELECT * FROM improvements WHERE workspace_id=?`;
   if (filter === 'open') q += ` AND status NOT IN ('done','cancelled')`;
-  q += ` ORDER BY (CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 ELSE 3 END), due_date IS NULL, due_date`;
-  const items = db.prepare(q).all(req.workspace.id);
-  res.render('improvements', { user: req.user, ws: req.workspace, items, filter });
+  const pgImp = paginate(db, req, {
+    count: q.replace('SELECT *', 'SELECT COUNT(*) c'),
+    rows: q + ` ORDER BY (CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 ELSE 3 END), due_date IS NULL, due_date`,
+    params: [req.workspace.id], perPage: 100,
+  });
+  res.render('improvements', { user: req.user, ws: req.workspace, items: pgImp.rows, filter,
+    pg: pgImp, pagerHref: p => pageHref(req, p) });
 });
 
 app.post('/workspaces/:wsId/improvements', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
@@ -6073,9 +6106,13 @@ app.get('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req
            LEFT JOIN iso_items i ON i.id = n.iso_item_id
            WHERE n.workspace_id = ?`;
   if (filter === 'open') q += ` AND n.status NOT IN ('closed','verified')`;
-  q += ` ORDER BY n.created_at DESC`;
-  const ncs = db.prepare(q).all(req.workspace.id);
-  res.render('nonconformities', { user: req.user, ws: req.workspace, ncs, filter });
+  const pgN = paginate(db, req, {
+    count: q.replace(/SELECT n\.\*.*?FROM nonconformities n/s, 'SELECT COUNT(*) c FROM nonconformities n'),
+    rows: q + ` ORDER BY n.created_at DESC`,
+    params: [req.workspace.id], perPage: 100,
+  });
+  res.render('nonconformities', { user: req.user, ws: req.workspace, ncs: pgN.rows, filter,
+    pg: pgN, pagerHref: p => pageHref(req, p) });
 });
 
 app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
@@ -7412,9 +7449,13 @@ app.get('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res)
   const filter = req.query.filter || 'open';
   let q = `SELECT * FROM incidents WHERE workspace_id = ?`;
   if (filter === 'open') q += ` AND status NOT IN ('closed')`;
-  q += ` ORDER BY detected_at DESC, created_at DESC`;
-  const incidents = db.prepare(q).all(req.workspace.id);
-  res.render('incidents', { user: req.user, ws: req.workspace, incidents, filter });
+  const pgInc = paginate(db, req, {
+    count: q.replace('SELECT *', 'SELECT COUNT(*) c'),
+    rows: q + ` ORDER BY detected_at DESC, created_at DESC`,
+    params: [req.workspace.id], perPage: 100,
+  });
+  res.render('incidents', { user: req.user, ws: req.workspace, incidents: pgInc.rows, filter,
+    pg: pgInc, pagerHref: p => pageHref(req, p) });
 });
 
 app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
@@ -7652,8 +7693,12 @@ app.get('/workspaces/:wsId/changes', requireAuth, requireWorkspace, (req, res) =
   if (status && status !== 'all') { q += ` AND status=?`; params.push(status); }
   if (change_type && change_type !== 'all') { q += ` AND change_type=?`; params.push(change_type); }
   if (risk_level && risk_level !== 'all') { q += ` AND risk_level=?`; params.push(risk_level); }
-  q += ` ORDER BY created_at DESC`;
-  const changes = db.prepare(q).all(...params);
+  const pgCh = paginate(db, req, {
+    count: q.replace('SELECT *', 'SELECT COUNT(*) c'),
+    rows: q + ` ORDER BY created_at DESC`,
+    params, perPage: 100,
+  });
+  const changes = pgCh.rows;
 
   // Summary stats
   const total = db.prepare(`SELECT COUNT(*) c FROM changes WHERE workspace_id=?`).get(req.workspace.id).c;
@@ -7667,7 +7712,8 @@ app.get('/workspaces/:wsId/changes', requireAuth, requireWorkspace, (req, res) =
   res.render('changes', {
     user: req.user, ws: req.workspace, changes,
     filters: { status: status || 'all', change_type: change_type || 'all', risk_level: risk_level || 'all' },
-    stats: { total, openCount, emergencyCount, pendingApproval, pirPct }
+    stats: { total, openCount, emergencyCount, pendingApproval, pirPct },
+    pg: pgCh, pagerHref: p => pageHref(req, p)
   });
 });
 
@@ -7887,8 +7933,12 @@ app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermi
   if (filter === 'active') q += ` AND s.lifecycle_stage NOT IN ('terminated')`;
   else if (filter === 'review') q += ` AND s.next_review_date < date('now','+30 days')`;
   else if (filter === 'high_risk') q += ` AND s.residual_risk_score >= 15`;
-  q += ` ORDER BY s.residual_risk_score DESC, s.name`;
-  const vendors = db.prepare(q).all(req.workspace.id, ...ef.params);
+  const pgV = paginate(db, req, {
+    count: q.replace(/SELECT s\.\*[\s\S]*?FROM suppliers s/, 'SELECT COUNT(*) c FROM suppliers s'),
+    rows: q + ` ORDER BY s.residual_risk_score DESC, s.name`,
+    params: [req.workspace.id, ...ef.params], perPage: 100,
+  });
+  const vendors = pgV.rows;
 
   // TPRM dashboard summary
   const summary = {
@@ -7909,7 +7959,8 @@ app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermi
   // Upcoming renewals (next 90 days)
   const renewals = db.prepare(`SELECT id, name, contract_end, renewal_notice_days, auto_renew FROM suppliers WHERE workspace_id=? AND contract_end IS NOT NULL AND contract_end >= date('now') AND contract_end <= date('now','+90 days') ORDER BY contract_end`).all(req.workspace.id);
 
-  res.render('vendors', { user: req.user, ws: req.workspace, vendors, filter, summary, concentration, renewals });
+  res.render('vendors', { user: req.user, ws: req.workspace, vendors, filter, summary, concentration, renewals,
+    pg: pgV, pagerHref: p => pageHref(req, p) });
 });
 
 app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
@@ -9791,14 +9842,19 @@ app.get('/workspaces/:wsId/activity-log', requireAuth, requireWorkspace, require
   if (filters.from) { where.push('a.created_at >= ?'); params.push(filters.from); }
   if (filters.to) { where.push('a.created_at <= ?'); params.push(filters.to + ' 23:59:59'); }
   if (filters.q) { where.push('(a.action LIKE ? OR a.entity_id LIKE ? OR a.details LIKE ?)'); const lk = '%'+filters.q+'%'; params.push(lk, lk, lk); }
-  const log = db.prepare(`SELECT a.*, u.name AS user_name FROM audit_log a
-    INNER JOIN users u ON u.id=a.user_id
-    WHERE ${where.join(' AND ')} ORDER BY a.created_at DESC LIMIT 500`).all(...params);
+  // Paginated (was a silent LIMIT 500 that dropped older history).
+  const pg = paginate(db, req, {
+    count: `SELECT COUNT(*) c FROM audit_log a INNER JOIN users u ON u.id=a.user_id WHERE ${where.join(' AND ')}`,
+    rows: `SELECT a.*, u.name AS user_name FROM audit_log a
+      INNER JOIN users u ON u.id=a.user_id
+      WHERE ${where.join(' AND ')} ORDER BY a.created_at DESC`,
+    params, perPage: 100,
+  });
   const users = db.prepare(`SELECT DISTINCT u.id, u.name FROM audit_log a
     INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY u.name`).all(req.workspace.id);
   const actions = db.prepare(`SELECT DISTINCT action FROM audit_log WHERE workspace_id=? ORDER BY action`).all(req.workspace.id).map(r => r.action);
   const types = db.prepare(`SELECT DISTINCT entity_type FROM audit_log WHERE workspace_id=? AND entity_type IS NOT NULL ORDER BY entity_type`).all(req.workspace.id).map(r => r.entity_type);
-  res.render('activity_log', { user: req.user, ws: req.workspace, log, filters, users, actions, types });
+  res.render('activity_log', { user: req.user, ws: req.workspace, log: pg.rows, pg, pagerHref: p => pageHref(req, p), filters, users, actions, types });
 });
 
 // ==================== NOTIFICATIONS ====================

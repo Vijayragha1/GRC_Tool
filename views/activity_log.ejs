@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Activity log</h1>
-    <div class="page-subtitle">Tamper-evident record of every change. Filter by user, action, type or date. Showing latest 500.</div>
+    <div class="page-subtitle">Tamper-evident record of every change. Filter by user, action, type or date.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/activity-log.csv?<%= new URLSearchParams(filters).toString() %>" class="btn btn-secondary btn-xs">Export CSV</a>
 </div>
@@ -75,5 +75,7 @@
     </tbody>
   </table>
 </div>
+
+<%- include('partials/pager', { pg, pagerHref }) %>
 
 <%- include('partials/footer') %>

@@ -153,4 +153,6 @@
   </table>
 </div>
 
+<% if (typeof pg !== 'undefined' && pg) { %><%- include('partials/pager', { pg, pagerHref }) %><% } %>
+
 <%- include('partials/footer') %>
