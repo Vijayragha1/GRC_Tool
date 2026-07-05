@@ -4669,7 +4669,7 @@ app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWo
 
   html += `</body></html>`;
 
-  const buf = await htmlToDocx(html, null, { table: { row: { cantSplit: true } } });
+  const buf = await require('./lib/workers').htmlToDocxPooled(html, null, { table: { row: { cantSplit: true } } });
   const filename = `Gap-Assessment-Report-${req.workspace.client_name.replace(/[^\w]/g,'_')}-${today}.docx`;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -7271,42 +7271,10 @@ function markdownToDocxParagraphs(md) {
   return parts;
 }
 
-async function generateDocxBuffer(doc, ws) {
-  const watermarkText = doc.watermark
-    || (doc.status === 'draft' ? 'DRAFT - NOT FOR DISTRIBUTION'
-       : doc.status === 'in_review' ? 'IN REVIEW'
-       : doc.status === 'retired' ? 'RETIRED'
-       : doc.controlled_copy ? 'CONTROLLED COPY' : null);
-
-  // Document body is now HTML (rich-text editor); legacy markdown is upgraded on first read.
-  // For belt-and-braces, run a markdown render pass if the content somehow still looks like markdown.
-  let bodyHtml = doc.content || '';
-  if (looksLikeMarkdown(bodyHtml)) bodyHtml = mdRenderer.render(bodyHtml);
-
-  const metaLine = `${ws.client_name} · v${doc.version} · status: ${doc.status}` + (watermarkText ? ` · ${watermarkText}` : '');
-  const banner = watermarkText
-    ? `<p style="text-align:center;color:#B91C1C;font-size:18pt;font-weight:bold;border-bottom:2pt solid #B91C1C;padding-bottom:6pt;">${watermarkText}</p>`
-    : '';
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${(doc.name || 'Document').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</title>
-    <style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5;}
-    h1{font-size:18pt;}h2{font-size:14pt;}h3{font-size:12pt;}
-    table{border-collapse:collapse;}table td,table th{border:1px solid #999;padding:4pt 8pt;}
-    .meta{color:#71717A;font-size:9pt;text-align:right;margin-bottom:8pt;}
-    .footer{color:#9C9CA5;font-size:8pt;text-align:center;margin-top:24pt;}</style>
-  </head><body>
-    <p class="meta">${metaLine}</p>
-    ${banner}
-    ${bodyHtml}
-    <p class="footer">Document hash basis: rendered ${new Date().toISOString()}</p>
-  </body></html>`;
-
-  return await htmlToDocx(html, null, {
-    table: { row: { cantSplit: true } },
-    footer: false,
-    pageNumber: false,
-    margins: { top: 720, right: 720, bottom: 720, left: 720 }
-  });
-}
+// DOCX generation moved to lib/docx-gen.js and runs on a worker-thread pool
+// (lib/workers.js): html-to-docx is pure CPU, and on the single-threaded main
+// loop a pack build used to stall every other request.
+const generateDocxBuffer = require('./lib/workers').generateDocx;
 
 app.get('/workspaces/:wsId/documents/:id/docx', requireAuth, requireWorkspace, requirePermission('document.view'), async (req, res) => {
   const docRaw = db.prepare('SELECT * FROM generated_docs WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspace.id);
@@ -12383,7 +12351,7 @@ function deliverableHtmlShell(title, ws, bodyHtml) {
 // Buffer ready to send or to append to a ZIP.
 async function brandedDocx(ws, title, bodyHtml) {
   const html = deliverableHtmlShell(title, ws, bodyHtml);
-  return await htmlToDocx(
+  return await require('./lib/workers').htmlToDocxPooled(
     html,
     deliverableHeaderHtml(title, ws),
     {

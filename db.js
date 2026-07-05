@@ -11,6 +11,10 @@ const fs = require('fs');
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
+// With WAL on, readers never block the writer; busy_timeout makes the rare
+// writer-vs-writer collision (worker threads, backup, key rotation) retry for
+// up to 5s instead of throwing SQLITE_BUSY at the first request.
+db.pragma('busy_timeout = 5000');
 db.pragma('foreign_keys = ON');
 
 const SCHEMA = `
