@@ -9,13 +9,13 @@ const ctlReads = require('../lib/control-reads');
 const csvImport = require('../lib/csv-import');
 const { ymdLocal, ymLocal } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
-const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-helpers');
+const { withToast, redirectBack, auditCtx, escapeHtml, extractMentions } = require('../lib/http-helpers');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
 const htmlToDocxPooled = require('../lib/workers').htmlToDocxPooled;
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
-          csvUpload, activeEntityFilter, extractMentions, getOrCreateState, isFirmUser } = deps;
+          csvUpload, activeEntityFilter, getOrCreateState, isFirmUser } = deps;
 
   // ==================== COMMENTS ====================
   app.post('/workspaces/:wsId/comments', requireAuth, requireWorkspace, requirePermission('comment.create'), (req, res) => {
