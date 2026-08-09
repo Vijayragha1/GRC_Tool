@@ -650,10 +650,9 @@ function register(app, deps) {
   // lives in views/deliverables.ejs (data-only), not here — adding a new export
   // to the product means adding a row there + linking the generator route.
   app.get('/workspaces/:wsId/deliverables', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-    // Custom markdown report templates surface here too, so Deliverables is the
-    // single home for every export (the standalone Reports page is just the editor).
-    const reportTemplates = db.prepare(`SELECT id, name, description, is_system FROM report_templates WHERE workspace_id IS NULL OR workspace_id=? OR firm_id=? ORDER BY is_system DESC, name`).all(req.workspace.id, req.workspace.firm_id);
-    res.render('deliverables', { user: req.user, ws: req.workspace, reportTemplates });
+    // Backward-compatible route: the production assurance center now owns the
+    // report lifecycle. Existing fixed-export URLs remain valid from there.
+    res.redirect(`/workspaces/${req.workspace.id}/assurance`);
   });
 
   // ==================== FIRM CONTENT LIBRARY ====================

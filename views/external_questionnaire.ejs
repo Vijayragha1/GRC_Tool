@@ -94,6 +94,12 @@
     </div>
   </div>
 
+  <% if (typeof saved !== 'undefined' && saved) { %>
+    <div class="card" style="margin-top:14px;border-color:#bbf7d0;background:#f0fdf4;">
+      <div class="pad" style="color:#166534;font-size:14px;">Your progress has been saved. You can close this page and return using the same secure link before it expires.</div>
+    </div>
+  <% } %>
+
   <form method="POST" enctype="multipart/form-data" style="margin-top:14px;">
   <% const OPT_LABEL = { yes:'Yes', partial:'Partial', no:'No', na:'N/A' }; %>
   <% const aMap = (typeof attachMap !== 'undefined' && attachMap) ? attachMap : {}; %>
@@ -133,7 +139,10 @@
     <div class="card" style="margin-top:14px;">
       <div class="pad footer-card">
         <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account; this link is your secure access.</div>
-        <button class="btn" type="submit">Submit responses</button>
+        <div style="display:flex;gap:10px;flex-shrink:0;">
+          <button class="btn" type="submit" name="action" value="save" style="background:#fff;color:var(--text);border:1px solid var(--border);">Save progress</button>
+          <button class="btn" type="submit" name="action" value="submit">Submit responses</button>
+        </div>
       </div>
     </div>
   </form>

@@ -3,10 +3,11 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Tasks</h1>
-    <div class="page-subtitle">Implementation work assigned to consultants and client team members.</div>
+    <div class="page-subtitle">Execution queue linked to the adaptive engagement plan. Completing tasks updates milestone execution progress; deliverable acceptance still controls phase gates.</div>
   </div>
   <div class="row-center">
     <a href="/workspaces/<%= ws.id %>/calendar" class="btn btn-secondary btn-xs" title="Compliance calendar - every due date and review cadence across documents, suppliers, NCs, and tasks.">Calendar</a>
+    <a href="/workspaces/<%= ws.id %>/engagement-plan" class="btn btn-secondary btn-xs">Delivery plan</a>
     <a href="/workspaces/<%= ws.id %>/task-templates" class="btn btn-secondary btn-xs" title="Task templates - reusable task sets seeded into new engagements.">Templates</a>
     <select onchange="window.location='?filter='+this.value" class="select" style="width:140px">
       <option value="open" <%= filter==='open'?'selected':'' %>>Open</option>
@@ -29,6 +30,7 @@
       </select>
     </div>
     <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
+    <div class="col-full"><label class="label">Plan milestone <span class="meta">optional</span></label><select class="select" name="engagement_milestone_id"><option value="">Standalone task</option><% planMilestones.forEach(m => { %><option value="<%= m.id %>"><%= m.phase_name %> · <%= m.title %></option><% }) %></select></div>
     <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
@@ -36,7 +38,7 @@
 <div class="panel" style="overflow:hidden">
   <table class="t">
     <thead><tr>
-      <th>Title</th><th style="width:160px">Assignee</th>
+      <th>Title</th><th style="width:210px">Plan milestone</th><th style="width:160px">Assignee</th>
       <th style="width:110px">Due</th><th style="width:160px">Status</th><th style="width:80px"></th>
     </tr></thead>
     <tbody>
@@ -46,6 +48,15 @@
             <div class="text-lg" style="font-weight:500;"><%= t.title %></div>
             <% if (t.description) { %><div class="meta" style="margin-top:2px;"><%= t.description %></div><% } %>
             <% if (t.iso_title) { %><div class="meta text-secondary" style="margin-top:2px;">→ <%= t.iso_title %></div><% } %>
+          </td>
+          <td>
+            <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>">
+              <select name="engagement_milestone_id" onchange="this.form.submit()" class="select text-xs" style="padding:4px 8px;">
+                <option value="">Standalone</option>
+                <% planMilestones.forEach(m => { %><option value="<%= m.id %>" <%= t.engagement_milestone_id == m.id ? 'selected' : '' %>><%= m.phase_name %> · <%= m.title %></option><% }) %>
+              </select>
+            </form>
+            <% if (t.milestone_title) { %><a href="/workspaces/<%= ws.id %>/engagement-plan" class="meta text-xxs" style="text-decoration:none;">Open in plan →</a><% } %>
           </td>
           <td>
             <form method="POST" action="/workspaces/<%= ws.id %>/tasks/<%= t.id %>">
@@ -73,7 +84,7 @@
         </tr>
       <% }) %>
       <% if (tasks.length === 0) { %>
-        <tr><td colspan="5" style="padding:0;">
+        <tr><td colspan="6" style="padding:0;">
           <div class="empty-state">
             <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
             <div class="empty-title">Nothing to do</div>

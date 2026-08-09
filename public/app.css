@@ -123,6 +123,53 @@
   .nav-item.active .ico { opacity: 1; }
   .nav-item-text { transition: opacity 0.12s; }
 
+  /* Consolidated workspace information architecture. Only ten domain-level
+     choices are visible at rest; the active domain expands to reveal its
+     related workflows. Native details/summary keeps the rail keyboard- and
+     screen-reader-accessible without a JavaScript dependency. */
+  .nav-domain { margin: 1px 0; }
+  .nav-domain-summary {
+    display: flex; align-items: center; gap: 10px; min-height: 32px;
+    padding: 7px 10px; border-radius: 6px; position: relative;
+    color: var(--text-secondary); font-size: 13px; line-height: 1.4;
+    user-select: none; transition: background 0.12s ease, color 0.12s ease;
+  }
+  .nav-domain-summary:hover { background: rgba(26,26,26,0.05); color: var(--text); }
+  .nav-domain.is-active > .nav-domain-summary { background: rgba(26,26,26,0.07); color: var(--text); font-weight: 500; }
+  .nav-domain.is-active > .nav-domain-summary::before {
+    content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px;
+    width: 2px; background: var(--accent); border-radius: 0 2px 2px 0;
+  }
+  .nav-domain-summary .ico { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.65; }
+  .nav-domain.is-active > .nav-domain-summary .ico { opacity: 1; }
+  .nav-domain-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-domain-chevron { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.45; transition: transform 0.14s ease; }
+  .nav-domain[open] > .nav-domain-summary .nav-domain-chevron { transform: rotate(90deg); }
+  .nav-domain-badge, .nav-subitem-badge {
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(161,98,7,0.12); color: #854d0e;
+    font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .nav-domain:not([open]) > .nav-domain-items { display: none; }
+  .nav-domain[open] > .nav-domain-items {
+    display: flex; flex-direction: column; margin: 2px 0 5px 17px;
+    padding: 2px 0 2px 11px; border-left: 1px solid rgba(26,26,26,0.12);
+  }
+  .nav-subitem {
+    display: flex; align-items: center; gap: 7px; min-height: 28px;
+    padding: 5px 8px; border-radius: 5px; color: var(--text-tertiary);
+    font-size: 12px; line-height: 1.35; text-decoration: none;
+    position: relative; transition: background 0.12s ease, color 0.12s ease;
+  }
+  .nav-subitem:hover { background: rgba(26,26,26,0.045); color: var(--text); }
+  .nav-subitem.active { color: var(--ink); font-weight: 500; background: rgba(255,255,255,0.45); }
+  .nav-subitem.active::before {
+    content: ''; position: absolute; left: -12px; width: 2px; top: 6px; bottom: 6px;
+    background: var(--accent); border-radius: 2px;
+  }
+  .nav-subitem-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* Brand-mark - quiet outlined square in the new charcoal-on-cream palette. */
   .brand-mark {
     width: 24px; height: 24px; border-radius: 3px;
@@ -135,24 +182,40 @@
   }
 
   /* Sidebar collapsed */
-  .app.sidebar-collapsed .sidebar { width: 60px; }
-  .app.sidebar-collapsed .sidebar-section > a > div,
-  .app.sidebar-collapsed .nav-group-label,
-  .app.sidebar-collapsed .nav-item-text,
-  .app.sidebar-collapsed .ws-context > *,
-  .app.sidebar-collapsed .sidebar-foot > div:not(.avatar) { display: none; }
-  .app.sidebar-collapsed .sidebar-section { padding: 14px 8px; }
-  .app.sidebar-collapsed .sidebar-foot { justify-content: center; padding: 14px 8px; }
-  .app.sidebar-collapsed .nav-item { justify-content: center; padding: 8px; }
+  @media (min-width: 901px) {
+    .app.sidebar-collapsed .sidebar { width: 60px; }
+    .app.sidebar-collapsed .sidebar-brand-name,
+    .app.sidebar-collapsed .tenant-current,
+    .app.sidebar-collapsed .tenant-switcher,
+    .app.sidebar-collapsed .nav-group-label,
+    .app.sidebar-collapsed .nav-item-text,
+    .app.sidebar-collapsed .nav-domain-text,
+    .app.sidebar-collapsed .nav-domain-chevron,
+    .app.sidebar-collapsed .nav-domain-badge,
+    .app.sidebar-collapsed .sidebar-foot-action,
+    .app.sidebar-collapsed .sidebar-foot > div:not(.avatar) { display: none !important; }
+    /* Context blocks contain inline display declarations, so collapse the
+       section itself instead of trying to hide each child independently. */
+    .app.sidebar-collapsed .ws-context { display: none !important; }
+    /* The firm-level client switcher repeats the Clients grid icon when only
+       icons are visible. Keep it in the expanded rail, but remove the
+       duplicate control and its custom margins from the collapsed grid. */
+    .app.sidebar-collapsed .sidebar-nav > .ws-switcher { display: none !important; }
+    .app.sidebar-collapsed .sidebar-brand { justify-content: center; gap: 0 !important; }
+    .app.sidebar-collapsed .sidebar-section { padding: 14px 8px; }
+    .app.sidebar-collapsed .sidebar-foot { justify-content: center; padding: 14px 8px; }
+    .app.sidebar-collapsed .nav-item { justify-content: center; padding: 8px; }
+    .app.sidebar-collapsed .nav-domain-summary { justify-content: center; padding: 8px; }
+    .app.sidebar-collapsed .nav-domain-items { display: none !important; }
+  }
 
   /* Mobile drawer */
-  .menu-toggle { display: none; }
+  .sidebar-backdrop { display: none; }
   @media (max-width: 900px) {
     .sidebar { position: fixed; z-index: 60; transform: translateX(-100%); box-shadow: var(--shadow-xl); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; }
     .sidebar-backdrop.open { display: block; }
-    .menu-toggle { display: inline-flex; }
   }
 
   .main { flex: 1; min-width: 0; background: var(--bg-deep); height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
@@ -171,6 +234,17 @@
   .palette-trigger .kbd { margin-left: auto; padding: 1px 5px; font-size: 10.5px; background: var(--bg-muted); border: 1px solid var(--border); border-radius: 3px; color: var(--text-tertiary); font-family: ui-monospace, monospace; }
   .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border-strong); color: var(--text-secondary); cursor: pointer; transition: all 0.12s; box-shadow: var(--shadow-sm); }
   .icon-btn:hover { background: var(--bg-subtle); color: var(--text); }
+  /* Desktop uses the persistent rail control; mobile uses the drawer control.
+     Keep these after .icon-btn so its display declaration cannot override the
+     responsive intent through source order. */
+  .icon-btn.menu-toggle { display: none; }
+  .icon-btn.sidebar-collapse-toggle { display: inline-flex; }
+  .sidebar-collapse-toggle svg { transition: transform 0.18s ease; }
+  .sidebar-collapse-toggle.is-collapsed svg { transform: rotate(180deg); }
+  @media (max-width: 900px) {
+    .icon-btn.menu-toggle { display: inline-flex; }
+    .icon-btn.sidebar-collapse-toggle { display: none; }
+  }
 
   .page-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
   .page-head > div:first-child { flex: 1 1 340px; min-width: 260px; }
@@ -393,6 +467,24 @@
   .row-center     { display: flex; align-items: center; gap: 6px; }
   .stack          { display: flex; flex-direction: column; gap: 6px; }
   .grid-2         { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-4         { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+
+  /* Client-collaboration semantic states. Kept as quiet text to match the
+     application-wide status language rather than introducing filled pills. */
+  .status-good    { color: #15803d; }
+  .status-warn    { color: #b45309; }
+  .status-bad     { color: #b91c1c; }
+  .status-neutral { color: #52525b; }
+  .eyebrow        { font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); margin-bottom: 5px; }
+  .doc-content { overflow-wrap: anywhere; }
+  .doc-content img, .doc-content table { max-width: 100%; }
+
+  @media (max-width: 980px) {
+    .grid-4 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .grid-2, .grid-4 { grid-template-columns: 1fr; }
+  }
 
   /* Type scale - eight named sizes covering every pixel value in actual
      use. Half-step values (10.5/11.5/12.5) get explicit names so it's
@@ -475,3 +567,11 @@
 
   @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
   .main-inner { animation: fadeIn 0.18s ease-out; }
+/* Client collaboration action centre */
+.cp-action-hub{background:#1f3438;color:#fff;border-radius:14px;padding:24px;margin:0 0 16px;box-shadow:0 18px 38px rgba(31,52,56,.12)}
+.cp-action-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:18px}.cp-action-head .eyebrow{color:#b9c8ca}.cp-action-head h2{font-family:var(--font-serif);font-size:27px;line-height:1.12;font-weight:500;margin:5px 0 7px;color:#fff}.cp-action-head p{margin:0;color:#cbd5d6;font-size:13px;line-height:1.55}.cp-action-score{min-width:78px;border:1px solid rgba(255,255,255,.18);border-radius:10px;text-align:center;padding:10px;color:#cbd5d6;font-size:11px;text-transform:uppercase;letter-spacing:.08em}.cp-action-score span{display:block;color:#fff;font-family:var(--font-serif);font-size:29px;line-height:1;margin-bottom:4px;letter-spacing:0}
+.cp-action-list{background:#fff;color:var(--ink);border-radius:10px;overflow:hidden}.cp-action-row{display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:16px;align-items:center;padding:13px 15px;text-decoration:none;color:inherit;border-bottom:1px solid var(--border);transition:background .12s}.cp-action-row:last-child{border-bottom:0}.cp-action-row:hover{background:var(--bg-subtle)}.cp-action-kind{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-tertiary)}.cp-action-main{min-width:0}.cp-action-main strong{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cp-action-main small{display:block;font-size:11.5px;color:var(--text-secondary);margin-top:3px}.cp-action-cta{font-size:12px;font-weight:600;white-space:nowrap}.cp-action-empty{display:flex;gap:12px;align-items:center;background:#fff;color:var(--ink);border-radius:10px;padding:18px}.cp-action-empty>span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#e8f3eb;color:#176b38}.cp-action-empty strong{font-size:13px}.cp-action-empty p{font-size:12px;color:var(--text-secondary);margin:3px 0 0}
+.cp-delivery-disclosure>summary{cursor:pointer;list-style:none}.cp-delivery-disclosure>summary::-webkit-details-marker{display:none}.cp-summary-meta{display:flex;align-items:center;gap:10px}.cp-chevron{font-size:18px;color:var(--text-tertiary);transition:transform .15s}.cp-delivery-disclosure[open] .cp-chevron{transform:rotate(180deg)}
+@media(max-width:760px){.cp-action-hub{padding:18px;border-radius:11px}.cp-action-head h2{font-size:23px}.cp-action-score{min-width:64px}.cp-action-row{grid-template-columns:1fr auto;gap:5px 12px}.cp-action-kind{grid-column:1/-1}.cp-action-main strong{white-space:normal}.cp-action-cta{grid-column:2;grid-row:2}.cp-action-main{grid-column:1;grid-row:2}}
+@media(max-width:700px){.cp-kpis.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.cp-kpis .kpi{min-height:112px}}
+@media(max-width:430px){.cp-kpis.grid-4{grid-template-columns:1fr}.cp-kpis .kpi{min-height:auto}}

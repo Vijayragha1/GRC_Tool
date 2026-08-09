@@ -6,6 +6,7 @@ const { ymdLocal, ymLocal } = require('../lib/dates');
 const email = require('../lib/email');
 const { computeNeedsAttention } = require('../lib/next-steps');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const delivery = require('../lib/engagement-delivery');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction } = deps;
@@ -44,6 +45,7 @@ function register(app, deps) {
   // NCs, cert events, doc reviews, treatment actions, risk-acceptance expiries.
   app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) => {
     const wsId = req.workspace.id;
+    const deliveryPlan = delivery.ensurePlan(db, req.workspace, req.user.id);
     const monthStr = req.query.month && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month
                     : ymLocal(new Date());
     const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
@@ -78,6 +80,13 @@ function register(app, deps) {
       .forEach(a => add(a.due_date, 'treatment', a.title, `/workspaces/${wsId}/risks/${a.risk_id}`, a.status === 'done' ? 'low' : 'medium'));
     db.prepare(`SELECT a.id, a.expires_at, a.risk_id, r.title FROM risk_acceptances a INNER JOIN risks r ON r.id=a.risk_id WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL`).all(wsId)
       .forEach(a => add(a.expires_at, 'risk-accept', `R-${a.risk_id} acceptance expires`, `/workspaces/${wsId}/risks/${a.risk_id}`, 'medium'));
+    db.prepare(`SELECT id,title,COALESCE(forecast_end_date,planned_end_date) due,status FROM engagement_delivery_milestones
+      WHERE plan_id=? AND COALESCE(forecast_end_date,planned_end_date) IS NOT NULL`).all(deliveryPlan.id)
+      .forEach(m => add(m.due, 'plan-milestone', m.title, `/workspaces/${wsId}/engagement-plan?view=timeline`, m.status === 'blocked' ? 'high' : 'medium'));
+    db.prepare(`SELECT id,title,due_date,status FROM engagement_delivery_deliverables WHERE plan_id=? AND due_date IS NOT NULL AND status NOT IN ('superseded')`).all(deliveryPlan.id)
+      .forEach(d => add(d.due_date, 'deliverable', d.title, `/workspaces/${wsId}/engagement-plan`, ['changes_requested','rejected'].includes(d.status) ? 'high' : 'medium'));
+    db.prepare(`SELECT id,title,due_date,status FROM tasks WHERE workspace_id=? AND due_date IS NOT NULL`).all(wsId)
+      .forEach(t => add(t.due_date, 'task', t.title, `/workspaces/${wsId}/tasks`, t.status === 'blocked' ? 'high' : 'low'));
 
     // Newer sources: training due, comms plan, competence expiry, supplier reviews, BCP tests, ISO 42001 cert events.
     try {

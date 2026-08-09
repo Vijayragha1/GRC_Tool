@@ -209,6 +209,9 @@ window._unmarkBusy = function (form) {
     // Land at the top of the new main pane.
     const liveMain = document.querySelector('.main');
     if (liveMain) liveMain.scrollTop = 0;
+    // Function declarations are hoisted; bind prefetch handlers directly on
+    // the newly swapped links without observing the entire document tree.
+    attachHoverPrefetch();
     return true;
   }
 
@@ -320,13 +323,6 @@ window._unmarkBusy = function (form) {
     });
   }
   document.addEventListener('DOMContentLoaded', attachHoverPrefetch);
-  // Re-bind after every SPA swap so newly-rendered links get the same hook.
-  const originalSwap = swapApp;
-  // (swapApp is a closure-local name; we monkey-patch via re-assignment isn't
-  //  possible across closure boundaries. Use a MutationObserver instead.)
-  const linkObserver = new MutationObserver(() => attachHoverPrefetch());
-  if (document.body) linkObserver.observe(document.body, { childList: true, subtree: true });
-  else document.addEventListener('DOMContentLoaded', () => linkObserver.observe(document.body, { childList: true, subtree: true }));
 
   document.addEventListener('click', (e) => {
     const link = e.target.closest && e.target.closest('a');
@@ -358,19 +354,32 @@ function toggleTheme() {
   if (localStorage.getItem('isms-sidebar') === 'collapsed') {
     document.getElementById('app')?.classList.add('sidebar-collapsed');
   }
+  syncSidebarCollapseButton();
 })();
 function toggleSidebar(open) {
   const sb = document.getElementById('sidebar');
   const bd = document.getElementById('sidebarBackdrop');
   if (!sb) return;
   sb.classList.toggle('open', open);
-  bd.classList.toggle('open', open);
+  if (bd) bd.classList.toggle('open', open);
+}
+function syncSidebarCollapseButton() {
+  const app = document.getElementById('app');
+  const button = document.getElementById('sidebarCollapseButton');
+  if (!app || !button) return;
+  const collapsed = app.classList.contains('sidebar-collapsed');
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  button.classList.toggle('is-collapsed', collapsed);
+  button.setAttribute('aria-label', label);
+  button.setAttribute('aria-pressed', String(collapsed));
+  button.title = label;
 }
 function toggleSidebarCollapse() {
   const app = document.getElementById('app');
   if (!app) return;
   app.classList.toggle('sidebar-collapsed');
   localStorage.setItem('isms-sidebar', app.classList.contains('sidebar-collapsed') ? 'collapsed' : 'open');
+  syncSidebarCollapseButton();
 }
 
 // ----- CSRF token injection -----

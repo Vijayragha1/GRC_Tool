@@ -16,8 +16,6 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
 
-let _portCursor = 14000;
-
 function bootApp() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'iso27001-test-'));
   const dbPath = path.join(tmpDir, 'iso27001.db');
@@ -35,12 +33,22 @@ function bootApp() {
 }
 
 function makeClient(app) {
-  const port = ++_portCursor;
-  const server = app.listen(port);
+  // Let the OS allocate an available loopback port. Node's test runner executes
+  // files in separate processes, so a process-local counter can otherwise give
+  // two suites the same port and produce a nondeterministic EADDRINUSE failure.
+  const server = app.listen(0, '127.0.0.1');
+  const listening = server.listening
+    ? Promise.resolve()
+    : new Promise((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
   let cookieJar = '';
   let csrfToken = null;
 
   async function request(method, urlPath, body, opts = {}) {
+    await listening;
+    const port = server.address().port;
     const headers = { ...(opts.headers || {}) };
     if (cookieJar) headers['cookie'] = cookieJar;
     let payload = null;
@@ -97,7 +105,13 @@ function makeClient(app) {
     get: (p, opts) => request('GET', p, null, opts),
     post: (p, body, opts) => request('POST', p, body || {}, opts),
     delete: (p, opts) => request('DELETE', p, null, opts),
-    close: () => new Promise(r => server.close(r)),
+    close: () => new Promise(resolve => {
+      // Force lingering keep-alive sockets closed so a completed integration
+      // suite cannot hang indefinitely in its after hook.
+      server.close(() => resolve());
+      if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+    }),
     getCsrfToken: () => csrfToken,
     getCookies: () => cookieJar,
   };

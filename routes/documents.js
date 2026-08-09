@@ -876,7 +876,10 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace, requirePermission('document.review'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-    if (!doc || !doc.current_version_id) return redirectBack(req, res);
+    const decisionBack = req.user.user_type === 'client'
+      ? `/workspaces/${req.workspace.id}/client-portal/policies/${req.params.id}`
+      : `/workspaces/${req.workspace.id}/documents/${req.params.id}`;
+    if (!doc || !doc.current_version_id) return res.redirect(decisionBack);
     const { decision, reason } = req.body;
     if (!['approve','reject'].includes(decision)) return redirectBack(req, res);
 
@@ -900,7 +903,7 @@ function register(app, deps) {
       WHERE id=? AND decision IS NULL`)
       .run(decision === 'approve' ? 'approved' : 'rejected', reason || null, myRow.id);
     if (decResult.changes === 0) {
-      return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id,
+      return res.redirect(withToast(decisionBack,
         'Your decision was already recorded.', 'info'));
     }
 
@@ -913,7 +916,7 @@ function register(app, deps) {
           { version_id: doc.current_version_id, reason }, auditCtx(req));
         notifyRejection(doc.current_version_id, doc, req.workspace, req.user.name, reason);
       }
-      return res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents/' + doc.id, 'Document rejected', 'error'));
+      return res.redirect(withToast(decisionBack, 'Document rejected', 'error'));
     }
 
     if (docApprovals.countPending(db, doc.current_version_id) === 0) {
@@ -930,7 +933,7 @@ function register(app, deps) {
         { version_id: doc.current_version_id, remaining: docApprovals.countPending(db, doc.current_version_id) }, auditCtx(req));
       notifyChainAdvanced(doc.current_version_id, doc, req.workspace, req.user.name);
     }
-    res.redirect('/workspaces/' + req.workspace.id + '/documents/' + doc.id);
+    res.redirect(decisionBack);
   });
 
   // ==================== MAGIC-LINK APPROVAL PORTAL ====================

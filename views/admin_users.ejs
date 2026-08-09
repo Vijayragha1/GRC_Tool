@@ -37,7 +37,7 @@
       <div style="font-size:14px;font-weight: 500;">Invite by email</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Single-use, 7 days</div>
     </div>
-    <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">User clicks the link, sets their own password, and lands on the dashboard. No temp password to share over chat.</p>
+    <p class="meta text-sm" style="margin-bottom:14px;line-height:1.5;">User clicks the link and sets their own password. Firm users land on the dashboard; client users land in their isolated portal. No temp password to share over chat.</p>
 
     <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Email</label>
     <input class="input" name="email" type="email" required placeholder="person@company.com" style="margin-bottom:12px;">
@@ -71,9 +71,9 @@
 
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Workspace role</label>
       <select class="input" name="workspace_role" style="margin-bottom:12px;">
-        <option value="client_owner">Client owner &middot; executive sponsor; final policy approver</option>
-        <option value="isms_manager">ISMS manager &middot; day-to-day operator; full workspace access</option>
-        <option value="contributor">Contributor &middot; SME; uploads evidence on assigned items only</option>
+        <option value="client_owner">Client sponsor &middot; all shared work and approvals</option>
+        <option value="isms_manager">Client coordinator &middot; all shared work and approvals</option>
+        <option value="contributor" selected>Contributor &middot; assigned portal work only</option>
       </select>
     </div>
 
@@ -236,6 +236,7 @@
           <th>Name</th>
           <th>Email</th>
           <th>Workspace access</th>
+          <th style="width:90px;">MFA</th>
           <th style="width:130px;">Last active</th>
           <th style="width:80px;">Status</th>
           <th style="width:130px;"></th>
@@ -247,6 +248,7 @@
             <td><%= u.name %></td>
             <td class="meta"><%= u.email %></td>
             <td class="meta"><%= u.workspaces %></td>
+            <td><span class="tag <%= u.mfa_enabled_at ? 'tag-success' : 'tag-neutral' %>"><%= u.mfa_enabled_at ? 'Enabled' : 'Pending' %></span></td>
             <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
             <td><%= u.active ? 'Active' : 'Disabled' %></td>
             <td>

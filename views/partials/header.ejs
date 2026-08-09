@@ -20,13 +20,13 @@
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-section">
-      <a href="/dashboard" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:#1a1a1a;line-height:1.1;">
+      <a class="sidebar-brand" href="/dashboard" aria-label="Compliance Sphere dashboard" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:#1a1a1a;line-height:1.1;">
         <svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true" style="flex-shrink:0;">
           <circle cx="11" cy="11" r="9.5" fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
           <circle cx="11" cy="11" r="6"   fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
           <circle cx="11" cy="11" r="2.5" fill="#1a1a1a"/>
         </svg>
-        <span style="font-size:14.5px;font-weight:500;color:#1a1a1a;letter-spacing:-0.2px;">Compliance Sphere</span>
+        <span class="sidebar-brand-name" style="font-size:14.5px;font-weight:500;color:#1a1a1a;letter-spacing:-0.2px;">Compliance Sphere</span>
       </a>
       <%# Tenant switcher: shows the active firm name below the brand.
           Static text when only one firm exists (the common case); a
@@ -35,7 +35,7 @@
       <% if (typeof activeFirm !== 'undefined' && activeFirm) { %>
         <% const otherFirms = (typeof allFirms !== 'undefined' ? allFirms : []).filter(f => f.id !== activeFirm.id); %>
         <% if (otherFirms.length === 0) { %>
-          <div style="margin-top:10px;display:flex;align-items:center;gap:6px;font-size:11px;color:#6b6b66;">
+          <div class="tenant-current" style="margin-top:10px;display:flex;align-items:center;gap:6px;font-size:11px;color:#6b6b66;">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.7;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= activeFirm.name %></span>
           </div>
@@ -69,7 +69,12 @@
       // Per-client brand color powers the left-rail accent on the sidebar
       // client context block. Falls back to the global accent.
       const brandColor = (ws.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(ws.brand_primary_color)) ? ws.brand_primary_color : null;
-      const otherWorkspaces = (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []).filter(w => w.id !== ws.id);
+      const scopedHeaderContributor = user && user.user_type === 'client' && rbac.normalizeRole(ws._userRole || ws.role) === 'contributor';
+      // Contributors are deliberately confined to a single engagement context.
+      // Do not leak the names or sectors of other firm clients in the switcher.
+      const otherWorkspaces = scopedHeaderContributor
+        ? []
+        : (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []).filter(w => w.id !== ws.id);
     %>
     <div class="sidebar-section ws-context" style="<%= brandColor ? 'padding-left:11px;' : '' %>">
       <a class="text-xs" href="/dashboard" style="color:#6b6b66;text-decoration:none;">← All clients</a>
@@ -112,259 +117,20 @@
 
     <nav class="sidebar-nav">
       <% if (typeof ws !== 'undefined' && ws) { %>
-        <%# First group has no label - Overview is the obvious landing point; no need for an "Engagement" header above it %>
-        <a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= (typeof active !== 'undefined' && active === 'overview') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          <span class="nav-item-text">Overview</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/readiness" data-shortcut="g e" class="nav-item <%= (typeof active !== 'undefined' && active === 'readiness') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14 9 11"/></svg>
-          <span class="nav-item-text">Readiness</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/inbox" class="nav-item <%= (typeof active !== 'undefined' && active === 'inbox') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-          <span class="nav-item-text">Inbox</span>
-        </a>
-        <%# Personal work hub: the outputs you assemble (audit pack,
-            deliverables) and your own schedule / to-dos (calendar, tasks)
-            sit under Inbox rather than padding out the Operations group. %>
-        <a href="/workspaces/<%= ws.id %>/audit-pack" class="nav-item <%= (typeof active !== 'undefined' && active === 'audit-pack') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          <span class="nav-item-text">Audit pack</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/deliverables" class="nav-item <%= (typeof active !== 'undefined' && active === 'deliverables') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span class="nav-item-text">Deliverables</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/calendar" class="nav-item <%= (typeof active !== 'undefined' && active === 'calendar') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="nav-item-text">Compliance calendar</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/tasks" data-shortcut="g t" class="nav-item <%= (typeof active !== 'undefined' && active === 'tasks') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span class="nav-item-text">Tasks</span>
-        </a>
-        <%# Unified all-framework view - only meaningful when the engagement
-            covers more than one framework. %>
-        <% if (ws.frameworks && ws.frameworks.length > 1) { %>
-          <a href="/workspaces/<%= ws.id %>/readiness/overview" class="nav-item <%= (typeof active !== 'undefined' && active === 'readiness-overview') ? 'active' : '' %>" style="padding-left:30px;">
-            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <span class="nav-item-text">All frameworks</span>
-          </a>
-        <% } %>
-
-        <%# Setup group: scoping intake + gap-assessment diagnostic.
-            These come first in the engagement lifecycle - the consultant
-            does both before any controls / risk / SoA work - so they get
-            their own group above Implementation rather than being buried
-            inside it where consultants missed them. %>
-        <div class="nav-group-label">Setup</div>
-        <a href="/workspaces/<%= ws.id %>/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'intake') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H3v10h6V11zM21 3h-6v18h6V3zM15 7H9v14h6V7z"/></svg>
-          <span class="nav-item-text">Client setup</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/team" class="nav-item <%= (typeof active !== 'undefined' && ['team','members','access'].includes(active)) ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span class="nav-item-text">Team &amp; access</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span class="nav-item-text">Gap assessment</span>
-        </a>
-        <%# Post-assessment summary lives at /controls/assess/summary
-            (gaps, not-assessed count, doc gaps, controls missing
-            evidence). Surfacing here as a sub-item so it's reachable
-            without bouncing through the gap-assessment fieldwork page. %>
-        <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="nav-item <%= (typeof active !== 'undefined' && active === 'gap-assessment-summary') ? 'active' : '' %>" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <span class="nav-item-text">Findings &amp; worklist</span>
-        </a>
-
-        <div class="nav-group-label">Implementation</div>
-        <a href="/workspaces/<%= ws.id %>/templates" class="nav-item <%= (typeof active !== 'undefined' && active === 'templates') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-          <span class="nav-item-text">Policy templates</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'engagement-plan') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="11" cy="12" r="1.5" fill="currentColor"/><circle cx="17" cy="18" r="1.5" fill="currentColor"/></svg>
-          <span class="nav-item-text">Client plan</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/roadmap" class="nav-item <%= (typeof active !== 'undefined' && active === 'roadmap') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 9 12 3 18"/><polyline points="13 6 21 12 13 18"/></svg>
-          <span class="nav-item-text">Roadmap</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/controls" data-shortcut="g c" class="nav-item <%= (typeof active !== 'undefined' && active === 'controls') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <span class="nav-item-text">Controls</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/assets" data-shortcut="g a" class="nav-item <%= (typeof active !== 'undefined' && active === 'assets') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          <span class="nav-item-text">Assets</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/risks" data-shortcut="g r" class="nav-item <%= (typeof active !== 'undefined' && active === 'risks') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span class="nav-item-text">Risks</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/objectives" class="nav-item <%= (typeof active !== 'undefined' && active === 'objectives') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-          <span class="nav-item-text">Objectives</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/soa" data-shortcut="g s" class="nav-item <%= (typeof active !== 'undefined' && active === 'soa') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <span class="nav-item-text">Statement of Applicability</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/crosswalks" class="nav-item <%= (typeof active !== 'undefined' && active === 'crosswalks') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h4l3 5-3 5H3z"/><path d="M21 6h-4l-3 5 3 5h4z"/><line x1="10" y1="11" x2="14" y2="11"/></svg>
-          <span class="nav-item-text">Crosswalks</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/documents" data-shortcut="g d" class="nav-item <%= (typeof active !== 'undefined' && active === 'documents') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          <span class="nav-item-text">Documents</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/policy-adoption" class="nav-item <%= (typeof active !== 'undefined' && active === 'policy-adoption') ? 'active' : '' %>" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="nav-item-text">Policy adoption</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/evidence" class="nav-item <%= (typeof active !== 'undefined' && active === 'evidence') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span class="nav-item-text">Evidence library</span>
-        </a>
-
-        <% if (ws.frameworks && ws.frameworks.includes('csf')) { %>
-        <div class="nav-group-label">NIST CSF</div>
-        <a href="/workspaces/<%= ws.id %>/csf" class="nav-item <%= (typeof active !== 'undefined' && (active === 'csf' || active === 'csf-catalog')) ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
-          <span class="nav-item-text">NIST CSF 2.0</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/csf/learn" class="nav-item <%= (typeof active !== 'undefined' && active === 'csf-learn') ? 'active' : '' %>" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          <span class="nav-item-text">CSF Learn</span>
+        <% const scopedClientContributor = user && user.user_type === 'client' && rbac.normalizeRole(ws._userRole || ws.role) === 'contributor'; %>
+        <% if (scopedClientContributor) { %>
+        <a href="/workspaces/<%= ws.id %>/client-portal" class="nav-item <%= (typeof active !== 'undefined' && active === 'client-portal') ? 'active' : '' %>" aria-current="page">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
+          <span class="nav-item-text">Client portal</span>
         </a>
         <% } %>
-
-        <% if (ws.frameworks && ws.frameworks.includes('iso42001')) { %>
-        <div class="nav-group-label">ISO 42001 (AI MS)</div>
-        <a href="/workspaces/<%= ws.id %>/iso42001/intake" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-intake') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="nav-item-text">Intake</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/engagement-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-engagement-plan') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7"/><path d="M21 8h-4a2 2 0 0 0-2 2v10"/><path d="M3 20h18"/><circle cx="12" cy="6" r="3"/></svg>
-          <span class="nav-item-text">Client plan</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-catalog') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
-          <span class="nav-item-text">Catalog</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/gap-assessment" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-gap') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span class="nav-item-text">Gap assessment</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/controls" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-controls') ? 'active' : '' %>" style="padding-left:30px;">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span class="nav-item-text">Controls</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/roadmap" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-roadmap') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
-          <span class="nav-item-text">Roadmap</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-soa') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <span class="nav-item-text">Statement of Applicability</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-readiness') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span class="nav-item-text">Readiness</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/cert-cycle" class="nav-item <%= (typeof active !== 'undefined' && active === 'iso42001-cert-cycle') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="nav-item-text">Cert cycle</span>
-        </a>
+        <% if (!scopedClientContributor) { %>
+          <%- include('client_navigation', {
+            user, ws, rbac,
+            active: typeof active !== 'undefined' ? active : '',
+            openReviewCount: typeof openReviewCount !== 'undefined' ? openReviewCount : 0
+          }) %>
         <% } %>
-
-        <div class="nav-group-label">Operations</div>
-        <a href="/workspaces/<%= ws.id %>/review-queue" class="nav-item <%= (typeof active !== 'undefined' && active === 'review-queue') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h7"/><path d="M3 12h7"/><path d="M3 17h7"/><path d="M14 7l2 2 5-5"/><path d="M14 16l2 2 5-5"/></svg>
-          <span class="nav-item-text">Review queue<% if (typeof openReviewCount !== 'undefined' && openReviewCount > 0) { %> <span class="tag" style="background:#a16207;color:#fff;font-size:9.5px;padding:1px 5px;margin-left:4px;"><%= openReviewCount %></span><% } %></span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/audits" data-shortcut="g i" class="nav-item <%= (typeof active !== 'undefined' && active === 'audits') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span class="nav-item-text">Internal audit</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/mrms" data-shortcut="g m" class="nav-item <%= (typeof active !== 'undefined' && active === 'mrms') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span class="nav-item-text">Management review</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/cert-cycle" class="nav-item <%= (typeof active !== 'undefined' && active === 'cert-cycle') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="nav-item-text">Cert cycle</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/changes-since" class="nav-item <%= (typeof active !== 'undefined' && active === 'changes-since') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-          <span class="nav-item-text">Changes since</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/auditor-access" class="nav-item <%= (typeof active !== 'undefined' && active === 'auditor-access') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <span class="nav-item-text">Auditor access</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/nonconformities" data-shortcut="g n" class="nav-item <%= (typeof active !== 'undefined' && active === 'nc') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span class="nav-item-text">Nonconformities</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/incidents" data-shortcut="g x" class="nav-item <%= (typeof active !== 'undefined' && active === 'incidents') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          <span class="nav-item-text">Incidents</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/changes" class="nav-item <%= (typeof active !== 'undefined' && active === 'changes') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          <span class="nav-item-text">Changes</span>
-        </a>
-        <%# Improvements demoted from the sidebar - reachable as a tab on the
-            Nonconformities page since clause 10 keeps both concepts adjacent. %>
-        <a href="/workspaces/<%= ws.id %>/vendors" data-shortcut="g v" class="nav-item <%= (typeof active !== 'undefined' && active === 'vendors') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span class="nav-item-text">Suppliers</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/bcp" data-shortcut="g b" class="nav-item <%= (typeof active !== 'undefined' && active === 'bcp') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span class="nav-item-text">Business continuity</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/training" class="nav-item <%= (typeof active !== 'undefined' && active === 'training') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-          <span class="nav-item-text">Training &amp; awareness</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/competence" class="nav-item <%= (typeof active !== 'undefined' && active === 'competence') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
-          <span class="nav-item-text">Competence matrix</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/communication-plan" class="nav-item <%= (typeof active !== 'undefined' && active === 'communication-plan') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="nav-item-text">Communication plan</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/evidence-coverage" class="nav-item <%= (typeof active !== 'undefined' && active === 'evidence-coverage') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          <span class="nav-item-text">Evidence coverage</span>
-        </a>
-        <a href="/workspaces/<%= ws.id %>/metrics/adopted" class="nav-item <%= (typeof active !== 'undefined' && active === 'metrics-library') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <span class="nav-item-text">Adopted metrics</span>
-        </a>
-
-        <div class="nav-group-label">Settings</div>
-        <%# Search reachable via the Cmd-K palette in the topbar. Reports is a
-            thin index of exports that already live next to each module. The
-            Glossary nav entry only renders outside a client context (the
-            else branch below) - inside a client it just adds noise. %>
-        <% if (rbac.isManager(user.firm_role)) { %>
-        <a href="/workspaces/<%= ws.id %>/system" class="nav-item">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span class="nav-item-text">System</span>
-        </a>
-        <% } %>
-        <a href="/workspaces/<%= ws.id %>/activity-log" class="nav-item <%= (typeof active !== 'undefined' && active === 'activity') ? 'active' : '' %>">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="nav-item-text">Activity log</span>
-        </a>
       <% } else { %>
         <%# Client switcher: on firm-level pages (Clients, Playbooks,
             Firm library, Glossary, Admin Email), give the consultant a
@@ -401,6 +167,10 @@
           <span class="nav-item-text">Clients</span>
         </a>
         <% if (user && user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('firm.cross_view')) { %>
+          <a href="/delivery-portfolio" class="nav-item <%= (typeof active !== 'undefined' && active === 'delivery-portfolio') ? 'active' : '' %>">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M8 7h8M8 11h8M8 15h5"/><path d="M2 19h20"/></svg>
+            <span class="nav-item-text">Delivery QA</span>
+          </a>
           <a href="/portfolio" class="nav-item <%= (typeof active !== 'undefined' && active === 'portfolio') ? 'active' : '' %>">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             <span class="nav-item-text">Portfolio</span>
@@ -442,15 +212,15 @@
     </nav>
 
     <div class="sidebar-foot">
-      <div class="avatar text-xs" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight: 500;flex-shrink:0;"><%= user.name.charAt(0).toUpperCase() %></div>
+      <div class="avatar text-xs" title="<%= user.name %>" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight: 500;flex-shrink:0;"><%= user.name.charAt(0).toUpperCase() %></div>
       <div style="min-width:0;flex:1;">
         <div class="text-lg" style="font-weight:500;line-height:1.2;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= user.name %></div>
         <div class="text-eyebrow" style="color:#8a8a87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= user.email %></div>
       </div>
-      <button onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:#6b6b66;cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#1a1a1a';this.style.background='rgba(26,26,26,0.06)'" onmouseout="this.style.color='#6b6b66';this.style.background='transparent'">
+      <button class="sidebar-foot-action" onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:#6b6b66;cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#1a1a1a';this.style.background='rgba(26,26,26,0.06)'" onmouseout="this.style.color='#6b6b66';this.style.background='transparent'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
-      <form method="POST" action="/logout" style="margin:0;display:flex;">
+      <form class="sidebar-foot-action" method="POST" action="/logout" style="margin:0;display:flex;">
         <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
         <button type="submit" title="Sign out" aria-label="Sign out" style="background:transparent;border:0;color:#6b6b66;cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#1a1a1a';this.style.background='rgba(26,26,26,0.06)'" onmouseout="this.style.color='#6b6b66';this.style.background='transparent'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -465,7 +235,7 @@
         <button class="icon-btn menu-toggle" onclick="toggleSidebar(true)" title="Menu" aria-label="Open menu">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <button class="icon-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" style="display:none">
+        <button class="icon-btn sidebar-collapse-toggle" id="sidebarCollapseButton" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" aria-pressed="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
         </button>
         <button class="palette-trigger" onclick="openPalette()">

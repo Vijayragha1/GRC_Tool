@@ -1,14 +1,15 @@
-// Engagement routes: kickoff intake (25-question scoping questionnaire) and
-// the 12-week project plan. Both are workspace-scoped read/write - they read
-// from data/intake-questions.js and data/engagement-plan.js for templates,
-// and persist per-workspace state in engagement_intake and
-// engagement_plan_progress.
+// Engagement routes: kickoff intake and the adaptive delivery system shared
+// by Plan, Timeline, Tasks and Calendar.
 
 const INTAKE = require('../data/intake-questions');
-const ENG_PLAN = require('../data/engagement-plan');
+const delivery = require('../lib/engagement-delivery');
+const auditPack = require('../lib/audit-pack');
+const enc = require('../lib/encryption');
+const fs = require('fs');
+const crypto = require('crypto');
 
 function register(app, deps) {
-  const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx } = deps;
+  const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx, upload, resolveUploadPath } = deps;
 
   // ---------- INTAKE ----------
   app.get('/workspaces/:wsId/intake', requireAuth, requireWorkspace, (req, res) => {
@@ -145,40 +146,344 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Scope un-confirmed. Edit the answers and re-confirm when ready.'));
   });
 
-  // ---------- 12-WEEK ENGAGEMENT PLAN ----------
+  // ---------- ADAPTIVE ENGAGEMENT DELIVERY ----------
+  const planUrl = wsId => `/workspaces/${wsId}/engagement-plan`;
+  const planUser = (ws, id) => !id || db.prepare(`SELECT 1 FROM users u WHERE u.id=? AND u.active=1 AND
+    ((u.firm_id=? AND u.user_type='firm') OR u.id IN (SELECT user_id FROM workspace_members WHERE workspace_id=?))`).get(id, ws.firm_id, ws.id);
+  const runPlanAction = (req, res, action, success) => {
+    try {
+      const result = action();
+      return res.redirect(withToast(planUrl(req.workspace.id), success || 'Delivery plan updated.'));
+    } catch (error) {
+      return res.redirect(withToast(planUrl(req.workspace.id), error.message || 'Could not update the delivery plan.', 'error'));
+    }
+  };
+
   app.get('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, (req, res) => {
-    const progress = db.prepare(`SELECT milestone_id, completed_at, target_date, notes FROM engagement_plan_progress WHERE workspace_id=?`)
-      .all(req.workspace.id);
-    const byId = {};
-    for (const r of progress) byId[r.milestone_id] = r;
-    const phases = ENG_PLAN.PHASES.map(ph => ({
-      ...ph,
-      milestones: ph.milestones.map(m => ({ ...m, ...(byId[m.id] || {}) })),
-    }));
-    const total = ENG_PLAN.flatten().length;
-    const done = progress.filter(p => p.completed_at).length;
+    const projection = delivery.getProjection(db, req.workspace, req.user.id);
+    const view = ['plan','timeline','gates'].includes(req.query.view) ? req.query.view : 'plan';
+    const users = db.prepare(`SELECT id,name FROM users WHERE active=1 AND (
+      (firm_id=? AND user_type='firm') OR id IN (SELECT user_id FROM workspace_members WHERE workspace_id=?)) ORDER BY name`)
+      .all(req.workspace.firm_id, req.workspace.id);
+    const baselines = db.prepare(`SELECT b.id,b.version_number,b.label,b.reason,b.approved_at,u.name approved_by_name
+      FROM engagement_delivery_baselines b LEFT JOIN users u ON u.id=b.approved_by WHERE b.plan_id=? ORDER BY b.version_number DESC`).all(projection.plan.id);
+    const events = db.prepare(`SELECT e.*,u.name actor_name FROM engagement_delivery_events e LEFT JOIN users u ON u.id=e.actor_id
+      WHERE e.plan_id=? ORDER BY e.id DESC LIMIT 25`).all(projection.plan.id);
+    const evidence = db.prepare(`SELECT de.deliverable_id,e.id,e.filename,e.sha256,e.uploaded_at,u.name uploaded_by_name
+      FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id LEFT JOIN users u ON u.id=e.uploaded_by
+      WHERE de.workspace_id=? ORDER BY de.id DESC`).all(req.workspace.id);
+    const comments = db.prepare(`SELECT c.*,u.name user_name FROM comments c JOIN users u ON u.id=c.user_id
+      WHERE c.workspace_id=? AND c.parent_type='engagement_deliverable' ORDER BY c.id`).all(req.workspace.id)
+      .map(c => ({ ...c, body: enc.decryptIfNeeded(c.body, req.workspace.id) }));
+    const evidenceCatalog = db.prepare(`SELECT id,filename,description,uploaded_at FROM evidence WHERE workspace_id=? AND superseded_at IS NULL ORDER BY uploaded_at DESC,id DESC LIMIT 100`).all(req.workspace.id);
+    const workQueue = {
+      mine: projection.deliverables.filter(d => d.owner_id === req.user.id && !['accepted','superseded'].includes(d.status)).length,
+      approvals: projection.deliverables.filter(d => d.approver_id === req.user.id && ['submitted','workspace_verified'].includes(d.effective_status)).length,
+      overdue: projection.deliverables.filter(d => d.due_date && d.due_date < new Date().toISOString().slice(0,10) && !['accepted','superseded'].includes(d.status)).length,
+      unassigned: projection.phases.filter(p => !p.owner_id).length
+        + projection.milestones.filter(m => !m.owner_id).length
+        + projection.deliverables.filter(d => !d.owner_id).length
+        + projection.deliverables.filter(d => !d.approver_id).length
+    };
     res.render('engagement_plan', {
-      user: req.user, ws: req.workspace, phases, total, done,
+      user: req.user, ws: req.workspace, ...projection, users, baselines, events, evidence, evidenceCatalog, comments, workQueue, view
     });
   });
 
-  app.post('/workspaces/:wsId/engagement-plan/:milestoneId/toggle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const mid = req.params.milestoneId;
-    // Guard: only known milestone IDs from the template can be toggled. Stops
-    // arbitrary upserts from crafted POST bodies.
-    const known = ENG_PLAN.flatten().some(m => m.id === mid);
-    if (!known) return res.status(400).send('Unknown milestone');
-    const existing = db.prepare(`SELECT completed_at FROM engagement_plan_progress WHERE workspace_id=? AND milestone_id=?`)
-      .get(req.workspace.id, mid);
-    if (existing && existing.completed_at) {
-      db.prepare(`UPDATE engagement_plan_progress SET completed_at=NULL WHERE workspace_id=? AND milestone_id=?`)
-        .run(req.workspace.id, mid);
-    } else {
-      db.prepare(`INSERT INTO engagement_plan_progress (workspace_id, milestone_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(workspace_id, milestone_id) DO UPDATE SET completed_at=CURRENT_TIMESTAMP`)
-        .run(req.workspace.id, mid);
+  app.post('/workspaces/:wsId/engagement-plan/settings', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      if (req.body.status === 'completed') {
+        const projection = delivery.getProjection(db, req.workspace, req.user.id);
+        if (!projection.summary.completionReady || projection.summary.openBlockers) {
+          throw new Error('The engagement cannot be completed until every required phase gate passes and all critical blockers are closed.');
+        }
+      }
+      const result = db.prepare(`UPDATE engagement_delivery_plans SET name=?,objective=?,status=?,target_start_date=?,
+        target_completion_date=?,forecast_completion_date=?,completion_criteria=?,updated_at=datetime('now')
+        WHERE id=? AND workspace_id=? AND updated_at=?`).run(
+          String(req.body.name || '').trim() || 'ISO 27001 delivery plan', req.body.objective || null,
+          req.body.status || 'active', req.body.target_start_date || null, req.body.target_completion_date || null,
+          req.body.forecast_completion_date || null, req.body.completion_criteria || null,
+          plan.id, req.workspace.id, req.body.updated_at_snapshot);
+      if (!result.changes) throw new Error('The plan changed in another session. Reload and apply your update again.');
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'plan', plan.id, 'updated', null, req.body.status || 'active', null);
+      logAction(req.user.id, req.workspace.id, 'update_delivery_plan', 'engagement_plan', plan.id, null, auditCtx(req));
+    }, 'Plan settings updated.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/baselines', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const id = delivery.createBaseline(db, req.workspace, req.user.id, req.body.label, req.body.reason);
+      logAction(req.user.id, req.workspace.id, 'approve_delivery_baseline', 'engagement_baseline', id, { reason: req.body.reason }, auditCtx(req));
+    }, 'A new approved baseline was frozen.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/phases/:phaseId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const result = db.prepare(`UPDATE engagement_delivery_phases SET owner_id=?,planned_start_date=?,planned_end_date=?,forecast_end_date=?,updated_at=datetime('now')
+        WHERE id=? AND plan_id=?`).run(req.body.owner_id || null, req.body.planned_start_date || null,
+          req.body.planned_end_date || null, req.body.forecast_end_date || null, req.params.phaseId, plan.id);
+      if (!result.changes) throw new Error('Phase not found.');
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'phase', req.params.phaseId, 'schedule_updated', null, null, req.body);
+      logAction(req.user.id, req.workspace.id, 'update_delivery_phase', 'engagement_phase', req.params.phaseId, null, auditCtx(req));
+    }, 'Phase schedule updated.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/phases/:phaseId/gate', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const id = delivery.decideGate(db, req.workspace, req.user.id, req.params.phaseId, req.body.decision, req.body.note, req.body.waiver_expires_at);
+      logAction(req.user.id, req.workspace.id, 'decide_delivery_gate', 'engagement_phase', req.params.phaseId,
+        { decision_id: id, decision: req.body.decision, note: req.body.note }, auditCtx(req));
+    }, req.body.decision === 'reopened' ? 'Phase gate reopened.' : 'Phase-gate decision recorded.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/milestones', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const phase = db.prepare('SELECT id FROM engagement_delivery_phases WHERE id=? AND plan_id=?').get(req.body.phase_id, plan.id);
+      if (!phase || !String(req.body.title || '').trim()) throw new Error('A valid phase and milestone title are required.');
+      const key = `custom-${Date.now()}-${Math.random().toString(16).slice(2,8)}`;
+      const id = db.prepare(`INSERT INTO engagement_delivery_milestones
+        (plan_id,phase_id,milestone_key,title,description,acceptance_criteria,priority,is_required,completion_mode,owner_id,planned_start_date,planned_end_date,forecast_end_date)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(plan.id, phase.id, key, req.body.title.trim(), req.body.description || null,
+          req.body.acceptance_criteria || null, req.body.priority || 'normal', req.body.is_required ? 1 : 0,
+          req.body.completion_mode || 'deliverable', req.body.owner_id || null, req.body.planned_start_date || null,
+          req.body.planned_end_date || null, req.body.forecast_end_date || req.body.planned_end_date || null).lastInsertRowid;
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'milestone', id, 'created', null, 'not_started', { title: req.body.title });
+      logAction(req.user.id, req.workspace.id, 'create_delivery_milestone', 'engagement_milestone', id, { title: req.body.title }, auditCtx(req));
+      delivery.recalculateSchedule(db, req.workspace, req.user.id, 'milestone_created');
+    }, 'Milestone added.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/milestones/:milestoneId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const result = db.prepare(`UPDATE engagement_delivery_milestones SET title=?,description=?,acceptance_criteria=?,priority=?,is_required=?,owner_id=?,planned_start_date=?,planned_end_date=?,forecast_end_date=?,updated_at=datetime('now'),row_version=row_version+1
+        WHERE id=? AND plan_id=? AND row_version=?`).run(req.body.title, req.body.description || null, req.body.acceptance_criteria || null,
+          req.body.priority || 'normal', req.body.is_required ? 1 : 0, req.body.owner_id || null,
+          req.body.planned_start_date || null, req.body.planned_end_date || null, req.body.forecast_end_date || null,
+          req.params.milestoneId, plan.id, req.body.row_version);
+      if (!result.changes) throw new Error('This milestone changed in another session. Reload before saving.');
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'milestone', req.params.milestoneId, 'updated', null, null, null);
+      logAction(req.user.id, req.workspace.id, 'update_delivery_milestone', 'engagement_milestone', req.params.milestoneId, null, auditCtx(req));
+      delivery.recalculateSchedule(db, req.workspace, req.user.id, 'milestone_updated');
+    }, 'Milestone updated.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const milestone = db.prepare('SELECT id FROM engagement_delivery_milestones WHERE id=? AND plan_id=?').get(req.body.milestone_id, plan.id);
+      if (!milestone || !String(req.body.title || '').trim()) throw new Error('A milestone and deliverable title are required.');
+      if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
+      const id = db.prepare(`INSERT INTO engagement_delivery_deliverables
+        (workspace_id,plan_id,milestone_id,title,description,acceptance_criteria,is_required,owner_id,approver_id,due_date,linked_record_type,linked_record_id,client_visible,requires_evidence)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.workspace.id, plan.id, milestone.id, req.body.title.trim(), req.body.description || null,
+          req.body.acceptance_criteria || null, req.body.is_required ? 1 : 0, req.body.owner_id || null,
+          req.body.approver_id || null, req.body.due_date || null, req.body.linked_record_type || null,
+          req.body.linked_record_id || null, req.body.client_visible ? 1 : 0, req.body.requires_evidence ? 1 : 0).lastInsertRowid;
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'deliverable', id, 'created', null, 'draft', { title: req.body.title });
+      logAction(req.user.id, req.workspace.id, 'create_delivery_deliverable', 'engagement_deliverable', id, { title: req.body.title }, auditCtx(req));
+    }, 'Deliverable added.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
+      const result = db.prepare(`UPDATE engagement_delivery_deliverables SET title=?,description=?,acceptance_criteria=?,is_required=?,
+        owner_id=?,approver_id=?,due_date=?,client_visible=?,requires_evidence=?,updated_at=datetime('now'),row_version=row_version+1
+        WHERE id=? AND plan_id=? AND workspace_id=? AND row_version=?`).run(
+        String(req.body.title || '').trim(), req.body.description || null, req.body.acceptance_criteria || null,
+        req.body.is_required ? 1 : 0, req.body.owner_id || null, req.body.approver_id || null,
+        req.body.due_date || null, req.body.client_visible ? 1 : 0, req.body.requires_evidence ? 1 : 0,
+        req.params.deliverableId, plan.id, req.workspace.id, req.body.row_version);
+      if (!result.changes) throw new Error('This deliverable changed in another session. Reload before saving.');
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'deliverable', req.params.deliverableId, 'updated', null, null, null);
+      logAction(req.user.id, req.workspace.id, 'update_delivery_deliverable', 'engagement_deliverable', req.params.deliverableId, null, auditCtx(req));
+    }, 'Deliverable updated.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/submit', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      delivery.transitionDeliverable(db, req.workspace, req.user.id, Number(req.params.deliverableId), 'submit', req.body.note);
+      logAction(req.user.id, req.workspace.id, 'submit_delivery_deliverable', 'engagement_deliverable', req.params.deliverableId, null, auditCtx(req));
+    }, 'Deliverable submitted for sign-off.');
+  });
+
+  ['accept','changes','reject'].forEach(action => {
+    app.post(`/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/${action}`, requireAuth, requireWorkspace, requirePermission('document.approve'), (req, res) => {
+      runPlanAction(req, res, () => {
+        delivery.transitionDeliverable(db, req.workspace, req.user.id, Number(req.params.deliverableId), action, req.body.note);
+        logAction(req.user.id, req.workspace.id, `${action}_delivery_deliverable`, 'engagement_deliverable', req.params.deliverableId, { note: req.body.note }, auditCtx(req));
+      }, action === 'accept' ? 'Deliverable accepted and milestone progress reconciled.' : 'Deliverable decision recorded.');
+    });
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/revise', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      delivery.reviseDeliverable(db, req.workspace, req.user.id, Number(req.params.deliverableId), req.body.note);
+      logAction(req.user.id, req.workspace.id, 'revise_delivery_deliverable', 'engagement_deliverable', req.params.deliverableId, { note: req.body.note }, auditCtx(req));
+    }, 'A new deliverable revision is open.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/comments', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const row = db.prepare(`SELECT d.id,d.plan_id FROM engagement_delivery_deliverables d WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
+      const body = String(req.body.body || '').trim();
+      if (!row || !body || body.length > 8000) throw new Error('A comment under 8,000 characters is required.');
+      const encrypted = enc.encryptIfNeeded(body, req.workspace.id, !!req.workspace.encryption_enabled);
+      db.prepare(`INSERT INTO comments (workspace_id,parent_type,parent_id,user_id,body,internal_only) VALUES (?,'engagement_deliverable',?,?,?,?)`)
+        .run(req.workspace.id, String(row.id), req.user.id, encrypted, req.body.internal_only && req.user.user_type === 'firm' ? 1 : 0);
+      delivery.event(db, req.workspace.id, row.plan_id, req.user.id, 'deliverable', row.id, 'commented', null, null, { internal: !!req.body.internal_only });
+      logAction(req.user.id, req.workspace.id, 'comment_delivery_deliverable', 'engagement_deliverable', row.id, { internal: !!req.body.internal_only }, auditCtx(req));
+    }, 'Comment added.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence', requireAuth, requireWorkspace,
+    requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
+      const cleanup = () => { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {} };
+      try {
+        const row = db.prepare(`SELECT d.id,d.plan_id,d.title FROM engagement_delivery_deliverables d WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
+        if (!row || !req.file) throw new Error(!row ? 'Deliverable not found.' : 'Choose a file to upload.');
+        const sha = crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex');
+        let evidenceId;
+        let deduped = false;
+        db.transaction(() => {
+          const existing = db.prepare(`SELECT id FROM evidence WHERE workspace_id=? AND sha256=? AND superseded_at IS NULL ORDER BY id DESC LIMIT 1`).get(req.workspace.id, sha);
+          if (existing) { evidenceId = existing.id; deduped = true; cleanup(); }
+          else evidenceId = db.prepare(`INSERT INTO evidence (workspace_id,filename,stored_path,sha256,size_bytes,uploaded_by,description,tags) VALUES (?,?,?,?,?,?,?,?)`)
+            .run(req.workspace.id, req.file.originalname, req.file.filename, sha, req.file.size, req.user.id,
+              String(req.body.description || '').trim() || row.title, `engagement-plan, deliverable-${row.id}`).lastInsertRowid;
+          db.prepare(`INSERT OR IGNORE INTO engagement_delivery_evidence (workspace_id,deliverable_id,evidence_id,linked_by) VALUES (?,?,?,?)`)
+            .run(req.workspace.id, row.id, evidenceId, req.user.id);
+          delivery.event(db, req.workspace.id, row.plan_id, req.user.id, 'deliverable', row.id, 'evidence_linked', null, null, { evidenceId, sha, deduped });
+        })();
+        logAction(req.user.id, req.workspace.id, deduped ? 'link_existing_delivery_evidence' : 'upload_delivery_evidence', 'engagement_deliverable', row.id, { evidence_id: evidenceId, sha256: sha }, auditCtx(req));
+        return res.redirect(withToast(planUrl(req.workspace.id), deduped ? 'Existing evidence linked.' : 'Evidence uploaded and linked.'));
+      } catch (error) {
+        cleanup();
+        return res.redirect(withToast(planUrl(req.workspace.id), error.message || 'Could not upload evidence.', 'error'));
+      }
+    });
+
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/link', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const row = db.prepare(`SELECT id,plan_id FROM engagement_delivery_deliverables WHERE id=? AND workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
+      const evidenceRow = db.prepare(`SELECT id,sha256 FROM evidence WHERE id=? AND workspace_id=? AND superseded_at IS NULL`).get(req.body.evidence_id, req.workspace.id);
+      if (!row || !evidenceRow) throw new Error('Choose an evidence record from this workspace.');
+      db.prepare(`INSERT OR IGNORE INTO engagement_delivery_evidence (workspace_id,deliverable_id,evidence_id,linked_by) VALUES (?,?,?,?)`).run(req.workspace.id,row.id,evidenceRow.id,req.user.id);
+      delivery.event(db, req.workspace.id, row.plan_id, req.user.id, 'deliverable', row.id, 'existing_evidence_linked', null, null, { evidenceId: evidenceRow.id, sha: evidenceRow.sha256 });
+      logAction(req.user.id, req.workspace.id, 'link_existing_delivery_evidence', 'engagement_deliverable', row.id, { evidence_id: evidenceRow.id }, auditCtx(req));
+    }, 'Existing evidence linked.');
+  });
+
+  app.get('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/:evidenceId/download', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+    const row = db.prepare(`SELECT e.* FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
+      WHERE de.deliverable_id=? AND de.evidence_id=? AND de.workspace_id=? AND e.workspace_id=?`).get(req.params.deliverableId, req.params.evidenceId, req.workspace.id, req.workspace.id);
+    if (!row) return res.status(404).send('Evidence not found');
+    const filePath = resolveUploadPath(row.stored_path, req.workspace.firm_id);
+    if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('Evidence file missing');
+    logAction(req.user.id, req.workspace.id, 'download_delivery_evidence', 'evidence', row.id, { deliverable_id: req.params.deliverableId }, auditCtx(req));
+    res.download(filePath, row.filename);
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/dependencies', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const id = delivery.addDependency(db, req.workspace, req.user.id, Number(req.body.predecessor_id), Number(req.body.successor_id), req.body.dependency_type, req.body.lag_days);
+      logAction(req.user.id, req.workspace.id, 'create_delivery_dependency', 'engagement_dependency', id, null, auditCtx(req));
+      delivery.recalculateSchedule(db, req.workspace, req.user.id, 'dependency_created');
+    }, 'Dependency added.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/dependencies/:dependencyId/delete', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const result = db.prepare('DELETE FROM engagement_delivery_dependencies WHERE id=? AND plan_id=?').run(req.params.dependencyId, plan.id);
+      if (!result.changes) throw new Error('Dependency not found.');
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'dependency', req.params.dependencyId, 'deleted', 'active', null, null);
+      logAction(req.user.id, req.workspace.id, 'delete_delivery_dependency', 'engagement_dependency', req.params.dependencyId, null, auditCtx(req));
+    }, 'Dependency removed.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/recalculate', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const result = delivery.recalculateSchedule(db, req.workspace, req.user.id, 'manual');
+      logAction(req.user.id, req.workspace.id, 'recalculate_delivery_schedule', 'engagement_plan', null, result, auditCtx(req));
+    }, 'Dependencies applied and the forecast recalculated.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/fit-target', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const result = delivery.fitScheduleToTarget(db, req.workspace, req.user.id);
+      logAction(req.user.id, req.workspace.id, 'fit_delivery_schedule_to_target', 'engagement_plan', null, result, auditCtx(req));
+    }, 'Initial milestone durations fitted to the target window.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/bulk-assign', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const ownerId = req.body.owner_id || null;
+      const deliverableOwnerId = req.body.deliverable_owner_id || null;
+      const approverId = req.body.approver_id || null;
+      if (!planUser(req.workspace, ownerId) || !planUser(req.workspace, deliverableOwnerId) || !planUser(req.workspace, approverId)) throw new Error('Owners and approver must belong to this engagement.');
+      const onlyUnassigned = req.body.only_unassigned ? 1 : 0;
+      const phases = ownerId ? db.prepare(`UPDATE engagement_delivery_phases SET owner_id=?,updated_at=datetime('now') WHERE plan_id=? ${onlyUnassigned ? 'AND owner_id IS NULL' : ''}`).run(ownerId, plan.id).changes : 0;
+      const milestones = ownerId ? db.prepare(`UPDATE engagement_delivery_milestones SET owner_id=?,updated_at=datetime('now'),row_version=row_version+1 WHERE plan_id=? ${onlyUnassigned ? 'AND owner_id IS NULL' : ''}`).run(ownerId, plan.id).changes : 0;
+      const deliverableOwners = deliverableOwnerId ? db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,updated_at=datetime('now'),row_version=row_version+1 WHERE plan_id=? ${onlyUnassigned ? 'AND owner_id IS NULL' : ''}`).run(deliverableOwnerId, plan.id).changes : 0;
+      const deliverableApprovers = approverId ? db.prepare(`UPDATE engagement_delivery_deliverables SET approver_id=?,updated_at=datetime('now'),row_version=row_version+1 WHERE plan_id=? ${onlyUnassigned ? 'AND approver_id IS NULL' : ''}`).run(approverId, plan.id).changes : 0;
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'plan', plan.id, 'bulk_assigned', null, null, { phases, milestones, deliverableOwners, deliverableApprovers, ownerId, deliverableOwnerId, approverId, onlyUnassigned: !!onlyUnassigned });
+      logAction(req.user.id, req.workspace.id, 'bulk_assign_delivery_plan', 'engagement_plan', plan.id, { phases, milestones, deliverable_owners: deliverableOwners, deliverable_approvers: deliverableApprovers, owner_id: ownerId, deliverable_owner_id: deliverableOwnerId, approver_id: approverId }, auditCtx(req));
+    }, 'Plan assignments updated.');
+  });
+
+  app.post('/workspaces/:wsId/engagement-plan/create-tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    runPlanAction(req, res, () => {
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const milestones = db.prepare(`SELECT m.* FROM engagement_delivery_milestones m WHERE m.plan_id=? AND m.status NOT IN ('complete','waived')
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.workspace_id=? AND t.engagement_milestone_id=m.id AND t.status NOT IN ('done','closed','cancelled'))`).all(plan.id, req.workspace.id);
+      const insert = db.prepare(`INSERT INTO tasks (workspace_id,title,description,assignee_id,due_date,status,created_by,priority,engagement_milestone_id)
+        VALUES (?,?,?,?,?,'todo',?,?,?)`);
+      const tx = db.transaction(() => milestones.forEach(m => insert.run(req.workspace.id, m.title,
+        m.acceptance_criteria || m.description || 'Complete the plan milestone and retain accepted deliverables.',
+        m.owner_id || null, m.forecast_end_date || m.planned_end_date || null, req.user.id, m.priority || 'normal', m.id)));
+      tx();
+      delivery.event(db, req.workspace.id, plan.id, req.user.id, 'plan', plan.id, 'tasks_created', null, null, { count: milestones.length });
+      logAction(req.user.id, req.workspace.id, 'create_delivery_plan_tasks', 'engagement_plan', plan.id, { count: milestones.length }, auditCtx(req));
+    }, 'Missing milestone tasks created and linked.');
+  });
+
+  app.get('/workspaces/:wsId/engagement-plan/export.csv', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+    const projection = delivery.getProjection(db, req.workspace, req.user.id);
+    const esc = value => value == null ? '' : `"${String(value).replace(/"/g, '""')}"`;
+    const lines = ['Phase,Milestone,Milestone status,Owner,Priority,Planned start,Planned finish,Forecast finish,Baseline finish,Variance days,Critical path,Deliverable,Deliverable status,Approver,Due,Evidence files,Client visible'];
+    projection.phases.forEach(phase => phase.milestones.forEach(m => m.deliverables.forEach(d => lines.push([
+      phase.name,m.title,m.effective_status,m.owner_name,m.priority,m.planned_start_date,m.planned_end_date,m.forecast_end_date,
+      m.baseline_end_date,m.baseline_variance_days,m.critical_path ? 'Yes' : 'No',d.title,d.effective_status,d.approver_name,d.due_date,d.evidence_count,d.client_visible ? 'Yes' : 'No'
+    ].map(esc).join(',')))));
+    logAction(req.user.id, req.workspace.id, 'export_delivery_plan_csv', 'engagement_plan', projection.plan.id, null, auditCtx(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="engagement-plan-${req.workspace.client_name.replace(/[^\w-]+/g,'_')}.csv"`);
+    res.send(lines.join('\n'));
+  });
+
+  app.get('/workspaces/:wsId/engagement-plan/report.pdf', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
+    try {
+      const projection = delivery.getProjection(db, req.workspace, req.user.id);
+      const h = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const rows = projection.phases.map((phase, index) => `<section><h2>${index + 1}. ${h(phase.name)} <small>${h(phase.effective_status.replaceAll('_',' '))}</small></h2><p>${h(phase.description)}</p><table><thead><tr><th>Milestone</th><th>Owner</th><th>Status</th><th>Forecast</th><th>Acceptance</th></tr></thead><tbody>${phase.milestones.map(m => `<tr><td>${h(m.title)}${m.critical_path ? '<br><em>Critical path</em>' : ''}</td><td>${h(m.owner_name || 'Unassigned')}</td><td>${h(m.effective_status.replaceAll('_',' '))}</td><td>${h(m.forecast_end_date || m.planned_end_date || 'Unscheduled')}</td><td>${h(m.deliverables.map(d => `${d.title}: ${d.status}`).join('; '))}</td></tr>`).join('')}</tbody></table></section>`).join('');
+      const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font:11px Arial;color:#17252b}h1{font-size:26px}h2{font-size:16px;margin:22px 0 3px;border-bottom:1px solid #ccd5d8;padding-bottom:5px}small{float:right;text-transform:uppercase;color:#667}p{color:#58666b}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d9e0e2;padding:6px;text-align:left;vertical-align:top}th{background:#eef2f3;font-size:9px;text-transform:uppercase}em{font-size:9px;color:#9a3412}.kpis{display:flex;gap:24px;padding:12px;background:#eef2f3}.kpis strong{font-size:18px;display:block}</style></head><body><h1>${h(projection.plan.name)}</h1><p>${h(req.workspace.brand_display_name || req.workspace.client_name)} · Generated ${new Date().toISOString().slice(0,10)} · Confidential</p><div class="kpis"><div><strong>${projection.summary.progressPct}%</strong>progress</div><div><strong>${projection.summary.phaseGatesPassed}/${projection.summary.phaseGatesTotal}</strong>gates</div><div><strong>${projection.summary.acceptedDeliverables}/${projection.summary.requiredDeliverables}</strong>accepted</div><div><strong>${projection.summary.varianceDays == null ? '—' : projection.summary.varianceDays + 'd'}</strong>variance</div></div>${rows}</body></html>`;
+      const raw = await auditPack.renderPDF(html, { headerLeft: req.workspace.client_name, headerRight: 'Engagement delivery plan', footerLeft: 'Confidential · Controlled delivery record' });
+      const pdf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      logAction(req.user.id, req.workspace.id, 'export_delivery_plan_pdf', 'engagement_plan', projection.plan.id, { bytes: pdf.length }, auditCtx(req));
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="engagement-plan-${req.workspace.client_name.replace(/[^\w-]+/g,'_')}.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      res.status(500).render('error', { user: req.user, ws: req.workspace, message: 'Could not generate the delivery report: ' + error.message });
     }
-    res.redirect(`/workspaces/${req.workspace.id}/engagement-plan`);
   });
 }
 

@@ -1766,6 +1766,10 @@ function init() {
   addColumnIfMissing('users', 'locale', "TEXT DEFAULT 'en'");
   addColumnIfMissing('users', 'idp_subject', 'TEXT');
   addColumnIfMissing('users', 'idp_kind', 'TEXT');
+  addColumnIfMissing('users', 'mfa_secret', 'TEXT');
+  addColumnIfMissing('users', 'mfa_enabled_at', 'DATETIME');
+  addColumnIfMissing('users', 'mfa_recovery_codes', 'TEXT');
+  addColumnIfMissing('users', 'mfa_last_counter', 'INTEGER DEFAULT -1');
   // Email-notification preference: 'immediate' (email when a notification is
   // raised) or 'off' (in-app only). 'daily' is reserved for a future digest.
   addColumnIfMissing('users', 'email_notify', "TEXT DEFAULT 'immediate'");

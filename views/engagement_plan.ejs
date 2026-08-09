@@ -1,61 +1,313 @@
-<%- include('partials/header', { title: 'Client plan', user, ws, active: 'engagement-plan' }) %>
+<%- include('partials/header', { title: 'Engagement delivery plan', user, ws, active: 'engagement-plan' }) %>
+
+<%
+  const statusLabel = s => String(s || 'not_started').replaceAll('_',' ').replace(/^./, c => c.toUpperCase());
+  const statusClass = s => ['complete','accepted','passed'].includes(s) ? 'tag-success'
+    : ['blocked','rejected'].includes(s) ? 'tag-danger'
+    : ['in_progress','submitted','workspace_verified','changes_requested'].includes(s) ? 'tag-warn' : 'tag-neutral';
+  const fmtDate = value => value ? String(value).slice(0,10) : 'Unscheduled';
+  const varianceLabel = summary.varianceDays == null ? 'No target'
+    : summary.varianceDays === 0 ? 'On baseline'
+    : summary.varianceDays > 0 ? `${summary.varianceDays}d late` : `${Math.abs(summary.varianceDays)}d early`;
+  const evidenceFor = id => evidence.filter(e => e.deliverable_id === id);
+  const commentsFor = id => comments.filter(c => String(c.parent_id) === String(id));
+%>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">12-week client plan</h1>
-    <div class="page-subtitle">Pre-loaded roadmap from kickoff to Stage 2 readiness. Tick milestones as you complete them; the dashboard reads the progress percentage.</div>
+    <div class="sec-label">Adaptive delivery</div>
+    <h1 class="page-title"><%= plan.name %></h1>
+    <div class="page-subtitle">No fixed programme length. Phases move with accepted deliverables, dependencies, forecast dates and authorised gate decisions.</div>
   </div>
-  <div style="display:flex;gap:14px;align-items:center;">
-    <% const pct = total ? Math.round(done / total * 100) : 0; %>
-    <span class="meta text-md"><strong><%= done %></strong> / <%= total %> done · <strong><%= pct %>%</strong></span>
-    <div style="width:140px;height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
-      <div style="height:100%;background:var(--accent);width:<%= pct %>%;transition:width 0.2s;"></div>
+  <div class="row-center">
+    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/engagement-plan/export.csv">Export Excel/CSV</a>
+    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/engagement-plan/report.pdf">Download PDF</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/recalculate"><button class="btn btn-secondary btn-xs">Recalculate schedule</button></form>
+    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/fit-target"><button class="btn btn-secondary btn-xs" title="Allocate the initial template across the agreed start and target dates">Fit to target</button></form>
+    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/create-tasks"><button class="btn btn-secondary btn-xs">Create linked tasks</button></form>
+    <details style="position:relative;">
+      <summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Bulk assign</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/bulk-assign" class="panel" style="position:absolute;right:0;top:38px;width:380px;z-index:45;padding:16px;box-shadow:var(--shadow-xl);">
+        <label class="label">Milestone owner</label><select class="select" name="owner_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select>
+        <label class="label" style="margin-top:8px;">Deliverable owner</label><select class="select" name="deliverable_owner_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select>
+        <label class="label" style="margin-top:8px;">Deliverable approver</label><select class="select" name="approver_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select>
+        <label style="display:block;margin:10px 0;"><input type="checkbox" name="only_unassigned" value="1" checked> Only currently unassigned work</label>
+        <button class="btn btn-primary" style="width:100%;">Apply assignments</button>
+      </form>
+    </details>
+    <details style="position:relative;">
+      <summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Plan settings</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/settings" class="panel" style="position:absolute;right:0;top:38px;width:min(620px,85vw);z-index:40;padding:16px;box-shadow:var(--shadow-xl);display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <input type="hidden" name="updated_at_snapshot" value="<%= plan.updated_at %>">
+        <div class="col-full"><label class="label">Plan name</label><input class="input" name="name" value="<%= plan.name %>" required></div>
+        <div class="col-full"><label class="label">Objective</label><textarea class="textarea" name="objective" rows="2"><%= plan.objective || '' %></textarea></div>
+        <div><label class="label">Status</label><select class="select" name="status"><% ['draft','active','on_hold','completed','cancelled'].forEach(s => { %><option value="<%= s %>" <%= plan.status===s?'selected':'' %>><%= statusLabel(s) %></option><% }) %></select></div>
+        <div><label class="label">Start</label><input class="input" type="date" name="target_start_date" value="<%= plan.target_start_date || '' %>"></div>
+        <div><label class="label">Target completion</label><input class="input" type="date" name="target_completion_date" value="<%= plan.target_completion_date || '' %>"></div>
+        <div><label class="label">Forecast completion</label><input class="input" type="date" name="forecast_completion_date" value="<%= plan.forecast_completion_date || '' %>"></div>
+        <div class="col-full"><label class="label">Engagement completion criteria</label><textarea class="textarea" name="completion_criteria" rows="3"><%= plan.completion_criteria || '' %></textarea></div>
+        <div class="col-full" style="text-align:right;"><button class="btn btn-primary">Save settings</button></div>
+      </form>
+    </details>
+    <details style="position:relative;">
+      <summary class="btn btn-primary btn-xs" style="list-style:none;cursor:pointer;">Approve baseline</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/baselines" class="panel" style="position:absolute;right:0;top:38px;width:380px;z-index:40;padding:16px;box-shadow:var(--shadow-xl);">
+        <label class="label">Baseline label</label><input class="input" name="label" placeholder="e.g. Client-approved mobilisation baseline">
+        <label class="label" style="margin-top:10px;">Reason <span class="text-danger">required</span></label><textarea class="textarea" name="reason" rows="3" required placeholder="What was agreed, changed or re-approved?"></textarea>
+        <button class="btn btn-primary" style="margin-top:10px;width:100%;">Freeze baseline <%= plan.baseline_version + 1 %></button>
+      </form>
+    </details>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px;">
+  <div class="panel kpi"><div class="kpi-num" style="font-size:19px;"><%= currentPhase ? currentPhase.name : 'Complete' %></div><div class="kpi-label">Current phase</div><div class="kpi-meta"><%= summary.phaseGatesPassed %>/<%= summary.phaseGatesTotal %> gates decided</div></div>
+  <div class="panel kpi"><div class="kpi-num" style="font-size:22px;"><%= fmtDate(plan.target_completion_date) %></div><div class="kpi-label">Target</div><div class="kpi-meta"><%= baseline ? `baseline ${baseline.version_number}` : 'not baselined' %></div></div>
+  <div class="panel kpi"><div class="kpi-num" style="font-size:22px;"><%= fmtDate(plan.forecast_completion_date) %></div><div class="kpi-label">Forecast</div><div class="kpi-meta">latest plan dates</div></div>
+  <div class="panel kpi"><div class="kpi-num" style="font-size:22px;color:<%= summary.varianceDays > 0 ? '#b91c1c' : summary.varianceDays < 0 ? '#15803d' : 'var(--text)' %>;"><%= varianceLabel %></div><div class="kpi-label">Plan variance</div><div class="kpi-meta">target vs forecast</div></div>
+  <div class="panel kpi"><div class="kpi-num"><%= summary.acceptedDeliverables %>/<%= summary.requiredDeliverables %></div><div class="kpi-label">Deliverables accepted</div><div class="kpi-meta"><%= summary.verifiedMilestones %> workspace-verified milestones</div></div>
+  <div class="panel kpi"><div class="kpi-num <%= summary.openBlockers ? 'text-danger' : 'text-success' %>"><%= summary.openBlockers %></div><div class="kpi-label">Dependency blockers</div><div class="kpi-meta"><%= summary.completionReady ? 'completion criteria met' : `${summary.progressPct}% weighted progress` %></div></div>
+</div>
+
+<div class="row" style="gap:6px;margin-bottom:14px;">
+  <a href="?view=plan" class="btn btn-<%= view==='plan'?'primary':'secondary' %> btn-xs">Plan</a>
+  <a href="?view=timeline" class="btn btn-<%= view==='timeline'?'primary':'secondary' %> btn-xs">Timeline</a>
+  <a href="?view=gates" class="btn btn-<%= view==='gates'?'primary':'secondary' %> btn-xs">Phase gates</a>
+  <span class="meta text-sm" style="margin-left:auto;">Workspace verified means a supporting record exists. Acceptance still requires sign-off.</span>
+</div>
+
+<div class="panel" style="padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+  <strong class="text-sm">Work queue</strong>
+  <span class="text-sm"><strong><%= workQueue.mine %></strong> owned by me</span>
+  <span class="text-sm"><strong><%= workQueue.approvals %></strong> awaiting my approval</span>
+  <span class="text-sm <%= workQueue.overdue ? 'text-danger' : '' %>"><strong><%= workQueue.overdue %></strong> overdue</span>
+  <span class="text-sm <%= workQueue.unassigned ? 'text-danger' : '' %>"><strong><%= workQueue.unassigned %></strong> unassigned roles</span>
+  <label class="text-sm" style="margin-left:auto;">Filter <select class="select" id="deliveryFilter" style="display:inline-block;width:auto;margin-left:5px;"><option value="all">All work</option><option value="mine">My work</option><option value="approval">My approvals</option><option value="overdue">Overdue</option><option value="critical">Critical path</option></select></label>
+  <input class="input" id="deliverySearch" style="width:220px;" placeholder="Search milestones">
+</div>
+
+<% if (view === 'plan') { %>
+  <% phases.forEach((phase, phaseIndex) => { %>
+    <details class="panel delivery-phase" style="margin-bottom:14px;overflow:hidden;" <%= phase.id === currentPhase?.id ? 'open' : '' %>>
+      <summary class="panel-head" style="display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;cursor:pointer;list-style:none;">
+        <div class="num" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--bg-subtle);font-weight:500;"><%= phaseIndex + 1 %></div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;"><%= phase.name %></h2><span class="tag <%= statusClass(phase.effective_status) %> text-xxs"><%= statusLabel(phase.effective_status) %></span><% if (phase.is_continuous) { %><span class="tag tag-info text-xxs">ONGOING</span><% } %></div>
+          <div class="meta text-sm" style="margin-top:2px;"><%= phase.description %></div>
+        </div>
+        <div style="text-align:right;min-width:210px;">
+          <div class="num text-sm"><%= fmtDate(phase.planned_start_date) %> → <%= fmtDate(phase.forecast_end_date || phase.planned_end_date) %></div>
+          <div class="meta text-xs"><%= phase.complete_count %> accepted · <%= phase.verified_count %> verified · <%= phase.progress_pct %>%</div>
+        </div>
+      </summary>
+      <div style="height:4px;background:var(--bg-muted);"><div style="height:100%;width:<%= phase.progress_pct %>%;background:var(--accent);"></div></div>
+
+      <% phase.milestones.forEach(m => { %>
+        <article class="delivery-milestone" data-owner="<%= m.owner_id || '' %>" data-approver="<%= m.deliverables.map(d=>d.approver_id||'').join(',') %>" data-overdue="<%= m.deliverables.some(d=>d.due_date && d.due_date < new Date().toISOString().slice(0,10) && !['accepted','superseded'].includes(d.status)) ? '1' : '0' %>" data-critical="<%= m.critical_path ? '1' : '0' %>" data-search="<%= (m.title+' '+m.description+' '+phase.name).toLowerCase() %>" style="padding:14px 18px;border-top:1px solid var(--border);">
+          <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;">
+            <div>
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+                <span class="tag <%= statusClass(m.effective_status) %> text-xxs"><%= statusLabel(m.effective_status) %></span>
+                <% if (m.priority !== 'normal') { %><span class="tag <%= m.priority === 'critical' ? 'tag-danger' : 'tag-warn' %> text-xxs"><%= m.priority.toUpperCase() %></span><% } %>
+                <% if (m.is_required) { %><span class="meta text-xxs">REQUIRED</span><% } %>
+              </div>
+              <div class="text-lg text-ink" style="font-weight:500;margin-top:5px;"><%= m.title %></div>
+              <% if (m.description) { %><div class="meta text-sm" style="margin-top:3px;"><%= m.description %></div><% } %>
+              <% if (m.verification) { %><a href="<%= m.verification.href %>" class="text-xs" style="display:inline-block;margin-top:6px;color:#15803d;text-decoration:none;"><strong>Workspace verified:</strong> <%= m.verification.reason %> →</a><% } %>
+              <% if (m.blockers.length) { %><div class="meta text-xs" style="margin-top:6px;"><strong>Waiting for:</strong> <%= m.blockers.map(b => b.predecessor_title).join(', ') %></div><% } %>
+            </div>
+            <div style="text-align:right;">
+              <div class="num text-sm"><%= fmtDate(m.forecast_end_date || m.planned_end_date) %></div>
+              <div class="meta text-xs"><%= m.owner_name || 'No owner' %><% if (m.task_total) { %> · <%= m.task_done %>/<%= m.task_total %> tasks<% } %></div>
+              <details style="margin-top:5px;position:relative;"><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Edit</summary>
+                <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/milestones/<%= m.id %>" class="panel" style="position:absolute;right:0;top:30px;width:440px;z-index:30;padding:14px;text-align:left;box-shadow:var(--shadow-xl);">
+                  <input type="hidden" name="row_version" value="<%= m.row_version %>">
+                  <label class="label">Title</label><input class="input" name="title" value="<%= m.title %>" required>
+                  <label class="label" style="margin-top:8px;">Description</label><textarea class="textarea" name="description" rows="2"><%= m.description || '' %></textarea>
+                  <label class="label" style="margin-top:8px;">Acceptance criteria</label><textarea class="textarea" name="acceptance_criteria" rows="2"><%= m.acceptance_criteria || '' %></textarea>
+                  <div class="grid-2" style="margin-top:8px;">
+                    <div><label class="label">Owner</label><select class="select" name="owner_id"><option value="">Unassigned</option><% users.forEach(u => { %><option value="<%= u.id %>" <%= m.owner_id==u.id?'selected':'' %>><%= u.name %></option><% }) %></select></div>
+                    <div><label class="label">Priority</label><select class="select" name="priority"><% ['low','normal','high','critical'].forEach(p => { %><option value="<%= p %>" <%= m.priority===p?'selected':'' %>><%= statusLabel(p) %></option><% }) %></select></div>
+                    <div><label class="label">Planned start</label><input class="input" type="date" name="planned_start_date" value="<%= m.planned_start_date || '' %>"></div>
+                    <div><label class="label">Planned finish</label><input class="input" type="date" name="planned_end_date" value="<%= m.planned_end_date || '' %>"></div>
+                    <div><label class="label">Forecast finish</label><input class="input" type="date" name="forecast_end_date" value="<%= m.forecast_end_date || '' %>"></div>
+                    <label style="align-self:end;padding-bottom:8px;"><input type="checkbox" name="is_required" value="1" <%= m.is_required?'checked':'' %>> Required for phase gate</label>
+                  </div>
+                  <button class="btn btn-primary" style="margin-top:10px;width:100%;">Save milestone</button>
+                </form>
+              </details>
+            </div>
+          </div>
+
+          <div style="margin-top:10px;display:grid;gap:6px;">
+            <% m.deliverables.forEach(d => { %>
+              <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;padding:9px 11px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;">
+                <div>
+                  <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;"><span class="tag <%= statusClass(d.effective_status) %> text-xxs"><%= statusLabel(d.effective_status) %></span><strong class="text-sm"><%= d.title %></strong><span class="meta text-xxs">REV <%= d.revision_number %></span><% if (d.is_required) { %><span class="meta text-xxs">REQUIRED</span><% } %><% if (d.client_visible) { %><span class="tag tag-info text-xxs">CLIENT VISIBLE</span><% } %></div>
+                  <div class="meta text-xs" style="margin-top:3px;"><%= d.acceptance_criteria || 'Acceptance criteria not set' %> · due <%= fmtDate(d.due_date) %> · owner <%= d.owner_name || 'unassigned' %> · approver <%= d.approver_name || 'unassigned' %> · <%= d.evidence_count %> evidence file<%= d.evidence_count===1?'':'s' %></div>
+                  <% if (d.decision_note) { %><div class="text-xs" style="margin-top:3px;">Decision: <%= d.decision_note %></div><% } %>
+                  <% evidenceFor(d.id).forEach(e => { %><a class="text-xs" style="display:inline-block;margin:4px 8px 0 0;" href="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence/<%= e.id %>/download">📎 <%= e.filename %></a><% }) %>
+                  <% commentsFor(d.id).slice(-2).forEach(c => { %><div class="meta text-xs" style="margin-top:4px;"><strong><%= c.user_name %>:</strong> <%= c.body %><%= c.internal_only ? ' · internal' : '' %></div><% }) %>
+                </div>
+                <div class="row-center" style="justify-content:flex-end;">
+                  <details style="position:relative;"><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Manage</summary><div class="panel" style="position:absolute;right:0;top:30px;width:430px;padding:12px;z-index:35;box-shadow:var(--shadow-xl);text-align:left;">
+                    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>"><input type="hidden" name="row_version" value="<%= d.row_version %>"><label class="label">Title</label><input class="input" name="title" value="<%= d.title %>" required><label class="label" style="margin-top:6px;">Acceptance criteria</label><textarea class="textarea" name="acceptance_criteria" rows="2"><%= d.acceptance_criteria || '' %></textarea><div class="grid-2" style="margin-top:6px;"><div><label class="label">Owner</label><select class="select" name="owner_id"><option value="">Unassigned</option><% users.forEach(u=>{ %><option value="<%= u.id %>" <%= d.owner_id==u.id?'selected':'' %>><%= u.name %></option><% }) %></select></div><div><label class="label">Approver</label><select class="select" name="approver_id"><option value="">Unassigned</option><% users.forEach(u=>{ %><option value="<%= u.id %>" <%= d.approver_id==u.id?'selected':'' %>><%= u.name %></option><% }) %></select></div><div><label class="label">Due</label><input class="input" type="date" name="due_date" value="<%= d.due_date || '' %>"></div><div style="padding-top:22px;"><label><input type="checkbox" name="is_required" value="1" <%= d.is_required?'checked':'' %>> Required</label><br><label><input type="checkbox" name="requires_evidence" value="1" <%= d.requires_evidence?'checked':'' %>> Evidence required</label><br><label><input type="checkbox" name="client_visible" value="1" <%= d.client_visible?'checked':'' %>> Client visible</label></div></div><button class="btn btn-primary" style="width:100%;margin-top:8px;">Save</button></form>
+                    <form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"><label class="label">Link evidence file</label><input class="input" type="file" name="file" required><input class="input" name="description" placeholder="Evidence description" style="margin-top:5px;"><button class="btn btn-secondary" style="width:100%;margin-top:5px;">Upload evidence</button></form>
+                    <% if (evidenceCatalog.length) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence/link" style="margin-top:7px;"><label class="label">Or select retained evidence</label><select class="select" name="evidence_id" required><option value="">Choose evidence</option><% evidenceCatalog.forEach(e=>{ %><option value="<%= e.id %>"><%= e.filename %><%= e.description?' · '+e.description:'' %></option><% }) %></select><button class="btn btn-secondary btn-xs" style="width:100%;margin-top:5px;">Link selected evidence</button></form><% } %>
+                    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/comments" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"><label class="label">Comment</label><textarea class="textarea" name="body" rows="2" required></textarea><label><input type="checkbox" name="internal_only" value="1"> Internal only</label><button class="btn btn-secondary btn-xs" style="float:right;">Add comment</button></form>
+                  </div></details>
+                  <% if (['draft','changes_requested'].includes(d.status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/submit"><button class="btn btn-secondary btn-xs">Submit</button></form><% } %>
+                  <% if (d.effective_status === 'workspace_verified' && d.approver_id === user.id) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/accept"><input type="hidden" name="note" value="Accepted against verified workspace record"><button class="btn btn-primary btn-xs">Accept verified record</button></form><% } %>
+                  <% if (d.status === 'submitted' && d.approver_id === user.id) { %>
+                    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/accept"><input type="hidden" name="note" value="Accepted against stated criteria"><button class="btn btn-primary btn-xs">Accept</button></form>
+                    <details style="position:relative;"><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Decision</summary><div class="panel" style="position:absolute;right:0;top:30px;width:300px;padding:12px;z-index:30;box-shadow:var(--shadow-lg);"><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/changes"><label class="label">Required changes</label><textarea class="textarea" name="note" rows="2" required></textarea><button class="btn btn-secondary" style="margin-top:8px;width:100%;">Request changes</button></form><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/reject" style="margin-top:8px;"><input class="input" name="note" required placeholder="Reason for rejection"><button class="btn btn-danger" style="margin-top:5px;width:100%;">Reject deliverable</button></form></div></details>
+                  <% } %>
+                  <% if (['submitted','workspace_verified'].includes(d.effective_status) && d.approver_id && d.approver_id !== user.id) { %><span class="meta text-xs">Awaiting <%= d.approver_name %></span><% } %>
+                  <% if (d.status === 'accepted') { %><span class="meta text-xs">accepted <%= fmtDate(d.accepted_at) %></span><% } %>
+                  <% if (['rejected','changes_requested'].includes(d.status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/revise"><input type="hidden" name="note" value="Revision opened following decision"><button class="btn btn-secondary btn-xs">Open revision</button></form><% } %>
+                </div>
+              </div>
+            <% }) %>
+            <details>
+              <summary class="text-xs" style="cursor:pointer;color:var(--accent);">+ Add deliverable</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables" style="display:grid;grid-template-columns:1.4fr 1.4fr 1fr 1fr auto;gap:7px;margin-top:8px;align-items:end;">
+                <input type="hidden" name="milestone_id" value="<%= m.id %>">
+                <div><label class="label">Deliverable</label><input class="input" name="title" required></div>
+                <div><label class="label">Acceptance criteria</label><input class="input" name="acceptance_criteria" required></div>
+                <div><label class="label">Approver</label><select class="select" name="approver_id"><option value="">Unassigned</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select><label class="text-xs"><input type="checkbox" name="requires_evidence" value="1" checked> Evidence</label> <label class="text-xs"><input type="checkbox" name="client_visible" value="1" checked> Client</label></div>
+                <div><label class="label">Due</label><input class="input" type="date" name="due_date"></div>
+                <div><label style="display:block;margin-bottom:8px;"><input type="checkbox" name="is_required" value="1" checked> Required</label><button class="btn btn-secondary btn-xs">Add</button></div>
+              </form>
+            </details>
+          </div>
+        </article>
+      <% }) %>
+
+      <details style="border-top:1px solid var(--border);">
+        <summary style="padding:10px 18px;cursor:pointer;color:var(--accent);font-size:12px;">Phase schedule and milestone controls</summary>
+        <div style="padding:12px 18px;background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+          <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>" class="grid-2">
+            <div><label class="label">Phase owner</label><select class="select" name="owner_id"><option value="">Unassigned</option><% users.forEach(u => { %><option value="<%= u.id %>" <%= phase.owner_id==u.id?'selected':'' %>><%= u.name %></option><% }) %></select></div>
+            <div><label class="label">Planned start</label><input class="input" type="date" name="planned_start_date" value="<%= phase.planned_start_date || '' %>"></div>
+            <div><label class="label">Planned finish</label><input class="input" type="date" name="planned_end_date" value="<%= phase.planned_end_date || '' %>"></div>
+            <div><label class="label">Forecast finish</label><input class="input" type="date" name="forecast_end_date" value="<%= phase.forecast_end_date || '' %>"></div>
+            <div class="col-full"><button class="btn btn-secondary">Update phase schedule</button></div>
+          </form>
+          <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/milestones" class="grid-2">
+            <input type="hidden" name="phase_id" value="<%= phase.id %>">
+            <div class="col-full"><label class="label">New milestone</label><input class="input" name="title" required placeholder="Outcome, not activity"></div>
+            <div><label class="label">Owner</label><select class="select" name="owner_id"><option value="">Unassigned</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select></div>
+            <div><label class="label">Forecast finish</label><input class="input" type="date" name="forecast_end_date"></div>
+            <div class="col-full"><label class="label">Acceptance criteria</label><input class="input" name="acceptance_criteria" required></div>
+            <div><label><input type="checkbox" name="is_required" value="1" checked> Required for gate</label></div><div style="text-align:right;"><button class="btn btn-primary">Add milestone</button></div>
+          </form>
+        </div>
+      </details>
+    </details>
+  <% }) %>
+<% } %>
+
+<% if (view === 'timeline') {
+  const dated = milestones.filter(m => m.planned_start_date && (m.forecast_end_date || m.planned_end_date));
+  const starts = dated.map(m => m.planned_start_date).sort();
+  const ends = dated.map(m => m.forecast_end_date || m.planned_end_date).sort();
+  const timelineStart = starts[0]; const timelineEnd = ends[ends.length-1];
+  const totalDays = timelineStart && timelineEnd ? Math.max(1, Math.round((Date.parse(timelineEnd)-Date.parse(timelineStart))/86400000)) : 1;
+%>
+  <div class="panel" style="overflow:hidden;">
+    <div class="panel-head"><h2>Delivery timeline</h2><span class="meta">Baseline and forecast dates from the authoritative plan</span></div>
+    <% phases.forEach(phase => { %>
+      <div style="padding:8px 16px;background:var(--bg-subtle);border-top:1px solid var(--border);display:flex;justify-content:space-between;"><strong class="text-sm"><%= phase.name %></strong><span class="meta text-xs"><%= fmtDate(phase.planned_start_date) %> → <%= fmtDate(phase.forecast_end_date || phase.planned_end_date) %></span></div>
+      <% phase.milestones.forEach(m => {
+        const startOffset = timelineStart && m.planned_start_date ? Math.max(0, Math.round((Date.parse(m.planned_start_date)-Date.parse(timelineStart))/86400000)) : 0;
+        const endDate = m.forecast_end_date || m.planned_end_date;
+        const length = timelineStart && endDate ? Math.max(1, Math.round((Date.parse(endDate)-Date.parse(m.planned_start_date || timelineStart))/86400000)) : 0;
+        const left = Math.min(100, startOffset / totalDays * 100); const width = Math.max(1.5, Math.min(100-left, length / totalDays * 100));
+      %>
+        <div style="display:grid;grid-template-columns:300px 1fr 110px;gap:14px;padding:9px 16px;border-top:1px solid var(--border);align-items:center;">
+          <div><div class="text-sm" style="font-weight:500;"><%= m.title %><% if (m.critical_path) { %> <span class="tag text-xxs">Critical path</span><% } %></div><div class="meta text-xs"><%= m.owner_name || 'Unassigned' %> · <%= statusLabel(m.effective_status) %><% if (m.baseline_variance_days != null) { %> · <span style="color:<%= m.baseline_variance_days > 0 ? '#b91c1c' : m.baseline_variance_days < 0 ? '#15803d' : 'inherit' %>;"><%= m.baseline_variance_days === 0 ? 'on baseline' : `${Math.abs(m.baseline_variance_days)}d ${m.baseline_variance_days > 0 ? 'late' : 'early'}` %></span><% } %></div></div>
+          <div style="height:20px;background:var(--bg-subtle);position:relative;border-radius:3px;overflow:hidden;">
+            <% if (m.planned_start_date && endDate) { %><div title="<%= m.planned_start_date %> → <%= endDate %>" style="position:absolute;left:<%= left %>%;width:<%= width %>%;height:100%;background:<%= ['complete','waived'].includes(m.effective_status) ? '#16a34a' : m.effective_status==='blocked' ? '#b91c1c' : 'var(--accent)' %>;opacity:.85;border-radius:3px;"></div><% } %>
+          </div>
+          <div class="num meta text-xs" style="text-align:right;"><%= fmtDate(endDate) %></div>
+        </div>
+      <% }) %>
+    <% }) %>
+    <% if (!dated.length) { %><div class="empty-state"><div class="empty-title">No milestones scheduled</div><div class="empty-sub">Set phase or milestone dates from the Plan view. The timeline expands to any duration.</div></div><% } %>
+  </div>
+<% } %>
+
+<% if (view === 'gates') { %>
+  <div class="panel" style="padding:14px 18px;margin-bottom:14px;background:var(--bg-subtle);">
+    <div class="sec-label">Engagement completion criteria</div><div class="text-md" style="margin-top:5px;line-height:1.55;"><%= plan.completion_criteria || 'Completion criteria not configured.' %></div>
+    <div class="row" style="gap:7px;margin-top:10px;"><span class="tag <%= summary.readinessReady?'tag-success':'tag-danger' %>">Stage 2 readiness <%= summary.readinessReady?'passes':'not ready' %></span><span class="tag <%= summary.openBlockers===0?'tag-success':'tag-danger' %>"><%= summary.openBlockers %> critical blockers</span><span class="tag <%= summary.completionReady?'tag-success':'tag-neutral' %>">Completion <%= summary.completionReady?'permitted':'locked' %></span></div>
+  </div>
+  <% phases.forEach((phase, i) => { %>
+    <div class="panel" style="margin-bottom:12px;overflow:hidden;">
+      <div class="panel-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;">
+        <div><div class="sec-label">Gate <%= i+1 %></div><h2 style="margin:3px 0 0;"><%= phase.name %></h2><div class="meta text-sm"><%= phase.description %></div></div>
+        <div style="text-align:right;"><span class="tag <%= statusClass(phase.effective_status) %>"><%= statusLabel(phase.effective_status) %></span><div class="meta text-xs" style="margin-top:4px;"><%= phase.criteria.filter(c=>c.pass).length %>/<%= phase.criteria.length %> criteria pass</div></div>
+      </div>
+      <div class="divide-row">
+        <% phase.criteria.forEach(c => { %><div style="display:grid;grid-template-columns:22px 1fr auto;gap:8px;padding:9px 18px;align-items:center;"><span style="color:<%= c.pass ? '#15803d' : '#b91c1c' %>;font-weight:700;"><%= c.pass ? '✓' : '○' %></span><span class="text-sm"><%= c.label %></span><span class="tag <%= statusClass(c.status) %> text-xxs"><%= statusLabel(c.status) %></span></div><% }) %>
+      </div>
+      <div style="padding:11px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--bg-subtle);">
+        <div class="meta text-xs"><% if (phase.gate_decision) { %>Latest decision: <strong><%= statusLabel(phase.gate_decision.decision) %></strong> on <%= fmtDate(phase.gate_decision.decided_at) %><% if (phase.gate_decision.waiver_expires_at) { %> · expires <%= phase.gate_decision.waiver_expires_at %><% } %><% } else { %>No gate decision recorded<% } %></div>
+        <div class="row-center">
+          <% if (phase.gate_ready && !['complete','waived'].includes(phase.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate"><input type="hidden" name="decision" value="passed"><input type="hidden" name="note" value="All mandatory criteria satisfied"><button class="btn btn-primary btn-xs">Pass gate</button></form><% } %>
+          <% if (['complete','waived'].includes(phase.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate"><input type="hidden" name="decision" value="reopened"><input type="hidden" name="note" value="Gate reopened for further work"><button class="btn btn-secondary btn-xs">Reopen</button></form><% } else { %>
+            <details style="position:relative;"><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Authorised waiver</summary><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate" class="panel" style="position:absolute;right:0;top:30px;width:340px;padding:12px;z-index:30;box-shadow:var(--shadow-xl);"><input type="hidden" name="decision" value="waived"><label class="label">Reason</label><textarea class="textarea" name="note" rows="3" required></textarea><label class="label" style="margin-top:8px;">Expires</label><input class="input" type="date" name="waiver_expires_at" required><button class="btn btn-secondary" style="margin-top:8px;width:100%;">Record waiver</button></form></details>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  <% }) %>
+<% } %>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px;">
+  <div class="panel" style="overflow:hidden;">
+    <div class="panel-head"><h3>Dependencies</h3><span class="meta text-xs"><%= dependencies.length %> relationships</span></div>
+    <div class="divide-row">
+      <% dependencies.slice(0,20).forEach(d => { %><div style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:9px 14px;align-items:center;"><div class="text-xs"><strong><%= d.predecessor_title %></strong> → <%= d.successor_title %><div class="meta text-xxs"><%= statusLabel(d.dependency_type) %><% if (d.lag_days) { %> · <%= d.lag_days %>d lag<% } %></div></div><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/dependencies/<%= d.id %>/delete"><button class="btn btn-ghost btn-xs text-danger">×</button></form></div><% }) %>
+    </div>
+    <details style="border-top:1px solid var(--border);"><summary style="padding:10px 14px;cursor:pointer;color:var(--accent);font-size:12px;">+ Add dependency</summary><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/dependencies" style="padding:12px 14px;background:var(--bg-subtle);display:grid;gap:8px;"><select class="select" name="predecessor_id" required><option value="">Predecessor</option><% milestones.forEach(m => { %><option value="<%= m.id %>"><%= m.title %></option><% }) %></select><select class="select" name="successor_id" required><option value="">Successor</option><% milestones.forEach(m => { %><option value="<%= m.id %>"><%= m.title %></option><% }) %></select><div class="grid-2"><select class="select" name="dependency_type"><option value="finish_to_start">Finish to start</option><option value="start_to_start">Start to start</option><option value="finish_to_finish">Finish to finish</option></select><input class="input" type="number" name="lag_days" value="0" min="0" placeholder="Lag days"></div><button class="btn btn-secondary">Add dependency</button></form></details>
+  </div>
+  <div class="panel" style="overflow:hidden;">
+    <div class="panel-head"><h3>Baselines & decisions</h3><span class="meta text-xs"><%= baselines.length %> approved baselines</span></div>
+    <div class="divide-row">
+      <% baselines.slice(0,6).forEach(b => { %><div style="padding:9px 14px;"><div class="text-sm"><strong>Baseline <%= b.version_number %> · <%= b.label %></strong></div><div class="meta text-xs"><%= b.reason %> · <%= b.approved_by_name || 'Unknown' %> · <%= fmtDate(b.approved_at) %></div></div><% }) %>
+      <% events.slice(0,8).forEach(e => { %><div style="padding:8px 14px;"><div class="text-xs"><strong><%= statusLabel(e.action) %></strong> · <%= statusLabel(e.entity_type) %></div><div class="meta text-xxs"><%= e.actor_name || 'System' %> · <%= e.created_at %></div></div><% }) %>
+      <% if (!baselines.length && !events.length) { %><div class="empty-state"><div class="empty-title">No decisions yet</div></div><% } %>
     </div>
   </div>
 </div>
 
-<% phases.forEach(ph => {
-  const phDone = ph.milestones.filter(m => m.completed_at).length;
-  const phTotal = ph.milestones.length;
-  const phPct = phTotal ? Math.round(phDone / phTotal * 100) : 0;
-%>
-  <div class="panel" style="margin-bottom:14px;">
-    <div class="panel-head" style="display:flex;align-items:center;gap:14px;">
-      <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;min-width:60px;">Week <%= ph.week %></div>
-      <h2 style="margin:0;flex:1;"><%= ph.phase %></h2>
-      <span class="meta text-sm"><%= phDone %>/<%= phTotal %></span>
-      <div style="width:80px;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;">
-        <div style="height:100%;background:<%= phPct === 100 ? '#16a34a' : 'var(--accent)' %>;width:<%= phPct %>%;"></div>
-      </div>
-    </div>
-    <div style="display:grid;">
-      <% ph.milestones.forEach(m => { %>
-        <div style="display:grid;grid-template-columns:36px 1fr auto;gap:14px;align-items:flex-start;padding:14px 18px;border-top:1px solid var(--border);">
-          <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/<%= m.id %>/toggle" style="margin:0;">
-            <button type="submit" title="<%= m.completed_at ? 'Mark not done' : 'Mark done' %>" style="background:transparent;border:0;cursor:pointer;padding:4px;">
-              <% if (m.completed_at) { %>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#16a34a" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10" stroke="#fff" fill="none"/></svg>
-              <% } else { %>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><circle cx="12" cy="12" r="9.5"/></svg>
-              <% } %>
-            </button>
-          </form>
-          <div>
-            <div style="font-size:13.5px;font-weight:500;color:<%= m.completed_at ? 'var(--text-tertiary)' : 'var(--text)' %>;<%= m.completed_at ? 'text-decoration:line-through;' : '' %>"><%= m.title %></div>
-            <div class="meta text-sm" style="margin-top:4px;"><%= m.deliverables %></div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-            <% (m.clauses || []).forEach(c => { %>
-              <span class="tag tag-neutral text-xxs"><%= c %></span>
-            <% }) %>
-            <% if (m.completed_at) { %>
-              <span class="meta text-xxs">done <%= (m.completed_at || '').slice(0, 10) %></span>
-            <% } %>
-          </div>
-        </div>
-      <% }) %>
-    </div>
-  </div>
-<% }) %>
+<script nonce="<%= typeof cspNonce !== 'undefined' ? cspNonce : '' %>">
+(() => {
+  const filter = document.getElementById('deliveryFilter');
+  const search = document.getElementById('deliverySearch');
+  if (!filter || !search) return;
+  const userId = '<%= user.id %>';
+  function apply() {
+    const mode = filter.value;
+    const query = search.value.trim().toLowerCase();
+    document.querySelectorAll('.delivery-milestone').forEach(row => {
+      const matchesMode = mode === 'all'
+        || (mode === 'mine' && row.dataset.owner === userId)
+        || (mode === 'approval' && row.dataset.approver.split(',').includes(userId))
+        || (mode === 'overdue' && row.dataset.overdue === '1')
+        || (mode === 'critical' && row.dataset.critical === '1');
+      row.hidden = !(matchesMode && (!query || row.dataset.search.includes(query)));
+    });
+    document.querySelectorAll('.delivery-phase').forEach(phase => {
+      const visible = [...phase.querySelectorAll('.delivery-milestone')].some(row => !row.hidden);
+      phase.hidden = !visible;
+      if ((mode !== 'all' || query) && visible) phase.open = true;
+    });
+  }
+  filter.addEventListener('change', apply);
+  search.addEventListener('input', apply);
+})();
+</script>
 
 <%- include('partials/footer') %>

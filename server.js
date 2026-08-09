@@ -39,6 +39,7 @@ const { paginate, pageHref } = require('./lib/paginate');
 // bodies used to live in this file).
 const { escapeHtml, withToast, redirectBack, auditCtx, parseFormArray } = require('./lib/http-helpers');
 const { computeReadiness, computeRoadmap } = require('./lib/readiness');
+const { buildWorkspaceStatus } = require('./lib/grc-truth');
 const { computeNextStep, computeNeedsAttention } = require('./lib/next-steps');
 const { seedFirmRiskLibraryIfEmpty } = require('./lib/firm-library');
 // DOCX generation binding (worker pool); the exports slice has its own copy,
@@ -118,7 +119,12 @@ backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-if (process.env.NODE_ENV === 'production') app.set('view cache', true);
+if (process.env.NODE_ENV === 'production') {
+  app.set('view cache', true);
+  // Express must trust the terminating reverse proxy before secure cookies
+  // can be issued reliably behind nginx / a load balancer.
+  app.set('trust proxy', 1);
+}
 
 // Security headers + gzip. The CSP allows 'unsafe-inline' for now because the
 // views still carry inline <script> blocks and style= attributes; tightening
@@ -160,7 +166,17 @@ app.locals.assetVersion = (() => {
   return h.digest('hex').slice(0, 8);
 })();
 
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d' }));
+// Fingerprinted assets may be cached aggressively in production. During local
+// development the process can stay alive while CSS changes, so force browser
+// revalidation; otherwise the unchanged boot-time query string can leave the
+// UI on a week-old stylesheet until the server is restarted manually.
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
+  etag: true,
+  setHeaders(res) {
+    if (process.env.NODE_ENV !== 'production') res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 app.use('/vendor/tinymce', express.static(path.join(__dirname, 'node_modules/tinymce')));
 // Quiet the favicon 404 - no icon yet, just respond with No Content.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
@@ -178,6 +194,23 @@ app.get('/healthz', (_req, res) => {
   }
 });
 
+// Deployment-readiness probe. Unlike /healthz this answers whether the
+// instance is safe to receive client traffic, without returning secret values.
+app.get('/readyz', (_req, res) => {
+  const production = process.env.NODE_ENV === 'production';
+  const checks = {
+    database: true,
+    session_secret: !!process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32,
+    master_key: !!process.env.ISMS_MASTER_KEY || fs.existsSync(process.env.ISMS_KEY_FILE || path.join(__dirname, 'data', 'master.key')),
+    public_https_url: !production || /^https:\/\//i.test(process.env.APP_BASE_URL || ''),
+    transactional_email: !production || !!(process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)),
+    malware_scanning: !production || ((process.env.UPLOAD_AV_MODE || 'required') === 'required' && require('./lib/upload-security').scannerAvailable())
+  };
+  try { db.prepare('SELECT 1').get(); } catch (_) { checks.database = false; }
+  const ok = Object.values(checks).every(Boolean);
+  res.status(ok ? 200 : 503).set('Cache-Control', 'no-store').json({ ok, checks });
+});
+
 // Persistent session store. The default MemoryStore loses every session on
 // every restart, which makes "Keep me signed in for 30 days" a lie - users
 // get bounced back to /login the moment the container restarts (healthcheck,
@@ -193,9 +226,15 @@ app.use(session({
     expired: { clear: false, intervalMs: 0 }
   }),
   secret: process.env.SESSION_SECRET || 'change-me-in-production-' + crypto.randomBytes(8).toString('hex'),
+  name: 'compliance_sphere.sid',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  }
 }));
 
 // HTML responses must not be cached by the browser. Without this, CSRF tokens
@@ -305,17 +344,20 @@ function qUploadAny(req, res, next) {
 // pages the GET route renders, so multer never runs for a dead link. On
 // success it stashes the (open) questionnaire on req._questionnaire.
 function resolveQuestionnaireFirm(req, res, next) {
+  const tokenHash = crypto.createHash('sha256').update(req.params.token).digest('hex');
   const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description,
-      w.firm_id AS ws_firm_id, COALESCE(w.brand_display_name, w.client_name) AS requester_name
+      w.firm_id AS ws_firm_id, COALESCE(w.brand_display_name, w.client_name) AS requester_name,
+      et.id AS invitation_id, et.expires_at AS token_expires_at, et.completed_at AS token_completed_at
     FROM supplier_questionnaires q
     INNER JOIN suppliers s ON s.id=q.supplier_id
     LEFT JOIN questionnaire_templates t ON t.id=q.template_id
     LEFT JOIN workspaces w ON w.id=q.workspace_id
-    WHERE q.external_token=?`).get(req.params.token);
+    INNER JOIN external_assessment_tokens et ON et.questionnaire_id=q.id
+    WHERE et.token_hash=? AND et.revoked_at IS NULL`).get(tokenHash);
   const blank = { sections: {}, respMap: {}, token: req.params.token };
   if (!q) return res.status(404).render('external_questionnaire', { q: null, state: 'invalid', ...blank });
-  if (q.external_completed_at) return res.render('external_questionnaire', { q, state: 'done', ...blank });
-  if (q.external_expires_at && new Date(q.external_expires_at) < new Date())
+  if (q.external_completed_at || q.token_completed_at) return res.render('external_questionnaire', { q, state: 'done', ...blank });
+  if (q.token_expires_at && new Date(q.token_expires_at) < new Date())
     return res.status(410).render('external_questionnaire', { q, state: 'expired', ...blank });
   req._questionnaire = q;
   req.workspace = { id: q.workspace_id, firm_id: q.ws_firm_id || 0 };
@@ -452,6 +494,23 @@ function requireAuth(req, res, next) {
     }
     return res.status(401).json({ error: 'auth_required' });
   }
+  const mfaRequired = process.env.REQUIRE_MFA === '1' ||
+    (process.env.NODE_ENV === 'production' && process.env.REQUIRE_MFA !== '0');
+  if (req.user.mfa_enabled_at && !req.session.mfaVerified) {
+    req.session.pendingMfaUserId = req.user.id;
+    req.session.pendingMfaNext = req.originalUrl || '/dashboard';
+    req.session.pendingMfaRemember = false;
+    req.session.pendingMfaStartedAt = Date.now();
+    delete req.session.userId;
+    if (req.method === 'GET' && req.accepts(['html', 'json']) === 'html') return res.redirect('/mfa/verify');
+    return res.status(401).json({ error: 'mfa_required' });
+  }
+  if (mfaRequired && !req.user.mfa_enabled_at) {
+    if (req.method === 'GET' && req.accepts(['html', 'json']) === 'html') {
+      return res.redirect(`/security/mfa/setup?next=${encodeURIComponent(req.originalUrl || '/dashboard')}`);
+    }
+    return res.status(403).json({ error: 'mfa_enrolment_required' });
+  }
   next();
 }
 
@@ -481,6 +540,28 @@ function requireWorkspace(req, res, next) {
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
   ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
   req.workspace = ws;
+  // Every client-side account is confined to the collaboration boundary.
+  // Client owners/coordinators see all client-visible work; contributors see
+  // only assigned rows. None can enter the firm's delivery cockpit or legacy
+  // workspace modules. The single decision endpoint below is a narrow bridge
+  // for a named policy approver and performs its own pending-approver checks.
+  const isScopedClient = req.user.user_type === 'client';
+  const portalPrefix = `/workspaces/${ws.id}/client-portal`;
+  const policyDecisionPath = new RegExp(`^/workspaces/${ws.id}/documents/\\d+/decide$`);
+  if (isScopedClient && req.method === 'GET' && req.path === `/workspaces/${ws.id}`) {
+    return res.redirect(portalPrefix);
+  }
+  const allowedClientPath = req.path === portalPrefix || req.path.startsWith(portalPrefix + '/') ||
+    (req.method === 'POST' && policyDecisionPath.test(req.path));
+  if (isScopedClient && !allowedClientPath) {
+    logAction(req.user.id, ws.id, 'scoped_route_denied', 'route', req.path,
+      { method: req.method, reason: 'contributor_portal_boundary' }, auditCtx(req));
+    return res.status(403).render('error', {
+      user: req.user,
+      ws,
+      message: 'Your client account is limited to the controlled collaboration portal. Open Client collaboration to view requests, approvals, reports, policies, and evidence shared with you.'
+    });
+  }
   // Remember the workspace they were last in, so firm-level pages (Glossary,
   // Playbooks, Firm library, Tenants) can offer a "← Back to {client}"
   // breadcrumb instead of dumping them into a different sidebar with no
@@ -545,49 +626,18 @@ function workspaceProgress(wsId) {
 //   surveillance      - Stage 2 audit happened > 1 year ago (annual cycle)
 //   post_stage_2      - certified (Stage 2 audit completed)
 //   post_stage_1      - Stage 1 audit completed, not yet Stage 2
-//   stage_1_ready     - readiness >= 80% (ready to schedule Stage 1)
+//   stage_1_ready     - every Stage 1 hard gate passes
 //   internal_audit    - >= 1 internal audit completed
 //   implementing      - controls being assessed (>= 20 non-NotAssessed)
 //   documenting       - >= 8 documents in approved/published status
 //   scoping           - at least one intake answer recorded
 //   new               - no setup yet
 function computeClientStage(ws) {
-  const wsId = ws.id;
-  // audits has: title, scope, audit_date (planned), closed_at (when work
-  // finished), lifecycle_stage. We treat closed_at as "completed" and
-  // pattern-match the title/scope for which audit type it is.
-  const audits = db.prepare(`SELECT title, scope, lifecycle_stage, closed_at, audit_date FROM audits WHERE workspace_id=? ORDER BY COALESCE(closed_at, audit_date) DESC`).all(wsId);
-  const isDone = a => !!a.closed_at || a.lifecycle_stage === 'closed';
-  const matchType = (a, re) => re.test((a.title || '') + ' ' + (a.scope || ''));
-  const stage2 = audits.find(a => isDone(a) && matchType(a, /stage[\s_-]?2/i));
-  const stage1 = audits.find(a => isDone(a) && matchType(a, /stage[\s_-]?1/i));
-  const internal = audits.find(a => isDone(a) && matchType(a, /internal/i));
-
-  if (stage2 && stage2.closed_at) {
-    const daysSince = Math.round((Date.now() - new Date(stage2.closed_at).getTime()) / 86400000);
-    if (daysSince > 365) return { key: 'surveillance', label: 'Surveillance' };
-    return { key: 'post_stage_2', label: 'Certified' };
-  }
-  if (stage1) return { key: 'post_stage_1', label: 'Post Stage 1' };
-
-  // No external audit yet - look at readiness + internal audit + control progress
   try {
-    const r = computeReadiness(ws);
-    if (r && r.stage1 >= 80) return { key: 'stage_1_ready', label: 'Stage 1 ready' };
-  } catch (_) {}
-
-  if (internal) return { key: 'internal_audit', label: 'Internal audit done' };
-
-  const assessed = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
-  if (assessed >= 20) return { key: 'implementing', label: 'Implementing' };
-
-  const approved = db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND status IN ('approved','published')`).get(wsId).c;
-  if (approved >= 8) return { key: 'documenting', label: 'Documenting' };
-
-  const intake = db.prepare(`SELECT COUNT(*) c FROM engagement_intake WHERE workspace_id=? AND answer IS NOT NULL AND length(trim(answer)) > 0`).get(wsId).c;
-  if (intake > 0) return { key: 'scoping', label: 'Scoping' };
-
-  return { key: 'new', label: 'New' };
+    return buildWorkspaceStatus(db, ws).lifecycle;
+  } catch (_) {
+    return { key: 'new', label: 'New engagement' };
+  }
 }
 
 function getOrCreateState(wsId, isoId) {
@@ -837,11 +887,21 @@ require('./routes/soa').register(app, { db, requireAuth, requireWorkspace, requi
 require('./routes/exports').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, resolveUploadPath });
 
+// Production assurance reporting: immutable snapshots, exact stored artifacts,
+// source lineage, and maker-checker review / approval.
+require('./routes/assurance').register(app, { db, requireAuth, requireWorkspace, requirePermission,
+  logAction });
+
 // ==================== DOCUMENTS ====================
 // Lives in routes/documents.js (slice 12): list/detail, template library,
 // versioning + approvals + e-signatures, magic-link approval portal.
 require('./routes/documents').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, upload, resolveUploadPath, isFirmUser, diffObjects });
+
+// Production client collaboration portal: durable requests, scoped control
+// discussions, policy review links, evidence submissions, and event history.
+require('./routes/client-portal').register(app, { db, requireAuth, requireWorkspace, requirePermission,
+  logAction, upload, resolveUploadPath, permissionsFor });
 
 // Lives in routes/governance.js (slice 9): internal audits + findings,
 // improvements, management reviews, nonconformities/CAPA.
@@ -898,11 +958,19 @@ require('./routes/engagement-ops').register(app, { db, requireAuth, requireWorks
   methodologyBand, activeEntityFilter, resolveUploadPath, upload, csvUpload, qUploadAny,
   resolveQuestionnaireFirm, computeClientStage, permissionsFor, persistQuestionnaireFiles, verifyAuditChain, listWorkspaces, workspaceProgress });
 
-// ==================== ENGAGEMENT INTAKE + 12-WEEK PLAN ====================
+// ==================== ENGAGEMENT INTAKE + ADAPTIVE DELIVERY ====================
 // Extracted to routes/engagement.js. Same dependency-injection pattern as
 // routes/tenants.js - engagement routes get db + middleware via deps.
 require('./routes/engagement').register(app, {
   db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx,
+  upload, resolveUploadPath,
+});
+
+// ==================== CONSULTING DELIVERY OPERATING SYSTEM ====================
+// Firm-internal engagements, workpapers, maker-checker review, common controls,
+// governed methodology, client validation hand-offs and engagement economics.
+require('./routes/consulting-delivery').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx, listWorkspaces
 });
 
 // ==================== NIST CSF 2.0 ====================

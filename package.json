@@ -11,15 +11,15 @@
     "csf-demo": "node scripts/csf-demo.js",
     "content-parity": "node scripts/content-parity.js",
     "content-staleness": "node scripts/content-staleness.js",
-    "test": "node tests/smoke.test.js && node tests/routes.test.js && node --test --test-force-exit tests/security.test.js tests/rbac.test.js",
+    "test": "node tests/smoke.test.js && node tests/routes.test.js && node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/mfa.test.js tests/upload-security.test.js tests/grc-truth.test.js && node --test --test-force-exit tests/engagement-delivery.test.js tests/client-portal.test.js tests/consulting-delivery.test.js",
     "test:routes": "node tests/routes.test.js",
     "restore-check": "node scripts/restore-check.js",
-    "test:security": "node --test --test-force-exit tests/security.test.js tests/rbac.test.js",
+    "test:security": "node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/mfa.test.js tests/upload-security.test.js",
     "test:browser": "node tests/browser-ui.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.3.0",
     "better-sqlite3-session-store": "^0.1.0",
     "compression": "^1.8.1",
@@ -28,13 +28,15 @@
     "express": "^4.21.0",
     "express-session": "^1.18.1",
     "helmet": "^8.2.0",
-    "html-to-docx": "^1.8.0",
+    "html-to-docx": "1.1.2",
     "mammoth": "^1.12.0",
     "markdown-it": "^14.1.1",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^8.0.8",
+    "nodemailer": "^9.0.5",
     "pdf-parse": "^2.4.5",
     "puppeteer": "^25.0.4",
-    "tinymce": "^6.8.6"
+    "qrcode": "^1.5.4",
+    "sanitize-html": "^2.17.6",
+    "tinymce": "^8.8.2"
   }
 }
