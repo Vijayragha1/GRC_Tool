@@ -3,20 +3,20 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Evidence coverage matrix</h1>
-    <div class="page-subtitle">Per Annex A control: expected evidence types (from the standard's guidance) vs what's attached and how fresh it is. The mental model an auditor builds, pre-built.</div>
+    <div class="page-subtitle">Annex A evidence linkage and sufficiency are shown separately, so one retained file is never mistaken for a complete evidence set.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/evidence-coverage.csv" class="btn btn-secondary btn-xs">Export CSV</a>
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px;">
   <div class="panel kpi">
-    <div class="kpi-num"><%= kpis.coveragePct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-label">Fully covered</div>
-    <div class="kpi-meta">of included controls</div>
+    <div class="kpi-num"><%= kpis.linkedPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
+    <div class="kpi-label">Evidence linked</div>
+    <div class="kpi-meta"><%= kpis.linked %> of <%= kpis.included %> included controls</div>
   </div>
-  <div class="panel kpi"><div class="kpi-num text-success"><%= kpis.fullyCovered %></div><div class="kpi-label">Green</div><div class="kpi-meta">expected ≤ attached, fresh</div></div>
-  <div class="panel kpi"><div class="kpi-num text-warn"><%= kpis.partial %></div><div class="kpi-label">Amber</div><div class="kpi-meta">partial or stale</div></div>
-  <div class="panel kpi"><div class="kpi-num text-danger"><%= kpis.missing %></div><div class="kpi-label">Red</div><div class="kpi-meta">no evidence attached</div></div>
+  <div class="panel kpi"><div class="kpi-num text-success"><%= kpis.fullyCovered %></div><div class="kpi-label">Sufficient</div><div class="kpi-meta"><%= kpis.sufficiencyPct %>% meet guidance</div></div>
+  <div class="panel kpi"><div class="kpi-num text-warn"><%= kpis.partial %></div><div class="kpi-label">Needs support</div><div class="kpi-meta">linked but short or stale</div></div>
+  <div class="panel kpi"><div class="kpi-num text-danger"><%= kpis.missing %></div><div class="kpi-label">Missing</div><div class="kpi-meta">no linked evidence</div></div>
   <div class="panel kpi"><div class="kpi-num" style="color:#a16207"><%= kpis.stale %></div><div class="kpi-label">Stale</div><div class="kpi-meta">last upload &gt; 12 mo</div></div>
 </div>
 
@@ -37,15 +37,15 @@
       <th style="width:80px;" class="num">Expected</th>
       <th style="width:80px;" class="num">Attached</th>
       <th style="width:110px;">Last upload</th>
-      <th style="width:110px;">Coverage</th>
+      <th style="width:110px;">Sufficiency</th>
       <th style="width:80px;"></th>
     </tr></thead>
     <tbody>
       <% rows.forEach(r => {
            const code = r.id.replace('annex-','').toUpperCase();
            const bandColors = {
-             green: { bg: 'rgba(22,163,74,0.10)', fg: '#15803d', label: 'Covered' },
-             amber: { bg: 'rgba(202,138,4,0.10)', fg: '#a16207', label: 'Partial' },
+             green: { bg: 'rgba(22,163,74,0.10)', fg: '#15803d', label: 'Sufficient' },
+             amber: { bg: 'rgba(202,138,4,0.10)', fg: '#a16207', label: 'Needs support' },
              red:   { bg: 'rgba(185,28,28,0.10)', fg: '#b91c1c', label: 'Missing' },
              gray:  { bg: 'var(--bg-subtle)',     fg: 'var(--text-tertiary)', label: '-' }
            };
@@ -87,6 +87,7 @@
   "Attached" = live (non-superseded) evidence files linked to the control via primary <code>iso_item_id</code> or the <code>evidence_requirement_links</code> join.
   "Stale" = most recent upload &gt; 12 months ago.
   Coverage band: green = attached ≥ expected and fresh; amber = some attached but short or stale; red = no evidence attached.
+  This matrix covers Annex A controls only. <a href="/workspaces/<%= ws.id %>/data-quality?domain=controls&severity=all">Data Quality &amp; Truth</a> separately checks clauses 4&ndash;10, ownership, applicability decisions, and contradictions across modules.
 </div>
 
 <%- include('partials/footer') %>

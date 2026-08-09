@@ -56,27 +56,33 @@ test('rbac - consultant has working-level perms but no member management or docu
   assert.ok(!perms.includes('workspace.delete'), 'consultant must not delete workspace');
 });
 
-test('rbac - client_owner has workspace.delete and full member management', () => {
+test('rbac - client_owner is a portal sponsor, never a workspace administrator', () => {
   const perms = rbac.rolePermissions('client_owner');
-  assert.ok(perms.includes('workspace.delete'), 'client_owner needs workspace.delete');
-  assert.ok(perms.includes('workspace.users.manage'), 'client_owner needs workspace.users.manage');
-  assert.ok(perms.includes('members.assign_role'), 'client_owner needs members.assign_role');
-  assert.ok(perms.includes('members.override_perms'), 'client_owner needs members.override_perms');
+  assert.ok(perms.includes('client_portal.view'));
+  assert.ok(perms.includes('client_request.manage'));
+  assert.ok(perms.includes('client_request.respond'));
   assert.ok(perms.includes('document.approve'), 'client_owner needs document.approve');
-  assert.ok(perms.includes('document.publish'), 'client_owner needs document.publish');
-  // Should NOT have firm-level perms
+  assert.ok(perms.includes('document.sign'), 'client_owner needs document.sign');
+  assert.ok(!perms.includes('workspace.delete'));
+  assert.ok(!perms.includes('workspace.update'));
+  assert.ok(!perms.includes('workspace.users.manage'));
+  assert.ok(!perms.includes('members.assign_role'));
+  assert.ok(!perms.includes('members.override_perms'));
+  assert.ok(!perms.includes('document.publish'));
   assert.ok(!perms.includes('firm.manage'), 'client_owner must not manage firm');
   assert.ok(!perms.includes('firm.users.manage'), 'client_owner must not manage firm users');
   assert.ok(!perms.includes('workspace.create'), 'client_owner must not create workspaces');
 });
 
-test('rbac - isms_manager can approve documents but not delete workspace', () => {
+test('rbac - isms_manager coordinates the portal without operator access', () => {
   const perms = rbac.rolePermissions('isms_manager');
   assert.ok(perms.includes('document.approve'), 'isms_manager needs document.approve');
   assert.ok(perms.includes('document.review'), 'isms_manager needs document.review');
-  assert.ok(perms.includes('document.publish'), 'isms_manager needs document.publish');
   assert.ok(perms.includes('document.sign'), 'isms_manager needs document.sign');
+  assert.ok(perms.includes('client_request.manage'));
+  assert.ok(!perms.includes('document.publish'));
   assert.ok(!perms.includes('workspace.delete'), 'isms_manager must not delete workspace');
+  assert.ok(!perms.includes('workspace.update'), 'isms_manager must not update workspace');
   assert.ok(!perms.includes('members.assign_role'), 'isms_manager must not assign roles');
   assert.ok(!perms.includes('members.override_perms'), 'isms_manager must not override perms');
   assert.ok(!perms.includes('workspace.create'), 'isms_manager must not create workspaces');
@@ -84,15 +90,7 @@ test('rbac - isms_manager can approve documents but not delete workspace', () =>
 
 test('rbac - contributor has the narrowest perm set', () => {
   const perms = rbac.rolePermissions('contributor');
-  // Should have basic view + update + evidence + comments
-  assert.ok(perms.includes('control.view'));
-  assert.ok(perms.includes('control.update'));
-  assert.ok(perms.includes('risk.view'));
-  assert.ok(perms.includes('risk.update'));
-  assert.ok(perms.includes('document.view'));
-  assert.ok(perms.includes('document.create'));
-  assert.ok(perms.includes('document.edit'));
-  assert.ok(perms.includes('document.submit_review'));
+  assert.deepEqual(perms, ['client_portal.view','client_request.respond','evidence.upload','comment.create']);
   assert.ok(perms.includes('evidence.upload'));
   assert.ok(perms.includes('comment.create'));
   // Should NOT have destructive/elevated perms
@@ -134,11 +132,10 @@ test('rbac - role aliases resolve correctly', () => {
   }
 });
 
-// manager and client_owner are the only roles that can delete a workspace.
-// senior_consultant has members.override_perms but NOT workspace.delete.
-const WORKSPACE_DELETE_ROLES = new Set(['manager', 'client_owner']);
+// Client accounts never own the consulting firm's workspace.
+const WORKSPACE_DELETE_ROLES = new Set(['manager']);
 
-test('rbac - only manager and client_owner can delete workspace', () => {
+test('rbac - only manager can delete workspace', () => {
   const otherRoles = Object.keys(rbac.ROLE_PERMS).filter(r => !WORKSPACE_DELETE_ROLES.has(r));
   for (const role of otherRoles) {
     const perms = rbac.rolePermissions(role);
@@ -146,9 +143,9 @@ test('rbac - only manager and client_owner can delete workspace', () => {
   }
 });
 
-const OVERRIDE_PERMS_ROLES = new Set(['manager', 'senior_consultant', 'client_owner']);
+const OVERRIDE_PERMS_ROLES = new Set(['manager', 'senior_consultant']);
 
-test('rbac - only manager, senior_consultant, and client_owner can override individual permissions', () => {
+test('rbac - only manager and senior_consultant can override individual permissions', () => {
   const otherRoles = Object.keys(rbac.ROLE_PERMS).filter(r => !OVERRIDE_PERMS_ROLES.has(r));
   for (const role of otherRoles) {
     const perms = rbac.rolePermissions(role);
@@ -161,15 +158,15 @@ test('rbac - effectivePermissions honours per-workspace grants', () => {
     { permission: 'document.publish', granted: 1 }
   ]);
   assert.ok(perms.has('document.publish'), 'override-grant must take effect');
-  assert.ok(perms.has('document.view'), 'baseline perms must persist');
+  assert.ok(perms.has('client_portal.view'), 'baseline perms must persist');
 });
 
 test('rbac - effectivePermissions honours per-workspace revokes', () => {
   const perms = rbac.effectivePermissions('contributor', [
-    { permission: 'control.update', granted: 0 }
+    { permission: 'client_request.respond', granted: 0 }
   ]);
-  assert.ok(!perms.has('control.update'), 'revoke must remove the permission');
-  assert.ok(perms.has('risk.update'), 'siblings must persist');
+  assert.ok(!perms.has('client_request.respond'), 'revoke must remove the permission');
+  assert.ok(perms.has('evidence.upload'), 'siblings must persist');
 });
 
 test('rbac - hasPermission accepts both Set and Array shapes', () => {
@@ -204,7 +201,7 @@ test('rbac - every permission listed in PERMISSIONS is referenced by at least on
   // manager '*' implicitly covers all, so this test asserts that at least
   // one *non-manager* role uses each permission OR it's clearly a restricted
   // gate (firm.manage, firm.users.manage are manager-only).
-  const managerOnly = new Set(['firm.manage', 'firm.users.manage']);
+  const managerOnly = new Set(['firm.manage', 'firm.users.manage', 'workspace.delete', 'report.approve']);
   const allRoles = Object.keys(rbac.ROLE_PERMS).filter(r => r !== 'manager');
   for (const perm of Object.keys(rbac.PERMISSIONS)) {
     if (managerOnly.has(perm)) continue;

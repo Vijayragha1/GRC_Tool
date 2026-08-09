@@ -120,7 +120,7 @@
         <dd>
           <%
             const FIRM_LABELS = { manager: 'Manager', senior_consultant: 'Senior consultant', consultant: 'Consultant' };
-            const CLIENT_LABELS = { client_owner: 'Client owner', isms_manager: 'ISMS manager', contributor: 'Contributor' };
+            const CLIENT_LABELS = { client_owner: 'Client sponsor', isms_manager: 'Client coordinator', contributor: 'Contributor' };
           %>
           <% if (invitation.user_type === 'firm') { %>
             <%= FIRM_LABELS[invitation.firm_role] || 'Consultant' %>

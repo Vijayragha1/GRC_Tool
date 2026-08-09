@@ -29,7 +29,9 @@
     <thead><tr>
       <th style="width:96px;">Health</th>
       <th>Client</th>
-      <th style="width:90px;">Readiness</th>
+      <th style="width:130px;">Readiness</th>
+      <th style="width:84px;">Data quality</th>
+      <th style="width:110px;">Delivery</th>
       <th style="width:90px;">Cert</th>
       <th style="width:64px;">NCs</th>
       <th style="width:80px;">High risks</th>
@@ -47,13 +49,15 @@
           if (/stale control/i.test(reason)) return `/workspaces/${wsId}/controls/assess`;
           if (/task/i.test(reason)) return `/workspaces/${wsId}/tasks`;
           if (/gap assessment|pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
+          if (/truth conflict|readiness gap/i.test(reason)) return `/workspaces/${wsId}/data-quality`;
           return `/workspaces/${wsId}`;
         }
       %>
       <% engagements.forEach(e => {
            const bandColor = e.band === 'healthy' ? '#15803d' : e.band === 'watch' ? '#b45309' : '#b91c1c';
            const bandLabel = e.band === 'healthy' ? 'Healthy' : e.band === 'watch' ? 'Watch' : 'At risk';
-           const readyColor = e.stage1 >= 80 ? '#15803d' : e.stage1 >= 50 ? '#b45309' : '#b91c1c';
+           const readyColor = e.verdict.tone === 'success' ? '#15803d' : e.verdict.tone === 'danger' ? '#b91c1c' : '#b45309';
+           const qualityColor = e.quality.tone === 'success' ? '#15803d' : e.quality.tone === 'danger' ? '#b91c1c' : '#b45309';
            const daysColor = e.daysToTarget !== null && e.daysToTarget < 30 ? '#b91c1c' : e.daysToTarget !== null && e.daysToTarget < 90 ? '#b45309' : '';
       %>
         <tr style="cursor:pointer;" onclick="location='/workspaces/<%= e.id %>'">
@@ -68,7 +72,15 @@
             <span style="font-weight:500;"><%= e.name %></span>
             <% if (e.stage && e.stage.label) { %><div class="meta text-xs" style="margin-top:2px;"><%= e.stage.label %></div><% } %>
           </td>
-          <td><span class="num" style="font-weight:500;color:<%= readyColor %>;"><%= e.stage1 %>%</span></td>
+          <td>
+            <span style="font-weight:500;color:<%= readyColor %>;"><%= e.verdict.label %></span>
+            <div class="meta text-xs"><%= e.stage1 %>% maturity</div>
+          </td>
+          <td>
+            <a href="/workspaces/<%= e.id %>/data-quality" onclick="event.stopPropagation()" style="font-weight:500;color:<%= qualityColor %>;text-decoration:none;"><%= e.quality.score %></a>
+            <div class="meta text-xs"><%= e.quality.label %></div>
+          </td>
+          <td onclick="event.stopPropagation()"><% if (e.deliveryPlan) { const dp=e.deliveryPlan; const pct=dp.required_deliverables?Math.round(dp.accepted_deliverables/dp.required_deliverables*100):0; %><a href="/workspaces/<%= e.id %>/engagement-plan" style="font-weight:500;text-decoration:none;color:<%= dp.variance_days>0?'#b91c1c':'var(--text)' %>;"><%= pct %>%</a><div class="meta text-xs"><%= dp.gates_passed %>/11 gates<% if(dp.variance_days>0){ %> · <%= dp.variance_days %>d late<% } %></div><% } else { %><span class="meta">Not set up</span><% } %></td>
           <td class="num meta" style="color:<%= daysColor %>;<%= daysColor ? 'font-weight:500;' : '' %>"><%= e.daysToTarget !== null ? e.daysToTarget + 'd' : '-' %></td>
           <td>
             <% if (e.signals.overdueNCs > 0 || e.signals.majorNCs > 0) { %>
@@ -94,7 +106,7 @@
 
 <div class="meta text-xs" style="margin-top:10px;line-height:1.6;max-width:760px;">
   Score starts at 100 and subtracts weighted penalties for overdue and major nonconformities,
-  cert pressure (how close the target is × how far from ready), untreated high risks, stale controls,
+  canonical data-quality conflicts and readiness gaps, cert pressure (how close the target is × failed hard gates), untreated high risks, stale controls,
   overdue tasks and objectives, and stalled or never-started gap assessments. Bands:
   <strong style="color:#15803d;">healthy</strong> 75+, <strong style="color:#b45309;">watch</strong> 50&ndash;74,
   <strong style="color:#b91c1c;">at risk</strong> below 50.

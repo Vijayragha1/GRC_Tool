@@ -9,13 +9,20 @@ WORKDIR /app
 RUN apk add --no-cache \
       python3 make g++ \
       chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont \
+      clamav \
  && ln -sf /usr/bin/python3 /usr/bin/python
+
+# Fail the image build if the malware definitions cannot be initialised. The
+# runtime upload gate defaults to fail-closed in production.
+RUN freshclam
 
 # Tell Puppeteer to skip its bundled Chromium download (saves ~170 MB at
 # build time + sidesteps glibc-vs-musl) and use the system chromium.
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    UPLOAD_AV_MODE=required \
+    CLAMAV_BIN=/usr/bin/clamscan
 
 COPY package*.json ./
 RUN npm ci --omit=dev

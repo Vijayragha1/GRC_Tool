@@ -5,6 +5,7 @@
 
 const ctlReads = require('../lib/control-reads');
 const { computeReadiness } = require('../lib/readiness');
+const { buildWorkspaceTruth } = require('../lib/grc-truth');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace } = deps;
@@ -16,6 +17,22 @@ function register(app, deps) {
 
   app.get('/api/workspaces/:wsId/readiness', requireAuth, requireWorkspace, (req, res) => {
     res.json(computeReadiness(req.workspace));
+  });
+
+  app.get('/workspaces/:wsId/data-quality', requireAuth, requireWorkspace, (req, res) => {
+    const truth = buildWorkspaceTruth(db, req.workspace);
+    const allowedDomains = new Set(truth.domains.map(domain => domain.key));
+    const allowedSeverities = new Set(['critical', 'high', 'medium', 'low']);
+    const domain = allowedDomains.has(req.query.domain) ? req.query.domain : 'all';
+    const severity = allowedSeverities.has(req.query.severity) ? req.query.severity : 'all';
+    const issues = truth.issues.filter(issue =>
+      (domain === 'all' || issue.domain === domain) &&
+      (severity === 'all' || issue.severity === severity));
+    res.render('data_quality', { user: req.user, ws: req.workspace, truth, issues, domain, severity });
+  });
+
+  app.get('/api/workspaces/:wsId/data-quality', requireAuth, requireWorkspace, (req, res) => {
+    res.json(buildWorkspaceTruth(db, req.workspace));
   });
 
   // Audit-readiness blockers - concrete things the auditor will catch if you ignore them.

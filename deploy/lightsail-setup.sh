@@ -86,6 +86,9 @@ PORT=3000
 # Required secrets (auto-generated — keep safe, back up separately)
 SESSION_SECRET=${SESSION_SECRET}
 ISMS_MASTER_KEY=${ISMS_MASTER_KEY}
+REQUIRE_MFA=1
+UPLOAD_AV_MODE=required
+CLAMAV_BIN=/usr/bin/clamscan
 
 # Initial admin account (used on first boot only, can be removed after)
 INITIAL_ADMIN_EMAIL=${ADMIN_EMAIL}
@@ -142,6 +145,11 @@ CRONEOF
 echo "==> Setting up automatic Docker container restart monitoring..."
 cat > /etc/cron.d/grc-healthcheck <<'CRONEOF'
 */5 * * * * root docker inspect --format='{{.State.Running}}' iso27001-tool 2>/dev/null | grep -q true || (cd /opt/grc-tool && docker compose up -d)
+CRONEOF
+
+echo "==> Setting up daily malware-definition updates..."
+cat > /etc/cron.d/grc-clamav <<'CRONEOF'
+35 1 * * * root cd /opt/grc-tool && docker compose exec -T isms freshclam >> /var/log/grc-clamav.log 2>&1
 CRONEOF
 
 echo ""

@@ -418,12 +418,14 @@ function register(app, deps) {
     const included = matrix.filter(m => m.applicability === 'included');
     const kpis = {
       included: included.length,
+      linked: included.filter(m => m.attachedCount > 0).length,
       fullyCovered: included.filter(m => m.band === 'green').length,
       partial: included.filter(m => m.band === 'amber').length,
       missing: included.filter(m => m.band === 'red').length,
       stale: included.filter(m => m.stale).length
     };
-    kpis.coveragePct = included.length ? Math.round((kpis.fullyCovered / included.length) * 100) : 0;
+    kpis.linkedPct = included.length ? Math.round((kpis.linked / included.length) * 100) : 0;
+    kpis.sufficiencyPct = included.length ? Math.round((kpis.fullyCovered / included.length) * 100) : 0;
 
     res.render('evidence_coverage', { user: req.user, ws: req.workspace, rows: filtered, kpis, filter, today });
   });

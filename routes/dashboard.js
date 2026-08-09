@@ -7,11 +7,12 @@ const email = require('../lib/email');
 const ctlReads = require('../lib/control-reads');
 const { ymdLocal, ymLocal } = require('../lib/dates');
 const { computeReadiness } = require('../lib/readiness');
+const { buildWorkspaceTruth } = require('../lib/grc-truth');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
 function register(app, deps) {
   const { db, requireAuth, logAction, isFirmUser, isFirmOwner, getActiveFirmId,
-          listWorkspaces, workspaceProgress, computeClientStage } = deps;
+          listWorkspaces, workspaceProgress } = deps;
 
   // ==================== DASHBOARD ====================
   app.get('/dashboard', requireAuth, (req, res) => {
@@ -19,10 +20,10 @@ function register(app, deps) {
     const workspacesWithProgress = workspaces.map(w => {
       const progress = workspaceProgress(w.id);
       const readiness = computeReadiness(w);
+      const truth = buildWorkspaceTruth(db, w, readiness);
       const openMajorNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(w.id).c;
       const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < date('now')`).get(w.id).c;
-      const derivedStage = computeClientStage(w);
-      return { ...w, progress, readiness, openMajorNCs, overdueNCs, derivedStage };
+      return { ...w, progress, readiness, truth, openMajorNCs, overdueNCs, derivedStage: truth.lifecycle };
     });
 
     // Portfolio aggregates
@@ -30,7 +31,7 @@ function register(app, deps) {
       total: workspacesWithProgress.length,
       avgStage1: workspacesWithProgress.length ? Math.round(workspacesWithProgress.reduce((s, w) => s + w.readiness.stage1, 0) / workspacesWithProgress.length) : 0,
       nearCert: workspacesWithProgress.filter(w => w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 90).length,
-      redFlags: workspacesWithProgress.filter(w => w.openMajorNCs > 0 || w.overdueNCs > 0 || w.readiness.flags.filter(f => f.severity === 'high').length > 2).length,
+      redFlags: workspacesWithProgress.filter(w => w.openMajorNCs > 0 || w.overdueNCs > 0 || w.truth.counts.critical > 0 || w.truth.counts.high > 2).length,
       totalOpenNCs: workspacesWithProgress.reduce((s, w) => s + w.openMajorNCs + w.overdueNCs, 0)
     };
 
@@ -57,6 +58,8 @@ function register(app, deps) {
         && lastPass.completed_at < new Date(Date.now() - 90 * 86400000).toISOString().slice(0,10);
       const reasons = [];
       let severity = 'ok';
+      if (w.truth.counts.critical > 0) { reasons.push(`${w.truth.counts.critical} critical truth conflict${w.truth.counts.critical === 1 ? '' : 's'}`); severity = 'high'; }
+      if (w.truth.counts.high > 0) { reasons.push(`${w.truth.counts.high} high-priority readiness gap${w.truth.counts.high === 1 ? '' : 's'}`); if (severity !== 'high') severity = 'medium'; }
       if (overdueNCs > 0) { reasons.push(`${overdueNCs} overdue NC`); severity = 'high'; }
       if (w.openMajorNCs > 0) { reasons.push(`${w.openMajorNCs} open major NC`); severity = 'high'; }
       if (w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30) { reasons.push('cert target < 30 days'); severity = 'high'; }
@@ -65,7 +68,8 @@ function register(app, deps) {
       if (noPassFor90 && (!lastPass || lastPass.status !== 'in_progress')) {
         reasons.push('no active pass · last completed > 90d'); if (severity !== 'high') severity = 'medium';
       }
-      if (!lastPass) { reasons.push('no gap assessment ever started'); if (severity !== 'high') severity = 'medium'; }
+      if (!lastPass && w.progress.assessed === 0) { reasons.push('no gap assessment started'); if (severity !== 'high') severity = 'medium'; }
+      if (!lastPass && w.progress.assessed > 0) { reasons.push('assessment history predates formal passes'); if (severity !== 'high') severity = 'medium'; }
       return { ...w, lastPass, staleControls, overdueObj, severity, reasons };
     });
     const atRisk = portfolioRisk.filter(r => r.severity !== 'ok')
@@ -168,6 +172,7 @@ function register(app, deps) {
   // target at all is just an early engagement, not a health problem.
   function computeEngagementHealth(w) {
     const readiness = computeReadiness(w);
+    const truth = buildWorkspaceTruth(db, w, readiness);
     const progress = workspaceProgress(w.id);
 
     const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
@@ -181,6 +186,17 @@ function register(app, deps) {
     const overdueTasks = db.prepare(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND status NOT IN ('done','closed','cancelled') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
     const highRisks = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted') AND (likelihood * impact) >= 15`).get(w.id).c;
     const lastPass = db.prepare(`SELECT pass_number, status, completed_at FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(w.id);
+    const deliveryPlan = db.prepare(`SELECT p.id,p.target_completion_date,p.forecast_completion_date,p.baseline_version,
+      (SELECT COUNT(*) FROM engagement_delivery_milestones m WHERE m.plan_id=p.id) milestones,
+      (SELECT COUNT(*) FROM engagement_delivery_milestones m WHERE m.plan_id=p.id AND m.status='complete') complete_milestones,
+      (SELECT COUNT(*) FROM engagement_delivery_milestones m WHERE m.plan_id=p.id AND m.owner_id IS NULL) unassigned_milestones,
+      (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.is_required=1) required_deliverables,
+      (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.is_required=1 AND d.status='accepted') accepted_deliverables,
+      (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.due_date<date('now') AND d.status NOT IN ('accepted','superseded')) overdue_deliverables,
+      (SELECT COUNT(*) FROM engagement_delivery_gate_decisions g JOIN engagement_delivery_phases ph ON ph.id=g.phase_id WHERE ph.plan_id=p.id AND g.decision IN ('passed','waived') AND g.id=(SELECT MAX(g2.id) FROM engagement_delivery_gate_decisions g2 WHERE g2.phase_id=ph.id)) gates_passed
+      FROM engagement_delivery_plans p WHERE p.workspace_id=?`).get(w.id) || null;
+    if (deliveryPlan) deliveryPlan.variance_days = deliveryPlan.target_completion_date && deliveryPlan.forecast_completion_date
+      ? Math.round((Date.parse(deliveryPlan.forecast_completion_date) - Date.parse(deliveryPlan.target_completion_date)) / 86400000) : null;
 
     const stage1 = readiness.stage1 || 0;
     const daysToTarget = (readiness.daysToTarget === undefined) ? null : readiness.daysToTarget;
@@ -189,7 +205,9 @@ function register(app, deps) {
     let certPenalty = 0;
     if (daysToTarget !== null && daysToTarget < 90) {
       const urgency = clamp((90 - daysToTarget) / 90, 0, 1);
-      const gap = clamp((100 - stage1) / 100, 0, 1);
+      const gateTotal = Math.max(readiness.stage1GateTotal || 0, 1);
+      const gateGap = clamp((gateTotal - (readiness.stage1GatePassed || 0)) / gateTotal, 0, 1);
+      const gap = readiness.stage1Ready ? 0 : Math.max(gateGap, clamp((100 - stage1) / 100, 0, 1));
       certPenalty = Math.round(urgency * gap * 35);
     }
 
@@ -204,13 +222,17 @@ function register(app, deps) {
     else if (lastPass && lastPass.status !== 'in_progress' && lastPass.completed_at && lastPass.completed_at < ninetyDaysAgo) passPenalty = 8;
 
     const contrib = [
+      { label: `${truth.counts.critical} critical truth conflict${truth.counts.critical === 1 ? '' : 's'}`, n: truth.counts.critical, penalty: clamp(truth.counts.critical * 8, 0, 32) },
+      { label: `${truth.counts.high} high-priority readiness gap${truth.counts.high === 1 ? '' : 's'}`, n: truth.counts.high, penalty: clamp(truth.counts.high * 3, 0, 15) },
       { label: overdueNCs === 1 ? '1 overdue NC' : `${overdueNCs} overdue NCs`, n: overdueNCs, penalty: clamp(overdueNCs * 9, 0, 27) },
       { label: majorNCs === 1 ? '1 open major NC' : `${majorNCs} open major NCs`, n: majorNCs, penalty: clamp(majorNCs * 7, 0, 21) },
-      { label: daysToTarget !== null ? `cert in ${daysToTarget}d · ${stage1}% ready` : null, n: certPenalty, penalty: certPenalty },
+      { label: daysToTarget !== null ? `cert in ${daysToTarget}d · ${truth.verdict.label.toLowerCase()}` : null, n: certPenalty, penalty: certPenalty },
       { label: highRisks === 1 ? '1 high risk untreated' : `${highRisks} high risks untreated`, n: highRisks, penalty: clamp(highRisks * 2.5, 0, 15) },
       { label: `${staleControls} stale controls`, n: staleControls, penalty: clamp(staleControls * 1, 0, 12) },
       { label: `${overdueTasks} overdue tasks`, n: overdueTasks, penalty: clamp(overdueTasks * 1.5, 0, 12) },
       { label: `${overdueObj} overdue objectives`, n: overdueObj, penalty: clamp(overdueObj * 3, 0, 9) },
+      { label: deliveryPlan?.overdue_deliverables === 1 ? '1 overdue delivery' : `${deliveryPlan?.overdue_deliverables || 0} overdue deliveries`, n: deliveryPlan?.overdue_deliverables || 0, penalty: clamp((deliveryPlan?.overdue_deliverables || 0) * 2, 0, 10) },
+      { label: deliveryPlan?.variance_days > 0 ? `delivery forecast ${deliveryPlan.variance_days}d late` : null, n: Math.max(0, deliveryPlan?.variance_days || 0), penalty: clamp(Math.ceil(Math.max(0, deliveryPlan?.variance_days || 0) / 10), 0, 8) },
       { label: !started ? 'no gap assessment started' : 'last pass > 90d, none active', n: passPenalty, penalty: passPenalty },
     ];
 
@@ -226,8 +248,11 @@ function register(app, deps) {
     return {
       id: w.id,
       name: w.brand_display_name || w.client_name,
-      stage: computeClientStage(w),
-      score, band, reasons, stage1, daysToTarget,
+      stage: truth.lifecycle,
+      verdict: truth.verdict,
+      quality: truth.quality,
+      qualityCounts: truth.counts,
+      score, band, reasons, stage1, daysToTarget, deliveryPlan,
       signals: { overdueNCs, majorNCs, staleControls, overdueObj, overdueTasks, highRisks, assessedPct: progress.percent },
     };
   }
@@ -275,7 +300,7 @@ function register(app, deps) {
     // date. The manual `stage` column is unreliable, so derive the live stage.
     const projects = wss.filter(w => w.target_cert_date).map(w => {
       let stage = null;
-      try { stage = computeClientStage(w).label; } catch (_) {}
+      try { stage = buildWorkspaceTruth(db, w).verdict.label; } catch (_) {}
       return {
         wsId: w.id,
         name: wsName[w.id],
@@ -372,6 +397,28 @@ function register(app, deps) {
         countsWorkload:false, wsId:e.workspace_id, wsName:wsName[e.workspace_id],
         link:`/workspaces/${e.workspace_id}/cert-cycle`, ownerId:null, ownerLabel:null });
     });
+
+    // 8b. Adaptive engagement-plan milestones and deliverables ----------------
+    try {
+      db.prepare(`SELECT m.id,p.workspace_id,m.title,COALESCE(m.forecast_end_date,m.planned_end_date) due_date,m.status
+                  FROM engagement_delivery_milestones m JOIN engagement_delivery_plans p ON p.id=m.plan_id
+                  WHERE p.workspace_id IN (${ph}) AND COALESCE(m.forecast_end_date,m.planned_end_date) IS NOT NULL`)
+        .all(...wsIds).forEach(m => {
+          push({ kind:'plan-milestone', title:m.title, date:m.due_date, status:m.status,
+            open:!['complete','waived'].includes(m.status), countsWorkload:false,
+            wsId:m.workspace_id, wsName:wsName[m.workspace_id],
+            link:`/workspaces/${m.workspace_id}/engagement-plan?view=timeline`, ownerId:null, ownerLabel:null });
+        });
+      db.prepare(`SELECT d.id,d.workspace_id,d.title,d.due_date,d.status,d.owner_id
+                  FROM engagement_delivery_deliverables d
+                  WHERE d.workspace_id IN (${ph}) AND d.due_date IS NOT NULL AND d.status<>'superseded'`)
+        .all(...wsIds).forEach(d => {
+          push({ kind:'deliverable', title:d.title, date:d.due_date, status:d.status,
+            open:d.status!=='accepted', countsWorkload:!!d.owner_id,
+            wsId:d.workspace_id, wsName:wsName[d.workspace_id],
+            link:`/workspaces/${d.workspace_id}/engagement-plan`, ownerId:d.owner_id||null, ownerLabel:null });
+        });
+    } catch (_) {}
 
     // 9. Document reviews (next_review_date) ----------------------------------
     db.prepare(`SELECT id, workspace_id, name, next_review_date

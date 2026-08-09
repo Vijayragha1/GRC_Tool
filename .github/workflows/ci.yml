@@ -20,6 +20,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Framework content staleness gate
+        run: npm run content-staleness
       # The live iso27001.db is gitignored; the suites detect its absence and
       # build a migrated, seeded DB via scripts/build-test-db.js.
       - run: npm test

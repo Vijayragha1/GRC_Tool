@@ -12,13 +12,13 @@
 
 'use strict';
 
-const { db, ensureWorkspaceMethodology } = require('../db');
+const { db, ensureWorkspaceMethodology, logAction } = require('../db');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 const FIRM_ID = 1;
 const PASSWORD = '12345678';
-const BCRYPT_COST = 4;
+const BCRYPT_COST = 10;
 
 // ---------- helpers ----------
 function offsetDate(days) {
@@ -470,7 +470,8 @@ function seedApex(users) {
   addMember(wsId, users.daniel, 'consultant');
   addMember(wsId, users.jamie, 'consultant');
   addMember(wsId, users.sam, 'client_owner');
-  console.log(`  4 team members assigned`);
+  if (users.maya) addMember(wsId, users.maya, 'contributor');
+  console.log(`  ${users.maya ? 5 : 4} team members assigned`);
 
   // Assets
   const assets = [
@@ -706,6 +707,90 @@ function seedApex(users) {
   console.log(`  2 SoA snapshots`);
 
   return wsId;
+}
+
+function seedClientPortal(wsId, users) {
+  const workspace = db.prepare(`SELECT id, client_name FROM workspaces WHERE id=?`).get(wsId);
+  if (!workspace || !users.maya) return;
+  const document = db.prepare(`SELECT id, name FROM generated_docs WHERE workspace_id=? AND status!='retired' ORDER BY id LIMIT 1`).get(wsId);
+  const insertRequest = db.prepare(`INSERT INTO client_requests
+    (workspace_id, request_type, title, description, priority, status, assignee_id,
+     control_id, document_id, due_date, response_note, created_by, reviewed_by,
+     submitted_at, closed_at, version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertEvent = db.prepare(`INSERT INTO client_request_events
+    (request_id, workspace_id, actor_id, event_type, from_status, to_status, note, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  const grantScope = db.prepare(`INSERT OR IGNORE INTO member_scopes
+    (workspace_id, user_id, scope_type, scope_id, granted_by) VALUES (?, ?, ?, ?, ?)`);
+
+  const ids = {};
+  db.transaction(() => {
+    ids.accessReview = Number(insertRequest.run(
+      wsId, 'evidence', 'Upload the Q2 privileged-access review sample',
+      'Provide the signed Q2 access-review export and evidence that two leaver accounts were removed within the documented SLA.',
+      'urgent', 'in_progress', users.maya, 'annex-a.5.18', null, offsetDate(5),
+      'The IAM export is ready; collecting the two ticket approvals now.', users.priya, null, null, null, 2
+    ).lastInsertRowid);
+    insertEvent.run(ids.accessReview, wsId, users.priya, 'created', null, 'open', null,
+      JSON.stringify({ type: 'evidence', priority: 'urgent', assignee_id: users.maya }));
+    insertEvent.run(ids.accessReview, wsId, users.maya, 'status_changed', 'open', 'in_progress',
+      'Started gathering the quarterly review pack.', null);
+    grantScope.run(wsId, users.maya, 'control', 'annex-a.5.18', users.priya);
+
+    if (document) {
+      ids.policyReview = Number(insertRequest.run(
+        wsId, 'policy', `Review ${document.name}`,
+        'Confirm that the operational owners, review frequency, and approval responsibilities reflect the current organisation.',
+        'high', 'submitted', users.sam, null, document.id, offsetDate(8),
+        'Reviewed with IT and Operations. The responsibilities are current and no amendments are required.',
+        users.priya, null, new Date().toISOString(), null, 2
+      ).lastInsertRowid);
+      insertEvent.run(ids.policyReview, wsId, users.priya, 'created', null, 'open', null,
+        JSON.stringify({ type: 'policy', priority: 'high', assignee_id: users.sam, document_id: document.id }));
+      insertEvent.run(ids.policyReview, wsId, users.sam, 'status_changed', 'open', 'submitted',
+        'Client review completed and submitted for consultant acceptance.', null);
+    }
+
+    ids.ownerConfirmation = Number(insertRequest.run(
+      wsId, 'control', 'Confirm ownership for supplier-security reviews',
+      'Confirm the accountable owner and deputy for annual security reviews of critical suppliers.',
+      'normal', 'accepted', users.maya, 'annex-a.5.19', null, offsetDate(-3),
+      'Head of Procurement is accountable; the Vendor Risk Manager is the nominated deputy.',
+      users.priya, users.priya, new Date(Date.now() - 5 * 86400000).toISOString(),
+      new Date(Date.now() - 3 * 86400000).toISOString(), 3
+    ).lastInsertRowid);
+    insertEvent.run(ids.ownerConfirmation, wsId, users.priya, 'created', null, 'open', null,
+      JSON.stringify({ type: 'control', priority: 'normal', assignee_id: users.maya }));
+    insertEvent.run(ids.ownerConfirmation, wsId, users.maya, 'status_changed', 'open', 'submitted',
+      'Ownership confirmed with Procurement.', null);
+    insertEvent.run(ids.ownerConfirmation, wsId, users.priya, 'status_changed', 'submitted', 'accepted',
+      'Ownership evidence accepted.', null);
+    grantScope.run(wsId, users.maya, 'control', 'annex-a.5.19', users.priya);
+
+    db.prepare(`INSERT INTO comments (workspace_id, parent_type, parent_id, user_id, body, internal_only)
+      VALUES (?, 'client_request', ?, ?, ?, 0)`).run(
+      wsId, String(ids.accessReview), users.priya,
+      'Please include the reviewer sign-off page as well as the raw export.'
+    );
+    db.prepare(`INSERT INTO comments (workspace_id, parent_type, parent_id, user_id, body, internal_only)
+      VALUES (?, 'client_request', ?, ?, ?, 0)`).run(
+      wsId, String(ids.accessReview), users.maya,
+      'Understood. I will upload both items together once the second approval is received.'
+    );
+    db.prepare(`INSERT INTO notifications (workspace_id, user_id, category, severity, title, body, link)
+      VALUES (?, ?, 'client_request', 'urgent', ?, ?, ?)`).run(
+      wsId, users.maya, 'Evidence request due soon',
+      'The Q2 privileged-access review sample is due in five days.',
+      `/workspaces/${wsId}/client-portal/requests/${ids.accessReview}`
+    );
+  })();
+
+  for (const [key, requestId] of Object.entries(ids)) {
+    logAction(users.priya, wsId, 'create_client_request', 'client_request', requestId,
+      { seeded_demo: true, scenario: key });
+  }
+  console.log(`  ${Object.keys(ids).length} client-portal requests with scoped activity`);
 }
 
 // ============================================================
@@ -945,14 +1030,23 @@ function seedStellar(users) {
 // ============================================================
 // MAIN
 // ============================================================
-console.log('Seeding 5 demo users + 2 client engagements (Apex 100%, Stellar 60%)...');
+// When imported by build-test-db.js, argv[2] is the target database path.
+// CLI mode selection applies only when this file is the process entry point;
+// imports retain the historical behavior of seeding both engagements.
+const seedMode = require.main === module ? String(process.argv[2] || 'all').toLowerCase() : 'all';
+if (require.main === module && !['all', 'apex', 'stellar'].includes(seedMode)) {
+  console.error('Usage: node scripts/seed-realistic-engagements.js [all|apex|stellar]');
+  process.exit(1);
+}
+console.log(`Seeding demo users + ${seedMode === 'all' ? '2 client engagements' : '1 client engagement'}...`);
 ensureFirm();
 const users = {
   alex:    ensureUser({ email: 'alex.morgan@demo.firm',    name: 'Alex Morgan',    user_type: 'firm',  firm_role: 'manager' }),
   priya:   ensureUser({ email: 'priya.sharma@demo.firm',   name: 'Priya Sharma',   user_type: 'firm',  firm_role: 'senior_consultant' }),
   daniel:  ensureUser({ email: 'daniel.kim@demo.firm',     name: 'Daniel Kim',     user_type: 'firm',  firm_role: 'senior_consultant' }),
   jamie:   ensureUser({ email: 'jamie.chen@demo.firm',     name: 'Jamie Chen',     user_type: 'firm',  firm_role: 'consultant' }),
-  sam:     ensureUser({ email: 'sam.foster@apex.demo',     name: 'Sam Foster',     user_type: 'client', firm_role: null })
+  sam:     ensureUser({ email: 'sam.foster@apex.demo',     name: 'Sam Foster',     user_type: 'client', firm_role: null }),
+  maya:    ensureUser({ email: 'maya.okafor@apex.demo',    name: 'Maya Okafor',    user_type: 'client', firm_role: null })
 };
 console.log(`\nUsers seeded (password for all: ${PASSWORD}):`);
 console.log(`  Alex Morgan    - manager (firm-wide)`);
@@ -960,12 +1054,14 @@ console.log(`  Priya Sharma   - senior_consultant   (Apex lead, Stellar member)`
 console.log(`  Daniel Kim     - senior_consultant   (Stellar lead, Apex member)`);
 console.log(`  Jamie Chen     - consultant          (member on both)`);
 console.log(`  Sam Foster     - client_owner Apex   + contributor on Stellar`);
+console.log(`  Maya Okafor    - scoped contributor on Apex`);
 
-const apexId    = seedApex(users);
-const stellarId = seedStellar(users);
+const apexId = seedMode !== 'stellar' ? seedApex(users) : null;
+if (apexId) seedClientPortal(apexId, users);
+const stellarId = seedMode !== 'apex' ? seedStellar(users) : null;
 
 console.log('\n--------------------------------------------------------------');
-console.log(`  Apex Manufacturing Ltd.   ->  /workspaces/${apexId}    (100%)`);
-console.log(`  Stellar Logistics PLC     ->  /workspaces/${stellarId}    (~60%)`);
+if (apexId) console.log(`  Apex Manufacturing Ltd.   ->  /workspaces/${apexId}    (100%)`);
+if (stellarId) console.log(`  Stellar Logistics PLC     ->  /workspaces/${stellarId}    (~60%)`);
 console.log('--------------------------------------------------------------');
 console.log('Done.');

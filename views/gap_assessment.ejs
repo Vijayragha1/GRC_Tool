@@ -3,9 +3,22 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Gap assessment</h1>
-    <div class="page-subtitle">Each "pass" is one round of consultant assessment. Pass 1 = initial assessment; Pass 2+ = re-assessments after the client has implemented some of your recommendations. Every wizard save during an in-progress pass is tagged to that pass so you can diff state between any two of them.</div>
+    <div class="page-subtitle">Each pass is a traceable round of consultant verification. Existing control states remain authoritative; passes add assessment lineage and allow point-in-time comparison.</div>
   </div>
 </div>
+
+<% if (typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>
+  <div class="panel" style="margin-bottom:14px;background:var(--bg-subtle);">
+    <div class="panel-pad" style="display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;">
+      <div>
+        <div class="sec-label">Imported assessment baseline</div>
+        <div class="text-xl text-ink" style="font-weight:500;margin-top:4px;"><%= legacyBaseline.assessed %> of <%= totalItems %> requirements already assessed</div>
+        <div class="meta text-sm" style="margin-top:5px;line-height:1.5;">These accepted control states predate formal pass tracking. They are not “unassessed”; they simply do not have pass-level lineage. Start a verification pass to record future changes and comparisons.</div>
+      </div>
+      <div class="num" style="font-size:28px;font-weight:500;"><%= totalItems ? Math.round(legacyBaseline.assessed / totalItems * 100) : 0 %>%</div>
+    </div>
+  </div>
+<% } %>
 
 <% if (typeof orientation !== 'undefined' && orientation) { /* Re-engagement orientation panel - what's changed since the prior pass closed */ %>
   <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);border-color:rgba(71,85,105,0.25);">
@@ -68,7 +81,7 @@
           <% } else { %>
             <a href="/workspaces/<%= ws.id %>/controls/assess?done=1" class="btn btn-primary btn-xs">View summary →</a>
           <% } %>
-          <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Worklist (handoff)</a>
+          <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Assessment findings</a>
           <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs">Gap Report ↓</a>
           <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-xs">Recommendations memo ↓</a>
           <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete" onsubmit="return appConfirmForm(event, 'Mark Pass <%= activePass.pass_number %> as completed? You can reopen it later.')">
@@ -84,11 +97,11 @@
 <details class="panel" style="margin-bottom:14px;" <%= !activePass ? 'open' : '' %>>
   <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    <% if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">- this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">- typically a re-assessment after the client has implemented changes</span><% } %>
+    <% if (passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>Start a verification pass for the existing baseline<% } else if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">- this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">- typically a re-assessment after the client has implemented changes</span><% } %>
   </summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/start" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr;gap:10px;">
     <div>
-      <label class="label">Label <span class="meta">optional - defaults to "Initial gap assessment" or "Re-assessment N"</span></label>
+      <label class="label">Label <span class="meta">optional - defaults to "<%= passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline ? 'Baseline verification' : passes.length === 0 ? 'Initial gap assessment' : 'Re-assessment N' %>"</span></label>
       <input type="text" name="label" class="input" placeholder="e.g., Pre-Stage 1 readiness, Post-remediation Q1 2026">
     </div>
     <div>
@@ -96,7 +109,7 @@
       <textarea name="notes" rows="2" class="textarea" placeholder="e.g., Client says they've implemented the access-review automation, JML procedure, and patch SLAs from Pass 1's worklist. Verifying A.5.15–18, A.8.8 this round."></textarea>
     </div>
     <div>
-      <button class="btn btn-primary"><%= passes.length === 0 ? 'Start Pass 1' : 'Start Pass ' + (passes[0].pass_number + 1) %></button>
+      <button class="btn btn-primary"><%= passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline ? 'Start baseline verification' : passes.length === 0 ? 'Start Pass 1' : 'Start Pass ' + (passes[0].pass_number + 1) %></button>
     </div>
   </form>
 </details>
@@ -124,8 +137,8 @@
       <div class="empty-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </div>
-      <div class="empty-title">No passes yet</div>
-      <div class="empty-sub">Start your first gap assessment using the form above. The wizard walks every clause and Annex A control; saves are tagged to the active pass automatically.</div>
+      <div class="empty-title">No formal passes yet</div>
+      <div class="empty-sub"><% if (typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>The current assessment is preserved as an imported baseline. Start a verification pass above to add traceable change history.<% } else { %>Start your first gap assessment using the form above. The wizard walks every clause and Annex A control; saves are tagged to the active pass automatically.<% } %></div>
     </div>
   <% } else { %>
     <div class="divide-row">

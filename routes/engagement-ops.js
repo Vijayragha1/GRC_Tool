@@ -28,6 +28,7 @@ const evReads = require('../lib/evidence-reads');
 const reports = require('../lib/reports');
 const restoreCheck = require('../lib/restore-check');
 const { computeReadiness } = require('../lib/readiness');
+const delivery = require('../lib/engagement-delivery');
 const { ymdLocal, ymLocal } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray, extractMentions } = require('../lib/http-helpers');
@@ -96,10 +97,10 @@ function register(app, deps) {
       SUM(CASE WHEN due_date < date('now') AND status NOT IN ('closed','verified') THEN 1 ELSE 0 END) AS overdue
       FROM nonconformities WHERE workspace_id=?`).get(ws.id);
 
-    // Engagement plan progress (if used)
-    const planTotal = require('../data/engagement-plan').flatten().length;
-    const planDone = db.prepare(`SELECT COUNT(*) c FROM engagement_plan_progress
-      WHERE workspace_id=? AND completed_at IS NOT NULL`).get(ws.id).c;
+    // Adaptive engagement plan projection (same truth as Plan/Timeline/Tasks).
+    const planProjection = delivery.getProjection(db, ws, req.user.id);
+    const planTotal = planProjection.summary.totalMilestones;
+    const planDone = planProjection.summary.completeMilestones;
 
     res.render('exec_brief', {
       user: req.user, ws,
@@ -107,7 +108,7 @@ function register(app, deps) {
       velocityNow: velNow, velocityPrior: velPrior, velocityDelta,
       residualAle, openRiskCount: openRisks.length,
       topRisks, topNCs, ncTotals,
-      planTotal, planDone, planPct: planTotal ? Math.round(planDone / planTotal * 100) : 0,
+      planTotal, planDone, planPct: planProjection.summary.progressPct,
       derivedStage: computeClientStage(ws),
     });
   });
@@ -841,64 +842,84 @@ function register(app, deps) {
   // email is supplied - emails the vendor the /q/<token> link. The token in the URL is the
   // credential; the vendor never sees the rest of the tool. Re-running this rotates the
   // token (older links stop working) so it doubles as "resend".
-  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
-    const toEmail = (req.body.email || '').trim() || null;
-    const token = crypto.randomBytes(20).toString('hex');
+  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), async (req, res) => {
+    const toEmail = (req.body.email || '').trim().toLowerCase();
+    const toName = (req.body.name || '').trim() || null;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}/questionnaires/${req.params.qId}`, 'Enter a valid vendor email address.', 'error'));
+    }
+    const questionnaire = db.prepare(`SELECT q.*, s.entity_id, s.name AS supplier_name, t.description AS tpl_description
+      FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id=q.supplier_id
+      LEFT JOIN questionnaire_templates t ON t.id=q.template_id
+      WHERE q.id=? AND q.supplier_id=? AND q.workspace_id=?`).get(req.params.qId, req.params.id, req.workspace.id);
+    if (!questionnaire) return res.status(404).send('Questionnaire not found');
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
-    db.prepare(`UPDATE supplier_questionnaires
-        SET external_token=?, external_email=?, external_expires_at=?, external_completed_at=NULL,
-            sent_at=CURRENT_TIMESTAMP, status=CASE WHEN status='draft' THEN 'sent' ELSE status END
-        WHERE id=? AND workspace_id=?`)
-      .run(token, toEmail, expiresAt, req.params.qId, req.workspace.id);
+    db.transaction(() => {
+      db.prepare(`UPDATE external_assessment_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE questionnaire_id=? AND revoked_at IS NULL AND completed_at IS NULL`).run(questionnaire.id);
+      db.prepare(`INSERT INTO external_assessment_tokens
+        (workspace_id,assessment_id,entity_id,questionnaire_id,email,name,token_hash,expires_at,created_by)
+        VALUES (?,NULL,?,?,?,?,?,?,?)`).run(req.workspace.id, questionnaire.entity_id || null, questionnaire.id, toEmail, toName, tokenHash, expiresAt, req.user.id);
+      db.prepare(`UPDATE supplier_questionnaires
+          SET external_token=NULL, external_email=?, external_contact_name=?, external_expires_at=?, external_completed_at=NULL,
+              external_opened_at=NULL, external_last_saved_at=NULL, invitation_status='sent', sent_at=CURRENT_TIMESTAMP,
+              status=CASE WHEN status IN ('draft','responded','reviewed') THEN 'sent' ELSE status END
+          WHERE id=? AND workspace_id=?`)
+        .run(toEmail, toName, expiresAt, questionnaire.id, req.workspace.id);
+    })();
     const base = `/workspaces/${req.workspace.id}/vendors/${req.params.id}/questionnaires/${req.params.qId}`;
     const link = `${req.protocol}://${req.get('host')}/q/${token}`;
-
-    if (toEmail) {
-      const meta = db.prepare(`SELECT q.template_name, q.total_questions, s.name AS supplier_name, t.description AS tpl_description
-          FROM supplier_questionnaires q
-          INNER JOIN suppliers s ON s.id=q.supplier_id
-          LEFT JOIN questionnaire_templates t ON t.id=q.template_id
-          WHERE q.id=? AND q.workspace_id=?`).get(req.params.qId, req.workspace.id);
-      email.sendSupplierQuestionnaireEmail({
-        toEmail,
-        supplierName: meta ? meta.supplier_name : 'your organisation',
-        templateName: (meta && meta.template_name) || 'Security questionnaire',
-        templateDescription: meta ? meta.tpl_description : null,
-        questionCount: meta ? meta.total_questions : null,
+    if (req.session) req.session.lastQuestionnaireInvite = { questionnaireId: questionnaire.id, url: link };
+    let sendResult;
+    try {
+      sendResult = await email.sendSupplierQuestionnaireEmail({
+        toEmail, toName,
+        supplierName: questionnaire.supplier_name,
+        templateName: questionnaire.template_name || 'Security questionnaire',
+        templateDescription: questionnaire.tpl_description,
+        questionCount: questionnaire.total_questions,
         workspaceName: req.workspace.brand_display_name || req.workspace.client_name,
-        workspaceId: req.workspace.id,
-        firmId: req.workspace.firm_id,
-        token,
-        expiresAt,
-        questionnaireId: parseInt(req.params.qId, 10)
-      }).catch(err => console.error('[supplier-questionnaire email] send failed:', err && err.message));
-      logAction(req.user.id, req.workspace.id, 'questionnaire_shared', 'questionnaire', req.params.qId, { to: toEmail, emailed: true }, auditCtx(req));
-      return res.redirect(withToast(base, `Questionnaire emailed to ${toEmail}. The link expires in 30 days.`));
+        workspaceId: req.workspace.id, firmId: req.workspace.firm_id,
+        token, expiresAt, questionnaireId: questionnaire.id
+      });
+    } catch (err) {
+      sendResult = { ok: false, error: err && err.message };
     }
-
-    logAction(req.user.id, req.workspace.id, 'questionnaire_shared', 'questionnaire', req.params.qId, { to: null, emailed: false }, auditCtx(req));
-    res.redirect(withToast(base, `External link ready (expires in 30 days): ${link}`));
+    logAction(req.user.id, req.workspace.id, 'questionnaire_shared', 'questionnaire', questionnaire.id,
+      { to: toEmail, emailed: !!(sendResult && sendResult.ok), expiresAt }, auditCtx(req));
+    const msg = sendResult && sendResult.ok
+      ? `Questionnaire emailed to ${toEmail}. The secure link expires in 30 days.`
+      : `The invitation was created, but email delivery failed${sendResult && sendResult.error ? `: ${sendResult.error}` : '.'} Copy the one-time link shown below.`;
+    res.redirect(withToast(base, msg, sendResult && sendResult.ok ? 'success' : 'error'));
   });
 
   app.get('/q/:token', (req, res) => {
+    const tokenHash = crypto.createHash('sha256').update(req.params.token).digest('hex');
     const q = db.prepare(`SELECT q.*, s.name AS supplier_name, t.description AS tpl_description,
-        COALESCE(w.brand_display_name, w.client_name) AS requester_name
+        COALESCE(w.brand_display_name, w.client_name) AS requester_name, et.id AS invitation_id,
+        et.expires_at AS token_expires_at, et.completed_at AS token_completed_at, et.revoked_at AS token_revoked_at
       FROM supplier_questionnaires q
       INNER JOIN suppliers s ON s.id=q.supplier_id
       LEFT JOIN questionnaire_templates t ON t.id=q.template_id
       LEFT JOIN workspaces w ON w.id=q.workspace_id
-      WHERE q.external_token=?`).get(req.params.token);
+      INNER JOIN external_assessment_tokens et ON et.questionnaire_id=q.id
+      WHERE et.token_hash=? AND et.revoked_at IS NULL`).get(tokenHash);
     const blank = { sections: {}, respMap: {}, token: req.params.token };
     if (!q) return res.status(404).render('external_questionnaire', { q: null, state: 'invalid', ...blank });
-    if (q.external_completed_at) return res.render('external_questionnaire', { q, state: 'done', ...blank });
-    if (q.external_expires_at && new Date(q.external_expires_at) < new Date())
+    if (q.external_completed_at || q.token_completed_at) return res.render('external_questionnaire', { q, state: 'done', ...blank });
+    if (q.token_expires_at && new Date(q.token_expires_at) < new Date())
       return res.status(410).render('external_questionnaire', { q, state: 'expired', ...blank });
+    db.prepare(`UPDATE supplier_questionnaires SET external_opened_at=COALESCE(external_opened_at,CURRENT_TIMESTAMP),invitation_status=CASE WHEN invitation_status='sent' THEN 'opened' ELSE invitation_status END WHERE id=?`).run(q.id);
     const questions = db.prepare('SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order').all(q.template_id);
     const responses = db.prepare('SELECT * FROM supplier_questionnaire_responses WHERE questionnaire_id=?').all(q.id);
     const respMap = Object.fromEntries(responses.map(r => [r.question_id, r]));
+    const attachMap = {};
+    db.prepare(`SELECT * FROM questionnaire_attachments WHERE questionnaire_id=? ORDER BY uploaded_at`).all(q.id)
+      .forEach(a => { const key = a.question_id == null ? 'general' : a.question_id; (attachMap[key] = attachMap[key] || []).push(a); });
     const sections = {};
     questions.forEach(qu => { (sections[qu.section] = sections[qu.section] || []).push(qu); });
-    res.render('external_questionnaire', { q, sections, respMap, token: req.params.token, state: 'open' });
+    res.render('external_questionnaire', { q, sections, respMap, attachMap, token: req.params.token, state: 'open', saved: req.query.saved === '1' });
   });
 
   app.post('/q/:token', resolveQuestionnaireFirm, qUploadAny, (req, res) => {
@@ -940,9 +961,15 @@ function register(app, deps) {
     });
     const score = totalWeight ? Math.round((achieved / totalWeight) * 100) : null;
     const rating = score === null ? null : (score >= 80 ? 'low' : score >= 60 ? 'medium' : 'high');
-    db.prepare(`UPDATE supplier_questionnaires SET answered_questions=?, score=?, risk_rating=?, status='responded', responded_at=CURRENT_TIMESTAMP, external_completed_at=CURRENT_TIMESTAMP WHERE id=?`)
-      .run(allQ.filter(qu => qu.answer).length, score, rating, q.id);
-    logAction(0, q.workspace_id, 'external_questionnaire_submit', 'questionnaire', q.id, { score, rating }, { ip: (req.ip || ''), userAgent: req.get('user-agent') || '' });
+    const isDraftSave = req.body.action === 'save';
+    db.prepare(`UPDATE supplier_questionnaires SET answered_questions=?, score=?, risk_rating=?,
+        status=CASE WHEN ?=1 THEN 'sent' ELSE 'responded' END,
+        invitation_status=CASE WHEN ?=1 THEN 'in_progress' ELSE 'submitted' END,
+        external_last_saved_at=CURRENT_TIMESTAMP,
+        responded_at=CASE WHEN ?=0 THEN CURRENT_TIMESTAMP ELSE responded_at END,
+        external_completed_at=CASE WHEN ?=0 THEN CURRENT_TIMESTAMP ELSE external_completed_at END
+      WHERE id=?`).run(allQ.filter(qu => qu.answer).length, score, rating, isDraftSave ? 1 : 0, isDraftSave ? 1 : 0, isDraftSave ? 1 : 0, isDraftSave ? 1 : 0, q.id);
+    if (!isDraftSave) db.prepare(`UPDATE external_assessment_tokens SET completed_at=CURRENT_TIMESTAMP WHERE id=?`).run(q.invitation_id);
 
     // Persist any per-question evidence the vendor attached. Field names follow
     // the file_<questionId> convention; disallowed types were already dropped by
@@ -953,6 +980,11 @@ function register(app, deps) {
         files: req.files, questionnaireId: q.id, workspaceId: q.workspace_id, source: 'vendor', uploadedBy: null
       });
     } catch (e) { console.error('[questionnaire attach]', e && e.message); }
+
+    logAction(0, q.workspace_id, isDraftSave ? 'external_questionnaire_save' : 'external_questionnaire_submit', 'questionnaire', q.id,
+      { score, rating, attachments: attachSaved }, { ip: (req.ip || ''), userAgent: req.get('user-agent') || '' });
+
+    if (isDraftSave) return res.redirect(`/q/${req.params.token}?saved=1`);
 
     // Close the loop: notify the engagement lead that the vendor responded. The
     // notify->email bridge emails them automatically (subject to their pref). The

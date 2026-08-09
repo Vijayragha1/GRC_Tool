@@ -56,6 +56,16 @@
   </div>
 <% } %>
 
+<% if (typeof truth !== 'undefined' && (truth.counts.critical > 0 || truth.counts.high > 0)) { %>
+  <div class="panel" style="margin-bottom:18px;border-left:4px solid <%= truth.counts.critical ? '#b42318' : '#b54708' %>;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;padding:14px 18px;">
+    <div>
+      <div class="text-xs" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:<%= truth.counts.critical ? '#b42318' : '#b54708' %>;margin-bottom:3px;">Authoritative status · <%= truth.verdict.label %></div>
+      <div style="font-size:13px;color:var(--text-secondary);line-height:1.45"><strong style="color:var(--ink)"><%= truth.quality.score %>/100 decision-data quality.</strong> <%= truth.counts.critical %> critical conflict<%= truth.counts.critical===1?'':'s' %> and <%= truth.counts.high %> high-priority gap<%= truth.counts.high===1?'':'s' %> must be resolved before this workspace can support an unqualified client or auditor conclusion.</div>
+    </div>
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/data-quality">Open data quality →</a>
+  </div>
+<% } %>
+
 <!-- Next-best-action banner. Reads engagement state and points at the single
      highest-leverage next step. Replaces the "where do I go from here?" gap
      a new consultant lands on the client overview with. -->
@@ -85,7 +95,7 @@
   // Pick the indicator colour for the hero number. Same thresholds the
   // old kpi-good/warn/bad classes used, but applied to the number
   // itself rather than as a left-border accent.
-  const heroColor = readiness.stage1 >= 80 ? '#15803d' : readiness.stage1 >= 50 ? '#b45309' : '#b91c1c';
+  const heroColor = readiness.stage1Ready ? '#15803d' : '#b91c1c';
   const ncColor = ncOpen > 0 ? '#b91c1c' : '#15803d';
   const recPct = readiness.records.total ? Math.round((readiness.records.found / readiness.records.total) * 100) : 0;
 %>
@@ -94,12 +104,12 @@
 <div style="border:1px solid var(--border);background:var(--bg);margin-bottom:10px;display:grid;grid-template-columns:240px 1fr 220px;align-items:stretch;">
   <!-- Left: big number -->
   <a href="/workspaces/<%= ws.id %>/readiness" style="padding:18px 22px;text-decoration:none;color:inherit;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Stage 1 readiness</div>
+    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Stage 1 maturity</div>
     <div style="display:flex;align-items:baseline;gap:4px;line-height:0.95;font-variant-numeric:tabular-nums;">
       <span style="font-size:44px;font-weight: 500;letter-spacing:-0.02em;color:<%= heroColor %>;"><%= readiness.stage1 %></span>
       <span style="font-size:20px;font-weight:400;color:var(--text-tertiary);">%</span>
     </div>
-    <div id="heroDelta" class="num" style="margin-top:8px;font-size:11px;color:var(--text-tertiary);letter-spacing:0.02em;">&nbsp;</div>
+    <div class="num" style="margin-top:8px;font-size:11px;color:<%= readiness.stage1Ready ? '#15803d' : '#b91c1c' %>;letter-spacing:0.02em;"><%= readiness.stage1Ready ? 'Hard gates passed' : `${readiness.stage1GatePassed}/${readiness.stage1GateTotal} hard gates passed` %></div>
   </a>
   <!-- Middle: gap assessment + implementation breakdown. Was a misleading
        30-day "trajectory" sparkline (cumulative count of Implemented

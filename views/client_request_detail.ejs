@@ -1,0 +1,76 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%
+  const label = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const statusClass = request.status === 'accepted' ? 'good' : request.status === 'changes_requested' ? 'bad' : request.status === 'submitted' ? 'warn' : 'neutral';
+%>
+<a class="link-muted text-base" href="/workspaces/<%= ws.id %>/client-portal">← Client collaboration</a>
+
+<div class="page-head" style="margin-top:10px;">
+  <div><div class="eyebrow"><%= label(request.request_type) %> request · #<%= request.id %></div><h1><%= request.title %></h1><div class="page-subtitle"><%= request.description || 'No additional context supplied.' %></div></div>
+  <span class="status status-<%= statusClass %>" style="font-size:13px;"><%= label(request.status) %></span>
+</div>
+
+<div class="grid-2" style="align-items:start;margin-bottom:14px;">
+  <div class="panel">
+    <div class="panel-head"><h2>Request details</h2><span class="tag tag-neutral"><%= label(request.priority) %> priority</span></div>
+    <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div><div class="label">Assigned to</div><div><%= request.assignee_name || 'Unassigned' %></div><div class="meta"><%= request.assignee_email || '' %></div></div>
+      <div><div class="label">Due date</div><div><%= request.due_date || 'Not set' %></div></div>
+      <div><div class="label">Requested by</div><div><%= request.creator_name %></div><div class="meta"><%= request.created_at %></div></div>
+      <div><div class="label">Last updated</div><div><%= request.updated_at %></div><div class="meta">Revision <%= request.version %></div></div>
+      <% if (request.control_id) { %><div><div class="label">Control or clause</div><a href="/workspaces/<%= ws.id %>/client-portal/controls/<%= encodeURIComponent(request.control_id) %>" class="iso-ref"><%= request.control_id.replace('annex-','').replace('clause-','').toUpperCase() %> · <%= request.control_title %></a></div><% } %>
+      <% if (request.document_id) { %><div><div class="label">Policy</div><a href="/workspaces/<%= ws.id %>/client-portal/policies/<%= request.document_id %>"><%= request.document_name %></a></div><% } %>
+      <% if (request.workpaper_id) { %><div><div class="label">Consultant workpaper</div><div><%= user.user_type === 'firm' ? `Linked workpaper #${request.workpaper_id}` : 'Linked assessment procedure' %></div></div><div><div class="label">Evidence quality</div><div><%= label(request.evidence_quality) %></div></div><% } %>
+    </div>
+    <% if (request.request_reason || request.acceptable_examples) { %><div style="padding:12px 16px;border-top:1px solid var(--border);display:grid;gap:11px;"><% if (request.request_reason) { %><div><div class="label">Why this is required</div><div style="white-space:pre-wrap;line-height:1.55"><%= request.request_reason %></div></div><% } %><% if (request.acceptable_examples) { %><div><div class="label">Acceptable examples</div><div style="white-space:pre-wrap;line-height:1.55"><%= request.acceptable_examples %></div></div><% } %><div class="meta">Evidence period: <%= request.evidence_period_start || 'not set' %> – <%= request.evidence_period_end || 'not set' %> · <%= label(request.confidentiality) %></div></div><% } %>
+    <% if (request.response_note) { %><div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-subtle);"><div class="label">Latest response or review note</div><div style="white-space:pre-wrap;line-height:1.55;"><%= request.response_note %></div></div><% } %>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Lifecycle</h2><span class="meta">Controlled, auditable transitions</span></div>
+    <% if (canManage) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/assign" style="padding:12px 16px;border-bottom:1px solid var(--border);">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="version" value="<%= request.version %>">
+        <label class="label">Assignee</label><div style="display:flex;gap:8px;"><select class="select" name="assignee_id" style="flex:1;"><option value="">Unassigned</option><% members.forEach(m => { %><option value="<%= m.id %>" <%= request.assignee_id === m.id ? 'selected' : '' %>><%= m.name %> · <%= label(m.role) %></option><% }) %></select><button class="btn btn-secondary btn-xs">Reassign</button></div>
+      </form>
+    <% } %>
+    <% if (allowedTransitions.length) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/transition" class="panel-pad">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="version" value="<%= request.version %>">
+        <label class="label">Response or decision note</label><textarea class="textarea" name="response_note" rows="4" maxlength="8000" placeholder="Summarize what was provided, or explain any changes required."></textarea>
+        <% if (canManage && request.workpaper_id && allowedTransitions.includes('accepted')) { %><label class="label" style="margin-top:10px">Consultant evidence-quality conclusion</label><select class="select" name="evidence_quality"><option value="not_reviewed">Not reviewed</option><option value="insufficient">Insufficient</option><option value="partially_sufficient">Partially sufficient</option><option value="sufficient">Sufficient</option></select><div class="meta" style="margin-top:4px">Only sufficient evidence can close a structured workpaper request.</div><% } %>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap;">
+          <% allowedTransitions.forEach(s => { %><button class="btn <%= s === 'accepted' ? 'btn-primary' : s === 'cancelled' ? 'btn-danger' : 'btn-secondary' %>" name="status" value="<%= s %>"><%= label(s) %></button><% }) %>
+        </div>
+      </form>
+    <% } else { %><div class="panel-pad meta">No lifecycle action is available to you in the current state.</div><% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-head"><div><h2>Evidence submissions</h2><div class="meta">Files are SHA-256 hashed, deduplicated within the workspace, and retained in the evidence library.</div></div><span class="tag tag-neutral"><%= evidence.length %></span></div>
+  <% if (evidence.length) { %><div style="overflow-x:auto;"><table class="t"><thead><tr><th>File</th><th>Submitted by</th><th>Integrity</th><th></th></tr></thead><tbody>
+    <% evidence.forEach(e => { %><tr><td><strong><%= e.filename %></strong><div class="meta"><%= e.description || '' %></div></td><td><%= e.uploader || 'Unknown' %><div class="meta"><%= e.linked_at %></div></td><td><code class="text-xs"><%= e.sha256 ? e.sha256.slice(0, 14) + '…' : 'Not recorded' %></code></td><td style="text-align:right;"><a class="btn btn-secondary btn-xs" data-no-spa="1" href="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/evidence/<%= e.id %>/download">Download</a></td></tr><% }) %>
+  </tbody></table></div><% } else { %><div class="panel-pad meta">No evidence has been attached to this request.</div><% } %>
+  <% if (canRespond && !['accepted','cancelled'].includes(request.status)) { %>
+    <form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/evidence" style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><div style="display:grid;grid-template-columns:1fr 2fr auto;gap:8px;align-items:end;"><div><label class="label">File · maximum 50 MB</label><input class="input" type="file" name="file" required></div><div><label class="label">Description</label><input class="input" name="description" maxlength="2000" placeholder="Period, system, sample, and what the file demonstrates"></div><button class="btn btn-primary">Upload evidence</button></div>
+    </form>
+  <% } %>
+</div>
+
+<div class="grid-2" style="align-items:start;">
+  <div class="panel" id="discussion">
+    <div class="panel-head"><div><h2>Discussion</h2><div class="meta">Client-visible unless marked internal by a firm user.</div></div><span class="tag tag-neutral"><%= comments.length %></span></div>
+    <% if (!comments.length) { %><div class="panel-pad meta">No discussion yet.</div><% } else { comments.forEach(c => { %><div style="padding:11px 14px;border-bottom:1px solid var(--border);<%= c.internal_only ? 'background:rgba(202,138,4,0.06);' : '' %>"><div style="display:flex;justify-content:space-between;gap:8px;"><strong class="text-sm"><%= c.user_name %><%= c.internal_only ? ' · Internal' : '' %></strong><span class="meta"><%= c.created_at %></span></div><div style="white-space:pre-wrap;line-height:1.55;margin-top:4px;"><%= c.body %></div></div><% }) } %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/comments" class="panel-pad" style="border-top:1px solid var(--border);">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><textarea class="textarea" name="body" rows="3" maxlength="8000" required placeholder="Ask a question, clarify an acceptance criterion, or explain the submission."></textarea><div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;"><% if (user.user_type === 'firm') { %><label class="meta"><input type="checkbox" name="internal_only" value="1"> Internal only</label><% } else { %><span></span><% } %><button class="btn btn-primary btn-xs">Post comment</button></div>
+    </form>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><div><h2>Request history</h2><div class="meta">Append-only lifecycle record.</div></div></div>
+    <% events.forEach(e => { %><div style="padding:10px 14px;border-bottom:1px solid var(--border);"><div class="text-sm"><strong><%= e.actor_name %></strong> · <%= label(e.event_type) %><% if (e.to_status) { %> · <%= label(e.from_status) %> → <%= label(e.to_status) %><% } %></div><% if (e.note) { %><div class="meta" style="white-space:pre-wrap;margin-top:3px;"><%= e.note %></div><% } %><div class="meta"><%= e.created_at %></div></div><% }) %>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

@@ -10,6 +10,7 @@ const csvImport = require('../lib/csv-import');
 const { ymdLocal, ymLocal } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, extractMentions } = require('../lib/http-helpers');
+const delivery = require('../lib/engagement-delivery');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
 const htmlToDocxPooled = require('../lib/workers').htmlToDocxPooled;
 
@@ -440,12 +441,16 @@ function register(app, deps) {
 
   // ==================== TASKS ====================
   app.get('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => {
+    delivery.ensurePlan(db, req.workspace, req.user.id);
     const filter = req.query.filter || 'open';
-    let q = `SELECT t.*, u.name AS assignee_name, c.name AS creator_name, i.title AS iso_title
+    let q = `SELECT t.*, u.name AS assignee_name, c.name AS creator_name, i.title AS iso_title,
+                    em.title AS milestone_title, ed.title AS deliverable_title
              FROM tasks t
              LEFT JOIN users u ON u.id = t.assignee_id
              LEFT JOIN users c ON c.id = t.created_by
              LEFT JOIN iso_items i ON i.id = t.iso_item_id
+             LEFT JOIN engagement_delivery_milestones em ON em.id=t.engagement_milestone_id
+             LEFT JOIN engagement_delivery_deliverables ed ON ed.id=t.engagement_deliverable_id
              WHERE t.workspace_id = ?`;
     if (filter === 'mine') q += ` AND t.assignee_id = ${req.user.id}`;
     if (filter === 'open') q += ` AND t.status NOT IN ('done')`;
@@ -459,29 +464,39 @@ function register(app, deps) {
       INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
       UNION SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1`)
       .all(req.workspace.id, req.workspace.firm_id);
+    const planMilestones = db.prepare(`SELECT m.id,m.title,p.name phase_name FROM engagement_delivery_milestones m
+      JOIN engagement_delivery_phases p ON p.id=m.phase_id JOIN engagement_delivery_plans ep ON ep.id=m.plan_id
+      WHERE ep.workspace_id=? ORDER BY p.sort_order,m.id`).all(req.workspace.id);
     res.render('tasks', { user: req.user, ws: req.workspace, tasks, filter, wsUsers,
-      pg: pgT, pagerHref: p => pageHref(req, p) });
+      planMilestones, pg: pgT, pagerHref: p => pageHref(req, p) });
   });
 
   app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
-    const { title, description, iso_item_id, assignee_id, due_date } = req.body;
+    const { title, description, iso_item_id, assignee_id, due_date, engagement_milestone_id } = req.body;
     if (!title) return redirectBack(req, res);
-    const id = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, assignee_id, due_date, created_by)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    const milestone = engagement_milestone_id ? db.prepare(`SELECT m.id FROM engagement_delivery_milestones m
+      JOIN engagement_delivery_plans p ON p.id=m.plan_id WHERE m.id=? AND p.workspace_id=?`).get(engagement_milestone_id, req.workspace.id) : null;
+    const id = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, assignee_id, due_date, created_by, engagement_milestone_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, title.trim(), description || null, iso_item_id || null,
-           assignee_id || null, due_date || null, req.user.id).lastInsertRowid;
+           assignee_id || null, due_date || null, req.user.id, milestone ? milestone.id : null).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'create_task', 'task', id, { title });
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/tasks', 'Task created'));
   });
 
   app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
-    const { status, assignee_id, due_date, title, description } = req.body;
+    const { status, assignee_id, due_date, title, description, engagement_milestone_id } = req.body;
     const sets = []; const vals = [];
     if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
     if (assignee_id !== undefined) { sets.push('assignee_id = ?'); vals.push(assignee_id || null); }
     if (due_date !== undefined) { sets.push('due_date = ?'); vals.push(due_date || null); }
     if (title !== undefined) { sets.push('title = ?'); vals.push(title); }
     if (description !== undefined) { sets.push('description = ?'); vals.push(description || null); }
+    if (engagement_milestone_id !== undefined) {
+      const milestone = engagement_milestone_id ? db.prepare(`SELECT m.id FROM engagement_delivery_milestones m
+        JOIN engagement_delivery_plans p ON p.id=m.plan_id WHERE m.id=? AND p.workspace_id=?`).get(engagement_milestone_id, req.workspace.id) : null;
+      sets.push('engagement_milestone_id = ?'); vals.push(milestone ? milestone.id : null);
+    }
     if (sets.length) {
       vals.push(req.params.id, req.workspace.id);
       db.prepare(`UPDATE tasks SET ${sets.join(',')} WHERE id = ? AND workspace_id = ?`).run(...vals);

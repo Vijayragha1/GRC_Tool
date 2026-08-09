@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const email = require('../lib/email');
+const { buildWorkspaceTruth } = require('../lib/grc-truth');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-helpers');
 
@@ -427,60 +428,96 @@ function register(app, deps) {
     ['service_levels', 'Service levels and remedies']
   ];
 
-  // Inherent risk: 1-25 based on data access × business criticality, then add weights for volume / dependency / regulatory exposure
-  function computeInherentRisk(s) {
-    const dataMap = { none: 1, public: 1, internal: 2, confidential: 4, restricted: 5 };
-    const critMap = { low: 1, medium: 2, high: 3, critical: 4, '': 2 };
-    const volMap = { none: 0, low: 0, medium: 1, high: 2, '': 0 };
-    const depMap = { multi_source: 0, alternative: 1, single_source: 2, '': 0 };
-    const dataScore = dataMap[s.data_access || 'none'] || 1;
-    const critScore = critMap[s.business_criticality || 'medium'] || 2;
-    const volBonus = volMap[s.data_volume || 'low'] || 0;
-    const depBonus = depMap[s.dependency_type || 'multi_source'] || 0;
-    const regBonus = s.regulatory_exposure ? Math.min(2, s.regulatory_exposure.split(',').filter(x => x.trim()).length) : 0;
-    // Likelihood proxy = dependency + 2; Impact = data * crit / 5
-    const impact = Math.min(5, dataScore + Math.floor(critScore / 2));
-    const likelihood = Math.min(5, 2 + depBonus + Math.floor(volBonus / 2) + Math.floor(regBonus / 2));
-    return Math.max(1, Math.min(25, impact * likelihood));
-  }
+  const DEFAULT_TPRM_METHOD = {
+    version: 1,
+    name: 'Nimbus TPRM five-domain methodology',
+    domain_weights: { security: 20, privacy: 20, operational: 25, resilience: 20, concentration: 15 },
+    control_weights: { assessment: 40, assurance: 25, contract: 20, review: 10, subprocessor: 5 },
+    thresholds: { low: 6, moderate: 11, high: 17, critical: 25 },
+    review_cadence: { tier_1: 6, tier_2: 12, tier_3: 24 }
+  };
 
-  // Residual risk: inherent minus controls credit derived from documents + questionnaire score
-  function computeResidualRisk(supplierId, inherent) {
-    let credit = 0;
-    const docs = db.prepare(`SELECT doc_type, expiry_date FROM supplier_documents WHERE supplier_id=?`).all(supplierId);
-    const today = new Date().toISOString().split('T')[0];
-    const validDocs = docs.filter(d => !d.expiry_date || d.expiry_date >= today);
-    const hasType = (t) => validDocs.some(d => d.doc_type === t);
-    if (hasType('iso_27001') || hasType('soc2_type2')) credit += 4;
-    else if (hasType('soc2_type1')) credit += 2;
-    if (hasType('iso_27017') || hasType('iso_27018') || hasType('iso_27701')) credit += 2;
-    if (hasType('pentest')) credit += 2;
-    if (hasType('dpa')) credit += 2;
-    if (hasType('insurance')) credit += 1;
-
-    // Questionnaire credit (best score across questionnaires)
-    const bestQ = db.prepare(`SELECT MAX(score) AS s FROM supplier_questionnaires WHERE supplier_id=? AND status IN ('reviewed','responded') AND score IS NOT NULL`).get(supplierId);
-    if (bestQ.s !== null) {
-      if (bestQ.s >= 90) credit += 5;
-      else if (bestQ.s >= 75) credit += 3;
-      else if (bestQ.s >= 60) credit += 2;
-      else if (bestQ.s >= 40) credit += 1;
+  function ensureSupplierMethodology(wsId, userId) {
+    let row = db.prepare(`SELECT * FROM supplier_risk_methodologies WHERE workspace_id=? AND is_active=1 ORDER BY version DESC LIMIT 1`).get(wsId);
+    if (!row) {
+      db.prepare(`INSERT OR IGNORE INTO supplier_risk_methodologies
+        (workspace_id, version, name, domain_weights, control_weights, thresholds, review_cadence, is_active, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`)
+        .run(wsId, DEFAULT_TPRM_METHOD.version, DEFAULT_TPRM_METHOD.name,
+          JSON.stringify(DEFAULT_TPRM_METHOD.domain_weights), JSON.stringify(DEFAULT_TPRM_METHOD.control_weights),
+          JSON.stringify(DEFAULT_TPRM_METHOD.thresholds), JSON.stringify(DEFAULT_TPRM_METHOD.review_cadence), userId || null);
+      row = db.prepare(`SELECT * FROM supplier_risk_methodologies WHERE workspace_id=? AND is_active=1 ORDER BY version DESC LIMIT 1`).get(wsId);
     }
-
-    // Clauses credit
-    const presentClauses = db.prepare(`SELECT COUNT(*) AS c FROM supplier_clauses WHERE supplier_id=? AND status='present'`).get(supplierId).c;
-    if (presentClauses >= 8) credit += 2;
-    else if (presentClauses >= 5) credit += 1;
-
-    return Math.max(1, Math.min(25, inherent - credit));
+    return row;
   }
 
-  function recomputeSupplierRisk(supplierId, wsId) {
+  function riskBand(score) {
+    if (score >= 18) return 'critical';
+    if (score >= 12) return 'high';
+    if (score >= 7) return 'moderate';
+    return 'low';
+  }
+
+  // A transparent five-domain model. Each domain is scored 1–5 and retained
+  // in the immutable snapshot so reviewers can explain every result later.
+  function computeInherentRisk(s) {
+    const data = ({ none: 1, public: 1, internal: 2, confidential: 4, restricted: 5 })[s.data_access] || 1;
+    const volume = ({ none: 1, low: 2, medium: 3, high: 5 })[s.data_volume] || 2;
+    const criticality = ({ low: 1, medium: 2, high: 4, critical: 5 })[s.business_criticality] || 2;
+    const dependency = ({ multi_source: 1, alternative: 3, single_source: 5 })[s.dependency_type] || 1;
+    const regulationCount = String(s.regulatory_exposure || '').split(',').filter(x => x.trim()).length;
+    const recovery = s.rto_hours != null ? (s.rto_hours <= 4 ? 5 : s.rto_hours <= 24 ? 4 : s.rto_hours <= 72 ? 3 : 2) : criticality;
+    const domains = {
+      security: Math.max(data, volume),
+      privacy: Math.max(data >= 4 ? data : 1, regulationCount ? Math.min(5, 2 + regulationCount) : 1),
+      operational: Math.max(criticality, dependency),
+      resilience: Math.max(recovery, criticality),
+      concentration: Math.max(dependency, s.parent_company ? 2 : 1)
+    };
+    return { score: Object.values(domains).reduce((n, v) => n + v, 0), domains };
+  }
+
+  function computeControlEffectiveness(supplierId) {
+    const today = new Date().toISOString().slice(0, 10);
+    const validDocs = db.prepare(`SELECT doc_type FROM supplier_documents WHERE supplier_id=? AND (expiry_date IS NULL OR expiry_date>=?)`).all(supplierId, today);
+    const assuranceTypes = new Set(validDocs.map(d => d.doc_type));
+    const assuranceSignals = ['iso_27001','soc2_type2','pentest','dpa','bcp_test'].filter(t => assuranceTypes.has(t)).length;
+    const assessment = db.prepare(`SELECT MAX(score) s FROM supplier_questionnaires WHERE supplier_id=? AND status='reviewed' AND score IS NOT NULL`).get(supplierId).s;
+    const clauses = db.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) present FROM supplier_clauses WHERE supplier_id=?`).get(supplierId);
+    const subproc = db.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN approved=1 THEN 1 ELSE 0 END) approved FROM supplier_subprocessors WHERE supplier_id=?`).get(supplierId);
+    const recentReview = db.prepare(`SELECT 1 ok FROM supplier_reviews WHERE supplier_id=? AND review_date>=date('now','-12 months') ORDER BY review_date DESC LIMIT 1`).get(supplierId);
+    const components = {
+      assessment: assessment == null ? 0 : Math.round(40 * Math.max(0, Math.min(100, assessment)) / 100),
+      assurance: Math.round(25 * Math.min(1, assuranceSignals / 3)),
+      contract: clauses.total ? Math.round(20 * (clauses.present || 0) / clauses.total) : 0,
+      review: recentReview ? 10 : 0,
+      subprocessor: subproc.total ? Math.round(5 * (subproc.approved || 0) / subproc.total) : 5
+    };
+    return { score: Object.values(components).reduce((n, v) => n + v, 0), components,
+      evidence: { reviewedAssessmentScore: assessment, currentAssuranceSignals: assuranceSignals, clausesPresent: clauses.present || 0, clausesTotal: clauses.total || 0, recentReview: !!recentReview, subprocessorsApproved: subproc.approved || 0, subprocessorsTotal: subproc.total || 0 } };
+  }
+
+  function recomputeSupplierRisk(supplierId, wsId, eventType = 'recalculation', userId = null) {
     const s = db.prepare(`SELECT * FROM suppliers WHERE id=? AND workspace_id=?`).get(supplierId, wsId);
-    if (!s) return;
+    if (!s) return null;
+    const method = ensureSupplierMethodology(wsId, userId);
     const inherent = computeInherentRisk(s);
-    const residual = computeResidualRisk(supplierId, inherent);
-    db.prepare(`UPDATE suppliers SET inherent_risk_score=?, residual_risk_score=? WHERE id=? AND workspace_id=?`).run(inherent, residual, supplierId, wsId);
+    const control = computeControlEffectiveness(supplierId);
+    const calculated = Math.max(1, Math.round(inherent.score * (1 - control.score / 100)));
+    const effective = s.risk_override_score != null ? Math.max(1, Math.min(25, parseInt(s.risk_override_score, 10))) : calculated;
+    const band = riskBand(effective);
+    const components = JSON.stringify({ domains: inherent.domains, controls: control.components, evidence: control.evidence, override: s.risk_override_score == null ? null : { score: effective, reason: s.risk_override_reason } });
+    db.prepare(`UPDATE suppliers SET inherent_risk_score=?, residual_risk_score=?, tier=? WHERE id=? AND workspace_id=?`)
+      .run(inherent.score, effective, tierFromRisk(inherent.score), supplierId, wsId);
+    const last = db.prepare(`SELECT inherent_score, control_effectiveness, calculated_residual_score, effective_residual_score, components FROM supplier_risk_snapshots WHERE supplier_id=? ORDER BY id DESC LIMIT 1`).get(supplierId);
+    if (!last || last.inherent_score !== inherent.score || last.control_effectiveness !== control.score || last.calculated_residual_score !== calculated || last.effective_residual_score !== effective || last.components !== components || eventType !== 'recalculation') {
+      db.prepare(`INSERT INTO supplier_risk_snapshots
+        (workspace_id, supplier_id, methodology_id, methodology_version, inherent_score, control_effectiveness, calculated_residual_score, effective_residual_score, risk_band, components, rationale, event_type, recorded_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(wsId, supplierId, method.id, method.version, inherent.score, control.score, calculated, effective, band, components,
+          s.risk_override_reason || 'Calculated from the current supplier profile and reviewed evidence.', eventType, userId || null);
+    }
+    return { inherent: inherent.score, residual: effective, calculated, controlEffectiveness: control.score, band, components: JSON.parse(components), methodology: method };
   }
 
   function tierFromRisk(score) {
@@ -489,8 +526,36 @@ function register(app, deps) {
     return 'tier_3';
   }
 
+  // Converge any pre-existing raw questionnaire links into the hash-only token
+  // store without invalidating the URL already held by the vendor.
+  db.transaction(() => {
+    const legacy = db.prepare(`SELECT q.*, s.entity_id FROM supplier_questionnaires q
+      INNER JOIN suppliers s ON s.id=q.supplier_id
+      WHERE q.external_token IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM external_assessment_tokens et WHERE et.questionnaire_id=q.id)`).all();
+    const insert = db.prepare(`INSERT OR IGNORE INTO external_assessment_tokens
+      (workspace_id,assessment_id,entity_id,questionnaire_id,email,name,token_hash,issued_at,expires_at,completed_at,migrated_from)
+      VALUES (?,NULL,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),?,?,?)`);
+    legacy.forEach(q => {
+      const hash = crypto.createHash('sha256').update(q.external_token).digest('hex');
+      insert.run(q.workspace_id, q.entity_id || null, q.id, q.external_email || 'legacy-link@local.invalid', q.external_contact_name || null,
+        hash, q.sent_at || null, q.external_expires_at || new Date(Date.now() + 30 * 86400000).toISOString(), q.external_completed_at || null, `supplier_questionnaires:${q.id}`);
+      db.prepare(`UPDATE supplier_questionnaires SET external_token=NULL WHERE id=?`).run(q.id);
+    });
+  })();
+
+  // One-time convergence for suppliers created before the versioned TPRM
+  // method existed. This runs at application boot, not during a page read.
+  db.transaction(() => {
+    db.prepare(`SELECT s.id,s.workspace_id FROM suppliers s
+      WHERE s.inherent_risk_score IS NULL OR s.residual_risk_score IS NULL
+         OR NOT EXISTS (SELECT 1 FROM supplier_risk_snapshots r WHERE r.supplier_id=s.id)`)
+      .all().forEach(s => recomputeSupplierRisk(s.id, s.workspace_id, 'methodology_v1_backfill', null));
+  })();
+
   app.get('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
     const filter = req.query.filter || 'active';
+    const section = req.query.section || 'overview';
     const ef = activeEntityFilter(req, 's');
     let q = `SELECT s.*,
       (SELECT COUNT(*) FROM supplier_documents WHERE supplier_id=s.id) AS doc_count,
@@ -500,7 +565,7 @@ function register(app, deps) {
       (SELECT COUNT(*) FROM supplier_questionnaires WHERE supplier_id=s.id) AS q_count,
       (SELECT MAX(score) FROM supplier_questionnaires WHERE supplier_id=s.id AND score IS NOT NULL) AS best_q_score
       FROM suppliers s WHERE s.workspace_id=?${ef.sql}`;
-    if (filter === 'active') q += ` AND s.lifecycle_stage NOT IN ('terminated')`;
+    if (filter === 'active') q += ` AND s.lifecycle_stage NOT IN ('terminated') AND s.archived_at IS NULL`;
     else if (filter === 'review') q += ` AND s.next_review_date < date('now','+30 days')`;
     else if (filter === 'high_risk') q += ` AND s.residual_risk_score >= 15`;
     const pgV = paginate(db, req, {
@@ -512,11 +577,13 @@ function register(app, deps) {
 
     // TPRM dashboard summary
     const summary = {
-      total: db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated'`).get(req.workspace.id).c,
-      tier1: db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' AND residual_risk_score >= 18`).get(req.workspace.id).c,
+      total: db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' AND archived_at IS NULL`).get(req.workspace.id).c,
+      tier1: db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' AND archived_at IS NULL AND tier='tier_1'`).get(req.workspace.id).c,
       expiring: db.prepare(`SELECT COUNT(*) c FROM supplier_documents d INNER JOIN suppliers s ON s.id=d.supplier_id WHERE s.workspace_id=? AND d.expiry_date IS NOT NULL AND d.expiry_date < date('now','+30 days') AND d.expiry_date >= date('now')`).get(req.workspace.id).c,
       overdueReview: db.prepare(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=? AND lifecycle_stage != 'terminated' AND next_review_date IS NOT NULL AND next_review_date < date('now')`).get(req.workspace.id).c,
-      questionnairesPending: db.prepare(`SELECT COUNT(*) c FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id=q.supplier_id WHERE s.workspace_id=? AND q.status IN ('draft','sent')`).get(req.workspace.id).c
+      questionnairesPending: db.prepare(`SELECT COUNT(*) c FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id=q.supplier_id WHERE s.workspace_id=? AND q.status IN ('draft','sent')`).get(req.workspace.id).c,
+      openFindings: db.prepare(`SELECT COUNT(*) c FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id WHERE f.workspace_id=? AND f.status NOT IN ('closed','verified')`).get(req.workspace.id).c,
+      conditional: db.prepare(`SELECT COUNT(DISTINCT d.supplier_id) c FROM supplier_decisions d INNER JOIN suppliers s ON s.id=d.supplier_id WHERE d.workspace_id=? AND d.decision='conditional' AND d.superseded_at IS NULL AND s.archived_at IS NULL`).get(req.workspace.id).c
     };
 
     // Concentration: count tier_1/critical suppliers by industry / parent / region
@@ -529,28 +596,76 @@ function register(app, deps) {
     // Upcoming renewals (next 90 days)
     const renewals = db.prepare(`SELECT id, name, contract_end, renewal_notice_days, auto_renew FROM suppliers WHERE workspace_id=? AND contract_end IS NOT NULL AND contract_end >= date('now') AND contract_end <= date('now','+90 days') ORDER BY contract_end`).all(req.workspace.id);
 
-    res.render('vendors', { user: req.user, ws: req.workspace, vendors, filter, summary, concentration, renewals,
+    const assessments = db.prepare(`SELECT q.*, s.name AS supplier_name, s.tier
+      FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id=q.supplier_id
+      WHERE q.workspace_id=? ORDER BY COALESCE(q.due_date,'9999-12-31'), q.created_at DESC LIMIT 200`).all(req.workspace.id);
+    const findings = db.prepare(`SELECT f.*, l.domain, l.due_date, l.owner_name, l.risk_acceptance_expires_at,
+        s.id AS supplier_id, s.name AS supplier_name
+      FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id
+      INNER JOIN suppliers s ON s.id=l.supplier_id
+      WHERE f.workspace_id=? ORDER BY CASE f.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, COALESCE(l.due_date,'9999-12-31') LIMIT 200`).all(req.workspace.id);
+    const reviews = db.prepare(`SELECT r.*, s.name AS supplier_name, s.tier
+      FROM supplier_reviews r INNER JOIN suppliers s ON s.id=r.supplier_id
+      WHERE r.workspace_id=? ORDER BY r.review_date DESC, r.created_at DESC LIMIT 200`).all(req.workspace.id);
+    const actionQueue = {
+      overdueReviews: db.prepare(`SELECT id,name,next_review_date,tier FROM suppliers WHERE workspace_id=? AND archived_at IS NULL AND lifecycle_stage!='terminated' AND next_review_date<date('now') ORDER BY next_review_date LIMIT 8`).all(req.workspace.id),
+      dueAssessments: db.prepare(`SELECT q.id,q.supplier_id,q.template_name,q.due_date,q.invitation_status,s.name supplier_name FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id=q.supplier_id WHERE q.workspace_id=? AND q.status NOT IN ('reviewed') AND q.due_date IS NOT NULL AND q.due_date<=date('now','+14 days') ORDER BY q.due_date LIMIT 8`).all(req.workspace.id),
+      expiringEvidence: db.prepare(`SELECT d.id,d.supplier_id,d.name,d.expiry_date,s.name supplier_name FROM supplier_documents d INNER JOIN suppliers s ON s.id=d.supplier_id WHERE d.workspace_id=? AND d.expiry_date BETWEEN date('now') AND date('now','+30 days') ORDER BY d.expiry_date LIMIT 8`).all(req.workspace.id),
+      overdueFindings: db.prepare(`SELECT f.id,f.title,l.supplier_id,l.due_date,s.name supplier_name FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id INNER JOIN suppliers s ON s.id=l.supplier_id WHERE f.workspace_id=? AND f.status NOT IN ('closed','verified','accepted_risk') AND l.due_date<date('now') ORDER BY l.due_date LIMIT 8`).all(req.workspace.id)
+    };
+
+    const truth = buildWorkspaceTruth(db, req.workspace);
+    const supplierTruth = {
+      issues: truth.issues.filter(issue => issue.domain === 'suppliers'),
+      counts: truth.issues.filter(issue => issue.domain === 'suppliers').reduce((counts, issue) => {
+        counts[issue.severity] = (counts[issue.severity] || 0) + 1; return counts;
+      }, { critical: 0, high: 0, medium: 0, low: 0 })
+    };
+    res.render('vendors', { user: req.user, ws: req.workspace, vendors, filter, section, summary, concentration, renewals, assessments, findings, reviews, actionQueue, supplierTruth,
       pg: pgV, pagerHref: p => pageHref(req, p) });
   });
 
+  app.get('/workspaces/:wsId/vendors/export.csv', requireAuth, requireWorkspace, requirePermission('supplier.export'), (req, res) => {
+    const rows = db.prepare(`SELECT name,service_provided,tier,lifecycle_stage,business_owner,relationship_owner,
+      inherent_risk_score,residual_risk_score,next_review_date,contract_end,location,regulatory_exposure
+      FROM suppliers WHERE workspace_id=? ORDER BY name`).all(req.workspace.id);
+    const cols = ['name','service_provided','tier','lifecycle_stage','business_owner','relationship_owner','inherent_risk_score','residual_risk_score','next_review_date','contract_end','location','regulatory_exposure'];
+    const csvCell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const csv = [cols.map(csvCell).join(','), ...rows.map(r => cols.map(c => csvCell(r[c])).join(','))].join('\n');
+    logAction(req.user.id, req.workspace.id, 'export_supplier_register', 'supplier', null, { rows: rows.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="supplier-risk-register-${req.workspace.id}.csv"`);
+    res.send(csv);
+  });
+
   app.post('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
-    const { name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure } = req.body;
+    const { name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure,
+      business_owner, relationship_owner, security_reviewer, privacy_owner, service_category, processing_purpose,
+      data_categories, hosting_locations, critical_processes, system_access, rto_hours, rpo_hours, exit_strategy } = req.body;
     if (!name) return redirectBack(req, res);
-    const id = db.prepare(`INSERT INTO suppliers (workspace_id, name, service_provided, business_criticality, data_access, data_volume, dependency_type, location, regulatory_exposure, lifecycle_stage)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'prospect')`).run(
-      req.workspace.id, name, service_provided || null,
-      business_criticality || 'medium', data_access || 'none', data_volume || 'low',
-      dependency_type || 'multi_source', location || null, regulatory_exposure || null
-    ).lastInsertRowid;
-
-    // Seed standard contract clauses checklist
-    const insClause = db.prepare(`INSERT INTO supplier_clauses (workspace_id, supplier_id, clause_key, clause_label, status) VALUES (?, ?, ?, ?, 'pending')`);
-    STANDARD_CLAUSES.forEach(([k, label]) => insClause.run(req.workspace.id, id, k, label));
-
-    recomputeSupplierRisk(id, req.workspace.id);
-    // Auto-tier from inherent risk
-    const cur = db.prepare(`SELECT inherent_risk_score FROM suppliers WHERE id=? AND workspace_id=?`).get(id, req.workspace.id);
-    db.prepare(`UPDATE suppliers SET tier=? WHERE id=? AND workspace_id=?`).run(tierFromRisk(cur.inherent_risk_score), id, req.workspace.id);
+    const createSupplier = db.transaction(() => {
+      const entityId = db.prepare(`INSERT INTO entities (workspace_id,name,description,entity_type,region,contact,attributes)
+        VALUES (?, ?, ?, 'supplier', ?, ?, ?)`)
+        .run(req.workspace.id, name.trim(), service_provided || null, location || null, req.body.contact || null,
+          JSON.stringify({ lifecycle_stage: 'prospect', criticality: business_criticality || 'medium', data_access: data_access || 'none' })).lastInsertRowid;
+      const id = db.prepare(`INSERT INTO suppliers
+        (workspace_id, entity_id, name, service_provided, business_criticality, data_access, data_volume, dependency_type,
+         location, regulatory_exposure, lifecycle_stage, business_owner, relationship_owner, security_reviewer,
+         privacy_owner, service_category, processing_purpose, data_categories, hosting_locations, critical_processes,
+         system_access, rto_hours, rpo_hours, exit_strategy, contact)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prospect', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(req.workspace.id, entityId, name.trim(), service_provided || null,
+          business_criticality || 'medium', data_access || 'none', data_volume || 'low', dependency_type || 'multi_source',
+          location || null, regulatory_exposure || null, business_owner || null, relationship_owner || null,
+          security_reviewer || null, privacy_owner || null, service_category || null, processing_purpose || null,
+          data_categories || null, hosting_locations || null, critical_processes || null, system_access || null,
+          rto_hours || null, rpo_hours || null, exit_strategy || null, req.body.contact || null).lastInsertRowid;
+      const insClause = db.prepare(`INSERT INTO supplier_clauses (workspace_id, supplier_id, clause_key, clause_label, status) VALUES (?, ?, ?, ?, 'pending')`);
+      STANDARD_CLAUSES.forEach(([k, label]) => insClause.run(req.workspace.id, id, k, label));
+      return id;
+    });
+    const id = createSupplier();
+    recomputeSupplierRisk(id, req.workspace.id, 'supplier_created', req.user.id);
     fts.refresh(req.workspace.id, 'supplier', id);
 
     logAction(req.user.id, req.workspace.id, 'create_supplier', 'supplier', id, { name });
@@ -579,11 +694,23 @@ function register(app, deps) {
     const templates = db.prepare(`SELECT id, name, description, category, (SELECT COUNT(*) FROM questionnaire_questions WHERE template_id=questionnaire_templates.id) AS q_count FROM questionnaire_templates WHERE is_system=1 OR firm_id=? ORDER BY name`).all(req.workspace.firm_id);
     const monitoring = db.prepare('SELECT * FROM supplier_monitoring WHERE supplier_id=? ORDER BY recorded_at DESC').all(v.id);
     const terminationItems = db.prepare('SELECT * FROM supplier_termination_items WHERE supplier_id=? ORDER BY id').all(v.id);
+    const riskHistory = db.prepare(`SELECT r.*, u.name AS recorded_by_name FROM supplier_risk_snapshots r LEFT JOIN users u ON u.id=r.recorded_by WHERE r.supplier_id=? ORDER BY r.id DESC LIMIT 50`).all(v.id)
+      .map(r => { try { return { ...r, components_parsed: JSON.parse(r.components || '{}') }; } catch (_) { return { ...r, components_parsed: {} }; } });
+    const riskMethodology = ensureSupplierMethodology(req.workspace.id, req.user.id);
+    const supplierFindings = db.prepare(`SELECT f.*, l.domain, l.due_date, l.owner_name, l.risk_acceptance_reason,
+        l.risk_acceptance_expires_at, l.accepted_at, u.name AS accepted_by_name
+      FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id
+      LEFT JOIN users u ON u.id=l.accepted_by
+      WHERE l.supplier_id=? AND f.workspace_id=?
+      ORDER BY CASE f.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, f.created_at DESC`).all(v.id, req.workspace.id);
+    const decisions = db.prepare(`SELECT d.*, u.name AS decided_by_name FROM supplier_decisions d LEFT JOIN users u ON u.id=d.decided_by WHERE d.supplier_id=? AND d.workspace_id=? ORDER BY d.id DESC`).all(v.id, req.workspace.id);
+    const activity = db.prepare(`SELECT a.*, u.name AS actor_name FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? AND ((a.entity_type='supplier' AND a.entity_id=?) OR (a.entity_type='questionnaire' AND a.entity_id IN (SELECT CAST(id AS TEXT) FROM supplier_questionnaires WHERE supplier_id=?))) ORDER BY a.id DESC LIMIT 100`).all(req.workspace.id, String(v.id), v.id);
 
     res.render('vendor_detail', {
       user: req.user, ws: req.workspace, v, tab,
       docs, subprocessors, reviews, notes, clauses, questionnaires, templates,
-      monitoring, terminationItems, supplierControls, allControlsForVendor,
+      monitoring, terminationItems, supplierControls, allControlsForVendor, riskHistory, riskMethodology,
+      supplierFindings, decisions, activity,
       inherent: v.inherent_risk_score, residual: v.residual_risk_score
     });
   });
@@ -592,7 +719,9 @@ function register(app, deps) {
     const f = ['name','service_provided','tier','data_access','data_volume','business_criticality','dependency_type',
               'lifecycle_stage','contract_start','contract_end','next_review_date','attestations','contact','website',
               'industry','location','parent_company','regulatory_exposure','annual_spend','renewal_notice_days',
-              'auto_renew','approved_by','notes','status','last_assessed'];
+              'auto_renew','approved_by','notes','status','last_assessed','relationship_owner','business_owner',
+              'security_reviewer','privacy_owner','service_category','processing_purpose','data_categories',
+              'hosting_locations','critical_processes','system_access','rto_hours','rpo_hours','exit_strategy'];
     const set = []; const vals = [];
     f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
     if (req.body.lifecycle_stage === 'approved' && !req.body.approved_at) {
@@ -604,17 +733,129 @@ function register(app, deps) {
     if (set.length) {
       vals.push(req.params.id, req.workspace.id);
       db.prepare(`UPDATE suppliers SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
-      recomputeSupplierRisk(req.params.id, req.workspace.id);
+      recomputeSupplierRisk(req.params.id, req.workspace.id, 'profile_updated', req.user.id);
+      const current = db.prepare(`SELECT entity_id,name,service_provided,location,contact,lifecycle_stage,business_criticality,data_access FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+      if (current && current.entity_id) db.prepare(`UPDATE entities SET name=?,description=?,region=?,contact=?,attributes=? WHERE id=? AND workspace_id=?`)
+        .run(current.name, current.service_provided || null, current.location || null, current.contact || null,
+          JSON.stringify({ lifecycle_stage: current.lifecycle_stage, criticality: current.business_criticality, data_access: current.data_access }), current.entity_id, req.workspace.id);
       fts.refresh(req.workspace.id, 'supplier', req.params.id);
       logAction(req.user.id, req.workspace.id, 'update_supplier', 'supplier', req.params.id, null);
     }
     res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id);
   });
 
+  app.post('/workspaces/:wsId/vendors/:id/archive', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+    const supplier = db.prepare(`SELECT id,entity_id,name FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    if (!supplier) return res.status(404).send('Supplier not found');
+    const reason = String(req.body.reason || '').trim();
+    if (!reason) return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}`, 'An archive reason is required.', 'error'));
+    db.prepare(`UPDATE suppliers SET archived_at=CURRENT_TIMESTAMP,archived_by=?,archive_reason=?,status='archived' WHERE id=? AND workspace_id=?`)
+      .run(req.user.id, reason, supplier.id, req.workspace.id);
+    if (supplier.entity_id) db.prepare(`UPDATE entities SET is_active=0 WHERE id=? AND workspace_id=?`).run(supplier.entity_id, req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'archive_supplier', 'supplier', supplier.id, { name: supplier.name, reason }, auditCtx(req));
+    fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'supplier', entityId: supplier.id });
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors?section=register&filter=all`, `${supplier.name} archived. Historical records were retained.`));
+  });
+
+  // Legacy endpoint retained as a non-destructive compatibility path.
   app.post('/workspaces/:wsId/vendors/:id/delete', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
-    db.prepare(`DELETE FROM suppliers WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
-    fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'supplier', entityId: req.params.id });
-    res.redirect('/workspaces/' + req.workspace.id + '/vendors');
+    req.body.reason = req.body.reason || 'Archived through the legacy delete action';
+    const supplier = db.prepare(`SELECT id,entity_id,name FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    if (!supplier) return res.status(404).send('Supplier not found');
+    db.prepare(`UPDATE suppliers SET archived_at=CURRENT_TIMESTAMP,archived_by=?,archive_reason=?,status='archived' WHERE id=? AND workspace_id=?`)
+      .run(req.user.id, req.body.reason, supplier.id, req.workspace.id);
+    if (supplier.entity_id) db.prepare(`UPDATE entities SET is_active=0 WHERE id=? AND workspace_id=?`).run(supplier.entity_id, req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'archive_supplier', 'supplier', supplier.id, { reason: req.body.reason }, auditCtx(req));
+    fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'supplier', entityId: supplier.id });
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors?section=register&filter=all`, `${supplier.name} archived. Historical records were retained.`));
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/risk-override', requireAuth, requireWorkspace, requirePermission('supplier.risk_accept'), (req, res) => {
+    const score = parseInt(req.body.score, 10);
+    const reason = String(req.body.reason || '').trim();
+    if (!Number.isInteger(score) || score < 1 || score > 25 || reason.length < 10) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=risk`, 'Enter a score from 1–25 and a meaningful rationale.', 'error'));
+    }
+    const r = db.prepare(`UPDATE suppliers SET risk_override_score=?,risk_override_reason=?,risk_override_by=?,risk_override_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`)
+      .run(score, reason, req.user.id, req.params.id, req.workspace.id);
+    if (!r.changes) return res.status(404).send('Supplier not found');
+    recomputeSupplierRisk(req.params.id, req.workspace.id, 'risk_override', req.user.id);
+    logAction(req.user.id, req.workspace.id, 'override_supplier_risk', 'supplier', req.params.id, { score, reason }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=risk`, 'Risk override recorded with an immutable snapshot.'));
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/risk-override/clear', requireAuth, requireWorkspace, requirePermission('supplier.risk_accept'), (req, res) => {
+    const reason = String(req.body.reason || '').trim();
+    if (reason.length < 10) return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=risk`, 'Explain why the override is being removed.', 'error'));
+    db.prepare(`UPDATE suppliers SET risk_override_score=NULL,risk_override_reason=NULL,risk_override_by=NULL,risk_override_at=NULL WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+    recomputeSupplierRisk(req.params.id, req.workspace.id, 'risk_override_cleared', req.user.id);
+    logAction(req.user.id, req.workspace.id, 'clear_supplier_risk_override', 'supplier', req.params.id, { reason }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=risk`, 'Risk override removed; calculated residual risk restored.'));
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/findings', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+    const supplier = db.prepare(`SELECT id FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    const title = String(req.body.title || '').trim();
+    if (!supplier || !title) return redirectBack(req, res);
+    const severity = ['low','medium','high','critical'].includes(req.body.severity) ? req.body.severity : 'medium';
+    const create = db.transaction(() => {
+      const findingId = db.prepare(`INSERT INTO findings (workspace_id,source_type,source_id,title,description,severity,severity_scheme,status,created_by)
+        VALUES (?,'manual',?,?,?,?,'hml','open',?)`).run(req.workspace.id, `supplier:${supplier.id}`, title, req.body.description || null, severity, req.user.id).lastInsertRowid;
+      db.prepare(`INSERT INTO supplier_finding_links (finding_id,supplier_id,questionnaire_id,domain,due_date,owner_name)
+        VALUES (?,?,?,?,?,?)`).run(findingId, supplier.id, req.body.questionnaire_id || null, req.body.domain || null, req.body.due_date || null, req.body.owner_name || null);
+      return findingId;
+    });
+    const findingId = create();
+    logAction(req.user.id, req.workspace.id, 'create_supplier_finding', 'supplier', supplier.id, { findingId, title, severity }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${supplier.id}?tab=findings`, 'Finding created and added to the remediation queue.'));
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/findings/:findingId/status', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+    const allowed = ['open','in_remediation','verified','closed'];
+    if (!allowed.includes(req.body.status)) return redirectBack(req, res);
+    const finding = db.prepare(`SELECT f.id FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id WHERE f.id=? AND l.supplier_id=? AND f.workspace_id=?`).get(req.params.findingId, req.params.id, req.workspace.id);
+    if (!finding) return res.status(404).send('Finding not found');
+    db.prepare(`UPDATE findings SET status=? WHERE id=? AND workspace_id=?`).run(req.body.status, finding.id, req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'update_supplier_finding', 'supplier', req.params.id, { findingId: finding.id, status: req.body.status }, auditCtx(req));
+    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=findings`);
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/findings/:findingId/accept', requireAuth, requireWorkspace, requirePermission('supplier.risk_accept'), (req, res) => {
+    const reason = String(req.body.reason || '').trim();
+    if (reason.length < 10 || !req.body.expires_at) return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=findings`, 'Risk acceptance requires a rationale and expiry date.', 'error'));
+    const finding = db.prepare(`SELECT f.id FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id WHERE f.id=? AND l.supplier_id=? AND f.workspace_id=?`).get(req.params.findingId, req.params.id, req.workspace.id);
+    if (!finding) return res.status(404).send('Finding not found');
+    db.transaction(() => {
+      db.prepare(`UPDATE findings SET status='accepted_risk' WHERE id=?`).run(finding.id);
+      db.prepare(`UPDATE supplier_finding_links SET risk_acceptance_reason=?,risk_acceptance_expires_at=?,accepted_by=?,accepted_at=CURRENT_TIMESTAMP WHERE finding_id=?`)
+        .run(reason, req.body.expires_at, req.user.id, finding.id);
+    })();
+    logAction(req.user.id, req.workspace.id, 'accept_supplier_finding_risk', 'supplier', req.params.id, { findingId: finding.id, reason, expiresAt: req.body.expires_at }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=findings`, 'Risk acceptance recorded with an expiry date.'));
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/decisions', requireAuth, requireWorkspace, requirePermission('supplier.approve'), (req, res) => {
+    const supplier = db.prepare(`SELECT * FROM suppliers WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    const decision = req.body.decision;
+    const rationale = String(req.body.rationale || '').trim();
+    if (!supplier || !['approved','conditional','rejected','renewed','offboard'].includes(decision) || rationale.length < 10) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=decisions`, 'A valid decision and meaningful rationale are required.', 'error'));
+    }
+    if (decision === 'conditional' && !String(req.body.conditions || '').trim()) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=decisions`, 'Conditional approval requires documented conditions.', 'error'));
+    }
+    const risk = recomputeSupplierRisk(supplier.id, req.workspace.id, 'approval_review', req.user.id);
+    db.transaction(() => {
+      db.prepare(`UPDATE supplier_decisions SET superseded_at=CURRENT_TIMESTAMP WHERE supplier_id=? AND workspace_id=? AND superseded_at IS NULL`).run(supplier.id, req.workspace.id);
+      db.prepare(`INSERT INTO supplier_decisions (workspace_id,supplier_id,decision,rationale,conditions,valid_until,residual_risk_score,methodology_version,decided_by,decider_name)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(req.workspace.id, supplier.id, decision, rationale, req.body.conditions || null, req.body.valid_until || null,
+          risk.residual, risk.methodology.version, req.user.id, req.user.name);
+      const stage = decision === 'rejected' ? 'rejected' : decision === 'offboard' ? 'offboarding' : 'active';
+      db.prepare(`UPDATE suppliers SET lifecycle_stage=?,approved_by=?,approved_at=CASE WHEN ? IN ('approved','conditional','renewed') THEN CURRENT_TIMESTAMP ELSE approved_at END WHERE id=? AND workspace_id=?`)
+        .run(stage, req.user.name, decision, supplier.id, req.workspace.id);
+    })();
+    logAction(req.user.id, req.workspace.id, 'supplier_decision', 'supplier', supplier.id, { decision, rationale, validUntil: req.body.valid_until || null }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${supplier.id}?tab=decisions`, `Decision recorded: ${decision.replace('_',' ')}.`));
   });
 
   // Documents
@@ -746,14 +987,17 @@ function register(app, deps) {
 
   // Questionnaires
   app.post('/workspaces/:wsId/vendors/:id/questionnaires', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
-    const { template_id } = req.body;
+    const { template_id, external_email, external_contact_name, due_date } = req.body;
     const tpl = db.prepare(`SELECT * FROM questionnaire_templates WHERE id=? AND (is_system=1 OR firm_id=?)`).get(template_id, req.workspace.firm_id);
     if (!tpl) return redirectBack(req, res);
     const qCount = db.prepare(`SELECT COUNT(*) c FROM questionnaire_questions WHERE template_id=?`).get(template_id).c;
-    const qid = db.prepare(`INSERT INTO supplier_questionnaires (workspace_id, supplier_id, template_id, template_name, status, sent_at, total_questions)
-      VALUES (?, ?, ?, ?, 'sent', CURRENT_TIMESTAMP, ?)`).run(
-      req.workspace.id, req.params.id, template_id, tpl.name, qCount
+    const qid = db.prepare(`INSERT INTO supplier_questionnaires
+      (workspace_id, supplier_id, template_id, template_name, status, total_questions, invitation_status, external_email, external_contact_name, due_date)
+      VALUES (?, ?, ?, ?, 'draft', ?, 'not_sent', ?, ?, ?)`).run(
+      req.workspace.id, req.params.id, template_id, tpl.name, qCount,
+      external_email || null, external_contact_name || null, due_date || null
     ).lastInsertRowid;
+    logAction(req.user.id, req.workspace.id, 'create_supplier_questionnaire', 'questionnaire', qid, { supplierId: req.params.id, template: tpl.name, dueDate: due_date || null }, auditCtx(req));
     res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '/questionnaires/' + qid);
   });
 
@@ -775,7 +1019,11 @@ function register(app, deps) {
     // Group by section
     const sections = {};
     questions.forEach(qu => { (sections[qu.section] = sections[qu.section] || []).push(qu); });
-    res.render('vendor_questionnaire', { user: req.user, ws: req.workspace, q, sections, respMap, attachMap });
+    const latestInvite = db.prepare(`SELECT issued_at,expires_at,completed_at,revoked_at,email,name FROM external_assessment_tokens WHERE questionnaire_id=? ORDER BY id DESC LIMIT 1`).get(q.id);
+    const inviteLink = req.session && req.session.lastQuestionnaireInvite && req.session.lastQuestionnaireInvite.questionnaireId === q.id
+      ? req.session.lastQuestionnaireInvite.url : null;
+    if (inviteLink && req.session) delete req.session.lastQuestionnaireInvite;
+    res.render('vendor_questionnaire', { user: req.user, ws: req.workspace, q, sections, respMap, attachMap, latestInvite, inviteLink });
   });
 
   app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), qUploadAny, (req, res) => {

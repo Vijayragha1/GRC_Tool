@@ -137,7 +137,7 @@
       <thead><tr>
         <th>Client</th>
         <th style="width:130px;">Last pass</th>
-        <th style="width:120px;">Stage 1</th>
+        <th style="width:140px;">Readiness</th>
         <th style="width:140px;">Cert target</th>
         <th>Why flagged</th>
         <th style="width:80px;"></th>
@@ -164,7 +164,10 @@
                 <span class="meta">none</span>
               <% } %>
             </td>
-            <td><span class="num" style="font-weight:500;color:<%= r.readiness.stage1 >= 80 ? '#15803d' : r.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>;"><%= r.readiness.stage1 %>%</span></td>
+            <td>
+              <span class="status s-<%= r.truth.verdict.tone === 'success' ? 'done' : r.truth.verdict.tone === 'danger' ? 'blocked' : 'in_progress' %>"><%= r.truth.verdict.label %></span>
+              <div class="meta text-xs" style="margin-top:3px;"><%= r.readiness.stage1 %>% maturity</div>
+            </td>
             <td class="text-sm">
               <% if (r.target_cert_date) { %>
                 <%= r.target_cert_date %><br>
@@ -183,6 +186,7 @@
                   if (/cert target/i.test(reason)) return `/workspaces/${wsId}/cert-cycle`;
                   if (/objective/i.test(reason)) return `/workspaces/${wsId}/objectives`;
                   if (/stale controls/i.test(reason)) return `/workspaces/${wsId}/notifications?filter=unread`;
+                  if (/truth conflict|readiness gap/i.test(reason)) return `/workspaces/${wsId}/data-quality`;
                   if (/pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
                   return `/workspaces/${wsId}`;
                 }
@@ -267,8 +271,8 @@
 <div class="panel" style="overflow:hidden">
   <table class="t">
     <thead><tr>
-      <th>Client</th><th style="width:140px">Stage</th>
-      <th style="width:90px">Stage 1</th><th style="width:90px">Days</th>
+      <th>Client</th><th style="width:150px">Certification</th>
+      <th style="width:90px">Maturity</th><th style="width:90px">Days</th>
       <th style="width:80px">NCs</th><th style="width:200px">Progress</th>
       <% if (user.user_type === 'firm') { %><th style="width:40px"></th><% } %>
     </tr></thead>
@@ -285,7 +289,10 @@
             </div>
             <% if (w.industry) { %><div class="meta" style="margin-top:2px"><%= w.industry %></div><% } %>
           </td>
-          <td><span class="status s-<%= w.derivedStage && (w.derivedStage.key === 'post_stage_2' || w.derivedStage.key === 'surveillance') ? 'done' : 'in_progress' %>"><%= w.derivedStage ? w.derivedStage.label : 'New' %></span></td>
+          <td>
+            <span class="status s-<%= w.truth.verdict.tone === 'success' ? 'done' : w.truth.verdict.tone === 'danger' ? 'blocked' : 'in_progress' %>"><%= w.truth.verdict.label %></span>
+            <div class="meta text-xs" style="margin-top:3px;"><%= w.truth.lifecycle.label %></div>
+          </td>
           <td><span class="num" style="font-weight:500;color:<%= w.readiness.stage1 >= 80 ? '#15803d' : w.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= w.readiness.stage1 %>%</span></td>
           <td class="num meta" style="color:<%= w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30 ? '#b91c1c' : w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 90 ? '#a16207' : '' %>"><%= w.readiness.daysToTarget !== null ? w.readiness.daysToTarget + 'd' : '-' %></td>
           <td>

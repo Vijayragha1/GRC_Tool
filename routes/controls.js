@@ -11,6 +11,7 @@ const ctlReads = require('../lib/control-reads');
 const ctlWrites = require('../lib/control-writes');
 const evReads = require('../lib/evidence-reads');
 const docLinks = require('../lib/doc-links');
+const { buildWorkspaceTruth } = require('../lib/grc-truth');
 const { withToast, redirectBack, auditCtx, parseFormArray, escapeHtml } = require('../lib/http-helpers');
 
 // The ISO 42001 flag-for-review flow in server.js reuses the reviewer
@@ -141,9 +142,24 @@ function register(app, deps) {
       FROM iso_items i LEFT JOIN ${T.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
       WHERE i.type IN ('clause','control') GROUP BY s`).all(wsId).forEach(r => { dist[r.s] = r.c; });
 
+    // A completed walkthrough is not the same thing as a defensible control
+    // conclusion. Project the canonical workspace verdict into this page so an
+    // "Implemented" count can never silently override missing evidence or a
+    // failed certification gate.
+    const truth = buildWorkspaceTruth(db, req.workspace);
+    const totalItems = Object.values(dist).reduce((sum, count) => sum + count, 0);
+    const assessedCount = Math.max(0, totalItems - notAssessedCount);
+    const evidencedImplemented = Math.max(0, dist.Implemented - evidenceAsks.length);
+    const evidenceCoverage = dist.Implemented > 0
+      ? Math.round((evidencedImplemented / dist.Implemented) * 100)
+      : 0;
+    const openRemediationTasks = gaps.filter(g => g.has_open_task).length;
+    const controlsQualityIssues = truth.issues.filter(issue => issue.domain === 'controls');
+
     res.render('controls_assess_summary', {
       user: req.user, ws: req.workspace, gaps, docGaps, evidenceAsks, untreatedLinkedRisks,
-      notAssessedCount, dist,
+      notAssessedCount, dist, truth, totalItems, assessedCount, evidencedImplemented,
+      evidenceCoverage, openRemediationTasks, controlsQualityIssues,
       active: 'gap-assessment-summary'
     });
   });
@@ -687,6 +703,10 @@ function register(app, deps) {
     const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items WHERE type IN ('clause','control')`).get().c;
     const assessedNow = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs}
       WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c;
+    const legacyBaseline = passes.length === 0 && assessedNow > 0
+      ? db.prepare(`SELECT COUNT(*) assessed, MIN(last_updated) first_updated, MAX(last_updated) last_updated
+          FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId)
+      : null;
 
     // Find the next un-assessed item (continue button target).
     const nextItem = nextUnassessedItem(wsId, -1);
@@ -769,7 +789,7 @@ function register(app, deps) {
       title: 'Gap assessment',
       active: 'gap-assessment',
       passes, activePass: active,
-      totalItems, assessedNow,
+      totalItems, assessedNow, legacyBaseline,
       nextItem,
       orientation, trend, heatmap, themeNames: ANNEX_THEMES
     });
@@ -788,8 +808,10 @@ function register(app, deps) {
     const lastNum = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n
       FROM assessment_passes WHERE workspace_id=?`).get(wsId).n;
     const nextNum = lastNum + 1;
+    const hasImportedBaseline = nextNum === 1 && db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, wsId).cs}
+      WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId).c > 0;
     const label = (req.body.label || '').toString().trim()
-      || (nextNum === 1 ? 'Initial gap assessment' : `Re-assessment ${nextNum - 1}`);
+      || (nextNum === 1 ? (hasImportedBaseline ? 'Baseline verification' : 'Initial gap assessment') : `Re-assessment ${nextNum - 1}`);
     const notes = (req.body.notes || '').toString().trim() || null;
     const id = db.prepare(`INSERT INTO assessment_passes
       (workspace_id, pass_number, label, notes, status, started_by)

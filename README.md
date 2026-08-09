@@ -77,6 +77,10 @@ Upload once, link to many controls. SHA-256 dedupe. Versioning via supersede - t
 
 `/workspaces/:id/auditor-access`. Mint a time-bound magic link to share read-only access with an external auditor — no account, no email setup, no integration. The auditor opens `/auditor/{token}` and sees a stripped-chrome read-only portal: a McKinsey-style cover letter with a Roman-numeral table of contents, then SoA (current or any snapshot), risk register + heatmap, evidence index with per-file download, policies + procedures viewer with control mappings, internal audits + NCs combined, and on-demand audit-pack PDF regen. Every access is timestamped and logged; the consultant sees the access log in the share-management console and can revoke at any time.
 
+### Client collaboration portal
+
+`/workspaces/:id/client-portal`. Production read-write workspace for the consultant/client hand-off: durable evidence, policy, control, and action requests with named assignees, priorities, due dates, acceptance criteria, optimistic-concurrency protection, and an append-only lifecycle history. Client users upload SHA-256-hashed evidence directly against a request, discuss scoped controls and policies, submit work for review, receive requested changes, and complete sequenced policy approvals through the existing tamper-evident signature flow. Contributor accounts are hard-confined to the portal and see only assigned requests plus explicitly scoped controls/documents; client owners and ISMS managers retain the full operator surface. Every lifecycle action is CSRF-protected, workspace-qualified, notified, and written to the hash-chained audit log.
+
 ### Changes since last audit
 
 `/workspaces/:id/changes-since`. Surveillance + recertification handoff. Pick an anchor date (default: last audit's `audit_date`, fallback to last snapshot, fallback to -365d) and see a structured diff: SoA changes (snapshot-to-snapshot), risks added since, evidence uploaded since, documents new + version-bumped + retired, NCs opened + closed, internal audits conducted, MRMs held, improvements opened + closed, audit-log activity roll-up by action.
@@ -268,6 +272,8 @@ INITIAL_ADMIN_EMAIL=you@yourfirm.com           # optional, renames the placehold
 INITIAL_ADMIN_NAME=Your Name                   # optional, sets display name
 SESSION_SECRET=a-random-32-char-string         # required in production; auto-generated dev fallback otherwise
 APP_BASE_URL=http://localhost:3000             # used in email links
+REQUIRE_MFA=1                                  # mandatory in production by default
+UPLOAD_AV_MODE=required                        # requires clamdscan for client evidence uploads
 ```
 
 Restart the server. The bootstrap promotes the `!noauth` placeholder to a real bcrypt hash and (optionally) renames the email. Sign in at `/login`.
@@ -350,8 +356,6 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 
 - **SSO** (SAML / OIDC) — table stakes above $8K/yr; corporate IT will reject the password-only path.
 - **REST API** — server-rendered only today. Procurement-grade buyers want to pull SoA / control state / evidence list out programmatically.
-- **Contributor row-level scoping** — the `member_scopes` table exists and the Contributor role implies "see only assigned items", but queries don't filter against it yet. Currently capability-restricted (no `risk.delete` etc.) but not row-restricted.
-- **Read-write client portal** (the auditor portal's twin) — currently the client has no self-serve surface for evidence upload or policy review.
 - **Cloud evidence integrations** (AWS Config / GCP Asset Inventory / Azure Resource Graph). Today every piece of evidence is hand-uploaded.
 - **AI-assisted editing** (rewrite policy in $client's voice, draft a risk description from asset + threat keywords, suggest controls per risk). Gated on choosing an LLM provider + budget.
 - **Real-time presence** — no "X is editing this" indicator anywhere. Optimistic-concurrency CAS catches conflicts on save, but the UI doesn't warn beforehand.

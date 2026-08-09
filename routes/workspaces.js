@@ -9,6 +9,7 @@ const email = require('../lib/email');
 const { hashToken, INVITE_TTL_MS } = require('./auth');
 const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const { buildWorkspaceTruth } = require('../lib/grc-truth');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
@@ -161,8 +162,15 @@ function register(app, deps) {
     const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
     // Tier B.6 - top "needs your attention" items for the overview
     const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
-    const nextStep = computeNextStep(ws);
-    const derivedStage = computeClientStage(ws);
+    const truth = buildWorkspaceTruth(db, ws, readiness);
+    const computedNextStep = computeNextStep(ws);
+    const nextStep = truth.nextAction ? {
+      title: truth.nextAction.title,
+      why: truth.nextAction.impact,
+      href: truth.nextAction.href,
+      cta: truth.nextAction.cta
+    } : computedNextStep;
+    const derivedStage = { key: truth.verdict.key, label: truth.verdict.label };
     // Active gap-assessment pass (if any) so the overview can show
     // "Pass 1 in progress · 87 of 118 assessed" without forcing the
     // consultant to click into Gap assessment to see it.
@@ -178,28 +186,14 @@ function register(app, deps) {
       assetCount, evidenceCount, openTasks, actionItems,
       docCount, auditCount, mrmCount, ncOpen, recentActivity, readiness, sparkline,
       roadmap, needsAttention, nextStep, activePass,
-      setupIncomplete, intakeAnswered, derivedStage
+      setupIncomplete, intakeAnswered, derivedStage, truth
     });
   });
 
-  // Implementation roadmap + needs-attention - moved out of the Overview page
-  // (which is now a pure dashboard). Same data, dedicated home.
+  // Roadmap is a projection of the authoritative adaptive delivery plan.
+  // Keep the legacy URL for bookmarks, but never maintain a second plan.
   app.get('/workspaces/:wsId/roadmap', requireAuth, requireWorkspace, (req, res) => {
-    const ws = req.workspace;
-    // Prepare the scalars computeRoadmap needs.
-    const stateRows = db.prepare(`SELECT cs.iso_item_id, cs.status, i.type
-      FROM ${ctlReads.tables(db, ws.id).cs} cs INNER JOIN iso_items i ON i.id = cs.iso_item_id
-      WHERE cs.workspace_id=?`).all(ws.id);
-    const assetCount = db.prepare('SELECT COUNT(*) c FROM assets WHERE workspace_id=?').get(ws.id).c;
-    const riskCount = db.prepare('SELECT COUNT(*) c FROM risks WHERE workspace_id=?').get(ws.id).c;
-    const ncOpen = db.prepare(`SELECT COUNT(*) AS c FROM nonconformities
-      WHERE workspace_id = ? AND status NOT IN ('closed','verified')`).get(ws.id).c;
-    const roadmap = computeRoadmap(ws, { stateRows, assetCount, riskCount, ncOpen });
-    const needsAttention = computeNeedsAttention(ws.id).slice(0, 8);
-    res.render('roadmap', {
-      user: req.user, ws, title: 'Roadmap', active: 'roadmap',
-      roadmap, needsAttention
-    });
+    res.redirect(`/workspaces/${req.workspace.id}/engagement-plan?view=timeline`);
   });
 
   app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
@@ -357,8 +351,8 @@ function register(app, deps) {
   // ==================== TEAM SETUP (engagement kickoff) ====================
   // Inserted between "scoping confirmed" and "start gap assessment." A manager
   // fills the scoping questionnaire, picks the firm consultants on the
-  // engagement, and either invites client-side accounts (Client owner, ISMS
-  // manager, Contributors) or skips to do that later. The same screen also
+  // engagement, and either invites client-side accounts (Client sponsor,
+  // coordinator, contributors) or skips to do that later. The same screen also
   // lives in the sidebar's Setup group so managers can revisit it after
   // kickoff to add or remove people.
 
@@ -438,7 +432,7 @@ function register(app, deps) {
     const b = req.body || {};
     const email = String(b.email || '').trim().toLowerCase();
     const name = (b.name || '').trim() || null;
-    const role = ['client_owner', 'isms_manager', 'contributor'].includes(b.workspace_role) ? b.workspace_role : 'isms_manager';
+    const role = ['client_owner', 'isms_manager', 'contributor'].includes(b.workspace_role) ? b.workspace_role : 'contributor';
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('A valid email is required.'));
     }
