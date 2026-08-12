@@ -3,20 +3,13 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">NIST CSF assessments</h1>
-    <div class="page-subtitle">CSF 2.0 maturity assessments for <%= ws.client_name || 'this client' %>. Each engagement scores the 106 Subcategories on a CMMI 1-5 scale.</div>
+    <div class="page-subtitle">Governed NIST CSF 2.0 Organizational Profile and capability assessments for <%= ws.client_name || 'this client' %>.</div>
   </div>
   <div class="row">
     <a href="/workspaces/<%= ws.id %>/csf/catalog" class="btn btn-secondary btn-xs">View catalog</a>
     <% if (canCreate) { %>
       <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary btn-xs">+ New engagement</a>
     <% } %>
-  </div>
-</div>
-
-<div class="panel" style="margin-bottom:14px;background:rgba(161,98,7,0.04);">
-  <div class="panel-pad text-md text-secondary">
-    <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
-    Stage 2 of the CSF module. Engagement creation and assignment work; scoring, findings, and reporting come in subsequent stages.
   </div>
 </div>
 
@@ -39,7 +32,7 @@
           <div class="empty-state">
             <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></div>
             <div class="empty-title">No CSF engagements yet</div>
-            <div class="empty-sub">Create an engagement to start a CSF 2.0 maturity assessment for this client. The first engagement seeds a default equal-weighting profile across all 106 Subcategories.</div>
+            <div class="empty-sub">Create an engagement to define the Organizational Profile, assess all 106 Subcategories, govern Tier conclusions, collaborate on evidence, and issue controlled deliverables.</div>
             <% if (canCreate) { %>
               <a href="/workspaces/<%= ws.id %>/csf/new" class="btn btn-primary">+ New engagement</a>
             <% } %>
@@ -74,13 +67,13 @@
 <div id="csfOnboardingModal" style="display:none;position:fixed;inset:0;background:rgba(15,15,18,0.55);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border-radius:var(--radius);padding:24px 28px;max-width:520px;box-shadow:var(--shadow-xl);font-size:13.5px;line-height:1.6;">
     <h2 style="margin:0 0 10px;font-size:18px;">Welcome to the NIST CSF module</h2>
-    <p class="text-secondary" style="margin:0 0 10px;">This is a CSF 2.0 maturity assessment workspace. Before you dive in, two suggestions:</p>
+    <p class="text-secondary" style="margin:0 0 10px;">This is a governed CSF 2.0 assessment workspace. A reliable engagement starts with context and scope:</p>
     <ul class="text-secondary" style="margin:0 0 10px;padding-left:18px;">
       <li>If CSF is new to you, read the <strong>Primer</strong> in <a href="/workspaces/<%= ws.id %>/csf/learn" style="color:var(--accent);">CSF Learn</a> (~5 min).</li>
       <li>Open the <strong>Catalog</strong> to see the 6 Functions / 22 Categories / 106 Subcategories the assessment covers.</li>
-      <li>Then create an Engagement, assign your team (Lead / Consultant / Reviewer / Analyst), and start scoring.</li>
+      <li>Create an engagement, approve its Organizational Profile context, assign independent delivery roles, and then begin evidence-led assessment.</li>
     </ul>
-    <p class="text-tertiary text-base" style="margin:0 0 14px;">This prototype is for synthetic data only. Real client data is gated on the production-security work in Stage 13.</p>
+    <p class="text-tertiary text-base" style="margin:0 0 14px;">Capability levels are firm-defined consulting conclusions. NIST Implementation Tiers are assessed and approved separately.</p>
     <div style="display:flex;justify-content:flex-end;gap:8px;">
       <a href="/workspaces/<%= ws.id %>/csf/learn" class="btn btn-secondary btn-xs" onclick="document.getElementById('csfOnboardingModal').style.display='none';localStorage.setItem('csfOnboardSeen','1');">Read the primer</a>
       <button class="btn btn-primary btn-xs" onclick="document.getElementById('csfOnboardingModal').style.display='none';localStorage.setItem('csfOnboardSeen','1');">Got it</button>

@@ -4,6 +4,7 @@
   "description": "ISO 27001:2022 implementation and audit tool for consulting firms and their clients",
   "main": "server.js",
   "scripts": {
+    "seed:framework-matrix": "node scripts/seed-framework-matrix.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "seed": "node seed.js",
@@ -11,10 +12,10 @@
     "csf-demo": "node scripts/csf-demo.js",
     "content-parity": "node scripts/content-parity.js",
     "content-staleness": "node scripts/content-staleness.js",
-    "test": "node tests/smoke.test.js && node tests/routes.test.js && node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/mfa.test.js tests/upload-security.test.js tests/grc-truth.test.js && node --test --test-force-exit tests/engagement-delivery.test.js tests/client-portal.test.js tests/consulting-delivery.test.js",
+    "test": "node tests/smoke.test.js && node tests/routes.test.js && node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/upload-security.test.js tests/grc-truth.test.js && node --test --test-force-exit tests/engagement-delivery.test.js tests/client-portal.test.js tests/consulting-delivery.test.js tests/csf-production.test.js",
     "test:routes": "node tests/routes.test.js",
     "restore-check": "node scripts/restore-check.js",
-    "test:security": "node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/mfa.test.js tests/upload-security.test.js",
+    "test:security": "node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/upload-security.test.js",
     "test:browser": "node tests/browser-ui.js"
   },
   "dependencies": {
@@ -35,7 +36,6 @@
     "nodemailer": "^9.0.5",
     "pdf-parse": "^2.4.5",
     "puppeteer": "^25.0.4",
-    "qrcode": "^1.5.4",
     "sanitize-html": "^2.17.6",
     "tinymce": "^8.8.2"
   }

@@ -1,0 +1,103 @@
+<%- include('partials/header', { title: ws.client_name, user, ws, active: 'overview' }) %>
+
+<div class="page-head ifw-page-head">
+  <div>
+    <div class="eyebrow">Integrated assurance portfolio</div>
+    <h1 class="page-title"><%= ws.client_name %></h1>
+    <p class="page-subtitle"><%= dashboard.programmes.length %> active programmes · shared delivery records with independent framework conclusions.</p>
+  </div>
+  <div class="ifw-head-actions">
+    <a class="btn" href="/workspaces/<%= ws.id %>/readiness/overview">Cross-framework coverage</a>
+    <a class="btn btn-primary" href="/workspaces/<%= ws.id %>/engagement-plan">Open engagement plan</a>
+  </div>
+</div>
+
+<% if (setupIncomplete) { %>
+  <section class="panel ifw-setup-alert">
+    <div><strong>Client setup is incomplete</strong><span><%= intakeAnswered %> of 25 scoping questions are answered.</span></div>
+    <a class="btn btn-xs" href="/workspaces/<%= ws.id %>/intake">Continue setup</a>
+  </section>
+<% } %>
+
+<section class="ifw-principle" aria-label="Framework scoring principle">
+  <strong>Independent conclusions</strong>
+  <span>Framework scores are not combined. Shared evidence, risks and actions are reused; each standard retains its own assessment and assurance method.</span>
+</section>
+
+<section class="panel ifw-programme-panel">
+  <div class="ifw-section-head">
+    <div><span class="ifw-kicker">Programme position</span><h2>Framework portfolio</h2></div>
+    <span><%= dashboard.assessedUnits %> of <%= dashboard.totalAssessmentUnits %> requirements and outcomes assessed or concluded</span>
+  </div>
+  <div class="ifw-programme-head" aria-hidden="true">
+    <span>Framework</span><span>Assessment</span><span>Current position</span><span>Evidence</span><span>Open work</span><span></span>
+  </div>
+  <div class="ifw-programme-list">
+    <% dashboard.programmes.forEach(programme => { %>
+      <article class="ifw-programme-row ifw-<%= programme.key %>">
+        <div class="ifw-framework-cell">
+          <span class="ifw-framework-code"><%= programme.code %></span>
+          <div><a href="<%= programme.programmeHref %>"><strong><%= programme.label %></strong></a><small><%= programme.descriptor %></small></div>
+        </div>
+        <div class="ifw-assessment-cell">
+          <div><span><%= programme.status %></span><strong><%= programme.completionPct %>%</strong></div>
+          <div class="ifw-track"><span style="width:<%= programme.completionPct %>%"></span></div>
+          <small><%= programme.assessmentDetail %></small>
+        </div>
+        <div class="ifw-position-cell"><strong><%= programme.currentLabel %></strong><small><%= programme.currentDetail %></small></div>
+        <div class="ifw-number-cell"><strong><%= programme.evidence %></strong><small>evidence items</small><span><%= programme.documents %> controlled documents</span></div>
+        <div class="ifw-number-cell"><strong><%= programme.openItems %></strong><small><%= programme.key === 'csf' ? 'open findings' : 'requirements not implemented' %></small></div>
+        <div class="ifw-action-cell"><a class="btn btn-xs" href="<%= programme.nextHref %>"><%= programme.nextLabel %></a></div>
+        <% if (programme.key === 'csf' && programme.functions.length) { %>
+          <div class="ifw-csf-functions">
+            <% programme.functions.forEach(fn => { %><span class="cm-function-<%= fn.code.toLowerCase() %>"><b><%= fn.code %></b><em><%= fn.achieved == null ? '—' : fn.achieved %></em><small><%= fn.assessed %>/<%= fn.total %></small></span><% }) %>
+          </div>
+        <% } %>
+      </article>
+    <% }) %>
+  </div>
+</section>
+
+<section class="ifw-signals" aria-label="Shared operating foundation">
+  <a href="/workspaces/<%= ws.id %>/tasks"><span>Open actions</span><strong><%= dashboard.signals.openTasks %></strong><small><%= dashboard.signals.overdueTasks %> overdue</small></a>
+  <a href="/workspaces/<%= ws.id %>/risks"><span>Open risks</span><strong><%= dashboard.signals.openRisks %></strong><small><%= dashboard.signals.highRisks %> high inherent</small></a>
+  <a href="/workspaces/<%= ws.id %>/evidence"><span>Evidence library</span><strong><%= dashboard.signals.evidence %></strong><small>shared records</small></a>
+  <a href="/workspaces/<%= ws.id %>/documents"><span>Controlled documents</span><strong><%= dashboard.signals.documents %></strong><small>active documents</small></a>
+  <a href="/workspaces/<%= ws.id %>/vendors"><span>Suppliers</span><strong><%= dashboard.signals.suppliers %></strong><small>active relationships</small></a>
+  <a href="/workspaces/<%= ws.id %>/nonconformities"><span>Open NCs</span><strong><%= dashboard.signals.openNcs %></strong><small>require disposition</small></a>
+</section>
+
+<div class="ifw-lower-grid">
+  <section class="panel ifw-action-panel">
+    <div class="ifw-section-head"><div><span class="ifw-kicker">Shared delivery queue</span><h2>Priority actions</h2></div><a href="/workspaces/<%= ws.id %>/tasks">View all</a></div>
+    <% if (dashboard.tasks.length) { %><div class="ifw-action-list">
+      <% dashboard.tasks.forEach(task => { %><a href="/workspaces/<%= ws.id %>/tasks">
+        <span class="ifw-priority <%= task.priority %>"><%= task.priority || 'normal' %></span>
+        <div><strong><%= task.title %></strong><small><%= task.assignee_name || 'Unassigned' %> · due <%= task.due_date || 'not set' %></small></div>
+        <em><%= task.status.replaceAll('_',' ') %></em>
+      </a><% }) %>
+    </div><% } else { %><div class="t-empty">No open actions.</div><% } %>
+  </section>
+
+  <section class="panel ifw-risk-panel">
+    <div class="ifw-section-head"><div><span class="ifw-kicker">Common risk context</span><h2>Highest inherent risks</h2></div><a href="/workspaces/<%= ws.id %>/risks">View register</a></div>
+    <% if (dashboard.risks.length) { %><div class="ifw-risk-list">
+      <% dashboard.risks.forEach(risk => { %><a href="/workspaces/<%= ws.id %>/risks">
+        <div><strong><%= risk.title %></strong><small><%= risk.owner_name || 'Owner not assigned' %></small></div>
+        <span><b><%= risk.likelihood * risk.impact %></b><small>inherent</small></span>
+        <span><b><%= (risk.residual_likelihood || 0) * (risk.residual_impact || 0) %></b><small>residual</small></span>
+      </a><% }) %>
+    </div><% } else { %><div class="t-empty">No open risks.</div><% } %>
+  </section>
+</div>
+
+<section class="panel ifw-reuse-panel">
+  <div><span class="ifw-kicker">Cross-framework reuse</span><h2>One operating system, multiple assurance views</h2><p>Common assets, risks, suppliers, policies, evidence and corrective actions remain shared. Framework-specific workpapers reference that foundation without duplicating the underlying record.</p></div>
+  <dl>
+    <div><dt>Reviewed crosswalk relationships</dt><dd><%= dashboard.mappingCount %></dd></div>
+    <div><dt>Shared assets</dt><dd><%= dashboard.signals.assets %></dd></div>
+    <div><dt>Internal audits</dt><dd><%= dashboard.signals.audits %></dd></div>
+  </dl>
+</section>
+
+<%- include('partials/footer') %>

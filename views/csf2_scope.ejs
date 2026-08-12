@@ -1,0 +1,37 @@
+<%- include('partials/header', { title: 'Scope & Profile', user, ws, active: 'csf' }) %>
+<div class="page-head"><div><a class="meta" href="/workspaces/<%= ws.id %>/csf">← NIST CSF assessments</a><div class="eyebrow" style="margin-top:10px;">NIST CSF 2.0 · <%= methodologyVersion %></div><h1 class="page-title"><%= engagement.name %></h1><div class="page-subtitle">Define the decision boundary before evidence collection or scoring.</div></div><span class="status-pill"><%= profile.status %></span></div>
+<%- include('partials/csf2_nav', { section: 'scope', ws, engagement }) %>
+
+<% if (defects.length) { %><div class="csf2-callout warning"><strong>Profile is not approval-ready</strong><ul><% defects.forEach(d=>{ %><li><%= d %></li><% }) %></ul></div><% } %>
+
+<form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/scope" class="panel csf2-form-panel">
+  <input type="hidden" name="row_version" value="<%= profile.row_version %>">
+  <div class="panel-head"><div><h2>Organizational Profile</h2><p>Current and Target outcomes must be interpreted within this approved context.</p></div><span class="tag">Version <%= profile.row_version %></span></div>
+  <div class="panel-pad csf2-form-grid">
+    <% const fields=[
+      ['business_context','Business context','Products, markets, operating model, material technology and risk context.'],
+      ['mission_objectives','Mission objectives','Business and mission outcomes that cybersecurity must enable and protect.'],
+      ['critical_services','Critical services','Critical services, maximum tolerable disruption, and business dependencies.'],
+      ['critical_assets_data','Critical assets and data','Crown-jewel systems, platforms, facilities, information, and key suppliers.'],
+      ['threat_landscape','Threat landscape','Relevant adversaries, scenarios, vulnerabilities, and material changes.'],
+      ['legal_contractual_requirements','Legal and contractual requirements','Applicable laws, regulations, contractual duties, and customer commitments.'],
+      ['stakeholder_expectations','Stakeholder expectations','Board, customer, regulator, employee, partner, and community expectations.'],
+      ['risk_appetite','Risk appetite and tolerance','Decision thresholds, unacceptable consequences, escalation criteria, and constraints.'],
+      ['scope_statement','Assessment boundary','Included entities, services, systems, locations, suppliers, assessment period, and interfaces.'],
+      ['assessment_limitations','Limitations and reliance','Unavailable evidence, exclusions, assumptions, other assurance, and reliance placed.'],
+    ]; fields.forEach(([key,label,help])=>{ %>
+      <label class="field span-2"><span><%= label %></span><small><%= help %></small><textarea class="textarea" name="<%= key %>" rows="4" <%= canEdit?'':'readonly' %>><%= profile[key] || '' %></textarea></label>
+    <% }) %>
+    <label class="field span-2"><span>Community Profile or sector baseline</span><small>Optional reference used to inform the Target Profile.</small><input class="input" name="community_profile_reference" value="<%= profile.community_profile_reference || '' %>" <%= canEdit?'':'readonly' %>></label>
+  </div>
+  <% if (canEdit) { %><div class="panel-foot">
+    <button class="btn" name="action" value="save">Save draft</button>
+    <% if (profile.status==='draft') { %><button class="btn btn-primary" name="action" value="submit">Submit for independent approval</button><% } %>
+    <% if (profile.status==='submitted' && canApprove) { %><button class="btn btn-primary" name="action" value="approve">Approve Profile</button><% } %>
+  </div><% } %>
+</form>
+
+<div class="panel" style="margin-top:14px;"><div class="panel-head"><div><h2>Methodology integrity</h2><p>The canonical catalog and assessment anchors are immutable for this engagement.</p></div></div><div class="panel-pad csf2-integrity-grid">
+  <div><span>Official Core</span><strong>6 Functions · 22 Categories · 106 outcomes</strong></div><div><span>Assessment model</span><strong>Policy 0–5 + Practice 0–5</strong></div><div><span>Catalog hash</span><code><%= catalogHash.slice(0,16) %>…</code></div><div><span>Methodology hash</span><code><%= methodologyHash.slice(0,16) %>…</code></div>
+</div></div>
+<%- include('partials/footer') %>

@@ -264,6 +264,17 @@ function register(app, deps) {
       const publishedReports = db.prepare(`SELECT r.id,r.title,r.report_type,r.version_number,r.published_at,p.name published_by_name
         FROM consulting_report_snapshots r LEFT JOIN users p ON p.id=r.published_by
         WHERE r.workspace_id=? AND r.status='published' ORDER BY r.published_at DESC,r.id DESC`).all(req.workspace.id);
+      const csfValidations = db.prepare(`SELECT a.id,a.engagement_id,s.code,s.description,e.name engagement_name,cr.assignee_id
+        FROM csf_subcategory_assessments a JOIN csf_subcategories s ON s.id=a.subcategory_id
+        JOIN csf_engagements e ON e.id=a.engagement_id
+        LEFT JOIN csf_action_links l ON l.assessment_id=a.id AND l.client_request_id IS NOT NULL
+        LEFT JOIN client_requests cr ON cr.id=l.client_request_id
+        WHERE e.workspace_id=? AND a.status='Reviewed' AND a.client_validation_status='requested'
+          ${isContributor(req) ? 'AND cr.assignee_id=?' : ''}
+        GROUP BY a.id ORDER BY s.code`).all(req.workspace.id, ...(isContributor(req) ? [req.user.id] : []));
+      const csfPublishedReports = db.prepare(`SELECT e.id,e.name,v.id version_id,v.version_number,v.published_at
+        FROM csf_engagements e JOIN csf_assessment_versions_v2 v ON v.engagement_id=e.id AND v.is_current=1 AND v.status='published'
+        WHERE e.workspace_id=? AND e.status='Published' AND e.visible_in_portal=1 ORDER BY v.published_at DESC`).all(req.workspace.id);
 
       res.render('client_portal', {
         user: req.user, ws: req.workspace, active: 'client-portal', title: 'Client portal',
@@ -271,7 +282,8 @@ function register(app, deps) {
         canManage: can(req, 'client_request.manage'), members: clientMembers(req),
         controls: can(req, 'client_request.manage') ? controlCatalog() : [],
         documents: can(req, 'client_request.manage') ? documentCatalog(req) : [],
-        deliveryPlan: deliveryProjection?.plan || null, deliveryWork, deliveryEvidence, deliveryComments, clientValidations, publishedReports
+        deliveryPlan: deliveryProjection?.plan || null, deliveryWork, deliveryEvidence, deliveryComments, clientValidations, publishedReports,
+        csfValidations, csfPublishedReports
       });
     });
 

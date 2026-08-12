@@ -1,0 +1,21 @@
+<%- include('partials/header', { title: 'Assessment review', user, ws, active: 'csf' }) %>
+<div class="page-head"><div><div class="eyebrow">Independent assurance</div><h1 class="page-title"><%= engagement.name %></h1><div class="page-subtitle">Maker-checker review, factual validation, and approval for all 106 outcome conclusions.</div></div></div>
+<%- include('partials/csf2_nav', { section: 'review', ws, engagement }) %>
+
+<div class="csf2-kpis"><div><span>Assessor complete</span><strong><%= counts['Assessor Complete']||0 %></strong></div><div><span>Reviewed</span><strong><%= counts.Reviewed||0 %></strong></div><div><span>Client validated</span><strong><%= counts['Client Validated']||0 %></strong></div><div><span>Approved</span><strong><%= counts.Approved||0 %></strong></div><div><span>Open defects</span><strong><%= totalDefects %></strong></div></div>
+
+<div class="csf2-review-list">
+<% if(!rows.length){ %><div class="panel"><div class="empty-state"><div class="empty-title">No conclusions are in the review queue</div><div class="empty-sub">Assessor-complete conclusions appear here for independent review, client factual validation, and approval.</div></div></div><% } %>
+<% rows.forEach(r=>{ %><article class="panel csf2-review-card">
+  <div class="csf2-review-main"><div><code><%= r.code %></code><h2><%= r.description %></h2><p><%= r.category_name %></p></div><div class="csf2-pair"><span>Policy <b><%= r.policy_score==null?'—':r.policy_score %></b></span><span>Practice <b><%= r.practice_score==null?'—':r.practice_score %></b></span><span>Target <b><%= r.target_policy_score==null?'—':r.target_policy_score %>/<%= r.target_practice_score==null?'—':r.target_practice_score %></b></span></div><span class="status-pill"><%= r.status %></span></div>
+  <% if(r.defects.length){ %><div class="csf2-review-defects"><strong>Readiness defects</strong><ul><% r.defects.forEach(d=>{ %><li><%= d %></li><% }) %></ul></div><% } %>
+  <div class="csf2-review-foot"><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment/<%= r.subcategory_id %>">Inspect evidence and tests</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/review/<%= r.subcategory_id %>"><input class="input" name="note" placeholder="Review conclusion or return reason" required minlength="40">
+      <% if(r.status==='Assessor Complete' && canReview){ %><button class="btn btn-primary" name="action" value="review">Complete independent review</button><button class="btn" name="action" value="return">Return to fieldwork</button><% } %>
+      <% if(r.status==='Reviewed' && canReview){ %><button class="btn btn-primary" name="action" value="request_client">Request client validation</button><% } %>
+      <% if(r.status==='Client Validated' && canApprove){ %><button class="btn btn-primary" name="action" value="approve">Approve conclusion</button><% } %>
+    </form>
+  </div>
+</article><% }) %>
+</div>
+<%- include('partials/footer') %>

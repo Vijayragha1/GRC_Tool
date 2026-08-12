@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Create client</h1>
-    <div class="page-subtitle">A client represents one client (one ISMS scope, one set of controls, one Statement of Applicability).</div>
+    <div class="page-subtitle">Create the client first, then configure one or more assessment programmes when the engagement scope is agreed.</div>
   </div>
   <a href="/dashboard" class="btn btn-secondary btn-xs">Cancel</a>
 </div>
@@ -25,6 +25,14 @@
     <div class="col-full">
       <label class="label">ISMS scope statement <span class="meta">can be edited later</span></label>
       <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units, technology are in scope of the ISMS? What's explicitly excluded and why?"></textarea>
+    </div>
+    <div class="col-full">
+      <div class="label">Assessment programmes <span class="meta">optional · choose any combination</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:7px;">
+        <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso27001"><span><strong>ISO 27001:2022</strong><span class="meta" style="display:block;">Information security</span></span></label>
+        <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso42001"><span><strong>ISO 42001:2023</strong><span class="meta" style="display:block;">AI management</span></span></label>
+        <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input type="checkbox" name="frameworks" value="csf"><span><strong>NIST CSF 2.0</strong><span class="meta" style="display:block;">Cyber maturity</span></span></label>
+      </div>
     </div>
     <div class="col-full" style="display:flex;gap:8px;">
       <button class="btn btn-primary">Create client</button>

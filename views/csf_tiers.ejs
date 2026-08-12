@@ -1,0 +1,30 @@
+<%- include('partials/header', { title: 'CSF Implementation Tiers', user, ws, active: 'csf' }) %>
+<div class="page-head"><div><a class="meta text-base" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>">&larr; <%= engagement.name %></a>
+  <h1 class="page-title">Implementation Tier conclusions</h1>
+  <div class="page-subtitle">Separate, evidence-backed conclusions about cybersecurity risk governance and management characteristics. Never inferred from capability averages.</div>
+</div></div>
+<%- include('partials/csf_nav', { ws, engagement }) %>
+
+<div class="panel" style="margin-bottom:14px;"><div class="panel-pad text-md csf-tier-legend" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+  <% [[1,'Partial'],[2,'Risk Informed'],[3,'Repeatable'],[4,'Adaptive']].forEach(([n,name]) => { %><div><strong>Tier <%= n %> &middot; <%= name %></strong><div class="meta text-xs" style="margin-top:3px;"><%= n===1?'Practices are largely ad hoc.':n===2?'Practices are approved but not organization-wide.':n===3?'Practices are formally established and consistently performed.':'Practices adapt using lessons and predictive indicators.' %></div></div><% }) %>
+</div></div>
+
+<% const names = Object.fromEntries(functions.map(f => [f.code,f.name])); %>
+<% rows.forEach(row => { const label = row.scope_type === 'overall' ? 'Overall organization' : `${row.function_code} · ${names[row.function_code] || row.function_code}`; %>
+  <form method="POST" class="panel" style="margin-bottom:12px;" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/tiers/<%= row.id %>">
+    <input type="hidden" name="row_version" value="<%= row.row_version %>">
+    <div class="panel-head"><h2><%= label %></h2><span class="tag"><%= row.status.toUpperCase() %> &middot; v<%= row.row_version %></span></div>
+    <div class="panel-pad csf-tier-fields" style="display:grid;grid-template-columns:160px 160px 1fr;gap:14px;align-items:start;">
+      <div><label class="label">Current Tier</label><select class="select" name="current_tier" <%= canEdit ? '' : 'disabled' %>><option value="">Select</option><% [1,2,3,4].forEach(n => { %><option value="<%= n %>" <%= row.current_tier===n?'selected':'' %>>Tier <%= n %></option><% }) %></select></div>
+      <div><label class="label">Target Tier</label><select class="select" name="target_tier" <%= canEdit && engagement.scope_mode==='CURRENT_TARGET' ? '' : 'disabled' %>><option value="">Select</option><% [1,2,3,4].forEach(n => { %><option value="<%= n %>" <%= row.target_tier===n?'selected':'' %>>Tier <%= n %></option><% }) %></select></div>
+      <div><label class="label">Evidence summary</label><textarea class="textarea" name="evidence_summary" rows="3" <%= canEdit ? '' : 'disabled' %>><%= row.evidence_summary || '' %></textarea></div>
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:14px;"><div><label class="label">Governance rationale</label><textarea class="textarea" name="governance_rationale" rows="4" <%= canEdit ? '' : 'disabled' %>><%= row.governance_rationale || '' %></textarea></div><div><label class="label">Risk management rationale</label><textarea class="textarea" name="risk_management_rationale" rows="4" <%= canEdit ? '' : 'disabled' %>><%= row.risk_management_rationale || '' %></textarea></div></div>
+    </div>
+    <div class="panel-pad" style="border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
+      <% if (canEdit && ['draft','submitted'].includes(row.status)) { %><button class="btn btn-secondary btn-xs" name="action" value="save">Save draft</button><button class="btn btn-primary btn-xs" name="action" value="submit">Submit</button><% } %>
+      <% if (canReview && row.status==='submitted') { %><button class="btn btn-primary btn-xs" name="action" value="review">Complete independent review</button><% } %>
+      <% if (canApprove && row.status==='reviewed') { %><button class="btn btn-primary btn-xs" name="action" value="approve">Approve conclusion</button><% } %>
+    </div>
+  </form>
+<% }) %>
+<%- include('partials/footer') %>

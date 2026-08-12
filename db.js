@@ -1770,6 +1770,12 @@ function init() {
   addColumnIfMissing('users', 'mfa_enabled_at', 'DATETIME');
   addColumnIfMissing('users', 'mfa_recovery_codes', 'TEXT');
   addColumnIfMissing('users', 'mfa_last_counter', 'INTEGER DEFAULT -1');
+  // Legacy compatibility columns remain so existing databases can be opened
+  // without a destructive table rebuild. The application no longer offers or
+  // enforces 2FA, so remove retained secrets and recovery material on boot.
+  db.prepare(`UPDATE users SET mfa_secret=NULL, mfa_enabled_at=NULL,
+    mfa_recovery_codes=NULL, mfa_last_counter=-1
+    WHERE mfa_secret IS NOT NULL OR mfa_enabled_at IS NOT NULL OR mfa_recovery_codes IS NOT NULL`).run();
   // Email-notification preference: 'immediate' (email when a notification is
   // raised) or 'off' (in-app only). 'daily' is reserved for a future digest.
   addColumnIfMissing('users', 'email_notify', "TEXT DEFAULT 'immediate'");
@@ -3355,6 +3361,41 @@ function init() {
   // once. applyPending() THROWS on the first failing migration, so a half-migrated
   // database refuses to start serving rather than coming up in a broken state.
   require('./migrations/run').applyPending(db);
+
+  // Seed the governed CSF Policy/Practice methodology after the converged
+  // schema exists. Canonical outcome text remains in nist-csf.js; these rows
+  // are immutable assessment instructions pinned to a methodology version.
+  try {
+    const csfMethod = require('./data/nist-csf-policy-practice');
+    db.prepare(`INSERT OR IGNORE INTO csf_catalog_versions
+      (catalog_version,source_identifier,source_url,published_date,function_count,category_count,outcome_count,
+       catalog_hash,methodology_version,methodology_hash)
+      VALUES ('2.0','NIST.CSWP.29',?,'2024-02-26',6,22,106,?,?,?)`)
+      .run(csfMethod.SOURCE_URL, csfMethod.CATALOG_HASH, csfMethod.METHODOLOGY_VERSION, csfMethod.METHODOLOGY_HASH);
+    const subByCode = new Map(db.prepare(`SELECT id,code FROM csf_subcategories WHERE catalog_version='2.0'`).all().map(r => [r.code,r.id]));
+    const insertMethod = db.prepare(`INSERT OR IGNORE INTO csf_methodology_outcomes
+      (subcategory_id,methodology_version,policy_anchors_json,practice_anchors_json,policy_evidence_json,
+       practice_evidence_json,interview_roles_json,test_procedures_json,measures_json,failure_indicators_json,
+       evidence_gates_json,content_hash,reviewed_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const seedMethod = db.transaction(() => {
+      for (const row of csfMethod.OUTCOMES) {
+        const subId = subByCode.get(row.code);
+        if (!subId) throw new Error(`CSF catalog is missing ${row.code}`);
+        insertMethod.run(subId,row.methodology_version,JSON.stringify(row.policy_anchors),JSON.stringify(row.practice_anchors),
+          JSON.stringify(row.policy_evidence),JSON.stringify(row.practice_evidence),JSON.stringify(row.interview_roles),
+          JSON.stringify(row.test_procedures),JSON.stringify(row.measures),JSON.stringify(row.failure_indicators),
+          JSON.stringify(row.evidence_gates),row.content_hash,'2026-08-10');
+      }
+    });
+    seedMethod();
+    const counts = db.prepare(`SELECT (SELECT COUNT(*) FROM csf_methodology_outcomes WHERE methodology_version=?) methodology,
+      (SELECT COUNT(*) FROM csf_subcategories WHERE catalog_version='2.0') outcomes`).get(csfMethod.METHODOLOGY_VERSION);
+    if (counts.methodology !== 106 || counts.outcomes !== 106) throw new Error(`expected 106 governed outcomes, got ${counts.methodology}/${counts.outcomes}`);
+  } catch (e) {
+    console.error('[db] CSF Policy/Practice methodology seed failed:', e.message);
+    throw e;
+  }
 
   // Fresh-boot catalog backfill. The schema chain creates the converged
   // catalog tables, but the frameworks/requirements REFERENCE data lives in

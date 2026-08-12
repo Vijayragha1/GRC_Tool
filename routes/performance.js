@@ -7,6 +7,7 @@
 const ctlReads = require('../lib/control-reads');
 const evReads = require('../lib/evidence-reads');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const { parseWorkspaceFrameworks } = require('../lib/frameworks');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, upload } = deps;
@@ -369,6 +370,10 @@ function register(app, deps) {
   // what's stale (>12 months old). This is the artefact an auditor builds in
   // their head while walking your controls; here we pre-build it.
   app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+    const frameworks = parseWorkspaceFrameworks(req.workspace.frameworks);
+    if (frameworks.length === 1 && frameworks[0] === 'csf') {
+      return res.redirect(`/workspaces/${req.workspace.id}/csf/current/assessment?view=outcomes&gap=evidence`);
+    }
     const wsId = req.workspace.id;
     const filter = req.query.filter || 'included'; // 'included' | 'all' | 'missing' | 'stale'
     const today = new Date().toISOString().slice(0, 10);

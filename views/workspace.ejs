@@ -56,314 +56,122 @@
   </div>
 <% } %>
 
-<% if (typeof truth !== 'undefined' && (truth.counts.critical > 0 || truth.counts.high > 0)) { %>
-  <div class="panel" style="margin-bottom:18px;border-left:4px solid <%= truth.counts.critical ? '#b42318' : '#b54708' %>;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;padding:14px 18px;">
-    <div>
-      <div class="text-xs" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:<%= truth.counts.critical ? '#b42318' : '#b54708' %>;margin-bottom:3px;">Authoritative status · <%= truth.verdict.label %></div>
-      <div style="font-size:13px;color:var(--text-secondary);line-height:1.45"><strong style="color:var(--ink)"><%= truth.quality.score %>/100 decision-data quality.</strong> <%= truth.counts.critical %> critical conflict<%= truth.counts.critical===1?'':'s' %> and <%= truth.counts.high %> high-priority gap<%= truth.counts.high===1?'':'s' %> must be resolved before this workspace can support an unqualified client or auditor conclusion.</div>
-    </div>
-    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/data-quality">Open data quality →</a>
-  </div>
-<% } %>
-
-<!-- Next-best-action banner. Reads engagement state and points at the single
-     highest-leverage next step. Replaces the "where do I go from here?" gap
-     a new consultant lands on the client overview with. -->
-<% if (typeof nextStep !== 'undefined' && nextStep) { %>
-  <div class="panel" style="margin-bottom:18px;background:var(--bg-subtle);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:18px 22px;">
-    <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--accent-contrast);flex-shrink:0;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
-    <div style="min-width:0;">
-      <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-deep);margin-bottom:2px;">Next step</div>
-      <div class="text-ink" style="font-size:15px;font-weight: 500;letter-spacing:-0.01em;margin-bottom:4px;"><%= nextStep.title %></div>
-      <div class="meta text-md" style="line-height:1.5;"><%= nextStep.why %></div>
-    </div>
-    <a href="<%= nextStep.href %>" class="btn btn-primary" style="white-space:nowrap;"><%= nextStep.cta %> →</a>
-  </div>
-<% } %>
-
-<!-- Engagement status - "terminal" layout. Hero readout + sparkline of
-     readiness trend across the top, dense 6-cell metric strip below.
-     Higher information density than card grids; chart-led rather than
-     number-led. Reuses the /api/workspaces/:wsId/trends endpoint that
-     the 30-day-trends panel further down already calls. -->
 <%
-  const highSev = readiness.flags.filter(f => f.severity === 'high').length;
-  const dtt = readiness.daysToTarget;
-  const targetDate = ws.target_cert_date;
-  // Pick the indicator colour for the hero number. Same thresholds the
-  // old kpi-good/warn/bad classes used, but applied to the number
-  // itself rather than as a left-border accent.
-  const heroColor = readiness.stage1Ready ? '#15803d' : '#b91c1c';
-  const ncColor = ncOpen > 0 ? '#b91c1c' : '#15803d';
-  const recPct = readiness.records.total ? Math.round((readiness.records.found / readiness.records.total) * 100) : 0;
+  const isoHighSev = readiness.flags.filter(f => f.severity === 'high').length;
+  const isoDaysToTarget = readiness.daysToTarget;
+  const isoTargetDate = ws.target_cert_date;
+  const isoRecordPct = readiness.records.total ? Math.round((readiness.records.found / readiness.records.total) * 100) : 0;
+  const isoTotalControls = themes.org.total + themes.people.total + themes.physical.total + themes.tech.total;
+  const isoTotalClauses = (breakdown.clauses['Implemented'] || 0) + (breakdown.clauses['Partially Implemented'] || 0) +
+                          (breakdown.clauses['Work In Progress'] || 0) + (breakdown.clauses['Not Implemented'] || 0) +
+                          (breakdown.clauses['Not Applicable'] || 0) + (breakdown.clauses['Not Assessed'] || 0);
+  const isoTotal = isoTotalClauses + isoTotalControls;
+  const isoCount = key => (breakdown.clauses[key] || 0) + (breakdown.annex[key] || 0);
+  const isoImplemented = isoCount('Implemented');
+  const isoPartial = isoCount('Partially Implemented');
+  const isoWip = isoCount('Work In Progress');
+  const isoNotAssessed = isoCount('Not Assessed');
+  const isoAssessed = isoTotal - isoNotAssessed;
+  const isoAssessedPct = isoTotal ? Math.round((isoAssessed / isoTotal) * 100) : 0;
+  const isoImplementedPct = isoTotal ? Math.round((isoImplemented / isoTotal) * 100) : 0;
+  const isoQualityScore = typeof truth !== 'undefined' ? truth.quality.score : 0;
+  const isoCriticalTruth = typeof truth !== 'undefined' ? truth.counts.critical : 0;
+  const isoHighTruth = typeof truth !== 'undefined' ? truth.counts.high : 0;
+  const isoGatesRemaining = Math.max(0, readiness.stage1GateTotal - readiness.stage1GatePassed);
+  const isoPositionLabel = readiness.stage1Ready ? 'Ready for Stage 1' : 'Not ready for Stage 1';
 %>
 
-<!-- HERO: readiness number + trend sparkline + status sidebar -->
-<div style="border:1px solid var(--border);background:var(--bg);margin-bottom:10px;display:grid;grid-template-columns:240px 1fr 220px;align-items:stretch;">
-  <!-- Left: big number -->
-  <a href="/workspaces/<%= ws.id %>/readiness" style="padding:18px 22px;text-decoration:none;color:inherit;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Stage 1 maturity</div>
-    <div style="display:flex;align-items:baseline;gap:4px;line-height:0.95;font-variant-numeric:tabular-nums;">
-      <span style="font-size:44px;font-weight: 500;letter-spacing:-0.02em;color:<%= heroColor %>;"><%= readiness.stage1 %></span>
-      <span style="font-size:20px;font-weight:400;color:var(--text-tertiary);">%</span>
-    </div>
-    <div class="num" style="margin-top:8px;font-size:11px;color:<%= readiness.stage1Ready ? '#15803d' : '#b91c1c' %>;letter-spacing:0.02em;"><%= readiness.stage1Ready ? 'Hard gates passed' : `${readiness.stage1GatePassed}/${readiness.stage1GateTotal} hard gates passed` %></div>
-  </a>
-  <!-- Middle: gap assessment + implementation breakdown. Was a misleading
-       30-day "trajectory" sparkline (cumulative count of Implemented
-       controls touched in last 30d - looked like a readiness trend but
-       wasn't). Replaced with the two questions the overview should
-       answer: (1) where are we in the gap assessment, (2) how does the
-       implementation status break down by theme. -->
-  <%
-    const totalItems = stateRows => 0; // placeholder, not used
-    const totalControls = themes.org.total + themes.people.total + themes.physical.total + themes.tech.total;
-    const totalClauses = (breakdown.clauses['Implemented'] || 0) + (breakdown.clauses['Partially Implemented'] || 0) +
-                         (breakdown.clauses['Work In Progress'] || 0) + (breakdown.clauses['Not Implemented'] || 0) +
-                         (breakdown.clauses['Not Applicable'] || 0) + (breakdown.clauses['Not Assessed'] || 0);
-    const totalAll = totalClauses + totalControls;
-    const sum = key => (breakdown.clauses[key] || 0) + (breakdown.annex[key] || 0);
-    const counts = {
-      impl: sum('Implemented'),
-      partial: sum('Partially Implemented'),
-      wip: sum('Work In Progress'),
-      notImpl: sum('Not Implemented'),
-      na: sum('Not Applicable'),
-      notAss: sum('Not Assessed')
-    };
-    const assessed = totalAll - counts.notAss;
-    const assessedPct = totalAll ? Math.round((assessed / totalAll) * 100) : 0;
-    const passLabel = activePass
-      ? (activePass.label || `Pass ${activePass.pass_number}`)
-      : 'No active pass';
-    // Stacked-bar segments (skip zero-width to avoid 0.5px slivers).
-    const seg = [
-      { v: counts.impl,    color: '#15803d', label: 'Implemented' },
-      { v: counts.partial, color: '#b45309', label: 'Partially' },
-      { v: counts.wip,     color: '#0891b2', label: 'In progress' },
-      { v: counts.notImpl, color: '#b91c1c', label: 'Not implemented' },
-      { v: counts.na,      color: '#8a8a87', label: 'Not applicable' },
-      { v: counts.notAss,  color: '#e5e3dc', label: 'Not assessed' }
-    ].filter(s => s.v > 0);
-  %>
-  <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;">
-    <%
-      const implPct = totalAll ? Math.round(counts.impl / totalAll * 100) : 0;
-      const implMeta = [];
-      if (counts.partial > 0) implMeta.push(`<span style="color:#b45309;">${counts.partial}</span> partial`);
-      if (counts.notImpl > 0) implMeta.push(`<span style="color:#b91c1c;">${counts.notImpl}</span> not impl`);
-    %>
-
-    <!-- BLOCK 1: Gap assessment - summary + bar + per-section breakdown -->
-    <div>
-      <a href="/workspaces/<%= ws.id %>/controls" style="text-decoration:none;color:inherit;display:block;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-          <div style="font-size:10px;font-weight:500;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-tertiary);">Gap assessment</div>
-          <div class="num" style="font-size:11px;color:var(--text-tertiary);"><span style="color:var(--text);font-weight:500;"><%= assessed %></span> of <%= totalAll %> assessed · <%= assessedPct %>%<% if (activePass) { %> · <%= passLabel %><% } %></div>
-        </div>
-        <div style="display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--bg-muted);" title="<%= assessed %> assessed · <%= counts.notAss %> not assessed">
-          <% if (assessed > 0) { %><span style="background:#1a1a1a;width:<%= totalAll ? (assessed / totalAll * 100).toFixed(2) : 0 %>%;"></span><% } %>
-        </div>
+<section class="iso-command-hero" aria-label="ISO 27001 certification position">
+  <div class="iso-command-position">
+    <div class="iso-command-kicker">ISO 27001:2022 · Certification position</div>
+    <div class="iso-command-heading">
+      <div>
+        <h2><%= isoPositionLabel %></h2>
+        <p><%= readiness.stage1Ready
+          ? 'The current evidence supports the Stage 1 readiness gates. Complete the final review before representing this position externally.'
+          : `${isoGatesRemaining} Stage 1 gate${isoGatesRemaining === 1 ? '' : 's'} remain open. The position stays internal until those gates and material data-quality issues are resolved.` %></p>
+      </div>
+      <a class="iso-command-score" href="/workspaces/<%= ws.id %>/readiness" aria-label="Open ISO 27001 readiness">
+        <strong><%= readiness.stage1 %><span>%</span></strong>
+        <small>Stage 1 readiness</small>
       </a>
-      <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:10px;color:var(--text-tertiary);">
-        <span style="display:inline-flex;align-items:center;gap:5px;">
-          <span style="width:8px;height:8px;border-radius:2px;background:#1a1a1a;display:inline-block;flex-shrink:0;"></span>
-          Assessed <span class="num" style="color:var(--text);font-weight:500;"><%= assessed %></span>
-        </span>
-        <% if (counts.notAss > 0) { %>
-          <span style="display:inline-flex;align-items:center;gap:5px;">
-            <span style="width:8px;height:8px;border-radius:2px;background:#e5e3dc;border:1px solid var(--border);display:inline-block;flex-shrink:0;"></span>
-            Not assessed <span class="num" style="color:var(--text);font-weight:500;"><%= counts.notAss %></span>
-          </span>
-        <% } %>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;">
-        <% Object.values(themes).forEach(t => {
-             const pct = t.total ? Math.round(t.assessed / t.total * 100) : 0;
-        %>
-          <div>
-            <div style="font-size:9.5px;color:var(--text-tertiary);margin-bottom:2px;letter-spacing:0.2px;"><%= t.label %></div>
-            <div class="num" style="font-size:11.5px;color:var(--text);font-weight:500;"><%= t.assessed %><span style="color:var(--text-tertiary);font-weight:400;">/<%= t.total %></span></div>
-            <div style="height:3px;background:var(--bg-muted);border-radius:1px;margin-top:3px;overflow:hidden;">
-              <div style="height:100%;background:#1a1a1a;width:<%= pct %>%;"></div>
-            </div>
-          </div>
-        <% }) %>
-      </div>
     </div>
-
-    <!-- BLOCK 2: Implementation - summary + stacked bar + per-section breakdown -->
-    <div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-        <div style="font-size:10px;font-weight:500;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-tertiary);">Implementation</div>
-        <div class="num" style="font-size:11px;color:var(--text-tertiary);"><span style="color:var(--text);font-weight:500;"><%= counts.impl %></span> of <%= totalAll %> implemented · <%= implPct %>%<% if (implMeta.length) { %> · <%- implMeta.join(' · ') %><% } %></div>
-      </div>
-      <div style="display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--bg-muted);">
-        <% seg.forEach(s => { %>
-          <span title="<%= s.label %>: <%= s.v %>" style="background:<%= s.color %>;width:<%= totalAll ? (s.v / totalAll * 100).toFixed(2) : 0 %>%;"></span>
-        <% }) %>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:10px;color:var(--text-tertiary);">
-        <% seg.forEach(s => { %>
-          <span style="display:inline-flex;align-items:center;gap:5px;">
-            <span style="width:8px;height:8px;border-radius:2px;background:<%= s.color %>;display:inline-block;flex-shrink:0;"></span>
-            <%= s.label %> <span class="num" style="color:var(--text);font-weight:500;"><%= s.v %></span>
-          </span>
-        <% }) %>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px;">
-        <% Object.values(themes).forEach(t => {
-             const pct = t.total ? Math.round(t.implemented / t.total * 100) : 0;
-             const col = pct >= 80 ? '#15803d' : pct >= 50 ? '#b45309' : pct > 0 ? '#b91c1c' : 'var(--text-tertiary)';
-        %>
-          <div>
-            <div style="font-size:9.5px;color:var(--text-tertiary);margin-bottom:2px;letter-spacing:0.2px;"><%= t.label %></div>
-            <div class="num" style="font-size:11.5px;color:var(--text);font-weight:500;"><%= t.implemented %><span style="color:var(--text-tertiary);font-weight:400;">/<%= t.total %></span></div>
-            <div style="height:3px;background:var(--bg-muted);border-radius:1px;margin-top:3px;overflow:hidden;">
-              <div style="height:100%;background:<%= col %>;width:<%= pct %>%;"></div>
-            </div>
-          </div>
-        <% }) %>
-      </div>
+    <div class="iso-command-track" aria-hidden="true"><span style="width:<%= readiness.stage1 %>%;"></span></div>
+    <div class="iso-command-facts">
+      <a href="/workspaces/<%= ws.id %>/readiness"><span>Hard gates</span><strong><%= readiness.stage1GatePassed %>/<%= readiness.stage1GateTotal %></strong></a>
+      <a href="/workspaces/<%= ws.id %>/data-quality"><span>Decision quality</span><strong><%= isoQualityScore %>/100</strong></a>
+      <a href="/workspaces/<%= ws.id %>/controls"><span>Outcomes assessed</span><strong><%= isoAssessed %>/<%= isoTotal %></strong></a>
+      <div><span>Certification target</span><strong><%= isoTargetDate || 'Not set' %></strong></div>
     </div>
   </div>
-  <!-- Right: status sidebar -->
-  <div style="padding:14px 18px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;font-family:'SF Mono','Menlo','Consolas',monospace;font-size:11px;">
+
+  <aside class="iso-command-priority">
     <div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
-        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Target</span>
-        <span style="color:var(--text);font-weight: 500;"><%= targetDate || '—' %></span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
-        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Days left</span>
-        <span style="color:<%= dtt !== null && dtt < 90 ? '#b45309' : 'var(--text)' %>;font-weight: 500;"><%= dtt !== null ? dtt : '—' %></span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);">
-        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">Stage 2</span>
-        <span style="color:var(--text);font-weight: 500;"><%= readiness.stage2 %>%</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;">
-        <span style="color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;">High-sev</span>
-        <span style="color:<%= highSev > 0 ? '#b91c1c' : '#15803d' %>;font-weight: 500;"><%= highSev %><% if (highSev > 0) { %> ●<% } %></span>
-      </div>
+      <div class="iso-command-kicker">Immediate priority</div>
+      <% if (typeof nextStep !== 'undefined' && nextStep) { %>
+        <h3><%= nextStep.title %></h3>
+        <p><%= nextStep.why %></p>
+      <% } else { %>
+        <h3>Review the current certification position</h3>
+        <p>Confirm the remaining evidence, owners and due dates before the next governance review.</p>
+      <% } %>
     </div>
-  </div>
+    <div class="iso-command-priority-foot">
+      <span><%= isoDaysToTarget !== null ? `${isoDaysToTarget} days to target` : 'Target date not set' %></span>
+      <% if (typeof nextStep !== 'undefined' && nextStep) { %>
+        <a href="<%= nextStep.href %>" class="btn btn-primary"><%= nextStep.cta %> →</a>
+      <% } %>
+    </div>
+  </aside>
+</section>
+
+<div class="iso-overview-grid">
+  <section class="panel iso-assessment-panel">
+    <div class="iso-section-head">
+      <div><span class="iso-section-kicker">Delivery position</span><h2>Assessment and implementation</h2></div>
+      <a href="/workspaces/<%= ws.id %>/controls" class="link-muted">Open assessment →</a>
+    </div>
+
+    <div class="iso-progress-row">
+      <div class="iso-progress-copy"><span>Gap assessment</span><strong><%= isoAssessedPct %>%</strong><small><%= isoAssessed %> of <%= isoTotal %> outcomes assessed</small></div>
+      <div class="iso-progress-track"><span style="width:<%= isoAssessedPct %>%;"></span></div>
+    </div>
+    <div class="iso-progress-row">
+      <div class="iso-progress-copy"><span>Implemented</span><strong><%= isoImplementedPct %>%</strong><small><%= isoImplemented %> implemented · <%= isoPartial %> partial · <%= isoWip %> in progress</small></div>
+      <div class="iso-progress-track"><span style="width:<%= isoImplementedPct %>%;"></span></div>
+    </div>
+
+    <div class="iso-workstreams">
+      <% Object.values(themes).forEach(t => {
+           const assessedThemePct = t.total ? Math.round(t.assessed / t.total * 100) : 0;
+           const implementedThemePct = t.total ? Math.round(t.implemented / t.total * 100) : 0;
+      %>
+        <div class="iso-workstream">
+          <span><%= t.label %></span><strong><%= t.assessed %>/<%= t.total %></strong>
+          <small><%= assessedThemePct %>% assessed · <%= implementedThemePct %>% implemented</small>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="panel iso-assurance-panel">
+    <div class="iso-section-head"><div><span class="iso-section-kicker">Assurance conditions</span><h2>What prevents a conclusion</h2></div></div>
+    <div class="iso-assurance-list">
+      <a href="/workspaces/<%= ws.id %>/data-quality"><span>Critical truth conflicts</span><strong><%= isoCriticalTruth %></strong><small><%= isoHighTruth %> additional high-priority data gaps</small></a>
+      <a href="/workspaces/<%= ws.id %>/readiness"><span>High-severity readiness gaps</span><strong><%= isoHighSev %></strong><small><%= isoGatesRemaining %> Stage 1 gates remain open</small></a>
+      <a href="/workspaces/<%= ws.id %>/nonconformities"><span>Open nonconformities</span><strong><%= ncOpen %></strong><small><%= readiness.stage2 %>% Stage 2 readiness</small></a>
+    </div>
+  </section>
 </div>
 
-<!-- METRIC STRIP: 6 dense cells, each with label + number + mini-bar/sparkline -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--border);background:var(--bg);margin-bottom:24px;">
-  <!-- Mandatory docs - progress fill (no historical sparkline available) -->
-  <a href="/workspaces/<%= ws.id %>/documents" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Mandatory docs</div>
-    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= readiness.records.found %><span style="color:var(--text-tertiary);font-weight:400;">/<%= readiness.records.total %></span></div>
-    <div style="margin-top:8px;height:4px;background:var(--bg-muted);border-radius:0;overflow:hidden;">
-      <div style="height:100%;width:<%= recPct %>%;background:<%= recPct >= 80 ? '#15803d' : recPct >= 50 ? '#b45309' : '#b91c1c' %>;"></div>
-    </div>
-  </a>
-  <!-- Controls assessed - progress fill -->
-  <a href="/workspaces/<%= ws.id %>/controls" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assessed</div>
-    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= progress.assessed %><span style="color:var(--text-tertiary);font-weight:400;">/<%= progress.total %></span></div>
-    <div style="margin-top:8px;height:4px;background:var(--bg-muted);border-radius:0;overflow:hidden;">
-      <div style="height:100%;width:<%= progress.percent %>%;background:<%= progress.percent >= 80 ? '#15803d' : progress.percent >= 50 ? '#b45309' : '#b91c1c' %>;"></div>
-    </div>
-  </a>
-  <!-- Assets - count + sparkline (no historical data, blank track) -->
-  <a href="/workspaces/<%= ws.id %>/assets" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Assets</div>
-    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= assetCount %></div>
-    <div style="margin-top:8px;font-size:10px;color:var(--text-tertiary);font-family:'SF Mono','Menlo','Consolas',monospace;">in scope</div>
-  </a>
-  <!-- Risks - count + 30d sparkline (created) -->
-  <a href="/workspaces/<%= ws.id %>/risks" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Risks</div>
-    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= riskCount %></div>
-    <div id="stripSparkRisks" style="margin-top:6px;height:18px;"></div>
-  </a>
-  <!-- Audits - count -->
-  <a href="/workspaces/<%= ws.id %>/audits" style="padding:12px 14px;border-right:1px solid var(--border);text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Internal audits</div>
-    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);font-family:'SF Mono','Menlo','Consolas',monospace;"><%= auditCount %></div>
-    <div style="margin-top:8px;font-size:10px;color:var(--text-tertiary);font-family:'SF Mono','Menlo','Consolas',monospace;">conducted</div>
-  </a>
-  <!-- Open NCs - count + 30d sparkline (opened) + status dot -->
-  <a href="/workspaces/<%= ws.id %>/nonconformities" style="padding:12px 14px;text-decoration:none;color:inherit;">
-    <div style="font-size:9.5px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;">Open NCs</div>
-    <div class="num" style="font-size:22px;font-weight: 500;letter-spacing:-0.01em;color:<%= ncColor %>;font-family:'SF Mono','Menlo','Consolas',monospace;display:flex;align-items:center;gap:8px;">
-      <%= ncOpen %>
-      <% if (ncOpen > 0) { %><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#b91c1c;"></span><% } %>
-    </div>
-    <div id="stripSparkNCs" style="margin-top:6px;height:18px;"></div>
-  </a>
-</div>
+<section class="iso-operating-signals" aria-label="ISO 27001 operating signals">
+  <a href="/workspaces/<%= ws.id %>/documents"><span>Mandatory documents</span><strong><%= readiness.records.found %>/<%= readiness.records.total %></strong><small><%= isoRecordPct %>% available</small></a>
+  <a href="/workspaces/<%= ws.id %>/assets"><span>Assets in scope</span><strong><%= assetCount %></strong><small>Information assets</small></a>
+  <a href="/workspaces/<%= ws.id %>/risks"><span>Risk register</span><strong><%= riskCount %></strong><small>Recorded risks</small></a>
+  <a href="/workspaces/<%= ws.id %>/audits"><span>Internal audits</span><strong><%= auditCount %></strong><small>Completed audits</small></a>
+  <a href="/workspaces/<%= ws.id %>/nonconformities"><span>Open NCs</span><strong><%= ncOpen %></strong><small>Require disposition</small></a>
+</section>
 
-<script>
-// Top hero sparkline + bottom strip mini-sparklines. Reuses the same
-// /api/workspaces/:wsId/trends endpoint as the existing 30-day trends
-// panel further down the page - one fetch, multiple consumers.
-fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
-  // Cumulative "controls implemented" curve - approximates a readiness
-  // trajectory without needing a dedicated server-side computation.
-  // The hero shows the cumulative path; strip mini-sparks show raw
-  // daily counts (intentionally noisier - that's the point of the
-  // weekly cadence visualisation).
-  const cumulative = (() => {
-    let acc = 0;
-    return data.controls.map(d => ({ d: d.d, c: (acc += d.c) }));
-  })();
-  const drawArea = (id, series, color, opts) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const w = el.clientWidth || 200;
-    const h = el.clientHeight || 48;
-    const max = Math.max(1, ...series.map(d => d.c));
-    const min = Math.min(...series.map(d => d.c));
-    const range = Math.max(1, max - min);
-    const step = w / Math.max(1, series.length - 1);
-    const padding = (opts && opts.padding) || 2;
-    const path = series.map((d, i) =>
-      `${i===0?'M':'L'}${(i*step).toFixed(1)},${(h - padding - ((d.c - min)/range)*(h - padding*2)).toFixed(1)}`
-    ).join(' ');
-    el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;display:block;">
-      <path d="${path} L${w},${h} L0,${h} Z" fill="${color}" opacity="0.10"/>
-      <path d="${path}" fill="none" stroke="${color}" stroke-width="${(opts && opts.strokeWidth) || 1.5}" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`;
-  };
-  // Bar-style mini-sparkline for the strip (terminal aesthetic - bars
-  // not line, since we're showing discrete daily counts at small size).
-  const drawBars = (id, series, color) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const w = el.clientWidth || 100;
-    const h = el.clientHeight || 18;
-    const max = Math.max(1, ...series.map(d => d.c));
-    const barW = w / series.length;
-    const bars = series.map((d, i) => {
-      const barH = (d.c / max) * h;
-      const y = h - barH;
-      return `<rect x="${(i*barW).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, barW-1).toFixed(1)}" height="${barH.toFixed(1)}" fill="${color}" opacity="${d.c > 0 ? 0.85 : 0.15}"/>`;
-    }).join('');
-    el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;display:block;">${bars}</svg>`;
-  };
-
-  drawArea('heroSpark', cumulative, 'var(--accent)', { strokeWidth: 2, padding: 4 });
-  drawBars('stripSparkRisks', data.risks, '#71717a');
-  drawBars('stripSparkNCs', data.ncs_open, '#b91c1c');
-
-  // Hero delta - compare last 7 days vs prior 7 days of cumulative
-  const tail = cumulative.slice(-7).reduce((s,d) => s + d.c, 0);
-  const prev = cumulative.slice(-14, -7).reduce((s,d) => s + d.c, 0);
-  const delta = tail - prev;
-  const el = document.getElementById('heroDelta');
-  if (el && cumulative.some(d => d.c > 0)) {
-    const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '◆';
-    const color = delta > 0 ? '#15803d' : delta < 0 ? '#b91c1c' : 'var(--text-tertiary)';
-    el.innerHTML = `<span style="color:${color};font-weight: 500;">${arrow}</span> ${Math.abs(delta)} controls past 7d`;
-  }
-});
-</script>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
   <div class="panel">
@@ -516,6 +324,17 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       <div><label class="label">Stage <span class="meta">auto-derived</span></label>
         <div style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-muted);font-size:13.5px;color:var(--text-secondary);">
           <%= (typeof derivedStage !== 'undefined' && derivedStage) ? derivedStage.label : (ws.stage || 'New').replace(/_/g, ' ') %>
+        </div>
+      </div>
+
+      <div class="col-full" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--border);">
+        <% const configuredFrameworks = Array.isArray(ws.frameworks) ? ws.frameworks : []; %>
+        <input type="hidden" name="frameworks_present" value="1">
+        <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Assessment programmes <span class="meta" style="text-transform:none;letter-spacing:0;">optional</span></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;">
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso27001" <%= configuredFrameworks.includes('iso27001')?'checked':'' %>><span>ISO 27001:2022</span></label>
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso42001" <%= configuredFrameworks.includes('iso42001')?'checked':'' %>><span>ISO 42001:2023</span></label>
+          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="checkbox" name="frameworks" value="csf" <%= configuredFrameworks.includes('csf')?'checked':'' %>><span>NIST CSF 2.0</span></label>
         </div>
       </div>
 

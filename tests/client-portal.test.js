@@ -88,11 +88,14 @@ test('request creation records scope, event history, and audit entry', () => {
   assert.ok(db.prepare(`SELECT 1 FROM audit_log WHERE workspace_id=? AND entity_type='client_request' AND entity_id=? AND action='create_client_request'`).get(workspaceId, String(requestId)));
 });
 
-test('consultant workspace navigation exposes ten primary domains without a duplicate audit-pack entry', async () => {
+test('consultant workspace navigation exposes the integrated overview and separates framework programmes without a duplicate audit-pack entry', async () => {
   const page = await manager.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(page.status, 200);
-  assert.equal((page.text.match(/class="nav-domain-summary"/g) || []).length, 9);
-  assert.match(page.text, /nav-item-text">Overview/);
+  assert.equal((page.text.match(/class="nav-domain-summary"/g) || []).length, 11);
+  assert.match(page.text, /nav-item-text">Integrated overview/);
+  assert.match(page.text, /ISO 27001 programme/);
+  assert.match(page.text, /Cybersecurity maturity/);
+  assert.match(page.text, /AI management system/);
   assert.doesNotMatch(page.text, /nav-item-text">Audit pack/);
 });
 

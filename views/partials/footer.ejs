@@ -2,13 +2,6 @@
   </main>
 </div>
 
-<% if (typeof active !== 'undefined' && active && (String(active) === 'csf' || String(active).startsWith('csf-'))) { %>
-  <!-- Stage 12: PROTOTYPE banner on every CSF page -->
-  <div class="text-xs" style="position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:900;background:#a16207;color:#fff;font-weight: 500;letter-spacing:0.04em;text-transform:uppercase;padding:6px 14px;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,0.25);">
-    PROTOTYPE - not for client data
-  </div>
-<% } %>
-
 <% if (typeof user !== 'undefined' && user) { %>
 <!-- Command palette -->
 <div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()">
@@ -249,6 +242,7 @@ window._unmarkBusy = function (form) {
     if (inflight) inflight.abort();
     const ctl = new AbortController();
     inflight = ctl;
+    let leavingDocument = false;
     progress.start();
     try {
       // Prefer the prefetched response if we have one.
@@ -257,6 +251,7 @@ window._unmarkBusy = function (form) {
       if (!text) {
         const res = await fetch(href, { signal: ctl.signal, headers: { 'X-Spa-Nav': '1' }, credentials: 'same-origin' });
         if (!res.ok || !res.headers.get('content-type')?.includes('html')) {
+          leavingDocument = true;
           window.location.href = href; return;
         }
         text = await res.text();
@@ -264,15 +259,18 @@ window._unmarkBusy = function (form) {
       // pushState first so location.pathname reflects the new URL inside swap.
       if (push) window.history.pushState({}, '', href);
       const ok = swapApp(text, href);
-      if (!ok) { window.location.href = href; return; }
+      if (!ok) { leavingDocument = true; window.location.href = href; return; }
       // Drop the consumed entry so a later visit re-fetches fresh.
       prefetchCache.delete(prefetchKey(href));
     } catch (e) {
       if (e.name === 'AbortError') return;
+      leavingDocument = true;
       window.location.href = href;
     } finally {
-      if (inflight === ctl) inflight = null;
-      progress.done();
+      if (inflight === ctl) {
+        inflight = null;
+        if (!leavingDocument) progress.done();
+      }
     }
   }
 
@@ -287,6 +285,7 @@ window._unmarkBusy = function (form) {
     let timer = null;
     return {
       start() {
+        window.AppPageLoader?.show('Opening workspace');
         bar.style.opacity = '1';
         bar.style.width = '12%';
         clearTimeout(timer);
@@ -298,6 +297,7 @@ window._unmarkBusy = function (form) {
         clearTimeout(timer); timer = null;
         bar.style.width = '100%';
         setTimeout(() => { bar.style.opacity = '0'; bar.style.width = '0'; }, 180);
+        window.AppPageLoader?.hide();
       },
     };
   })();
@@ -499,6 +499,7 @@ function toggleSidebarCollapse() {
         // HTMLFormElement.prototype.submit bypasses the submit event, so the
         // global CSRF stamper never runs. Stamp manually before submitting.
         if (typeof window._csrfStamp === 'function') window._csrfStamp(form);
+        window.AppPageLoader?.show('Saving changes');
         HTMLFormElement.prototype.submit.call(form);
       }
     });

@@ -1,0 +1,9 @@
+<% const base = `/workspaces/${ws.id}/csf/${engagement.id}`; %>
+<nav class="csf2-tabs" aria-label="Cybersecurity maturity programme sections">
+  <a href="/workspaces/<%= ws.id %>/csf" class="<%= section==='programme'?'active':'' %>">Programme</a>
+  <a href="<%= base %>/scope" class="<%= section==='scope'?'active':'' %>">Business profile</a>
+  <a href="<%= base %>/assessment" class="<%= section==='assessment'?'active':'' %>">Maturity workbench</a>
+  <a href="<%= base %>/review" class="<%= section==='review'?'active':'' %>">Quality review</a>
+  <a href="<%= base %>/findings" class="<%= section==='findings'?'active':'' %>">Priorities &amp; roadmap</a>
+  <a href="<%= base %>/report" class="<%= section==='report'?'active':'' %>">Executive reporting</a>
+</nav>

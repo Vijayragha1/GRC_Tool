@@ -4,7 +4,12 @@
 // learn docs, catalog.
 
 const MarkdownIt = require('markdown-it');
+const fs = require('fs');
+const crypto = require('crypto');
+const csfCatalog = require('../data/nist-csf');
 const email = require('../lib/email');
+const uploadSecurity = require('../lib/upload-security');
+const auditPack = require('../lib/audit-pack');
 const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-helpers');
 
 function register(app, deps) {
@@ -24,6 +29,7 @@ function register(app, deps) {
   // the :id capture is digit-constrained so they can't collide (same lesson as
   // /soa/snapshots/:id vs /soa/snapshots/diff in commit 6fdb9b5).
   const csfPolicy = require('../lib/csf-policy');
+  const CSF_FILE_EXTENSIONS = new Set(['pdf','png','jpg','jpeg','txt','csv','doc','docx','xls','xlsx','ppt','pptx','zip']);
 
   // Engagement list
   app.get('/workspaces/:wsId/csf', requireAuth, requireWorkspace, (req, res) => {
@@ -35,6 +41,7 @@ function register(app, deps) {
       FROM csf_engagements e
       LEFT JOIN users u ON u.id = e.assigned_lead_id
       WHERE e.workspace_id=? AND e.deleted_at IS NULL
+        ${req.user.user_type === 'client' ? "AND e.status='Published' AND e.visible_in_portal=1" : ''}
       ORDER BY e.created_at DESC
     `).all(req.workspace.id);
     const canCreate = csfPolicy.canCreateEngagement(req.user, req.workspace);
@@ -52,7 +59,7 @@ function register(app, deps) {
     // Assignable users = workspace members + firm operators (same pool used by tasks)
     const assignableUsers = db.prepare(`
       SELECT u.id, u.name FROM users u
-      INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
+      INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ? AND u.user_type='firm'
       UNION
       SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1
     `).all(req.workspace.id, req.workspace.firm_id);
@@ -139,6 +146,7 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/csf/:id(\\d+)', requireAuth, requireWorkspace, (req, res) => {
     const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!engagement) return res.status(404).render('error', { user: req.user, message: 'CSF engagement not found, or it was deleted.' });
+    if (req.user.user_type === 'client') return res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/portal`);
     if (!csfPolicy.canViewEngagement(db, req.user, engagement)) {
       return res.status(403).render('error', { user: req.user, message: 'You are not assigned to this CSF engagement.' });
     }
@@ -151,7 +159,7 @@ function register(app, deps) {
     const lead = engagement.assigned_lead_id ? db.prepare('SELECT id, name FROM users WHERE id=?').get(engagement.assigned_lead_id) : null;
     const assignableUsers = db.prepare(`
       SELECT u.id, u.name FROM users u
-      INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
+      INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ? AND u.user_type='firm'
       UNION
       SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1
     `).all(req.workspace.id, req.workspace.firm_id);
@@ -229,6 +237,9 @@ function register(app, deps) {
     const nextEngState = csfPolicy.nextEngagementState(engagement.status);
     const canTransitionEng = nextEngState ? csfPolicy.canTransitionEngagement(db, req.user, engagement, nextEngState) : false;
     const canPublishNow = engagement.status === 'Approved' && csfPolicy.canPublish(db, req.user, engagement);
+    const publicationDefects = csfPolicy.publicationReadiness(db, engagement);
+    const profileContext = db.prepare(`SELECT status,row_version,approved_at FROM csf_profile_contexts WHERE engagement_id=?`).get(engagement.id) || null;
+    const tierReadiness = db.prepare(`SELECT COUNT(*) AS total,SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved FROM csf_tier_assessments WHERE engagement_id=?`).get(engagement.id);
 
     // Stage 11/12: unread inbox count for current user (badge on Inbox button)
     const inboxUnread = db.prepare(`
@@ -253,7 +264,7 @@ function register(app, deps) {
       subsWithScoreNoEvidence, unresolvedComments, findingsNoRecs,
       activity,
       // state transition
-      nextEngState, canTransitionEng, canPublishNow,
+      nextEngState, canTransitionEng, canPublishNow, publicationDefects, profileContext, tierReadiness,
       // Stage 11/12
       inboxUnread, unresolvedCommentCount,
     });
@@ -267,6 +278,8 @@ function register(app, deps) {
     const userId = parseInt(req.body.user_id, 10);
     const role = req.body.role_on_engagement;
     if (!userId || !csfPolicy.ENGAGEMENT_ROLES.includes(role)) return redirectBack(req, res, 'Pick a user and a role', 'error');
+    const eligible = db.prepare(`SELECT 1 FROM users u WHERE u.id=? AND u.user_type='firm' AND u.firm_id=? AND u.active=1`).get(userId, req.workspace.firm_id);
+    if (!eligible) return res.status(400).send('Only active firm delivery users can receive internal CSF engagement roles.');
     db.prepare(`INSERT OR IGNORE INTO csf_engagement_assignments (engagement_id, user_id, role_on_engagement, assigned_by) VALUES (?, ?, ?, ?)`)
       .run(engagement.id, userId, role, req.user.id);
     logAction(req.user.id, req.workspace.id, 'csf_assignment_add', 'csf_engagement', engagement.id, { user_id: userId, role }, auditCtx(req));
@@ -303,12 +316,125 @@ function register(app, deps) {
   // ---- Stage 3: Subcategory assessment lifecycle ------------------------------
 
   // Helper used by every assess route: load the engagement and confirm view perm.
-  function loadCsfEngagement(req) {
+  function loadCsfEngagement(req, { allowClient = false } = {}) {
     const eng = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!eng) return { error: { status: 404, message: 'CSF engagement not found, or it was deleted.' } };
+    if (req.user.user_type === 'client' && !allowClient) return { error: { status: 403, message: 'This internal consultant work surface is not available in the client role.' } };
     if (!csfPolicy.canViewEngagement(db, req.user, eng)) return { error: { status: 403, message: 'You are not assigned to this CSF engagement.' } };
     return { engagement: eng };
   }
+
+  function ensureProfileContext(engagement, userId) {
+    db.prepare(`INSERT OR IGNORE INTO csf_profile_contexts
+      (engagement_id,workspace_id,prepared_by) VALUES (?,?,?)`)
+      .run(engagement.id, engagement.workspace_id, userId);
+    return db.prepare(`SELECT * FROM csf_profile_contexts WHERE engagement_id=?`).get(engagement.id);
+  }
+
+  function ensureTierAssessments(engagement, userId) {
+    const functions = db.prepare(`SELECT code,name FROM csf_functions WHERE catalog_version=? ORDER BY display_order`).all(engagement.catalog_version);
+    const insert = db.prepare(`INSERT OR IGNORE INTO csf_tier_assessments
+      (engagement_id,workspace_id,scope_type,function_code,prepared_by) VALUES (?,?,?,?,?)`);
+    const tx = db.transaction(() => {
+      insert.run(engagement.id, engagement.workspace_id, 'overall', '', userId);
+      functions.forEach(fn => insert.run(engagement.id, engagement.workspace_id, 'function', fn.code, userId));
+    });
+    tx();
+    return functions;
+  }
+
+  // Organizational Profile context: the scope and risk context that make the
+  // Current and Target Profiles defensible and reusable in client deliverables.
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/profile', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+    const profile = ensureProfileContext(engagement, req.user.id);
+    res.render('csf_profile', { user: req.user, ws: req.workspace, active: 'csf', engagement, profile,
+      canEdit: csfPolicy.canEditEngagementMeta(db, req.user, engagement), canApprove: csfPolicy.canApprove(db, req.user, engagement) });
+  });
+
+  app.post('/workspaces/:wsId/csf/:id(\\d+)/profile', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).send(error.message);
+    const profile = ensureProfileContext(engagement, req.user.id);
+    const action = req.body.action || 'save';
+    const expected = Number(req.body.row_version || 0);
+    if (expected !== profile.row_version) return res.status(409).send('This Profile was changed by another user. Reload and review the latest version.');
+    if (!csfPolicy.canEditEngagementMeta(db, req.user, engagement)) return res.status(403).send('Forbidden');
+    const fields = ['business_context','mission_objectives','critical_services','critical_assets_data','threat_landscape',
+      'legal_contractual_requirements','stakeholder_expectations','risk_appetite','scope_statement','assessment_limitations','community_profile_reference'];
+    if (action === 'approve') {
+      if (!csfPolicy.canApprove(db, req.user, engagement) || profile.status !== 'submitted' || profile.prepared_by === req.user.id) {
+        return res.status(403).send('Approval requires a submitted Profile and an independent Engagement Lead or manager.');
+      }
+      db.prepare(`UPDATE csf_profile_contexts SET status='approved',approved_by=?,approved_at=CURRENT_TIMESTAMP,
+        row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE engagement_id=? AND row_version=?`)
+        .run(req.user.id, engagement.id, expected);
+    } else {
+      const values = fields.map(k => String(req.body[k] || '').trim() || null);
+      const newStatus = action === 'submit' ? 'submitted' : 'draft';
+      if (action === 'submit' && (!req.body.scope_statement || !req.body.business_context || !req.body.risk_appetite)) {
+        return redirectBack(req, res, 'Business context, scope statement, and risk appetite are required before submission.', 'error');
+      }
+      db.prepare(`UPDATE csf_profile_contexts SET ${fields.map(k => `${k}=?`).join(',')},status=?,prepared_by=COALESCE(prepared_by,?),
+        submitted_by=?,submitted_at=${action === 'submit' ? 'CURRENT_TIMESTAMP' : 'submitted_at'},approved_by=NULL,approved_at=NULL,
+        row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE engagement_id=? AND row_version=?`)
+        .run(...values, newStatus, req.user.id, action === 'submit' ? req.user.id : null, engagement.id, expected);
+    }
+    logAction(req.user.id, req.workspace.id, `csf_profile_${action}`, 'csf_profile_context', engagement.id, null, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/profile`, action === 'approve' ? 'Organizational Profile approved' : 'Organizational Profile saved'));
+  });
+
+  // NIST Implementation Tiers are assessed separately from capability scores.
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/tiers', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
+    const functions = ensureTierAssessments(engagement, req.user.id);
+    const rows = db.prepare(`SELECT * FROM csf_tier_assessments WHERE engagement_id=?
+      ORDER BY CASE scope_type WHEN 'overall' THEN 0 ELSE 1 END,
+        CASE function_code WHEN 'GV' THEN 1 WHEN 'ID' THEN 2 WHEN 'PR' THEN 3 WHEN 'DE' THEN 4 WHEN 'RS' THEN 5 WHEN 'RC' THEN 6 ELSE 99 END`).all(engagement.id);
+    res.render('csf_tiers', { user: req.user, ws: req.workspace, active: 'csf', engagement, functions, rows,
+      canEdit: csfPolicy.canScoreSubcategory(db, req.user, engagement), canReview: csfPolicy.canReview(db, req.user, engagement),
+      canApprove: csfPolicy.canApprove(db, req.user, engagement) });
+  });
+
+  app.post('/workspaces/:wsId/csf/:id(\\d+)/tiers/:tierId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).send(error.message);
+    const row = db.prepare(`SELECT * FROM csf_tier_assessments WHERE id=? AND engagement_id=?`).get(req.params.tierId, engagement.id);
+    if (!row) return res.status(404).send('Tier assessment not found');
+    const expected = Number(req.body.row_version || 0);
+    if (row.row_version !== expected) return res.status(409).send('This Tier conclusion changed. Reload before saving.');
+    const action = req.body.action || 'save';
+    let toStatus = row.status;
+    if (action === 'save' || action === 'submit') {
+      if (!csfPolicy.canScoreSubcategory(db, req.user, engagement)) return res.status(403).send('Forbidden');
+      const current = Number(req.body.current_tier || 0), target = Number(req.body.target_tier || 0);
+      if (![1,2,3,4].includes(current) || (engagement.scope_mode === 'CURRENT_TARGET' && ![1,2,3,4].includes(target))) return res.status(400).send('Select valid current and target Tiers.');
+      if (action === 'submit' && [req.body.governance_rationale,req.body.risk_management_rationale,req.body.evidence_summary].some(v => String(v || '').trim().length < 80)) {
+        return redirectBack(req, res, 'Each Tier rationale and evidence summary needs at least 80 characters before submission.', 'error');
+      }
+      toStatus = action === 'submit' ? 'submitted' : 'draft';
+      db.prepare(`UPDATE csf_tier_assessments SET current_tier=?,target_tier=?,governance_rationale=?,risk_management_rationale=?,
+        evidence_summary=?,status=?,prepared_by=?,reviewed_by=NULL,reviewed_at=NULL,approved_by=NULL,approved_at=NULL,
+        row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND row_version=?`)
+        .run(current, engagement.scope_mode === 'CURRENT_TARGET' ? target : null, String(req.body.governance_rationale || '').trim(),
+          String(req.body.risk_management_rationale || '').trim(), String(req.body.evidence_summary || '').trim(), toStatus,
+          req.user.id, row.id, expected);
+    } else if (action === 'review') {
+      if (!csfPolicy.canReview(db, req.user, engagement) || row.status !== 'submitted' || row.prepared_by === req.user.id) return res.status(403).send('Independent review required.');
+      toStatus = 'reviewed';
+      db.prepare(`UPDATE csf_tier_assessments SET status='reviewed',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND row_version=?`).run(req.user.id,row.id,expected);
+    } else if (action === 'approve') {
+      if (!csfPolicy.canApprove(db, req.user, engagement) || row.status !== 'reviewed' || row.reviewed_by === req.user.id || row.prepared_by === req.user.id) return res.status(403).send('Approval requires an independent approver.');
+      toStatus = 'approved';
+      db.prepare(`UPDATE csf_tier_assessments SET status='approved',approved_by=?,approved_at=CURRENT_TIMESTAMP,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND row_version=?`).run(req.user.id,row.id,expected);
+    } else return res.status(400).send('Unknown action');
+    db.prepare(`INSERT INTO csf_tier_events (tier_assessment_id,event_type,from_status,to_status,note,actor_id) VALUES (?,?,?,?,?,?)`)
+      .run(row.id, action, row.status, toStatus, String(req.body.note || '').trim() || null, req.user.id);
+    logAction(req.user.id, req.workspace.id, `csf_tier_${action}`, 'csf_tier_assessment', row.id, { from: row.status, to: toStatus }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/tiers`, `Tier conclusion ${action}d`));
+  });
 
   // Assessment list - all 106 (or filtered) for an engagement.
   app.get('/workspaces/:wsId/csf/:id(\\d+)/assess', requireAuth, requireWorkspace, (req, res) => {
@@ -348,6 +474,7 @@ function register(app, deps) {
         SUM(CASE WHEN status='Evidence Collected' THEN 1 ELSE 0 END) AS evidence_collected,
         SUM(CASE WHEN status='Draft Complete' THEN 1 ELSE 0 END) AS draft_complete,
         SUM(CASE WHEN status='Reviewed' THEN 1 ELSE 0 END) AS reviewed,
+        SUM(CASE WHEN status='Client Validated' THEN 1 ELSE 0 END) AS client_validated,
         SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) AS approved,
         SUM(CASE WHEN current_score IS NOT NULL THEN 1 ELSE 0 END) AS scored,
         SUM(CASE WHEN excluded_from_scope=1 THEN 1 ELSE 0 END) AS excluded
@@ -478,6 +605,18 @@ function register(app, deps) {
     const prompts = db.prepare(`SELECT * FROM csf_subcategory_evidence_prompts WHERE subcategory_id=? ORDER BY display_order`).all(detail.subcategory_id);
     const selfCheckPrompts = db.prepare(`SELECT prompt FROM csf_self_check_prompts ORDER BY display_order`).all().map(r => r.prompt);
     const narrativeSections = csfPolicy.parseStructuredNarrative(detail.narrative);
+    const clientUsers = db.prepare(`SELECT DISTINCT u.id,u.name,u.email FROM users u JOIN workspace_members wm ON wm.user_id=u.id
+      WHERE wm.workspace_id=? AND u.user_type='client' AND u.active=1 ORDER BY u.name`).all(req.workspace.id);
+    const linkedRequests = db.prepare(`SELECT cr.id,cr.title,cr.status,cr.due_date,u.name AS assignee_name
+      FROM csf_action_links l JOIN client_requests cr ON cr.id=l.client_request_id LEFT JOIN users u ON u.id=cr.assignee_id
+      WHERE l.assessment_id=? ORDER BY cr.created_at DESC`).all(detail.id);
+    const linkedRisks = db.prepare(`SELECT r.id,r.title,r.status,r.likelihood,r.impact FROM csf_action_links l JOIN risks r ON r.id=l.risk_id
+      WHERE l.assessment_id=? ORDER BY r.id DESC`).all(detail.id);
+    let consultantGuidance = null;
+    for (const fn of csfCatalog.FUNCTIONS) for (const cat of fn.categories) {
+      const found = cat.subcategories.find(s => s.code === detail.sub_code);
+      if (found) consultantGuidance = found;
+    }
 
     res.render('csf_assess_detail', {
       user: req.user, ws: req.workspace, active: 'csf',
@@ -496,8 +635,8 @@ function register(app, deps) {
       priorities: csfPolicy.RECOMMENDATION_PRIORITIES,
       phases: csfPolicy.ROADMAP_PHASES,
       // Stage 11
-      explainer, questions, prompts, selfCheckPrompts, narrativeSections,
-      narrativeSectionDefs: csfPolicy.NARRATIVE_SECTIONS,
+      explainer, questions, prompts, selfCheckPrompts, narrativeSections, consultantGuidance,
+      narrativeSectionDefs: csfPolicy.NARRATIVE_SECTIONS, clientUsers, linkedRequests, linkedRisks,
     });
   });
 
@@ -510,6 +649,8 @@ function register(app, deps) {
     if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) return res.status(403).send('Forbidden');
 
     const b = req.body;
+    const expectedVersion = Number(b.row_version || assess.row_version);
+    if (expectedVersion !== assess.row_version) return res.status(409).send('This assessment changed while you were editing. Reload and review the latest version.');
     const sets = []; const vals = [];
 
     // Structured narrative (Stage 11): 4 sub-fields combine into the single
@@ -536,6 +677,17 @@ function register(app, deps) {
       if (excluded) { sets.push('exclusion_rationale=?'); vals.push((b.exclusion_rationale || '').trim() || null); }
       else { sets.push('exclusion_rationale=NULL'); }
     }
+    const simpleFields = {
+      profile_priority: ['critical','high','medium','low'].includes(b.profile_priority) ? b.profile_priority : null,
+      current_profile_statement: b.current_profile_statement,
+      target_profile_statement: b.target_profile_statement,
+      business_impact: b.business_impact,
+      effectiveness_conclusion: b.effectiveness_conclusion,
+      evidence_confidence: ['low','medium','high'].includes(b.evidence_confidence) ? b.evidence_confidence : null,
+    };
+    Object.entries(simpleFields).forEach(([field, value]) => {
+      if (value !== undefined && value !== null) { sets.push(`${field}=?`); vals.push(String(value).trim() || null); }
+    });
     // Score updates: gated. Allow null to clear; allow 1-5; reject everything else.
     if (b.current_score !== undefined) {
       if (!csfPolicy.canEnterScore(db, req.user, engagement, assess)) return res.status(403).send('Cannot enter score: requires Consultant/Lead role and Evidence Collected state.');
@@ -553,10 +705,15 @@ function register(app, deps) {
     }
 
     if (sets.length) {
-      sets.push('last_edited_by=?', 'last_edited_at=CURRENT_TIMESTAMP');
+      sets.push('last_edited_by=?', 'last_edited_at=CURRENT_TIMESTAMP', 'row_version=row_version+1');
       vals.push(req.user.id);
       vals.push(assess.id);
-      db.prepare(`UPDATE csf_subcategory_assessments SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+      vals.push(expectedVersion);
+      const changed = db.prepare(`UPDATE csf_subcategory_assessments SET ${sets.join(', ')} WHERE id=? AND row_version=?`).run(...vals).changes;
+      if (!changed) return res.status(409).send('This assessment changed while you were editing.');
+      db.prepare(`INSERT INTO csf_assessment_events (engagement_id,assessment_id,event_type,from_status,to_status,metadata,actor_id)
+        VALUES (?,?,?,?,?,?,?)`).run(engagement.id, assess.id, 'content_updated', assess.status, assess.status,
+          JSON.stringify({ fields: Object.keys(b).filter(k => !['_csrf'].includes(k)) }), req.user.id);
       logAction(req.user.id, req.workspace.id, 'csf_assessment_update', 'csf_subcategory_assessment', assess.id, Object.keys(b).filter(k => k !== '_csrf'), auditCtx(req));
     }
     res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
@@ -569,7 +726,7 @@ function register(app, deps) {
     const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE engagement_id=? AND subcategory_id=?`).get(engagement.id, req.params.subId);
     if (!assess) return res.status(404).send('Not found');
     const to = req.body.to_state;
-    if (!csfPolicy.canTransitionTo(db, req.user, engagement, assess, to)) return res.status(403).send('Transition not allowed.');
+    if (!csfPolicy.canTransitionTo(db, req.user, engagement, assess, to)) return res.status(403).send('Transition not allowed. Complete the required evidence, narrative, independent review, client validation, and approval gates first.');
 
     // Stamp the right "by/at" fields so the audit trail in deliverables shows
     // who moved each subcategory through each gate.
@@ -577,8 +734,13 @@ function register(app, deps) {
     const vals = [to, req.user.id];
     if (to === 'Evidence Collected') { sets.push('evidence_collected_by=?', 'evidence_collected_at=CURRENT_TIMESTAMP'); vals.push(req.user.id); }
     if (to === 'Reviewed') { sets.push('reviewed_by=?', 'reviewed_at=CURRENT_TIMESTAMP'); vals.push(req.user.id); }
+    if (to === 'Client Validated') { sets.push("client_validation_status='validated'", 'client_validated_by=?', 'client_validated_at=CURRENT_TIMESTAMP'); vals.push(req.user.id); }
+    if (to === 'Approved') { sets.push('approved_by=?', 'approved_at=CURRENT_TIMESTAMP'); vals.push(req.user.id); }
+    sets.push('row_version=row_version+1');
     vals.push(assess.id);
     db.prepare(`UPDATE csf_subcategory_assessments SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+    db.prepare(`INSERT INTO csf_assessment_events (engagement_id,assessment_id,event_type,from_status,to_status,metadata,actor_id)
+      VALUES (?,?,?,?,?,NULL,?)`).run(engagement.id, assess.id, 'status_transition', assess.status, to, req.user.id);
     logAction(req.user.id, req.workspace.id, 'csf_assessment_transition', 'csf_subcategory_assessment', assess.id, { from: assess.status, to }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
   });
@@ -587,29 +749,50 @@ function register(app, deps) {
   // parsing only happens for this endpoint; CSRF token must be appended to the
   // URL for multipart bodies (see lib/csrf.js comment).
   app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/evidence', requireAuth, requireWorkspace, upload.single('file'), (req, res) => {
+    const cleanup = () => { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {} };
     const { engagement, error } = loadCsfEngagement(req);
-    if (error) return res.status(error.status).send(error.message);
+    if (error) { cleanup(); return res.status(error.status).send(error.message); }
     const assess = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE engagement_id=? AND subcategory_id=?`).get(engagement.id, req.params.subId);
-    if (!assess) return res.status(404).send('Not found');
-    if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) return res.status(403).send('Forbidden');
+    if (!assess) { cleanup(); return res.status(404).send('Not found'); }
+    if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) { cleanup(); return res.status(403).send('Forbidden'); }
 
     const type = (req.body.type || 'LINK').toUpperCase();
-    if (!['FILE', 'LINK', 'INTERVIEW'].includes(type)) return res.status(400).send('type must be FILE | LINK | INTERVIEW');
+    if (!['FILE', 'LINK', 'INTERVIEW'].includes(type)) { cleanup(); return res.status(400).send('type must be FILE | LINK | INTERVIEW'); }
 
-    const filePath = type === 'FILE' && req.file ? req.file.filename : null;
+    let filePath = type === 'FILE' && req.file ? req.file.filename : null;
     const url = type === 'LINK' ? (req.body.url || '').trim() || null : null;
     const interviewSource = type === 'INTERVIEW' ? (req.body.interview_source || '').trim() || null : null;
     const description = (req.body.description || '').trim() || null;
+    const relevanceNote = String(req.body.relevance_note || '').trim();
     const visibleToClient = req.body.visible_to_client === '1' || req.body.visible_to_client === 'on' ? 1 : 0;
 
-    if (type === 'FILE' && !filePath) return res.status(400).send('FILE evidence requires a file upload');
-    if (type === 'LINK' && !url) return res.status(400).send('LINK evidence requires a url');
-    if (type === 'INTERVIEW' && !interviewSource) return res.status(400).send('INTERVIEW evidence requires the interview source attribution');
+    if (type === 'FILE' && !filePath) { cleanup(); return res.status(400).send('FILE evidence requires a file upload'); }
+    if (type === 'LINK' && !url) { cleanup(); return res.status(400).send('LINK evidence requires a url'); }
+    if (type === 'INTERVIEW' && !interviewSource) { cleanup(); return res.status(400).send('INTERVIEW evidence requires the interview source attribution'); }
+    if (!relevanceNote) { cleanup(); return res.status(400).send('Explain why this evidence is relevant to the assessment conclusion.'); }
+    if (url) { try { const parsed = new URL(url); if (!['http:','https:'].includes(parsed.protocol)) throw new Error(); } catch (_) { cleanup(); return res.status(400).send('Evidence links must be valid HTTP or HTTPS URLs.'); } }
+    if (type !== 'FILE') cleanup();
+
+    let evidenceId = null;
+    if (type === 'FILE') {
+      const inspection = uploadSecurity.validateUpload(req.file, CSF_FILE_EXTENSIONS);
+      if (!inspection.ok) { cleanup(); return res.status(400).send(inspection.message); }
+      const sha = crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex');
+      const existing = db.prepare(`SELECT id,stored_path FROM evidence WHERE workspace_id=? AND sha256=? AND superseded_at IS NULL ORDER BY id DESC LIMIT 1`).get(req.workspace.id, sha);
+      if (existing) { evidenceId = existing.id; filePath = existing.stored_path; cleanup(); }
+      else evidenceId = db.prepare(`INSERT INTO evidence (workspace_id,filename,stored_path,sha256,size_bytes,uploaded_by,description,tags)
+        VALUES (?,?,?,?,?,?,?,?)`).run(req.workspace.id, req.file.originalname, req.file.filename, sha, req.file.size, req.user.id,
+          description || `NIST CSF evidence for assessment ${assess.id}`, `nist-csf, csf-engagement-${engagement.id}`).lastInsertRowid;
+    }
 
     const evId = db.prepare(`
-      INSERT INTO csf_evidence_items (assessment_id, type, file_path, url, interview_source, description, visible_to_client, uploaded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(assess.id, type, filePath, url, interviewSource, description, visibleToClient, req.user.id).lastInsertRowid;
+      INSERT INTO csf_evidence_items (assessment_id, type, file_path, url, interview_source, description, visible_to_client,
+        uploaded_by,evidence_id,evidence_period_start,evidence_period_end,confidentiality,relevance_note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(assess.id, type, filePath, url, interviewSource, description, visibleToClient, req.user.id, evidenceId,
+      req.body.evidence_period_start || null, req.body.evidence_period_end || null,
+      ['public','internal','confidential','restricted'].includes(req.body.confidentiality) ? req.body.confidentiality : 'internal',
+      relevanceNote).lastInsertRowid;
 
     // Auto-advance Not Started → In Progress on first evidence (gentle nudge through the state machine).
     if (assess.status === 'Not Started') {
@@ -629,6 +812,58 @@ function register(app, deps) {
     db.prepare(`UPDATE csf_evidence_items SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND assessment_id=?`).run(req.params.evId, assess.id);
     logAction(req.user.id, req.workspace.id, 'csf_evidence_delete', 'csf_evidence_item', req.params.evId, null, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`);
+  });
+
+  app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/request', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).send(error.message);
+    if (!csfPolicy.canCollectEvidence(db, req.user, engagement)) return res.status(403).send('Forbidden');
+    const assessment = db.prepare(`SELECT a.*,s.code FROM csf_subcategory_assessments a JOIN csf_subcategories s ON s.id=a.subcategory_id
+      WHERE a.engagement_id=? AND a.subcategory_id=?`).get(engagement.id, req.params.subId);
+    if (!assessment) return res.status(404).send('Assessment not found');
+    const assigneeId = Number(req.body.assignee_id || 0) || null;
+    if (assigneeId && !db.prepare(`SELECT 1 FROM users u JOIN workspace_members wm ON wm.user_id=u.id
+      WHERE u.id=? AND wm.workspace_id=? AND u.user_type='client' AND u.active=1`).get(assigneeId, req.workspace.id)) return res.status(400).send('Select an active client contributor.');
+    const isValidation = req.body.request_kind === 'validation';
+    const title = String(req.body.title || (isValidation ? `Validate assessment conclusion for ${assessment.code}` : `Provide evidence for ${assessment.code}`)).trim();
+    const description = String(req.body.description || '').trim();
+    if (!title || !description) return redirectBack(req, res, 'A precise request title and description are required.', 'error');
+    const tx = db.transaction(() => {
+      const requestId = db.prepare(`INSERT INTO client_requests (workspace_id,request_type,title,description,priority,assignee_id,due_date,created_by)
+        VALUES (?,?,?,?,?,?,?,?)`).run(req.workspace.id,isValidation ? 'action' : 'evidence',title,description,
+          ['low','normal','high','urgent'].includes(req.body.priority) ? req.body.priority : 'normal', assigneeId, req.body.due_date || null, req.user.id).lastInsertRowid;
+      db.prepare(`INSERT INTO client_request_events (request_id,workspace_id,actor_id,event_type,note) VALUES (?,?,?,'created',?)`)
+        .run(requestId, req.workspace.id, req.user.id, `Created from NIST CSF ${assessment.code}`);
+      db.prepare(`INSERT INTO csf_action_links (workspace_id,engagement_id,assessment_id,client_request_id,linked_by) VALUES (?,?,?,?,?)`)
+        .run(req.workspace.id, engagement.id, assessment.id, requestId, req.user.id);
+      if (isValidation) db.prepare(`UPDATE csf_subcategory_assessments SET client_validation_status='requested',row_version=row_version+1,last_edited_by=?,last_edited_at=CURRENT_TIMESTAMP WHERE id=? AND status='Reviewed'`).run(req.user.id,assessment.id);
+      return requestId;
+    });
+    const requestId = tx();
+    logAction(req.user.id, req.workspace.id, 'csf_client_request_create', 'client_request', requestId, { assessment_id: assessment.id }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`, 'Client evidence request created'));
+  });
+
+  app.post('/workspaces/:wsId/csf/:id(\\d+)/assess/:subId(\\d+)/create-risk', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).send(error.message);
+    if (!csfPolicy.canCreateFinding(db, req.user, engagement)) return res.status(403).send('Forbidden');
+    const assessment = db.prepare(`SELECT a.*,s.code,s.description AS outcome FROM csf_subcategory_assessments a JOIN csf_subcategories s ON s.id=a.subcategory_id WHERE a.engagement_id=? AND a.subcategory_id=?`).get(engagement.id,req.params.subId);
+    if (!assessment) return res.status(404).send('Assessment not found');
+    const likelihood = Math.min(5,Math.max(1,Number(req.body.likelihood)||3)), impact = Math.min(5,Math.max(1,Number(req.body.impact)||3));
+    const title = String(req.body.title || `CSF ${assessment.code} capability gap`).trim();
+    const tx = db.transaction(() => {
+      const riskId = db.prepare(`INSERT INTO risks (workspace_id,title,description,threat,vulnerability,likelihood,impact,treatment,status)
+        VALUES (?,?,?,?,?,?,?,'modify','open')`).run(req.workspace.id,title,
+          String(req.body.description || assessment.business_impact || assessment.outcome).trim(),
+          String(req.body.threat || 'Cybersecurity event affecting the assessed outcome').trim(),
+          String(req.body.vulnerability || assessment.effectiveness_conclusion || 'Capability gap identified by NIST CSF assessment').trim(),likelihood,impact).lastInsertRowid;
+      db.prepare(`INSERT INTO csf_action_links (workspace_id,engagement_id,assessment_id,risk_id,linked_by) VALUES (?,?,?,?,?)`).run(req.workspace.id,engagement.id,assessment.id,riskId,req.user.id);
+      return riskId;
+    });
+    const riskId=tx();
+    logAction(req.user.id,req.workspace.id,'csf_risk_create','risk',riskId,{assessment_id:assessment.id},auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/assess/${req.params.subId}`,'Risk added to the central risk register'));
   });
 
   // ---- Stage 4: Findings, Recommendations, Reviewer comments ------------------
@@ -741,6 +976,30 @@ function register(app, deps) {
   });
 
   // Update a recommendation.
+  app.post('/workspaces/:wsId/csf/:id(\\d+)/recommendations/:recId(\\d+)/create-task', requireAuth, requireWorkspace, (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req);
+    if (error) return res.status(error.status).send(error.message);
+    if (!csfPolicy.canManageRecommendations(db, req.user, engagement)) return res.status(403).send('Forbidden');
+    const rec = db.prepare(`SELECT r.*,f.title AS finding_title,f.assessment_id FROM csf_recommendations r
+      JOIN csf_findings f ON f.id=r.finding_id WHERE r.id=? AND f.engagement_id=? AND r.deleted_at IS NULL AND f.deleted_at IS NULL`)
+      .get(req.params.recId, engagement.id);
+    if (!rec) return res.status(404).send('Recommendation not found');
+    const existing = db.prepare(`SELECT task_id FROM csf_action_links WHERE recommendation_id=? AND task_id IS NOT NULL`).get(rec.id);
+    if (existing) return res.redirect(withToast(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`, 'A task is already linked to this recommendation'));
+    const tx = db.transaction(() => {
+      const taskId = db.prepare(`INSERT INTO tasks (workspace_id,title,description,assignee_id,due_date,status,created_by)
+        VALUES (?,?,?,?,?,'todo',?)`).run(req.workspace.id, `CSF: ${rec.finding_title}`,
+          `${rec.description}\n\nSource: NIST CSF engagement ${engagement.name}.`, Number(req.body.assignee_id || 0) || null,
+          rec.target_completion_date || null, req.user.id).lastInsertRowid;
+      db.prepare(`INSERT INTO csf_action_links (workspace_id,engagement_id,recommendation_id,task_id,linked_by) VALUES (?,?,?,?,?)`)
+        .run(req.workspace.id, engagement.id, rec.id, taskId, req.user.id);
+      return taskId;
+    });
+    const taskId = tx();
+    logAction(req.user.id, req.workspace.id, 'csf_recommendation_task_create', 'task', taskId, { recommendation_id: rec.id }, auditCtx(req));
+    res.redirect(withToast(req.body.return_to || `/workspaces/${req.workspace.id}/csf/${engagement.id}/findings`, 'Improvement task created and linked'));
+  });
+
   app.post('/workspaces/:wsId/csf/:id(\\d+)/recommendations/:recId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
     const { engagement, error } = loadCsfEngagement(req);
     if (error) return res.status(error.status).send(error.message);
@@ -847,7 +1106,7 @@ function register(app, deps) {
 
     const versionNumber = csfVersioning.nextVersionNumber(db, engagement); // 1.0 on first call
     const versionId = csfVersioning.createSnapshot(db, engagement, versionNumber, req.user.id, (req.body.change_summary || '').trim() || 'Initial publish');
-    db.prepare(`UPDATE csf_engagements SET status='Published', current_version=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(versionNumber, engagement.id);
+    db.prepare(`UPDATE csf_engagements SET status='Published', visible_in_portal=1, current_version=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(versionNumber, engagement.id);
     logAction(req.user.id, req.workspace.id, 'csf_engagement_publish', 'csf_engagement', engagement.id, { version_id: versionId, version_number: versionNumber }, auditCtx(req));
     res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}`, `Engagement published as v${versionNumber}`));
   });
@@ -994,17 +1253,13 @@ function register(app, deps) {
     });
   });
 
-  // ---- Stage 9: Client portal -------------------------------------------------
-  // Read-mostly view of a Published engagement. In prototype mode (auth deferred)
-  // anyone with workspace access can hit this; real client-user auth comes in
-  // Stage 13. The portal shows the current Published version's data plus the
-  // live remediation tracker (decision #34: snapshot-at-publish except for
-  // remediation, which stays live).
+  // Client view: pre-publication factual validation plus published reports,
+  // findings, comments, and live remediation tracking.
 
   const REMEDIATION_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'BLOCKED'];
 
   app.get('/workspaces/:wsId/csf/:id(\\d+)/portal', requireAuth, requireWorkspace, (req, res) => {
-    const { engagement, error } = loadCsfEngagement(req);
+    const { engagement, error } = loadCsfEngagement(req, { allowClient: true });
     if (error) return res.status(error.status).render('error', { user: req.user, message: error.message });
 
     // Pick the current published version. If never published, show the empty
@@ -1012,11 +1267,15 @@ function register(app, deps) {
     const currentVersion = db.prepare(`
       SELECT * FROM csf_engagement_versions WHERE engagement_id=? AND is_current=1 LIMIT 1
     `).get(engagement.id);
+    const validationRows = db.prepare(`SELECT a.id,a.subcategory_id,a.current_score,a.target_score,a.current_profile_statement,
+      a.target_profile_statement,a.business_impact,a.effectiveness_conclusion,a.evidence_confidence,s.code,s.description
+      FROM csf_subcategory_assessments a JOIN csf_subcategories s ON s.id=a.subcategory_id
+      WHERE a.engagement_id=? AND a.status='Reviewed' AND a.client_validation_status='requested' ORDER BY s.code`).all(engagement.id);
 
     if (!currentVersion) {
       return res.render('csf_portal', {
         user: req.user, ws: req.workspace, active: 'csf',
-        engagement, currentVersion: null,
+        engagement, currentVersion: null, validationRows,
       });
     }
 
@@ -1040,7 +1299,7 @@ function register(app, deps) {
       WHERE rs.version_id=?
     `).all(currentVersion.id);
 
-    // Comments on findings (client side). Empty in prototype until client users exist.
+    // Scoped client comments retained alongside the published findings.
     const clientComments = db.prepare(`
       SELECT cc.*, u.name AS commenter_name FROM csf_client_comments cc
       INNER JOIN users u ON u.id = cc.client_user_id
@@ -1052,15 +1311,35 @@ function register(app, deps) {
       user: req.user, ws: req.workspace, active: 'csf',
       engagement, currentVersion, allVersions, rollup,
       findingSnaps, recSnaps, clientComments,
-      REMEDIATION_STATUSES,
+      REMEDIATION_STATUSES, validationRows,
       r1: csfScoring.r1,
     });
+  });
+
+  app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/validate/:assessmentId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+    const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
+    if (!engagement || !csfPolicy.canViewEngagement(db, req.user, engagement)) return res.status(404).send('Not found');
+    if (!(req.user.user_type === 'client' || csfPolicy.canApprove(db, req.user, engagement))) return res.status(403).send('Client validation is restricted to client contributors or an authorised manager override.');
+    const assessment = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE id=? AND engagement_id=?`).get(req.params.assessmentId,engagement.id);
+    if (!assessment || assessment.status !== 'Reviewed' || assessment.client_validation_status !== 'requested') return res.status(409).send('This conclusion is not awaiting client validation.');
+    const decision = req.body.decision === 'changes_requested' ? 'changes_requested' : 'validated';
+    if (decision === 'changes_requested' && !String(req.body.note || '').trim()) return res.status(400).send('Explain the requested factual correction.');
+    if (decision === 'validated') db.prepare(`UPDATE csf_subcategory_assessments SET status='Client Validated',client_validation_status='validated',
+      client_validated_by=?,client_validated_at=CURRENT_TIMESTAMP,row_version=row_version+1,last_edited_by=?,last_edited_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .run(req.user.id,req.user.id,assessment.id);
+    else db.prepare(`UPDATE csf_subcategory_assessments SET client_validation_status='changes_requested',row_version=row_version+1,last_edited_by=?,last_edited_at=CURRENT_TIMESTAMP WHERE id=?`).run(req.user.id,assessment.id);
+    db.prepare(`INSERT INTO csf_assessment_events (engagement_id,assessment_id,event_type,from_status,to_status,metadata,actor_id)
+      VALUES (?,?,?,?,?,?,?)`).run(engagement.id,assessment.id,'client_validation',assessment.status,
+        decision === 'validated' ? 'Client Validated' : assessment.status,JSON.stringify({ decision,note:String(req.body.note||'').trim()||null }),req.user.id);
+    logAction(req.user.id, req.workspace.id, 'csf_client_validation', 'csf_subcategory_assessment', assessment.id, { decision }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/portal`, decision === 'validated' ? 'Assessment conclusion validated' : 'Changes requested'));
   });
 
   // Update remediation status for a recommendation.
   app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/remediation/:recId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
     const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!engagement) return res.status(404).send('Not found');
+    if (!csfPolicy.canViewEngagement(db, req.user, engagement)) return res.status(403).send('Forbidden');
     if (engagement.status !== 'Published') return res.status(400).send('Remediation tracker is only available after publish.');
 
     const status = req.body.status;
@@ -1093,6 +1372,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/comments', requireAuth, requireWorkspace, (req, res) => {
     const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!engagement) return res.status(404).send('Not found');
+    if (!csfPolicy.canViewEngagement(db, req.user, engagement)) return res.status(403).send('Forbidden');
     if (engagement.status !== 'Published') return res.status(400).send('Comments only available after publish.');
     const findingId = parseInt(req.body.finding_id, 10);
     const text = (req.body.text || '').trim();
@@ -1111,8 +1391,9 @@ function register(app, deps) {
 
   // Word: live engagement (draft watermark) OR a specific version (vid query param).
   app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx', requireAuth, requireWorkspace, async (req, res) => {
-    const { engagement, error } = loadCsfEngagement(req);
+    const { engagement, error } = loadCsfEngagement(req, { allowClient: true });
     if (error) return res.status(error.status).send(error.message);
+    if (req.user.user_type === 'client' && !req.query.vid) return res.status(403).send('Client users can download published report versions only.');
     csfPolicy.ensureAssessmentRows(db, engagement);
 
     let rollup, versionRow = null, isDraft;
@@ -1133,6 +1414,27 @@ function register(app, deps) {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buf);
     logAction(req.user.id, req.workspace.id, 'csf_report_export_docx', 'csf_engagement', engagement.id, { version_id: versionRow?.id || null }, auditCtx(req));
+  });
+
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.pdf', requireAuth, requireWorkspace, async (req, res) => {
+    const { engagement, error } = loadCsfEngagement(req, { allowClient: true });
+    if (error) return res.status(error.status).send(error.message);
+    if (req.user.user_type === 'client' && !req.query.vid) return res.status(403).send('Client users can download published report versions only.');
+    csfPolicy.ensureAssessmentRows(db, engagement);
+    let rollup, versionRow = null, isDraft = true;
+    if (req.query.vid) {
+      versionRow = db.prepare(`SELECT * FROM csf_engagement_versions WHERE id=? AND engagement_id=?`).get(req.query.vid, engagement.id);
+      if (!versionRow) return res.status(404).send('Version not found in this engagement.');
+      rollup = csfVersioning.loadSnapshotRollup(db, versionRow); isDraft = false;
+    } else rollup = csfScoring.computeEngagementRollup(db, engagement);
+    const firm = db.prepare(`SELECT name FROM firms WHERE id=?`).get(req.workspace.firm_id);
+    const html = csfReports.buildHtmlReport({ db, engagement, ws: req.workspace, firm, currentRollup: rollup, isDraft, versionRow });
+    try {
+      const raw = await auditPack.renderPDF(html, { headerLeft: req.workspace.client_name, headerRight: 'NIST CSF 2.0 assessment', footerLeft: 'Confidential · Controlled assessment deliverable' });
+      const filename = `csf-report-${(engagement.name || 'engagement').replace(/[^\\w.-]+/g, '_')}-${versionRow ? 'v'+versionRow.version_number : 'DRAFT'}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${filename}"`); res.send(raw);
+      logAction(req.user.id, req.workspace.id, 'csf_report_export_pdf', 'csf_engagement', engagement.id, { version_id: versionRow?.id || null }, auditCtx(req));
+    } catch (e) { console.error('csf PDF generation error:', e); res.status(503).send('PDF generation is temporarily unavailable. The Word report remains available.'); }
   });
 
   // CSV: one row per Subcategory. Stage 12 adds optional filters via query
