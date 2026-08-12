@@ -236,7 +236,6 @@
           <th>Name</th>
           <th>Email</th>
           <th>Workspace access</th>
-          <th style="width:90px;">MFA</th>
           <th style="width:130px;">Last active</th>
           <th style="width:80px;">Status</th>
           <th style="width:130px;"></th>
@@ -248,7 +247,6 @@
             <td><%= u.name %></td>
             <td class="meta"><%= u.email %></td>
             <td class="meta"><%= u.workspaces %></td>
-            <td><span class="tag <%= u.mfa_enabled_at ? 'tag-success' : 'tag-neutral' %>"><%= u.mfa_enabled_at ? 'Enabled' : 'Pending' %></span></td>
             <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
             <td><%= u.active ? 'Active' : 'Disabled' %></td>
             <td>

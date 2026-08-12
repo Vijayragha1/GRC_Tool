@@ -1,0 +1,94 @@
+<%- include('partials/header', { title: (typeof homeMode !== 'undefined' && homeMode) ? ws.client_name : 'Cybersecurity maturity programme', user, ws, active: (typeof active !== 'undefined' ? active : 'csf') }) %>
+
+<div class="cm-programme-head">
+  <div>
+    <% if (typeof homeMode !== 'undefined' && homeMode) { %>
+      <div class="eyebrow">Client overview · NIST CSF 2.0</div>
+      <h1 class="page-title"><%= ws.client_name %></h1>
+      <p class="page-subtitle">NIST CSF 2.0 maturity baseline and improvement programme.</p>
+    <% } else { %>
+      <div class="eyebrow">NIST Cybersecurity Framework 2.0</div>
+      <h1 class="page-title">Cybersecurity maturity programme</h1>
+      <p class="page-subtitle">Policy and Practice assessment across 106 CSF outcomes, with independent review and controlled reporting.</p>
+    <% } %>
+  </div>
+  <div class="cm-head-actions">
+    <% if (currentEngagement) { %><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment">Continue programme</a><% } %>
+    <% if (canCreate) { %><a class="btn" href="/workspaces/<%= ws.id %>/csf/new">New assessment cycle</a><% } %>
+  </div>
+</div>
+
+<% if (!currentEngagement) { %>
+  <section class="panel cm-empty-programme"><div><span class="cm-kicker">No baseline established</span><h2>Start with the decisions leadership needs to make</h2><p>Define the business context and Target Profile before collecting evidence. The programme will translate the 106 CSF outcomes into capability themes, investment priorities and a reusable reassessment baseline.</p></div><% if(canCreate){ %><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/csf/new">Create maturity programme</a><% } %></section>
+<% } else { const s=programme.rollup.summary; const complete=s.inScope?Math.round(s.assessed*100/s.inScope):0; const assessmentStatus=s.assessed===0?'Not started':(s.assessed<s.inScope?'In progress':'Concluded'); const targetDefined=Math.max(s.targetPolicyMedian||0,s.targetPracticeMedian||0)>0; %>
+  <section class="panel cm-baseline-summary">
+    <div class="cm-baseline-primary">
+      <div class="cm-baseline-heading">
+        <div>
+          <span class="cm-kicker">Assessment status</span>
+          <h2><%= s.achievedMedian==null ? (s.assessed===0?'No maturity position established':'Baseline fieldwork in progress') : programme.currentLabel %></h2>
+          <p><% if(s.assessed===0){ %>No outcomes have been concluded. Begin with the first function workbench.<% } else { %><%= s.assessed %> of <%= s.inScope %> outcomes are concluded. <%= s.targetPct %>% of concluded outcomes meet the <%= programme.profileReady?'approved':'working' %> Target Profile.<% } %></p>
+        </div>
+        <span class="status-pill"><%= assessmentStatus %></span>
+      </div>
+      <div class="cm-baseline-progress">
+        <div><span>Evidence-backed completion</span><strong><%= complete %>%</strong></div>
+        <div class="cm-baseline-track" aria-label="<%= complete %>% of outcomes concluded"><span style="width:<%= complete %>%"></span></div>
+        <small><%= s.assessed %> / <%= s.inScope %> outcomes</small>
+      </div>
+      <div class="cm-baseline-actions"><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment">Open maturity workbench</a><a class="btn" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/report">Executive reporting</a></div>
+    </div>
+    <dl class="cm-baseline-facts">
+      <div><dt>Current maturity</dt><dd><%= s.achievedMedian==null?'—':programme.currentLabel %></dd></div>
+      <div><dt>Target position</dt><dd><%= targetDefined ? programme.targetLabel : 'Not defined' %></dd></div>
+      <div><dt>Policy / Practice divergence</dt><dd><%= s.divergence %><small> material disconnects</small></dd></div>
+      <div><dt>Controlled baseline</dt><dd><%= programme.published ? `Version ${programme.published.version_number}` : 'Not published' %></dd></div>
+    </dl>
+  </section>
+
+  <div class="cm-dashboard-grid">
+    <section class="panel cm-function-panel">
+      <div class="panel-head"><div><span class="cm-kicker">Function position</span><h2>Function-level maturity</h2><p>Demonstrated maturity is the lower of the concluded Policy and Practice levels.</p></div><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment">Open workbench</a></div>
+      <div class="cm-function-table-head"><span>Function</span><span>Concluded</span><span>Current</span><span>Target</span><span>Gap</span></div>
+      <div class="cm-function-list"><% programme.rollup.functions.forEach(f=>{ const current=f.summary.achievedMedian; const target=Math.max(...[f.summary.targetPolicyMedian,f.summary.targetPracticeMedian].filter(v=>v!=null),0); const coverage=f.summary.inScope?Math.round(f.summary.assessed*100/f.summary.inScope):0; %>
+        <a href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment?function=<%= f.code %>" class="cm-function-row cm-function-<%= f.code.toLowerCase() %>">
+          <span class="cm-function-identity"><span class="cm-function-code"><%= f.code %></span><span class="cm-function-name"><strong><%= f.name %></strong><small><%= f.summary.inScope %> outcomes in scope</small></span></span>
+          <span class="cm-function-coverage"><strong><%= f.summary.assessed %> / <%= f.summary.inScope %></strong><small><%= coverage %>%</small></span>
+          <span class="cm-function-value"><strong><%= current==null?'—':current %></strong><small><%= current==null?'Pending':'Demonstrated' %></small></span>
+          <span class="cm-function-value"><strong><%= target||'—' %></strong><small>Target Profile</small></span>
+          <span class="cm-function-gap <%= current!=null&&target>current?'has-gap':'' %>"><strong><%= current==null||!target?'—':Math.max(0,target-current) %></strong><small><%= current==null?'Pending':(target>current?'Level gap':'At target') %></small></span>
+        </a>
+      <% }) %></div>
+    </section>
+
+    <aside class="panel cm-gates-panel">
+      <div class="panel-head"><div><span class="cm-kicker">Decision assurance</span><h2>Can leadership rely on this baseline?</h2></div></div>
+      <div class="cm-gate-list">
+        <div class="<%= programme.profileReady?'done':'' %>"><span><%= programme.profileReady?'✓':'1' %></span><p><strong>Business Profile approved</strong><small>Decision boundary and reliance</small></p></div>
+        <div class="<%= s.assessed===s.inScope?'done':'' %>"><span><%= s.assessed===s.inScope?'✓':'2' %></span><p><strong>Capability conclusions complete</strong><small><%= s.assessed %>/<%= s.inScope %> outcomes</small></p></div>
+        <div class="<%= programme.reviewed===s.inScope?'done':'' %>"><span><%= programme.reviewed===s.inScope?'✓':'3' %></span><p><strong>Independent quality review</strong><small><%= programme.reviewed %>/<%= s.inScope %> reviewed</small></p></div>
+        <div class="<%= programme.published?'done':'' %>"><span><%= programme.published?'✓':'4' %></span><p><strong>Executive baseline published</strong><small><%= programme.published?'Controlled and client-visible':'Not yet reliance-ready' %></small></p></div>
+      </div>
+      <a class="btn" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/review">Open quality review</a>
+    </aside>
+  </div>
+
+  <div class="cm-dashboard-grid cm-dashboard-lower">
+    <section class="panel cm-priority-panel">
+      <div class="panel-head"><div><span class="cm-kicker">Investment agenda</span><h2>Capability themes requiring leadership attention</h2><p>Prioritized by the distance between demonstrated maturity and the defined Target Profile.</p></div><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/findings">Open roadmap</a></div>
+      <% if(programme.priorities.length){ %><div class="cm-priority-list"><% programme.priorities.forEach((p,index)=>{ %><a href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment/category/<%= p.code %>"><span>0<%= index+1 %></span><div><strong><%= p.name %></strong><small><%= p.functionName %> · <%= p.summary.assessed %>/<%= p.summary.inScope %> assessed</small></div><b><%= p.achieved %> → <%= p.target %></b></a><% }) %></div><% } else { %><div class="empty-state"><div class="empty-title">Priorities will appear after the first capability conclusions</div><div class="empty-sub">The programme will identify systemic themes rather than presenting leadership with 106 isolated gaps.</div></div><% } %>
+    </section>
+    <aside class="panel cm-roadmap-panel">
+      <div class="panel-head"><div><span class="cm-kicker">Improvement horizon</span><h2>Governed roadmap</h2></div></div>
+      <% const phases=[['0_3M','Now–3 months'],['3_6M','3–6 months'],['6_12M','6–12 months'],['12M_PLUS','12+ months']]; %>
+      <div class="cm-roadmap-bars"><% phases.forEach(([key,label])=>{ const count=programme.roadmap[key]||0; %><div><span><%= label %></span><i><b style="width:<%= Math.min(100,count*14) %>%"></b></i><strong><%= count %></strong></div><% }) %></div>
+      <div class="cm-roadmap-summary"><strong><%= programme.findings.length %></strong><span>governed findings</span><strong><%= Object.values(programme.roadmap).reduce((a,b)=>a+b,0) %></strong><span>roadmap actions</span></div>
+    </aside>
+  </div>
+
+  <section class="cm-cycle-section"><div class="cm-section-head"><div><span class="cm-kicker">Assessment cycles</span><h2>Baselines and reassessments</h2></div><% if(canCreate){ %><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/csf/new">New cycle</a><% } %></div>
+    <div class="cm-cycle-list"><% engagements.forEach(e=>{ %><a href="/workspaces/<%= ws.id %>/csf/<%= e.id %>/assessment"><span class="status-pill"><%= e.status %></span><div><strong><%= e.name %></strong><small><%= e.scope_statement||'Scope awaiting definition' %></small></div><span><b><%= e.assessed_count||0 %>/106</b><small>concluded</small></span><span><b><%= e.version_count||0 %></b><small>controlled versions</small></span><em>Open →</em></a><% }) %></div>
+  </section>
+<% } %>
+
+<%- include('partials/footer') %>

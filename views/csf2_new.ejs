@@ -1,0 +1,15 @@
+<%- include('partials/header', { title: 'New NIST CSF assessment', user, ws, active: 'csf' }) %>
+<div class="page-head"><div><a class="meta" href="/workspaces/<%= ws.id %>/csf">← Assessments</a><h1 class="page-title">Create NIST CSF 2.0 assessment</h1><div class="page-subtitle">Start with the engagement boundary. Detailed Current and Target Profiles are completed next.</div></div></div>
+<form method="POST" action="/workspaces/<%= ws.id %>/csf" class="panel csf2-form-panel">
+  <div class="panel-head"><h2>Engagement</h2><span class="tag">NIST CSF 2.0 · 106 outcomes</span></div>
+  <div class="panel-pad csf2-form-grid">
+    <label class="field span-2"><span>Assessment name</span><input class="input" name="name" required maxlength="160" placeholder="e.g. FY27 enterprise cybersecurity maturity assessment"></label>
+    <label class="field span-2"><span>Initial scope statement</span><textarea class="textarea" name="scope_statement" rows="4" required minlength="40" placeholder="Business units, services, technology environments, locations, and exclusions..."></textarea></label>
+    <label class="field"><span>Assessment period start</span><input class="input" type="date" name="period_start" required></label>
+    <label class="field"><span>Assessment period end</span><input class="input" type="date" name="period_end" required></label>
+    <label class="field"><span>Target completion</span><input class="input" type="date" name="target_completion_date"></label>
+    <label class="field"><span>Engagement lead</span><select class="select" name="assigned_lead_id"><option value="">Creator will lead</option><% assignableUsers.forEach(u=>{ %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select></label>
+  </div>
+  <div class="panel-foot"><a class="btn" href="/workspaces/<%= ws.id %>/csf">Cancel</a><button class="btn btn-primary">Create assessment</button></div>
+</form>
+<%- include('partials/footer') %>

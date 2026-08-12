@@ -226,24 +226,13 @@
           and applies it on save. Asking for it twice meant people typed
           a placeholder once and never came back to fix it. %>
       <div class="col-full">
-        <%# ISO 27001 always-on; the extras are behind a disclosure. %>
-        <input type="hidden" name="frameworks" value="iso27001">
-        <details>
-          <summary class="meta text-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;list-style:none;color:var(--text-secondary);">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>
-            <span>ISO 27001:2022 always included. Add another framework?</span>
-          </summary>
-          <div class="row text-sm" style="gap:18px;flex-wrap:wrap;padding:10px 0 0 17px;">
-            <label class="row-center" style="gap:8px;cursor:pointer;">
-              <input type="checkbox" name="frameworks" value="iso42001">
-              <span><strong>ISO 42001:2023</strong> <span class="meta">AI management system</span></span>
-            </label>
-            <label class="row-center" style="gap:8px;cursor:pointer;">
-              <input type="checkbox" name="frameworks" value="csf">
-              <span><strong>NIST CSF 2.0</strong> <span class="meta">Cybersecurity Framework</span></span>
-            </label>
-          </div>
-        </details>
+        <div class="label">Assessment programmes <span class="meta">optional · choose any combination</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:7px;">
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input type="checkbox" name="frameworks" value="iso27001" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">ISO 27001:2022</strong><span class="meta">Information security</span></span></label>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input type="checkbox" name="frameworks" value="iso42001" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">ISO 42001:2023</strong><span class="meta">AI management</span></span></label>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input type="checkbox" name="frameworks" value="csf" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">NIST CSF 2.0</strong><span class="meta">Cyber maturity</span></span></label>
+        </div>
+        <div class="meta text-xs" style="margin-top:7px;">You can create the client now and assign programmes later.</div>
       </div>
     </div>
     <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">

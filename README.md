@@ -272,7 +272,6 @@ INITIAL_ADMIN_EMAIL=you@yourfirm.com           # optional, renames the placehold
 INITIAL_ADMIN_NAME=Your Name                   # optional, sets display name
 SESSION_SECRET=a-random-32-char-string         # required in production; auto-generated dev fallback otherwise
 APP_BASE_URL=http://localhost:3000             # used in email links
-REQUIRE_MFA=1                                  # mandatory in production by default
 UPLOAD_AV_MODE=required                        # requires clamdscan for client evidence uploads
 ```
 

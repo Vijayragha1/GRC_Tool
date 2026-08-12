@@ -5,75 +5,96 @@
   if (!Array.isArray(navFrameworks)) {
     try { navFrameworks = JSON.parse(navFrameworks || '[]'); } catch (_) { navFrameworks = []; }
   }
+  const hasIso27001 = navFrameworks.includes('iso27001');
   const hasCsf = navFrameworks.includes('csf');
   const hasIso42001 = navFrameworks.includes('iso42001');
+  const csfOnly = hasCsf && !hasIso27001 && !hasIso42001;
   const showClientSetup = !ws.scope_confirmed_at && !['audit_ready', 'certified'].includes(ws.stage);
 
   const navDomains = [
     {
-      id: 'work', label: 'Work queue',
+      id: 'work', label: csfOnly ? 'Delivery' : 'Work queue',
       icon: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
       active: ['delivery', 'client-portal', 'inbox', 'review-queue'],
       items: [
         ...(user && user.user_type === 'firm' ? [{ label: 'Delivery cockpit', href: `/workspaces/${ws.id}/delivery`, active: ['delivery'] }] : []),
         { label: 'Client collaboration', href: `/workspaces/${ws.id}/client-portal`, active: ['client-portal'] },
         { label: 'Inbox & notifications', href: `/workspaces/${ws.id}/inbox`, active: ['inbox'] },
-        { label: 'Review queue', href: `/workspaces/${ws.id}/review-queue`, active: ['review-queue'], badge: navReviewCount }
+        ...(!csfOnly ? [{ label: 'Review queue', href: `/workspaces/${ws.id}/review-queue`, active: ['review-queue'], badge: navReviewCount }] : [])
       ]
     },
-    {
-      id: 'plan', label: 'Plan & work',
+    ...(!csfOnly ? [{
+      id: 'plan', label: csfOnly ? 'Plan & roadmap' : 'Plan & work',
       icon: '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
       active: ['engagement-plan', 'roadmap', 'tasks', 'calendar'],
       items: [
         { label: 'Engagement plan', href: `/workspaces/${ws.id}/engagement-plan`, active: ['engagement-plan'] },
         { label: 'Tasks', href: `/workspaces/${ws.id}/tasks`, active: ['tasks'], shortcut: 'g t' },
-        { label: 'Compliance calendar', href: `/workspaces/${ws.id}/calendar`, active: ['calendar'] }
+        ...(!csfOnly ? [{ label: 'Compliance calendar', href: `/workspaces/${ws.id}/calendar`, active: ['calendar'] }] : [])
       ]
-    },
-    {
-      id: 'assessment', label: 'Assessment',
+    }] : []),
+    ...(hasIso27001 ? [{
+      id: 'assessment', label: 'ISO 27001 programme',
       icon: '<path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14 9 11"/>',
-      active: ['readiness', 'data-quality', 'readiness-overview', 'gap-assessment', 'gap-assessment-summary', 'csf', 'csf-catalog', 'csf-learn', 'iso42001-intake', 'iso42001-engagement-plan', 'iso42001-gap', 'iso42001-readiness'],
+      active: ['readiness', 'data-quality', 'gap-assessment', 'gap-assessment-summary'],
       items: [
         { label: 'Readiness', href: `/workspaces/${ws.id}/readiness`, active: ['readiness'], shortcut: 'g e' },
         { label: 'Data quality & truth', href: `/workspaces/${ws.id}/data-quality`, active: ['data-quality'] },
         { label: 'Gap assessment', href: `/workspaces/${ws.id}/gap-assessment`, active: ['gap-assessment'] },
-        { label: 'Assessment findings', href: `/workspaces/${ws.id}/controls/assess/summary`, active: ['gap-assessment-summary'] },
-        ...(navFrameworks.length > 1 ? [{ label: 'All-framework readiness', href: `/workspaces/${ws.id}/readiness/overview`, active: ['readiness-overview'] }] : []),
-        ...(hasCsf ? [
-          { label: 'NIST CSF 2.0', href: `/workspaces/${ws.id}/csf`, active: ['csf', 'csf-catalog'] },
-          { label: 'NIST CSF learning', href: `/workspaces/${ws.id}/csf/learn`, active: ['csf-learn'] }
-        ] : []),
-        ...(hasIso42001 ? [
-          { label: 'AI management intake', href: `/workspaces/${ws.id}/iso42001/intake`, active: ['iso42001-intake'] },
-          { label: 'AI engagement plan', href: `/workspaces/${ws.id}/iso42001/engagement-plan`, active: ['iso42001-engagement-plan'] },
-          { label: 'AI gap assessment', href: `/workspaces/${ws.id}/iso42001/gap-assessment`, active: ['iso42001-gap'] },
-          { label: 'AI readiness', href: `/workspaces/${ws.id}/iso42001/readiness`, active: ['iso42001-readiness'] }
-        ] : [])
+        { label: 'Assessment findings', href: `/workspaces/${ws.id}/controls/assess/summary`, active: ['gap-assessment-summary'] }
       ]
-    },
-    {
-      id: 'controls', label: 'Controls & SoA',
+    }] : []),
+    ...(hasCsf ? [{
+      id: 'cyber-maturity', label: 'Cybersecurity maturity',
+      icon: '<path d="M12 2 3 6v6c0 5 3.8 9.7 9 10 5.2-.3 9-5 9-10V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
+      active: ['csf', 'csf-catalog'],
+      items: csfOnly ? [
+        { label: 'Programme', href: `/workspaces/${ws.id}/csf`, active: ['csf', 'csf-catalog'] },
+        { label: 'Business profile', href: `/workspaces/${ws.id}/csf/current/scope`, active: [] },
+        { label: 'Maturity workbench', href: `/workspaces/${ws.id}/csf/current/assessment`, active: [] },
+        { label: 'Quality review', href: `/workspaces/${ws.id}/csf/current/review`, active: [] },
+        { label: 'Priorities & roadmap', href: `/workspaces/${ws.id}/csf/current/findings`, active: [] },
+        { label: 'Executive reporting', href: `/workspaces/${ws.id}/csf/current/report`, active: [] }
+      ] : [
+        { label: 'Programme dashboard', href: `/workspaces/${ws.id}/csf`, active: ['csf', 'csf-catalog'] }
+      ]
+    }] : []),
+    ...(hasIso42001 ? [{
+      id: 'ai-programme', label: 'AI management system',
+      icon: '<path d="M12 3a4 4 0 0 0-4 4v1H7a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1v1a4 4 0 0 0 8 0v-1h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-1V7a4 4 0 0 0-4-4z"/><path d="M9 10h6M9 14h6"/>',
+      active: ['iso42001-intake', 'iso42001-engagement-plan', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle'],
+      items: [
+        { label: 'Management intake', href: `/workspaces/${ws.id}/iso42001/intake`, active: ['iso42001-intake'] },
+        { label: 'Engagement plan', href: `/workspaces/${ws.id}/iso42001/engagement-plan`, active: ['iso42001-engagement-plan'] },
+        { label: 'Requirements catalog', href: `/workspaces/${ws.id}/iso42001`, active: ['iso42001-catalog'] },
+        { label: 'Control register', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls'] },
+        { label: 'Gap assessment', href: `/workspaces/${ws.id}/iso42001/gap-assessment`, active: ['iso42001-gap'] },
+        { label: 'Improvement roadmap', href: `/workspaces/${ws.id}/iso42001/roadmap`, active: ['iso42001-roadmap'] },
+        { label: 'Readiness', href: `/workspaces/${ws.id}/iso42001/readiness`, active: ['iso42001-readiness'] },
+        { label: 'Statement of Applicability', href: `/workspaces/${ws.id}/iso42001/soa`, active: ['iso42001-soa'] },
+        { label: 'Certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'] }
+      ]
+    }] : []),
+    ...(hasIso27001 ? [{
+      id: 'controls', label: 'ISO controls & SoA',
       icon: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
-      active: ['controls', 'soa', 'crosswalks', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa'],
+      active: ['controls', 'soa', 'crosswalks'],
       items: [
         { label: 'Control register', href: `/workspaces/${ws.id}/controls`, active: ['controls'], shortcut: 'g c' },
         { label: 'Statement of Applicability', href: `/workspaces/${ws.id}/soa`, active: ['soa'], shortcut: 'g s' },
-        { label: 'Framework crosswalks', href: `/workspaces/${ws.id}/crosswalks`, active: ['crosswalks'] },
-        ...(hasIso42001 ? [
-          { label: 'AI requirements catalog', href: `/workspaces/${ws.id}/iso42001`, active: ['iso42001-catalog'] },
-          { label: 'AI control register', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls'] },
-          { label: 'AI roadmap', href: `/workspaces/${ws.id}/iso42001/roadmap`, active: ['iso42001-roadmap'] },
-          { label: 'AI Statement of Applicability', href: `/workspaces/${ws.id}/iso42001/soa`, active: ['iso42001-soa'] }
-        ] : [])
+        { label: 'Framework crosswalks', href: `/workspaces/${ws.id}/crosswalks`, active: ['crosswalks'] }
       ]
-    },
-    {
-      id: 'risk', label: 'Risks & operations',
+    }] : []),
+    ...(!csfOnly ? [{
+      id: 'risk', label: csfOnly ? 'Risks & context' : 'Risks & operations',
       icon: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
-      active: ['assets', 'risks', 'vendors', 'incidents', 'changes', 'bcp'],
-      items: [
+      active: csfOnly ? ['assets', 'risks', 'objectives', 'metrics-library'] : ['assets', 'risks', 'vendors', 'incidents', 'changes', 'bcp'],
+      items: csfOnly ? [
+        { label: 'Assets', href: `/workspaces/${ws.id}/assets`, active: ['assets'], shortcut: 'g a' },
+        { label: 'Risk register', href: `/workspaces/${ws.id}/risks`, active: ['risks'], shortcut: 'g r' },
+        { label: 'Security objectives', href: `/workspaces/${ws.id}/objectives`, active: ['objectives'] },
+        { label: 'Metrics', href: `/workspaces/${ws.id}/metrics/adopted`, active: ['metrics-library'] }
+      ] : [
         { label: 'Assets', href: `/workspaces/${ws.id}/assets`, active: ['assets'], shortcut: 'g a' },
         { label: 'Risk register', href: `/workspaces/${ws.id}/risks`, active: ['risks'], shortcut: 'g r' },
         { label: 'Suppliers', href: `/workspaces/${ws.id}/vendors`, active: ['vendors'], shortcut: 'g v' },
@@ -81,20 +102,24 @@
         { label: 'Change register', href: `/workspaces/${ws.id}/changes`, active: ['changes'] },
         { label: 'Business continuity', href: `/workspaces/${ws.id}/bcp`, active: ['bcp'], shortcut: 'g b' }
       ]
-    },
-    {
-      id: 'policies', label: 'Policies & evidence',
+    }] : []),
+    ...(!csfOnly ? [{
+      id: 'policies', label: csfOnly ? 'Evidence' : 'Policies & evidence',
       icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
       active: ['documents', 'templates', 'policy-adoption', 'evidence', 'evidence-coverage'],
-      items: [
+      items: csfOnly ? [
+        { label: 'Document register', href: `/workspaces/${ws.id}/documents`, active: ['documents'], shortcut: 'g d' },
+        { label: 'Evidence library', href: `/workspaces/${ws.id}/evidence`, active: ['evidence'] },
+        { label: 'Evidence coverage', href: `/workspaces/${ws.id}/evidence-coverage`, active: ['evidence-coverage'] }
+      ] : [
         { label: 'Document register', href: `/workspaces/${ws.id}/documents`, active: ['documents'], shortcut: 'g d' },
         { label: 'Policy templates', href: `/workspaces/${ws.id}/templates`, active: ['templates'] },
         { label: 'Policy adoption & reviews', href: `/workspaces/${ws.id}/policy-adoption`, active: ['policy-adoption'] },
         { label: 'Evidence library', href: `/workspaces/${ws.id}/evidence`, active: ['evidence'] },
         { label: 'Evidence coverage', href: `/workspaces/${ws.id}/evidence-coverage`, active: ['evidence-coverage'] }
       ]
-    },
-    {
+    }] : []),
+    ...(!csfOnly ? [{
       id: 'governance', label: 'Governance',
       icon: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
       active: ['objectives', 'metrics-library', 'mrms', 'training', 'competence', 'communication-plan'],
@@ -106,21 +131,23 @@
         { label: 'Competence', href: `/workspaces/${ws.id}/competence`, active: ['competence'] },
         { label: 'Communication plan', href: `/workspaces/${ws.id}/communication-plan`, active: ['communication-plan'] }
       ]
-    },
-    {
-      id: 'audit', label: 'Audit & certification',
+    }] : []),
+    ...(!csfOnly ? [{
+      id: 'audit', label: csfOnly ? 'Reports & assurance' : 'Assurance & certification',
       icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
-      active: ['assurance', 'deliverables', 'audit-pack', 'audits', 'nc', 'cert-cycle', 'changes-since', 'auditor-access', 'iso42001-cert-cycle'],
-      items: [
+      active: ['assurance', 'deliverables', 'audit-pack', 'readiness-overview', 'audits', 'nc', 'cert-cycle', 'changes-since', 'auditor-access'],
+      items: csfOnly ? [
+        { label: 'Assurance & reports', href: `/workspaces/${ws.id}/assurance`, active: ['assurance', 'deliverables', 'audit-pack'] }
+      ] : [
         { label: 'Assurance & reports', href: `/workspaces/${ws.id}/assurance`, active: ['assurance', 'deliverables', 'audit-pack'] },
+        ...(navFrameworks.length > 1 ? [{ label: 'Cross-framework coverage', href: `/workspaces/${ws.id}/readiness/overview`, active: ['readiness-overview'] }] : []),
         { label: 'Internal audits', href: `/workspaces/${ws.id}/audits`, active: ['audits'], shortcut: 'g i' },
         { label: 'Nonconformities', href: `/workspaces/${ws.id}/nonconformities`, active: ['nc'], shortcut: 'g n' },
-        { label: 'Certification cycle', href: `/workspaces/${ws.id}/cert-cycle`, active: ['cert-cycle'] },
+        ...(hasIso27001 ? [{ label: 'Certification cycle', href: `/workspaces/${ws.id}/cert-cycle`, active: ['cert-cycle'] }] : []),
         { label: 'Changes since last audit', href: `/workspaces/${ws.id}/changes-since`, active: ['changes-since'] },
-        { label: 'Auditor access', href: `/workspaces/${ws.id}/auditor-access`, active: ['auditor-access'] },
-        ...(hasIso42001 ? [{ label: 'AI certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'] }] : [])
+        { label: 'Auditor access', href: `/workspaces/${ws.id}/auditor-access`, active: ['auditor-access'] }
       ]
-    },
+    }] : []),
     {
       id: 'settings', label: 'Settings',
       icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
@@ -135,10 +162,12 @@
   ];
 %>
 
-<a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= navActive === 'overview' ? 'active' : '' %>" <% if (navActive === 'overview') { %>aria-current="page"<% } %>>
-  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-  <span class="nav-item-text">Overview</span>
-</a>
+<% if (!csfOnly) { %>
+  <a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= navActive === 'overview' ? 'active' : '' %>" <% if (navActive === 'overview') { %>aria-current="page"<% } %>>
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <span class="nav-item-text"><%= navFrameworks.length > 1 ? 'Integrated overview' : 'Overview' %></span>
+  </a>
+<% } %>
 
 <% navDomains.forEach(domain => {
      const domainActive = domain.active.includes(navActive);

@@ -16,11 +16,12 @@
     <% if (next) { %><a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= next.subcategory_id %>" class="btn btn-secondary btn-xs"><%= next.code %> &rarr;</a><% } %>
   </div>
 </div>
+<%- include('partials/csf_nav', { ws, engagement }) %>
 
 <!-- State strip -->
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-pad text-sm" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-    <% const stateOrder = ['Not Started','In Progress','Evidence Collected','Draft Complete','Reviewed','Approved']; %>
+    <% const stateOrder = ['Not Started','In Progress','Evidence Collected','Draft Complete','Reviewed','Client Validated','Approved']; %>
     <% const curIdx = stateOrder.indexOf(detail.status); %>
     <% stateOrder.forEach((s, i) => { %>
       <span style="
@@ -46,12 +47,25 @@
 <% if (warnings && warnings.length) { %>
   <div class="panel" style="margin-bottom:14px;background:rgba(161,98,7,0.04);">
     <div class="panel-pad text-md text-secondary">
-      <strong class="text-warn">Soft warnings (not blocking):</strong>
+      <strong class="text-warn">Approval readiness:</strong>
       <ul style="margin:6px 0 0 0;padding-left:18px;">
         <% warnings.forEach(w => { %><li><%= w %></li><% }) %>
       </ul>
     </div>
   </div>
+<% } %>
+
+<% if (consultantGuidance) { %>
+  <details class="panel" style="margin-bottom:14px;" open>
+    <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:600;">Assessment guidance &middot; <%= consultantGuidance.guidance_methodology_version %></summary>
+    <div class="panel-pad csf-guidance-grid" style="border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:16px;line-height:1.55;">
+      <div><div class="label">Purpose</div><div class="text-md"><%= consultantGuidance.purpose %></div></div>
+      <div><div class="label">What good looks like</div><div class="text-md"><%= consultantGuidance.what_good_looks_like %></div></div>
+      <div><div class="label">Evidence to look for</div><ul class="text-md" style="margin:0;padding-left:18px;"><% consultantGuidance.evidence_to_look_for.forEach(x => { %><li><%= x %></li><% }) %></ul></div>
+      <div><div class="label">Common pitfalls</div><ul class="text-md" style="margin:0;padding-left:18px;"><% consultantGuidance.common_pitfalls.forEach(x => { %><li><%= x %></li><% }) %></ul></div>
+      <div style="grid-column:1/-1;"><div class="label">Firm-defined capability anchors</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;"><% Object.entries(consultantGuidance.maturity_ladder).forEach(([n,text]) => { %><div style="padding:10px;border:1px solid var(--border);border-radius:8px;"><strong>Level <%= n %></strong><div class="meta text-xs" style="margin-top:4px;"><%= text %></div></div><% }) %></div></div>
+    </div>
+  </details>
 <% } %>
 
 <!-- Stage 11: Analyst guidance sidebar (Layers 1-3) -->
@@ -123,12 +137,13 @@
   </details>
 <% } %>
 
-<div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;">
+<div class="csf-assess-workspace" style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;">
   <!-- LEFT: narrative + scoring + exclusion -->
   <div>
     <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>" class="panel" style="margin-bottom:14px;">
+      <input type="hidden" name="row_version" value="<%= detail.row_version %>">
       <div class="panel-head"><h2>Narrative</h2><span class="meta text-sm">structured into 4 sections</span></div>
-      <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="panel-pad csf-narrative-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div>
           <label class="label">Practice observed</label>
           <textarea class="textarea text-md" name="narrative_practice_observed" rows="5" placeholder="What did the team actually do in practice? Specifics over generic. Names, dates, system IDs where useful." style="line-height:1.5;"><%= narrativeSections.practice_observed %></textarea>
@@ -148,24 +163,34 @@
       </div>
 
       <div class="panel-head" style="border-top:1px solid var(--border);"><h2>Scoring</h2><span class="meta text-sm"><%= canEnterScore ? 'Editable' : 'Locked until Evidence Collected + scoring role' %></span></div>
-      <div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;<%= canEnterScore ? '' : 'opacity:0.5;pointer-events:none;' %>">
+      <div class="panel-pad csf-score-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;<%= canEnterScore ? '' : 'opacity:0.5;pointer-events:none;' %>">
         <div>
-          <label class="label">Current CMMI score</label>
+          <label class="label">Current capability level</label>
           <select class="select" name="current_score">
             <option value="">- not set -</option>
-            <% [1,2,3,4,5].forEach(n => { %><option value="<%= n %>" <%= detail.current_score === n ? 'selected' : '' %>><%= n %></option><% }) %>
+            <% const capNames={1:'Ad hoc',2:'Partially implemented',3:'Defined and implemented',4:'Measured and effective',5:'Continuously improved'}; [1,2,3,4,5].forEach(n => { %><option value="<%= n %>" <%= detail.current_score === n ? 'selected' : '' %>><%= n %> · <%= capNames[n] %></option><% }) %>
           </select>
           <% if (detail.is_bulk_set) { %><div class="meta text-xs text-tertiary" style="margin-top:4px;">Set via bulk action (audit-flagged)</div><% } %>
         </div>
         <% if (engagement.scope_mode === 'CURRENT_TARGET') { %>
           <div>
-            <label class="label">Target CMMI score</label>
+            <label class="label">Target capability level</label>
             <select class="select" name="target_score">
               <option value="">- not set -</option>
               <% [1,2,3,4,5].forEach(n => { %><option value="<%= n %>" <%= detail.target_score === n ? 'selected' : '' %>><%= n %></option><% }) %>
             </select>
           </div>
         <% } %>
+      </div>
+
+      <div class="panel-head" style="border-top:1px solid var(--border);"><h2>Profile outcome & evidence conclusion</h2><span class="meta text-sm">required before review</span></div>
+      <div class="panel-pad csf-conclusion-grid" style="display:grid;grid-template-columns:180px 180px 1fr;gap:14px;">
+        <div><label class="label">Profile priority</label><select class="select" name="profile_priority"><% ['critical','high','medium','low'].forEach(x => { %><option value="<%= x %>" <%= detail.profile_priority===x?'selected':'' %>><%= x[0].toUpperCase()+x.slice(1) %></option><% }) %></select></div>
+        <div><label class="label">Evidence confidence</label><select class="select" name="evidence_confidence"><option value="">Select</option><% ['low','medium','high'].forEach(x => { %><option value="<%= x %>" <%= detail.evidence_confidence===x?'selected':'' %>><%= x[0].toUpperCase()+x.slice(1) %></option><% }) %></select></div>
+        <div><label class="label">Effectiveness conclusion</label><input class="input" name="effectiveness_conclusion" value="<%= detail.effectiveness_conclusion || '' %>" placeholder="Effective, partially effective, ineffective, or not tested — with a concise basis"></div>
+        <div style="grid-column:1/-1;"><label class="label">Current Profile statement</label><textarea class="textarea" name="current_profile_statement" rows="3" placeholder="How the organization currently achieves this outcome, grounded in retained evidence."><%= detail.current_profile_statement || '' %></textarea></div>
+        <% if (engagement.scope_mode === 'CURRENT_TARGET') { %><div style="grid-column:1/-1;"><label class="label">Target Profile statement</label><textarea class="textarea" name="target_profile_statement" rows="3" placeholder="The desired cybersecurity outcome and the material change required to achieve it."><%= detail.target_profile_statement || '' %></textarea></div><% } %>
+        <div style="grid-column:1/-1;"><label class="label">Business impact</label><textarea class="textarea" name="business_impact" rows="3" placeholder="Explain why any gap matters to critical services, stakeholders, obligations, or risk appetite."><%= detail.business_impact || '' %></textarea></div>
       </div>
 
       <div class="panel-head" style="border-top:1px solid var(--border);"><h2>Scope</h2></div>
@@ -254,6 +279,9 @@
           <input class="input text-base" type="file" name="file" id="csfEvFile" style="margin-bottom:8px;display:none;">
           <input class="input text-base" name="interview_source" id="csfEvInterview" placeholder="e.g., Jane Doe, IT Manager, 2026-05-14" style="margin-bottom:8px;display:none;">
           <textarea class="textarea text-base" name="description" rows="2" placeholder="What does this evidence show? (optional)" style="margin-bottom:8px;"></textarea>
+          <textarea class="textarea text-base" name="relevance_note" rows="2" required placeholder="Why this evidence supports the conclusion" style="margin-bottom:8px;"></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;"><div><label class="label">Period start</label><input class="input text-base" type="date" name="evidence_period_start"></div><div><label class="label">Period end</label><input class="input text-base" type="date" name="evidence_period_end"></div></div>
+          <label class="label">Classification</label><select class="select text-base" name="confidentiality" style="margin-bottom:8px;"><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="restricted">Restricted</option><option value="public">Public</option></select>
           <label class="text-sm" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
             <input type="checkbox" name="visible_to_client" value="1"> Visible to client portal
           </label>
@@ -278,6 +306,20 @@
         </script>
       <% } %>
     </div>
+    <% if (canCollect) { %><details class="panel" style="margin-top:14px;">
+      <summary class="panel-pad text-md" style="cursor:pointer;font-weight:600;">Create a client request</summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>/request" class="panel-pad" style="border-top:1px solid var(--border);display:grid;gap:8px;">
+        <select class="select" name="request_kind"><option value="evidence">Request evidence</option><% if (detail.status === 'Reviewed') { %><option value="validation">Request factual validation</option><% } %></select>
+        <input class="input" name="title" required value="Provide evidence for <%= detail.sub_code %>">
+        <textarea class="textarea" name="description" rows="4" required placeholder="State the exact artifact, period, population, and acceptance criteria."></textarea>
+        <select class="select" name="assignee_id"><option value="">Unassigned client contributor</option><% clientUsers.forEach(u => { %><option value="<%= u.id %>"><%= u.name %> · <%= u.email %></option><% }) %></select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><select class="select" name="priority"><option value="normal">Normal priority</option><option value="high">High priority</option><option value="urgent">Urgent</option><option value="low">Low</option></select><input class="input" type="date" name="due_date"></div>
+        <button class="btn btn-primary btn-xs">Create client request</button>
+      </form>
+    </details><% } %>
+    <% if (linkedRequests.length) { %><div class="panel" style="margin-top:14px;"><div class="panel-head"><h2>Linked client requests</h2></div><div class="divide-row"><% linkedRequests.forEach(r => { %><div style="padding:10px 14px;"><strong class="text-md"><%= r.title %></strong><div class="meta text-xs"><%= r.status %><%= r.assignee_name ? ` · ${r.assignee_name}` : '' %><%= r.due_date ? ` · due ${r.due_date}` : '' %></div></div><% }) %></div></div><% } %>
+    <% if (canCreateFinding) { %><details class="panel" style="margin-top:14px;"><summary class="panel-pad text-md" style="cursor:pointer;font-weight:600;">Add gap to central risk register</summary><form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>/create-risk" class="panel-pad" style="border-top:1px solid var(--border);display:grid;gap:8px;"><input class="input" name="title" value="CSF <%= detail.sub_code %> capability gap" required><textarea class="textarea" name="description" rows="3"><%= detail.business_impact || '' %></textarea><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><select class="select" name="likelihood"><% [1,2,3,4,5].forEach(n => { %><option value="<%= n %>" <%= n===3?'selected':'' %>>Likelihood <%= n %></option><% }) %></select><select class="select" name="impact"><% [1,2,3,4,5].forEach(n => { %><option value="<%= n %>" <%= n===3?'selected':'' %>>Impact <%= n %></option><% }) %></select></div><button class="btn btn-primary btn-xs">Create linked risk</button></form></details><% } %>
+    <% if (linkedRisks.length) { %><div class="panel" style="margin-top:14px;"><div class="panel-head"><h2>Linked risks</h2></div><div class="divide-row"><% linkedRisks.forEach(r => { %><div style="padding:10px 14px;"><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><strong><%= r.title %></strong></a><div class="meta text-xs"><%= r.status %> · inherent <%= r.likelihood * r.impact %></div></div><% }) %></div></div><% } %>
   </div>
 </div>
 
@@ -327,6 +369,10 @@
                       <% if (r.roadmap_phase) { %><span class="tag text-xxs" style="background:var(--bg-subtle);"><%= r.roadmap_phase.replace('_PLUS','+').replace('_','-') %></span><% } %>
                       <% if (r.target_completion_date) { %><span class="meta text-xxs">due <%= r.target_completion_date %></span><% } %>
                       <% if (canManageRecs) { %>
+                        <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/recommendations/<%= r.id %>/create-task" style="display:inline;">
+                          <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
+                          <button class="btn btn-ghost btn-xs">Create task</button>
+                        </form>
                         <form method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/recommendations/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this recommendation?')">
                           <input type="hidden" name="return_to" value="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess/<%= detail.subcategory_id %>">
                           <button class="btn btn-ghost btn-xs text-danger text-xxs">&times;</button>

@@ -1,0 +1,15 @@
+<nav class="panel" aria-label="CSF engagement sections" style="margin-bottom:14px;padding:6px;display:flex;gap:4px;align-items:center;overflow:auto;">
+  <% const base = `/workspaces/${ws.id}/csf/${engagement.id}`; %>
+  <% [
+    ['Overview', base],
+    ['Profile & scope', `${base}/profile`],
+    ['Assessment', `${base}/assess`],
+    ['Findings', `${base}/findings`],
+    ['Capability results', `${base}/scores`],
+    ['Implementation Tiers', `${base}/tiers`],
+    ['Reports & versions', `${base}/versions`],
+    ['Client view', `${base}/portal`]
+  ].forEach(([label, href]) => { %>
+    <a class="btn btn-ghost btn-xs" href="<%= href %>" style="white-space:nowrap;"><%= label %></a>
+  <% }) %>
+</nav>

@@ -1,0 +1,41 @@
+<%- include('partials/header', { title: 'CSF Organizational Profile', user, ws, active: 'csf' }) %>
+
+<div class="page-head">
+  <div><a class="meta text-base" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>">&larr; <%= engagement.name %></a>
+    <h1 class="page-title">Organizational Profile context</h1>
+    <div class="page-subtitle">Document the business, risk, and scope decisions used to create the Current and Target Profiles.</div>
+  </div>
+  <span class="tag"><%= profile.status.toUpperCase() %> &middot; v<%= profile.row_version %></span>
+</div>
+<%- include('partials/csf_nav', { ws, engagement }) %>
+
+<form method="POST" class="panel" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/profile">
+  <input type="hidden" name="row_version" value="<%= profile.row_version %>">
+  <% const sections = [
+    ['Business context','business_context','Business model, operating environment, geographies, dependencies, and major change drivers.'],
+    ['Mission objectives','mission_objectives','Objectives the cybersecurity program must enable or protect.'],
+    ['Critical services','critical_services','Products, services, and operational outcomes whose disruption would be material.'],
+    ['Critical assets and data','critical_assets_data','Systems, facilities, identities, third parties, and data supporting critical services.'],
+    ['Threat landscape','threat_landscape','Material threat actors, events, exposure, and plausible adverse scenarios.'],
+    ['Legal and contractual requirements','legal_contractual_requirements','Applicable regulatory, legal, customer, and contractual obligations.'],
+    ['Stakeholder expectations','stakeholder_expectations','Expectations of leadership, customers, regulators, workforce, partners, and insurers.'],
+    ['Risk appetite','risk_appetite','Approved tolerance statements and escalation thresholds used in prioritization.'],
+    ['Scope statement','scope_statement','Boundaries, entities, locations, technologies, services, and interfaces included in this assessment.'],
+    ['Assessment limitations','assessment_limitations','Time, access, sampling, evidence, and reliance limitations affecting conclusions.'],
+    ['Community Profile reference','community_profile_reference','Optional sector, community, or regulator Profile used as an informative input.']
+  ]; %>
+  <div class="panel-pad csf-profile-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <% sections.forEach(([label,key,hint]) => { %><div style="<%= ['scope_statement','assessment_limitations'].includes(key) ? 'grid-column:1/-1;' : '' %>">
+      <label class="label"><%= label %><% if (['business_context','risk_appetite','scope_statement'].includes(key)) { %> <span class="text-danger">*</span><% } %></label>
+      <div class="meta text-xs" style="margin-bottom:5px;"><%= hint %></div>
+      <textarea class="textarea text-md" name="<%= key %>" rows="<%= ['scope_statement','assessment_limitations'].includes(key) ? 4 : 3 %>" <%= canEdit ? '' : 'disabled' %>><%= profile[key] || '' %></textarea>
+    </div><% }) %>
+  </div>
+  <% if (canEdit) { %><div class="panel-pad" style="border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
+    <button class="btn btn-secondary btn-xs" name="action" value="save">Save draft</button>
+    <% if (profile.status !== 'approved') { %><button class="btn btn-primary btn-xs" name="action" value="submit">Submit for approval</button><% } %>
+    <% if (canApprove && profile.status === 'submitted') { %><button class="btn btn-primary btn-xs" name="action" value="approve">Approve Profile</button><% } %>
+  </div><% } %>
+</form>
+<div class="panel" style="margin-top:14px;"><div class="panel-pad text-md text-secondary"><strong>Method:</strong> NIST CSF 2.0 Organizational Profiles are used to express prioritized Current and Target outcomes. The 1–5 capability scale in this module is the firm’s evidence-led assessment method; it is not a NIST Implementation Tier.</div></div>
+<%- include('partials/footer') %>

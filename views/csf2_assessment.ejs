@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: 'Maturity workbench', user, ws, active: 'csf' }) %>
+<div class="page-head cm-workbench-head"><div><div class="eyebrow">Cybersecurity maturity programme</div><h1 class="page-title"><%= engagement.name %></h1><div class="page-subtitle">Assess capabilities in business context. Policy and Practice are concluded independently; the lower level is the conservative achieved level.</div></div><a class="btn" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/review">Quality review →</a></div>
+<%- include('partials/csf2_nav', { section: 'assessment', ws, engagement }) %>
+
+<div class="cm-view-switch" aria-label="Maturity workbench view">
+  <a class="<%= view==='workbench'?'active':'' %>" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment">Capability workbenches</a>
+  <a class="<%= view==='outcomes'?'active':'' %>" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment?view=outcomes">Outcome workpapers</a>
+</div>
+
+<% if(view==='workbench'){ const s=rollup.summary; %>
+  <section class="cm-workbench-summary">
+    <div><span>Demonstrated maturity</span><strong><%= maturityLabel(s.achievedMedian) %></strong><small>Conservative Policy / Practice position</small></div>
+    <div><span>Target attainment</span><strong><%= s.targetPct %>%</strong><small><%= s.atTarget %> of <%= s.assessed %> concluded outcomes</small></div>
+    <div><span>Evidence-backed coverage</span><strong><%= s.assessedPct %>%</strong><small><%= s.assessed %> of <%= s.inScope %> in scope</small></div>
+    <div><span>Decision confidence</span><strong><%= s.lowConfidence %> low</strong><small><%= s.noVisibility %> areas with no visibility</small></div>
+  </section>
+
+  <section class="cm-function-selector" aria-label="NIST CSF Functions"><% rollup.functions.forEach(f=>{ const current=f.summary.achievedMedian; const target=Math.max(...[f.summary.targetPolicyMedian,f.summary.targetPracticeMedian].filter(v=>v!=null),0); %>
+    <a class="cm-function-<%= f.code.toLowerCase() %> <%= selectedFunction.code===f.code?'active':'' %>" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment?function=<%= f.code %>" <% if(selectedFunction.code===f.code){ %>aria-current="page"<% } %>>
+      <span><%= f.code %></span><strong><%= f.name %></strong><small><%= f.summary.assessed %>/<%= f.summary.inScope %> concluded</small><b><%= current==null?'—':current %><em>/ <%= target||'—' %> target</em></b>
+    </a>
+  <% }) %></section>
+
+  <section class="cm-category-section cm-function-<%= selectedFunction.code.toLowerCase() %>">
+    <div class="cm-section-head"><div><span class="cm-kicker"><%= selectedFunction.code %> · <%= selectedFunction.name %></span><h2>Capability workbenches</h2><p>Work category by category. Open individual outcome workpapers only when evidence, testing or judgment requires it.</p></div><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment?view=outcomes&function=<%= selectedFunction.code %>">View outcome register</a></div>
+    <div class="cm-category-grid"><% selectedFunction.categories.forEach(category=>{ const cs=category.summary; const current=cs.achievedMedian; const target=Math.max(...[cs.targetPolicyMedian,cs.targetPracticeMedian].filter(v=>v!=null),0); const coverage=cs.inScope?Math.round(cs.assessed*100/cs.inScope):0; const atTarget=cs.assessed?Math.round(cs.atTarget*100/cs.assessed):0; %>
+      <a class="cm-category-card" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment/category/<%= category.code %>">
+        <div class="cm-category-top"><span><%= category.code %></span><em><%= coverage===100?'Concluded':coverage+'% complete' %></em></div>
+        <h3><%= category.name %></h3>
+        <div class="cm-category-score"><strong><%= current==null?'—':current %></strong><span>demonstrated<small>target <%= target||'—' %></small></span><b><%= atTarget %>%<small>at target</small></b></div>
+        <div class="cm-category-track"><i style="width:<%= coverage %>%"></i></div>
+        <div class="cm-category-foot"><span><%= cs.assessed %>/<%= cs.inScope %> outcomes</span><span><%= cs.lowConfidence %> low confidence</span><span><%= category.rows.reduce((n,r)=>n+r.finding_count,0) %> findings</span></div>
+      </a>
+    <% }) %></div>
+  </section>
+<% } else { %>
+  <section class="cm-register-intro"><div><span class="cm-kicker">Governed workpapers</span><h2>Outcome register</h2><p>This is the technical record supporting the maturity opinion. It is intentionally secondary to the capability and executive decision views.</p></div><strong><%= rows.length %><small>matching outcomes</small></strong></section>
+  <form class="csf2-filterbar" method="GET"><input type="hidden" name="view" value="outcomes"><input class="input" name="q" value="<%= filters.q %>" placeholder="Search code or outcome"><select class="select" name="function"><option value="">All Functions</option><% rollup.functions.forEach(f=>{ %><option value="<%= f.code %>" <%= filters.function===f.code?'selected':'' %>><%= f.code %> · <%= f.name %></option><% }) %></select><select class="select" name="status"><option value="">All states</option><% states.forEach(s=>{ %><option <%= filters.status===s?'selected':'' %>><%= s %></option><% }) %></select><select class="select" name="gap"><option value="">All gaps</option><option value="divergence" <%= filters.gap==='divergence'?'selected':'' %>>Policy/Practice divergence</option><option value="target" <%= filters.gap==='target'?'selected':'' %>>Below target</option><option value="evidence" <%= filters.gap==='evidence'?'selected':'' %>>No evidence</option></select><button class="btn">Filter</button></form>
+  <div class="panel csf2-assessment-table"><div class="csf2-table-head"><span>Outcome</span><span>Policy</span><span>Practice</span><span>Target</span><span>Evidence</span><span>State</span></div>
+    <% rows.forEach(r=>{ const below=r.policy_score!=null&&r.practice_score!=null&&(r.policy_score<r.target_policy_score||r.practice_score<r.target_practice_score); %>
+      <a class="csf2-outcome-row" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment/<%= r.subcategory_id %>"><span class="csf2-outcome-name"><code><%= r.code %></code><strong><%= r.description %></strong><small><%= r.function_name %> · <%= r.category_name %></small></span><span><b class="score-box"><%= r.policy_score==null?'—':r.policy_score %></b><small><%= r.policy_owner || 'owner unset' %></small></span><span><b class="score-box"><%= r.practice_score==null?'—':r.practice_score %></b><small><%= r.assurance_outcome.replaceAll('_',' ') %></small></span><span><b><%= r.target_policy_score==null?'—':r.target_policy_score %> / <%= r.target_practice_score==null?'—':r.target_practice_score %></b><small class="<%= below?'text-danger':'' %>"><%= below?'below target':'current / target' %></small></span><span><b><%= r.evidence_count %></b><small><%= r.test_count %> tests</small></span><span><span class="status-dot status-<%= r.status.toLowerCase().replaceAll(' ','-') %>"></span><%= r.status %></span></a>
+    <% }) %><% if(!rows.length){ %><div class="empty-state"><div class="empty-title">No outcomes match these filters</div></div><% } %>
+  </div>
+<% } %>
+<%- include('partials/footer') %>

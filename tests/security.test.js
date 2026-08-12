@@ -9,7 +9,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { bootClient, makeClient } = require('./helpers');
+const bcrypt = require('bcrypt');
+const Database = require('better-sqlite3');
+const { bootApp, bootClient, makeClient } = require('./helpers');
 
 test('CSRF - POST without token is rejected with 403', async (t) => {
   const { client } = await bootClient();
@@ -131,6 +133,21 @@ test('XSS - an attribute-breakout payload in a client name cannot escape its ele
   assert.ok(dash.text.includes('&quot;') || dash.text.includes('&#34;') || dash.text.includes('&#x22;'), 'the breakout quote must be HTML-escaped');
 });
 
+test('Workspace creation preserves an intentionally empty programme selection', async (t) => {
+  const { client, dbPath } = await bootClient();
+  t.after(() => client.close());
+  const created = await client.post('/workspaces', { client_name:'Programme Pending Client', industry:'Technology', scope:'Programme selection remains under client discussion.' });
+  assert.equal(created.status,302);
+  const conn = new Database(dbPath);
+  const workspace = conn.prepare(`SELECT id,frameworks FROM workspaces WHERE client_name='Programme Pending Client'`).get();
+  assert.equal(workspace.frameworks,'[]');
+  conn.close();
+  const overview = await client.get(`/workspaces/${workspace.id}`);
+  assert.equal(overview.status,200,overview.text.slice(0,500));
+  assert.match(overview.text,/Programme decision pending/);
+  assert.doesNotMatch(overview.text,/ISO 27001 programme|Stage 1 maturity/);
+});
+
 test('Auth - protected pages require authentication (no default-user bypass)', async (t) => {
   // The old assertion pinned a no-auth "default user" fallback so /dashboard
   // returned 200 without logging in. That bypass was removed when real
@@ -144,6 +161,8 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   const authed = await client.get('/dashboard');
   assert.equal(authed.status, 200, 'authenticated dashboard must render');
   assert.ok(!/No default user found/.test(authed.text), 'must not show a no-user error');
+  assert.match(authed.text, /id="pageLoader"/, 'protected app shell must include the branded page loader');
+  assert.match(authed.text, /page-loader\.js\?v=/, 'protected app shell must load the transition controller');
 
   // A fresh, unauthenticated client on the same app must be redirected to login.
   // Regression guard: if a default-user bypass is ever reintroduced, this 200s.
@@ -152,4 +171,32 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   const r = await anon.get('/dashboard');
   assert.equal(r.status, 302, 'unauthenticated dashboard must redirect, not serve a default user');
   assert.match(r.location, /\/login/, 'must redirect to /login');
+  const login = await anon.get('/login');
+  assert.equal(login.status, 200);
+  assert.match(login.text, /id="pageLoader"/, 'authentication shell must include the branded page loader');
+  assert.match(login.text, /page-loader\.css\?v=/, 'authentication shell must load the loader presentation');
+});
+
+test('Auth - legacy MFA account data cannot trigger a second-factor challenge', async (t) => {
+  const { app, dbPath } = bootApp();
+  const db = new Database(dbPath);
+  const firmId = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get().id;
+  const password = 'password-only-login-1234';
+  db.prepare(`INSERT INTO users
+    (email,password_hash,name,user_type,firm_id,firm_role,active,mfa_secret,mfa_enabled_at,mfa_recovery_codes,mfa_last_counter)
+    VALUES ('legacy-mfa@example.com',?,'Legacy MFA User','firm',?,'consultant',1,'legacy-secret',CURRENT_TIMESTAMP,'["legacy-code"]',42)`)
+    .run(bcrypt.hashSync(password, 4), firmId);
+  const client = makeClient(app);
+  t.after(async () => { await client.close(); db.close(); });
+
+  const loginPage = await client.get('/login');
+  const csrf = (loginPage.text.match(/name="_csrf"\s+value="([a-f0-9]+)"/) || [])[1];
+  const signedIn = await client.post('/login', {
+    email: 'legacy-mfa@example.com', password, _csrf: csrf
+  }, { csrf: false });
+  assert.equal(signedIn.status, 302);
+  assert.equal(signedIn.location, '/dashboard');
+  assert.equal((await client.get('/dashboard')).status, 200);
+  assert.equal((await client.get('/mfa/verify')).status, 404);
+  assert.equal((await client.get('/security/mfa/setup')).status, 404);
 });

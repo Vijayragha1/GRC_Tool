@@ -10,6 +10,13 @@ const { hashToken, INVITE_TTL_MS } = require('./auth');
 const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 const { buildWorkspaceTruth } = require('../lib/grc-truth');
+const csfModel = require('../lib/csf-policy-practice');
+const { buildIntegratedDashboard } = require('../lib/integrated-dashboard');
+
+function submittedFrameworks(value) {
+  const values = Array.isArray(value) ? value : (typeof value === 'string' ? [value] : []);
+  return [...new Set(values.filter(code => ALLOWED_FRAMEWORKS.includes(code)))];
+}
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
@@ -26,16 +33,9 @@ function register(app, deps) {
     if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
     const { client_name, industry, scope, target_cert_date } = req.body;
     if (!client_name) return res.redirect('/dashboard');
-    // Framework picker. Form sends `frameworks` as either a string (one box
-    // checked) or an array (two or more). An empty list falls back to all
-    // three - a workspace with zero frameworks would be useless.
-    const submitted = req.body.frameworks;
-    let frameworks;
-    if (Array.isArray(submitted))      frameworks = submitted;
-    else if (typeof submitted === 'string') frameworks = [submitted];
-    else                                frameworks = [];
-    frameworks = frameworks.filter(f => ALLOWED_FRAMEWORKS.includes(f));
-    if (!frameworks.length) frameworks = ALLOWED_FRAMEWORKS.slice();
+    // Every programme is optional at client creation. An empty array is a
+    // governed planning state, not a signal to silently enable every framework.
+    const frameworks = submittedFrameworks(req.body.frameworks);
     const id = db.prepare(`INSERT INTO workspaces (firm_id, client_name, industry, scope, target_cert_date, lead_consultant_id, frameworks)
                            VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(req.user.firm_id, client_name.trim(), industry || null,
@@ -64,6 +64,14 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId', requireAuth, requireWorkspace, (req, res) => {
     const ws = req.workspace;
+    const frameworkCodes = Array.isArray(ws.frameworks) ? ws.frameworks : [];
+
+    // A CSF-only workspace has one authoritative home: the cybersecurity
+    // maturity programme. Keeping a separate generic overview creates two
+    // navigation entries for the same decision surface.
+    if (frameworkCodes.length === 1 && frameworkCodes[0] === 'csf') {
+      return res.redirect(`/workspaces/${ws.id}/csf`);
+    }
 
     // Split-brain fix: if the client setup has never been started AND the
     // scope field is empty, the overview's readiness/charts are mostly
@@ -81,6 +89,38 @@ function register(app, deps) {
     // past setup, so suppress the banner even if the answer count is low
     // (they signed off knowing what was captured).
     const setupIncomplete = intakeAnswered > 0 && intakeAnswered < 8 && !ws.scope_confirmed_at;
+
+    // The workspace home follows the programme that is actually being
+    // delivered. A CSF-only client (or a client whose only assessment
+    // activity is CSF) must never land on ISO 27001 certification metrics.
+    if (frameworkCodes.length === 0) {
+      return res.render('workspace_unassigned', {
+        user:req.user, ws, setupIncomplete, intakeAnswered,
+        frameworkOptions:ALLOWED_FRAMEWORKS,
+      });
+    }
+    if (frameworkCodes.length > 1) {
+      return res.render('workspace_integrated', {
+        user:req.user, ws, active:'overview', setupIncomplete, intakeAnswered,
+        dashboard:buildIntegratedDashboard(db,ws),
+      });
+    }
+    const csfEngagements = frameworkCodes.includes('csf') ? csfModel.programmeEngagements(db,ws.id) : [];
+    const currentCsfEngagement = csfEngagements[0] || null;
+    let isoActivity = 0;
+    if (currentCsfEngagement) {
+      const activityTables = ctlReads.tables(db, ws.id);
+      isoActivity += db.prepare(`SELECT COUNT(*) c FROM ${activityTables.cs} WHERE workspace_id=?`).get(ws.id).c;
+      isoActivity += db.prepare(`SELECT COUNT(*) c FROM ${activityTables.cs42} WHERE workspace_id=?`).get(ws.id).c;
+    }
+    if (currentCsfEngagement && isoActivity === 0) {
+      return res.render('csf2_engagements', {
+        user:req.user, ws, active:'overview', homeMode:true,
+        engagements:csfEngagements, currentEngagement:currentCsfEngagement,
+        programme:currentCsfEngagement ? csfModel.programmeData(db,currentCsfEngagement) : null,
+        canCreate:csfModel.canCreate(req.user,ws),
+      });
+    }
 
     const progress = workspaceProgress(ws.id);
 
@@ -196,6 +236,14 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/engagement-plan?view=timeline`);
   });
 
+  app.post('/workspaces/:wsId/frameworks', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req,res) => {
+    const frameworks = submittedFrameworks(req.body.frameworks);
+    db.prepare(`UPDATE workspaces SET frameworks=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(JSON.stringify(frameworks),req.workspace.id);
+    logAction(req.user.id,req.workspace.id,'update_workspace_frameworks','workspace',req.workspace.id,{frameworks},auditCtx(req));
+    const message = frameworks.length ? 'Assessment programmes updated' : 'Client left without an assigned assessment programme';
+    res.redirect(withToast(`/workspaces/${req.workspace.id}`,message));
+  });
+
   app.post('/workspaces/:wsId/update', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
     const {
       client_name, industry, scope, target_cert_date, stage, lead_consultant_id,
@@ -206,6 +254,9 @@ function register(app, deps) {
     // a malformed value can't break the page CSS.
     const safeColor = (typeof brand_primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(brand_primary_color.trim()))
       ? brand_primary_color.trim() : null;
+    const frameworks = req.body.frameworks_present === '1'
+      ? submittedFrameworks(req.body.frameworks)
+      : (Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : []);
     // Optimistic concurrency: client roundtrips workspaces.updated_at as a
     // hidden field. The UPDATE WHERE updated_at = ? guarantees only one of
     // two simultaneous edits wins; the loser is redirected to a conflict page
@@ -216,12 +267,12 @@ function register(app, deps) {
     const sql = usingCAS
       ? `UPDATE workspaces
            SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?,
-               brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?,
+               brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?, frameworks=?,
                updated_at=CURRENT_TIMESTAMP
          WHERE id=? AND updated_at=?`
       : `UPDATE workspaces
            SET client_name=?, industry=?, scope=?, target_cert_date=?, stage=?, lead_consultant_id=?,
-               brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?,
+               brand_display_name=?, brand_primary_color=?, brand_logo_path=?, sector=?, frameworks=?,
                updated_at=CURRENT_TIMESTAMP
          WHERE id=?`;
     const args = [
@@ -231,6 +282,7 @@ function register(app, deps) {
       safeColor,
       (brand_logo_path || '').trim() || null,
       (sector || '').trim() || null,
+      JSON.stringify(frameworks),
       req.workspace.id,
     ];
     if (usingCAS) args.push(updated_at_snapshot);
@@ -241,7 +293,7 @@ function register(app, deps) {
         message: 'Another consultant updated this client\'s settings while you were editing. Reload the workspace settings page to see the latest values, then re-apply your changes.'
       });
     }
-    logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, null);
+    logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, { frameworks });
     res.redirect('/workspaces/' + req.workspace.id);
   });
 

@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/fonts/source-serif-4.css">
 <link rel="stylesheet" href="/auditor.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<link rel="stylesheet" href="/page-loader.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<script src="/page-loader.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script>
 <% if (workspace.brand_primary_color) { %>
 <style>
   :root {
@@ -19,6 +21,7 @@
 <% } %>
 </head>
 <body>
+<%- include('page_loader') %>
 
 <%
   // Tab definitions. The "active" string is set by the calling view's title arg.

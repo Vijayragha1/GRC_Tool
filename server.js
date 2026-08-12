@@ -160,7 +160,7 @@ app.use(express.json({ limit: '10mb' }));
 // serve a stale stylesheet or favicon after a change.
 app.locals.assetVersion = (() => {
   const h = crypto.createHash('md5');
-  for (const f of ['public/app.css', 'public/auditor.css', 'public/favicon.svg', 'public/fonts/inter.css']) {
+  for (const f of ['public/app.css', 'public/auditor.css', 'public/page-loader.css', 'public/page-loader.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
     try { h.update(fs.readFileSync(path.join(__dirname, f))); } catch (_) {}
   }
   return h.digest('hex').slice(0, 8);
@@ -494,23 +494,6 @@ function requireAuth(req, res, next) {
     }
     return res.status(401).json({ error: 'auth_required' });
   }
-  const mfaRequired = process.env.REQUIRE_MFA === '1' ||
-    (process.env.NODE_ENV === 'production' && process.env.REQUIRE_MFA !== '0');
-  if (req.user.mfa_enabled_at && !req.session.mfaVerified) {
-    req.session.pendingMfaUserId = req.user.id;
-    req.session.pendingMfaNext = req.originalUrl || '/dashboard';
-    req.session.pendingMfaRemember = false;
-    req.session.pendingMfaStartedAt = Date.now();
-    delete req.session.userId;
-    if (req.method === 'GET' && req.accepts(['html', 'json']) === 'html') return res.redirect('/mfa/verify');
-    return res.status(401).json({ error: 'mfa_required' });
-  }
-  if (mfaRequired && !req.user.mfa_enabled_at) {
-    if (req.method === 'GET' && req.accepts(['html', 'json']) === 'html') {
-      return res.redirect(`/security/mfa/setup?next=${encodeURIComponent(req.originalUrl || '/dashboard')}`);
-    }
-    return res.status(403).json({ error: 'mfa_enrolment_required' });
-  }
   next();
 }
 
@@ -548,11 +531,14 @@ function requireWorkspace(req, res, next) {
   const isScopedClient = req.user.user_type === 'client';
   const portalPrefix = `/workspaces/${ws.id}/client-portal`;
   const policyDecisionPath = new RegExp(`^/workspaces/${ws.id}/documents/\\d+/decide$`);
+  const csfClientPortalPath = new RegExp(`^/workspaces/${ws.id}/csf/\\d+/portal(?:/.*)?$`);
+  const csfPublishedReportPath = new RegExp(`^/workspaces/${ws.id}/csf/\\d+/exports/report\\.(?:pdf|docx)$`);
   if (isScopedClient && req.method === 'GET' && req.path === `/workspaces/${ws.id}`) {
     return res.redirect(portalPrefix);
   }
   const allowedClientPath = req.path === portalPrefix || req.path.startsWith(portalPrefix + '/') ||
-    (req.method === 'POST' && policyDecisionPath.test(req.path));
+    (req.method === 'POST' && policyDecisionPath.test(req.path)) || csfClientPortalPath.test(req.path) ||
+    (req.method === 'GET' && csfPublishedReportPath.test(req.path));
   if (isScopedClient && !allowedClientPath) {
     logAction(req.user.id, ws.id, 'scoped_route_denied', 'route', req.path,
       { method: req.method, reason: 'contributor_portal_boundary' }, auditCtx(req));
@@ -974,9 +960,10 @@ require('./routes/consulting-delivery').register(app, {
 });
 
 // ==================== NIST CSF 2.0 ====================
-// Lives in routes/csf.js (slice 14): engagements, assessments + scoring,
-// versions/diffs, findings, portal, learn docs, catalog.
-require('./routes/csf').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, upload });
+// Production NIST CSF 2.0 workflow: official 106-outcome catalog, separately
+// evidenced Policy and Practice maturity, governed review, and frozen reports.
+// The legacy single-score/Tier route cluster is intentionally not registered.
+require('./routes/csf-policy-practice').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, upload });
 
 
 // ==================== ISO/IEC 42001:2023 (AI MS) ====================

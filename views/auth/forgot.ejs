@@ -6,6 +6,8 @@
   <title>Forgot password &middot; Compliance Sphere</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" />
   <link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" />
+  <link rel="stylesheet" href="/page-loader.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" />
+  <script src="/page-loader.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script>
   <style>
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
@@ -88,6 +90,7 @@
   </style>
 </head>
 <body>
+  <%- include('../partials/page_loader') %>
   <div class="auth-shell">
     <div class="brand">
       <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">

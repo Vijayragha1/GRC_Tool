@@ -9,6 +9,7 @@
     <div class="page-subtitle"><%= findings.length %> finding<%= findings.length === 1 ? '' : 's' %> across this engagement.</div>
   </div>
 </div>
+<%- include('partials/csf_nav', { ws, engagement }) %>
 
 <% if (canCreate) { %>
   <details class="panel" style="margin-bottom:14px;">

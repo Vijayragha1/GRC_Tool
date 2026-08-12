@@ -32,20 +32,21 @@
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/versions" class="btn btn-secondary btn-xs">Versions<% if (engagement.current_version) { %> v<%= engagement.current_version %><% } %></a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal" class="btn btn-secondary btn-xs" title="Read-only client-facing view. Published engagements only.">Client portal</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/ask-lead" class="btn btn-secondary btn-xs" title="Async question thread with the Lead">Inbox<% if (inboxUnread > 0) { %> <span class="tag text-xxs" style="background:var(--accent-soft);color:var(--accent);font-weight: 500;margin-left:2px;padding:1px 5px;"><%= inboxUnread %></span><% } %></a>
-    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/report.docx<%= engagement.current_version ? '' : '' %>" class="btn btn-secondary btn-xs" title="Download Word report (DRAFT watermark when not published)">Report &darr;</a>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/report.pdf" class="btn btn-secondary btn-xs" title="Download controlled PDF report">PDF &darr;</a>
+    <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/report.docx" class="btn btn-secondary btn-xs" title="Download editable Word report">Word &darr;</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/exports/data.csv" class="btn btn-secondary btn-xs" title="Download CSV of all 106 subcategories with current state">CSV &darr;</a>
     <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assess" class="btn btn-primary btn-xs">Open assessment &rarr;</a>
   </div>
 </div>
+<%- include('partials/csf_nav', { ws, engagement }) %>
 
-<div class="panel" style="margin-bottom:14px;background:rgba(161,98,7,0.04);">
-  <div class="panel-pad text-md text-secondary">
-    <strong class="text-warn">PROTOTYPE - NOT FOR CLIENT DATA.</strong>
-    Stage 2 of the CSF module. Engagement overview + assignments. Assessment workspace, scoring, findings, and reporting come in subsequent stages.
-  </div>
-</div>
+<div class="panel" style="margin-bottom:14px;"><div class="panel-pad csf-readiness-grid" style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:18px;align-items:start;">
+  <div><div class="kpi-label">Organizational Profile</div><div class="text-lg" style="font-weight:600;margin-top:4px;"><%= profileContext ? profileContext.status : 'Not started' %></div><a class="meta text-xs" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/profile">Open profile &rarr;</a></div>
+  <div><div class="kpi-label">Tier conclusions</div><div class="text-lg" style="font-weight:600;margin-top:4px;"><%= tierReadiness.approved || 0 %> / 7 approved</div><a class="meta text-xs" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/tiers">Open Tiers &rarr;</a></div>
+  <div><div class="kpi-label">Publication readiness</div><% if (!publicationDefects.length) { %><div class="text-success text-md" style="margin-top:4px;">All governance gates are complete.</div><% } else { %><ul class="meta text-xs" style="margin:4px 0 0;padding-left:18px;"><% publicationDefects.forEach(x => { %><li><%= x %></li><% }) %></ul><% } %></div>
+</div></div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+<div class="csf-overview-split" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
   <!-- Engagement metadata -->
   <div class="panel">
     <div class="panel-head"><h2>Engagement</h2></div>
@@ -115,7 +116,7 @@
 
 <!-- Progress KPI strip -->
 <div class="panel" style="margin-bottom:14px;">
-  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px;">
+  <div class="panel-pad csf-kpi-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px;">
     <div>
       <div class="kpi-num"><%= scoredPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
       <div class="kpi-label">Scored</div>
@@ -158,7 +159,7 @@
           <div style="width:36px;background:<%= d.score >= 4 ? '#15803d' : d.score >= 3 ? '#1d4ed8' : d.score >= 2 ? '#a16207' : '#b91c1c' %>;height:<%= Math.round((d.count / maxC) * 76) + 4 %>px;border-radius:4px 4px 0 0;"></div>
         </div>
         <div style="font-size:18px;font-weight: 500;margin-top:6px;"><%= d.count %></div>
-        <div class="kpi-meta">CMMI <%= d.score %></div>
+        <div class="kpi-meta">Capability <%= d.score %></div>
       </div>
     <% }) %>
   </div>

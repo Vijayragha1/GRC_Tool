@@ -2533,59 +2533,43 @@ const FUNCTIONS = [
   }
 ];
 
+require('./nist-csf-guidance').applyGuidance(FUNCTIONS);
+
 const MATURITY_LEVELS = [
   {
     "level": 1,
-    "name": "Initial",
-    "definition": "Ad hoc, reactive, no documented practice."
+    "name": "Ad hoc",
+    "definition": "Firm-defined capability level: the outcome is achieved inconsistently through individual effort, with limited ownership or retained evidence."
   },
   {
     "level": 2,
-    "name": "Managed",
-    "definition": "Practice exists but is inconsistent. Some documentation, some informal ownership."
+    "name": "Partially implemented",
+    "definition": "Firm-defined capability level: a repeatable practice exists in parts of scope, but coverage, documentation, or execution is inconsistent."
   },
   {
     "level": 3,
-    "name": "Defined",
-    "definition": "Documented, standardised practice across the organisation. Clear roles. Practice followed by default."
+    "name": "Defined and implemented",
+    "definition": "Firm-defined capability level: the practice is approved, owned, deployed across scope, and supported by current evidence."
   },
   {
     "level": 4,
-    "name": "Quantitatively Managed",
-    "definition": "Practice is measured. Metrics drive decisions. Outcomes are predictable."
+    "name": "Measured and effective",
+    "definition": "Firm-defined capability level: performance and exceptions are monitored and evidence demonstrates consistent effectiveness."
   },
   {
     "level": 5,
-    "name": "Optimising",
-    "definition": "Practice continuously improved. Adapts to changes in the threat landscape and organisation."
+    "name": "Continuously improved",
+    "definition": "Firm-defined capability level: the practice adapts using metrics, incidents, threat change, testing, and lessons learned."
   }
 ];
 
+// Retained only as the authoritative list of Tier labels. Tiers are assessed
+// separately in csf_tier_assessments; no numeric capability thresholds exist.
 const TIER_MAPPINGS = [
-  {
-    "tier": 1,
-    "name": "Partial",
-    "cmmi_lower": 1,
-    "cmmi_upper": 1.74
-  },
-  {
-    "tier": 2,
-    "name": "Risk Informed",
-    "cmmi_lower": 1.75,
-    "cmmi_upper": 2.74
-  },
-  {
-    "tier": 3,
-    "name": "Repeatable",
-    "cmmi_lower": 2.75,
-    "cmmi_upper": 3.74
-  },
-  {
-    "tier": 4,
-    "name": "Adaptive",
-    "cmmi_lower": 3.75,
-    "cmmi_upper": 5
-  }
+  { "tier": 1, "name": "Partial", "cmmi_lower": 0, "cmmi_upper": 0 },
+  { "tier": 2, "name": "Risk Informed", "cmmi_lower": 0, "cmmi_upper": 0 },
+  { "tier": 3, "name": "Repeatable", "cmmi_lower": 0, "cmmi_upper": 0 },
+  { "tier": 4, "name": "Adaptive", "cmmi_lower": 0, "cmmi_upper": 0 }
 ];
 
 module.exports = { CATALOG_VERSION, SOURCE, PUBLISHED_DATE, FUNCTIONS, MATURITY_LEVELS, TIER_MAPPINGS };

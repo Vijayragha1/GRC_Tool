@@ -86,7 +86,6 @@ PORT=3000
 # Required secrets (auto-generated — keep safe, back up separately)
 SESSION_SECRET=${SESSION_SECRET}
 ISMS_MASTER_KEY=${ISMS_MASTER_KEY}
-REQUIRE_MFA=1
 UPLOAD_AV_MODE=required
 CLAMAV_BIN=/usr/bin/clamscan
 

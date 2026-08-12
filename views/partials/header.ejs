@@ -13,8 +13,11 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/app.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<link rel="stylesheet" href="/page-loader.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<script src="/page-loader.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script>
 </head>
 <body>
+<%- include('page_loader') %>
 <% if (typeof user !== 'undefined' && user) { %>
 <div class="app" id="app">
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>

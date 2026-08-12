@@ -1,0 +1,38 @@
+<%- include('partials/header', { title: ws.client_name, user, ws, active: 'overview' }) %>
+
+<div class="cm-programme-head">
+  <div>
+    <div class="eyebrow">Client overview · Programme setup</div>
+    <h1 class="page-title"><%= ws.client_name %></h1>
+    <p class="page-subtitle"><%= ws.industry || 'Industry not set' %> · No assessment programme has been assigned.</p>
+  </div>
+  <a class="btn" href="/workspaces/<%= ws.id %>/intake">Client setup</a>
+</div>
+
+<section class="panel" style="padding:28px;margin-bottom:18px;">
+  <div style="max-width:760px;">
+    <span class="cm-kicker">Programme decision pending</span>
+    <h2 style="font-family:var(--font-serif);font-size:25px;font-weight:500;margin:8px 0;">Choose the assessment programmes when the engagement is ready</h2>
+    <p class="page-subtitle" style="max-width:680px;line-height:1.6;">The client can remain in planning without being treated as an ISO engagement. Select any combination below; programme-specific dashboards and navigation will appear only for what you enable.</p>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/frameworks" style="margin-top:22px;">
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+      <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="checkbox" name="frameworks" value="iso27001" style="margin-top:3px;"><span><strong style="display:block;">ISO 27001:2022</strong><span class="meta">Information security management and certification readiness</span></span></label>
+      <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="checkbox" name="frameworks" value="iso42001" style="margin-top:3px;"><span><strong style="display:block;">ISO 42001:2023</strong><span class="meta">AI management system governance and assurance</span></span></label>
+      <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="checkbox" name="frameworks" value="csf" style="margin-top:3px;"><span><strong style="display:block;">NIST CSF 2.0</strong><span class="meta">Cybersecurity maturity and investment planning</span></span></label>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:16px;">
+      <button class="btn btn-primary">Enable selected programmes</button>
+      <span class="meta">Leaving all unchecked keeps the client in planning.</span>
+    </div>
+  </form>
+</section>
+
+<% if (typeof setupIncomplete !== 'undefined' && setupIncomplete) { %>
+  <div class="panel panel-pad" style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
+    <div><strong>Client setup is in progress</strong><div class="meta"><%= intakeAnswered %> of 25 scoping questions answered.</div></div>
+    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/intake">Continue setup →</a>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

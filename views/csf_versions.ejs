@@ -17,6 +17,7 @@
     <% } %>
   </div>
 </div>
+<%- include('partials/csf_nav', { ws, engagement }) %>
 
 <% if (engagement.status === 'Published' && canRepublish) { %>
   <details class="panel" style="margin-bottom:14px;">

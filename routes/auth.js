@@ -9,10 +9,7 @@
 
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const QRCode = require('qrcode');
 const rbac = require('../lib/rbac');
-const enc = require('../lib/encryption');
-const mfa = require('../lib/mfa');
 const { auditCtx, withToast, escapeHtml } = require('../lib/http-helpers');
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -27,8 +24,6 @@ function register(app, deps) {
   // leave the next user logged in to whatever yesterday's session was.
   const SESSION_DEFAULT_MAX_AGE  = 1000 * 60 * 60 * 8;       // 8 hours
   const SESSION_REMEMBER_MAX_AGE = 1000 * 60 * 60 * 24 * 30; // 30 days
-  const MFA_REQUIRED = process.env.REQUIRE_MFA === '1' ||
-    (process.env.NODE_ENV === 'production' && process.env.REQUIRE_MFA !== '0');
 
   // Login throttle on hot misses. Uses an in-process Map keyed by lower-cased
   // email; capped at 8 failures over a 15-minute window. Process-restart wipes
@@ -85,7 +80,7 @@ function register(app, deps) {
     if (!email || !password) return renderFail('Email and password are required.');
     if (isLockedOut(email)) return renderFail('Too many failed attempts. Wait 15 minutes and try again, or reset your password.');
 
-    const user = db.prepare(`SELECT id, email, password_hash, active, mfa_enabled_at FROM users WHERE email = ?`).get(email);
+    const user = db.prepare(`SELECT id, email, password_hash, active FROM users WHERE email = ?`).get(email);
     // Constant-ish-time response: always run a bcrypt compare even if user is
     // missing, so a probe can't distinguish "no such email" from "wrong password"
     // by timing alone.
@@ -106,131 +101,9 @@ function register(app, deps) {
       req.session.cookie.maxAge = remember ? SESSION_REMEMBER_MAX_AGE : SESSION_DEFAULT_MAX_AGE;
       // Touch last_active_at for the activity-feed and any "last seen" UX.
       try { db.prepare(`UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?`).run(user.id); } catch (_) {}
-      if (user.mfa_enabled_at) {
-        req.session.pendingMfaUserId = user.id;
-        req.session.pendingMfaNext = nextUrl;
-        req.session.pendingMfaRemember = remember;
-        req.session.pendingMfaStartedAt = Date.now();
-        return res.redirect('/mfa/verify');
-      }
       req.session.userId = user.id;
-      req.session.mfaVerified = !MFA_REQUIRED;
-      req.session.mfaVerifiedAt = !MFA_REQUIRED ? Date.now() : null;
-      res.redirect(MFA_REQUIRED ? `/security/mfa/setup?next=${encodeURIComponent(nextUrl)}` : nextUrl);
-    });
-  });
-
-  function pendingMfaUser(req) {
-    const userId = Number(req.session && req.session.pendingMfaUserId);
-    const started = Number(req.session && req.session.pendingMfaStartedAt);
-    if (!userId || !started || Date.now() - started > 10 * 60 * 1000) return null;
-    return db.prepare(`SELECT id,email,name,mfa_secret,mfa_recovery_codes,mfa_last_counter,mfa_enabled_at,active
-      FROM users WHERE id=? AND active=1`).get(userId);
-  }
-
-  app.get('/mfa/verify', (req, res) => {
-    const user = pendingMfaUser(req);
-    if (!user || !user.mfa_enabled_at) return res.redirect('/login');
-    res.render('auth/mfa_verify', { user: null, email: user.email, error: null, csrfToken: res.locals.csrfToken });
-  });
-
-  app.post('/mfa/verify', (req, res) => {
-    const user = pendingMfaUser(req);
-    if (!user || !user.mfa_enabled_at) return res.redirect('/login');
-    const attempts = Number(req.session.mfaAttempts || 0);
-    const lockedUntil = Number(req.session.mfaLockedUntil || 0);
-    const renderFail = (message, status = 401) => res.status(status).render('auth/mfa_verify', {
-      user: null, email: user.email, error: message, csrfToken: res.locals.csrfToken
-    });
-    if (lockedUntil > Date.now()) return renderFail('Too many attempts. Wait five minutes and try again.', 429);
-
-    const submitted = String((req.body && req.body.code) || '').trim();
-    let verified = false;
-    let counter = null;
-    let recoveryJson = null;
-    if (/^\d{6}$/.test(submitted.replace(/\s/g, ''))) {
-      try {
-        const secret = enc.decrypt(user.mfa_secret, `mfa:${user.id}`);
-        counter = mfa.verifyTotp(secret, submitted, { lastCounter: user.mfa_last_counter });
-        verified = counter !== null;
-      } catch (_) { verified = false; }
-    } else {
-      recoveryJson = mfa.consumeRecoveryCode(user.mfa_recovery_codes, submitted);
-      verified = recoveryJson !== null;
-    }
-
-    if (!verified) {
-      req.session.mfaAttempts = attempts + 1;
-      if (req.session.mfaAttempts >= 8) {
-        req.session.mfaLockedUntil = Date.now() + 5 * 60 * 1000;
-        req.session.mfaAttempts = 0;
-      }
-      try { logAction(user.id, null, 'mfa_challenge_failed', 'user', user.id, { ip: req.ip }, auditCtx(req)); } catch (_) {}
-      return renderFail('That verification or recovery code is not valid.');
-    }
-
-    if (counter !== null) db.prepare('UPDATE users SET mfa_last_counter=? WHERE id=?').run(counter, user.id);
-    if (recoveryJson !== null) db.prepare('UPDATE users SET mfa_recovery_codes=? WHERE id=?').run(recoveryJson, user.id);
-    const nextUrl = typeof req.session.pendingMfaNext === 'string' && req.session.pendingMfaNext.startsWith('/')
-      ? req.session.pendingMfaNext : '/dashboard';
-    const remember = !!req.session.pendingMfaRemember;
-    req.session.regenerate((err) => {
-      if (err) return renderFail('Could not complete sign in. Please try again.');
-      req.session.userId = user.id;
-      req.session.mfaVerified = true;
-      req.session.mfaVerifiedAt = Date.now();
-      req.session.cookie.maxAge = remember ? SESSION_REMEMBER_MAX_AGE : SESSION_DEFAULT_MAX_AGE;
-      try { logAction(user.id, null, recoveryJson !== null ? 'mfa_recovery_used' : 'mfa_verified', 'user', user.id, null, auditCtx(req)); } catch (_) {}
       res.redirect(nextUrl);
     });
-  });
-
-  function setupUser(req) {
-    const userId = Number(req.session && req.session.userId);
-    if (!userId) return null;
-    return db.prepare(`SELECT id,email,name,mfa_enabled_at FROM users WHERE id=? AND active=1`).get(userId);
-  }
-
-  app.get('/security/mfa/setup', async (req, res) => {
-    const user = setupUser(req);
-    if (!user) return res.redirect('/login');
-    const nextUrl = typeof req.query.next === 'string' && req.query.next.startsWith('/') ? req.query.next : '/dashboard';
-    if (user.mfa_enabled_at) {
-      return res.render('auth/mfa_setup', { user, enabled: true, completed: false, secret: null, qrDataUrl: null, recoveryCodes: [], nextUrl, error: null, csrfToken: res.locals.csrfToken });
-    }
-    let secret;
-    try { secret = enc.decrypt(req.session.mfaSetupSecret, `mfa-setup:${user.id}`); } catch (_) { secret = null; }
-    if (!secret) {
-      secret = mfa.generateSecret();
-      req.session.mfaSetupSecret = enc.encrypt(secret, `mfa-setup:${user.id}`);
-    }
-    const uri = mfa.otpauthUri({ secret, email: user.email });
-    const qrDataUrl = await QRCode.toDataURL(uri, { width: 220, margin: 1, color: { dark: '#1a1a1a', light: '#ffffff' } });
-    res.render('auth/mfa_setup', { user, enabled: false, completed: false, secret, qrDataUrl, recoveryCodes: [], nextUrl, error: null, csrfToken: res.locals.csrfToken });
-  });
-
-  app.post('/security/mfa/setup', async (req, res) => {
-    const user = setupUser(req);
-    if (!user) return res.redirect('/login');
-    const nextUrl = typeof req.body.next === 'string' && req.body.next.startsWith('/') ? req.body.next : '/dashboard';
-    let secret;
-    try { secret = enc.decrypt(req.session.mfaSetupSecret, `mfa-setup:${user.id}`); } catch (_) { secret = null; }
-    if (!secret) return res.redirect(`/security/mfa/setup?next=${encodeURIComponent(nextUrl)}`);
-    const counter = mfa.verifyTotp(secret, req.body.code, { lastCounter: -1 });
-    if (counter === null) {
-      const uri = mfa.otpauthUri({ secret, email: user.email });
-      const qrDataUrl = await QRCode.toDataURL(uri, { width: 220, margin: 1, color: { dark: '#1a1a1a', light: '#ffffff' } });
-      return res.status(400).render('auth/mfa_setup', { user, enabled: false, completed: false, secret, qrDataUrl, recoveryCodes: [], nextUrl, error: 'Enter the current six-digit code from your authenticator app.', csrfToken: res.locals.csrfToken });
-    }
-    const recoveryCodes = mfa.generateRecoveryCodes();
-    const hashes = recoveryCodes.map(mfa.hashRecoveryCode);
-    db.prepare(`UPDATE users SET mfa_secret=?,mfa_enabled_at=CURRENT_TIMESTAMP,mfa_recovery_codes=?,mfa_last_counter=? WHERE id=?`)
-      .run(enc.encrypt(secret, `mfa:${user.id}`), JSON.stringify(hashes), counter, user.id);
-    delete req.session.mfaSetupSecret;
-    req.session.mfaVerified = true;
-    req.session.mfaVerifiedAt = Date.now();
-    try { logAction(user.id, null, 'mfa_enabled', 'user', user.id, null, auditCtx(req)); } catch (_) {}
-    res.render('auth/mfa_setup', { user, enabled: true, completed: true, secret: null, qrDataUrl: null, recoveryCodes, nextUrl, error: null, csrfToken: res.locals.csrfToken });
   });
 
   app.post('/logout', (req, res) => {
@@ -276,7 +149,7 @@ function register(app, deps) {
       SELECT id, name, email, firm_role, active, last_active_at, created_at
         FROM users WHERE firm_id = ? AND user_type = 'firm' ORDER BY active DESC, name`).all(req.user.firm_id);
     const clientUsers = db.prepare(`
-      SELECT u.id, u.name, u.email, u.active, u.mfa_enabled_at, u.last_active_at, u.created_at,
+      SELECT u.id, u.name, u.email, u.active, u.last_active_at, u.created_at,
              GROUP_CONCAT(w.client_name || ' (' || wm.role || ')', ' · ') AS workspaces
         FROM users u
         INNER JOIN workspace_members wm ON wm.user_id = u.id
@@ -624,10 +497,9 @@ function register(app, deps) {
     req.session.regenerate((err) => {
       if (err) return res.redirect('/login?invited=1');
       req.session.userId = newUserId;
-      req.session.mfaVerified = !MFA_REQUIRED;
       req.session.cookie.maxAge = SESSION_DEFAULT_MAX_AGE;
       const nextUrl = inv.workspace_id ? `/workspaces/${inv.workspace_id}/client-portal` : '/dashboard';
-      res.redirect(MFA_REQUIRED ? `/security/mfa/setup?next=${encodeURIComponent(nextUrl)}` : nextUrl);
+      res.redirect(nextUrl);
     });
   });
 

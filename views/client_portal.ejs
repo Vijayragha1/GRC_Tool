@@ -10,7 +10,7 @@
     (d.owner_id === user.id && ['draft','changes_requested'].includes(d.status)) ||
     (d.approver_id === user.id && ['submitted','workspace_verified'].includes(d.effective_status))
   ) : [];
-  const actionCount = requestActions.length + deliveryActions.length + pendingApprovals.length + (clientValidations || []).length;
+  const actionCount = requestActions.length + deliveryActions.length + pendingApprovals.length + (clientValidations || []).length + (csfValidations || []).length;
 %>
 
 <div class="page-head">
@@ -31,6 +31,7 @@
   <% if (actionCount) { %><div class="cp-action-list">
     <% pendingApprovals.slice(0,3).forEach(a => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/client-portal/policies/<%= a.document_id %>"><span class="cp-action-kind">Policy decision</span><span class="cp-action-main"><strong><%= a.name %></strong><small>Version <%= a.version %> · Your signature is required</small></span><span class="cp-action-cta">Review →</span></a><% }) %>
     <% (clientValidations || []).slice(0,3).forEach(v => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/client-portal/workpapers/<%= v.id %>/validate"><span class="cp-action-kind">Factual validation</span><span class="cp-action-main"><strong><%= v.title %></strong><small><%= v.framework_code.toUpperCase() %> <%= v.requirement_ref %> · Confirm the client-visible summary</small></span><span class="cp-action-cta">Validate →</span></a><% }) %>
+    <% (csfValidations || []).slice(0,5).forEach(v => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/csf/<%= v.engagement_id %>/portal"><span class="cp-action-kind">CSF validation</span><span class="cp-action-main"><strong><%= v.code %> · <%= v.description %></strong><small><%= v.engagement_name %> · Confirm factual accuracy</small></span><span class="cp-action-cta">Validate →</span></a><% }) %>
     <% deliveryActions.slice(0,4).forEach(d => { const approval = d.approver_id === user.id && ['submitted','workspace_verified'].includes(d.effective_status); %><a class="cp-action-row" href="#delivery" onclick="document.getElementById('deliveryDetail').open=true"><span class="cp-action-kind"><%= approval ? 'Delivery approval' : 'Delivery evidence' %></span><span class="cp-action-main"><strong><%= d.title %></strong><small><%= d.due_date ? `Due ${d.due_date}` : 'No due date' %> · <%= approval ? 'Accept or request changes' : 'Add evidence and submit' %></small></span><span class="cp-action-cta">Open →</span></a><% }) %>
     <% requestActions.slice(0,6).forEach(r => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/client-portal/requests/<%= r.id %>"><span class="cp-action-kind"><%= label(r.request_type) %></span><span class="cp-action-main"><strong><%= r.title %></strong><small><%= r.due_date ? `Due ${r.due_date}` : 'No due date' %> · <%= label(r.status) %></small></span><span class="cp-action-cta">Respond →</span></a><% }) %>
   </div><% } else { %><div class="cp-action-empty"><span>✓</span><div><strong>No outstanding client actions</strong><p>New requests and approvals will appear here automatically.</p></div></div><% } %>
@@ -50,6 +51,8 @@
   <div style="overflow-x:auto;"><table class="t"><thead><tr><th>Report</th><th>Type</th><th>Version</th><th>Published</th><th></th></tr></thead><tbody><% publishedReports.forEach(r=>{ %><tr><td><strong><%= r.title %></strong><div class="meta">Published by <%= r.published_by_name||'engagement team' %></div></td><td><%= label(r.report_type) %></td><td><%= r.version_number %></td><td><%= r.published_at %></td><td style="text-align:right"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/client-portal/reports/<%= r.id %>">View controlled report</a></td></tr><% }) %></tbody></table></div>
 </div>
 <% } %>
+
+<% if (csfPublishedReports && csfPublishedReports.length) { %><div class="panel" style="margin-bottom:14px;"><div class="panel-head"><div><h2>Published NIST CSF assessments</h2><div class="meta">Controlled, immutable assessment versions released by the engagement team.</div></div><span class="tag tag-neutral"><%= csfPublishedReports.length %></span></div><table class="t"><thead><tr><th>Assessment</th><th>Version</th><th>Published</th><th></th></tr></thead><tbody><% csfPublishedReports.forEach(r => { %><tr><td><strong><%= r.name %></strong></td><td>v<%= r.version_number %></td><td><%= r.published_at %></td><td style="text-align:right"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/csf/<%= r.id %>/portal">Open assessment</a></td></tr><% }) %></tbody></table></div><% } %>
 
 <% if (canManage) { %>
 <details class="panel" style="margin-bottom:14px;" <%= requests.length === 0 ? 'open' : '' %>>
