@@ -3,6 +3,8 @@
 </div>
 
 <% if (typeof user !== 'undefined' && user) { %>
+<% const clientFooterMode = user.user_type === 'client' || (typeof clientPreview !== 'undefined' && clientPreview === true); %>
+<% if (!clientFooterMode) { %>
 <!-- Command palette -->
 <div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()">
   <div class="cp-modal">
@@ -19,16 +21,23 @@
     </div>
   </div>
 </div>
+<% } %>
 
 <!-- Help modal -->
 <div class="cp-backdrop help-modal" id="helpBackdrop" onclick="if(event.target===this)closeHelp()">
   <div class="cp-modal">
     <div class="cp-search" style="padding:14px 18px;border-bottom:1px solid var(--border);">
       <svg class="text-tertiary" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span class="text-xl" style="font-weight: 500;flex:1;">Keyboard shortcuts</span>
+      <span class="text-xl" style="font-weight: 500;flex:1;"><%= clientFooterMode ? 'Portal help' : 'Keyboard shortcuts' %></span>
       <span class="kbd">esc</span>
     </div>
     <div class="help-shortcuts">
+      <% if (clientFooterMode) { %>
+      <div class="help-row"><span><strong>Requests</strong><br><small>Provide information, upload files and ask questions.</small></span></div>
+      <div class="help-row"><span><strong>Engagement</strong><br><small>Track agreed deliverables, dates and approvals.</small></span></div>
+      <div class="help-row"><span><strong>Approvals</strong><br><small>Review policies and confirm shared information.</small></span></div>
+      <div class="help-row"><span><strong>Reports</strong><br><small>Open reports released by your engagement team.</small></span></div>
+      <% } else { %>
       <div class="help-row"><span>Open command palette</span><span><span class="kbd" id="hk1">⌘K</span></span></div>
       <div class="help-row"><span>Search</span><span><span class="kbd">/</span></span></div>
       <div class="help-row"><span>Show this help</span><span><span class="kbd">?</span></span></div>
@@ -45,6 +54,7 @@
       <div class="help-row"><span>Management review</span><span><span class="kbd">g</span> <span class="kbd">m</span></span></div>
       <div class="help-row"><span>Nonconformities</span><span><span class="kbd">g</span> <span class="kbd">n</span></span></div>
       <div class="help-row"><span>Tasks</span><span><span class="kbd">g</span> <span class="kbd">t</span></span></div>
+      <% } %>
     </div>
   </div>
 </div>
@@ -116,6 +126,10 @@ window._unmarkBusy = function (form) {
     if (link.dataset.noSpa === '1') return false;
     const href = link.getAttribute('href');
     if (!href || !href.startsWith('/')) return false;
+    const target = new URL(href, location.href);
+    // In-page portal destinations are handled separately by the click
+    // listener. They must not go through the fetch-and-swap navigation path.
+    if (target.pathname === location.pathname && target.search === location.search && target.hash) return false;
     if (href === location.pathname + location.search) return false;
     // Skip exports / file downloads / API endpoints - these need real navigation.
     if (/\.(csv|docx|zip|pdf|xlsx|png|jpg|svg|ico)(\?|#|$)/i.test(href)) return false;
@@ -127,14 +141,166 @@ window._unmarkBusy = function (form) {
   // do this without touching the sidebar element itself, so its scroll
   // position is preserved by the browser automatically.
   function updateSidebarActive(href) {
-    const path = href.split('?')[0].split('#')[0];
+    const target = new URL(href || location.href, location.href);
+    const path = target.pathname;
+    const portalRoot = /^\/workspaces\/\d+\/client-portal\/?$/.test(path);
     document.querySelectorAll('.sidebar a.nav-item').forEach(a => {
-      const aHref = (a.getAttribute('href') || '').split('?')[0].split('#')[0];
-      // Active if the current URL exactly matches OR is a sub-path of the link
-      // (e.g., /workspaces/X/audits matches /workspaces/X/audits/123).
-      const isActive = path === aHref || (aHref !== '/' && path.startsWith(aHref + '/'));
+      const linkUrl = new URL(a.getAttribute('href') || '/', location.href);
+      // Top-level navigation is an exact match. Programme sub-pages use the
+      // server-authored `.nav-subitem` state synchronized during `swapApp`;
+      // prefix matching here would incorrectly highlight Overview for every
+      // route below /workspaces/:id.
+      const isActive = portalRoot && linkUrl.pathname === path
+        ? (target.hash ? linkUrl.hash === target.hash : !linkUrl.hash)
+        : (!linkUrl.hash && path === linkUrl.pathname);
       a.classList.toggle('active', isActive);
+      if (isActive) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
     });
+  }
+
+  // The SPA keeps the live sidebar node so its scroll position does not jump.
+  // Copy only navigation state from the freshly rendered sidebar: the server
+  // remains the source of truth for which programme, group and item is active.
+  function syncSidebarNavigationState(liveSidebar, incomingSidebar) {
+    if (!liveSidebar || !incomingSidebar) return;
+
+    const incomingLinks = new Map();
+    incomingSidebar.querySelectorAll('a.nav-item, a.nav-subitem').forEach(link => {
+      incomingLinks.set(link.getAttribute('href') || '', link);
+    });
+    liveSidebar.querySelectorAll('a.nav-item, a.nav-subitem').forEach(link => {
+      const incoming = incomingLinks.get(link.getAttribute('href') || '');
+      const active = !!incoming && incoming.classList.contains('active');
+      link.classList.toggle('active', active);
+      if (active) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+
+    const incomingDomains = new Map();
+    incomingSidebar.querySelectorAll('details.nav-domain').forEach(domain => {
+      const label = domain.querySelector(':scope > summary')?.getAttribute('aria-label') || '';
+      if (label) incomingDomains.set(label, domain);
+    });
+    liveSidebar.querySelectorAll('details.nav-domain').forEach(domain => {
+      const label = domain.querySelector(':scope > summary')?.getAttribute('aria-label') || '';
+      const incoming = incomingDomains.get(label);
+      const active = !!incoming && incoming.classList.contains('is-active');
+      domain.classList.toggle('is-active', active);
+      if (incoming) domain.open = incoming.open;
+    });
+  }
+
+  let portalScrollMain = null;
+  let portalScrollHandler = null;
+  let portalRequestedHash = '';
+  let portalScrollSettleTimer = null;
+  function scrollToTargetHash(hash, behavior) {
+    if (!hash) return false;
+    const target = document.getElementById(decodeURIComponent(hash.slice(1)));
+    if (!target) return false;
+    const main = document.querySelector('.main');
+    if (!main) return false;
+
+    // Stage links must reveal the destination before its position is
+    // measured. This keeps the five-stage assessment rail usable even when
+    // the selected stage is not the current governed phase.
+    if (target.matches('details.cp-gap-stage')) {
+      document.querySelectorAll('details.cp-gap-stage').forEach(stage => {
+        stage.open = stage === target;
+      });
+    } else {
+      const parentDisclosure = target.closest('details');
+      if (parentDisclosure) parentDisclosure.open = true;
+    }
+
+    // The application shell is exactly one viewport high and `.main` owns
+    // the vertical scroll. Native scrollIntoView/hash navigation also moves
+    // the outer document in Chromium, which shifts the whole app upward and
+    // exposes a large white area below it. Move only the main pane and always
+    // return the document viewport to its origin.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const mainRect = main.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const destination = Math.max(0, main.scrollTop + targetRect.top - mainRect.top - 18);
+    if (behavior === 'smooth') {
+      portalRequestedHash = hash;
+      clearTimeout(portalScrollSettleTimer);
+      const finish = () => {
+        if (portalRequestedHash !== hash) return;
+        portalRequestedHash = '';
+        clearTimeout(portalScrollSettleTimer);
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        updateSidebarActive(location.pathname + location.search + hash);
+      };
+      main.addEventListener('scrollend', finish, { once: true });
+      portalScrollSettleTimer = setTimeout(finish, 900);
+      main.scrollTo({ top: destination, behavior: 'smooth' });
+    } else {
+      portalRequestedHash = '';
+      clearTimeout(portalScrollSettleTimer);
+      const previousBehavior = main.style.scrollBehavior;
+      main.style.scrollBehavior = 'auto';
+      main.scrollTop = destination;
+      requestAnimationFrame(() => { main.style.scrollBehavior = previousBehavior; });
+    }
+    return true;
+  }
+
+  function sameDocumentHashTarget(link, e) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+    if (link.target && link.target !== '' && link.target !== '_self') return null;
+    if (link.hasAttribute('download') || link.dataset.noSpa === '1') return null;
+    const href = link.getAttribute('href');
+    if (!href) return null;
+    const target = new URL(href, location.href);
+    if (target.origin !== location.origin || !target.hash) return null;
+    return target.pathname === location.pathname && target.search === location.search ? target : null;
+  }
+  function bindPortalScrollSpy() {
+    if (portalScrollMain && portalScrollHandler) portalScrollMain.removeEventListener('scroll', portalScrollHandler);
+    portalScrollMain = document.querySelector('.main');
+    portalScrollHandler = null;
+    const portalLink = document.querySelector('.sidebar a.nav-item[href*="/client-portal#"]');
+    if (!portalScrollMain || !portalLink || !/^\/workspaces\/\d+\/client-portal\/?$/.test(location.pathname)) return;
+    const sectionIds = ['engagement', 'requests', 'approvals', 'reports', 'team-help'];
+    const sections = sectionIds.map(id => document.getElementById(id)).filter(Boolean);
+    let queued = false;
+    portalScrollHandler = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        // Keep the selected navigation item stable while a deliberate smooth
+        // jump passes intermediate sections. Normal scroll-spy resumes as
+        // soon as the target settles.
+        if (portalRequestedHash) {
+          updateSidebarActive(location.pathname + location.search + portalRequestedHash);
+          return;
+        }
+        const mainTop = portalScrollMain.getBoundingClientRect().top;
+        let activeHash = '';
+        if (portalScrollMain.scrollTop > 48) {
+          const atBottom = portalScrollMain.scrollTop >= portalScrollMain.scrollHeight - portalScrollMain.clientHeight - 2;
+          if (atBottom && sections.length) {
+            activeHash = `#${sections[sections.length - 1].id}`;
+          } else {
+            for (const section of sections) {
+              if (section.getBoundingClientRect().top <= mainTop + 96) activeHash = `#${section.id}`;
+            }
+          }
+        }
+        const next = location.pathname + location.search + activeHash;
+        if (location.hash !== activeHash) history.replaceState(history.state, '', next);
+        updateSidebarActive(next);
+      });
+    };
+    portalScrollMain.addEventListener('scroll', portalScrollHandler, { passive: true });
+    updateSidebarActive(location.href);
   }
 
   // Detect whether the sidebar structure itself differs between old and new.
@@ -176,6 +342,7 @@ window._unmarkBusy = function (form) {
     } else {
       // Same sidebar structure. Swap only the .main pane so the sidebar
       // element is never touched - no scroll loss possible.
+      syncSidebarNavigationState(oldSidebar, newSidebar);
       const oldMain = oldApp.querySelector('.main');
       const newMain = newApp.querySelector('.main');
       if (oldMain && newMain) {
@@ -197,14 +364,18 @@ window._unmarkBusy = function (form) {
     if (typeof window._csrfStamp === 'function') {
       document.querySelectorAll('form').forEach(window._csrfStamp);
     }
-    // Update active state on the live sidebar (no element swap needed).
-    updateSidebarActive(targetHref || location.pathname);
-    // Land at the top of the new main pane.
+    // Land on an explicit destination when present; otherwise start at the
+    // top. Defer until the replacement main pane has completed layout.
     const liveMain = document.querySelector('.main');
-    if (liveMain) liveMain.scrollTop = 0;
     // Function declarations are hoisted; bind prefetch handlers directly on
     // the newly swapped links without observing the entire document tree.
     attachHoverPrefetch();
+    bindPortalScrollSpy();
+    requestAnimationFrame(() => {
+      const target = new URL(targetHref || location.href, location.href);
+      if (!scrollToTargetHash(target.hash) && liveMain) liveMain.scrollTop = 0;
+      updateSidebarActive(target.href);
+    });
     return true;
   }
 
@@ -238,6 +409,7 @@ window._unmarkBusy = function (form) {
   }
 
   let inflight = null;
+  let renderedPath = location.pathname + location.search;
   async function navigate(href, push) {
     if (inflight) inflight.abort();
     const ctl = new AbortController();
@@ -260,6 +432,8 @@ window._unmarkBusy = function (form) {
       if (push) window.history.pushState({}, '', href);
       const ok = swapApp(text, href);
       if (!ok) { leavingDocument = true; window.location.href = href; return; }
+      const renderedUrl = new URL(href, location.href);
+      renderedPath = renderedUrl.pathname + renderedUrl.search;
       // Drop the consumed entry so a later visit re-fetches fresh.
       prefetchCache.delete(prefetchKey(href));
     } catch (e) {
@@ -322,17 +496,43 @@ window._unmarkBusy = function (form) {
       link.addEventListener('focus', onHover, { passive: true });
     });
   }
-  document.addEventListener('DOMContentLoaded', attachHoverPrefetch);
+  document.addEventListener('DOMContentLoaded', () => {
+    attachHoverPrefetch();
+    bindPortalScrollSpy();
+    updateSidebarActive(location.href);
+    if (location.hash) requestAnimationFrame(() => scrollToTargetHash(location.hash));
+  });
 
   document.addEventListener('click', (e) => {
     const link = e.target.closest && e.target.closest('a');
-    if (!link || !shouldIntercept(link, e)) return;
+    if (!link) return;
+    const hashTarget = sameDocumentHashTarget(link, e);
+    if (hashTarget) {
+      e.preventDefault();
+      if (hashTarget.href !== location.href) history.pushState(history.state, '', hashTarget.href);
+      scrollToTargetHash(hashTarget.hash, 'smooth');
+      updateSidebarActive(hashTarget.href);
+      return;
+    }
+    if (!shouldIntercept(link, e)) return;
     e.preventDefault();
     navigate(link.getAttribute('href'), true);
   });
 
+  window.addEventListener('hashchange', () => {
+    updateSidebarActive(location.href);
+    scrollToTargetHash(location.hash);
+  });
+
   window.addEventListener('popstate', () => {
-    navigate(location.pathname + location.search, false);
+    const nextPath = location.pathname + location.search;
+    if (nextPath === renderedPath) {
+      updateSidebarActive(location.href);
+      if (location.hash) scrollToTargetHash(location.hash);
+      else if (document.querySelector('.main')) document.querySelector('.main').scrollTop = 0;
+      return;
+    }
+    navigate(nextPath + location.hash, false);
   });
 })();
 
@@ -546,6 +746,7 @@ function toast(msg, kind) {
 })();
 
 // ----- Command palette -----
+const clientFooterMode = <%- JSON.stringify(clientFooterMode) %>;
 const wsIdMatch = location.pathname.match(/\/workspaces\/(\d+)/);
 const wsIdParam = wsIdMatch ? wsIdMatch[1] : '';
 let cpResults = [];
@@ -553,13 +754,15 @@ let cpSelected = 0;
 let cpDebounce;
 
 function openPalette() {
-  document.getElementById('cpBackdrop').classList.add('open');
-  setTimeout(() => document.getElementById('cpInput').focus(), 50);
+  const palette = document.getElementById('cpBackdrop');
+  if (!palette || clientFooterMode) return;
+  palette.classList.add('open');
+  setTimeout(() => document.getElementById('cpInput')?.focus(), 50);
   cpSearch('');
 }
 function closePalette() {
-  document.getElementById('cpBackdrop').classList.remove('open');
-  document.getElementById('cpInput').value = '';
+  document.getElementById('cpBackdrop')?.classList.remove('open');
+  if (document.getElementById('cpInput')) document.getElementById('cpInput').value = '';
 }
 async function cpSearch(q) {
   const box = document.getElementById('cpResults');
@@ -625,27 +828,27 @@ function inEditable(el) {
 }
 document.addEventListener('keydown', e => {
   // ⌘K / Ctrl+K → palette
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
+  if (!clientFooterMode && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
   // ⌘⇧L → toggle theme
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); toggleTheme(); return; }
   if (e.key === 'Escape') {
-    if (document.getElementById('cpBackdrop').classList.contains('open')) closePalette();
-    else if (document.getElementById('helpBackdrop').classList.contains('open')) closeHelp();
+    if (document.getElementById('cpBackdrop')?.classList.contains('open')) closePalette();
+    else if (document.getElementById('helpBackdrop')?.classList.contains('open')) closeHelp();
     return;
   }
   if (inEditable(e.target)) return;
   // / → open palette
-  if (e.key === '/') { e.preventDefault(); openPalette(); return; }
+  if (!clientFooterMode && e.key === '/') { e.preventDefault(); openPalette(); return; }
   // ? → help
   if (e.key === '?') { e.preventDefault(); openHelp(); return; }
   // g _ → navigate
-  if (e.key === 'g') {
+  if (!clientFooterMode && e.key === 'g') {
     gPressed = true;
     clearTimeout(gTimer);
     gTimer = setTimeout(() => { gPressed = false; }, 1000);
     return;
   }
-  if (gPressed) {
+  if (!clientFooterMode && gPressed) {
     gPressed = false;
     const target = document.querySelector(`[data-shortcut="g ${e.key}"]`);
     if (target) { e.preventDefault(); location.href = target.getAttribute('href'); }

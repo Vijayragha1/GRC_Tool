@@ -71,10 +71,13 @@ function resolveOnboardingHref(db, href, firmId) {
 }
 
 function register(app, deps) {
-  const { db, bcrypt, requireAuth, getActiveFirmId, listUserFirms, withToast, projectRoot } = deps;
+  const { db, bcrypt, requireAuth, isFirmUser, getActiveFirmId, listUserFirms, withToast, projectRoot } = deps;
 
   // ---------- TENANTS ----------
   app.get('/tenants', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) {
+      return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    }
     const firms = listUserFirms(req.user);
     const activeFirmId = getActiveFirmId(req);
     res.render('tenants', { user: req.user, firms, activeFirmId });
@@ -201,6 +204,9 @@ function register(app, deps) {
   const ONBOARDING_STEPS = buildOnboardingSteps(db);
 
   app.get('/onboarding', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) {
+      return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    }
     const firmId = getActiveFirmId(req);
     if (!firmId) return res.redirect('/tenants');
     let onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);

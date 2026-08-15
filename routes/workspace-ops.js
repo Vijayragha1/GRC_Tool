@@ -14,6 +14,45 @@ const delivery = require('../lib/engagement-delivery');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
 const htmlToDocxPooled = require('../lib/workers').htmlToDocxPooled;
 
+const ASSET_TYPES = new Set(['information','hardware','software','service','people','intangible']);
+const ASSET_CLASSIFICATIONS = new Set(['','public','internal','confidential','restricted']);
+const ASSET_CRITICALITIES = new Set(['','low','medium','high','critical']);
+
+function assetPayload(body, { linkedToIntake = false } = {}) {
+  const text = (value, max) => String(value || '').trim().slice(0, max);
+  const name = text(body.name, 200);
+  const type = text(body.type, 40).toLowerCase();
+  const classification = text(body.classification, 40).toLowerCase();
+  const businessCriticality = linkedToIntake ? 'critical' : text(body.business_criticality, 40).toLowerCase();
+  const cia = key => Number(body[key]);
+  const optionalHours = key => {
+    const raw = String(body[key] ?? '').trim();
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isInteger(value) && value >= 0 && value <= 87600 ? value : NaN;
+  };
+  const value = {
+    name,
+    type,
+    classification: classification || null,
+    owner_name: text(body.owner_name, 200) || null,
+    cia_c: cia('cia_c'), cia_i: cia('cia_i'), cia_a: cia('cia_a'),
+    description: text(body.description, 5000) || null,
+    business_criticality: businessCriticality || null,
+    rto_hours: optionalHours('rto_hours'),
+    rpo_hours: optionalHours('rpo_hours'),
+    bia_notes: text(body.bia_notes, 5000) || null,
+  };
+  const errors = [];
+  if (!name) errors.push('Asset name is required.');
+  if (!ASSET_TYPES.has(type)) errors.push('Choose a valid asset type.');
+  if (!ASSET_CLASSIFICATIONS.has(classification)) errors.push('Choose a valid classification.');
+  if (!ASSET_CRITICALITIES.has(businessCriticality)) errors.push('Choose a valid business criticality.');
+  if (![value.cia_c, value.cia_i, value.cia_a].every(score => [1,2,3].includes(score))) errors.push('CIA scores must be between 1 and 3.');
+  if (Number.isNaN(value.rto_hours) || Number.isNaN(value.rpo_hours)) errors.push('RTO and RPO must be whole, non-negative hours.');
+  return { value, errors };
+}
+
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           csvUpload, activeEntityFilter, getOrCreateState, isFirmUser } = deps;
@@ -75,22 +114,71 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/assets', requireAuth, requireWorkspace, requirePermission('asset.create'), (req, res) => {
-    const { name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
-            business_criticality, rto_hours, rpo_hours, bia_notes } = req.body;
-    if (!name) return redirectBack(req, res);
+    const parsed = assetPayload(req.body);
+    if (parsed.errors.length) return res.redirect(withToast(`/workspaces/${req.workspace.id}/assets`, parsed.errors[0], 'error'));
+    const a = parsed.value;
+    const duplicate = db.prepare(`SELECT id FROM assets WHERE workspace_id=? AND lower(trim(name))=lower(trim(?)) LIMIT 1`)
+      .get(req.workspace.id, a.name);
+    if (duplicate) return res.redirect(withToast(`/workspaces/${req.workspace.id}/assets/${duplicate.id}`, 'An asset with this name already exists.', 'error'));
     const id = db.prepare(`INSERT INTO assets
       (workspace_id, name, type, classification, owner_name, cia_c, cia_i, cia_a, description,
-       business_criticality, rto_hours, rpo_hours, bia_notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(req.workspace.id, name.trim(), type || null, classification || null, owner_name || null,
-           parseInt(cia_c) || 1, parseInt(cia_i) || 1, parseInt(cia_a) || 1, description || null,
-           business_criticality || null,
-           rto_hours !== undefined && rto_hours !== '' ? parseInt(rto_hours, 10) : null,
-           rpo_hours !== undefined && rpo_hours !== '' ? parseInt(rpo_hours, 10) : null,
-           bia_notes || null).lastInsertRowid;
+       business_criticality, rto_hours, rpo_hours, bia_notes,updated_at,updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,strftime('%Y-%m-%d %H:%M:%f','now'),?)`)
+      .run(req.workspace.id, a.name, a.type, a.classification, a.owner_name,
+           a.cia_c, a.cia_i, a.cia_a, a.description, a.business_criticality,
+           a.rto_hours, a.rpo_hours, a.bia_notes, req.user.id).lastInsertRowid;
     fts.refresh(req.workspace.id, 'asset', id);
-    logAction(req.user.id, req.workspace.id, 'create_asset', 'asset', id, { name }, auditCtx(req));
+    logAction(req.user.id, req.workspace.id, 'create_asset', 'asset', id, { name: a.name }, auditCtx(req));
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/assets', 'Asset added'));
+  });
+
+  app.post('/workspaces/:wsId/assets/:id', requireAuth, requireWorkspace, requirePermission('asset.update'), (req, res) => {
+    const before = db.prepare(`SELECT * FROM assets WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    if (!before) return res.status(404).render('error', { user: req.user, message: 'Asset not found.' });
+    const linkedToIntake = before.source_type === 'engagement_intake' && /^crown-jewel-\d+$/.test(before.source_ref || '');
+    const parsed = assetPayload(req.body, { linkedToIntake });
+    const editUrl = `/workspaces/${req.workspace.id}/assets/${before.id}?edit=1#asset-edit`;
+    if (parsed.errors.length) return res.redirect(withToast(editUrl, parsed.errors[0], 'error'));
+    const next = parsed.value;
+    const submittedVersion = Number(req.body.version);
+    if (!Number.isInteger(submittedVersion) || submittedVersion < 1) {
+      return res.redirect(withToast(editUrl, 'The edit version is invalid. Refresh and try again.', 'error'));
+    }
+    const duplicate = db.prepare(`SELECT id FROM assets WHERE workspace_id=? AND id<>? AND lower(trim(name))=lower(trim(?)) LIMIT 1`)
+      .get(req.workspace.id, before.id, next.name);
+    if (duplicate) return res.redirect(withToast(editUrl, 'Another asset already uses this name.', 'error'));
+
+    let intakeRefsUpdated = 0;
+    const updated = db.transaction(() => {
+      const result = db.prepare(`UPDATE assets SET
+        name=?,type=?,classification=?,owner_name=?,cia_c=?,cia_i=?,cia_a=?,description=?,
+        business_criticality=?,rto_hours=?,rpo_hours=?,bia_notes=?,version=version+1,
+        updated_at=strftime('%Y-%m-%d %H:%M:%f','now'),updated_by=?
+        WHERE id=? AND workspace_id=? AND version=?`).run(
+        next.name,next.type,next.classification,next.owner_name,next.cia_c,next.cia_i,next.cia_a,next.description,
+        next.business_criticality,next.rto_hours,next.rpo_hours,next.bia_notes,req.user.id,
+        before.id,req.workspace.id,submittedVersion);
+      if (result.changes !== 1) return false;
+      if (linkedToIntake && next.name !== before.name) {
+        intakeRefsUpdated = db.prepare(`UPDATE engagement_intake SET answer=?,answered_by=?,answered_at=CURRENT_TIMESTAMP
+          WHERE workspace_id=? AND question_id GLOB 'crown-jewel-[0-9]*' AND lower(trim(answer))=lower(trim(?))`)
+          .run(next.name, req.user.id, req.workspace.id, before.name).changes;
+      }
+      return true;
+    })();
+    if (!updated) return res.redirect(withToast(editUrl, 'This asset changed while you were editing it. Review the latest version and try again.', 'error'));
+
+    fts.refresh(req.workspace.id, 'asset', before.id);
+    logAction(req.user.id, req.workspace.id, 'update_asset', 'asset', before.id, {
+      before: {
+        name: before.name, type: before.type, classification: before.classification, owner_name: before.owner_name,
+        cia_c: before.cia_c, cia_i: before.cia_i, cia_a: before.cia_a, business_criticality: before.business_criticality,
+        rto_hours: before.rto_hours, rpo_hours: before.rpo_hours,
+      },
+      after: next,
+      intake_refs_updated: intakeRefsUpdated,
+    }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/assets/${before.id}`, 'Asset updated.'));
   });
 
   app.post('/workspaces/:wsId/assets/:id/delete', requireAuth, requireWorkspace, requirePermission('asset.delete'), (req, res) => {

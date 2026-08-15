@@ -4,7 +4,7 @@
   <div>
     <div style="display:flex;align-items:center;gap:10px;">
       <% if (user.user_type === 'client') { %>
-        <a href="/workspaces/<%= ws.id %>/client-portal" class="meta text-base" style="text-decoration:none;">&larr; back to client action centre</a>
+        <a href="/workspaces/<%= ws.id %>/client-portal" class="meta text-base" style="text-decoration:none;">&larr; back to your engagement</a>
       <% } else { %>
         <a href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>" class="meta text-base" style="text-decoration:none;">&larr; back to engagement</a>
       <% } %>
@@ -21,8 +21,8 @@
   <% } %>
 </div>
 
-<% if (validationRows && validationRows.length) { %><div class="panel" style="margin-bottom:14px;"><div class="panel-head"><h2>Conclusions awaiting your validation</h2><span class="tag"><%= validationRows.length %></span></div><div class="divide-row"><% validationRows.forEach(a => { %><div style="padding:14px;"><div class="csf-client-validation-row" style="display:flex;gap:10px;align-items:start;"><div style="flex:1;"><strong><%= a.code %></strong><div class="text-md" style="margin-top:3px;"><%= a.description %></div><div class="meta text-xs" style="margin-top:6px;">Current capability: <%= a.current_score || 'Not concluded' %>/5 · Confidence: <%= a.evidence_confidence || 'not recorded' %></div><% if (a.current_profile_statement) { %><p class="text-md"><strong>Current Profile:</strong> <%= a.current_profile_statement %></p><% } %><% if (a.business_impact) { %><p class="text-md"><strong>Business impact:</strong> <%= a.business_impact %></p><% } %></div>
-      <form class="csf-client-validation-form" method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal/validate/<%= a.id %>" style="width:280px;display:grid;gap:7px;"><textarea class="textarea text-sm" name="note" rows="3" placeholder="Optional validation note; required when requesting changes"></textarea><button class="btn btn-primary btn-xs" name="decision" value="validated">Validate factual accuracy</button><button class="btn btn-secondary btn-xs" name="decision" value="changes_requested">Request changes</button></form></div></div><% }) %></div></div><% } %>
+<% if (validationRows && validationRows.length) { %><div class="panel" style="margin-bottom:14px;"><div class="panel-head"><h2>Information waiting for your confirmation</h2><span class="tag"><%= validationRows.length %></span></div><div class="divide-row"><% validationRows.forEach(a => { %><div style="padding:14px;"><div class="csf-client-validation-row" style="display:flex;gap:10px;align-items:start;"><div style="flex:1;"><strong><%= a.code %></strong><div class="text-md" style="margin-top:3px;"><%= a.description %></div><% if (a.current_profile_statement) { %><p class="text-md"><strong>Current position:</strong> <%= a.current_profile_statement %></p><% } %><% if (a.business_impact) { %><p class="text-md"><strong>Business impact:</strong> <%= a.business_impact %></p><% } %></div>
+      <form class="csf-client-validation-form" method="POST" action="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/portal/validate/<%= a.id %>" style="width:280px;display:grid;gap:7px;"><textarea class="textarea text-sm" name="note" rows="3" placeholder="Add a note when requesting changes"></textarea><button class="btn btn-primary btn-xs" name="decision" value="validated">Confirm information</button><button class="btn btn-secondary btn-xs" name="decision" value="changes_requested">Request changes</button></form></div></div><% }) %></div></div><% } %>
 
 <% if (!currentVersion) { %>
   <div class="panel">
@@ -30,7 +30,7 @@
       <div class="empty-state">
         <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></div>
         <div class="empty-title">Not published yet</div>
-        <div class="empty-sub"><%= validationRows && validationRows.length ? 'Complete the factual-validation items above. The controlled report becomes available after independent approval and publication.' : 'Your consultant will share this assessment after its Profile, evidence conclusions, client validation, and independent approvals are complete.' %></div>
+        <div class="empty-sub"><%= validationRows && validationRows.length ? 'Complete the information checks above. Your report will appear here when it is ready.' : 'Your engagement team will share this assessment here when it is ready.' %></div>
       </div>
     </div>
   </div>

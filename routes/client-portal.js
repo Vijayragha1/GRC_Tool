@@ -13,6 +13,7 @@ const enc = require('../lib/encryption');
 const evWrites = require('../lib/evidence-writes');
 const docApprovals = require('../lib/doc-approvals');
 const delivery = require('../lib/engagement-delivery');
+const clientGapAssessment = require('../lib/client-gap-assessment');
 const uploadSecurity = require('../lib/upload-security');
 const { withToast, auditCtx } = require('../lib/http-helpers');
 
@@ -27,6 +28,11 @@ const MAX_TITLE = 180;
 const MAX_DESCRIPTION = 12000;
 const MAX_NOTE = 8000;
 const MAX_COMMENT = 8000;
+const clientStatus = value => ({
+  draft: 'in preparation', workspace_verified: 'ready for approval', submitted: 'under review',
+  changes_requested: 'changes requested', accepted: 'approved', rejected: 'not approved',
+  superseded: 'replaced', open: 'open', in_progress: 'in progress', cancelled: 'closed'
+}[String(value || '').toLowerCase()] || String(value || '').replace(/_/g, ' '));
 
 function sanitizePolicyHtml(content) {
   return sanitizeHtml(content || '', {
@@ -181,6 +187,12 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/client-portal', requireAuth, requireWorkspace,
     requirePermission('client_portal.view'), (req, res) => {
+      const clientPreview = req.user.user_type === 'firm' && req.query.preview === 'client';
+      const members = clientMembers(req);
+      const clientPreviewUser = clientPreview
+        ? (members.find(member => member.role === 'client_owner') || members[0] || null)
+        : null;
+      const portalActorId = clientPreviewUser?.id || req.user.id;
       const filters = [];
       const params = [req.workspace.id];
       if (isContributor(req)) {
@@ -212,7 +224,7 @@ function register(app, deps) {
         WHERE cr.workspace_id=?${isContributor(req) ? ' AND cr.assignee_id=?' : ''}`).all(
         ...(isContributor(req) ? [req.workspace.id, req.user.id] : [req.workspace.id]));
       const today = new Date().toISOString().slice(0, 10);
-      const metrics = {
+      const requestMetrics = {
         active: allVisible.filter(r => !TERMINAL.has(r.status)).length,
         overdue: allVisible.filter(r => !TERMINAL.has(r.status) && r.due_date && r.due_date < today).length,
         awaitingReview: allVisible.filter(r => r.status === 'submitted').length,
@@ -226,7 +238,7 @@ function register(app, deps) {
         INNER JOIN doc_versions dv ON dv.id=da.version_id
         WHERE da.workspace_id=? AND da.user_id=? AND da.decision IS NULL
           AND d.current_version_id=da.version_id
-        ORDER BY da.sequence, d.name`).all(req.workspace.id, req.user.id);
+        ORDER BY da.sequence, d.name`).all(req.workspace.id, portalActorId);
 
       const visibleRequestIds = requests.map(r => r.id);
       let recentEvents = [];
@@ -239,11 +251,11 @@ function register(app, deps) {
           .map(e => ({ ...e, note: enc.decryptIfNeeded(e.note, req.workspace.id) }));
       }
 
-      const deliveryProjection = delivery.getProjection(db, req.workspace, req.user.id, { ensure: false });
+      const deliveryProjection = delivery.getProjection(db, req.workspace, portalActorId, { ensure: false });
       let deliveryWork = [];
       if (deliveryProjection) {
         deliveryWork = deliveryProjection.deliverables.filter(d => d.client_visible &&
-          (!isContributor(req) || d.owner_id === req.user.id || d.approver_id === req.user.id));
+          (!isContributor(req) || !d.owner_id || d.owner_id === req.user.id || d.approver_id === req.user.id));
       }
       const deliveryEvidence = deliveryWork.length ? db.prepare(`SELECT de.deliverable_id,e.id,e.filename,e.uploaded_at
         FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
@@ -256,11 +268,11 @@ function register(app, deps) {
       // Workpaper validation exposes only the consultant-approved client
       // summary. Procedures, sampling detail, evidence judgments and internal
       // notes remain on the firm-only delivery surface.
-      const clientValidations = req.user.user_type === 'client' ? db.prepare(`SELECT w.id,w.workpaper_ref,w.title,w.client_visible_summary,
+      const clientValidations = (req.user.user_type === 'client' || clientPreview) && portalActorId ? db.prepare(`SELECT w.id,w.workpaper_ref,w.title,w.client_visible_summary,
           r.ref requirement_ref,r.title requirement_title,f.code framework_code
         FROM consultant_workpapers w JOIN requirements r ON r.id=w.requirement_id JOIN frameworks f ON f.id=r.framework_id
         WHERE w.workspace_id=? AND w.client_validator_id=? AND w.client_visible=1 AND w.requires_client_validation=1 AND w.status='client_validation'
-        ORDER BY w.due_date,w.id`).all(req.workspace.id,req.user.id) : [];
+        ORDER BY w.due_date,w.id`).all(req.workspace.id,portalActorId) : [];
       const publishedReports = db.prepare(`SELECT r.id,r.title,r.report_type,r.version_number,r.published_at,p.name published_by_name
         FROM consulting_report_snapshots r LEFT JOIN users p ON p.id=r.published_by
         WHERE r.workspace_id=? AND r.status='published' ORDER BY r.published_at DESC,r.id DESC`).all(req.workspace.id);
@@ -276,14 +288,67 @@ function register(app, deps) {
         FROM csf_engagements e JOIN csf_assessment_versions_v2 v ON v.engagement_id=e.id AND v.is_current=1 AND v.status='published'
         WHERE e.workspace_id=? AND e.status='Published' AND e.visible_in_portal=1 ORDER BY v.published_at DESC`).all(req.workspace.id);
 
+      const consultantContactRaw = db.prepare(`SELECT u.id,u.name,u.email
+        FROM users u
+        WHERE u.id=? AND u.user_type='firm' AND u.active=1`).get(req.workspace.lead_consultant_id) ||
+        db.prepare(`SELECT u.id,u.name,u.email
+          FROM workspace_members wm JOIN users u ON u.id=wm.user_id
+          WHERE wm.workspace_id=? AND u.user_type='firm' AND u.active=1
+          ORDER BY CASE wm.role WHEN 'firm_owner' THEN 1 WHEN 'senior_consultant' THEN 2 ELSE 3 END,u.id LIMIT 1`).get(req.workspace.id) || null;
+      const consultantContact = consultantContactRaw ? {
+        ...consultantContactRaw,
+        display_name: /^(admin|administrator)$/i.test(String(consultantContactRaw.name || '').trim())
+          ? 'Engagement team' : consultantContactRaw.name,
+        display_email: /@example\.(com|org|net)$/i.test(String(consultantContactRaw.email || ''))
+          ? null : consultantContactRaw.email
+      } : null;
+      const acceptedDelivery = deliveryWork.filter(d => d.status === 'accepted').length;
+      const pendingDelivery = deliveryWork
+        .filter(d => !['accepted','superseded'].includes(d.status))
+        .sort((a,b) => String(a.due_date || '9999-12-31').localeCompare(String(b.due_date || '9999-12-31')))[0] || null;
+      const deliverySummary = {
+        total: deliveryWork.length,
+        accepted: acceptedDelivery,
+        progressPct: deliveryWork.length ? Math.round(acceptedDelivery / deliveryWork.length * 100) : 0,
+        currentPhase: deliveryProjection?.currentPhase?.name || 'Engagement planning',
+        targetDate: deliveryProjection?.plan?.target_completion_date || req.workspace.target_cert_date || null,
+        nextTitle: pendingDelivery?.client_title || null,
+        nextDue: pendingDelivery?.due_date || null
+      };
+      const clientDeliveryActions = deliveryWork.filter(d =>
+        ((!d.owner_id || d.owner_id === portalActorId) && ['draft','changes_requested'].includes(d.status)) ||
+        (d.approver_id === portalActorId && ['submitted','workspace_verified'].includes(d.effective_status))
+      );
+      const overdueDeliverables = deliveryWork.filter(d =>
+        d.due_date && d.due_date < today && !['accepted','superseded'].includes(d.status)).length;
+      const awaitingReviewDeliverables = deliveryWork.filter(d =>
+        ['submitted','workspace_verified'].includes(d.effective_status)).length;
+      const metrics = {
+        activeRequests: requestMetrics.active,
+        deliverablesToProvide: clientDeliveryActions.filter(d =>
+          (!d.owner_id || d.owner_id === req.user.id) && ['draft','changes_requested'].includes(d.status)).length,
+        overdue: requestMetrics.overdue + overdueDeliverables,
+        awaitingReview: requestMetrics.awaitingReview + awaitingReviewDeliverables,
+        overdueRequests: requestMetrics.overdue,
+        overdueDeliverables,
+        awaitingReviewRequests: requestMetrics.awaitingReview,
+        awaitingReviewDeliverables
+      };
+      metrics.allZero = metrics.activeRequests === 0 && metrics.deliverablesToProvide === 0 &&
+        metrics.overdue === 0 && metrics.awaitingReview === 0;
+      const gapAssessment = clientGapAssessment.buildClientGapAssessmentProjection(db, req.workspace, {
+        assigneeId: isContributor(req) ? req.user.id : null
+      });
+
       res.render('client_portal', {
         user: req.user, ws: req.workspace, active: 'client-portal', title: 'Client portal',
         requests, metrics, pendingApprovals, recentEvents, status,
-        canManage: can(req, 'client_request.manage'), members: clientMembers(req),
+        canManage: clientPreview ? false : can(req, 'client_request.manage'), members,
+        clientPreview, clientPreviewUser,
         controls: can(req, 'client_request.manage') ? controlCatalog() : [],
         documents: can(req, 'client_request.manage') ? documentCatalog(req) : [],
         deliveryPlan: deliveryProjection?.plan || null, deliveryWork, deliveryEvidence, deliveryComments, clientValidations, publishedReports,
-        csfValidations, csfPublishedReports
+        csfValidations, csfPublishedReports, consultantContact, deliverySummary, gapAssessment
       });
     });
 
@@ -292,32 +357,36 @@ function register(app, deps) {
       FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
       JOIN engagement_delivery_phases p ON p.id=m.phase_id WHERE d.id=? AND d.workspace_id=? AND d.client_visible=1`).get(id, req.workspace.id);
     if (!row) return null;
-    if (isContributor(req) && row.owner_id !== req.user.id && row.approver_id !== req.user.id) return null;
+    if (isContributor(req) && row.owner_id && row.owner_id !== req.user.id && row.approver_id !== req.user.id) return null;
     return row;
   }
 
   app.post('/workspaces/:wsId/client-portal/deliverables/:id/submit', requireAuth, requireWorkspace,
     requirePermission('client_request.respond'), (req, res) => {
       const row = loadVisibleDelivery(req, req.params.id);
-      if (!row) return badRequest(req, res, 'Delivery item not found or not assigned to you.');
+      if (!row) return badRequest(req, res, 'This item is unavailable or is not assigned to you.');
       if (row.owner_id && row.owner_id !== req.user.id && !can(req, 'client_request.manage')) return badRequest(req, res, 'Only the assigned owner can submit this deliverable.');
+      if (row.requires_evidence && !db.prepare(`SELECT 1 FROM engagement_delivery_evidence
+          WHERE workspace_id=? AND deliverable_id=? LIMIT 1`).get(req.workspace.id, row.id)) {
+        return badRequest(req, res, 'Upload and link at least one evidence file before submitting this deliverable.');
+      }
       try {
         delivery.transitionDeliverable(db, req.workspace, req.user.id, row.id, 'submit', req.body.note);
         logAction(req.user.id, req.workspace.id, 'client_submit_delivery_deliverable', 'engagement_deliverable', row.id, null, auditCtx(req));
         notify(row.approver_id, req, 'Deliverable awaiting approval: ' + row.title, row.milestone_title, `/workspaces/${req.workspace.id}/client-portal`);
-        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, 'Deliverable submitted for approval.'));
+        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, 'Sent for approval.'));
       } catch (error) { res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, error.message, 'error')); }
     });
 
   ['accept','changes','reject'].forEach(action => app.post(`/workspaces/:wsId/client-portal/deliverables/:id/${action}`, requireAuth, requireWorkspace,
     requirePermission('client_request.respond'), (req, res) => {
       const row = loadVisibleDelivery(req, req.params.id);
-      if (!row) return badRequest(req, res, 'Delivery item not found or not assigned to you.');
+      if (!row) return badRequest(req, res, 'This item is unavailable or is not assigned to you.');
       try {
         delivery.transitionDeliverable(db, req.workspace, req.user.id, row.id, action, req.body.note);
         logAction(req.user.id, req.workspace.id, `client_${action}_delivery_deliverable`, 'engagement_deliverable', row.id, { note: req.body.note }, auditCtx(req));
         notify(row.owner_id, req, `Deliverable ${action}: ${row.title}`, req.body.note, `/workspaces/${req.workspace.id}/client-portal`, action === 'changes' ? 'warning' : 'info');
-        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, 'Deliverable decision recorded.'));
+        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, 'Your response has been saved.'));
       } catch (error) { res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, error.message, 'error')); }
     }));
 
@@ -332,14 +401,14 @@ function register(app, deps) {
       delivery.event(db, req.workspace.id, row.plan_id, req.user.id, 'deliverable', row.id, 'client_commented', null, null, null);
       logAction(req.user.id, req.workspace.id, 'client_comment_delivery_deliverable', 'engagement_deliverable', row.id, null, auditCtx(req));
       notify(row.owner_id === req.user.id ? row.approver_id : row.owner_id, req, 'Delivery comment: ' + row.title, body.slice(0,180), `/workspaces/${req.workspace.id}/client-portal`);
-      res.redirect(`/workspaces/${req.workspace.id}/client-portal#delivery`);
+      res.redirect(`/workspaces/${req.workspace.id}/client-portal#engagement`);
     });
 
   app.post('/workspaces/:wsId/client-portal/deliverables/:id/evidence', requireAuth, requireWorkspace,
     requirePermission('client_request.respond'), upload.single('file'), (req, res) => {
       const cleanup = () => { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {} };
       const row = loadVisibleDelivery(req, req.params.id);
-      if (!row || !req.file) { cleanup(); return badRequest(req, res, !row ? 'Delivery item not found or not assigned to you.' : 'Choose a file to upload.'); }
+      if (!row || !req.file) { cleanup(); return badRequest(req, res, !row ? 'This item is unavailable or is not assigned to you.' : 'Choose a file to upload.'); }
       if (row.owner_id && row.owner_id !== req.user.id && !can(req, 'client_request.manage')) { cleanup(); return badRequest(req, res, 'Only the assigned owner can add evidence.'); }
       const inspection = uploadSecurity.validateUpload(req.file, CLIENT_FILE_EXTENSIONS);
       if (!inspection.ok) { cleanup(); logAction(req.user.id, req.workspace.id, 'reject_client_upload', 'engagement_deliverable', row.id, { filename: req.file.originalname, reason: inspection.message }, auditCtx(req)); return badRequest(req, res, inspection.message); }
@@ -355,7 +424,7 @@ function register(app, deps) {
       })();
       logAction(req.user.id, req.workspace.id, 'client_upload_delivery_evidence', 'engagement_deliverable', row.id, { evidence_id: evidenceId }, auditCtx(req));
       notify(row.approver_id, req, 'Evidence added: ' + row.title, req.file.originalname, `/workspaces/${req.workspace.id}/client-portal`);
-      res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal#delivery`, 'Evidence linked to the deliverable.'));
+      res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal#engagement`, 'File added.'));
     });
 
   app.get('/workspaces/:wsId/client-portal/deliverables/:id/evidence/:evidenceId/download', requireAuth, requireWorkspace,
@@ -456,7 +525,7 @@ function register(app, deps) {
       if (!managing && request.assignee_id !== req.user.id) return res.status(403).render('error', { user: req.user, ws: req.workspace, message: 'Only the assigned client user can respond to this request.' });
       const target = String(req.body.status || '');
       const allowed = managing ? MANAGER_TRANSITIONS[request.status] : RESPONDER_TRANSITIONS[request.status];
-      if (!allowed || !allowed.has(target)) return badRequest(req, res, `The request cannot move from ${request.status} to ${target || 'that state'}.`);
+      if (!allowed || !allowed.has(target)) return badRequest(req, res, `This request cannot move from ${clientStatus(request.status)} to ${target ? clientStatus(target) : 'that status'}.`);
       const note = clean(req.body.response_note, MAX_NOTE);
       if (note === null) return badRequest(req, res, `Response notes must be under ${MAX_NOTE} characters.`);
       if (target === 'changes_requested' && !note) return badRequest(req, res, 'Explain the changes required before sending the request back.');
@@ -487,7 +556,7 @@ function register(app, deps) {
       notify(notifyUser, req, `Request ${target.replace('_', ' ')}: ${request.title}`, note,
         `/workspaces/${req.workspace.id}/client-portal/requests/${request.id}`,
         target === 'changes_requested' ? 'warning' : 'info');
-      res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal/requests/${request.id}`, `Request marked ${target.replace('_', ' ')}`));
+      res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal/requests/${request.id}`, `Request is now ${clientStatus(target)}`));
     });
 
   app.post('/workspaces/:wsId/client-portal/requests/:id/assign', requireAuth, requireWorkspace,

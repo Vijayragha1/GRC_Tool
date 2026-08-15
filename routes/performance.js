@@ -6,7 +6,7 @@
 
 const ctlReads = require('../lib/control-reads');
 const evReads = require('../lib/evidence-reads');
-const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
 const { parseWorkspaceFrameworks } = require('../lib/frameworks');
 
 function register(app, deps) {

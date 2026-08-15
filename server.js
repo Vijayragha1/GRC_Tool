@@ -169,7 +169,8 @@ app.locals.assetVersion = (() => {
 // Fingerprinted assets may be cached aggressively in production. During local
 // development the process can stay alive while CSS changes, so force browser
 // revalidation; otherwise the unchanged boot-time query string can leave the
-// UI on a week-old stylesheet until the server is restarted manually.
+// UI on a stale stylesheet until the development watcher (or a production
+// restart) recomputes the asset fingerprint.
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
   etag: true,
@@ -545,7 +546,7 @@ function requireWorkspace(req, res, next) {
     return res.status(403).render('error', {
       user: req.user,
       ws,
-      message: 'Your client account is limited to the controlled collaboration portal. Open Client collaboration to view requests, approvals, reports, policies, and evidence shared with you.'
+      message: 'Your account is limited to the client portal. Open your engagement to view requests, approvals, reports, policies and evidence shared with you.'
     });
   }
   // Remember the workspace they were last in, so firm-level pages (Glossary,
@@ -793,6 +794,7 @@ authRoutes.register(app, { db, requireAuth, logAction });
 require('./routes/tenants').register(app, {
   db, bcrypt,
   requireAuth,
+  isFirmUser,
   getActiveFirmId,
   listUserFirms,
   withToast,
@@ -829,7 +831,7 @@ require('./routes/admin').register(app, { db, requireAuth, logAction, isFirmOwne
 // ==================== GLOSSARY ====================
 // Lives in routes/glossary.js - register(app, deps) pattern, second slice of
 // the modularization after routes/tenants.js.
-require('./routes/glossary').register(app, { db, requireAuth, listWorkspaces });
+require('./routes/glossary').register(app, { db, requireAuth, isFirmUser, listWorkspaces });
 
 
 // ==================== WORKSPACE LIFECYCLE ====================
@@ -844,6 +846,9 @@ require('./routes/workspaces').register(app, { db, requireAuth, requireWorkspace
 // is shared with the ISO 42001 flag flow below.
 const controlsRoutes = require('./routes/controls');
 controlsRoutes.register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, getOrCreateState });
+require('./routes/gap-fieldwork').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction
+});
 
 // ==================== WORKSPACE OPS (BATCH A) ====================
 // Lives in routes/workspace-ops.js: comments, assets + CSV import,

@@ -17,6 +17,17 @@ function register(app, deps) {
   // ==================== DASHBOARD ====================
   app.get('/dashboard', requireAuth, (req, res) => {
     const workspaces = listWorkspaces(req.user);
+    // The dashboard is a consulting-firm portfolio surface. Client accounts
+    // must never see its cross-engagement readiness, risk or internal delivery
+    // signals, even briefly after login. Send them directly to the controlled
+    // collaboration boundary for their assigned engagement.
+    if (req.user.user_type === 'client') {
+      if (workspaces.length) return res.redirect(`/workspaces/${workspaces[0].id}/client-portal`);
+      return res.status(403).render('error', {
+        user: req.user,
+        message: 'Your account is not assigned to an active client engagement. Contact your engagement team for access.'
+      });
+    }
     const workspacesWithProgress = workspaces.map(w => {
       const progress = workspaceProgress(w.id);
       const readiness = computeReadiness(w);

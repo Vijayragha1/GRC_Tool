@@ -31,7 +31,7 @@ const PHASES = [
       { id: 'w2-assets', title: 'Asset register: identify the top 30-50 assets in scope',
         deliverables: 'Asset register with classification + owner per asset',
         clauses: ['A.5.9', 'A.5.10'] },
-      { id: 'w2-crown', title: 'Confirm the 3-5 crown-jewel assets',
+      { id: 'w2-crown', title: 'Confirm the crown-jewel assets (3 recommended minimum)',
         deliverables: 'Crown jewel list signed off; flagged in asset register',
         clauses: ['A.5.9'] },
     ],
@@ -158,12 +158,52 @@ const PHASES = [
   },
 ];
 
+// Client presentation is keyed by the stable milestone identifier, never by
+// the consultant-facing deliverable string. These values are persisted on the
+// deliverable when a plan is created, so subsequent wording changes are
+// governed engagement data rather than brittle view-layer substitutions.
+const CLIENT_PRESENTATION = {
+  'w1-kickoff': 'Kick-off records and role acknowledgements',
+  'w1-intake': 'Completed engagement intake and draft scope statement',
+  'w1-stakeholders': 'Interested parties register and sponsor approval',
+  'w2-assets': 'Asset register with classification and assigned owners',
+  'w2-crown': 'Critical asset register approved',
+  'w3-method': 'Approved risk assessment method',
+  'w3-risks': 'Risk register completed and prioritised',
+  'w4-treatment': 'Risk treatment plan',
+  'w4-soa': 'Statement of Applicability approved',
+  'w5-policies-a': 'Draft leadership and governance policies',
+  'w5-objectives': 'Information security objectives agreed',
+  'w6-policies-b': 'Operational policies ready for review',
+  'w7-policies-publish': 'Required management-system documents approved',
+  'w7-awareness': 'Communications and acknowledgement records',
+  'w8-programme': 'Internal audit programme approved',
+  'w8-first-audit': 'Internal audit report and findings',
+  'w9-mrm': 'Management review minutes and decisions',
+  'w9-actions': 'Improvement actions assigned and tracked',
+  'w10-pack': 'Certification readiness evidence pack',
+  'w10-mock': 'Pre-audit improvement actions',
+  'w10-fixes': 'Priority pre-audit actions completed',
+  'w11-stage1': 'Stage 1 audit report and findings',
+  'w11-remediation': 'Audit findings closed and operating evidence ready',
+  'w12-evidence': 'Evidence coverage report for priority controls',
+  'w12-handoff': 'Ongoing assurance and surveillance plan',
+};
+
 function flatten() {
   const out = [];
   for (const ph of PHASES) {
-    for (const m of ph.milestones) out.push({ ...m, week: ph.week, phase: ph.phase });
+    for (const m of ph.milestones) out.push({
+      ...m,
+      week: ph.week,
+      phase: ph.phase,
+      clientTitle: CLIENT_PRESENTATION[m.id] || m.deliverables || m.title,
+      clientDescription: 'Provide this item for review and approval.',
+      frameworkCode: 'iso27001',
+      requirementRefs: (m.clauses || []).join(', '),
+    });
   }
   return out;
 }
 
-module.exports = { PHASES, flatten };
+module.exports = { PHASES, CLIENT_PRESENTATION, flatten };

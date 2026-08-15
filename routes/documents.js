@@ -3,6 +3,9 @@
 // joined: (a) documents list/detail + template library, (b) versioning,
 // approvals, e-signatures, and the magic-link approval portal.
 
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const MarkdownIt = require('markdown-it');
 const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
@@ -13,7 +16,7 @@ const docApprovals = require('../lib/doc-approvals');
 const { looksLikeMarkdown } = require('../lib/docx-gen');
 const { snapshotDocVersion, listVersions, listApprovers, listSignatures, verifyVersionSignatures } = require('../lib/doc-versions');
 const { paginate, pageHref } = require('../lib/paginate');
-const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-helpers');
+const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray } = require('../lib/http-helpers');
 
 const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: true });
 

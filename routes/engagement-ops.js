@@ -27,6 +27,9 @@ const docLinks = require('../lib/doc-links');
 const evReads = require('../lib/evidence-reads');
 const reports = require('../lib/reports');
 const restoreCheck = require('../lib/restore-check');
+const assessmentPassQuality = require('../lib/assessment-pass-quality');
+const gapAssessmentReport = require('../lib/gap-assessment-report');
+const auditPack = require('../lib/audit-pack');
 const { computeReadiness } = require('../lib/readiness');
 const delivery = require('../lib/engagement-delivery');
 const { ymdLocal, ymLocal } = require('../lib/dates');
@@ -121,6 +124,9 @@ function register(app, deps) {
   const PLAYBOOKS = require('../data/playbooks');
 
   app.get('/playbooks', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) {
+      return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    }
     res.render('playbooks_index', { user: req.user, ws: null, playbooks: PLAYBOOKS.PLAYBOOK_INDEX }); // firm-level page - firm sidebar
   });
 
@@ -472,79 +478,80 @@ function register(app, deps) {
     res.send(buf);
   });
 
-  // Gap Assessment Report - produced at end-of-pass for handoff.
-  app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspace, async (req, res) => {
+  function loadReportPass(req) {
     const ws = req.workspace;
     const passId = req.query.pass ? parseInt(req.query.pass, 10) : null;
-    let pass = null;
-    if (passId) {
-      pass = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(passId, ws.id);
+    if (!passId) return null;
+    return db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(passId, ws.id) || null;
+  }
+
+  function gapReportData(req, res) {
+    const ws = req.workspace;
+    const pass = loadReportPass(req);
+    if (req.query.pass && !pass) {
+      res.redirect(withToast(`/workspaces/${ws.id}/gap-assessment`,
+        'The selected assessment pass no longer exists. Download the current status report instead.', 'error'));
+      return null;
     }
-    if (!pass) {
-      pass = db.prepare(`SELECT * FROM assessment_passes WHERE workspace_id=?
-        ORDER BY (status='in_progress') DESC, pass_number DESC LIMIT 1`).get(ws.id);
-    }
+    return gapAssessmentReport.buildGapAssessmentReportData(db, ws, pass, { currentState: !pass });
+  }
 
-    // For each control: end-of-pass status (using the same logic as the diff route).
-    const items = db.prepare(`SELECT i.id, i.type, i.title, i.sort_order
-      FROM iso_items i WHERE i.type IN ('clause','control') ORDER BY i.sort_order`).all();
-    const stmt = db.prepare(`SELECT h.status, h.maturity, h.applicability, h.notes
-      FROM control_state_history h
-      INNER JOIN assessment_passes p ON p.id = h.pass_id
-      WHERE h.workspace_id=? AND h.iso_item_id=? AND p.pass_number <= ?
-      ORDER BY p.pass_number DESC, h.snapshot_at DESC, h.id DESC LIMIT 1`);
-    const rows = pass ? items.map(it => {
-      const r = stmt.get(ws.id, it.id, pass.pass_number) || { status:'Not Assessed', maturity:null, applicability:'undecided', notes:null };
-      return { ...it, ...r, code: it.id.replace(/^annex-/,'').replace(/^clause-/,'').toUpperCase() };
-    }) : [];
-
-    // Group by category for the executive summary.
-    const counts = { 'Implemented':0, 'Partially Implemented':0, 'Work In Progress':0, 'Not Implemented':0, 'Not Assessed':0, 'Not Applicable':0 };
-    rows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
-    const total = rows.length;
-    const gaps = rows.filter(r => ['Not Implemented','Partially Implemented','Work In Progress'].includes(r.status));
-    const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(ws.id).c;
-
-    let body = '<h2>Executive summary</h2>';
-    body += `<p>This report summarises the gap-assessment findings produced during <strong>Pass ${pass ? pass.pass_number : '-'}${pass && pass.label ? ' · ' + escHtml(pass.label) : ''}</strong>${pass && pass.completed_at ? ' (completed ' + pass.completed_at.slice(0,10) + ')' : pass && pass.status === 'in_progress' ? ' (in progress)' : ''}. The findings are based on documented evidence reviewed and consultant interviews.</p>`;
-    body += '<table style="width:auto"><thead><tr><th>Status</th><th>Count</th><th>%</th></tr></thead><tbody>';
-    for (const [s, c] of Object.entries(counts)) {
-      body += `<tr><td>${statusTag(s)}</td><td>${c}</td><td>${total ? Math.round(c/total*100) : 0}%</td></tr>`;
-    }
-    body += `<tr><td><strong>Total</strong></td><td><strong>${total}</strong></td><td>100%</td></tr>`;
-    body += '</tbody></table>';
-    body += `<p>Open nonconformities at time of report: <strong>${ncOpen}</strong></p>`;
-
-    body += '<h2>Identified gaps</h2>';
-    if (gaps.length === 0) {
-      body += '<p><em>No gaps identified at this pass.</em></p>';
-    } else {
-      body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th>Notes</th></tr></thead><tbody>';
-      for (const g of gaps) {
-        const cleanTitle = g.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
-        body += `<tr><td>${escHtml(g.code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(g.status)}</td><td>${escHtml(g.notes || '')}</td></tr>`;
-      }
-      body += '</tbody></table>';
-    }
-
-    body += '<h2>Full assessment results</h2>';
-    body += '<table><thead><tr><th width="9%">ID</th><th>Item</th><th width="18%">Status</th><th width="8%">Maturity</th></tr></thead><tbody>';
-    for (const r of rows) {
-      const cleanTitle = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
-      body += `<tr><td>${escHtml(r.code)}</td><td>${escHtml(cleanTitle)}</td><td>${statusTag(r.status)}</td><td>${r.maturity == null ? '-' : r.maturity}</td></tr>`;
-    }
-    body += '</tbody></table>';
-
-    const title = `Gap Assessment Report - Pass ${pass ? pass.pass_number : ''}`;
-    const buf = await brandedDocx(ws, title, body);
+  // Gap Assessment Report - a controlled, editorial-style deliverable based on
+  // the immutable assessment-pass lineage. PDF is the client-ready record;
+  // Word is the editable companion using the same report model and structure.
+  app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspace, async (req, res) => {
+    const data = gapReportData(req, res);
+    if (!data) return;
+    const title = data.currentState
+      ? 'ISO/IEC 27001:2022 Gap Assessment - Current Status'
+      : `ISO/IEC 27001:2022 Gap Assessment - Pass ${data.pass.pass_number}`;
+    const html = gapAssessmentReport.renderGapAssessmentHtml(data);
+    const buf = await htmlToDocxPooled(html, gapAssessmentReport.reportHeader(data), {
+      title,
+      subject: `${data.workspace.client_name} - ${title}`,
+      creator: data.firmName,
+      header: true,
+      footer: true,
+      pageNumber: true,
+      skipFirstHeaderFooter: false,
+      table: { row: { cantSplit: true } }
+    }, gapAssessmentReport.reportFooter(data));
+    logAction(req.user.id, data.workspace.id, 'export_gap_assessment_docx', data.currentState ? 'assessment_status' : 'assessment_pass', data.currentState ? data.reportId : data.pass.id,
+      { report_id: data.reportId, report_mode: data.currentState ? 'current_state' : 'assessment_pass', not_assessed: data.notAssessedCount, snapshot_hash: data.reportHash, bytes: buf.length }, auditCtx(req));
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="gap-assessment-report-${ws.id}-pass${pass ? pass.pass_number : 'X'}-${new Date().toISOString().slice(0,10)}.docx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${data.reportId}-${new Date().toISOString().slice(0,10)}.docx"`);
+    res.setHeader('Content-Length', buf.length);
     res.send(buf);
+  });
+
+  app.get('/workspaces/:wsId/export/gap-report.pdf', requireAuth, requireWorkspace, async (req, res) => {
+    const data = gapReportData(req, res);
+    if (!data) return;
+    const html = gapAssessmentReport.renderGapAssessmentHtml(data);
+    const raw = await auditPack.renderPDF(html, {
+      headerLeft: data.firmName,
+      headerRight: `ISO/IEC 27001:2022 GAP ASSESSMENT - ${data.workspace.client_name}`,
+      footerLeft: `CONFIDENTIAL - CLIENT COPY - ${data.reportId} - REV ${data.revision}`
+    });
+    const pdf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    logAction(req.user.id, data.workspace.id, 'export_gap_assessment_pdf', data.currentState ? 'assessment_status' : 'assessment_pass', data.currentState ? data.reportId : data.pass.id,
+      { report_id: data.reportId, report_mode: data.currentState ? 'current_state' : 'assessment_pass', not_assessed: data.notAssessedCount, snapshot_hash: data.reportHash, bytes: pdf.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${data.reportId}-${new Date().toISOString().slice(0,10)}.pdf"`);
+    res.setHeader('Content-Length', pdf.length);
+    res.send(pdf);
   });
 
   // Recommendations memo - ranked, actionable handoff.
   app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWorkspace, async (req, res) => {
     const ws = req.workspace;
+    const pass = db.prepare(`SELECT * FROM assessment_passes WHERE workspace_id=?
+      ORDER BY (status='in_progress') DESC, pass_number DESC LIMIT 1`).get(ws.id);
+    const quality = assessmentPassQuality.qualityForPass(db, ws.id, pass);
+    if (!quality.ready) {
+      return res.redirect(withToast(`/workspaces/${ws.id}/gap-assessment`,
+        `Recommendations memo unavailable. ${assessmentPassQuality.gateMessage(quality)}`, 'error'));
+    }
     // Pull rows where status is Not Implemented / Partially / WIP - ordered by severity.
     const items = db.prepare(`SELECT i.id, i.type, i.title, COALESCE(cs.status,'Not Assessed') AS status,
         cs.maturity, cs.notes
@@ -750,9 +757,11 @@ function register(app, deps) {
   });
 
   // ==================== INCIDENT TIMELINE + RUNBOOK ====================
+  const incidentDetailPath = req => `/workspaces/${req.workspace.id}/incidents/${req.params.id}`;
+
   app.post('/workspaces/:wsId/incidents/:id/events', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
     const { phase, event_at, description, actor } = req.body;
-    if (!phase || !description) return redirectBack(req, res);
+    if (!phase || !description) return res.redirect(incidentDetailPath(req));
     db.prepare(`INSERT INTO incident_events (workspace_id, incident_id, phase, event_at, description, actor)
       VALUES (?, ?, ?, ?, ?, ?)`).run(
       req.workspace.id, req.params.id, phase,
@@ -764,33 +773,48 @@ function register(app, deps) {
         .run(event_at || new Date().toISOString(), req.params.id, req.workspace.id);
     }
     logAction(req.user.id, req.workspace.id, 'add_incident_event', 'incident', req.params.id, { phase }, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/incidents/${req.params.id}`);
+    res.redirect(incidentDetailPath(req));
   });
 
   app.post('/workspaces/:wsId/incidents/:id/runbook', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
-    const rid = req.body.runbook_id ? parseInt(req.body.runbook_id, 10) : null;
-    db.prepare('UPDATE incidents SET runbook_id=? WHERE id=? AND workspace_id=?').run(rid, req.params.id, req.workspace.id);
+    const detailPath = incidentDetailPath(req);
+    const rawRunbookId = String(req.body.runbook_id || '').trim();
+    let rid = null;
+    if (rawRunbookId) {
+      rid = Number(rawRunbookId);
+      if (!Number.isSafeInteger(rid) || rid < 1) {
+        return res.redirect(withToast(detailPath, 'Choose a valid runbook.', 'error'));
+      }
+      const allowedRunbook = db.prepare(`SELECT id FROM runbooks
+        WHERE id=? AND (is_system=1 OR firm_id=?)`).get(rid, req.workspace.firm_id);
+      if (!allowedRunbook) {
+        return res.redirect(withToast(detailPath, 'That runbook is not available to this firm.', 'error'));
+      }
+    }
+    const updated = db.prepare('UPDATE incidents SET runbook_id=? WHERE id=? AND workspace_id=?')
+      .run(rid, req.params.id, req.workspace.id);
+    if (!updated.changes) return res.status(404).send('Incident not found');
     logAction(req.user.id, req.workspace.id, 'attach_runbook', 'incident', req.params.id, { runbook_id: rid }, auditCtx(req));
-    redirectBack(req, res);
+    res.redirect(withToast(detailPath, rid ? 'Runbook attached' : 'Runbook removed'));
   });
 
   app.post('/workspaces/:wsId/incidents/:id/regulator-clock', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
     const { detected_at, regulator, hours } = req.body;
-    if (!detected_at || !hours) return redirectBack(req, res);
+    if (!detected_at || !hours) return res.redirect(incidentDetailPath(req));
     const due = new Date(new Date(detected_at).getTime() + parseFloat(hours) * 3600 * 1000).toISOString();
     db.prepare('UPDATE incidents SET notification_required_by=? WHERE id=? AND workspace_id=?').run(due, req.params.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'set_regulator_clock', 'incident', req.params.id, { regulator, due }, auditCtx(req));
-    redirectBack(req, res);
+    res.redirect(incidentDetailPath(req));
   });
 
   app.post('/workspaces/:wsId/incidents/:id/notify-sent', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
     db.prepare('UPDATE incidents SET notification_sent_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?').run(req.params.id, req.workspace.id);
-    redirectBack(req, res);
+    res.redirect(incidentDetailPath(req));
   });
 
   app.post('/workspaces/:wsId/incidents/:id/pir', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
     db.prepare('UPDATE incidents SET pir_completed=1, pir_summary=? WHERE id=? AND workspace_id=?').run(req.body.pir_summary || null, req.params.id, req.workspace.id);
-    redirectBack(req, res);
+    res.redirect(incidentDetailPath(req));
   });
 
   // ==================== SUPPLIER MONITORING + TERMINATION + CONCENTRATION ====================
@@ -1067,7 +1091,10 @@ function register(app, deps) {
       WHERE r.asset_id = ? AND r.workspace_id = ?
       ORDER BY i.sort_order
     `).all(req.workspace.id, req.workspace.id, asset.id, req.workspace.id);
-    res.render('asset_detail', { user: req.user, ws: req.workspace, asset, parents, children, allAssets, linkedRisks, controlsInScope });
+    res.render('asset_detail', {
+      user: req.user, ws: req.workspace, asset, parents, children, allAssets, linkedRisks, controlsInScope,
+      editMode: req.query.edit === '1'
+    });
   });
 
   // Legacy textarea-paste CSV importer superseded by the GET/POST pipeline at

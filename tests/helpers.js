@@ -75,7 +75,8 @@ function makeClient(app) {
         const chunks = [];
         res.on('data', c => chunks.push(c));
         res.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8');
+          const buffer = Buffer.concat(chunks);
+          const text = buffer.toString('utf8');
           // Persist any Set-Cookie back to the jar.
           const sc = res.headers['set-cookie'];
           if (sc) {
@@ -89,6 +90,7 @@ function makeClient(app) {
           resolve({
             status: res.statusCode,
             headers: res.headers,
+            buffer,
             text,
             location: res.headers.location || null,
             cookies: cookieJar,

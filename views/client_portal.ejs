@@ -1,157 +1,137 @@
-<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/header', { title, user, ws, active, clientPreview, clientPreviewUser }) %>
 
 <%
-  const label = s => ({ client_owner: 'Client sponsor', isms_manager: 'Client coordinator' }[s]
-    || String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+  const label = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const clientStatus = s => ({
+    draft: 'In preparation', workspace_verified: 'Ready for approval', submitted: 'Under review',
+    changes_requested: 'Changes requested', accepted: 'Approved', rejected: 'Not approved',
+    superseded: 'Replaced', open: 'Open', in_progress: 'In progress', cancelled: 'Closed'
+  }[String(s || '').toLowerCase()] || label(s));
+  const clientDeliverableTitle = deliverable => deliverable?.client_title || 'Deliverable details being confirmed';
+  const clientRequirement = deliverable => deliverable?.client_description || 'Provide this item for review and approval.';
+  const frameworkLabel = code => ({ iso27001: 'ISO 27001', iso42001: 'ISO 42001', csf: 'NIST CSF 2.0' }[code] || label(code));
+  const formatDate = value => {
+    if (!value) return '—';
+    const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? String(value) : new Intl.DateTimeFormat(ws.locale || 'en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric'
+    }).format(parsed);
+  };
   const today = new Date().toISOString().slice(0, 10);
-  const clientMode = user.user_type === 'client';
-  const requestActions = clientMode ? requests.filter(r => !['accepted','cancelled'].includes(r.status)) : [];
-  const deliveryActions = clientMode ? deliveryWork.filter(d =>
-    (d.owner_id === user.id && ['draft','changes_requested'].includes(d.status)) ||
-    (d.approver_id === user.id && ['submitted','workspace_verified'].includes(d.effective_status))
-  ) : [];
-  const actionCount = requestActions.length + deliveryActions.length + pendingApprovals.length + (clientValidations || []).length + (csfValidations || []).length;
+  const clientMode = user.user_type === 'client' || clientPreview;
+  const portalActorId = clientPreviewUser?.id || user.id;
+  const portalPath = `/workspaces/${ws.id}/client-portal${clientPreview ? '?preview=client' : ''}`;
+  const activeRequestsPath = `/workspaces/${ws.id}/client-portal?${clientPreview ? 'preview=client&' : ''}status=active#requests`;
+  const submittedRequestsPath = `/workspaces/${ws.id}/client-portal?${clientPreview ? 'preview=client&' : ''}status=submitted#requests`;
+  let frameworks = Array.isArray(ws.frameworks) ? ws.frameworks : [];
+  if (!Array.isArray(ws.frameworks)) { try { frameworks = JSON.parse(ws.frameworks || '[]'); } catch (_) { frameworks = []; } }
+  const frameworkMeta = {
+    iso27001: { code: 'ISO 27001', name: 'Information security management', tone: 'iso' },
+    iso42001: { code: 'ISO 42001', name: 'AI management system', tone: 'ai' },
+    csf: { code: 'NIST CSF 2.0', name: 'Cybersecurity maturity', tone: 'csf' }
+  };
+  const reportCount = publishedReports.length + ((csfPublishedReports || []).length);
 %>
 
-<div class="page-head">
+<div class="page-head cp-page-head">
   <div>
-    <div class="eyebrow"><%= clientMode ? 'Secure client workspace' : 'Shared workspace' %></div>
-    <h1><%= clientMode ? 'Your assurance workspace' : 'Client collaboration' %></h1>
-    <div class="page-subtitle"><%= clientMode ? 'Everything the engagement team needs from you, with controlled reports and a complete decision trail.' : `Requests, evidence, control discussions, and policy decisions shared between the engagement team and ${ws.brand_display_name || ws.client_name}.` %></div>
+    <div class="eyebrow"><%= clientMode ? 'Client engagement' : 'Shared workspace' %></div>
+    <h1><%= clientMode ? 'Your engagement' : 'Client collaboration' %></h1>
+    <div class="page-subtitle"><%= clientMode ? 'See what your team needs to provide, review or approve.' : `Requests, evidence and decisions shared with ${ws.brand_display_name || ws.client_name}.` %></div>
+    <% if (clientMode && frameworks.length) { %><div class="cp-framework-chips"><% frameworks.forEach(code => { const item = frameworkMeta[code]; if (item) { %><span><%= item.code %></span><% } }) %></div><% } %>
   </div>
-  <% if (user.user_type === 'firm') { %><span class="tag tag-neutral">Consultant view</span><% } %>
+  <% if (!clientMode) { %><span class="tag tag-neutral">Consultant view</span><% } %>
 </div>
 
-<% if (clientMode) { %>
-<section class="cp-action-hub" aria-labelledby="cp-action-title">
-  <div class="cp-action-head">
-    <div><div class="eyebrow">My action centre</div><h2 id="cp-action-title"><%= actionCount ? `${actionCount} item${actionCount === 1 ? '' : 's'} need your attention` : 'You’re up to date' %></h2><p><%= actionCount ? 'Prioritised from your assigned requests, approvals, validations and delivery outcomes.' : 'There are no outstanding actions assigned to you.' %></p></div>
-    <div class="cp-action-score" aria-label="<%= actionCount %> open actions"><span><%= actionCount %></span> open</div>
+<% if (clientPreview) { %>
+<div class="cp-preview-banner" role="status">
+  <div><strong>Client view preview</strong><span>This is the client-facing experience. Preview mode is read-only and does not impersonate a client account.</span></div>
+  <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/engagement-plan">Exit preview</a>
+</div>
+<% } %>
+
+<% if (!clientMode || !metrics.allZero) { %>
+<div class="grid-4 cp-kpis" style="margin-bottom:16px;">
+  <a class="panel kpi cp-kpi-link" href="<%= activeRequestsPath %>" aria-label="Open <%= metrics.activeRequests %> active requests"><span class="cp-kpi-arrow" aria-hidden="true">→</span><div class="kpi-label">Open requests</div><div class="kpi-num"><%= metrics.activeRequests %></div><div class="kpi-meta">Requests awaiting completion</div></a>
+  <a class="panel kpi cp-kpi-link" href="<%= portalPath %>#engagement" aria-label="Open <%= metrics.deliverablesToProvide %> deliverables to provide"><span class="cp-kpi-arrow" aria-hidden="true">→</span><div class="kpi-label">Deliverables to provide</div><div class="kpi-num"><%= metrics.deliverablesToProvide %></div><div class="kpi-meta">Evidence or information required</div></a>
+  <a class="panel kpi cp-kpi-link <%= metrics.overdue ? 'kpi-bad' : '' %>" href="<%= metrics.overdueRequests ? activeRequestsPath : `${portalPath}#engagement` %>" aria-label="Open <%= metrics.overdue %> overdue items"><span class="cp-kpi-arrow" aria-hidden="true">→</span><div class="kpi-label">Overdue items</div><div class="kpi-num"><%= metrics.overdue %></div><div class="kpi-meta">Requests and deliverables past due</div></a>
+  <a class="panel kpi cp-kpi-link <%= metrics.awaitingReview ? 'kpi-warn' : '' %>" href="<%= metrics.awaitingReviewRequests ? submittedRequestsPath : `${portalPath}#engagement` %>" aria-label="Open <%= metrics.awaitingReview %> items awaiting review"><span class="cp-kpi-arrow" aria-hidden="true">→</span><div class="kpi-label">Awaiting review</div><div class="kpi-num"><%= metrics.awaitingReview %></div><div class="kpi-meta">Submitted to the engagement team</div></a>
+</div>
+<% } %>
+
+<%- include('partials/client_gap_assessment', { gapAssessment, ws, clientPreview, formatDate, label }) %>
+
+<section class="cp-section" id="engagement">
+  <div class="cp-section-heading"><div><span>Engagement</span><h2>Engagement progress</h2><p>Progress updates when agreed work is reviewed and approved.</p></div><div class="cp-section-stat"><strong><%= deliverySummary.progressPct %>%</strong><span><%= deliverySummary.accepted %> of <%= deliverySummary.total %> approved</span></div></div>
+  <div class="panel cp-engagement-card">
+    <div class="cp-engagement-progress"><div><span>Current phase</span><strong><%= deliverySummary.currentPhase %></strong></div><div class="cp-progress-track" role="progressbar" aria-label="Engagement progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= deliverySummary.progressPct %>" aria-valuetext="<%= deliverySummary.progressPct %>% complete"><span class="<%= deliverySummary.progressPct === 0 ? 'is-zero' : '' %>" style="width:<%= deliverySummary.progressPct %>%"></span></div></div>
+    <div class="cp-engagement-facts">
+      <div><span>Next deliverable</span><strong><%= deliverySummary.nextTitle || 'No outstanding deliverable' %></strong><small><%= deliverySummary.nextDue ? `Due ${formatDate(deliverySummary.nextDue)}` : 'No date set' %></small></div>
+      <div><span>Target completion</span><strong><%= deliverySummary.targetDate ? formatDate(deliverySummary.targetDate) : 'To be agreed' %></strong><small>Agreed with your engagement team</small></div>
+    </div>
   </div>
-  <% if (actionCount) { %><div class="cp-action-list">
-    <% pendingApprovals.slice(0,3).forEach(a => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/client-portal/policies/<%= a.document_id %>"><span class="cp-action-kind">Policy decision</span><span class="cp-action-main"><strong><%= a.name %></strong><small>Version <%= a.version %> · Your signature is required</small></span><span class="cp-action-cta">Review →</span></a><% }) %>
-    <% (clientValidations || []).slice(0,3).forEach(v => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/client-portal/workpapers/<%= v.id %>/validate"><span class="cp-action-kind">Factual validation</span><span class="cp-action-main"><strong><%= v.title %></strong><small><%= v.framework_code.toUpperCase() %> <%= v.requirement_ref %> · Confirm the client-visible summary</small></span><span class="cp-action-cta">Validate →</span></a><% }) %>
-    <% (csfValidations || []).slice(0,5).forEach(v => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/csf/<%= v.engagement_id %>/portal"><span class="cp-action-kind">CSF validation</span><span class="cp-action-main"><strong><%= v.code %> · <%= v.description %></strong><small><%= v.engagement_name %> · Confirm factual accuracy</small></span><span class="cp-action-cta">Validate →</span></a><% }) %>
-    <% deliveryActions.slice(0,4).forEach(d => { const approval = d.approver_id === user.id && ['submitted','workspace_verified'].includes(d.effective_status); %><a class="cp-action-row" href="#delivery" onclick="document.getElementById('deliveryDetail').open=true"><span class="cp-action-kind"><%= approval ? 'Delivery approval' : 'Delivery evidence' %></span><span class="cp-action-main"><strong><%= d.title %></strong><small><%= d.due_date ? `Due ${d.due_date}` : 'No due date' %> · <%= approval ? 'Accept or request changes' : 'Add evidence and submit' %></small></span><span class="cp-action-cta">Open →</span></a><% }) %>
-    <% requestActions.slice(0,6).forEach(r => { %><a class="cp-action-row" href="/workspaces/<%= ws.id %>/client-portal/requests/<%= r.id %>"><span class="cp-action-kind"><%= label(r.request_type) %></span><span class="cp-action-main"><strong><%= r.title %></strong><small><%= r.due_date ? `Due ${r.due_date}` : 'No due date' %> · <%= label(r.status) %></small></span><span class="cp-action-cta">Respond →</span></a><% }) %>
-  </div><% } else { %><div class="cp-action-empty"><span>✓</span><div><strong>No outstanding client actions</strong><p>New requests and approvals will appear here automatically.</p></div></div><% } %>
+
+  <% if (frameworks.length) { %><div class="cp-programme-grid">
+    <% frameworks.forEach(code => { const item = frameworkMeta[code]; if (item) { const csfPublished = code === 'csf' && (csfPublishedReports || []).length; %>
+      <article class="cp-programme-card cp-programme-<%= item.tone %>"><span><%= item.code %></span><h3><%= item.name %></h3><strong><%= csfPublished ? 'Published assessment available' : 'Engagement active' %></strong><p><%= csfPublished ? 'Open the approved assessment from Reports.' : 'Approved outputs will appear here when released by the engagement team.' %></p></article>
+    <% } }) %>
+  </div><% } %>
+
+  <details class="panel cp-delivery-disclosure" <%= !clientMode && deliveryWork.some(d => !['accepted','superseded'].includes(d.status)) ? 'open' : '' %>>
+    <summary class="panel-head"><div><h2>Deliverables and approvals</h2><div class="meta">Review what’s required, provide supporting evidence and track formal sign-off.</div></div><span class="cp-summary-meta"><span class="tag tag-neutral"><%= deliveryWork.length %></span><span class="cp-chevron">⌄</span></span></summary>
+    <% if (!deliveryPlan || !deliveryWork.length) { %><div class="panel-pad meta">No deliverables have been shared with you yet.</div><% } else { %>
+      <div style="overflow-x:auto;"><table class="t cp-deliverables-table"><thead><tr><th scope="col">Deliverable</th><th scope="col">Framework / requirements</th><th scope="col">Assigned to / approved by</th><th scope="col">Due</th><th scope="col">Evidence</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>
+      <% deliveryWork.forEach(d => { const files = deliveryEvidence.filter(e=>e.deliverable_id===d.id); const notes = deliveryComments.filter(c=>String(c.parent_id)===String(d.id)); const overdue = d.due_date && d.due_date < today && !['accepted','superseded'].includes(d.status); %>
+        <tr><td><strong><%= clientDeliverableTitle(d) %></strong><div class="meta"><%= clientRequirement(d) %></div><% notes.slice(-1).forEach(c=>{ %><div class="meta" style="margin-top:4px;"><strong><%= c.user_name %>:</strong> <%= c.body %></div><% }) %></td>
+        <td><strong><%= frameworkLabel(d.framework_code) %></strong><div class="meta"><%= d.requirement_refs ? `Requirements ${d.requirement_refs}` : 'No specific requirement' %></div></td>
+        <td><%= d.owner_name || 'Unassigned' %><div class="meta">Approver: <%= d.approver_name || 'Unassigned' %></div></td>
+        <td class="cp-date-cell <%= overdue?'text-danger':'' %>"><%= formatDate(d.due_date) %><% if(overdue){ %><div class="meta text-danger">Overdue</div><% } %></td>
+        <td><strong><%= files.length %></strong><% files.slice(0,2).forEach(e=>{ %><div><a class="text-xs" href="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/evidence/<%= e.id %>/download"><%= e.filename %></a></div><% }) %></td>
+        <td><span class="status status-<%= d.status==='accepted'?'good':d.status==='changes_requested'||d.status==='rejected'?'bad':d.status==='submitted'?'warn':'neutral' %>"><%= clientStatus(d.effective_status || d.status) %></span></td>
+        <td style="min-width:170px;text-align:right;"><div class="cp-row-actions">
+          <% if (clientPreview) { %><span class="tag tag-neutral">Preview only</span><% } else { %>
+          <% if (['draft','changes_requested'].includes(d.status) && (!d.owner_id || d.owner_id===portalActorId || canManage)) { const submissionReady = !d.requires_evidence || files.length > 0; %><span class="cp-submit-gate"><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/submit"><button class="btn btn-secondary btn-xs"<% if (!submissionReady) { %> disabled aria-disabled="true"<% } %> title="<%= submissionReady ? 'Submit for approval' : 'Upload evidence before submitting' %>">Submit</button></form><% if (!submissionReady) { %><small>Evidence required</small><% } %></span><% } %>
+          <% if (d.approver_id===portalActorId && ['submitted','workspace_verified'].includes(d.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/accept"><input type="hidden" name="note" value="Accepted against the documented criteria and linked evidence"><button class="btn btn-primary btn-xs">Accept</button></form><% } %>
+          <details><summary class="cp-respond-toggle">Add evidence or comment</summary><div class="cp-respond-box"><% if (!d.owner_id || d.owner_id===portalActorId || canManage) { %><form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/evidence"><label class="label" for="delivery-file-<%= d.id %>">Supporting file</label><input id="delivery-file-<%= d.id %>" class="input" type="file" name="file" required><button class="btn btn-secondary btn-xs">Add evidence</button></form><% } %><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/comments"><label class="label" for="delivery-comment-<%= d.id %>">Comment</label><textarea id="delivery-comment-<%= d.id %>" class="textarea" name="body" required></textarea><button class="btn btn-secondary btn-xs">Add comment</button></form><% if (d.approver_id===portalActorId && ['submitted','workspace_verified'].includes(d.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/changes"><label class="label" for="delivery-changes-<%= d.id %>">Changes required</label><textarea id="delivery-changes-<%= d.id %>" class="textarea" name="note" required></textarea><button class="btn btn-secondary btn-xs">Request changes</button></form><% } %></div></details>
+          <% } %>
+        </div></td></tr>
+      <% }) %></tbody></table></div>
+    <% } %>
+  </details>
 </section>
-<% } %>
 
-<div class="grid-4 cp-kpis" style="margin-bottom:14px;">
-  <div class="panel kpi"><div class="kpi-label">Active requests</div><div class="kpi-num"><%= metrics.active %></div><div class="kpi-meta">Work still in progress</div></div>
-  <div class="panel kpi <%= metrics.overdue ? 'kpi-bad' : '' %>"><div class="kpi-label">Overdue</div><div class="kpi-num"><%= metrics.overdue %></div><div class="kpi-meta">Past the agreed due date</div></div>
-  <div class="panel kpi <%= metrics.awaitingReview ? 'kpi-warn' : '' %>"><div class="kpi-label">Awaiting review</div><div class="kpi-num"><%= metrics.awaitingReview %></div><div class="kpi-meta">Submitted by the client</div></div>
-  <div class="panel kpi kpi-good"><div class="kpi-label">Accepted</div><div class="kpi-num"><%= metrics.completed %></div><div class="kpi-meta">Reviewed and complete</div></div>
-</div>
-
-<% if (publishedReports.length) { %>
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head"><div><h2>Published reports</h2><div class="meta">Approved, version-controlled engagement deliverables released by the consulting team.</div></div><span class="tag tag-neutral"><%= publishedReports.length %></span></div>
-  <div style="overflow-x:auto;"><table class="t"><thead><tr><th>Report</th><th>Type</th><th>Version</th><th>Published</th><th></th></tr></thead><tbody><% publishedReports.forEach(r=>{ %><tr><td><strong><%= r.title %></strong><div class="meta">Published by <%= r.published_by_name||'engagement team' %></div></td><td><%= label(r.report_type) %></td><td><%= r.version_number %></td><td><%= r.published_at %></td><td style="text-align:right"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/client-portal/reports/<%= r.id %>">View controlled report</a></td></tr><% }) %></tbody></table></div>
-</div>
-<% } %>
-
-<% if (csfPublishedReports && csfPublishedReports.length) { %><div class="panel" style="margin-bottom:14px;"><div class="panel-head"><div><h2>Published NIST CSF assessments</h2><div class="meta">Controlled, immutable assessment versions released by the engagement team.</div></div><span class="tag tag-neutral"><%= csfPublishedReports.length %></span></div><table class="t"><thead><tr><th>Assessment</th><th>Version</th><th>Published</th><th></th></tr></thead><tbody><% csfPublishedReports.forEach(r => { %><tr><td><strong><%= r.name %></strong></td><td>v<%= r.version_number %></td><td><%= r.published_at %></td><td style="text-align:right"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/csf/<%= r.id %>/portal">Open assessment</a></td></tr><% }) %></tbody></table></div><% } %>
-
-<% if (canManage) { %>
-<details class="panel" style="margin-bottom:14px;" <%= requests.length === 0 ? 'open' : '' %>>
-  <summary class="panel-head" style="cursor:pointer;list-style:none;">
-    <div><h2>Create a client request</h2><div class="meta">Assign a precise outcome, due date, and related control or policy.</div></div>
-    <span class="btn btn-primary btn-xs">+ New request</span>
-  </summary>
-  <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/requests" class="panel-pad">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-      <div><label class="label">Type</label><select class="select" name="request_type" id="portalRequestType" required>
-        <option value="evidence">Evidence</option><option value="policy">Policy review</option><option value="control">Control response</option><option value="action">Action</option>
-      </select></div>
-      <div><label class="label">Priority</label><select class="select" name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option><option value="low">Low</option></select></div>
-      <div><label class="label">Assignee</label><select class="select" name="assignee_id"><option value="">Unassigned</option><% members.forEach(m => { %><option value="<%= m.id %>"><%= m.name %> · <%= label(m.role) %></option><% }) %></select></div>
-      <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-      <div><label class="label">Related control or clause</label><select class="select" name="control_id" id="portalControlTarget"><option value="">None</option><% controls.forEach(c => { %><option value="<%= c.id %>"><%= c.id.replace('annex-','').replace('clause-','').toUpperCase() %> · <%= c.title %></option><% }) %></select></div>
-      <div><label class="label">Related policy</label><select class="select" name="document_id" id="portalPolicyTarget"><option value="">None</option><% documents.forEach(d => { %><option value="<%= d.id %>"><%= d.name %> · <%= label(d.status) %></option><% }) %></select></div>
-    </div>
-    <div style="margin-bottom:10px;"><label class="label">Request title</label><input class="input" name="title" maxlength="180" required placeholder="e.g. Upload the Q2 privileged-access review sample"></div>
-    <div style="margin-bottom:10px;"><label class="label">Acceptance criteria and context</label><textarea class="textarea" name="description" rows="4" maxlength="12000" placeholder="State exactly what is needed, the period covered, expected sample size, and what will count as complete."></textarea></div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary">Create request</button></div>
-  </form>
-</details>
-<% } %>
-
-<details class="panel cp-delivery-disclosure" id="deliveryDetail" style="margin-bottom:14px;">
-  <summary class="panel-head"><div><h2>Engagement delivery</h2><div class="meta">Client-visible outcomes, evidence and formal sign-off from the authoritative engagement plan.</div></div><span class="cp-summary-meta"><span class="tag tag-neutral"><%= deliveryWork.length %></span><span class="cp-chevron">⌄</span></span></summary>
-  <div id="delivery">
-  <% if (!deliveryPlan || !deliveryWork.length) { %><div class="panel-pad meta">No delivery-plan items are currently assigned or shared with you.</div><% } else { %>
-    <div style="overflow-x:auto;"><table class="t"><thead><tr><th>Outcome</th><th>Owner / approver</th><th>Due</th><th>Evidence</th><th>Status</th><th></th></tr></thead><tbody>
-    <% deliveryWork.forEach(d => { const files = deliveryEvidence.filter(e=>e.deliverable_id===d.id); const notes = deliveryComments.filter(c=>String(c.parent_id)===String(d.id)); const overdue = d.due_date && d.due_date < today && !['accepted','superseded'].includes(d.status); %>
-      <tr><td><strong><%= d.title %></strong><div class="meta"><%= d.acceptance_criteria || 'Acceptance criteria not set' %></div><% notes.slice(-1).forEach(c=>{ %><div class="meta" style="margin-top:4px;"><strong><%= c.user_name %>:</strong> <%= c.body %></div><% }) %></td>
-      <td><%= d.owner_name || 'Unassigned' %><div class="meta">Approver: <%= d.approver_name || 'Unassigned' %></div></td>
-      <td class="<%= overdue?'text-danger':'' %>"><%= d.due_date || '—' %><% if(overdue){ %><div class="meta text-danger">Overdue</div><% } %></td>
-      <td><strong><%= files.length %></strong><% files.slice(0,2).forEach(e=>{ %><div><a class="text-xs" href="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/evidence/<%= e.id %>/download"><%= e.filename %></a></div><% }) %></td>
-      <td><span class="status status-<%= d.status==='accepted'?'good':d.status==='changes_requested'||d.status==='rejected'?'bad':d.status==='submitted'?'warn':'neutral' %>"><%= label(d.effective_status) %></span><div class="meta">Revision <%= d.revision_number %></div></td>
-      <td style="min-width:170px;text-align:right;"><div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;">
-        <% if (['draft','changes_requested'].includes(d.status) && (!d.owner_id || d.owner_id===user.id || canManage)) { %><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/submit"><button class="btn btn-secondary btn-xs">Submit</button></form><% } %>
-        <% if (d.approver_id===user.id && ['submitted','workspace_verified'].includes(d.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/accept"><input type="hidden" name="note" value="Accepted against the documented criteria and linked evidence"><button class="btn btn-primary btn-xs">Accept</button></form><details><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Changes</summary><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/changes" style="margin-top:5px;"><textarea class="textarea" name="note" required placeholder="Required changes"></textarea><button class="btn btn-secondary btn-xs">Send back</button></form></details><% } %>
-        <details><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Respond</summary><div style="width:260px;text-align:left;margin-top:6px;"><% if (!d.owner_id || d.owner_id===user.id || canManage) { %><form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/evidence"><input class="input" type="file" name="file" required><button class="btn btn-secondary btn-xs" style="margin-top:5px;">Add evidence</button></form><% } %><form method="POST" action="/workspaces/<%= ws.id %>/client-portal/deliverables/<%= d.id %>/comments" style="margin-top:7px;"><textarea class="textarea" name="body" required placeholder="Add a shared comment"></textarea><button class="btn btn-secondary btn-xs" style="margin-top:5px;">Comment</button></form></div></details>
-      </div></td></tr>
-    <% }) %></tbody></table></div>
-  <% } %>
-  </div>
-</details>
-
-<% if (clientValidations && clientValidations.length) { %>
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head"><div><h2>Factual validations</h2><div class="meta">Consultant-approved summaries awaiting confirmation by the assigned client representative.</div></div><span class="tag tag-neutral"><%= clientValidations.length %></span></div>
-  <% clientValidations.forEach(v => { %><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);"><div><strong><%= v.title %></strong><div class="meta"><%= v.framework_code.toUpperCase() %> <%= v.requirement_ref %> · <%= v.requirement_title %></div></div><a class="btn btn-primary btn-xs" href="/workspaces/<%= ws.id %>/client-portal/workpapers/<%= v.id %>/validate">Review summary</a></div><% }) %>
-</div>
-<% } %>
-
-<div class="panel" style="margin-bottom:14px;">
-  <div class="panel-head">
-    <div><h2>Requests</h2><div class="meta">Only assigned work is visible to scoped contributors.</div></div>
-    <form method="GET" action="/workspaces/<%= ws.id %>/client-portal">
-      <select class="select text-sm" name="status" onchange="this.form.submit()">
-        <% [['active','Active'],['open','Open'],['in_progress','In progress'],['submitted','Submitted'],['changes_requested','Changes requested'],['closed','Closed']].forEach(o => { %>
-          <option value="<%= o[0] %>" <%= status === o[0] ? 'selected' : '' %>><%= o[1] %></option>
-        <% }) %>
-      </select>
-    </form>
-  </div>
-  <% if (!requests.length) { %>
-    <div class="panel-pad"><div class="empty-title">No matching requests</div><div class="empty-sub"><%= canManage ? 'Create a request with a clear owner and acceptance criteria to start the collaboration.' : 'There is no assigned client work in this view.' %></div></div>
-  <% } else { %>
-    <div style="overflow-x:auto;"><table class="t">
-      <thead><tr><th>Request</th><th>Owner</th><th>Due</th><th>Status</th><th>Activity</th><th></th></tr></thead>
-      <tbody><% requests.forEach(r => { const overdue = r.due_date && r.due_date < today && !['accepted','cancelled'].includes(r.status); %>
-        <tr>
-          <td><a href="/workspaces/<%= ws.id %>/client-portal/requests/<%= r.id %>" style="font-weight:500;text-decoration:none;color:var(--ink);"><%= r.title %></a><div class="meta"><%= label(r.request_type) %> · <%= label(r.priority) %><% if (r.control_id) { %> · <span class="iso-ref"><%= r.control_id.replace('annex-','').replace('clause-','').toUpperCase() %></span><% } %><% if (r.document_name) { %> · <%= r.document_name %><% } %></div></td>
-          <td><%= r.assignee_name || 'Unassigned' %><div class="meta">Requested by <%= r.creator_name %></div></td>
-          <td class="<%= overdue ? 'text-danger' : '' %>"><%= r.due_date || '—' %><% if (overdue) { %><div class="meta text-danger">Overdue</div><% } %></td>
-          <td><span class="status status-<%= r.status === 'accepted' ? 'good' : r.status === 'changes_requested' ? 'bad' : r.status === 'submitted' ? 'warn' : 'neutral' %>"><%= label(r.status) %></span></td>
-          <td class="meta"><%= r.evidence_count %> file<%= r.evidence_count === 1 ? '' : 's' %> · <%= r.comment_count %> comment<%= r.comment_count === 1 ? '' : 's' %></td>
-          <td style="text-align:right;"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/client-portal/requests/<%= r.id %>">Open</a></td>
-        </tr>
-      <% }) %></tbody>
-    </table></div>
-  <% } %>
-</div>
-
-<div class="grid-2">
+<section class="cp-section" id="requests">
+  <div class="cp-section-heading"><div><span>Requests</span><h2>Information and evidence requests</h2><p>Each request states what is needed, when it is due and what counts as complete.</p></div></div>
+  <% if (canManage && !clientMode) { %><details class="panel cp-create-request" <%= requests.length === 0 ? 'open' : '' %>><summary class="panel-head"><div><h2>Create a client request</h2><div class="meta">Assign a precise outcome, due date and related record.</div></div><span class="btn btn-primary btn-xs">+ New request</span></summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/client-portal/requests" class="panel-pad"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="cp-request-form-grid"><div><label class="label">Type</label><select class="select" name="request_type" required><option value="evidence">Evidence</option><option value="policy">Policy review</option><option value="control">Control response</option><option value="action">Action</option></select></div><div><label class="label">Priority</label><select class="select" name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option><option value="low">Low</option></select></div><div><label class="label">Assignee</label><select class="select" name="assignee_id"><option value="">Unassigned</option><% members.forEach(m => { %><option value="<%= m.id %>"><%= m.name %></option><% }) %></select></div><div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div></div><div class="cp-request-form-grid cp-request-form-grid-2"><div><label class="label">Related control or clause</label><select class="select" name="control_id"><option value="">None</option><% controls.forEach(c => { %><option value="<%= c.id %>"><%= c.id.replace('annex-','').replace('clause-','').toUpperCase() %> · <%= c.title %></option><% }) %></select></div><div><label class="label">Related policy</label><select class="select" name="document_id"><option value="">None</option><% documents.forEach(d => { %><option value="<%= d.id %>"><%= d.name %> · <%= label(d.status) %></option><% }) %></select></div></div><div><label class="label">Request title</label><input class="input" name="title" maxlength="180" required></div><div><label class="label">Acceptance criteria and context</label><textarea class="textarea" name="description" rows="4" maxlength="12000"></textarea></div><div class="cp-form-submit"><button class="btn btn-primary">Create request</button></div></form>
+  </details><% } %>
   <div class="panel">
-    <div class="panel-head"><div><h2>Policy decisions</h2><div class="meta">Documents waiting on your signature.</div></div><span class="tag tag-neutral"><%= pendingApprovals.length %></span></div>
-    <% if (!pendingApprovals.length) { %><div class="panel-pad meta">No policy approvals are currently assigned to you.</div><% } else { %>
-      <% pendingApprovals.forEach(a => { %><a href="/workspaces/<%= ws.id %>/client-portal/policies/<%= a.document_id %>" style="display:block;padding:11px 14px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--ink);"><strong><%= a.name %></strong><div class="meta">Version <%= a.version %> · Approver <%= a.sequence %><%= a.role_label ? ' · ' + a.role_label : '' %></div></a><% }) %>
-    <% } %>
+    <div class="panel-head"><div><h2>Your requests</h2><div class="meta">Requests shared with your team appear here.</div></div><form method="GET" action="/workspaces/<%= ws.id %>/client-portal#requests" class="cp-filter-form"><% if (clientPreview) { %><input type="hidden" name="preview" value="client"><% } %><label for="request-status">Show</label><select id="request-status" class="select text-sm" name="status"><% [['active','Active'],['open','Open'],['in_progress','In progress'],['submitted','Under review'],['changes_requested','Changes requested'],['closed','Closed']].forEach(o => { %><option value="<%= o[0] %>" <%= status === o[0] ? 'selected' : '' %>><%= o[1] %></option><% }) %></select><button class="btn btn-secondary btn-xs">Apply</button></form></div>
+    <% if (!requests.length) { %><div class="panel-pad"><div class="empty-title">No matching requests</div><div class="empty-sub">No requests match this view.</div></div><% } else { %><div style="overflow-x:auto;"><table class="t"><thead><tr><th scope="col">Request</th><th scope="col">Assigned to</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Updates</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody><% requests.forEach(r => { const overdue = r.due_date && r.due_date < today && !['accepted','cancelled'].includes(r.status); %><tr><td><% if (clientPreview) { %><strong><%= r.title %></strong><% } else { %><a href="/workspaces/<%= ws.id %>/client-portal/requests/<%= r.id %>" class="cp-request-link"><%= r.title %></a><% } %><div class="meta"><%= label(r.request_type) %> · <%= label(r.priority) %><% if (r.document_name) { %> · <%= r.document_name %><% } %></div></td><td><%= r.assignee_name || 'Unassigned' %><div class="meta">Requested by <%= r.creator_name %></div></td><td class="cp-date-cell <%= overdue ? 'text-danger' : '' %>"><%= formatDate(r.due_date) %><% if (overdue) { %><div class="meta text-danger">Overdue</div><% } %></td><td><span class="status status-<%= r.status === 'accepted' ? 'good' : r.status === 'changes_requested' ? 'bad' : r.status === 'submitted' ? 'warn' : 'neutral' %>"><%= clientStatus(r.status) %></span></td><td class="meta"><%= r.evidence_count %> file<%= r.evidence_count === 1 ? '' : 's' %> · <%= r.comment_count %> comment<%= r.comment_count === 1 ? '' : 's' %></td><td><% if (clientPreview) { %><span class="tag tag-neutral">Preview only</span><% } else { %><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/client-portal/requests/<%= r.id %>">Open</a><% } %></td></tr><% }) %></tbody></table></div><% } %>
   </div>
-  <div class="panel">
-    <div class="panel-head"><div><h2>Recent collaboration</h2><div class="meta">Append-only request activity.</div></div></div>
-    <% if (!recentEvents.length) { %><div class="panel-pad meta">Activity appears here as requests are created, discussed, submitted, and accepted.</div><% } else { %>
-      <% recentEvents.forEach(e => { %><div style="padding:9px 14px;border-bottom:1px solid var(--border);"><div class="text-sm"><strong><%= e.actor_name %></strong> · <%= label(e.event_type) %></div><div class="meta"><%= e.request_title %> · <%= e.created_at %></div></div><% }) %>
-    <% } %>
+</section>
+
+<section class="cp-section" id="approvals">
+  <div class="cp-section-heading"><div><span>Approvals</span><h2>Reviews and approvals</h2><p>Review the information and documents that need your confirmation or approval.</p></div><div class="cp-section-stat"><strong><%= pendingApprovals.length + (clientValidations || []).length + (csfValidations || []).length %></strong><span>awaiting action</span></div></div>
+  <div class="cp-approval-grid">
+    <div class="panel"><div class="panel-head"><div><h2>Policies awaiting approval</h2><div class="meta">Policies and documents waiting for your approval.</div></div><span class="tag tag-neutral"><%= pendingApprovals.length %></span></div><% if (!pendingApprovals.length) { %><div class="panel-pad meta">No policy approvals are assigned to you.</div><% } else { pendingApprovals.forEach(a => { %><a class="cp-simple-row" href="/workspaces/<%= ws.id %>/client-portal/policies/<%= a.document_id %>"><div><strong><%= a.name %></strong><small>Version <%= a.version %></small></div><span>Review →</span></a><% }) } %></div>
+    <div class="panel"><div class="panel-head"><div><h2>Information to confirm</h2><div class="meta">Review the information below and confirm that it is accurate.</div></div><span class="tag tag-neutral"><%= (clientValidations || []).length + (csfValidations || []).length %></span></div><% if (!(clientValidations || []).length && !(csfValidations || []).length) { %><div class="panel-pad meta">No information checks are waiting for you.</div><% } else { (clientValidations || []).forEach(v => { %><a class="cp-simple-row" href="/workspaces/<%= ws.id %>/client-portal/workpapers/<%= v.id %>/validate"><div><strong><%= v.title %></strong><small><%= v.framework_code.toUpperCase() %> <%= v.requirement_ref %></small></div><span>Review and confirm →</span></a><% }); (csfValidations || []).forEach(v => { %><a class="cp-simple-row" href="/workspaces/<%= ws.id %>/csf/<%= v.engagement_id %>/portal"><div><strong><%= v.code %> · <%= v.description %></strong><small>NIST CSF information check</small></div><span>Review and confirm →</span></a><% }) } %></div>
   </div>
-</div>
+</section>
+
+<section class="cp-section" id="reports">
+  <div class="cp-section-heading"><div><span>Reports</span><h2>Reports and completed work</h2><p>View reports and completed work released by your engagement team.</p></div><div class="cp-section-stat"><strong><%= reportCount %></strong><span>available</span></div></div>
+  <div class="panel"><% if (!reportCount) { %><div class="cp-empty-state"><strong>No reports are available yet</strong><p>Your engagement team will publish reports here when they are ready.</p></div><% } else { %><div class="cp-report-list"><% publishedReports.forEach(r=>{ %><a href="/workspaces/<%= ws.id %>/client-portal/reports/<%= r.id %>"><div><span><%= label(r.report_type) %></span><strong><%= r.title %></strong><small>Version <%= r.version_number %> · Published <%= formatDate(r.published_at) %></small></div><b>View report →</b></a><% }); (csfPublishedReports || []).forEach(r => { %><a href="/workspaces/<%= ws.id %>/csf/<%= r.id %>/portal"><div><span>NIST CSF assessment</span><strong><%= r.name %></strong><small>Version <%= r.version_number %> · Published <%= formatDate(r.published_at) %></small></div><b>Open assessment →</b></a><% }) %></div><% } %></div>
+</section>
+
+<section class="cp-section" id="team-help">
+  <div class="cp-section-heading"><div><span>Team & help</span><h2>Your engagement contacts</h2><p>Contact the engagement team or see who from your organisation can use this portal.</p></div></div>
+  <div class="cp-team-grid">
+    <div class="panel cp-lead-card"><span>Engagement contact</span><div class="cp-avatar"><%= (consultantContact?.display_name || 'E').slice(0,1).toUpperCase() %></div><h3><%= consultantContact?.display_name || 'Engagement team' %></h3><p>Your primary contact for requests, supporting evidence, deadlines and approvals.</p><% if (consultantContact?.display_email) { %><a class="btn btn-primary" href="mailto:<%= consultantContact.display_email %>">Email <%= consultantContact.display_name %></a><% } %></div>
+    <div class="panel"><div class="panel-head"><div><h2>Client participants</h2><div class="meta">People with access to this engagement.</div></div><span class="tag tag-neutral"><%= members.length %></span></div><% if (!members.length) { %><div class="panel-pad meta">No client participants are listed.</div><% } else { %><div class="cp-member-list"><% members.forEach(member => { %><div><span class="cp-member-avatar"><%= member.name.slice(0,1).toUpperCase() %></span><p><strong><%= member.name %></strong><small><%= member.email %></small></p></div><% }) %></div><% } %></div>
+  </div>
+</section>
+
+<section class="panel cp-activity-panel"><div class="panel-head"><div><h2>Recent updates</h2><div class="meta">Latest updates to your requests.</div></div></div><% if (!recentEvents.length) { %><div class="panel-pad meta">Updates appear here as requests are created, discussed, submitted and approved.</div><% } else { recentEvents.forEach(e => { %><div class="cp-activity-row"><div><strong><%= e.actor_name %></strong> · <%= label(e.event_type) %></div><span><%= e.request_title %> · <%= formatDate(e.created_at) %></span></div><% }) } %></section>
 
 <%- include('partials/footer') %>

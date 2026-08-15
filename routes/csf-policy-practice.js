@@ -54,7 +54,7 @@ function register(app, deps) {
       WHERE e.id=? AND e.workspace_id=? AND e.deleted_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!engagement) return { error:{ status:404, message:'NIST CSF assessment not found.' } };
     if (req.user.user_type === 'client') {
-      if (!portal) return { error:{ status:403, message:'Client users can only access the controlled validation portal.' } };
+      if (!portal) return { error:{ status:403, message:'This page is not available through your client portal.' } };
       const requested = db.prepare(`SELECT 1 FROM csf_subcategory_assessments a
         LEFT JOIN csf_action_links l ON l.assessment_id=a.id AND l.client_request_id IS NOT NULL
         LEFT JOIN client_requests cr ON cr.id=l.client_request_id
@@ -448,12 +448,12 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/validate/:subId(\\d+)',requireAuth,requireWorkspace,(req,res)=>{
     const loaded=loadEngagement(req,{portal:true});if(loaded.error)return res.status(loaded.error.status).send(loaded.error.message);
     if(req.user.user_type!=='client'&&!model.canApprove(db,req.user,loaded.engagement))return res.status(403).send('Forbidden');
-    const assessment=loadAssessment(loaded.engagement,Number(req.params.subId));if(!assessment||assessment.status!=='Reviewed'||assessment.client_validation_status!=='requested')return res.status(409).send('This outcome is not awaiting validation.');
-    if(req.user.user_type==='client'&&(req.workspace._userRole||req.workspace.role)==='contributor'&&!db.prepare(`SELECT 1 FROM csf_action_links l JOIN client_requests cr ON cr.id=l.client_request_id WHERE l.assessment_id=? AND cr.assignee_id=?`).get(assessment.id,req.user.id))return res.status(403).send('This validation is assigned to another contributor.');
-    const decisionName=req.body.decision==='changes_requested'?'changes_requested':'validated',note=clean(req.body.note,8000);if(decisionName==='changes_requested'&&note.length<20)return res.status(400).send('Explain the factual correction requested.');
+    const assessment=loadAssessment(loaded.engagement,Number(req.params.subId));if(!assessment||assessment.status!=='Reviewed'||assessment.client_validation_status!=='requested')return res.status(409).send('This information is not waiting for your confirmation.');
+    if(req.user.user_type==='client'&&(req.workspace._userRole||req.workspace.role)==='contributor'&&!db.prepare(`SELECT 1 FROM csf_action_links l JOIN client_requests cr ON cr.id=l.client_request_id WHERE l.assessment_id=? AND cr.assignee_id=?`).get(assessment.id,req.user.id))return res.status(403).send('This information check is assigned to another person.');
+    const decisionName=req.body.decision==='changes_requested'?'changes_requested':'validated',note=clean(req.body.note,8000);if(decisionName==='changes_requested'&&note.length<20)return res.status(400).send('Explain what needs to be corrected.');
     const next=decisionName==='validated'?'Client Validated':'Fieldwork';db.prepare(`UPDATE csf_subcategory_assessments SET status=?,client_validation_status=?,client_validated_by=?,client_validated_at=CASE WHEN ?='validated' THEN CURRENT_TIMESTAMP ELSE NULL END,row_version=row_version+1,last_edited_by=?,last_edited_at=CURRENT_TIMESTAMP WHERE id=?`).run(next,decisionName,decisionName==='validated'?req.user.id:null,decisionName,req.user.id,assessment.id);
     event(loaded.engagement.id,assessment.id,'client_validation',assessment.status,next,req.user.id,{decision:decisionName,note:note||null});logAction(req.user.id,req.workspace.id,'csf_client_validation','csf_subcategory_assessment',assessment.id,{decision:decisionName},auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${loaded.engagement.id}/portal`,decisionName==='validated'?'Factual accuracy confirmed':'Changes requested'));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${loaded.engagement.id}/portal`,decisionName==='validated'?'Information confirmed':'Changes requested'));
   });
 
   async function exportVersion(req,res,kind){
@@ -461,7 +461,7 @@ function register(app, deps) {
     let version;
     if(req.query.version)version=db.prepare(`SELECT * FROM csf_assessment_versions_v2 WHERE id=? AND engagement_id=?`).get(req.query.version,loaded.engagement.id);
     else version=db.prepare(`SELECT * FROM csf_assessment_versions_v2 WHERE engagement_id=? ${req.user.user_type==='client'?"AND status='published'":""} ORDER BY is_current DESC,id DESC LIMIT 1`).get(loaded.engagement.id);
-    if(!version)return res.status(404).send('No controlled version is available.');if(req.user.user_type==='client'&&version.status!=='published')return res.status(403).send('Only published reports are available.');
+    if(!version)return res.status(404).send(req.user.user_type==='client'?'No report is available yet.':'No controlled version is available.');if(req.user.user_type==='client'&&version.status!=='published')return res.status(403).send('Only published reports are available.');
     const reportModel=reports.loadVersionModel(db,req.workspace.id,loaded.engagement.id,version.id);if(!reportModel)return res.status(404).send('Version not found.');
     const reportMeta=reports.reportMeta(reportModel);const reportSuffix=reportMeta.complete?'Assessment':'Progress';
     const base=`${loaded.engagement.name.replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')}-CSF-${reportSuffix}-${version.version_number}`;
@@ -471,7 +471,7 @@ function register(app, deps) {
       const html=reports.reportHtml(reportModel);
       if(kind==='pdf'){const raw=await auditPack.renderPDF(html,{headerLeft:`${loaded.engagement.name} - NIST CSF 2.0`,headerRight:`Version ${version.version_number}`,footerLeft:reportMeta.footer});const pdf=reports.asBuffer(raw);res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${base}.pdf"`);res.setHeader('Content-Length',pdf.length);logAction(req.user.id,req.workspace.id,'csf_report_export_pdf','csf_assessment_version_v2',version.id,{bytes:pdf.length,complete:reportMeta.complete,published:reportMeta.published},auditCtx(req));return res.send(pdf);}
       const raw=await htmlToDocxPooled(html,null,{title:`${loaded.engagement.name} NIST CSF 2.0 ${reportSuffix.toLowerCase()} report`,creator:req.workspace.brand_display_name||req.workspace.client_name||'Compliance Sphere',pageNumber:true});const docx=reports.asBuffer(raw);res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');res.setHeader('Content-Disposition',`attachment; filename="${base}.docx"`);res.setHeader('Content-Length',docx.length);logAction(req.user.id,req.workspace.id,'csf_report_export_docx','csf_assessment_version_v2',version.id,{bytes:docx.length,complete:reportMeta.complete,published:reportMeta.published},auditCtx(req));return res.send(docx);
-    }catch(err){console.error('[CSF export]',err);return res.status(500).render('error',{user:req.user,ws:req.workspace,message:'The controlled report could not be generated. Please retry or contact support.'});}
+    }catch(err){console.error('[CSF export]',err);return res.status(500).render('error',{user:req.user,ws:req.workspace,message:req.user.user_type==='client'?'The report could not be generated. Please retry or contact support.':'The controlled report could not be generated. Please retry or contact support.'});}
   }
   app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.pdf',requireAuth,requireWorkspace,(req,res)=>exportVersion(req,res,'pdf'));
   app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx',requireAuth,requireWorkspace,(req,res)=>exportVersion(req,res,'docx'));

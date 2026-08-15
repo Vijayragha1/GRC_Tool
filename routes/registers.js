@@ -4,6 +4,7 @@
 // including questionnaires and the external vendor link flow.
 
 const crypto = require('crypto');
+const fs = require('fs');
 const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const email = require('../lib/email');

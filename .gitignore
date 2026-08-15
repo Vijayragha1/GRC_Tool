@@ -44,3 +44,9 @@ tests/design-shots/
 # Local CommandCode tooling cache
 .commandcode/
 .claude/
+
+# Local generated review/demo artefacts
+.demo-backup/
+output/
+tmp/
+Compliance-Sphere-Capability-Review.pptx

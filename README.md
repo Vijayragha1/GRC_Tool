@@ -300,6 +300,21 @@ To see the tool with realistic content rather than an empty database:
 node scripts/seed-realistic-engagements.js
 ```
 
+For a single cross-framework management demonstration covering ISO 27001,
+ISO 42001, NIST CSF 2.0, risk, policies, audit, TPRM, incidents, change and
+business continuity:
+
+```bash
+DEMO_SEED_PASSWORD='use-a-unique-secret' npm run seed:management-demo
+```
+
+This creates or replaces only **Aurelis Group — Management Demo**. The seed is
+idempotent, writes synthetic downloadable evidence under the firm's upload
+partition, and validates minimum record counts before completing. Client portal
+login: `client.management@demo.invalid` with the password supplied through
+`DEMO_SEED_PASSWORD`. Production seeding refuses to run without this variable;
+rotate or disable the synthetic accounts before exposing the deployment publicly.
+
 Creates 5 demo accounts (manager / two senior consultants / consultant / client owner, with cross-engagement role assignments) and two client workspaces:
 - **Apex Manufacturing Ltd.** at 100% implementation - 93/93 controls Implemented, every control has evidence, all NCs closed, two internal audits + two MRMs with everything actioned, full training / competence / supplier records.
 - **Stellar Logistics PLC** at ~60% implementation - 57 / 27 / 9 (Implemented / Partial / Not Impl), mid-flight internal audit with open findings, mixed training and supplier review state.

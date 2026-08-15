@@ -5,17 +5,50 @@
     <h1 class="page-title">Gap assessment</h1>
     <div class="page-subtitle">Each pass is a traceable round of consultant verification. Existing control states remain authoritative; passes add assessment lineage and allow point-in-time comparison.</div>
   </div>
+  <% const latestReportablePass = passes.find(p => p.status === 'completed' && p.quality && p.quality.ready); %>
+  <div class="row-center" style="gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+      <a href="/workspaces/<%= ws.id %>/gap-assessment/fieldwork" class="btn btn-secondary btn-sm">Fieldwork manager →</a>
+      <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf" class="btn btn-primary btn-sm" download data-no-loader="1">Current status PDF ↓</a>
+      <a href="/workspaces/<%= ws.id %>/export/gap-report.docx" class="btn btn-secondary btn-sm" download data-no-loader="1">Editable Word ↓</a>
+    <% if (!activePass && latestReportablePass) { %>
+      <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-sm" download data-no-loader="1">Recommendations ↓</a>
+    <% } %>
+  </div>
 </div>
 
 <% if (typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>
-  <div class="panel" style="margin-bottom:14px;background:var(--bg-subtle);">
-    <div class="panel-pad" style="display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;">
+  <% const baselineComplete = legacyBaseline.assessed === totalItems; %>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-pad" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,270px);gap:24px;align-items:start;">
       <div>
-        <div class="sec-label">Imported assessment baseline</div>
-        <div class="text-xl text-ink" style="font-weight:500;margin-top:4px;"><%= legacyBaseline.assessed %> of <%= totalItems %> requirements already assessed</div>
-        <div class="meta text-sm" style="margin-top:5px;line-height:1.5;">These accepted control states predate formal pass tracking. They are not “unassessed”; they simply do not have pass-level lineage. Start a verification pass to record future changes and comparisons.</div>
+        <div class="sec-label">Imported assessment baseline · current status report available</div>
+        <div class="text-xl text-ink" style="font-weight:500;margin-top:4px;"><%= legacyBaseline.assessed %> of <%= totalItems %> requirements have current conclusions</div>
+        <div class="meta text-sm" style="margin-top:6px;line-height:1.55;max-width:760px;">The current status report is available now and includes every requirement, including any shown as Not Assessed. These conclusions predate formal pass tracking. A sign-off holder may adopt a complete set as Pass 1 to establish formal pass lineage; adoption is not required to download the working status report.</div>
+        <div class="row-center" style="gap:12px;margin-top:10px;flex-wrap:wrap;">
+          <span class="tag <%= baselineComplete ? 'tag-success' : 'tag-warning' %> text-xs"><%= baselineComplete ? 'COMPLETE BASELINE' : (totalItems - legacyBaseline.assessed) + ' CONCLUSIONS REMAIN' %></span>
+          <% if (legacyBaseline.first_updated || legacyBaseline.last_updated) { %>
+            <span class="meta text-xs">Source records: <%= legacyBaseline.first_updated ? legacyBaseline.first_updated.slice(0,10) : 'unknown' %> – <%= legacyBaseline.last_updated ? legacyBaseline.last_updated.slice(0,10) : 'unknown' %></span>
+          <% } %>
+        </div>
       </div>
-      <div class="num" style="font-size:28px;font-weight:500;"><%= totalItems ? Math.round(legacyBaseline.assessed / totalItems * 100) : 0 %>%</div>
+      <div class="stack" style="width:100%;">
+        <% if (baselineComplete && canAdoptBaseline) { %>
+          <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/adopt-baseline"
+                onsubmit="return appConfirmForm(event, 'This will create completed Pass 1 from all <%= totalItems %> current conclusions. Values will be copied without alteration, and the adoption will be attributed to you with a timestamp and SHA-256 audit digest. This cannot be used to claim earlier work was performed in the platform.', { danger: false, kind: 'Assessment lineage', title: 'Adopt the imported baseline?', okLabel: 'Adopt baseline' })">
+            <button class="btn btn-primary btn-sm" style="width:100%;">Adopt baseline and enable reports</button>
+          </form>
+        <% } else if (baselineComplete) { %>
+          <button class="btn btn-primary btn-sm" disabled title="Assessment sign-off permission is required">Sign-off holder must adopt baseline</button>
+        <% } else { %>
+          <a class="btn btn-primary btn-sm" href="/workspaces/<%= ws.id %>/controls/assess/<%= nextItem ? nextItem.id : '' %>">Complete remaining conclusions →</a>
+        <% } %>
+        <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf" class="btn btn-secondary btn-sm" download data-no-loader="1">Current status PDF ↓</a>
+        <a href="/workspaces/<%= ws.id %>/export/gap-report.docx" class="btn btn-secondary btn-sm" download data-no-loader="1">Editable Word ↓</a>
+        <div class="meta text-xs" role="status" style="line-height:1.45;padding:7px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg-subtle);">
+          <% const baselineRemaining = totalItems - legacyBaseline.assessed; %>
+          <strong style="color:var(--text);">Working snapshot.</strong><br><%= baselineComplete ? 'All requirements currently have a conclusion. Adopt only when formal Pass 1 lineage is required.' : baselineRemaining + ' requirement' + (baselineRemaining === 1 ? '' : 's') + ' will appear as Not Assessed in the report.' %>
+        </div>
+      </div>
     </div>
   </div>
 <% } %>
@@ -63,30 +96,42 @@
             <div class="text-lg" style="margin-top:6px;"><%= activePass.notes %></div>
           <% } %>
           <%
-            const pct = totalItems ? Math.round((assessedNow / totalItems) * 100) : 0;
+            const passGate = activePass.quality;
+            const pct = passGate ? passGate.coveragePct : 0;
+            const gateText = passGate && passGate.defects.length ? passGate.defects.join(' ') : '';
           %>
           <div style="margin-top:10px;">
             <div class="meta text-sm" style="display:flex;justify-content:space-between;margin-bottom:3px;">
-              <span>Client progress</span><span><%= assessedNow %> / <%= totalItems %> · <%= pct %>%</span>
+              <span>Pass conclusion coverage</span><span><%= passGate.assessedItems %> / <%= passGate.totalItems %> · <%= pct %>%</span>
             </div>
             <div style="height:6px;background:var(--bg-muted);border-radius:3px;overflow:hidden;">
               <div style="height:100%;width:<%= pct %>%;background:var(--accent);"></div>
             </div>
-            <div class="meta text-eyebrow" style="margin-top:4px;font-style:italic;">Reflects every item with a status other than "Not Assessed". Items touched specifically during this pass: <%= activePass.items_touched %>.</div>
+            <div class="meta text-eyebrow" style="margin-top:4px;font-style:italic;">Includes accepted conclusions inherited from earlier passes. This pass must save at least one verification decision.</div>
           </div>
         </div>
-        <div class="stack">
+        <div class="stack" style="width:230px;max-width:100%;">
           <% if (nextItem) { %>
             <a href="/workspaces/<%= ws.id %>/controls/assess/<%= nextItem.id %>" class="btn btn-primary btn-xs">Continue assessing →</a>
           <% } else { %>
             <a href="/workspaces/<%= ws.id %>/controls/assess?done=1" class="btn btn-primary btn-xs">View summary →</a>
           <% } %>
           <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Assessment findings</a>
-          <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs">Gap Report ↓</a>
-          <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-xs">Recommendations memo ↓</a>
-          <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete" onsubmit="return appConfirmForm(event, 'Mark Pass <%= activePass.pass_number %> as completed? You can reopen it later.')">
-            <button class="btn btn-secondary btn-xs">Mark complete</button>
-          </form>
+          <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs" download data-no-loader="1">Pass status PDF ↓</a>
+          <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs" download data-no-loader="1">Editable Word ↓</a>
+          <% if (passGate.ready) { %>
+            <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-xs" download data-no-loader="1">Recommendations memo ↓</a>
+            <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete"
+                  onsubmit="return appConfirmForm(event, 'This records the pass as completed. You can reopen it later; no assessment data will be deleted.', { danger: false, kind: 'Assessment pass', title: 'Complete Pass <%= activePass.pass_number %>?', okLabel: 'Complete pass' })">
+              <button class="btn btn-secondary btn-xs" style="width:100%;">Mark complete</button>
+            </form>
+          <% } else { %>
+            <button class="btn btn-secondary btn-xs" disabled title="<%= gateText %>">Recommendations memo ↓</button>
+            <button class="btn btn-secondary btn-xs" disabled title="<%= gateText %>">Mark complete</button>
+            <div class="meta text-xs" role="status" style="line-height:1.45;padding:7px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg-subtle);">
+              <strong style="color:var(--text);">Pass completion locked.</strong><br>The status report remains available and shows incomplete requirements as Not Assessed. <%= gateText %>
+            </div>
+          <% } %>
         </div>
       </div>
     </div>
@@ -97,7 +142,7 @@
 <details class="panel" style="margin-bottom:14px;" <%= !activePass ? 'open' : '' %>>
   <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    <% if (passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>Start a verification pass for the existing baseline<% } else if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">- this completes the active pass first</span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">- typically a re-assessment after the client has implemented changes</span><% } %>
+    <% if (passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>Start a new verification pass instead<% } else if (passes.length === 0) { %>Start the first gap assessment<% } else if (activePass) { %>Start a new pass <span class="meta" style="font-weight:400;">- <%= activePass.quality.ready ? 'this completes the active pass first' : 'available after the active pass meets its completion gates' %></span><% } else { %>Start the next pass <span class="meta" style="font-weight:400;">- typically a re-assessment after the client has implemented changes</span><% } %>
   </summary>
   <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/start" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr;gap:10px;">
     <div>
@@ -109,7 +154,7 @@
       <textarea name="notes" rows="2" class="textarea" placeholder="e.g., Client says they've implemented the access-review automation, JML procedure, and patch SLAs from Pass 1's worklist. Verifying A.5.15–18, A.8.8 this round."></textarea>
     </div>
     <div>
-      <button class="btn btn-primary"><%= passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline ? 'Start baseline verification' : passes.length === 0 ? 'Start Pass 1' : 'Start Pass ' + (passes[0].pass_number + 1) %></button>
+      <button class="btn btn-primary" <%= activePass && !activePass.quality.ready ? 'disabled title="Complete the active pass quality gates first"' : '' %>><%= passes.length === 0 && typeof legacyBaseline !== 'undefined' && legacyBaseline ? 'Start new verification pass' : passes.length === 0 ? 'Start Pass 1' : 'Start Pass ' + (passes[0].pass_number + 1) %></button>
     </div>
   </form>
 </details>
@@ -138,7 +183,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </div>
       <div class="empty-title">No formal passes yet</div>
-      <div class="empty-sub"><% if (typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>The current assessment is preserved as an imported baseline. Start a verification pass above to add traceable change history.<% } else { %>Start your first gap assessment using the form above. The wizard walks every clause and Annex A control; saves are tagged to the active pass automatically.<% } %></div>
+      <div class="empty-sub"><% if (typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>The current conclusions are preserved. Adopt the complete baseline above to establish Pass 1 and enable formal reports, or start a separate verification pass.<% } else { %>Start your first gap assessment using the form above. The wizard walks every clause and Annex A control; saves are tagged to the active pass automatically.<% } %></div>
     </div>
   <% } else { %>
     <div class="divide-row">
@@ -165,6 +210,8 @@
               <% } %>
             </div>
             <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+              <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">PDF ↓</a>
+              <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">Word ↓</a>
               <details style="position:relative;">
                 <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Edit</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/rename"
@@ -175,12 +222,17 @@
                 </form>
               </details>
               <% if (p.status === 'in_progress') { %>
-                <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/complete" onsubmit="return appConfirmForm(event, 'Mark Pass <%= p.pass_number %> as completed?')">
-                  <button class="btn btn-ghost btn-xs text-xs">Complete</button>
-                </form>
+                <% if (p.quality && p.quality.ready) { %>
+                  <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/complete"
+                        onsubmit="return appConfirmForm(event, 'This records the pass as completed. You can reopen it later; no assessment data will be deleted.', { danger: false, kind: 'Assessment pass', title: 'Complete Pass <%= p.pass_number %>?', okLabel: 'Complete pass' })">
+                    <button class="btn btn-ghost btn-xs text-xs">Complete</button>
+                  </form>
+                <% } else { %>
+                  <button class="btn btn-ghost btn-xs text-xs" disabled title="<%= p.quality.defects.join(' ') %>">Complete</button>
+                <% } %>
               <% } else { %>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/reopen"
-                      onsubmit="return appConfirmForm(event, '<%= activePass ? 'This will complete the currently-active Pass ' + activePass.pass_number + ' and reopen Pass ' + p.pass_number + '. Continue?' : 'Reopen Pass ' + p.pass_number + '?' %>')">
+                      onsubmit="return appConfirmForm(event, '<%= activePass ? 'Pass ' + activePass.pass_number + ' will be completed and Pass ' + p.pass_number + ' will become the active assessment pass. No assessment data will be deleted.' : 'Pass ' + p.pass_number + ' will become the active assessment pass. Existing assessment data will be preserved.' %>', { danger: false, kind: 'Assessment pass', title: 'Reopen Pass <%= p.pass_number %>?', okLabel: 'Reopen pass' })">
                   <button class="btn btn-ghost btn-xs text-xs">Reopen</button>
                 </form>
               <% } %>

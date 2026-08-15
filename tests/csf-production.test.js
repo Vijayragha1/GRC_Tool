@@ -83,7 +83,7 @@ test('a CSF-only client root resolves to its programme with no duplicate overvie
   assert.equal((sidebarNav.match(/class="nav-domain-summary"/g)||[]).length,3);
   for(const label of ['Delivery','Cybersecurity maturity','Settings']) assert.match(sidebarNav,new RegExp(label));
   for(const label of ['Business profile','Maturity workbench','Quality review','Priorities &amp; roadmap','Executive reporting']) assert.match(sidebarNav,new RegExp(label));
-  assert.doesNotMatch(sidebarNav,/nav-item-text">Overview|Review queue|Plan &amp; roadmap|Compliance calendar|Risks &amp; context|Suppliers|Incidents|Business continuity|Evidence coverage|Policy templates|Management reviews|Reports &amp; assurance|Assurance &amp; certification|Internal audits|Auditor access/);
+  assert.doesNotMatch(sidebarNav,/nav-item-text">Overview|Review queue|Plan &amp; roadmap|Compliance calendar|Risks &amp; context|Suppliers|Incidents|Business continuity|Evidence coverage|Policy templates|Management reviews|Reports &amp; assurance|Assurance &amp; certification|Internal audits|Auditor access|Client setup/);
   const evidenceCoverage=await client.get(`/workspaces/${workspaceId}/evidence-coverage`);
   assert.equal(evidenceCoverage.status,302);
   assert.equal(evidenceCoverage.location,`/workspaces/${workspaceId}/csf/current/assessment?view=outcomes&gap=evidence`);
@@ -217,7 +217,7 @@ test('client contributor sees only assigned factual validation and published del
   clientSide=makeClient(env.app);const login=await clientSide.get('/login');const token=(login.text.match(/name="_csrf"\s+value="([a-f0-9]+)"/)||[])[1];
   assert.equal((await clientSide.post('/login',{email:'csf-client@test.local',password,_csrf:token},{csrf:false})).status,302);await clientSide.get('/dashboard');
   assert.equal((await clientSide.get(`/workspaces/${workspaceId}/csf/${engagementId}/assessment`)).status,403);
-  const portal=await clientSide.get(`/workspaces/${workspaceId}/csf/${engagementId}/portal`);assert.equal(portal.status,200,portal.text.slice(0,500));assert.match(portal.text,new RegExp(assessment.code.replace('.','\\.')));assert.match(portal.text,/Validate factual accuracy/i);
+  const portal=await clientSide.get(`/workspaces/${workspaceId}/csf/${engagementId}/portal`);assert.equal(portal.status,200,portal.text.slice(0,500));assert.match(portal.text,new RegExp(assessment.code.replace('.','\\.')));assert.match(portal.text,/Confirm information/i);assert.doesNotMatch(portal.text,/factual validation|controlled deliverable|internal consultant|immutable deliverable/i);
   const decision=await clientSide.post(`/workspaces/${workspaceId}/csf/${engagementId}/portal/validate/${assessment.subcategory_id}`,{decision:'validated',note:'The stated scope and factual description are accurate.'});assert.equal(decision.status,302,decision.text);
   assert.deepEqual(db.prepare(`SELECT status,client_validation_status,client_validated_by FROM csf_subcategory_assessments WHERE id=?`).get(assessment.id),{status:'Client Validated',client_validation_status:'validated',client_validated_by:clientId});
 });

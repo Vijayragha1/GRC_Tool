@@ -14,6 +14,7 @@
 
 'use strict';
 const crypto = require('crypto');
+const fs = require('fs');
 const ctlReads = require('../lib/control-reads');
 const docLinks = require('../lib/doc-links');
 

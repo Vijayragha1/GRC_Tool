@@ -1319,9 +1319,9 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/csf/:id(\\d+)/portal/validate/:assessmentId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
     const engagement = db.prepare(`SELECT * FROM csf_engagements WHERE id=? AND workspace_id=? AND deleted_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!engagement || !csfPolicy.canViewEngagement(db, req.user, engagement)) return res.status(404).send('Not found');
-    if (!(req.user.user_type === 'client' || csfPolicy.canApprove(db, req.user, engagement))) return res.status(403).send('Client validation is restricted to client contributors or an authorised manager override.');
+    if (!(req.user.user_type === 'client' || csfPolicy.canApprove(db, req.user, engagement))) return res.status(403).send('You do not have permission to confirm this information.');
     const assessment = db.prepare(`SELECT * FROM csf_subcategory_assessments WHERE id=? AND engagement_id=?`).get(req.params.assessmentId,engagement.id);
-    if (!assessment || assessment.status !== 'Reviewed' || assessment.client_validation_status !== 'requested') return res.status(409).send('This conclusion is not awaiting client validation.');
+    if (!assessment || assessment.status !== 'Reviewed' || assessment.client_validation_status !== 'requested') return res.status(409).send('This information is not waiting for your confirmation.');
     const decision = req.body.decision === 'changes_requested' ? 'changes_requested' : 'validated';
     if (decision === 'changes_requested' && !String(req.body.note || '').trim()) return res.status(400).send('Explain the requested factual correction.');
     if (decision === 'validated') db.prepare(`UPDATE csf_subcategory_assessments SET status='Client Validated',client_validation_status='validated',
@@ -1332,7 +1332,7 @@ function register(app, deps) {
       VALUES (?,?,?,?,?,?,?)`).run(engagement.id,assessment.id,'client_validation',assessment.status,
         decision === 'validated' ? 'Client Validated' : assessment.status,JSON.stringify({ decision,note:String(req.body.note||'').trim()||null }),req.user.id);
     logAction(req.user.id, req.workspace.id, 'csf_client_validation', 'csf_subcategory_assessment', assessment.id, { decision }, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/portal`, decision === 'validated' ? 'Assessment conclusion validated' : 'Changes requested'));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/csf/${engagement.id}/portal`, decision === 'validated' ? 'Information confirmed' : 'Changes requested'));
   });
 
   // Update remediation status for a recommendation.

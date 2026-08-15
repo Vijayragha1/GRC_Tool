@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 'use strict';
 
-// Creates a complete seven-client framework matrix for product demonstrations.
-// The script is idempotent: only clients with the exact DEMO_NAMES below are
+// Creates a framework matrix plus a dedicated integrated management demo.
+// The script is idempotent: only clients with the exact scenario names below are
 // replaced. Existing client workspaces are never touched.
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const bcrypt = require('bcrypt');
 const { db, init, ensureWorkspaceMethodology, logAction } = require('../db');
 const csfModel = require('../lib/csf-policy-practice');
 const csfMethodology = require('../data/nist-csf-policy-practice');
 
 init();
+
+const demoPassword = process.env.DEMO_SEED_PASSWORD || 'DemoClient!2026';
+if (process.env.NODE_ENV === 'production' && !process.env.DEMO_SEED_PASSWORD) {
+  throw new Error('DEMO_SEED_PASSWORD is required when seeding demo data in production.');
+}
 
 const day = 86400000;
 const date = offset => new Date(Date.now() + offset * day).toISOString().slice(0, 10);
@@ -53,6 +60,12 @@ const SCENARIOS = [
     frameworks: ['iso27001', 'iso42001', 'csf'], industry: 'Digital services group', sector: 'technology', color: '#3D5366',
     scope: 'Group cybersecurity governance, the customer digital platform, shared cloud and identity services, enterprise AI capabilities, security operations and critical supplier dependencies.',
   },
+  {
+    key: 'management', name: 'Aurelis Group — Management Demo', short: 'Aurelis Group',
+    frameworks: ['iso27001', 'iso42001', 'csf'], industry: 'Global digital services', sector: 'technology', color: '#243C4A',
+    scope: 'Group governance, customer-facing digital services, shared cloud and identity platforms, enterprise AI capabilities, security operations, critical suppliers and the business-resilience processes supporting regulated customers.',
+    managementDemo: true,
+  },
 ];
 
 const firm = db.prepare(`SELECT id,name FROM firms ORDER BY id LIMIT 1`).get();
@@ -64,7 +77,7 @@ if (!owner) throw new Error('No active consulting manager exists for the firm.')
 
 function ensureClientUser(scenario) {
   const email = `client.${scenario.key}@demo.invalid`;
-  const passwordHash = bcrypt.hashSync('DemoClient!2026', 10);
+  const passwordHash = bcrypt.hashSync(demoPassword, 10);
   const existing = db.prepare(`SELECT id FROM users WHERE email=?`).get(email);
   if (existing) {
     db.prepare(`UPDATE users SET name=?,password_hash=?,user_type='client',firm_id=NULL,firm_role=NULL,active=1 WHERE id=?`)
@@ -75,9 +88,34 @@ function ensureClientUser(scenario) {
     VALUES (?,?,?,'client',NULL,NULL,1)`).run(email, passwordHash, `${scenario.short} Client Owner`).lastInsertRowid);
 }
 
+function ensureManagementReviewer() {
+  const email = 'reviewer.management-demo@demo.invalid';
+  const passwordHash = bcrypt.hashSync(demoPassword, 10);
+  const existing = db.prepare(`SELECT id FROM users WHERE email=?`).get(email);
+  if (existing) {
+    db.prepare(`UPDATE users SET name='Morgan Lee',password_hash=?,user_type='firm',firm_id=?,firm_role='senior_consultant',active=1 WHERE id=?`)
+      .run(passwordHash, firm.id, existing.id);
+    return Number(existing.id);
+  }
+  return Number(db.prepare(`INSERT INTO users (email,password_hash,name,user_type,firm_id,firm_role,active)
+    VALUES (?,?,'Morgan Lee','firm',?,'senior_consultant',1)`).run(email, passwordHash, firm.id).lastInsertRowid);
+}
+
 function removePriorDemo(scenario) {
   const prior = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? AND client_name=?`).get(firm.id, scenario.name);
   if (!prior) return;
+  if (scenario.managementDemo) {
+    const uploadDir = path.join(__dirname,'..','uploads',`firm_${firm.id}`);
+    const storedPaths = [
+      ...db.prepare(`SELECT stored_path FROM evidence WHERE workspace_id=? AND stored_path IS NOT NULL`).all(prior.id),
+      ...db.prepare(`SELECT stored_path FROM supplier_documents WHERE workspace_id=? AND stored_path IS NOT NULL`).all(prior.id),
+    ];
+    storedPaths.forEach(row => {
+      const filename = path.basename(row.stored_path || '');
+      if (!filename.startsWith('management-demo-')) return;
+      try { fs.unlinkSync(path.join(uploadDir,filename)); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    });
+  }
   // Audit rows intentionally sit outside the workspace cascade in some schema
   // generations. Delete only those belonging to this named demo workspace.
   db.prepare(`DELETE FROM audit_log WHERE workspace_id=?`).run(prior.id);
@@ -265,16 +303,18 @@ function seedDocumentsAndEvidence(wsId, scenario, frameworkCode, requirements) {
       ? ['AI Management System Policy','AI Risk Assessment Procedure','Responsible AI Development Standard','AI Incident Management Plan']
       : ['Cybersecurity Governance Charter','Cyber Risk Assessment Standard','Incident Response Standard','Service Recovery Test Procedure'];
   const docInsert = db.prepare(`INSERT INTO generated_docs
-    (workspace_id,name,category,content,status,version,approved_by,approved_at,created_by,published_at,next_review_date,doc_kind,reference_code,controlled_copy)
-    VALUES (?,?,?,?,'approved',1,?,CURRENT_TIMESTAMP,?,CURRENT_TIMESTAMP,?,'policy',?,1)`);
+    (workspace_id,name,category,content,status,version,approved_by,approved_at,created_by,published_at,next_review_date,doc_kind,reference_code,controlled_copy,locked)
+    VALUES (?,?,?,?,'approved',1,?,CURRENT_TIMESTAMP,?,CURRENT_TIMESTAMP,?,'policy',?,1,1)`);
   const versionInsert = db.prepare(`INSERT INTO doc_versions
     (workspace_id,document_id,version,name,content,content_hash,status,change_summary,created_by,submitted_at,approved_at,published_at)
     VALUES (?,?,1,?,?,?,'approved','Initial controlled demo version',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`);
   const linkDoc = db.prepare(`INSERT INTO document_requirement_links (document_id,requirement_id,section_ref) VALUES (?,?,?)`);
+  const setCurrentVersion = db.prepare(`UPDATE generated_docs SET current_version_id=? WHERE id=?`);
   labels.forEach((label, docIndex) => {
     const content = `# ${label}\n\nOwner: Chief Information Security Officer\nApproved by: Executive Committee\nReview cycle: Annual\n\n## Purpose\nThis controlled document defines the governance, responsibilities, minimum requirements, records and exception process used by ${scenario.short}.\n\n## Scope\n${scenario.scope}\n\n## Requirements\nAccountable owners implement the requirements, retain proportionate evidence, monitor exceptions and report material matters through the approved governance route.\n\n## Assurance\nCompliance is assessed through management review, control testing, internal audit and tracked corrective action.`;
     const docId = Number(docInsert.run(wsId,label,frameworkCode,content,owner.id,owner.id,date(330),`${frameworkCode.toUpperCase()}-DOC-${docIndex+1}`).lastInsertRowid);
-    versionInsert.run(wsId,docId,label,content,hash(`${wsId}:${frameworkCode}:${label}:${content}`),owner.id);
+    const versionId = Number(versionInsert.run(wsId,docId,label,content,hash(`${wsId}:${frameworkCode}:${label}:${content}`),owner.id).lastInsertRowid);
+    setCurrentVersion.run(versionId,docId);
     requirements.slice(docIndex * 5, docIndex * 5 + 8).forEach((req, idx) => linkDoc.run(docId,req.id,`Section ${idx+1}`));
   });
 
@@ -283,8 +323,18 @@ function seedDocumentsAndEvidence(wsId, scenario, frameworkCode, requirements) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
   const linkEvidence = db.prepare(`INSERT INTO evidence_requirement_links (evidence_id,requirement_id,relevance_note,section_ref) VALUES (?,?,?,?)`);
   requirements.filter((_, index) => index % 4 === 0).slice(0,24).forEach((req, index) => {
-    const filename = `${frameworkCode}-${String(index+1).padStart(2,'0')}-${req.ref.replace(/[^a-z0-9]+/gi,'-')}.pdf`;
-    const evidenceId = Number(evidenceInsert.run(wsId,filename,`seed/framework-matrix/${scenario.key}/${filename}`,hash(filename),42000+index*713,owner.id,
+    const filename = `${frameworkCode}-${String(index+1).padStart(2,'0')}-${req.ref.replace(/[^a-z0-9]+/gi,'-')}.${scenario.managementDemo ? 'txt' : 'pdf'}`;
+    let storedPath = `seed/framework-matrix/${scenario.key}/${filename}`;
+    let sizeBytes = 42000+index*713;
+    if (scenario.managementDemo) {
+      const uploadDir = path.join(__dirname,'..','uploads',`firm_${firm.id}`);
+      fs.mkdirSync(uploadDir,{recursive:true});
+      storedPath = `management-demo-${frameworkCode}-${String(index+1).padStart(2,'0')}-${hash(`${wsId}:${req.ref}`).slice(0,10)}.txt`;
+      const body = `${scenario.short} — synthetic management demonstration evidence\nFramework: ${frameworkCode}\nRequirement: ${req.ref} ${req.title}\nPeriod: FY26 operating period\nOwner: Chief Information Security Officer\nPurpose: Demonstrates operation, ownership and review within the assessment period.\n\nThis record is synthetic test data and is not a real assurance conclusion.\n`;
+      fs.writeFileSync(path.join(uploadDir,storedPath),body,'utf8');
+      sizeBytes = Buffer.byteLength(body);
+    }
+    const evidenceId = Number(evidenceInsert.run(wsId,filename,storedPath,hash(`${filename}:${storedPath}`),sizeBytes,owner.id,
       `Synthetic retained evidence supporting ${req.ref} ${req.title}.`,date(-180),date(185),'FY26 operating period',JSON.stringify([frameworkCode,'demo','controlled'])).lastInsertRowid);
     linkEvidence.run(evidenceId,req.id,'Demonstrates operation, ownership and review within the assessment period.',`Evidence item ${index+1}`);
   });
@@ -387,9 +437,271 @@ function seedCsf(wsId, scenario, scenarioIndex) {
   });
 }
 
+function seedManagementExtensions(wsId, scenario) {
+  const reviewerId = ensureManagementReviewer();
+  db.prepare(`INSERT OR REPLACE INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,'senior_consultant')`).run(wsId,reviewerId);
+  const reviewer = db.prepare(`SELECT id,name,email FROM users WHERE id=?`).get(reviewerId);
+
+  const createDemoFile = (name, body) => {
+    const uploadDir = path.join(__dirname,'..','uploads',`firm_${firm.id}`);
+    fs.mkdirSync(uploadDir,{recursive:true});
+    const storedPath = `management-demo-${hash(`${wsId}:${name}`).slice(0,12)}-${name.replace(/[^a-z0-9._-]+/gi,'-').toLowerCase()}`;
+    fs.writeFileSync(path.join(uploadDir,storedPath),body,'utf8');
+    return { storedPath, sizeBytes: Buffer.byteLength(body), sha256: hash(body) };
+  };
+
+  // Policy lifecycle: keep a published baseline, one revision in review and
+  // one working draft so the lifecycle is visible without mutating records.
+  const publishedDoc = db.prepare(`SELECT * FROM generated_docs WHERE workspace_id=? AND name='Information Security Policy'`).get(wsId);
+  if (publishedDoc) {
+    db.prepare(`UPDATE generated_docs SET status='published',locked=1,published_at=datetime('now','-120 days') WHERE id=?`).run(publishedDoc.id);
+    db.prepare(`UPDATE doc_versions SET status='published',published_at=datetime('now','-120 days') WHERE id=?`).run(publishedDoc.current_version_id);
+  }
+  const reviewDoc = db.prepare(`SELECT * FROM generated_docs WHERE workspace_id=? AND name='Access Control Standard'`).get(wsId);
+  if (reviewDoc) {
+    const revisedContent = `${reviewDoc.content}\n\n## Revision 2\nAdds phishing-resistant MFA, quarterly privileged-access recertification and retained exception decisions.`;
+    const versionId = Number(db.prepare(`INSERT INTO doc_versions
+      (workspace_id,document_id,version,name,content,content_hash,status,change_summary,created_by,submitted_at)
+      VALUES (?,?,2,?,?,?,'in_review','Strengthen privileged-access governance',?,datetime('now','-2 days'))`)
+      .run(wsId,reviewDoc.id,reviewDoc.name,revisedContent,hash(revisedContent),owner.id).lastInsertRowid);
+    db.prepare(`UPDATE generated_docs SET content=?,version=2,status='in_review',current_version_id=?,locked=1,approved_by=NULL,approved_at=NULL,published_at=NULL WHERE id=?`)
+      .run(revisedContent,versionId,reviewDoc.id);
+    db.prepare(`INSERT INTO doc_approvers (workspace_id,document_id,version_id,sequence,user_id,role_label,notified_at)
+      VALUES (?,?,?,?,?,'Independent policy reviewer',datetime('now','-2 days'))`).run(wsId,reviewDoc.id,versionId,1,reviewerId);
+  }
+  const draftDoc = db.prepare(`SELECT * FROM generated_docs WHERE workspace_id=? AND name='AI Risk Assessment Procedure'`).get(wsId);
+  if (draftDoc) {
+    const revisedContent = `${draftDoc.content}\n\n## Revision 2 — draft\nProposed materiality thresholds, human-oversight triggers and post-deployment monitoring requirements.`;
+    const versionId = Number(db.prepare(`INSERT INTO doc_versions
+      (workspace_id,document_id,version,name,content,content_hash,status,change_summary,created_by)
+      VALUES (?,?,2,?,?,?,'draft','Add AI materiality and monitoring criteria',?)`)
+      .run(wsId,draftDoc.id,draftDoc.name,revisedContent,hash(revisedContent),owner.id).lastInsertRowid);
+    db.prepare(`UPDATE generated_docs SET content=?,version=2,status='draft',current_version_id=?,locked=0,approved_by=NULL,approved_at=NULL,published_at=NULL WHERE id=?`)
+      .run(revisedContent,versionId,draftDoc.id);
+  }
+
+  // Audit programme, populated fieldwork records and a planned follow-up.
+  db.prepare(`INSERT INTO audit_programmes (workspace_id,year,description,approved_by,approved_at)
+    VALUES (?,?,?,?,datetime('now','-90 days'))`).run(wsId,new Date().getFullYear(),'Risk-based assurance programme covering management-system governance, privileged access, supplier resilience and AI oversight.','Audit & Risk Committee');
+  const closedAudit = db.prepare(`SELECT id FROM audits WHERE workspace_id=? ORDER BY id LIMIT 1`).get(wsId);
+  if (closedAudit) {
+    const obs = db.prepare(`INSERT INTO audit_observations (audit_id,iso_item_id,description,recommendation,status) VALUES (?,?,?,?,?)`);
+    obs.run(closedAudit.id,'annex-a.5.15','Access-control responsibilities and approval paths were defined and sampled.','Retain system-generated evidence for every privileged recertification.','complete');
+    obs.run(closedAudit.id,'annex-a.5.19','Tier-one suppliers were assessed, but recovery dependencies were not exercised end to end.','Include critical suppliers in the next service-recovery exercise.','open');
+    obs.run(closedAudit.id,'clause-9.2','Audit scope, independence, sampling and reporting records were retained.','Track closure evidence against every nonconformity.','complete');
+    const sample = db.prepare(`INSERT INTO audit_samples (audit_id,iso_item_id,description,sample_taken_at,population_size,sample_size,finding)
+      VALUES (?,?,?,date('now','-46 days'),?,?,?)`);
+    sample.run(closedAudit.id,'annex-a.5.15','Privileged role owner recertifications across the assessment period.',64,12,'Two records lacked a durable approval artifact.');
+    sample.run(closedAudit.id,'annex-a.5.19','Tier-one supplier assurance and recovery records.',8,4,'One supplier dependency had not been exercised.');
+    db.prepare(`UPDATE audit_findings SET iso_item_id='annex-a.5.15' WHERE audit_id=? AND finding_type='minor_nc'`).run(closedAudit.id);
+    db.prepare(`UPDATE audit_findings SET iso_item_id='annex-a.5.19' WHERE audit_id=? AND finding_type='observation'`).run(closedAudit.id);
+  }
+  db.prepare(`INSERT INTO audits
+    (workspace_id,title,scope,audit_date,auditor_name,status,summary,created_by,auditor_competence,auditor_independence,sample_size,population_size,lifecycle_stage,sampling_justification)
+    VALUES (?,?,?,?,?,'planned',?,?,?, ?,8,36,'planned',?)`)
+    .run(wsId,'AI governance and model-operations audit','ISO 42001 governance, AI risk assessment, lifecycle controls, monitoring, suppliers and incident readiness.',date(75),reviewer.name,
+      'Planned independent review of governance design and a representative production sample.',owner.id,
+      'Senior consultant experienced in AI governance, model risk and management-system assurance.','Reviewer is independent of the sampled AI product and operational decisions.',
+      'Risk-based sample across high-impact use cases, material suppliers and production monitoring periods.');
+
+  // TPRM: methodology, reviewed and outstanding questionnaires, assurance,
+  // decisions, findings and monitoring across three supplier tiers.
+  const methodologyId = Number(db.prepare(`INSERT INTO supplier_risk_methodologies
+    (workspace_id,version,name,domain_weights,control_weights,thresholds,review_cadence,is_active,created_by)
+    VALUES (?,?,?, ?,?,?,?,1,?)`).run(wsId,1,'Aurelis five-domain supplier risk methodology',
+      JSON.stringify({security:20,privacy:20,operational:25,resilience:20,concentration:15}),
+      JSON.stringify({assessment:40,assurance:25,contract:20,review:10,subprocessor:5}),
+      JSON.stringify({low:6,moderate:11,high:17,critical:25}),JSON.stringify({tier_1:6,tier_2:12,tier_3:24}),owner.id).lastInsertRowid);
+  const suppliers = db.prepare(`SELECT * FROM suppliers WHERE workspace_id=? ORDER BY id`).all(wsId);
+  const supplierScores = [[23,8,'moderate'],[19,11,'moderate'],[12,5,'low']];
+  suppliers.forEach((supplier,index) => {
+    const [inherent,residual,band] = supplierScores[index] || [12,5,'low'];
+    db.prepare(`UPDATE suppliers SET inherent_risk_score=?,residual_risk_score=?,last_assessed=?,next_review_date=? WHERE id=?`)
+      .run(inherent,residual,date(-40-index*15),date(80+index*60),supplier.id);
+    db.prepare(`INSERT INTO supplier_risk_snapshots
+      (workspace_id,supplier_id,methodology_id,methodology_version,inherent_score,control_effectiveness,calculated_residual_score,effective_residual_score,risk_band,components,rationale,event_type,recorded_by,recorded_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now',?))`)
+      .run(wsId,supplier.id,methodologyId,1,inherent,Math.round((1-residual/inherent)*100),residual,residual,band,
+        JSON.stringify({security:index===0?4:3,privacy:index===2?4:3,operational:index===0?5:3,resilience:index===0?5:3,concentration:index===0?5:2}),
+        'Residual position reflects questionnaire responses, independent assurance, contractual protections, review results and dependency context.','periodic_review',owner.id,`-${40+index*15} days`);
+    db.prepare(`INSERT INTO supplier_decisions
+      (workspace_id,supplier_id,decision,rationale,conditions,valid_until,residual_risk_score,methodology_version,decided_by,decider_name,decided_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now',?))`)
+      .run(wsId,supplier.id,index===1?'conditional':'approved',
+        'The residual risk is within the approved tolerance for the service, subject to the retained assurance and monitoring conditions.',
+        index===1?'Complete the outstanding recovery-evidence request before renewal.':'Maintain current assurance and notify material service or control changes.',
+        date(180+index*60),residual,1,reviewerId,reviewer.name,`-${35+index*12} days`);
+    db.prepare(`INSERT INTO supplier_reviews
+      (workspace_id,supplier_id,review_date,reviewer,outcome,inherent_risk,residual_risk,findings,action_items,next_review_date)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(wsId,supplier.id,date(-40-index*15),reviewer.name,index===1?'conditional':'approved',inherent,residual,
+        index===1?'Recovery evidence is incomplete for one material dependency.':'No material exception identified in the reviewed evidence.',
+        index===1?'Provide the latest recovery exercise and close the evidence request.':'Continue monitoring and reassess at the approved cadence.',date(80+index*60));
+    ['confidentiality','security_obligations','breach_notification','audit_rights','data_return_destruction'].forEach((key,clauseIndex) => {
+      db.prepare(`INSERT INTO supplier_clauses (workspace_id,supplier_id,clause_key,clause_label,status,notes,reviewed_at)
+        VALUES (?,?,?,?,?,?,datetime('now','-45 days'))`).run(wsId,supplier.id,key,key.replace(/_/g,' '),clauseIndex===4&&index===1?'pending':'present',
+          clauseIndex===4&&index===1?'Updated exit wording is with Legal for agreement.':'Clause verified in the current agreement.');
+    });
+    db.prepare(`INSERT INTO supplier_monitoring (workspace_id,supplier_id,source,score,grade,recorded_at,notes,recorded_by)
+      VALUES (?,?,?,?,?,date('now','-14 days'),?,?)`).run(wsId,supplier.id,'Quarterly supplier assurance review',100-residual*3,index===1?'B':'A',
+        'No new material incident; contract, assurance and recovery actions reviewed.',owner.id);
+    const file = createDemoFile(`${supplier.name}-assurance-summary.txt`,`${supplier.name} synthetic assurance summary\nAssessment period: FY26\nDecision: ${index===1?'Conditional approval':'Approved'}\nResidual risk: ${residual}\nThis is synthetic management-demo evidence.\n`);
+    db.prepare(`INSERT INTO supplier_documents
+      (workspace_id,supplier_id,doc_type,name,filename,stored_path,sha256,size_bytes,effective_date,expiry_date,notes,uploaded_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(wsId,supplier.id,'iso_27001','Supplier assurance summary',`${supplier.name}-assurance-summary.txt`,file.storedPath,file.sha256,file.sizeBytes,date(-120),date(245),'Synthetic downloadable management-demo evidence.',owner.id);
+  });
+
+  const template = db.prepare(`SELECT * FROM questionnaire_templates WHERE is_system=1 ORDER BY id LIMIT 1`).get();
+  if (template && suppliers.length >= 2) {
+    const questions = db.prepare(`SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order`).all(template.id);
+    const reviewedQuestionnaireId = Number(db.prepare(`INSERT INTO supplier_questionnaires
+      (workspace_id,supplier_id,template_id,template_name,status,sent_at,responded_at,reviewed_at,reviewer,total_questions,answered_questions,score,risk_rating,reviewer_comments,
+       external_email,external_contact_name,external_completed_at,external_expires_at,invitation_status,due_date)
+      VALUES (?,?,?,?,'reviewed',datetime('now','-55 days'),datetime('now','-43 days'),datetime('now','-39 days'),?,?,?,?,?,?,?, ?,datetime('now','-43 days'),datetime('now','20 days'),'completed',?)`)
+      .run(wsId,suppliers[0].id,template.id,template.name,reviewer.name,questions.length,questions.length,88,'low',
+        'Responses and evidence were reviewed; two improvement actions remain under routine monitoring.','security@azure.example','Azure Assurance Team',date(-30)).lastInsertRowid);
+    const responseInsert = db.prepare(`INSERT INTO supplier_questionnaire_responses (questionnaire_id,question_id,answer,comment,evidence_ref) VALUES (?,?,?,?,?)`);
+    questions.forEach((question,index) => responseInsert.run(reviewedQuestionnaireId,question.id,index%9===0?'partial':(question.expected_answer||'yes'),
+      index%9===0?'Implemented with a documented improvement action.':'Implemented and supported by the current assurance pack.',`Assurance pack section ${index+1}`));
+    db.prepare(`INSERT INTO external_assessment_tokens
+      (workspace_id,assessment_id,entity_id,questionnaire_id,email,name,token_hash,issued_at,expires_at,completed_at,created_by,migrated_from)
+      VALUES (?,NULL,?,?,?,?,?,datetime('now','-55 days'),datetime('now','20 days'),datetime('now','-43 days'),?,'management-demo')`)
+      .run(wsId,suppliers[0].entity_id||null,reviewedQuestionnaireId,'security@azure.example','Azure Assurance Team',hash(`completed:${wsId}:${reviewedQuestionnaireId}`),owner.id);
+
+    const sentQuestionnaireId = Number(db.prepare(`INSERT INTO supplier_questionnaires
+      (workspace_id,supplier_id,template_id,template_name,status,sent_at,total_questions,answered_questions,external_email,external_contact_name,external_expires_at,invitation_status,due_date)
+      VALUES (?,?,?,?,'sent',datetime('now','-6 days'),?,0,?,?,datetime('now','24 days'),'sent',?)`)
+      .run(wsId,suppliers[1].id,template.id,template.name,questions.length,'security@github.example','GitHub Assurance Team',date(18)).lastInsertRowid);
+    db.prepare(`INSERT INTO external_assessment_tokens
+      (workspace_id,assessment_id,entity_id,questionnaire_id,email,name,token_hash,issued_at,expires_at,created_by,migrated_from)
+      VALUES (?,NULL,?,?,?,?,?,datetime('now','-6 days'),datetime('now','24 days'),?,'management-demo')`)
+      .run(wsId,suppliers[1].entity_id||null,sentQuestionnaireId,'security@github.example','GitHub Assurance Team',hash(`open:${wsId}:${sentQuestionnaireId}`),owner.id);
+    const findingId = Number(db.prepare(`INSERT INTO findings
+      (workspace_id,source_type,source_id,title,description,severity,severity_scheme,status,created_by,migrated_from)
+      VALUES (?,'assessment',?,'Recovery assurance evidence outstanding','The current questionnaire has not yet provided evidence of the latest material service-recovery exercise.','high','operational','open',?,'management-demo')`)
+      .run(wsId,String(sentQuestionnaireId),owner.id).lastInsertRowid);
+    db.prepare(`INSERT INTO supplier_finding_links
+      (finding_id,supplier_id,questionnaire_id,domain,due_date,owner_name)
+      VALUES (?,?,?,?,?,?)`).run(findingId,suppliers[1].id,sentQuestionnaireId,'resilience',date(25),'Head of Platform');
+  }
+
+  // Incident register with one closed record and one active material scenario.
+  const closedIncident = db.prepare(`SELECT * FROM incidents WHERE workspace_id=? ORDER BY id LIMIT 1`).get(wsId);
+  const phishingRunbook = db.prepare(`SELECT id FROM runbooks WHERE is_system=1 AND category='phishing' ORDER BY id LIMIT 1`).get();
+  if (closedIncident) {
+    db.prepare(`UPDATE incidents SET pir_completed=1,pir_summary=?,runbook_id=?,contained_at=datetime('now','-95 days','+18 minutes'),eradicated_at=datetime('now','-95 days','+2 hours'),recovered_at=datetime('now','-94 days') WHERE id=?`)
+      .run('Conditional access prevented production access. Phishing-resistant MFA rollout and decision-timestamp retention were approved.',phishingRunbook?phishingRunbook.id:null,closedIncident.id);
+  }
+  const breachRunbook = db.prepare(`SELECT id FROM runbooks WHERE is_system=1 AND category IN ('breach','malware') ORDER BY CASE category WHEN 'breach' THEN 1 ELSE 2 END,id LIMIT 1`).get();
+  const activeIncidentId = Number(db.prepare(`INSERT INTO incidents
+    (workspace_id,title,category,severity,detected_at,reported_by,status,description,affected_assets,containment_actions,external_notification,notification_required_by,runbook_id,contained_at)
+    VALUES (?,?,'breach','high',datetime('now','-7 hours'),'Security Operations','contained',?,?,?,?,datetime('now','65 hours'),?,datetime('now','-6 hours'))`)
+    .run(wsId,'Suspected customer-data exposure through support integration','A third-party support integration returned records outside the expected tenant boundary; investigation is active and the confirmed scope remains limited.',
+      'Customer and account data; customer production platform','Integration token revoked, connector isolated, affected logs preserved and enhanced monitoring enabled.','Legal and Privacy are assessing notification thresholds; no external notification decision has been made.',breachRunbook?breachRunbook.id:null).lastInsertRowid);
+  const eventInsert = db.prepare(`INSERT INTO incident_events (workspace_id,incident_id,phase,event_at,description,actor) VALUES (?,?,?,datetime('now',?),?,?)`);
+  if (closedIncident) {
+    eventInsert.run(wsId,closedIncident.id,'detect','-95 days','Identity alert correlated with a reported phishing prompt.','Security Operations');
+    eventInsert.run(wsId,closedIncident.id,'contain','-95 days','Session revoked and conditional-access controls reinforced.','Identity Team');
+    eventInsert.run(wsId,closedIncident.id,'lessons','-93 days','PIR approved phishing-resistant MFA acceleration.','CISO');
+  }
+  eventInsert.run(wsId,activeIncidentId,'detect','-7 hours','Anomalous cross-tenant record access was identified in application telemetry.','Security Operations');
+  eventInsert.run(wsId,activeIncidentId,'contain','-6 hours','Connector token revoked and integration isolated.','Incident Commander');
+  eventInsert.run(wsId,activeIncidentId,'communicate','-4 hours','Legal, Privacy, service leadership and the customer-response lead were briefed.','Incident Commander');
+
+  // Change register with records at every meaningful lifecycle point.
+  const assets = db.prepare(`SELECT id,name FROM assets WHERE workspace_id=? ORDER BY id`).all(wsId);
+  const changeInsert = db.prepare(`INSERT INTO changes
+    (workspace_id,title,description,change_type,category,requester_name,requester_id,risk_assessment,risk_level,impact_assessment,rollback_plan,status,
+     submitted_at,approved_at,implemented_at,closed_at,implementation_notes,test_results,post_implementation_review,pir_date,success,linked_asset_ids,created_by,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now',?))`);
+  const closedChangeId = Number(changeInsert.run(wsId,'Enforce phishing-resistant MFA for privileged administrators','Move production administrative roles to hardware-backed authentication.','normal','Security',owner.name,owner.id,
+    'Medium delivery risk; staged enrolment and break-glass validation reduce lockout risk.','high','Administrative sign-in and emergency access procedures are affected.','Re-enable the prior authentication policy and validate break-glass accounts.','closed',
+    date(-70),date(-66),date(-60),date(-52),'Policy deployed in three waves with service-owner validation.','All enrolled administrators passed sign-in and break-glass tests.','Successful change; one support playbook clarification was completed.',date(-52),1,JSON.stringify(assets.slice(0,2).map(a=>a.id)),owner.id,'-75 days').lastInsertRowid);
+  db.prepare(`INSERT INTO change_approvals (change_id,workspace_id,approver_id,approver_name,sequence,decision,reason,decided_at)
+    VALUES (?,?,?,?,1,'approved','Risk, rollback, testing and segregation requirements were adequate.',datetime('now','-66 days'))`)
+    .run(closedChangeId,wsId,reviewerId,reviewer.name);
+  changeInsert.run(wsId,'Emergency rotate support-integration credentials','Rotate and scope credentials following the suspected exposure.','emergency','Security',owner.name,owner.id,
+    'Urgent containment action; service interruption is acceptable while scope is verified.','critical','Customer support integration may be unavailable during rotation.','Issue an isolated read-only credential only after incident-command approval.','implemented',
+    null,null,date(-1),null,'Credentials rotated and permissions reduced to the minimum required scope.','Authentication and tenant-boundary checks passed; retrospective approval remains outstanding.',null,null,null,JSON.stringify(assets.slice(0,1).map(a=>a.id)),owner.id,'-1 days');
+  changeInsert.run(wsId,'Upgrade production database encryption policy','Apply the current encryption policy and rotate affected keys.','normal','Infrastructure',owner.name,owner.id,
+    'Moderate operational risk with tested rollback and maintenance window.','medium','Short maintenance window; no planned customer data loss.','Restore the prior policy and keys from the controlled recovery record.','submitted',
+    date(-3),null,null,null,null,null,null,null,null,JSON.stringify(assets.slice(1,3).map(a=>a.id)),owner.id,'-5 days');
+  changeInsert.run(wsId,'Adopt AI model-release approval gate','Require materiality review, human-oversight confirmation and monitoring acceptance before release.','standard','Policy / procedure',owner.name,owner.id,
+    'Low implementation risk; workflow change affects release lead time.','low','AI product and engineering release processes are affected.','Disable the new gate and restore the prior release checklist.','draft',
+    null,null,null,null,null,null,null,null,null,JSON.stringify(assets.slice(2,4).map(a=>a.id)),owner.id,'-2 days');
+
+  // BIA, continuity plans and exercised recovery objectives.
+  const processInsert = db.prepare(`INSERT INTO bcp_processes
+    (workspace_id,name,description,owner_name,criticality,max_tolerable_downtime_hours,rto_hours,rpo_hours,dependencies,peak_periods,status)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'active')`);
+  const processIds = {};
+  [
+    ['Customer transaction processing','Receives, validates and processes customer service transactions.','Chief Operating Officer','critical',8,4,1,'Cloud production, enterprise identity, customer data, Azure and security monitoring','Month end and customer campaign periods'],
+    ['Customer authentication','Authenticates customer and workforce access to critical services.','Chief Technology Officer','critical',4,2,0.5,'Enterprise identity, cloud networking and privileged operations','Continuous'],
+    ['Security monitoring and incident response','Detects, investigates and coordinates material security events.','CISO','high',12,4,1,'Security telemetry, identity, cloud logging, communications and legal support','Continuous'],
+    ['AI-assisted customer support','Provides governed customer support using approved AI capabilities.','Chief Customer Officer','medium',48,24,8,'Customer data, model provider, support integration and human escalation','Business hours and major launches'],
+  ].forEach(row => { processIds[row[0]] = Number(processInsert.run(wsId,...row).lastInsertRowid); });
+  const planInsert = db.prepare(`INSERT INTO bcp_plans
+    (workspace_id,name,description,plan_type,recovery_steps,key_contacts,alternate_site,status,last_reviewed_at,next_review_date,created_by)
+    VALUES (?,?,?,?,?,?,?,?,datetime('now',?),?,?)`);
+  const servicePlanId = Number(planInsert.run(wsId,'Tier-one digital service continuity plan','Business-led continuity plan for customer processing, identity, communications and critical supplier coordination.','bcp',
+    '1. Confirm incident command and business priorities.\n2. Validate customer-processing and identity impact.\n3. Invoke regional recovery and supplier escalation.\n4. Reconcile data and obtain business acceptance.\n5. Communicate recovery status and capture decisions.',
+    'Incident Commander — COO\nTechnology Recovery Lead — CTO\nSecurity Lead — CISO\nCustomer Communications — Chief Customer Officer','Remote operations plus secondary cloud region','active','-45 days',date(320),owner.id).lastInsertRowid);
+  const drPlanId = Number(planInsert.run(wsId,'Cloud platform disaster-recovery plan','Technical recovery plan for cloud production, data, identity and security telemetry.','dr',
+    '1. Declare technical recovery.\n2. Protect evidence and freeze unsafe changes.\n3. Restore identity and core data services.\n4. Recover applications in dependency order.\n5. Validate RTO/RPO and hand back to business operations.',
+    'Technology Recovery Lead — CTO\nDatabase Recovery Lead — Head of Platform\nSecurity Validation — Security Operations','Secondary cloud region','active','-30 days',date(335),owner.id).lastInsertRowid);
+  const crisisPlanId = Number(planInsert.run(wsId,'Executive cyber-crisis management plan','Executive decisions, legal assessment, customer communications and board escalation for a material cyber event.','crisis',
+    '1. Establish decision authority.\n2. Confirm known facts, uncertainty and immediate harms.\n3. Assess notification and communication duties.\n4. Approve strategic response and customer commitments.\n5. Maintain decision log and commission the post-incident review.',
+    'Executive Sponsor — CEO\nIncident Commander — COO\nLegal — General Counsel\nSecurity — CISO\nCommunications — Corporate Affairs','Secure virtual crisis room','under_review','-120 days',date(20),owner.id).lastInsertRowid);
+  const linkProcess = db.prepare(`INSERT INTO bcp_plan_processes (plan_id,process_id) VALUES (?,?)`);
+  [processIds['Customer transaction processing'],processIds['Customer authentication'],processIds['Security monitoring and incident response']].forEach(id=>linkProcess.run(servicePlanId,id));
+  [processIds['Customer transaction processing'],processIds['Customer authentication'],processIds['Security monitoring and incident response']].forEach(id=>linkProcess.run(drPlanId,id));
+  [processIds['Security monitoring and incident response'],processIds['AI-assisted customer support']].forEach(id=>linkProcess.run(crisisPlanId,id));
+  const testInsert = db.prepare(`INSERT INTO bcp_tests
+    (workspace_id,plan_id,test_type,test_date,participants,scenario_description,results,lessons_learned,rto_achieved_hours,rpo_achieved_hours,pass,action_items,next_test_date,conducted_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  testInsert.run(wsId,drPlanId,'technical',date(-70),'Platform Engineering, Database Operations, Security Operations and service owners',
+    'Loss of the primary cloud region during peak processing.','Core services recovered in 3.5 hours with 42 minutes of data exposure; business acceptance completed.','Identity dependency order should be made explicit in the recovery checklist.',3.5,0.7,1,'Update the dependency diagram and retain automated recovery-test evidence.',date(295),reviewerId);
+  testInsert.run(wsId,servicePlanId,'tabletop',date(-35),'COO, CTO, CISO, Customer Operations, Legal, Communications and Azure service owner',
+    'Ransomware disrupts production while the primary cloud supplier reports a concurrent regional incident.','Decision authority and technical recovery were effective, but supplier escalation and customer-message approval exceeded the exercise objective.','Pre-authorise escalation contacts and customer-message decision thresholds.',5.5,1.2,0,'Owner: COO — update supplier escalation by '+date(30)+'; Owner: Corporate Affairs — approve message templates by '+date(45)+'.',date(90),reviewerId);
+  testInsert.run(wsId,crisisPlanId,'simulation',date(-18),'CEO, COO, CISO, General Counsel, Privacy Officer and Corporate Affairs',
+    'Suspected cross-tenant exposure requiring notification assessment and customer communications.','The team reached declaration, legal assessment and executive decisions within the exercise objectives.','Record alternative hypotheses and evidence-confidence changes more explicitly.',null,null,1,'Add an evidence-confidence field to the next exercise decision log.',date(165),reviewerId);
+}
+
+function managementSummary(wsId) {
+  const scalar = sql => db.prepare(sql).get(wsId).c;
+  return {
+    assets: scalar(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`),
+    risks: scalar(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`),
+    requirements: scalar(`SELECT COUNT(*) c FROM control_instances WHERE workspace_id=?`),
+    documents: scalar(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=?`),
+    evidence: scalar(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`),
+    audits: scalar(`SELECT COUNT(*) c FROM audits WHERE workspace_id=?`),
+    suppliers: scalar(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=?`),
+    questionnaires: scalar(`SELECT COUNT(*) c FROM supplier_questionnaires WHERE workspace_id=?`),
+    incidents: scalar(`SELECT COUNT(*) c FROM incidents WHERE workspace_id=?`),
+    changes: scalar(`SELECT COUNT(*) c FROM changes WHERE workspace_id=?`),
+    continuityProcesses: scalar(`SELECT COUNT(*) c FROM bcp_processes WHERE workspace_id=?`),
+    continuityPlans: scalar(`SELECT COUNT(*) c FROM bcp_plans WHERE workspace_id=?`),
+    continuityExercises: scalar(`SELECT COUNT(*) c FROM bcp_tests WHERE workspace_id=?`),
+    csfOutcomes: db.prepare(`SELECT COUNT(*) c FROM csf_subcategory_assessments a JOIN csf_engagements e ON e.id=a.engagement_id WHERE e.workspace_id=?`).get(wsId).c,
+  };
+}
+
+function assertManagementSummary(summary) {
+  const minimums = { assets:6,risks:6,requirements:183,documents:12,evidence:60,audits:2,suppliers:3,questionnaires:2,incidents:2,changes:4,continuityProcesses:4,continuityPlans:3,continuityExercises:3,csfOutcomes:106 };
+  const failures = Object.entries(minimums).filter(([key,value]) => summary[key] < value);
+  if (failures.length) throw new Error(`Management demo is incomplete: ${failures.map(([key,value])=>`${key} ${summary[key]}/${value}`).join(', ')}`);
+}
+
+const scenarioFlagIndex = process.argv.indexOf('--scenario');
+const requestedScenario = scenarioFlagIndex >= 0 ? process.argv[scenarioFlagIndex+1] : ((process.argv.find(arg=>arg.startsWith('--scenario='))||'').split('=')[1]||null);
+const selectedScenarios = requestedScenario ? SCENARIOS.filter(s=>s.key===requestedScenario) : SCENARIOS;
+if (!selectedScenarios.length) throw new Error(`Unknown scenario "${requestedScenario}". Available: ${SCENARIOS.map(s=>s.key).join(', ')}`);
+
 const created = db.transaction(() => {
   const results = [];
-  SCENARIOS.forEach((scenario, scenarioIndex) => {
+  selectedScenarios.forEach((scenario) => {
+    const scenarioIndex = SCENARIOS.findIndex(item=>item.key===scenario.key);
     removePriorDemo(scenario);
     const clientUserId = ensureClientUser(scenario);
     const wsId = createWorkspace(scenario, clientUserId);
@@ -405,7 +717,10 @@ const created = db.transaction(() => {
         seedCsf(wsId, scenario, scenarioIndex);
       }
     }
-    results.push({ id: wsId, name: scenario.name, frameworks: scenario.frameworks, clientEmail: `client.${scenario.key}@demo.invalid` });
+    if (scenario.managementDemo) seedManagementExtensions(wsId,scenario);
+    const summary = scenario.managementDemo ? managementSummary(wsId) : null;
+    if (summary) assertManagementSummary(summary);
+    results.push({ id: wsId, name: scenario.name, frameworks: scenario.frameworks, clientEmail: `client.${scenario.key}@demo.invalid`, summary });
   });
   return results;
 })();
@@ -414,5 +729,6 @@ created.forEach(result => logAction(owner.id,result.id,'seed_framework_matrix','
 
 console.log('\nFramework matrix created:');
 created.forEach(result => console.log(`  #${result.id}  ${result.name}  [${result.frameworks.join(', ')}]`));
-console.log('\nClient portal demo password: DemoClient!2026');
+created.filter(result=>result.summary).forEach(result=>console.log(`     ${Object.entries(result.summary).map(([key,value])=>`${key}=${value}`).join(' · ')}`));
+console.log(`\nClient portal demo password: ${process.env.DEMO_SEED_PASSWORD ? 'set from DEMO_SEED_PASSWORD' : 'local development default in use'}`);
 console.log('These records are synthetic test data and must not be represented as real assurance conclusions.');
