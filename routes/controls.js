@@ -3,6 +3,7 @@
 // detail, the guided gap-assessment wizard, flag-for-review (ISO 27001), and
 // assessment passes.
 
+const crypto = require('crypto');
 const rbac = require('../lib/rbac');
 const enc = require('../lib/encryption');
 const fts = require('../lib/fts');
@@ -11,6 +12,7 @@ const ctlReads = require('../lib/control-reads');
 const ctlWrites = require('../lib/control-writes');
 const evReads = require('../lib/evidence-reads');
 const docLinks = require('../lib/doc-links');
+const assessmentPassQuality = require('../lib/assessment-pass-quality');
 const { buildWorkspaceTruth } = require('../lib/grc-truth');
 const { withToast, redirectBack, auditCtx, parseFormArray, escapeHtml } = require('../lib/http-helpers');
 
@@ -227,7 +229,10 @@ function register(app, deps) {
       const c = db.prepare(`SELECT id FROM iso_items WHERE type='control' ORDER BY sort_order LIMIT 1`).get();
       if (c) return res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${c.id}`);
     }
-    const next = nextUnassessedItem(req.workspace.id, 0);
+    const activePass = getActivePass(req.workspace.id);
+    const next = activePass
+      ? assessmentPassQuality.nextUnconcludedItem(db, req.workspace.id, activePass, -1)
+      : nextUnassessedItem(req.workspace.id, 0);
     if (next) return res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${next.id}`);
     const first = db.prepare(`SELECT id FROM iso_items WHERE type IN ('clause','control') ORDER BY sort_order LIMIT 1`).get();
     res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${first.id}?done=1`);
@@ -525,7 +530,10 @@ function register(app, deps) {
         ? `/workspaces/${req.workspace.id}/controls/assess/${next}`
         : `/workspaces/${req.workspace.id}/controls/assess?done=1`);
     }
-    const nextU = nextUnassessedItem(req.workspace.id, item.sort_order);
+    const passForNext = getActivePass(req.workspace.id);
+    const nextU = passForNext
+      ? assessmentPassQuality.nextUnconcludedItem(db, req.workspace.id, passForNext, item.sort_order)
+      : nextUnassessedItem(req.workspace.id, item.sort_order);
     return res.redirect(nextU
       ? `/workspaces/${req.workspace.id}/controls/assess/${nextU.id}`
       : `/workspaces/${req.workspace.id}/controls/assess?done=1`);
@@ -697,6 +705,7 @@ function register(app, deps) {
       ORDER BY p.pass_number DESC
     `).all(wsId);
 
+    passes.forEach(p => { p.quality = assessmentPassQuality.qualityForPass(db, wsId, p); });
     const active = passes.find(p => p.status === 'in_progress') || null;
 
     // Total clauses + controls for progress denominator.
@@ -707,9 +716,12 @@ function register(app, deps) {
       ? db.prepare(`SELECT COUNT(*) assessed, MIN(last_updated) first_updated, MAX(last_updated) last_updated
           FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId)
       : null;
+    const canAdoptBaseline = rbac.hasPermission(res.locals.userPerms, 'assessment.signoff');
 
     // Find the next un-assessed item (continue button target).
-    const nextItem = nextUnassessedItem(wsId, -1);
+    const nextItem = active
+      ? assessmentPassQuality.nextUnconcludedItem(db, wsId, active, -1)
+      : nextUnassessedItem(wsId, -1);
 
     // Re-engagement orientation - when a new pass is starting (or active),
     // surface what's changed since the prior pass closed: new evidence, new
@@ -789,11 +801,121 @@ function register(app, deps) {
       title: 'Gap assessment',
       active: 'gap-assessment',
       passes, activePass: active,
-      totalItems, assessedNow, legacyBaseline,
+      totalItems, assessedNow, legacyBaseline, canAdoptBaseline,
       nextItem,
       orientation, trend, heatmap, themeNames: ANNEX_THEMES
     });
   });
+
+  // Workspaces assessed before pass tracking have authoritative current-state
+  // conclusions but no reportable lineage. A sign-off holder can adopt a fully
+  // concluded set as Pass 1. This does not claim that historical fieldwork was
+  // performed in the platform: it records one immutable adoption event, the source
+  // timestamps and a digest of exactly what was adopted.
+  app.post('/workspaces/:wsId/gap-assessment/adopt-baseline', requireAuth, requireWorkspace,
+    requirePermission('assessment.signoff'), (req, res) => {
+      const wsId = req.workspace.id;
+      const totalItems = db.prepare(`SELECT COUNT(*) c FROM iso_items
+        WHERE type IN ('clause','control')`).get().c;
+      const T = ctlReads.tables(db, wsId);
+
+      const adopt = db.transaction(() => {
+        const existingPasses = db.prepare(`SELECT COUNT(*) c FROM assessment_passes
+          WHERE workspace_id=?`).get(wsId).c;
+        if (existingPasses > 0) return { ok: false, reason: 'already_adopted' };
+
+        const rows = db.prepare(`SELECT i.id AS iso_item_id,
+            cs.status, cs.applicability, cs.maturity, cs.scope_pct,
+            cs.inclusion_justification, cs.exclusion_justification,
+            cs.notes, cs.assessment_answers, cs.last_updated
+          FROM iso_items i
+          LEFT JOIN ${T.cs} cs ON cs.workspace_id=? AND cs.iso_item_id=i.id
+          WHERE i.type IN ('clause','control')
+          ORDER BY i.sort_order, i.id`).all(wsId);
+        const concluded = rows.filter(row => row.status && row.status !== 'Not Assessed');
+        if (rows.length !== totalItems || concluded.length !== totalItems) {
+          return {
+            ok: false,
+            reason: 'incomplete',
+            remaining: Math.max(0, totalItems - concluded.length)
+          };
+        }
+
+        const snapshotHash = crypto.createHash('sha256').update(JSON.stringify(rows.map(row => ({
+          iso_item_id: row.iso_item_id,
+          status: row.status,
+          applicability: row.applicability,
+          maturity: row.maturity,
+          scope_pct: row.scope_pct,
+          inclusion_justification: row.inclusion_justification,
+          exclusion_justification: row.exclusion_justification,
+          notes: row.notes,
+          assessment_answers: row.assessment_answers,
+          source_updated_at: row.last_updated
+        })))).digest('hex');
+        const adoptedAt = db.prepare(`SELECT datetime('now') AS value`).get().value;
+        const sourceDates = rows.reduce((acc, row) => {
+          if (!row.last_updated) return acc;
+          if (!acc.first || row.last_updated < acc.first) acc.first = row.last_updated;
+          if (!acc.last || row.last_updated > acc.last) acc.last = row.last_updated;
+          return acc;
+        }, { first: null, last: null });
+        const notes = 'Controlled adoption of the pre-existing assessment baseline. Current conclusions were copied without alteration; this adoption records lineage from this point forward and does not represent retrospective fieldwork in the platform.';
+        const passId = Number(db.prepare(`INSERT INTO assessment_passes
+          (workspace_id, pass_number, label, notes, status, started_at, completed_at, started_by, completed_by)
+          VALUES (?, 1, 'Imported assessment baseline', ?, 'completed', ?, ?, ?, ?)`)
+          .run(wsId, notes, adoptedAt, adoptedAt, req.user.id, req.user.id).lastInsertRowid);
+        const insertSnapshot = db.prepare(`INSERT INTO control_state_history
+          (workspace_id, iso_item_id, snapshot_at, changed_by, status, applicability,
+           maturity, scope_pct, inclusion_justification, exclusion_justification,
+           notes, assessment_answers, pass_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        rows.forEach(row => insertSnapshot.run(
+          wsId, row.iso_item_id, adoptedAt, req.user.id, row.status,
+          row.applicability, row.maturity, row.scope_pct,
+          row.inclusion_justification, row.exclusion_justification,
+          row.notes, row.assessment_answers, passId
+        ));
+        return { ok: true, passId, snapshotHash, adoptedAt, sourceDates, count: rows.length };
+      });
+
+      let result;
+      try {
+        // Acquire the SQLite write reservation before the zero-pass check so
+        // two app processes cannot both prepare a competing Pass 1 adoption.
+        result = adopt.immediate();
+      } catch (error) {
+        if (error && error.code && error.code.startsWith('SQLITE_CONSTRAINT')) {
+          return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+            'The baseline was already adopted by another user. Refresh to see the report options.', 'info'));
+        }
+        if (error && error.code === 'SQLITE_BUSY') {
+          return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+            'Another baseline decision is being recorded. Wait a moment, then refresh before trying again.', 'info'));
+        }
+        throw error;
+      }
+      if (!result.ok && result.reason === 'already_adopted') {
+        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+          'This workspace already has formal assessment-pass history. No baseline was changed.', 'error'));
+      }
+      if (!result.ok) {
+        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+          `Baseline adoption is locked. ${result.remaining} requirement${result.remaining === 1 ? '' : 's'} still need${result.remaining === 1 ? 's' : ''} a conclusion.`, 'error'));
+      }
+
+      logAction(req.user.id, wsId, 'adopt_assessment_baseline', 'assessment_pass', result.passId, {
+        source: 'pre_pass_control_states',
+        item_count: result.count,
+        snapshot_sha256: result.snapshotHash,
+        adopted_at: result.adoptedAt,
+        source_first_updated_at: result.sourceDates.first,
+        source_last_updated_at: result.sourceDates.last,
+        disclosure: 'Current conclusions copied without alteration; no retrospective fieldwork claimed.'
+      }, auditCtx(req));
+      return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+        'Imported baseline adopted as Pass 1. The PDF and editable Word report are now available.'));
+    });
 
   app.post('/workspaces/:wsId/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const wsId = req.workspace.id;
@@ -801,6 +923,11 @@ function register(app, deps) {
     // one pass can be in_progress at a time.
     const active = getActivePass(wsId);
     if (active) {
+      const quality = assessmentPassQuality.qualityForPass(db, wsId, active);
+      if (!quality.ready) {
+        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+          `Pass ${active.pass_number} cannot be completed. ${assessmentPassQuality.gateMessage(quality)}`, 'error'));
+      }
       db.prepare(`UPDATE assessment_passes
         SET status='completed', completed_at=datetime('now'), completed_by=?
         WHERE id=?`).run(req.user.id, active.id);
@@ -826,6 +953,11 @@ function register(app, deps) {
     const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
     if (!p) return res.status(404).send('Not found');
     if (p.status === 'completed') return res.redirect(`/workspaces/${wsId}/gap-assessment`);
+    const quality = assessmentPassQuality.qualityForPass(db, wsId, p);
+    if (!quality.ready) {
+      return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+        `Pass ${p.pass_number} cannot be completed. ${assessmentPassQuality.gateMessage(quality)}`, 'error'));
+    }
     // Conditional UPDATE: only commit if the pass is still in_progress. Two
     // consultants clicking "Complete pass" simultaneously: the first UPDATE
     // matches and writes completed_by; the second sees changes=0 and is told
@@ -849,6 +981,11 @@ function register(app, deps) {
     // Only one pass can be in_progress - close any other before reopening.
     const other = getActivePass(wsId);
     if (other && other.id !== p.id) {
+      const quality = assessmentPassQuality.qualityForPass(db, wsId, other);
+      if (!quality.ready) {
+        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+          `Pass ${other.pass_number} cannot be completed to reopen Pass ${p.pass_number}. ${assessmentPassQuality.gateMessage(quality)}`, 'error'));
+      }
       db.prepare(`UPDATE assessment_passes
         SET status='completed', completed_at=datetime('now'), completed_by=?
         WHERE id=?`).run(req.user.id, other.id);

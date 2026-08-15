@@ -7,6 +7,7 @@ const auditPack = require('../lib/audit-pack');
 const enc = require('../lib/encryption');
 const fs = require('fs');
 const crypto = require('crypto');
+const fts = require('../lib/fts');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx, upload, resolveUploadPath } = deps;
@@ -24,6 +25,15 @@ function register(app, deps) {
     const requiredTotal = flat.filter(q => q.required).length;
     const draftScope = INTAKE.draftScopeStatement(answers);
     const summary = INTAKE.computeEngagementSummary(answers);
+    const crownJewelQuestions = INTAKE.crownJewelQuestions(answers);
+    const crownJewelAssets = {};
+    for (const item of INTAKE.crownJewelAnswers(answers)) {
+      const asset = db.prepare(`SELECT id,name FROM assets
+        WHERE workspace_id=? AND ((source_type='engagement_intake' AND source_ref=?) OR lower(trim(name))=lower(trim(?)))
+        ORDER BY CASE WHEN source_type='engagement_intake' AND source_ref=? THEN 0 ELSE 1 END,id LIMIT 1`)
+        .get(req.workspace.id, item.id, item.name, item.id);
+      if (asset) crownJewelAssets[item.id] = asset;
+    }
     // Ready to confirm = all required answered. The consultant can
     // also confirm earlier if they explicitly want to (the route just
     // takes whatever's in the answers table) - this gates the banner
@@ -39,15 +49,86 @@ function register(app, deps) {
     res.render('intake', {
       user: req.user, ws: req.workspace,
       sections: INTAKE.SECTIONS, answers, total, answered, draftScope, summary,
+      crownJewelQuestions, crownJewelAssets, maxCrownJewels: INTAKE.MAX_CROWN_JEWELS,
       requiredAnswered, requiredTotal, readyToConfirm,
       scopeConfirmedAt, scopeConfirmedBy
     });
   });
 
-  // Helper - extracted so both /intake (save) and /intake/apply (legacy)
-  // and the per-field autosave endpoint all run the same scope-and-parties
-  // sync. Idempotent: existing parties are de-duped by name; the scope
-  // statement is regenerated each time from the latest answers.
+  // Helper shared by full save, the legacy apply endpoint and scope
+  // confirmation. It refreshes the scope and idempotently links crown-jewel
+  // answers to asset records with durable lineage.
+  function syncCrownJewelAsset(wsId, questionId, rawName) {
+    const number = INTAKE.crownJewelNumber(questionId);
+    const name = String(rawName || '').trim();
+    if (!number || !name) return { status: 'unchanged', assetId: null };
+
+    let asset = db.prepare(`SELECT * FROM assets
+      WHERE workspace_id=? AND source_type='engagement_intake' AND source_ref=?`).get(wsId, questionId);
+    if (asset) {
+      const sameName = db.prepare(`SELECT * FROM assets
+        WHERE workspace_id=? AND id<>? AND lower(trim(name))=lower(trim(?)) ORDER BY id LIMIT 1`)
+        .get(wsId, asset.id, name);
+      if (sameName) {
+        db.transaction(() => {
+          db.prepare(`UPDATE assets SET source_type=NULL,source_ref=NULL WHERE id=? AND workspace_id=?`).run(asset.id, wsId);
+          if (!sameName.source_type && !sameName.source_ref) {
+            db.prepare(`UPDATE assets SET source_type='engagement_intake',source_ref=?,
+              business_criticality='critical',classification=COALESCE(NULLIF(classification,''),'restricted')
+              WHERE id=? AND workspace_id=?`).run(questionId, sameName.id, wsId);
+          } else {
+            db.prepare(`UPDATE assets SET business_criticality='critical' WHERE id=? AND workspace_id=?`).run(sameName.id, wsId);
+          }
+        })();
+        fts.refresh(wsId, 'asset', sameName.id);
+        return { status: 'reused', assetId: Number(sameName.id) };
+      }
+      if (asset.name !== name || asset.business_criticality !== 'critical') {
+        db.prepare(`UPDATE assets SET name=?,business_criticality='critical' WHERE id=? AND workspace_id=?`)
+          .run(name, asset.id, wsId);
+        fts.refresh(wsId, 'asset', asset.id);
+        return { status: 'updated', assetId: Number(asset.id) };
+      }
+      return { status: 'linked', assetId: Number(asset.id) };
+    }
+
+    // Adopt an existing same-name asset rather than creating a duplicate. If
+    // another crown-jewel field already points to it, reuse it without moving
+    // that field's lineage; changing this field later can then create its own
+    // distinct asset.
+    asset = db.prepare(`SELECT * FROM assets WHERE workspace_id=? AND lower(trim(name))=lower(trim(?)) ORDER BY id LIMIT 1`)
+      .get(wsId, name);
+    if (asset) {
+      if (!asset.source_type && !asset.source_ref) {
+        db.prepare(`UPDATE assets SET source_type='engagement_intake',source_ref=?,
+          business_criticality='critical',classification=COALESCE(NULLIF(classification,''),'restricted')
+          WHERE id=? AND workspace_id=?`).run(questionId, asset.id, wsId);
+      } else {
+        db.prepare(`UPDATE assets SET business_criticality='critical' WHERE id=? AND workspace_id=?`).run(asset.id, wsId);
+      }
+      fts.refresh(wsId, 'asset', asset.id);
+      return { status: 'reused', assetId: Number(asset.id) };
+    }
+
+    const result = db.prepare(`INSERT INTO assets
+      (workspace_id,name,type,classification,cia_c,cia_i,cia_a,description,business_criticality,source_type,source_ref)
+      VALUES (?,?,'information','restricted',3,3,3,?,'critical','engagement_intake',?)`)
+      .run(wsId, name,
+        'Identified as a crown-jewel information asset during client setup. Assign an owner and complete its business-impact and recovery details in the asset register.',
+        questionId);
+    const assetId = Number(result.lastInsertRowid);
+    fts.refresh(wsId, 'asset', assetId);
+    return { status: 'created', assetId };
+  }
+
+  function detachCrownJewelAsset(wsId, questionId) {
+    const asset = db.prepare(`SELECT id FROM assets
+      WHERE workspace_id=? AND source_type='engagement_intake' AND source_ref=?`).get(wsId, questionId);
+    if (!asset) return { status: 'unchanged', assetId: null };
+    db.prepare(`UPDATE assets SET source_type=NULL,source_ref=NULL WHERE id=? AND workspace_id=?`).run(asset.id, wsId);
+    return { status: 'retained', assetId: Number(asset.id) };
+  }
+
   function applyIntakeToClient(wsId) {
     const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`).all(wsId);
     const answers = {};
@@ -67,7 +148,23 @@ function register(app, deps) {
     // The key-customers / key-regulators / key-suppliers questions stay
     // in the intake because they're useful business context for the
     // scoping summary - they just no longer write to a separate table.
-    return {};
+    const answeredCrownJewels = INTAKE.crownJewelAnswers(answers);
+    const answeredCrownIds = new Set(answeredCrownJewels.map(item => item.id));
+    const linkedCrownIds = db.prepare(`SELECT source_ref FROM assets
+      WHERE workspace_id=? AND source_type='engagement_intake' AND source_ref GLOB 'crown-jewel-[0-9]*'`).all(wsId);
+    let retained = 0;
+    for (const linked of linkedCrownIds) {
+      if (!answeredCrownIds.has(linked.source_ref)) {
+        const detached = detachCrownJewelAsset(wsId, linked.source_ref);
+        if (detached.status === 'retained') retained++;
+      }
+    }
+    const assetSync = { created: 0, updated: 0, reused: 0, linked: 0, retained };
+    for (const item of answeredCrownJewels) {
+      const result = syncCrownJewelAsset(wsId, item.id, item.name);
+      if (Object.prototype.hasOwnProperty.call(assetSync, result.status)) assetSync[result.status]++;
+    }
+    return { assetSync };
   }
 
   app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
@@ -81,31 +178,51 @@ function register(app, deps) {
         const v = (req.body[q.id] || '').trim();
         insert.run(req.workspace.id, q.id, v, req.user.id);
       }
+      for (const [id, rawValue] of Object.entries(req.body)) {
+        const number = INTAKE.crownJewelNumber(id);
+        if (!number || number <= 3) continue;
+        const value = String(rawValue || '').trim();
+        if (value) insert.run(req.workspace.id, id, value, req.user.id);
+        else db.prepare(`DELETE FROM engagement_intake WHERE workspace_id=? AND question_id=?`).run(req.workspace.id, id);
+      }
     });
     tx();
     // Save now also applies - no more two-step UX. The "Apply to client"
     // button was non-obvious; consultants would save, leave the page, and
     // the scope field on the workspace stayed empty for weeks.
-    applyIntakeToClient(req.workspace.id);
+    const applied = applyIntakeToClient(req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'intake_save_apply', 'intake', null, null, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Saved. Scope statement updated.'));
+    const changedAssets = applied.assetSync.created + applied.assetSync.updated + applied.assetSync.reused;
+    const message = changedAssets
+      ? `Saved. Scope updated and ${changedAssets} crown-jewel asset${changedAssets === 1 ? '' : 's'} synchronised.`
+      : 'Saved. Scope statement and linked assets are up to date.';
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, message));
   });
 
   // Per-field autosave endpoint. Called from the intake form on field blur
-  // / after a short debounce. Persists one answer, no redirects, no parties
-  // sync (parties only refresh when the full Save runs). 200 JSON for the
-  // client-side fetch.
+  // / after a short debounce. Crown-jewel answers also write through to the
+  // linked asset immediately. Returns JSON for the client-side status cue.
   app.post('/workspaces/:wsId/intake/field', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const id = (req.body.question_id || '').trim();
     const value = (req.body.answer || '').trim();
-    const known = INTAKE.flatten().some(q => q.id === id);
+    const known = INTAKE.flatten().some(q => q.id === id) || !!INTAKE.crownJewelNumber(id);
     if (!known) return res.status(400).json({ ok: false, error: 'unknown question_id' });
     db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(workspace_id, question_id) DO UPDATE SET
         answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`)
       .run(req.workspace.id, id, value, req.user.id);
-    res.json({ ok: true, savedAt: new Date().toISOString() });
+    let asset = null;
+    if (INTAKE.crownJewelNumber(id)) {
+      asset = value
+        ? syncCrownJewelAsset(req.workspace.id, id, value)
+        : detachCrownJewelAsset(req.workspace.id, id);
+      if (['created', 'updated', 'reused'].includes(asset.status)) {
+        logAction(req.user.id, req.workspace.id, 'sync_intake_asset', 'asset', asset.assetId,
+          { question_id: id, status: asset.status }, auditCtx(req));
+      }
+    }
+    res.json({ ok: true, savedAt: new Date().toISOString(), asset });
   });
 
   // Legacy /apply route - keep for any old links / bookmarks; calls the
@@ -150,6 +267,18 @@ function register(app, deps) {
   const planUrl = wsId => `/workspaces/${wsId}/engagement-plan`;
   const planUser = (ws, id) => !id || db.prepare(`SELECT 1 FROM users u WHERE u.id=? AND u.active=1 AND
     ((u.firm_id=? AND u.user_type='firm') OR u.id IN (SELECT user_id FROM workspace_members WHERE workspace_id=?))`).get(id, ws.firm_id, ws.id);
+  const clientPresentation = req => {
+    const visible = !!req.body.client_visible;
+    const clientTitle = String(req.body.client_title || '').trim();
+    const clientDescription = String(req.body.client_description || '').trim();
+    const frameworkCode = String(req.body.framework_code || 'iso27001').trim().toLowerCase();
+    const requirementRefs = String(req.body.requirement_refs || '').trim();
+    const enabled = new Set([...(Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : []), 'iso27001']);
+    if (visible && !clientTitle) throw new Error('A client-facing title is required for a client-visible deliverable.');
+    if (visible && !clientDescription) throw new Error('Client instructions are required for a client-visible deliverable.');
+    if (!enabled.has(frameworkCode)) throw new Error('Choose a framework enabled for this engagement.');
+    return { visible, clientTitle: clientTitle || null, clientDescription: clientDescription || null, frameworkCode, requirementRefs: requirementRefs || null };
+  };
   const runPlanAction = (req, res, action, success) => {
     try {
       const result = action();
@@ -278,12 +407,15 @@ function register(app, deps) {
       const milestone = db.prepare('SELECT id FROM engagement_delivery_milestones WHERE id=? AND plan_id=?').get(req.body.milestone_id, plan.id);
       if (!milestone || !String(req.body.title || '').trim()) throw new Error('A milestone and deliverable title are required.');
       if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
+      const presentation = clientPresentation(req);
       const id = db.prepare(`INSERT INTO engagement_delivery_deliverables
-        (workspace_id,plan_id,milestone_id,title,description,acceptance_criteria,is_required,owner_id,approver_id,due_date,linked_record_type,linked_record_id,client_visible,requires_evidence)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.workspace.id, plan.id, milestone.id, req.body.title.trim(), req.body.description || null,
-          req.body.acceptance_criteria || null, req.body.is_required ? 1 : 0, req.body.owner_id || null,
+        (workspace_id,plan_id,milestone_id,title,description,acceptance_criteria,client_title,client_description,framework_code,requirement_refs,
+         is_required,owner_id,approver_id,due_date,linked_record_type,linked_record_id,client_visible,requires_evidence)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.workspace.id, plan.id, milestone.id, req.body.title.trim(), req.body.description || null,
+          req.body.acceptance_criteria || null, presentation.clientTitle, presentation.clientDescription, presentation.frameworkCode, presentation.requirementRefs,
+          req.body.is_required ? 1 : 0, req.body.owner_id || null,
           req.body.approver_id || null, req.body.due_date || null, req.body.linked_record_type || null,
-          req.body.linked_record_id || null, req.body.client_visible ? 1 : 0, req.body.requires_evidence ? 1 : 0).lastInsertRowid;
+          req.body.linked_record_id || null, presentation.visible ? 1 : 0, req.body.requires_evidence ? 1 : 0).lastInsertRowid;
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'deliverable', id, 'created', null, 'draft', { title: req.body.title });
       logAction(req.user.id, req.workspace.id, 'create_delivery_deliverable', 'engagement_deliverable', id, { title: req.body.title }, auditCtx(req));
     }, 'Deliverable added.');
@@ -293,12 +425,14 @@ function register(app, deps) {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
       if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
-      const result = db.prepare(`UPDATE engagement_delivery_deliverables SET title=?,description=?,acceptance_criteria=?,is_required=?,
-        owner_id=?,approver_id=?,due_date=?,client_visible=?,requires_evidence=?,updated_at=datetime('now'),row_version=row_version+1
+      const presentation = clientPresentation(req);
+      const result = db.prepare(`UPDATE engagement_delivery_deliverables SET title=?,description=?,acceptance_criteria=?,client_title=?,client_description=?,
+        framework_code=?,requirement_refs=?,is_required=?,owner_id=?,approver_id=?,due_date=?,client_visible=?,requires_evidence=?,updated_at=datetime('now'),row_version=row_version+1
         WHERE id=? AND plan_id=? AND workspace_id=? AND row_version=?`).run(
         String(req.body.title || '').trim(), req.body.description || null, req.body.acceptance_criteria || null,
+        presentation.clientTitle, presentation.clientDescription, presentation.frameworkCode, presentation.requirementRefs,
         req.body.is_required ? 1 : 0, req.body.owner_id || null, req.body.approver_id || null,
-        req.body.due_date || null, req.body.client_visible ? 1 : 0, req.body.requires_evidence ? 1 : 0,
+        req.body.due_date || null, presentation.visible ? 1 : 0, req.body.requires_evidence ? 1 : 0,
         req.params.deliverableId, plan.id, req.workspace.id, req.body.row_version);
       if (!result.changes) throw new Error('This deliverable changed in another session. Reload before saving.');
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'deliverable', req.params.deliverableId, 'updated', null, null, null);

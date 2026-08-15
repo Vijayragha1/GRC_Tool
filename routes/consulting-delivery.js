@@ -189,18 +189,18 @@ function register(app,deps) {
   app.get('/workspaces/:wsId/client-portal/workpapers/:id/validate',requireAuth,requireWorkspace,requirePermission('client_portal.view'),(req,res)=>{
     try {
       const row=consulting.workpaperDetail(db,req.workspace,req.params.id);
-      if(!row.client_visible||!row.requires_client_validation||row.status!=='client_validation'||Number(row.client_validator_id)!==Number(req.user.id)) return res.status(404).render('error',{ user:req.user,ws:req.workspace,message:'Validation workpaper not found or not assigned to you.' });
+      if(!row.client_visible||!row.requires_client_validation||row.status!=='client_validation'||Number(row.client_validator_id)!==Number(req.user.id)) return res.status(404).render('error',{ user:req.user,ws:req.workspace,message:'This information check is unavailable or is not assigned to you.' });
       res.render('client_workpaper_validation',{ user:req.user,ws:req.workspace,active:'client-portal',workpaper:row });
     } catch(error) { res.status(404).render('error',{ user:req.user,ws:req.workspace,message:error.message }); }
   });
 
   app.post('/workspaces/:wsId/client-portal/workpapers/:id/validate',requireAuth,requireWorkspace,requirePermission('client_request.respond'),(req,res)=>run(req,res,()=>{
     const row=consulting.workpaperDetail(db,req.workspace,req.params.id);
-    if(!row.client_visible||!row.requires_client_validation||Number(row.client_validator_id)!==Number(req.user.id)) throw new Error('This validation is not assigned to you.');
+    if(!row.client_visible||!row.requires_client_validation||Number(row.client_validator_id)!==Number(req.user.id)) throw new Error('This information check is not assigned to you.');
     const action=req.body.decision==='changes'?'changes':'validate';
     consulting.transitionWorkpaper(db,req.workspace,req.user,row.id,action,req.body.note);
     logAction(req.user.id,req.workspace.id,`${action}_client_workpaper`,'consultant_workpaper',row.id,null,auditCtx(req));
-  },req.body.decision==='changes'?'Changes requested.':'Workpaper validated.',`/workspaces/${req.workspace.id}/client-portal`));
+  },req.body.decision==='changes'?'Changes requested.':'Information confirmed.',`/workspaces/${req.workspace.id}/client-portal`));
 
   app.post('/workspaces/:wsId/delivery/client-controls',requireAuth,requireWorkspace,firmOnly,requirePermission('control.update'),(req,res)=>run(req,res,()=>{
     const title=consulting.clean(req.body.title,300); if(!title) throw new Error('Control title is required.');

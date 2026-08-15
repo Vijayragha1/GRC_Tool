@@ -139,12 +139,20 @@
               <div class="meta text-base" style="margin-top:4px;"><%= sec.blurb %></div>
             </div>
           </div>
-          <div class="panel-pad" style="display:grid;gap:16px;">
-            <% sec.questions.forEach(q => { %>
-              <div>
+          <div class="panel-pad" style="display:grid;gap:16px;" <%- sec.id === 'crown-jewels' ? 'id="crownJewelFields"' : '' %>>
+            <%
+              const sectionQuestions = sec.id === 'crown-jewels'
+                ? (locals.crownJewelQuestions || sec.questions)
+                : sec.questions;
+            %>
+            <% sectionQuestions.forEach(q => { %>
+              <div <%- sec.id === 'crown-jewels' ? `class="crown-jewel-field" data-crown-number="${q.id.split('-').pop()}"` : '' %>>
                 <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
                   <span><%= q.text %><%= q.required ? ' *' : '' %></span>
                   <span class="clause-tag tag tag-neutral text-xxs" style="display:none;">clause <%= q.clause %></span>
+                  <% if (sec.id === 'crown-jewels' && q.dynamic) { %>
+                    <button class="btn btn-ghost btn-xs remove-crown-jewel" type="button" style="margin-left:auto;" aria-label="Remove crown jewel <%= q.id.split('-').pop() %>">Remove</button>
+                  <% } %>
                 </label>
                 <% if (q.hint) { %>
                   <div class="meta text-sm text-tertiary" style="margin-bottom:6px;"><%= q.hint %></div>
@@ -165,15 +173,34 @@
                 <% } else { %>
                   <input class="input" type="text" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
                 <% } %>
+                <% if (sec.id === 'crown-jewels') {
+                     const linkedAsset = (locals.crownJewelAssets || {})[q.id];
+                %>
+                  <div class="crown-jewel-sync meta text-sm" style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+                    <% if (linkedAsset) { %>
+                      <span style="color:#15803d;">✓ Linked to asset inventory</span>
+                      <a href="/workspaces/<%= ws.id %>/assets">Open asset #<%= linkedAsset.id %> →</a>
+                    <% } else { %>
+                      <span>Creates a critical information asset when this field is saved.</span>
+                    <% } %>
+                  </div>
+                <% } %>
               </div>
             <% }) %>
+            <% if (sec.id === 'crown-jewels') { %>
+              <div id="crownJewelActions" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:2px;">
+                <button class="btn btn-secondary btn-sm" type="button" id="addCrownJewel">+ Add another crown jewel</button>
+                <a class="meta text-sm" href="/workspaces/<%= ws.id %>/assets">Open asset inventory →</a>
+              </div>
+              <div class="meta text-sm" style="line-height:1.5;">The setup creates or links the asset once. Owners, recovery objectives and BIA details remain managed in the asset inventory and are never erased when a setup field is removed.</div>
+            <% } %>
           </div>
         </div>
       <% }) %>
 
       <div style="display:flex;gap:10px;align-items:center;">
         <button type="submit" class="btn btn-primary">Save &amp; refresh summary</button>
-        <span class="meta text-sm">Each field auto-saves as you go. Click this to force-refresh the scoping summary and re-seed any new interested parties.</span>
+        <span class="meta text-sm">Each field auto-saves as you go. Click this to refresh the scoping summary and verify the linked crown-jewel assets.</span>
       </div>
     </form>
   </div>
@@ -257,7 +284,7 @@
 // server's POST /workspaces/:wsId/intake/field endpoint upserts one row
 // per call. No redirect; just a small "Saved · 14:23:01" badge update.
 // The Save & refresh summary button is still there to force the full
-// scope-regen + parties-seeding pass (and gives an obvious recovery
+// scope-regeneration + linked-asset verification pass (and gives a recovery
 // path if autosave silently fails because of a network blip).
 (function () {
   const form = document.getElementById('intakeForm');
@@ -288,13 +315,24 @@
         body
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
+      const result = await r.json();
+      if (result.asset?.assetId) {
+        const field = form.elements.namedItem(name);
+        const row = field?.closest('.crown-jewel-field');
+        const status = row?.querySelector('.crown-jewel-sync');
+        if (status) {
+          status.innerHTML = `<span style="color:#15803d;">✓ Linked to asset inventory</span><a href="/workspaces/${wsId[1]}/assets">Open asset #${result.asset.assetId} →</a>`;
+        }
+      }
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
       const ss = String(now.getSeconds()).padStart(2, '0');
       setBadge(`Saved · ${hh}:${mm}:${ss}`, '#15803d');
+      return true;
     } catch (e) {
       setBadge('Save failed - retry by tabbing out', '#b91c1c');
+      return false;
     } finally {
       inFlight--;
     }
@@ -312,11 +350,64 @@
     saveField(name, field.value);
   }
 
-  form.querySelectorAll('input[name], textarea[name], select[name]').forEach(field => {
+  function bindField(field) {
     // Skip the CSRF + sequencing-only hidden inputs
     if (field.name === '_csrf' || field.type === 'hidden') return;
     field.addEventListener('input', () => scheduleSave(field));
     field.addEventListener('blur', () => flushSave(field));
+  }
+
+  form.querySelectorAll('input[name], textarea[name], select[name]').forEach(bindField);
+
+  const crownFields = document.getElementById('crownJewelFields');
+  const addButton = document.getElementById('addCrownJewel');
+  const maxCrownJewels = <%= Number(locals.maxCrownJewels || 50) %>;
+
+  function nextCrownNumber() {
+    const used = [...crownFields.querySelectorAll('[data-crown-number]')]
+      .map(row => Number(row.dataset.crownNumber)).filter(Number.isFinite);
+    for (let number = 4; number <= maxCrownJewels; number++) {
+      if (!used.includes(number)) return number;
+    }
+    return null;
+  }
+
+  addButton?.addEventListener('click', () => {
+    const number = nextCrownNumber();
+    if (!number) {
+      setBadge(`Limit of ${maxCrownJewels} reached`, '#b45309');
+      return;
+    }
+    const controls = document.getElementById('crownJewelActions');
+    const row = document.createElement('div');
+    row.className = 'crown-jewel-field';
+    row.dataset.crownNumber = String(number);
+    row.innerHTML = `
+      <label class="label" for="q-crown-jewel-${number}" style="display:flex;align-items:center;gap:8px;">
+        <span>Crown jewel #${number}</span>
+        <span class="clause-tag tag tag-neutral text-xxs" style="display:${document.getElementById('toggleClauses')?.checked ? 'inline-flex' : 'none'};">clause A.5.9</span>
+        <button class="btn btn-ghost btn-xs remove-crown-jewel" type="button" style="margin-left:auto;" aria-label="Remove crown jewel ${number}">Remove</button>
+      </label>
+      <textarea class="textarea" id="q-crown-jewel-${number}" name="crown-jewel-${number}" rows="3"></textarea>
+      <div class="crown-jewel-sync meta text-sm" style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+        <span>Creates a critical information asset when this field is saved.</span>
+      </div>`;
+    crownFields.insertBefore(row, controls);
+    const field = row.querySelector('textarea');
+    bindField(field);
+    field.focus();
+  });
+
+  crownFields?.addEventListener('click', async event => {
+    const button = event.target.closest('.remove-crown-jewel');
+    if (!button) return;
+    const row = button.closest('.crown-jewel-field');
+    const field = row?.querySelector('textarea[name^="crown-jewel-"]');
+    if (!row || !field) return;
+    if (field.value.trim() && !window.confirm('Remove this item from client setup? Its linked asset will remain in the asset inventory so evidence and enrichment are not lost.')) return;
+    clearTimeout(timers.get(field.name));
+    const saved = await saveField(field.name, '');
+    if (saved) row.remove();
   });
 })();
 </script>

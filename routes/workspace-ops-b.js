@@ -662,6 +662,9 @@ function register(app, deps) {
 
 
   app.get('/firm/library', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) {
+      return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    }
     const firmId = getActiveFirmId(req);
     if (!firmId) return res.redirect('/tenants');
     seedFirmRiskLibraryIfEmpty(firmId);
@@ -672,6 +675,9 @@ function register(app, deps) {
   });
 
   app.get('/firm/library/risks', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) {
+      return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    }
     const firmId = getActiveFirmId(req);
     if (!firmId) return res.redirect('/tenants');
     seedFirmRiskLibraryIfEmpty(firmId);

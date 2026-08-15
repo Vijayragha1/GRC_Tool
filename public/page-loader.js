@@ -63,14 +63,30 @@
   // Full-document links do not pass through the app's SPA-lite navigator.
   // The SPA handler registers first and prevents its clicks, avoiding a
   // duplicate show call here.
+  function isDownloadLink(link, url) {
+    if (link.hasAttribute('download') || link.dataset.noLoader === '1') return true;
+
+    var path = url.pathname.toLowerCase();
+    // Attachment responses leave the current document in place, so there is
+    // no subsequent `load` event that could dismiss the overlay. Recognise
+    // both filename-style exports and the app's REST-style download routes.
+    if (/\.(csv|docx|zip|pdf|xlsx?|png|jpe?g|svg|ico|md|txt)$/.test(path)) return true;
+    if (/(^|\/)download(\/|$)/.test(path)) return true;
+    if (/(^|\/)export(\/|$)/.test(path)) return true;
+    if (/(^|\/)(audit-pack|handover)(\/|$)/.test(path)) return true;
+    if (/\/(csv|docx|zip|pdf|xlsx?)(\/|$)/.test(path)) return true;
+    return false;
+  }
+
   document.addEventListener('click', function (event) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
-    if (!link || link.hasAttribute('download') || link.dataset.noLoader === '1') return;
+    if (!link) return;
     if (link.target && link.target !== '_self') return;
     var url;
     try { url = new URL(link.href, location.href); } catch (_) { return; }
     if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return;
+    if (isDownloadLink(link, url)) return;
     if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
     show('Opening page');
   });

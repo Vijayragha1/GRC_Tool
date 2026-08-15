@@ -77,7 +77,7 @@ const SECTIONS = [
   {
     id: 'crown-jewels',
     title: 'Crown jewels',
-    blurb: 'The 3-5 information assets that, if compromised, end the business. Drives the asset register and risk treatment.',
+    blurb: 'Start with the 3-5 information assets whose loss or compromise would cause severe business harm. Add more where the scope requires it; every named item is linked to the asset register.',
     questions: [
       { id: 'crown-jewel-1', text: 'Crown jewel #1 - the single most-sensitive information asset', clause: 'A.5.9', type: 'textarea', required: true },
       { id: 'crown-jewel-2', text: 'Crown jewel #2', clause: 'A.5.9', type: 'textarea' },
@@ -107,6 +107,46 @@ function flatten() {
     }
   }
   return out;
+}
+
+const MAX_CROWN_JEWELS = 50;
+
+function crownJewelNumber(id) {
+  const match = /^crown-jewel-(\d+)$/.exec(String(id || ''));
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isInteger(number) && number >= 1 && number <= MAX_CROWN_JEWELS ? number : null;
+}
+
+function crownJewelQuestion(number) {
+  if (!Number.isInteger(number) || number < 1 || number > MAX_CROWN_JEWELS) return null;
+  return {
+    id: `crown-jewel-${number}`,
+    text: number === 1 ? 'Crown jewel #1 - the single most-sensitive information asset' : `Crown jewel #${number}`,
+    clause: 'A.5.9',
+    type: 'textarea',
+    required: number === 1,
+    dynamic: number > 3,
+  };
+}
+
+// The core questionnaire remains a stable 25 questions for completion and
+// scoping metrics. Crown jewels beyond the initial three are optional repeated
+// fields and therefore do not distort that progress denominator.
+function crownJewelQuestions(answers = {}) {
+  const numbers = new Set([1, 2, 3]);
+  for (const [id, answer] of Object.entries(answers)) {
+    const number = crownJewelNumber(id);
+    if (number && number > 3 && String(answer || '').trim()) numbers.add(number);
+  }
+  return [...numbers].sort((a, b) => a - b).map(crownJewelQuestion);
+}
+
+function crownJewelAnswers(answers = {}) {
+  return Object.entries(answers)
+    .map(([id, answer]) => ({ id, number: crownJewelNumber(id), name: String(answer || '').trim() }))
+    .filter(item => item.number && item.name)
+    .sort((a, b) => a.number - b.number);
 }
 
 // ===== Engagement complexity scoring =====
@@ -298,4 +338,14 @@ function draftScopeStatement(answers) {
   return lines.join('\n');
 }
 
-module.exports = { SECTIONS, flatten, draftScopeStatement, computeEngagementSummary };
+module.exports = {
+  SECTIONS,
+  MAX_CROWN_JEWELS,
+  flatten,
+  crownJewelNumber,
+  crownJewelQuestion,
+  crownJewelQuestions,
+  crownJewelAnswers,
+  draftScopeStatement,
+  computeEngagementSummary,
+};

@@ -1,0 +1,195 @@
+<% if (gapAssessment && gapAssessment.applicable) { %>
+<section class="cp-section cp-gap" id="gap-assessment">
+  <div class="cp-section-heading">
+    <div>
+      <span>ISO 27001 gap assessment</span>
+      <h2>Your assessment journey</h2>
+      <p>Follow the agreed scope from mobilisation through fieldwork, fact checking, reporting and remediation.</p>
+    </div>
+    <div class="cp-section-stat"><strong><%= gapAssessment.coverage.pct %>%</strong><span><%= gapAssessment.coverage.assessed %> of <%= gapAssessment.coverage.total %> requirements covered</span></div>
+  </div>
+
+  <div class="panel cp-gap-overview">
+    <div class="cp-gap-overview-copy">
+      <span>Current stage</span>
+      <strong><%= gapAssessment.currentPhaseLabel %></strong>
+      <p><%= gapAssessment.phases.find(phase => phase.key === gapAssessment.currentPhase).description %></p>
+    </div>
+    <div class="cp-gap-overview-metrics">
+      <div><strong><%= gapAssessment.tracker.openRequests %></strong><span>open requests</span></div>
+      <div><strong><%= gapAssessment.tracker.blockers %></strong><span>blockers</span></div>
+      <div><strong><%= gapAssessment.findings.length %></strong><span>confirmed findings</span></div>
+    </div>
+  </div>
+
+  <nav class="cp-gap-rail" aria-label="Gap assessment stages">
+    <% gapAssessment.phases.forEach(phase => { %>
+      <a href="#gap-<%= phase.key %>" class="cp-gap-rail-item is-<%= phase.state %>" aria-current="<%= phase.state === 'current' ? 'step' : 'false' %>">
+        <span><%= phase.number %></span><strong><%= phase.label %></strong><small><%= phase.state === 'complete' ? 'Complete' : phase.state === 'current' ? 'In progress' : 'Upcoming' %></small>
+      </a>
+    <% }) %>
+  </nav>
+
+  <div class="cp-gap-stages">
+    <details class="panel cp-gap-stage" id="gap-mobilisation" <%= gapAssessment.currentPhase === 'mobilisation' ? 'open' : '' %>>
+      <summary>
+        <span class="cp-gap-stage-number">01</span>
+        <div><strong>Mobilisation</strong><small>Boundary, methodology, evidence expectations and fieldwork plan</small></div>
+        <span class="cp-gap-stage-state"><%= gapAssessment.phases[0].state === 'complete' ? 'Complete' : gapAssessment.phases[0].state === 'current' ? 'Current stage' : 'Upcoming' %></span>
+        <span class="cp-chevron">⌄</span>
+      </summary>
+      <div class="cp-gap-stage-body">
+        <div class="cp-gap-scope-grid">
+          <article class="cp-gap-card cp-gap-card-wide">
+            <span>Agreed scope</span>
+            <h3>Assessment boundary</h3>
+            <p class="cp-gap-scope-statement"><%= gapAssessment.scope.statement %></p>
+            <dl class="cp-gap-facts">
+              <div><dt>Entities</dt><dd><%= gapAssessment.scope.entities %></dd></div>
+              <div><dt>Locations</dt><dd><%= gapAssessment.scope.locations %></dd></div>
+              <div><dt>Systems</dt><dd><%= gapAssessment.scope.systems %></dd></div>
+              <div><dt>Exclusions</dt><dd><%= gapAssessment.scope.exclusions %></dd></div>
+            </dl>
+          </article>
+          <article class="cp-gap-card">
+            <span>Coverage</span>
+            <h3>Clause and Annex A boundary</h3>
+            <div class="cp-gap-coverage-pair">
+              <div><strong><%= gapAssessment.coverage.clauses.assessed %>/<%= gapAssessment.coverage.clauses.total %></strong><small>Clauses covered</small></div>
+              <div><strong><%= gapAssessment.coverage.annex.assessed %>/<%= gapAssessment.coverage.annex.total %></strong><small>Annex A controls covered</small></div>
+            </div>
+            <details class="cp-gap-nested"><summary>View the coverage list</summary>
+              <div class="cp-gap-coverage-list">
+                <h4>Clauses</h4>
+                <% gapAssessment.coverage.clauses.rows.forEach(row => { %><div><code><%= row.code %></code><span><%= row.title.replace(/^\d+(?:\.\d+)*\s*/, '') %></span><small><%= row.status_label %></small></div><% }) %>
+                <h4>Annex A</h4>
+                <% gapAssessment.coverage.annex.rows.forEach(row => { %><div><code><%= row.code %></code><span><%= row.title.replace(/^A\.\d+(?:\.\d+)*\s*/, '') %></span><small><%= row.status_label %></small></div><% }) %>
+              </div>
+            </details>
+          </article>
+        </div>
+
+        <div class="cp-gap-method-grid">
+          <article class="cp-gap-card cp-gap-card-wide">
+            <span>Rating method</span><h3>How each requirement is rated</h3>
+            <div class="cp-gap-scale"><% gapAssessment.methodology.ratingScale.forEach(item => { %><div><strong><%= item.label %></strong><p><%= item.definition %></p></div><% }) %></div>
+          </article>
+          <article class="cp-gap-card">
+            <span>Evidence standard</span><h3>Evidence tiers</h3>
+            <div class="cp-gap-tiers"><% gapAssessment.methodology.evidenceTiers.forEach(item => { %><div><b><%= item.code %></b><p><strong><%= item.label %></strong><span><%= item.definition %></span></p></div><% }) %></div>
+          </article>
+          <article class="cp-gap-card">
+            <span>Sampling</span><h3>Sampling basis</h3>
+            <p><%= gapAssessment.methodology.sampling.basis %></p>
+            <% if (gapAssessment.methodology.sampling.sample_size || gapAssessment.methodology.sampling.population_size) { %><div class="cp-gap-sample"><strong><%= gapAssessment.methodology.sampling.sample_size || '—' %></strong><span>sample</span><strong><%= gapAssessment.methodology.sampling.population_size || '—' %></strong><span>population</span></div><% } %>
+          </article>
+        </div>
+
+        <div class="cp-gap-two-col">
+          <article class="cp-gap-card">
+            <span>Information plan</span><h3>Document and evidence requests</h3>
+            <% if (!gapAssessment.requests.length) { %><div class="cp-gap-empty"><strong>No requests have been issued yet</strong><p>Requests will appear here with an owner and due date once fieldwork is planned.</p></div><% } else { %>
+              <div class="cp-gap-compact-list"><% gapAssessment.requests.slice(0, 8).forEach(request => { %><div><p><strong><%= request.title %></strong><small><%= request.owner %><%= request.control_ref ? ` · ${request.control_ref}` : '' %></small></p><span><%= request.due_date ? formatDate(request.due_date) : 'Date to be agreed' %></span></div><% }) %></div>
+            <% } %>
+          </article>
+          <article class="cp-gap-card">
+            <span>People plan</span><h3>Interview schedule</h3>
+            <% if (!gapAssessment.interviews.length) { %><div class="cp-gap-empty"><strong>No interviews are scheduled yet</strong><p>Agreed interviews will appear here with the responsible contact and date.</p></div><% } else { %>
+              <div class="cp-gap-compact-list"><% gapAssessment.interviews.forEach(interview => { %><div><p><strong><%= interview.title %></strong><small><%= interview.participant_role %> · <%= interview.owner %> · <%= interview.status_label %></small></p><span><%= interview.due_date ? formatDate(interview.due_date) : 'Date to be agreed' %></span></div><% }) %></div>
+            <% } %>
+          </article>
+        </div>
+
+        <article class="cp-gap-card">
+          <span>Assessment assumptions</span><h3>Declared defaults register</h3>
+          <p class="cp-gap-card-intro">Any requirement treated as outside the agreed boundary is listed here with its recorded justification.</p>
+          <% if (!gapAssessment.defaults.length) { %><div class="cp-gap-empty"><strong>No declared defaults have been recorded</strong><p>This register will update if an exclusion or default is formally recorded during the assessment.</p></div><% } else { %>
+            <div class="cp-gap-table-wrap"><table class="cp-gap-table"><thead><tr><th>Reference</th><th>Requirement</th><th>Declaration</th><th>Recorded</th></tr></thead><tbody><% gapAssessment.defaults.forEach(item => { %><tr><td><code><%= item.code %></code></td><td><%= item.title %></td><td><%= item.declaration %></td><td><%= formatDate(item.recorded_at) %></td></tr><% }) %></tbody></table></div>
+          <% } %>
+        </article>
+      </div>
+    </details>
+
+    <details class="panel cp-gap-stage" id="gap-fieldwork" <%= gapAssessment.currentPhase === 'fieldwork' ? 'open' : '' %>>
+      <summary><span class="cp-gap-stage-number">02</span><div><strong>Fieldwork</strong><small>Weekly coverage, interviews, requests, blockers and new defaults</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[1].state === 'complete' ? 'Complete' : gapAssessment.phases[1].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
+      <div class="cp-gap-stage-body">
+        <div class="cp-gap-subhead"><span>Current status</span><h3>Weekly fieldwork tracker</h3><p>A live view of the assessment records currently available in the portal.</p></div>
+        <div class="cp-gap-weekly">
+          <div><strong><%= gapAssessment.tracker.coveragePct %>%</strong><span>requirements covered</span><small><%= gapAssessment.tracker.controlsCovered %> of <%= gapAssessment.tracker.controlsTotal %></small></div>
+          <div><strong><%= gapAssessment.tracker.interviewsDone %>/<%= gapAssessment.tracker.interviewsPlanned %></strong><span>interviews completed</span><small>against the current schedule</small></div>
+          <div><strong><%= gapAssessment.tracker.requestsReceived %>/<%= gapAssessment.requests.length %></strong><span>requests received</span><small><%= gapAssessment.tracker.openRequests %> still open</small></div>
+          <div><strong><%= gapAssessment.tracker.blockers %></strong><span>active blockers</span><small>requiring client attention</small></div>
+        </div>
+        <article class="cp-gap-card cp-gap-weekly-history">
+          <span>Weekly updates</span><h3>Frozen fieldwork record</h3>
+          <% if (!gapAssessment.weeklySnapshots.length) { %>
+            <div class="cp-gap-empty"><strong>No weekly update has been released yet</strong><p>The engagement team can freeze a dated fieldwork update once the weekly position has been reviewed.</p></div>
+          <% } else { %>
+            <div class="cp-gap-table-wrap"><table class="cp-gap-table"><thead><tr><th>Week ending</th><th>Requirements</th><th>Interviews</th><th>Requests</th><th>Blockers</th><th>Defaults</th></tr></thead><tbody>
+              <% gapAssessment.weeklySnapshots.forEach(item => { %><tr><td><strong><%= formatDate(item.weekEnding) %></strong></td><td><%= item.requirementsCovered %>/<%= item.requirementsTotal %></td><td><%= item.interviewsCompleted %>/<%= item.interviewsPlanned %></td><td><%= item.requestsReceived %>/<%= item.requestsTotal %></td><td><%= item.activeBlockers %></td><td><%= item.declaredDefaults %></td></tr><% }) %>
+            </tbody></table></div>
+          <% } %>
+        </article>
+        <div class="cp-gap-two-col cp-gap-fieldwork-grid">
+          <article class="cp-gap-card cp-gap-card-wide">
+            <span>Live request log</span><h3>RFI and document tracker</h3>
+            <% if (!gapAssessment.requests.length) { %><div class="cp-gap-empty"><strong>No requests have been issued</strong><p>The tracker will start when fieldwork requests are shared.</p></div><% } else { %><div class="cp-gap-table-wrap"><table class="cp-gap-table"><thead><tr><th>Item</th><th>Owner</th><th>Requested</th><th>Received</th><th>Status</th></tr></thead><tbody><% gapAssessment.requests.forEach(request => { %><tr><td><% if (clientPreview) { %><strong><%= request.title %></strong><% } else { %><a href="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>"><%= request.title %></a><% } %></td><td><%= request.owner %></td><td><%= formatDate(request.requested_date) %></td><td><%= formatDate(request.received_date) %></td><td><span class="status status-<%= request.status === 'accepted' ? 'good' : request.status === 'changes_requested' ? 'bad' : request.status === 'submitted' ? 'warn' : 'neutral' %>"><%= request.status_label %></span></td></tr><% }) %></tbody></table></div><% } %>
+          </article>
+          <article class="cp-gap-card">
+            <span>Constraints</span><h3>Blockers</h3>
+            <% if (!gapAssessment.blockers.length) { %><div class="cp-gap-empty"><strong>No active blockers</strong><p>No urgent or overdue client requests are currently holding up fieldwork.</p></div><% } else { %><div class="cp-gap-blockers"><% gapAssessment.blockers.forEach(blocker => { %><div><strong><%= blocker.title %></strong><p><%= blocker.reason %> · <%= blocker.owner %><%= blocker.due_date ? ` · due ${formatDate(blocker.due_date)}` : '' %></p></div><% }) %></div><% } %>
+          </article>
+          <article class="cp-gap-card">
+            <span>Register changes</span><h3>Defaults added during fieldwork</h3>
+            <% const newDefaults = gapAssessment.defaults.filter(item => item.addition); %>
+            <% if (!newDefaults.length) { %><div class="cp-gap-empty"><strong>No additions this pass</strong><p>Any newly declared exclusion or default will be listed here.</p></div><% } else { %><div class="cp-gap-compact-list"><% newDefaults.forEach(item => { %><div><p><strong><%= item.code %> · <%= item.title %></strong><small><%= item.declaration %></small></p><span><%= formatDate(item.recorded_at) %></span></div><% }) %></div><% } %>
+          </article>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel cp-gap-stage" id="gap-validation" <%= gapAssessment.currentPhase === 'validation' ? 'open' : '' %>>
+      <summary><span class="cp-gap-stage-number">03</span><div><strong>Validation</strong><small>Factual-accuracy review of confirmed findings</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[2].state === 'complete' ? 'Complete' : gapAssessment.phases[2].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
+      <div class="cp-gap-stage-body">
+        <div class="cp-gap-validation-note"><div><strong>Validate facts; add evidence where needed</strong><p>Correct the observed facts or provide late evidence through your requests. The assessor’s risk rating and rationale are shown as a read-only conclusion.</p></div><a class="btn btn-secondary btn-xs" href="#requests">Open requests</a></div>
+        <% if (!gapAssessment.findings.length) { %><div class="cp-gap-empty cp-gap-empty-large"><strong>No findings are ready for fact checking</strong><p>Only confirmed findings are shared here. Draft judgements and fieldwork notes are not displayed.</p></div><% } else { %>
+          <div class="cp-gap-findings"><% gapAssessment.findings.forEach(finding => { %>
+            <article class="cp-gap-finding">
+              <header><div><span><%= finding.finding_ref %> · <%= finding.requirement_ref %></span><h3><%= finding.title %></h3></div><em class="severity severity-<%= finding.severity %>"><%= finding.severity %></em></header>
+              <div class="cp-gap-finding-grid"><div><span>Observed state</span><p><%= finding.condition_text %></p></div><div><span>Expected requirement</span><p><%= finding.criteria_text %></p></div><div><span>Evidence IDs</span><p><%= finding.evidence_refs.length ? finding.evidence_refs.join(', ') : 'No evidence reference has been shared for this finding.' %></p></div><div><span>Gap statement</span><p><%= finding.title %></p></div></div>
+              <div class="cp-gap-risk-rationale"><span>Risk rating rationale · read only</span><p><%= finding.effect_text %></p></div>
+            </article>
+          <% }) %></div>
+        <% } %>
+      </div>
+    </details>
+
+    <details class="panel cp-gap-stage" id="gap-report" <%= gapAssessment.currentPhase === 'report' ? 'open' : '' %>>
+      <summary><span class="cp-gap-stage-number">04</span><div><strong>Report</strong><small>Gap register, consolidated findings and improvement roadmap</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[3].state === 'complete' ? 'Complete' : gapAssessment.phases[3].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
+      <div class="cp-gap-stage-body">
+        <% if (!gapAssessment.reports.length) { %><div class="cp-gap-empty cp-gap-empty-large"><strong>The assessment report has not been released yet</strong><p>Your final gap register, consolidated findings and roadmap will appear here after fact checking and quality review.</p></div><% } else { %>
+          <div class="cp-gap-report-grid">
+            <article class="cp-gap-card"><span>Released reports</span><h3>Assessment reports</h3><div class="cp-report-list"><% gapAssessment.reports.forEach(report => { %><a href="/workspaces/<%= ws.id %>/client-portal/reports/<%= report.id %>"><div><span><%= label(report.report_type) %></span><strong><%= report.title %></strong><small>Version <%= report.version_number %> · Released <%= formatDate(report.published_at) %></small></div><b>View →</b></a><% }) %></div></article>
+            <article class="cp-gap-card"><span>Consolidated position</span><h3>Confirmed findings</h3><div class="cp-gap-severity-summary"><% gapAssessment.findingSummary.forEach(item => { %><div><strong><%= item.count %></strong><span><%= item.severity %></span></div><% }) %></div></article>
+          </div>
+          <article class="cp-gap-card"><span>Improvement plan</span><h3>Roadmap, effort and cost view</h3>
+            <% if (!gapAssessment.findings.length) { %><div class="cp-gap-empty"><strong>No roadmap actions are available</strong><p>The released report contains no confirmed findings.</p></div><% } else { %><div class="cp-gap-table-wrap"><table class="cp-gap-table"><thead><tr><th>Finding</th><th>Recommended action</th><th>Owner</th><th>Due</th><th>Effort</th><th>Cost</th></tr></thead><tbody><% gapAssessment.findings.forEach(finding => { %><tr><td><strong><%= finding.finding_ref %></strong><br><%= finding.title %></td><td><%= finding.remediation_plan || finding.recommendation_text %></td><td><%= finding.owner %></td><td><%= formatDate(finding.due_date) %></td><td><%= finding.effort %></td><td><%= finding.cost %></td></tr><% }) %></tbody></table></div><% } %>
+          </article>
+        <% } %>
+      </div>
+    </details>
+
+    <details class="panel cp-gap-stage" id="gap-post_report" <%= gapAssessment.currentPhase === 'post_report' ? 'open' : '' %>>
+      <summary><span class="cp-gap-stage-number">05</span><div><strong>Post-report</strong><small>Remediation, re-test criteria and closure evidence</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[4].state === 'complete' ? 'Complete' : gapAssessment.phases[4].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
+      <div class="cp-gap-stage-body">
+        <% const remediation = gapAssessment.findings.filter(finding => ['remediation_planned','ready_for_validation','closed'].includes(finding.status)); %>
+        <% if (!remediation.length) { %><div class="cp-gap-empty cp-gap-empty-large"><strong>No remediation actions are being tracked yet</strong><p>Actions, re-test criteria and required closure evidence will appear after the report is agreed.</p></div><% } else { %>
+          <div class="cp-gap-table-wrap"><table class="cp-gap-table"><thead><tr><th>Finding</th><th>Remediation action</th><th>Owner / due</th><th>Re-test criteria</th><th>Closure evidence</th><th>Status</th></tr></thead><tbody><% remediation.forEach(finding => { %><tr><td><strong><%= finding.finding_ref %></strong><br><%= finding.title %></td><td><%= finding.remediation_plan || finding.recommendation_text %></td><td><%= finding.owner %><br><span class="meta"><%= formatDate(finding.due_date) %></span></td><td><%= finding.retest_criteria || 'To be agreed with the engagement team' %></td><td><%= finding.closure_requirement || 'To be agreed with the engagement team' %><br><span class="meta"><%= finding.closure_evidence_count %> file<%= finding.closure_evidence_count === 1 ? '' : 's' %> received</span></td><td><span class="status status-<%= finding.status === 'closed' ? 'good' : finding.status === 'ready_for_validation' ? 'warn' : 'neutral' %>"><%= label(finding.status) %></span></td></tr><% }) %></tbody></table></div>
+        <% } %>
+      </div>
+    </details>
+  </div>
+
+  <p class="cp-gap-disclosure">The portal shows agreed client records and confirmed conclusions. Draft findings, provisional ratings, raw interview notes, named attribution and assessment working papers are not displayed.</p>
+</section>
+<% } %>

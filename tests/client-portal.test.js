@@ -35,7 +35,7 @@ test.before(async () => {
   db = new Database(env.dbPath);
   const firmId = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get().id;
   managerId = db.prepare(`SELECT id FROM users WHERE email='sec-test@example.com'`).get().id;
-  workspaceId = Number(db.prepare(`INSERT INTO workspaces (firm_id, client_name, stage) VALUES (?, 'Portal Client', 'gap_assessment')`).run(firmId).lastInsertRowid);
+  workspaceId = Number(db.prepare(`INSERT INTO workspaces (firm_id, client_name, stage, locale) VALUES (?, 'Portal Client', 'gap_assessment', 'en-GB')`).run(firmId).lastInsertRowid);
   otherWorkspaceId = Number(db.prepare(`INSERT INTO workspaces (firm_id, client_name, stage) VALUES (?, 'Other Client', 'gap_assessment')`).run(firmId).lastInsertRowid);
   const pw = bcrypt.hashSync('client-test-password-1234', 4);
   contributorId = Number(db.prepare(`INSERT INTO users (email,password_hash,name,user_type,active) VALUES ('portal-client@example.com',?,'Portal Contributor','client',1)`).run(pw).lastInsertRowid);
@@ -99,13 +99,34 @@ test('consultant workspace navigation exposes the integrated overview and separa
   assert.doesNotMatch(page.text, /nav-item-text">Audit pack/);
 });
 
+test('consultants can open a read-only client-shell preview without impersonating a client', async () => {
+  const preview = await manager.get(`/workspaces/${workspaceId}/client-portal?preview=client`);
+  assert.equal(preview.status, 200);
+  assert.match(preview.text, /Client view preview/);
+  assert.match(preview.text, /read-only and does not impersonate a client account/i);
+  assert.match(preview.text, /Your engagement/);
+  assert.match(preview.text, /Read-only client preview/);
+  assert.match(preview.text, new RegExp(`/workspaces/${workspaceId}/engagement-plan[^>]*>Exit preview<`));
+  assert.match(preview.text, /nav-item-text">Home/);
+  assert.doesNotMatch(preview.text, /Consultant view|Create a client request|Open command palette|title="Inbox"/);
+  assert.doesNotMatch(preview.text, /action="[^\"]+"[^>]*method="POST"/i);
+});
+
 test('contributor is redirected from workspace root and blocked from legacy workspace routes', async () => {
   const root = await contributor.get(`/workspaces/${workspaceId}`);
   assert.equal(root.status, 302);
   assert.equal(root.location, `/workspaces/${workspaceId}/client-portal`);
   const legacy = await contributor.get(`/workspaces/${workspaceId}/controls`);
   assert.equal(legacy.status, 403);
-  assert.match(legacy.text, /limited to the controlled collaboration portal/i);
+  assert.match(legacy.text, /limited to the client portal/i);
+});
+
+test('client accounts never render the consulting firm dashboard after login', async () => {
+  for (const client of [clientOwner, contributor]) {
+    const dashboard = await client.get('/dashboard');
+    assert.equal(dashboard.status, 302);
+    assert.equal(dashboard.location, `/workspaces/${workspaceId}/client-portal`);
+  }
 });
 
 test('client sponsor is portal-only despite seeing all shared client work', async () => {
@@ -117,8 +138,149 @@ test('client sponsor is portal-only despite seeing all shared client work', asyn
   assert.equal((await clientOwner.get(`/workspaces/${workspaceId}/members`)).status, 403);
   const portal = await clientOwner.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(portal.status, 200);
-  assert.match(portal.text, /My action centre/);
+  assert.doesNotMatch(portal.text, /My action centre/);
+  assert.match(portal.text, /class="panel kpi cp-kpi-link"[^>]+status=active#requests/);
+  assert.match(portal.text, /class="panel kpi cp-kpi-link"[^>]+#engagement/);
   assert.match(portal.text, /Explain access review operation/);
+});
+
+test('every client account receives the same restricted client workspace shell', async () => {
+  for (const client of [clientOwner, contributor]) {
+    const portal = await client.get(`/workspaces/${workspaceId}/client-portal`);
+    assert.equal(portal.status, 200);
+
+    for (const destination of ['Home', 'Requests', 'Engagement', 'Approvals', 'Reports', 'Team &amp; help']) {
+      assert.match(portal.text, new RegExp(`nav-item-text">${destination}`));
+    }
+    for (const section of ['engagement', 'requests', 'approvals', 'reports', 'team-help']) {
+      assert.match(portal.text, new RegExp(`id="${section}"`));
+    }
+
+    assert.match(portal.text, /Client portal/);
+    assert.match(portal.text, /Your engagement/);
+    assert.match(portal.text, /Engagement progress/);
+    assert.match(portal.text, /Reports and completed work/);
+    assert.match(portal.text, /Your engagement contacts/);
+    assert.match(portal.text, /Portal help/);
+    assert.doesNotMatch(portal.text, /Create a client request|Open command palette|Go to \(within a client\)|Search controls, risks, documents, clients/);
+
+    for (const internalLabel of [
+      'Integrated overview', 'ISO 27001 programme', 'Cybersecurity maturity',
+      'AI management system', 'Plan &amp; work', 'Delivery cockpit', 'Settings',
+      'All clients', 'Other Client'
+    ]) {
+      assert.doesNotMatch(portal.text, new RegExp(`nav-item-text">${internalLabel}`));
+    }
+    assert.doesNotMatch(portal.text, /palette-trigger/);
+    assert.doesNotMatch(portal.text, /title="Inbox"/);
+  }
+});
+
+test('ISO 27001 clients receive a governed five-stage gap-assessment journey without draft workpaper content', async () => {
+  const requirementId = db.prepare(`SELECT r.id FROM requirements r JOIN frameworks f ON f.id=r.framework_id
+    WHERE f.code='iso27001' AND r.ref='annex-a.5.18'`).get().id;
+  const engagementId = Number(db.prepare(`INSERT INTO consulting_engagements
+    (workspace_id,engagement_code,name,engagement_type,framework_scope_json,scope_statement,status,created_by)
+    VALUES (?,?,?,'gap_assessment','["iso27001"]','Portal assessment boundary','active',?)`)
+    .run(workspaceId, `GA-PORTAL-${workspaceId}`, 'Portal gap assessment', managerId).lastInsertRowid);
+  const workpaperId = Number(db.prepare(`INSERT INTO consultant_workpapers
+    (workspace_id,engagement_id,requirement_id,workpaper_ref,title,procedure_performed,persons_interviewed,
+     internal_notes,client_visible_summary,client_visible,owner_id,status,created_by)
+    VALUES (?,?,?,?,?,'Secret raw procedure','Named Witness Secret','Secret internal note',?,1,?,'approved',?)`)
+    .run(workspaceId, engagementId, requirementId, 'WP-PORTAL-001', 'Access review workpaper',
+      'Confirmed information suitable for sharing', managerId, managerId).lastInsertRowid);
+  db.prepare(`INSERT INTO consulting_findings
+    (workspace_id,engagement_id,workpaper_id,finding_ref,title,finding_type,severity,condition_text,criteria_text,
+     effect_text,recommendation_text,internal_notes,client_visible,status,created_by)
+    VALUES (?,?,?,?,?,'gap','high',?,?,?,?,?,1,'draft',?)`).run(
+      workspaceId, engagementId, workpaperId, 'F-DRAFT-PORTAL', 'DO NOT SHOW DRAFT FINDING',
+      'Hidden condition', 'Hidden criteria', 'Hidden risk', 'Hidden recommendation', 'Hidden assessor note', managerId);
+  db.prepare(`INSERT INTO consulting_findings
+    (workspace_id,engagement_id,workpaper_id,finding_ref,title,finding_type,severity,condition_text,criteria_text,
+     effect_text,recommendation_text,client_visible,status,owner_id,due_date,created_by)
+    VALUES (?,?,?,?,?,'gap','high',?,?,?,?,1,'confirmed',?,'2026-10-15',?)`).run(
+      workspaceId, engagementId, workpaperId, 'F-SHARED-PORTAL', 'Shared confirmed gap',
+      'Observed state shared', 'Expected requirement shared', 'Read-only risk rationale shared',
+      'Recommended action shared', clientOwnerId, managerId);
+  db.prepare(`UPDATE consulting_findings SET effort_estimate='5-8 person days',cost_estimate='GBP 8,000-12,000',
+    retest_criteria='Re-perform the approved access-review sample with no unresolved exceptions.',
+    closure_evidence_requirements='Approved review record and dated exception closures.'
+    WHERE workspace_id=? AND finding_ref='F-SHARED-PORTAL'`).run(workspaceId);
+  db.prepare(`INSERT INTO consulting_report_snapshots
+    (workspace_id,engagement_id,report_type,title,version_number,status,snapshot_json,snapshot_hash,generated_by,published_by,published_at)
+    VALUES (?,?,'assessment','Portal gap assessment report',1,'published','{}',?, ?, ?, datetime('now'))`)
+    .run(workspaceId, engagementId, 'a'.repeat(64), managerId, managerId);
+
+  const page = await clientOwner.get(`/workspaces/${workspaceId}/client-portal#gap-assessment`);
+  assert.equal(page.status, 200);
+  for (const heading of ['Mobilisation', 'Fieldwork', 'Validation', 'Report', 'Post-report']) {
+    assert.match(page.text, new RegExp(`>${heading}<`));
+  }
+  assert.match(page.text, /Clause and Annex A boundary/);
+  assert.match(page.text, /How each requirement is rated/);
+  assert.match(page.text, /E1[\s\S]*Documented design[\s\S]*E2[\s\S]*Operating record[\s\S]*E3[\s\S]*Tested assurance/);
+  assert.match(page.text, /RFI and document tracker/);
+  assert.match(page.text, /Shared confirmed gap/);
+  assert.match(page.text, /Observed state shared/);
+  assert.match(page.text, /Read-only risk rationale shared/);
+  assert.match(page.text, /5-8 person days/);
+  assert.match(page.text, /GBP 8,000-12,000/);
+  assert.doesNotMatch(page.text, /DO NOT SHOW DRAFT FINDING|Secret raw procedure|Named Witness Secret|Secret internal note|Hidden assessor note/);
+});
+
+test('fieldwork interviews use governed records, publish weekly snapshots, and never infer new task titles', async () => {
+  const passId = Number(db.prepare(`INSERT INTO assessment_passes
+    (workspace_id,pass_number,label,status,started_by) VALUES (?,1,'Portal fieldwork','in_progress',?)`)
+    .run(workspaceId, managerId).lastInsertRowid);
+  db.prepare(`INSERT INTO tasks (workspace_id,title,description,status,created_by)
+    VALUES (?,'Ghost interview task','This ordinary task must not enter the interview schedule','done',?)`)
+    .run(workspaceId, managerId);
+
+  const managerPage = await manager.get(`/workspaces/${workspaceId}/gap-assessment/fieldwork`);
+  assert.equal(managerPage.status, 200);
+  assert.match(managerPage.text, /Structured interview records replace task-title inference/);
+  assert.doesNotMatch(managerPage.text, /Ghost interview task/);
+
+  const created = await manager.post(`/workspaces/${workspaceId}/gap-assessment/fieldwork/interviews`, {
+    title: 'Risk ownership and operations interview',
+    participant_role: 'Head of IT operations',
+    objective: 'Confirm ownership, review cadence and retained operating evidence.',
+    owner_id: String(managerId), scheduled_at: '2026-09-04T10:30', duration_minutes: '60', client_visible: '1'
+  });
+  assert.equal(created.status, 302);
+  let interview = db.prepare(`SELECT * FROM gap_fieldwork_interviews
+    WHERE workspace_id=? AND assessment_pass_id=? AND source_task_id IS NULL`).get(workspaceId, passId);
+  assert.ok(interview);
+  assert.equal(interview.status, 'scheduled');
+
+  const completed = await manager.post(`/workspaces/${workspaceId}/gap-assessment/fieldwork/interviews/${interview.id}/status`, {
+    row_version: String(interview.row_version), status: 'completed',
+    completion_summary: 'Ownership and review cadence were confirmed; supporting records remain tracked through the RFI log.'
+  });
+  assert.equal(completed.status, 302);
+  interview = db.prepare('SELECT * FROM gap_fieldwork_interviews WHERE id=?').get(interview.id);
+  assert.equal(interview.status, 'completed');
+  assert.ok(interview.completed_at);
+  assert.ok(db.prepare(`SELECT 1 FROM audit_log WHERE workspace_id=? AND action='update_gap_interview' AND entity_id=?`)
+    .get(workspaceId, String(interview.id)));
+
+  const frozen = await manager.post(`/workspaces/${workspaceId}/gap-assessment/fieldwork/snapshots`, {
+    week_ending: '2026-09-04'
+  });
+  assert.equal(frozen.status, 302);
+  const snapshot = db.prepare(`SELECT * FROM gap_fieldwork_snapshots WHERE workspace_id=? AND assessment_pass_id=?`)
+    .get(workspaceId, passId);
+  assert.equal(snapshot.interviews_completed, 1);
+  assert.equal(snapshot.interviews_planned, 1);
+  assert.equal(snapshot.snapshot_hash.length, 64);
+
+  const portal = await clientOwner.get(`/workspaces/${workspaceId}/client-portal#gap-fieldwork`);
+  assert.equal(portal.status, 200);
+  assert.match(portal.text, /Risk ownership and operations interview/);
+  assert.match(portal.text, /Head of IT operations/);
+  assert.match(portal.text, /Frozen fieldwork record/);
+  assert.match(portal.text, /1\/1/);
+  assert.doesNotMatch(portal.text, /Ghost interview task/);
 });
 
 test('contributor sees only assigned requests and can open its scoped control', async () => {
@@ -177,24 +339,59 @@ test('request transition uses optimistic concurrency and appends an event', asyn
   assert.match(stale.text, /changed in another session/i);
 });
 
-test('client portal exposes only assigned delivery work and permits owner submission', async () => {
+test('client portal treats unassigned delivery work as actionable, attributes its framework, and blocks evidence-free submission', async () => {
   assert.equal((await manager.get(`/workspaces/${workspaceId}/engagement-plan`)).status, 200);
   const rows = db.prepare(`SELECT d.id,d.title FROM engagement_delivery_deliverables d JOIN engagement_delivery_plans p ON p.id=d.plan_id WHERE p.workspace_id=? ORDER BY d.id LIMIT 2`).all(workspaceId);
+  db.prepare(`UPDATE engagement_delivery_deliverables SET due_date='2020-08-20' WHERE id=?`).run(rows[0].id);
+  const unassignedPage = await clientOwner.get(`/workspaces/${workspaceId}/client-portal`);
+  assert.doesNotMatch(unassignedPage.text, /You’re up to date|No outstanding client actions/);
+  assert.match(unassignedPage.text, /Deliverables to provide[\s\S]*?<div class="kpi-num">27<\/div>/);
+  assert.match(unassignedPage.text, /Overdue items[\s\S]*?<div class="kpi-num">1<\/div>/);
+  assert.match(unassignedPage.text, /20 Aug 2020/);
+  assert.match(unassignedPage.text, /ISO 27001[\s\S]*?Requirements 5\.1, 5\.3/);
+  assert.doesNotMatch(unassignedPage.text, /Required deliverable accepted by an authorised approver/);
+  assert.match(unassignedPage.text, /scope="col"/);
+  assert.match(unassignedPage.text, /role="progressbar"[\s\S]*?aria-valuenow="0"/);
+  assert.match(unassignedPage.text, /for="delivery-file-/);
+  assert.match(unassignedPage.text, /for="delivery-comment-/);
+  assert.doesNotMatch(unassignedPage.text, /onchange="this\.form\.submit\(\)"/);
   db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=?,client_visible=1 WHERE id=?`).run(contributorId, managerId, rows[0].id);
   db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=?,client_visible=1 WHERE id=?`).run(otherContributorId, managerId, rows[1].id);
   const page = await contributor.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(page.status, 200);
-  assert.match(page.text, /Engagement delivery/);
-  assert.match(page.text, new RegExp(rows[0].title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.doesNotMatch(page.text, new RegExp(rows[1].title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(page.text, /Deliverables and approvals/);
+  assert.match(page.text, /Review what’s required, provide supporting evidence and track formal sign-off/);
+  assert.doesNotMatch(page.text, /client-visible|factual validation|workspace verified|append-only|controlled deliverable|internal consultant|version-controlled/i);
+  assert.match(page.text, /Kick-off records and role acknowledgements/);
+  assert.doesNotMatch(page.text, /Completed engagement intake and draft scope statement/);
+  assert.match(page.text, /Evidence required/);
+  assert.match(page.text, /disabled aria-disabled="true" title="Upload evidence before submitting"/);
+
+  const blocked = await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/submit`, { note: 'No evidence attached.' });
+  assert.equal(blocked.status, 400);
+  assert.match(blocked.text, /Upload and link at least one evidence file/i);
+  assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'draft');
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM audit_log WHERE workspace_id=? AND entity_type='engagement_deliverable' AND entity_id=? AND action='client_submit_delivery_deliverable'`).get(workspaceId, String(rows[0].id)).c, 0);
+
+  const evidenceId = Number(db.prepare(`INSERT INTO evidence
+    (workspace_id,filename,stored_path,sha256,size_bytes,uploaded_by,description)
+    VALUES (?, 'client-evidence.pdf', 'test-client-evidence.pdf', 'client-evidence-sha', 128, ?, 'Client submission evidence')`)
+    .run(workspaceId, contributorId).lastInsertRowid);
+  db.prepare(`INSERT INTO engagement_delivery_evidence (workspace_id,deliverable_id,evidence_id,linked_by) VALUES (?,?,?,?)`)
+    .run(workspaceId, rows[0].id, evidenceId, contributorId);
+
+  const readyPage = await contributor.get(`/workspaces/${workspaceId}/client-portal`);
+  const readyDeliverableRow = (readyPage.text.match(/<tr><td><strong>Kick-off records and role acknowledgements<\/strong>[\s\S]*?<\/tr>/) || [])[0];
+  assert.ok(readyDeliverableRow, 'the assigned deliverable row should render');
+  assert.doesNotMatch(readyDeliverableRow, /disabled aria-disabled="true" title="Upload evidence before submitting"/);
   const submitted = await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/submit`, { note: 'Ready for formal review.' });
   assert.equal(submitted.status, 302);
   assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'submitted');
   assert.ok(db.prepare(`SELECT 1 FROM audit_log WHERE workspace_id=? AND entity_type='engagement_deliverable' AND entity_id=? AND action='client_submit_delivery_deliverable'`).get(workspaceId, String(rows[0].id)));
   await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/accept`, { note: 'Owner must not self-approve.' });
   assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'submitted', 'non-approver cannot accept');
-  await manager.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/accept`, { note: 'No evidence yet.' });
-  assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'submitted', 'assigned approver still needs evidence');
+  await manager.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/accept`, { note: 'Accepted against the linked evidence.' });
+  assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'accepted');
 });
 
 test('portal POST routes remain CSRF protected', async () => {

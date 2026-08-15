@@ -9,7 +9,9 @@
   const hasCsf = navFrameworks.includes('csf');
   const hasIso42001 = navFrameworks.includes('iso42001');
   const csfOnly = hasCsf && !hasIso27001 && !hasIso42001;
-  const showClientSetup = !ws.scope_confirmed_at && !['audit_ready', 'certified'].includes(ws.stage);
+  // Client setup remains the authoritative intake record throughout an ISO
+  // 27001 engagement. Confirmation changes its state, not its discoverability.
+  const showClientSetup = hasIso27001;
 
   const navDomains = [
     {

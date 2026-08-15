@@ -3,6 +3,8 @@
 // CRUD, members, and team setup (engagement kickoff + client-side invites).
 // Shares the invite token scheme with routes/auth.js.
 
+const fs = require('fs');
+const crypto = require('crypto');
 const rbac = require('../lib/rbac');
 const ctlReads = require('../lib/control-reads');
 const email = require('../lib/email');
@@ -58,7 +60,7 @@ function register(app, deps) {
     // overview is meaningful only once the engagement has real context;
     // intake is the obvious next step (scope sign-off, stakeholders, crown
     // jewels) and the page already shows progress + an "Apply to workspace"
-    // button that backfills the scope statement and seeds interested parties.
+    // button that backfills the scope statement and links crown-jewel assets.
     res.redirect(withToast('/workspaces/' + id + '/intake', 'Workspace created - start with the engagement intake'));
   });
 

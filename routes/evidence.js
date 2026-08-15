@@ -11,7 +11,7 @@ const evReads = require('../lib/evidence-reads');
 const evWrites = require('../lib/evidence-writes');
 const { paginate, paginateArray, pageHref } = require('../lib/paginate');
 const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
-const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,

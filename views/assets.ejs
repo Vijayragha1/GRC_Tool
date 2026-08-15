@@ -1,5 +1,10 @@
 <%- include('partials/header', { title: 'Assets', user, ws, active: 'assets' }) %>
 
+<%
+  const canEditAssets = rbac.hasPermission(userPerms, 'asset.update');
+  const canDeleteAssets = rbac.hasPermission(userPerms, 'asset.delete');
+%>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Asset inventory</h1>
@@ -77,7 +82,7 @@
       <th style="width:120px">Owner</th><th style="width:70px">CIA</th>
       <th style="width:90px" title="Business criticality">BIA</th>
       <th style="width:120px" title="RTO / RPO in hours">RTO / RPO</th>
-      <th style="width:60px"></th>
+      <th style="width:120px"></th>
     </tr></thead>
     <tbody>
       <% assets.forEach(a => {
@@ -87,17 +92,20 @@
              : a.business_criticality === 'low' ? 'var(--text-secondary)' : 'var(--text-tertiary)';
       %>
         <tr>
-          <td style="font-weight:500"><%= a.name %></td>
+          <td style="font-weight:500"><a class="link-muted" href="/workspaces/<%= ws.id %>/assets/<%= a.id %>"><%= a.name %></a></td>
           <td class="text-secondary text-base" style="text-transform:capitalize;"><%= a.type || '-' %></td>
           <td><span class="tag <%= a.classification === 'restricted' ? 'tag-danger' : a.classification === 'confidential' ? 'tag-warn' : a.classification === 'internal' ? 'tag-info' : 'tag-neutral' %>"><%= a.classification || '-' %></span></td>
           <td class="text-secondary text-base"><%= a.owner_name || '-' %></td>
           <td class="num meta"><%= a.cia_c %>·<%= a.cia_i %>·<%= a.cia_a %></td>
           <td style="font-size:11.5px;font-weight: 500;color:<%= biaColor %>;text-transform:uppercase;"><%= a.business_criticality || '-' %></td>
           <td class="num meta text-sm"><%= a.rto_hours != null ? a.rto_hours + 'h' : '-' %> / <%= a.rpo_hours != null ? a.rpo_hours + 'h' : '-' %></td>
-          <td style="text-align:right">
-            <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-              <button class="btn btn-ghost btn-xs text-danger">Delete</button>
-            </form>
+          <td style="text-align:right;white-space:nowrap;">
+            <% if (canEditAssets) { %><a class="btn btn-ghost btn-xs" href="/workspaces/<%= ws.id %>/assets/<%= a.id %>?edit=1#asset-edit">Edit</a><% } %>
+            <% if (canDeleteAssets) { %>
+              <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= a.id %>/delete" style="display:inline" onsubmit="return appConfirmForm(event, 'Delete this asset? Linked risks and evidence may be affected.')">
+                <button class="btn btn-ghost btn-xs text-danger">Delete</button>
+              </form>
+            <% } %>
           </td>
         </tr>
       <% }) %>

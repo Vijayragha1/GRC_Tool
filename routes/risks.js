@@ -5,7 +5,7 @@
 const fts = require('../lib/fts');
 const csvImport = require('../lib/csv-import');
 const { paginate, pageHref } = require('../lib/paginate');
-const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
@@ -112,6 +112,10 @@ function register(app, deps) {
       const lines = [];
       INTAKE.flatten().forEach(q => {
         if (byId.has(q.id)) lines.push(`- ${q.text}: ${String(byId.get(q.id)).trim()}`);
+      });
+      const answerObject = Object.fromEntries(answers.map(row => [row.question_id, row.answer]));
+      INTAKE.crownJewelAnswers(answerObject).filter(item => item.number > 3).forEach(item => {
+        lines.push(`- Crown jewel #${item.number}: ${item.name}`);
       });
       if (lines.length) parts.push('From the engagement intake:\n' + lines.join('\n'));
     }

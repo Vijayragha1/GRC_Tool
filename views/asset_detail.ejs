@@ -1,5 +1,10 @@
 <%- include('partials/header', { title: asset.name, user, ws, active: 'assets' }) %>
 
+<%
+  const canEditAsset = rbac.hasPermission(userPerms, 'asset.update');
+  const linkedToIntake = asset.source_type === 'engagement_intake' && /^crown-jewel-\d+$/.test(asset.source_ref || '');
+%>
+
 <a href="/workspaces/<%= ws.id %>/assets" class="link-muted text-base">← Assets</a>
 
 <div class="page-head" style="margin-top:8px">
@@ -7,9 +12,50 @@
     <h1 class="page-title"><%= asset.name %></h1>
     <div class="page-subtitle"><%= asset.type || '-' %> · classification <strong><%= asset.classification || '-' %></strong> · CIA <%= asset.cia_c %>/<%= asset.cia_i %>/<%= asset.cia_a %><% if (asset.entity_name) { %> · entity: <%= asset.entity_name %><% } %></div>
   </div>
+  <% if (canEditAsset && !editMode) { %><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/assets/<%= asset.id %>?edit=1#asset-edit">Edit asset</a><% } %>
 </div>
 
-<div class="panel" style="margin-bottom:14px"><div class="panel-pad"><strong>Owner:</strong> <%= asset.owner_name || '-' %><br><strong>Description:</strong> <%= asset.description || '-' %></div></div>
+<% if (linkedToIntake) { %>
+  <div class="panel" style="margin-bottom:14px;padding:12px 16px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;gap:16px;">
+    <div><strong>Crown-jewel asset</strong><div class="meta text-sm" style="margin-top:3px;">Linked to <%= asset.source_ref.replace('crown-jewel-','Crown jewel #') %> in Client setup. Renaming it here updates that setup answer.</div></div>
+    <a class="btn btn-ghost btn-xs" href="/workspaces/<%= ws.id %>/intake">Open client setup →</a>
+  </div>
+<% } %>
+
+<% if (canEditAsset && editMode) { %>
+<section class="panel" id="asset-edit" style="margin-bottom:14px;">
+  <div class="panel-head"><div><h2>Edit asset</h2><div class="meta text-sm" style="margin-top:3px;">Update ownership, classification, impact and recovery requirements.</div></div></div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/assets/<%= asset.id %>" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <input type="hidden" name="version" value="<%= asset.version || 1 %>">
+    <div style="grid-column:1/3;"><label class="label" for="asset-name">Name</label><input class="input" id="asset-name" name="name" maxlength="200" value="<%= asset.name %>" required></div>
+    <div><label class="label" for="asset-type">Type</label><select class="select" id="asset-type" name="type"><% ['information','hardware','software','service','people','intangible'].forEach(value => { %><option value="<%= value %>" <%= asset.type === value ? 'selected' : '' %>><%= value[0].toUpperCase() + value.slice(1) %></option><% }) %></select></div>
+    <div><label class="label" for="asset-classification">Classification</label><select class="select" id="asset-classification" name="classification"><option value="" <%= !asset.classification ? 'selected' : '' %>>Unclassified</option><% ['public','internal','confidential','restricted'].forEach(value => { %><option value="<%= value %>" <%= asset.classification === value ? 'selected' : '' %>><%= value[0].toUpperCase() + value.slice(1) %></option><% }) %></select></div>
+    <div style="grid-column:2/4;"><label class="label" for="asset-owner">Owner</label><input class="input" id="asset-owner" name="owner_name" maxlength="200" value="<%= asset.owner_name || '' %>" placeholder="Person or accountable team"></div>
+    <% [['cia_c','Confidentiality'],['cia_i','Integrity'],['cia_a','Availability']].forEach(([field,label]) => { %>
+      <div><label class="label" for="asset-<%= field %>"><%= label %></label><select class="select" id="asset-<%= field %>" name="<%= field %>"><% [[1,'Low'],[2,'Medium'],[3,'High']].forEach(([score,text]) => { %><option value="<%= score %>" <%= Number(asset[field]) === score ? 'selected' : '' %>><%= score %> · <%= text %></option><% }) %></select></div>
+    <% }) %>
+    <div style="grid-column:1/-1;"><label class="label" for="asset-description">Description</label><textarea class="textarea" id="asset-description" name="description" maxlength="5000" rows="3"><%= asset.description || '' %></textarea></div>
+    <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:14px;"><div class="meta text-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Business impact and recovery</div></div>
+    <div><label class="label" for="asset-criticality">Business criticality</label><select class="select" id="asset-criticality" name="business_criticality" <%= linkedToIntake ? 'disabled' : '' %>><option value="">Not assessed</option><% ['low','medium','high','critical'].forEach(value => { %><option value="<%= value %>" <%= asset.business_criticality === value ? 'selected' : '' %>><%= value[0].toUpperCase() + value.slice(1) %></option><% }) %></select><% if (linkedToIntake) { %><input type="hidden" name="business_criticality" value="critical"><div class="meta text-sm" style="margin-top:5px;">Locked because this is a crown jewel.</div><% } %></div>
+    <div><label class="label" for="asset-rto">RTO (hours)</label><input class="input" id="asset-rto" type="number" min="0" max="87600" step="1" name="rto_hours" value="<%= asset.rto_hours == null ? '' : asset.rto_hours %>" placeholder="e.g. 4"></div>
+    <div><label class="label" for="asset-rpo">RPO (hours)</label><input class="input" id="asset-rpo" type="number" min="0" max="87600" step="1" name="rpo_hours" value="<%= asset.rpo_hours == null ? '' : asset.rpo_hours %>" placeholder="e.g. 1"></div>
+    <div style="grid-column:1/-1;"><label class="label" for="asset-bia-notes">BIA notes</label><textarea class="textarea" id="asset-bia-notes" name="bia_notes" maxlength="5000" rows="3" placeholder="Business consequence, dependencies and recovery assumptions"><%= asset.bia_notes || '' %></textarea></div>
+    <div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;"><a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/assets/<%= asset.id %>">Cancel</a><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </form>
+</section>
+<% } %>
+
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;">
+    <div><div class="meta text-xs">Owner</div><strong><%= asset.owner_name || 'Unassigned' %></strong></div>
+    <div><div class="meta text-xs">Business criticality</div><strong style="text-transform:capitalize;"><%= asset.business_criticality || 'Not assessed' %></strong></div>
+    <div><div class="meta text-xs">Recovery objective</div><strong><%= asset.rto_hours == null ? '—' : asset.rto_hours + 'h RTO' %> · <%= asset.rpo_hours == null ? '—' : asset.rpo_hours + 'h RPO' %></strong></div>
+    <div><div class="meta text-xs">Record version</div><strong>v<%= asset.version || 1 %></strong></div>
+    <div style="grid-column:1/-1;"><div class="meta text-xs">Description</div><div style="margin-top:3px;"><%= asset.description || 'No description recorded.' %></div></div>
+    <% if (asset.bia_notes) { %><div style="grid-column:1/-1;"><div class="meta text-xs">BIA notes</div><div style="margin-top:3px;white-space:pre-wrap;"><%= asset.bia_notes %></div></div><% } %>
+  </div>
+</div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
 

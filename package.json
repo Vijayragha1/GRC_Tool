@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "seed:framework-matrix": "node scripts/seed-framework-matrix.js",
+    "seed:management-demo": "node scripts/seed-framework-matrix.js --scenario management",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "seed": "node seed.js",

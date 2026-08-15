@@ -6,7 +6,7 @@
 const ctlReads = require('../lib/control-reads');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
-const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
+const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, getOrCreateState } = deps;

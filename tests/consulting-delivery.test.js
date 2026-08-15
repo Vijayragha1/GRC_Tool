@@ -171,10 +171,11 @@ test('client portal exposes assigned factual validation but never firm delivery 
   // Return workpaper to validation state for the discovery test.
   db.prepare("UPDATE consultant_workpapers SET status='client_validation',client_visible=1,requires_client_validation=1,client_validator_id=? WHERE id=?").run(clientId,workpaperId);
   const clientHttp=makeClient(env.app);await loginAs(clientHttp,'client.validator@example.com','client-password-1234');
-  const portal=await clientHttp.get(`/workspaces/${wsId}/client-portal`);assert.equal(portal.status,200);assert.match(portal.text,/Factual validations/);assert.match(portal.text,/Review summary/);
-  assert.match(portal.text,/Published reports/);assert.match(portal.text,/ISO 27001 readiness assessment report/);
-  const publishedReport=await clientHttp.get(`/workspaces/${wsId}/client-portal/reports/${reportId}`);assert.equal(publishedReport.status,200);assert.match(publishedReport.text,/controlled client deliverable/);assert.doesNotMatch(publishedReport.text,/Internal quality note/);
-  const validation=await clientHttp.get(`/workspaces/${wsId}/client-portal/workpapers/${workpaperId}/validate`);assert.equal(validation.status,200);assert.match(validation.text,/Internal consultant procedures and notes remain private/);assert.doesNotMatch(validation.text,/Internal quality note/);
+  const portal=await clientHttp.get(`/workspaces/${wsId}/client-portal`);assert.equal(portal.status,200);assert.match(portal.text,/Information to confirm/);assert.match(portal.text,/Review and confirm/);
+  assert.match(portal.text,/Reports and completed work/);assert.match(portal.text,/ISO 27001 readiness assessment report/);
+  assert.doesNotMatch(portal.text,/factual validation|client-visible|internal consultant|append-only|version-controlled/i);
+  const publishedReport=await clientHttp.get(`/workspaces/${wsId}/client-portal/reports/${reportId}`);assert.equal(publishedReport.status,200);assert.match(publishedReport.text,/assessment report/);assert.doesNotMatch(publishedReport.text,/Internal quality note|controlled client deliverable|SHA-256 snapshot|immutable source workpaper/i);
+  const validation=await clientHttp.get(`/workspaces/${wsId}/client-portal/workpapers/${workpaperId}/validate`);assert.equal(validation.status,200);assert.match(validation.text,/Please confirm that the information below accurately reflects your organisation/);assert.match(validation.text,/Confirm information/);assert.doesNotMatch(validation.text,/Internal quality note|client-visible|internal consultant|factual validation/i);
   const denied=await clientHttp.get(`/workspaces/${wsId}/delivery`);assert.equal(denied.status,403);
   await clientHttp.close();
 });

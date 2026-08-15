@@ -9,7 +9,7 @@
 // the app-wide escapeHtml in server.js (same behaviour, but a landmine).
 
 function register(app, deps) {
-  const { db, requireAuth, listWorkspaces } = deps;
+  const { db, requireAuth, isFirmUser, listWorkspaces } = deps;
 
   // Workspace-agnostic learning resource. Static content, no DB.
   const GLOSSARY = require('../data/glossary');
@@ -69,6 +69,9 @@ function register(app, deps) {
   }
 
   app.get('/glossary', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) {
+      return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    }
     const q = (req.query.q || '').toString();
     const category = (req.query.category || 'all').toString();
     const letter = (req.query.letter || 'all').toString();

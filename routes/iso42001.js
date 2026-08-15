@@ -3,6 +3,7 @@
 // modularization: catalog, intake, gap assessment, SoA + snapshots, roadmap,
 // readiness, engagement plan, exec brief.
 
+const crypto = require('crypto');
 const rbac = require('../lib/rbac');
 const enc = require('../lib/encryption');
 const jobs = require('../lib/jobs');
