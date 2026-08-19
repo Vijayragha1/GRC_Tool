@@ -1,20 +1,20 @@
 <%
-  const portalBase = `/workspaces/${ws.id}/client-portal${typeof clientPreview !== 'undefined' && clientPreview ? '?preview=client' : ''}`;
+  const previewQuery = typeof clientPreview !== 'undefined' && clientPreview ? '&preview=client' : '';
+  const currentPortalView = typeof portalView !== 'undefined' ? portalView : 'home';
+  const portalHref = view => `/workspaces/${ws.id}/client-portal?view=${view}${previewQuery}`;
   let portalFrameworks = Array.isArray(ws.frameworks) ? ws.frameworks : [];
   if (!Array.isArray(ws.frameworks)) { try { portalFrameworks = JSON.parse(ws.frameworks || '[]'); } catch (_) { portalFrameworks = []; } }
   const portalItems = [
-    { label: 'Home', href: portalBase, icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
-    ...(portalFrameworks.includes('iso27001') ? [{ label: 'Gap assessment', href: `${portalBase}#gap-assessment`, icon: '<path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M8 7h8M8 11h8M8 15h5"/>' }] : []),
-    { label: 'Requests', href: `${portalBase}#requests`, icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>' },
-    { label: 'Engagement', href: `${portalBase}#engagement`, icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>' },
-    { label: 'Approvals', href: `${portalBase}#approvals`, icon: '<path d="M4 4h16v16H4z"/><path d="m8 12 2.5 2.5L16 9"/>' },
-    { label: 'Reports', href: `${portalBase}#reports`, icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/>' },
-    { label: 'Team & help', href: `${portalBase}#team-help`, icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' },
+    { key: 'home', label: 'Home', href: portalHref('home'), icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
+    { key: 'actions', label: 'My actions', href: portalHref('actions'), icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>' },
+    { key: 'progress', label: 'Progress', href: portalHref('progress'), icon: '<path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M8 7h8M8 11h8M8 15h5"/>' },
+    { key: 'findings', label: 'Findings & remediation', href: portalHref('findings'), icon: '<path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>' },
+    { key: 'reports', label: 'Reports', href: portalHref('reports'), icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/>' },
   ];
 %>
 <div class="nav-group-label">Your engagement</div>
-<% portalItems.forEach((item, index) => { %>
-  <a href="<%= item.href %>" class="nav-item <%= index === 0 && active === 'client-portal' ? 'active' : '' %>"<% if (index === 0 && active === 'client-portal') { %> aria-current="page"<% } %>>
+<% portalItems.forEach(item => { %>
+  <a href="<%= item.href %>" class="nav-item <%= currentPortalView === item.key ? 'active' : '' %>"<% if (currentPortalView === item.key) { %> aria-current="page"<% } %>>
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><%- item.icon %></svg>
     <span class="nav-item-text"><%= item.label %></span>
   </a>

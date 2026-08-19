@@ -5,7 +5,7 @@
 const rbac = require('../lib/rbac');
 const email = require('../lib/email');
 const ctlReads = require('../lib/control-reads');
-const { ymdLocal, ymLocal } = require('../lib/dates');
+const { todayFor, ymdInZone, workspaceTimeZone, shiftMonth } = require('../lib/dates');
 const { computeReadiness } = require('../lib/readiness');
 const { buildWorkspaceTruth } = require('../lib/grc-truth');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
@@ -28,12 +28,16 @@ function register(app, deps) {
         message: 'Your account is not assigned to an active client engagement. Contact your engagement team for access.'
       });
     }
+    const firmClock = db.prepare(`SELECT timezone AS firm_timezone FROM firms WHERE id=?`).get(req.user.firm_id) || {};
+    const firmTimeZone = workspaceTimeZone(firmClock);
+    const firmToday = todayFor(firmClock);
     const workspacesWithProgress = workspaces.map(w => {
+      const localToday = todayFor(w,firmClock);
       const progress = workspaceProgress(w.id);
       const readiness = computeReadiness(w);
       const truth = buildWorkspaceTruth(db, w, readiness);
       const openMajorNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(w.id).c;
-      const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < date('now')`).get(w.id).c;
+      const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < ?`).get(w.id,localToday).c;
       return { ...w, progress, readiness, truth, openMajorNCs, overdueNCs, derivedStage: truth.lifecycle };
     });
 
@@ -64,7 +68,7 @@ function register(app, deps) {
           AND cs.status NOT IN ('Not Assessed','Not Applicable')`).get(w.id).c;
       const overdueNCs = w.overdueNCs || 0;
       const overdueObj = db.prepare(`SELECT COUNT(*) c FROM security_objectives
-        WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < date('now') AND status NOT IN ('achieved','paused')`).get(w.id).c;
+        WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < ? AND status NOT IN ('achieved','paused')`).get(w.id,todayFor(w,firmClock)).c;
       const noPassFor90 = lastPass && lastPass.completed_at
         && lastPass.completed_at < new Date(Date.now() - 90 * 86400000).toISOString().slice(0,10);
       const reasons = [];
@@ -90,8 +94,8 @@ function register(app, deps) {
     // The MSSP consultant's morning standup question is "what do I need to
     // touch this week, across all my clients?" Aggregate due-this-week and
     // overdue items across all workspaces with the client name attached.
-    const today = new Date().toISOString().slice(0, 10);
-    const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const today = firmToday;
+    const weekFromNow = ymdInZone(new Date(Date.now() + 7 * 86400000),firmTimeZone);
     const wsIds = workspacesWithProgress.map(w => w.id);
     const wsNameById = {};
     for (const w of workspacesWithProgress) wsNameById[w.id] = w.brand_display_name || w.client_name;
@@ -186,15 +190,16 @@ function register(app, deps) {
     const truth = buildWorkspaceTruth(db, w, readiness);
     const progress = workspaceProgress(w.id);
 
-    const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
+    const localToday = todayFor(w,db.prepare(`SELECT timezone FROM firms WHERE id=?`).get(w.firm_id) || {});
+    const overdueNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date IS NOT NULL AND due_date < ?`).get(w.id,localToday).c;
     const majorNCs = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(w.id).c;
     const staleControls = db.prepare(`SELECT COUNT(*) c FROM ${ctlReads.tables(db, w.id).cs} cs
         INNER JOIN iso_items i ON i.id = cs.iso_item_id
         WHERE cs.workspace_id=? AND i.type='control' AND cs.applicability='included'
           AND (cs.last_verified_at IS NULL OR cs.last_verified_at < datetime('now','-365 days'))
           AND cs.status NOT IN ('Not Assessed','Not Applicable')`).get(w.id).c;
-    const overdueObj = db.prepare(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < date('now') AND status NOT IN ('achieved','paused')`).get(w.id).c;
-    const overdueTasks = db.prepare(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND status NOT IN ('done','closed','cancelled') AND due_date IS NOT NULL AND due_date < date('now')`).get(w.id).c;
+    const overdueObj = db.prepare(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND due_date IS NOT NULL AND due_date < ? AND status NOT IN ('achieved','paused')`).get(w.id,localToday).c;
+    const overdueTasks = db.prepare(`SELECT COUNT(*) c FROM tasks WHERE workspace_id=? AND status NOT IN ('done','closed','cancelled') AND due_date IS NOT NULL AND due_date < ?`).get(w.id,localToday).c;
     const highRisks = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status NOT IN ('closed','accepted') AND (likelihood * impact) >= 15`).get(w.id).c;
     const lastPass = db.prepare(`SELECT pass_number, status, completed_at FROM assessment_passes WHERE workspace_id=? ORDER BY pass_number DESC LIMIT 1`).get(w.id);
     const deliveryPlan = db.prepare(`SELECT p.id,p.target_completion_date,p.forecast_completion_date,p.baseline_version,
@@ -203,9 +208,9 @@ function register(app, deps) {
       (SELECT COUNT(*) FROM engagement_delivery_milestones m WHERE m.plan_id=p.id AND m.owner_id IS NULL) unassigned_milestones,
       (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.is_required=1) required_deliverables,
       (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.is_required=1 AND d.status='accepted') accepted_deliverables,
-      (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.due_date<date('now') AND d.status NOT IN ('accepted','superseded')) overdue_deliverables,
+      (SELECT COUNT(*) FROM engagement_delivery_deliverables d WHERE d.plan_id=p.id AND d.due_date<? AND d.status NOT IN ('accepted','superseded')) overdue_deliverables,
       (SELECT COUNT(*) FROM engagement_delivery_gate_decisions g JOIN engagement_delivery_phases ph ON ph.id=g.phase_id WHERE ph.plan_id=p.id AND g.decision IN ('passed','waived') AND g.id=(SELECT MAX(g2.id) FROM engagement_delivery_gate_decisions g2 WHERE g2.phase_id=ph.id)) gates_passed
-      FROM engagement_delivery_plans p WHERE p.workspace_id=?`).get(w.id) || null;
+      FROM engagement_delivery_plans p WHERE p.workspace_id=?`).get(localToday,w.id) || null;
     if (deliveryPlan) deliveryPlan.variance_days = deliveryPlan.target_completion_date && deliveryPlan.forecast_completion_date
       ? Math.round((Date.parse(deliveryPlan.forecast_completion_date) - Date.parse(deliveryPlan.target_completion_date)) / 86400000) : null;
 
@@ -292,13 +297,13 @@ function register(app, deps) {
 
   // Firm-wide schedule aggregation: every dated / assignable item across ALL of a
   // firm's engagements, normalised into one list. Powers the manager calendar grid,
-  // the overdue strip, the KPI counts and the per-consultant workload panel — the
+  // the overdue strip, the KPI counts and the per-consultant workload panel - the
   // cross-client sibling of the per-workspace /workspaces/:id/calendar.
   //
   // Each item is { kind, title, date|null, status, open, countsWorkload, wsId, wsName,
   // link, ownerId|null, ownerLabel|null }. "Schedule" items (audits, reviews, cert
   // milestones, vendor deadlines) show on the calendar but don't count as a person's
-  // workload — only items with a real per-person owner do (tasks, NCs, improvements,
+  // workload - only items with a real per-person owner do (tasks, NCs, improvements,
   // treatment actions, deliberately-assigned controls).
   function collectManagerSchedule(user) {
     const wss = listWorkspaces(user);
@@ -306,7 +311,7 @@ function register(app, deps) {
     const wsName = {};
     wss.forEach(w => { wsName[w.id] = w.brand_display_name || w.client_name; });
 
-    // Engagement spans — drive the Outlook-style duration bars on the calendar.
+    // Engagement spans - drive the Outlook-style duration bars on the calendar.
     // Each project runs from kickoff (created_at) to its target certification
     // date. The manual `stage` column is unreliable, so derive the live stage.
     const projects = wss.filter(w => w.target_cert_date).map(w => {
@@ -322,7 +327,7 @@ function register(app, deps) {
       };
     });
 
-    // The firm's people — workload rows are drawn from here, and free-text owner
+    // The firm's people - workload rows are drawn from here, and free-text owner
     // strings (NCs, improvements) are resolved back to a person by name match.
     const people = db.prepare(
       `SELECT id, name, email, firm_role FROM users
@@ -450,17 +455,16 @@ function register(app, deps) {
       });
     } catch (_) {}
 
-    // 11. Vendor questionnaire response deadlines (link expiry) ---------------
+    // 11. Governed vendor due-diligence deadlines -----------------------------
     try {
-      db.prepare(`SELECT q.id, q.workspace_id, q.supplier_id, q.template_name, q.status,
-                         q.external_expires_at, q.external_completed_at, s.name AS supplier_name
-                  FROM supplier_questionnaires q INNER JOIN suppliers s ON s.id = q.supplier_id
-                  WHERE q.workspace_id IN (${ph}) AND q.external_expires_at IS NOT NULL`).all(...wsIds).forEach(qr => {
-        if (qr.external_completed_at) return; // vendor already responded — no deadline pressure
-        push({ kind:'questionnaire', title:`${qr.supplier_name||'Vendor'} · ${qr.template_name||'questionnaire'}`,
-          date:String(qr.external_expires_at).slice(0,10), status:qr.status, open:true,
+      db.prepare(`SELECT q.id,q.workspace_id,q.supplier_id,q.status,q.due_date,s.name AS supplier_name
+                  FROM supplier_ddq_assessments q INNER JOIN suppliers s ON s.id=q.supplier_id
+                  WHERE q.workspace_id IN (${ph}) AND q.due_date IS NOT NULL
+                    AND q.status NOT IN ('complete','superseded')`).all(...wsIds).forEach(qr => {
+        push({ kind:'questionnaire', title:`${qr.supplier_name||'Vendor'} due diligence`,
+          date:String(qr.due_date).slice(0,10), status:qr.status, open:true,
           countsWorkload:false, wsId:qr.workspace_id, wsName:wsName[qr.workspace_id],
-          link:`/workspaces/${qr.workspace_id}/vendors/${qr.supplier_id}/questionnaires/${qr.id}`,
+          link:`/workspaces/${qr.workspace_id}/vendors/${qr.supplier_id}/due-diligence`,
           ownerId:null, ownerLabel:null });
       });
     } catch (_) {}
@@ -487,18 +491,19 @@ function register(app, deps) {
       return res.status(403).render('error', { user: req.user, message: 'The firm calendar is for managers and senior consultants.' });
     }
     const { items, people, wsName, projects, docsNeedingReviewDate } = collectManagerSchedule(req.user);
-
-    const today = ymdLocal(new Date());
-    const weekEnd = ymdLocal(new Date(Date.now() + 7 * 86400000));
+    const firm = db.prepare(`SELECT timezone FROM firms WHERE id=?`).get(req.user.firm_id) || {};
+    const clock = { firm_timezone: firm.timezone };
+    const timeZone = workspaceTimeZone(clock);
+    const today = todayFor(clock);
+    const weekEnd = ymdInZone(new Date(Date.now() + 7 * 86400000),timeZone);
 
     // ----- View mode -----
     // ?month=YYYY-MM → a single-month day grid (the detail view). Otherwise the
     // default is a year-at-a-glance grid of 12 month cards, so the calendar
     // itself (not the overdue list) is the first thing on screen, and each month
     // is a click away from its day-by-day detail.
-    const now = new Date();
-    const thisMonth = ymLocal(now);
-    const thisYear = now.getFullYear();
+    const thisMonth = today.slice(0,7);
+    const thisYear = Number(today.slice(0,4));
     const view = (req.query.month && /^\d{4}-\d{2}$/.test(req.query.month)) ? 'month' : 'year';
 
     // Month-detail vars (populated only in month view)
@@ -511,11 +516,9 @@ function register(app, deps) {
       monthStr = req.query.month;
       const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
       const monthStart = `${monthStr}-01`;
-      // Local-component formatters — toISOString() is UTC and would roll the
-      // 1st-of-month back a day (and a month) in IST, breaking the Prev/Next links.
-      const nextMoStart = ymdLocal(new Date(yr, mo, 1));
-      prevMo = ymLocal(new Date(yr, mo - 2, 1));
-      nextMo = ymLocal(new Date(yr, mo, 1));
+      const nextMoStart = `${shiftMonth(monthStr,1)}-01`;
+      prevMo = shiftMonth(monthStr,-1);
+      nextMo = shiftMonth(monthStr,1);
       monthLabel = new Date(yr, mo - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' });
 
       const byDate = {};

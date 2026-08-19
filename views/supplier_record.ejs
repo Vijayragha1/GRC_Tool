@@ -1,0 +1,109 @@
+<%- include('partials/header', { title: v.name, user, ws, active: 'vendors' }) %>
+<%
+  const currentDecision = decisions.find(decision => !decision.superseded_at);
+  const humanise = value => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  const inherentApproved = Boolean(programme.inherentAssessment && programme.inherentAssessment.approved_at);
+  const ddqStatus = programme.ddqAssessment && programme.ddqAssessment.status;
+  const ddqPrepared = Boolean(programme.ddqAssessment);
+  const ddqIssued = ['issued','in_progress','submitted','under_review','complete'].includes(ddqStatus);
+  let questionnaireAction = {
+    href: `/workspaces/${ws.id}/vendors/${v.id}/inherent-risk`,
+    label: programme.inherentAssessment && programme.inherentAssessment.status === 'submitted' ? 'Review inherent risk' : 'Complete inherent risk',
+    title: 'Approve inherent risk before preparing the questionnaire',
+    detail: 'The approved tier and conditional modules determine the questions the vendor will receive.',
+    state: 'Scope not approved'
+  };
+  if (inherentApproved && !ddqPrepared) questionnaireAction = {
+    href: `/workspaces/${ws.id}/vendors/${v.id}/due-diligence`,
+    label: 'Prepare questionnaire',
+    title: 'Prepare the scoped vendor questionnaire',
+    detail: 'Confirm the vendor contact and due date. Creating the assessment prepares the scope; it does not send an email.',
+    state: 'Step 1 of 2'
+  };
+  if (ddqStatus === 'draft') questionnaireAction = {
+    href: `/workspaces/${ws.id}/vendors/${v.id}/due-diligence`,
+    label: 'Send questionnaire to vendor',
+    title: 'The questionnaire is prepared and ready to issue',
+    detail: 'Review the recipient, then issue the unique 30-day secure link. This is the step that sends the vendor email.',
+    state: 'Step 2 of 2'
+  };
+  if (['issued','in_progress'].includes(ddqStatus)) questionnaireAction = {
+    href: `/workspaces/${ws.id}/vendors/${v.id}/due-diligence`,
+    label: 'Track vendor response',
+    title: 'Questionnaire issued to the vendor',
+    detail: `${programme.ddqProgress ? programme.ddqProgress.answered + ' of ' + programme.ddqProgress.total : 'No'} questions have been answered. Open the record to monitor progress or replace the secure link.`,
+    state: ddqStatus === 'in_progress' ? 'Vendor in progress' : 'Awaiting vendor'
+  };
+  if (['submitted','under_review'].includes(ddqStatus)) questionnaireAction = {
+    href: `/workspaces/${ws.id}/vendors/${v.id}/due-diligence`,
+    label: ddqStatus === 'under_review' ? 'Continue internal review' : 'Review vendor submission',
+    title: ddqStatus === 'under_review' ? 'Internal review is in progress' : 'The vendor submission is ready for review',
+    detail: `${programme.ddqProgress ? programme.ddqProgress.open : 'Open'} response items require a reviewer conclusion, evidence validation or a linked finding.`,
+    state: ddqStatus === 'under_review' ? 'Under review' : 'Submitted'
+  };
+  if (ddqStatus === 'complete') questionnaireAction = {
+    href: `/workspaces/${ws.id}/vendors/${v.id}/due-diligence`,
+    label: 'View completed due diligence',
+    title: 'Vendor due diligence is complete',
+    detail: 'The issued link is closed and the reviewed assessment is retained as the governed due-diligence record.',
+    state: 'Complete'
+  };
+%>
+
+<div class="page-head">
+  <div><a class="link-muted text-xs" href="/workspaces/<%= ws.id %>/vendors">← Supplier portfolio</a><h1 class="page-title" style="margin-top:8px"><%= v.name %></h1><div class="page-subtitle"><%= v.service_provided || 'Service scope not yet described' %> · <%= v.business_owner || 'Business owner not assigned' %></div></div>
+  <div class="row"><a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>?view=support">Evidence and monitoring</a><a class="btn btn-secondary" href="/assurance/new?definition=supplier_due_diligence&supplier_id=<%= v.id %>">Due-diligence report</a></div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-pad" style="display:grid;grid-template-columns:minmax(0,1.7fr) repeat(3,minmax(0,.7fr));padding:0">
+    <div style="padding:22px;border-right:1px solid var(--border)"><div class="sec-label">Current decision position</div><div style="font-size:25px;font-weight:600;letter-spacing:-.02em;margin-top:7px"><%= currentDecision ? humanise(currentDecision.decision) + (currentDecision.residual_risk_band ? ' · ' + humanise(currentDecision.residual_risk_band) + ' residual risk' : '') : programme.decisionReadiness.ready ? 'Ready for risk decision' : 'Assessment work remains open' %></div><div class="meta" style="margin-top:5px"><%= currentDecision ? 'Governed decision recorded by ' + (currentDecision.decider_name || currentDecision.decided_by_name || 'an authorised approver') + (currentDecision.valid_until ? ' · valid to ' + currentDecision.valid_until : '') + '.' : programme.decisionReadiness.ready ? 'All required assessment, evidence and contract gates have passed.' : programme.decisionReadiness.blockers[0] %></div></div>
+    <div class="kpi" style="border-right:1px solid var(--border)"><div class="sec-label">Inherent tier</div><div style="font-size:17px;font-weight:600;margin-top:8px"><%= programme.inherentAssessment && programme.inherentAssessment.assigned_tier ? tierLabel(programme.inherentAssessment.assigned_tier) : 'Not approved' %></div></div>
+    <div class="kpi" style="border-right:1px solid var(--border)"><div class="sec-label">Due diligence</div><div class="kpi-num"><%= programme.ddqProgress ? (['submitted','under_review','complete'].includes(ddqStatus) ? programme.ddqProgress.percentage : Math.round(programme.ddqProgress.answered / programme.ddqProgress.total * 100)) + '%' : '-' %></div><div class="meta"><%= programme.ddqProgress ? (['submitted','under_review','complete'].includes(ddqStatus) ? programme.ddqProgress.open + ' review items' : programme.ddqProgress.unanswered + ' unanswered') : 'Not started' %></div></div>
+    <div class="kpi"><div class="sec-label">High findings</div><div class="kpi-num"><%= programme.openHighFindings %></div></div>
+  </div>
+</div>
+
+<% if (!programme.decisionReadiness.ready) { %><div class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>Decision blockers</h2><span class="meta">Approval cannot be recorded while these remain open</span></div><div class="panel-pad"><% programme.decisionReadiness.blockers.forEach((blocker,index)=>{ %><div style="display:flex;gap:12px;padding:<%= index?'10px 0':'0 0 10px' %>;border-top:<%= index?'1px solid var(--border)':'0' %>"><strong><%= String(index+1).padStart(2,'0') %></strong><span><%= blocker %></span></div><% }) %></div></div><% } %>
+
+<section class="panel supplier-questionnaire-action" aria-labelledby="supplier-questionnaire-action-title">
+  <div class="supplier-questionnaire-copy">
+    <div class="sec-label">Vendor questionnaire · <%= questionnaireAction.state %></div>
+    <h2 id="supplier-questionnaire-action-title"><%= questionnaireAction.title %></h2>
+    <p><%= questionnaireAction.detail %></p>
+  </div>
+  <ol class="supplier-questionnaire-flow" aria-label="Questionnaire issue workflow">
+    <li class="supplier-questionnaire-step <%= ddqPrepared ? 'is-complete' : inherentApproved ? 'is-current' : 'is-locked' %>">
+      <span>1</span><div><strong>Prepare</strong><small>Scope, contact and due date</small></div>
+    </li>
+    <li class="supplier-questionnaire-step <%= ddqIssued ? 'is-complete' : ddqStatus === 'draft' ? 'is-current' : 'is-locked' %>">
+      <span>2</span><div><strong>Issue</strong><small>Email the secure vendor link</small></div>
+    </li>
+  </ol>
+  <a class="btn btn-primary supplier-questionnaire-cta" href="<%= questionnaireAction.href %>"><%= questionnaireAction.label %> →</a>
+</section>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><div><h2>Assessment path</h2><div class="meta">Prepare the scoped questionnaire, then issue its secure link. Preparing it does not send the vendor email.</div></div></div>
+  <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr))">
+    <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk" style="padding:18px;text-decoration:none;color:inherit;border-right:1px solid var(--border)"><div class="sec-label">01 · Inherent risk</div><div style="font-weight:600;margin-top:8px"><%= programme.inherentAssessment ? humanise(programme.inherentAssessment.status) : 'Not started' %></div><div class="meta"><%= programme.inherentAssessment && programme.inherentAssessment.weighted_score!=null ? programme.inherentAssessment.weighted_score.toFixed(2)+' / 100' : '25 owner inputs' %></div></a>
+    <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/due-diligence" style="padding:18px;text-decoration:none;color:inherit;border-right:1px solid var(--border)"><div class="sec-label">02 · Vendor DDQ</div><div style="font-weight:600;margin-top:8px"><%= programme.ddqAssessment ? humanise(programme.ddqAssessment.status) : 'Not started' %></div><div class="meta"><%= programme.ddqProgress ? programme.ddqProgress.total+' scoped questions' : 'Tier and modules determine scope' %></div></a>
+    <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/contract-review" style="padding:18px;text-decoration:none;color:inherit;border-right:1px solid var(--border)"><div class="sec-label">03 · Contract</div><div style="font-weight:600;margin-top:8px"><%= programme.contractReview ? humanise(programme.contractReview.status) : 'Not started' %></div><div class="meta"><%= programme.contractProgress ? programme.contractProgress.complete+'/47 complete' : '47 internal clauses' %></div></a>
+    <a href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>?view=support&tab=findings" style="padding:18px;text-decoration:none;color:inherit;border-right:1px solid var(--border)"><div class="sec-label">04 · Findings</div><div style="font-weight:600;margin-top:8px"><%= supplierFindings.filter(f=>!['closed','verified'].includes(f.status)).length %> open</div><div class="meta">Treatment and risk acceptance</div></a>
+    <a href="#decision" style="padding:18px;text-decoration:none;color:inherit"><div class="sec-label">05 · Decision</div><div style="font-weight:600;margin-top:8px"><%= currentDecision ? humanise(currentDecision.decision) : 'Not recorded' %></div><div class="meta"><%= currentDecision && currentDecision.valid_until ? 'Valid to '+currentDecision.valid_until : 'Residual risk and conditions' %></div></a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1.3fr .7fr;gap:14px;margin-bottom:16px">
+  <div class="panel"><div class="panel-head"><h2>Service and accountability</h2></div><div class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:18px"><div><div class="sec-label">Service</div><strong><%= v.service_provided || 'Not documented' %></strong></div><div><div class="sec-label">Business owner</div><strong><%= v.business_owner || 'Not assigned' %></strong></div><div><div class="sec-label">Vendor contact</div><span><%= v.contact || 'Not recorded' %></span></div><div><div class="sec-label">Security reviewer</div><span><%= v.security_reviewer || 'Not assigned' %></span></div><div><div class="sec-label">Data and processing</div><span><%= v.data_categories || v.processing_purpose || 'Not documented' %></span></div><div><div class="sec-label">Hosting locations</div><span><%= v.hosting_locations || v.location || 'Not documented' %></span></div></div></div>
+  <div class="panel"><div class="panel-head"><h2>Evidence posture</h2></div><div class="panel-pad"><div class="kpi-num"><%= docs.length %></div><div class="kpi-label">assurance and contract files</div><div class="kpi-num" style="margin-top:18px"><%= subprocessors.length %></div><div class="kpi-label">subprocessors recorded</div><a class="btn btn-secondary" style="margin-top:18px" href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>?view=support&tab=documents">Open evidence records</a></div></div>
+</div>
+
+<div class="panel" id="decision" style="margin-bottom:24px">
+  <div class="panel-head"><div><h2>Residual-risk decision</h2><div class="meta">A human conclusion supported by the approved scope, reviewed DDQ, contract position and findings.</div></div></div>
+  <% if (!programme.decisionReadiness.ready) { %><div class="panel-pad"><strong>Approval controls are locked.</strong><div class="meta">Resolve the blockers above before approving or renewing. A rejection or offboarding decision can still be recorded because it does not assert that due diligence passed.</div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" style="display:grid;grid-template-columns:220px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px"><div><label class="label">Negative decision</label><select class="select" name="decision"><option value="rejected">Reject supplier</option><option value="offboard">Offboard supplier</option></select></div><div><label class="label">Decision rationale</label><input class="input" name="rationale" minlength="10" required placeholder="State why the supplier cannot proceed or must be exited"></div><button class="btn btn-primary">Record decision</button></form></div><% } else { %>
+  <% if (currentDecision) { %><div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px"><div><div class="sec-label">Decision</div><strong><%= humanise(currentDecision.decision) %></strong></div><div><div class="sec-label">Residual risk</div><strong><%= currentDecision.residual_risk_band ? humanise(currentDecision.residual_risk_band) : 'Not recorded' %></strong></div><div><div class="sec-label">Decision owner</div><strong><%= currentDecision.decider_name || currentDecision.decided_by_name || 'Not recorded' %></strong></div><div><div class="sec-label">Valid until</div><strong><%= currentDecision.valid_until || 'No fixed expiry' %></strong></div><div style="grid-column:1/-1"><div class="sec-label">Residual-risk rationale</div><div><%= currentDecision.residual_risk_rationale || currentDecision.rationale %></div></div></div><% } %>
+  <details <%= currentDecision ? '' : 'open' %>><summary class="panel-head" style="cursor:pointer;border-top:<%= currentDecision?'0':'1px solid var(--border)' %>"><strong><%= currentDecision ? 'Record a superseding decision' : 'Record the decision' %></strong><span class="meta">Creates an immutable decision-history entry</span></summary><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><label class="label">Decision</label><select class="select" name="decision"><option value="approved">Approve</option><option value="conditional">Approve with conditions</option><option value="renewed" <%= currentDecision?'selected':'' %>>Renew</option><option value="rejected">Reject</option><option value="offboard">Offboard</option></select></div><div><label class="label">Residual-risk band</label><select class="select" name="residual_risk_band" required><option value="">Select</option><% ['low','moderate','high','critical'].forEach(band=>{ %><option <%= currentDecision&&currentDecision.residual_risk_band===band?'selected':'' %>><%= band %></option><% }) %></select></div><div><label class="label">Valid until</label><input class="input" type="date" name="valid_until"></div><div><label class="label">Conditions</label><input class="input" name="conditions" placeholder="Required for conditional approval"></div><div class="col-full"><label class="label">Decision rationale</label><textarea class="textarea" rows="3" name="rationale" required></textarea></div><div class="col-full"><label class="label">Residual-risk rationale</label><textarea class="textarea" rows="3" name="residual_risk_rationale" required placeholder="State the remaining exposure, relied-upon controls/evidence, accepted uncertainty and review trigger."></textarea></div><div class="col-full"><button class="btn btn-primary">Record governed decision</button></div></form></details><% } %>
+</div>
+
+<%- include('partials/footer') %>

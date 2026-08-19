@@ -32,7 +32,8 @@ const gapAssessmentReport = require('../lib/gap-assessment-report');
 const auditPack = require('../lib/audit-pack');
 const { computeReadiness } = require('../lib/readiness');
 const delivery = require('../lib/engagement-delivery');
-const { ymdLocal, ymLocal } = require('../lib/dates');
+const performanceObjectives = require('../lib/performance-objectives');
+const { ymdLocal, ymLocal, isValidTimeZone, workspaceTimeZone } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray, extractMentions } = require('../lib/http-helpers');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
@@ -138,37 +139,54 @@ function register(app, deps) {
 
   // ==================== INFORMATION SECURITY OBJECTIVES (clause 6.2) ====================
   app.get('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
-    const rows = db.prepare(`SELECT * FROM security_objectives WHERE workspace_id=? ORDER BY due_date IS NULL, due_date, id`)
-      .all(req.workspace.id);
+    const rows = performanceObjectives.listObjectives(db, req.workspace.id);
+    const metrics = performanceObjectives.listAdoptedMetrics(db, req.workspace.id);
+    const objectiveCounts = {
+      total: rows.length,
+      linked: rows.filter(row => row.metricDriven).length,
+      onTrack: rows.filter(row => ['on_track', 'achieved'].includes(row.effectiveStatus)).length,
+      attention: rows.filter(row => ['at_risk', 'off_track', 'no_data'].includes(row.effectiveStatus)).length,
+    };
     res.render('objectives', {
-      user: req.user, ws: req.workspace, title: 'Security objectives', active: 'objectives', rows
+      user: req.user, ws: req.workspace, title: 'Performance & objectives', active: 'objectives', rows, metrics, objectiveCounts
     });
   });
 
   app.post('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const b = req.body;
     if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Objective title is required', 'error');
+    const metric = b.metric_id ? performanceObjectives.metricForWorkspace(db, b.metric_id, req.workspace.id) : null;
+    if (b.metric_id && !metric) return redirectBack(req, res, 'Select a measure adopted by this client.', 'error');
     db.prepare(`INSERT INTO security_objectives
-      (workspace_id, title, description, measurement, target_value, current_value, owner, due_date, status, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      (workspace_id, title, description, measurement, target_value, current_value, owner, due_date, status, notes, metric_id, status_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, b.title.trim(), b.description || null, b.measurement || null,
            b.target_value || null, b.current_value || null, b.owner || null,
-           b.due_date || null, b.status || 'on_track', b.notes || null);
-    logAction(req.user.id, req.workspace.id, 'create_objective', 'objective', null, { title: b.title });
-    res.redirect(`/workspaces/${req.workspace.id}/objectives`);
+           b.due_date || null, b.status || 'on_track', b.notes || null,
+           metric ? metric.id : null, metric ? 'metric' : 'manual');
+    logAction(req.user.id, req.workspace.id, 'create_objective', 'objective', null, { title: b.title, metric_id: metric?.id || null });
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/objectives`, metric ? 'Objective linked to live measure' : 'Objective added'));
   });
 
   app.post('/workspaces/:wsId/objectives/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const b = req.body;
+    if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Objective title is required', 'error');
+    const objective = db.prepare(`SELECT id FROM security_objectives WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    if (!objective) return res.status(404).render('error', { user: req.user, message: 'Objective not found.' });
+    const metric = b.metric_id ? performanceObjectives.metricForWorkspace(db, b.metric_id, req.workspace.id) : null;
+    if (b.metric_id && !metric) return redirectBack(req, res, 'Select a measure adopted by this client.', 'error');
     db.prepare(`UPDATE security_objectives SET
       title=?, description=?, measurement=?, target_value=?, current_value=?, owner=?, due_date=?, status=?, notes=?,
+      metric_id=?,status_mode=?,
       updated_at=datetime('now')
       WHERE id=? AND workspace_id=?`)
-      .run(b.title, b.description || null, b.measurement || null,
+      .run(b.title.trim(), b.description || null, b.measurement || null,
            b.target_value || null, b.current_value || null, b.owner || null,
            b.due_date || null, b.status || 'on_track', b.notes || null,
+           metric ? metric.id : null, metric ? 'metric' : 'manual',
            req.params.id, req.workspace.id);
-    res.redirect(`/workspaces/${req.workspace.id}/objectives`);
+    logAction(req.user.id, req.workspace.id, 'update_objective', 'objective', objective.id, { metric_id: metric?.id || null });
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/objectives`, 'Objective updated'));
   });
 
   app.post('/workspaces/:wsId/objectives/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
@@ -827,7 +845,7 @@ function register(app, deps) {
       score ? parseFloat(score) : null, grade || null,
       recorded_at || new Date().toISOString().slice(0,10),
       notes || null, req.user.id);
-    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=monitoring`);
+    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?view=support&tab=monitoring`);
   });
 
   app.post('/workspaces/:wsId/vendors/:id/termination/start', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
@@ -846,7 +864,7 @@ function register(app, deps) {
     db.prepare(`UPDATE suppliers SET termination_started_at=CURRENT_TIMESTAMP, termination_owner=?, lifecycle_stage='terminating' WHERE id=? AND workspace_id=?`)
       .run(req.body.termination_owner || req.user.name, req.params.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'start_termination', 'supplier', req.params.id, null, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=termination`);
+    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?view=support&tab=termination`);
   });
 
   app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
@@ -858,9 +876,22 @@ function register(app, deps) {
     if (remaining === 0) {
       db.prepare(`UPDATE suppliers SET lifecycle_stage='terminated', terminated_at=CURRENT_TIMESTAMP, data_return_completed=1 WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
     }
-    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?tab=termination`);
+    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?view=support&tab=termination`);
   });
 
+  // Legacy questionnaire endpoints are retained only to provide a clear migration path.
+  // Governed supplier due diligence is the sole writable assessment workflow.
+  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+    res.status(410).render('error', { user: req.user, ws: req.workspace,
+      message: 'This questionnaire workflow is retired. Issue the governed due-diligence assessment from the supplier record.' });
+  });
+
+  app.all('/q/:token', (req, res) => {
+    res.status(410).send('This supplier questionnaire link has been retired. Ask your engagement contact for a new governed due-diligence link.');
+  });
+
+  // Historical implementation retained below for database compatibility. These
+  // handlers are unreachable because the retirement routes above terminate first.
   // External tokenized questionnaire link - external supplier completes without an account.
   // Mints (or re-mints) a single-use token, sets a 30-day expiry, and - when a contact
   // email is supplied - emails the vendor the /q/<token> link. The token in the URL is the
@@ -950,17 +981,17 @@ function register(app, deps) {
     const q = req._questionnaire; // guaranteed open by resolveQuestionnaireFirm
 
     // An upload error (oversize / too many files) aborts multer mid-parse, so the
-    // body may be incomplete — don't risk a partial save. Show a clear retry
+    // body may be incomplete - don't risk a partial save. Show a clear retry
     // message with the answers still on screen; the link stays open.
     if (req._uploadError) {
       const e = req._uploadError;
       const tooBig = e && e.code === 'LIMIT_FILE_SIZE';
       const tooMany = e && e.code === 'LIMIT_FILE_COUNT';
       const uploadMsg = tooBig
-        ? 'One of your files is larger than 25 MB. Please attach a smaller file (or split it) and submit again — your answers were not saved yet.'
+        ? 'One of your files is larger than 25 MB. Please attach a smaller file (or split it) and submit again - your answers were not saved yet.'
         : tooMany
-          ? 'Too many files were attached at once (limit 40). Please reduce the number of attachments and submit again — your answers were not saved yet.'
-          : 'We could not process one of your attachments. Please remove it and submit again — your answers were not saved yet.';
+          ? 'Too many files were attached at once (limit 40). Please reduce the number of attachments and submit again - your answers were not saved yet.'
+          : 'We could not process one of your attachments. Please remove it and submit again - your answers were not saved yet.';
       // Clean up any partial temp files multer did manage to write.
       (req.files || []).forEach(f => { try { fs.unlinkSync(f.path); } catch (_) {} });
       return res.status(413).render('external_questionnaire', {
@@ -1666,13 +1697,13 @@ function register(app, deps) {
   // workspace has marked applicable + included on the SoA, with evidence-linkage
   // counts pulled in and sample-size suggestions based on the control family.
   // Mirrors the category-based generator below but is the right choice once the
-  // SoA has been worked through — auditors shouldn't be testing excluded controls.
+  // SoA has been worked through - auditors shouldn't be testing excluded controls.
 
   // Sample-size heuristics keyed to Annex A control prefixes. Each entry returns
   // guidance the auditor pastes into the observation. Numbers are auditor-norms
   // (BSI / IRCA guidance) not standards-mandated.
   const SAMPLE_SIZE_HINTS = {
-    // Access control — clauses where "5 users" is the typical sample
+    // Access control - clauses where "5 users" is the typical sample
     'annex-a.5.15': 'Sample 10 users (mix of joiner / mover / leaver).',
     'annex-a.5.16': 'Sample 10 user accounts created in the last 6 months.',
     'annex-a.5.17': 'Sample 5 authentication records (MFA enrolment, password reset).',
@@ -1856,7 +1887,27 @@ function register(app, deps) {
     const rotations = db.prepare(`SELECT * FROM key_rotations ORDER BY id DESC LIMIT 50`).all();
     const masterFp = keyrotation.fingerprint(enc.masterKey());
     const lastDrill = require('../lib/restore-check').lastDrill();
-    res.render('system', { user: req.user, ws: req.workspace, backups, rotations, masterFp, lastDrill });
+    const firm = db.prepare(`SELECT id,name,timezone FROM firms WHERE id=?`).get(req.workspace.firm_id);
+    const timezones = ['UTC','Europe/London','Europe/Dublin','Europe/Paris','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Asia/Tokyo','Australia/Sydney'];
+    res.render('system', { user: req.user, ws: req.workspace, firm, timezones,
+      effectiveTimezone: workspaceTimeZone(req.workspace, firm), backups, rotations, masterFp, lastDrill });
+  });
+
+  app.post('/workspaces/:wsId/system/timezone', requireAuth, requireWorkspace, (req, res) => {
+    if (!isFirmOwner(req.user)) return res.status(403).send('forbidden');
+    const firmTimezone = String(req.body.firm_timezone || '').trim();
+    const workspaceTimezone = String(req.body.workspace_timezone || '').trim();
+    if (!isValidTimeZone(firmTimezone) || (workspaceTimezone && !isValidTimeZone(workspaceTimezone))) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/system`, 'Choose a valid IANA timezone.', 'error'));
+    }
+    db.transaction(() => {
+      db.prepare(`UPDATE firms SET timezone=? WHERE id=?`).run(firmTimezone, req.workspace.firm_id);
+      db.prepare(`UPDATE workspaces SET timezone=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND firm_id=?`)
+        .run(workspaceTimezone || null, req.workspace.id, req.workspace.firm_id);
+    })();
+    logAction(req.user.id, req.workspace.id, 'update_timezone_policy', 'workspace', req.workspace.id,
+      { firmTimezone, workspaceTimezone: workspaceTimezone || null }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/system`, `Calendar timezone set to ${workspaceTimezone || firmTimezone}.`));
   });
 
   app.post('/workspaces/:wsId/system/backup', requireAuth, requireWorkspace, async (req, res) => {

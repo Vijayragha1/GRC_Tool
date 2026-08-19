@@ -18,6 +18,8 @@
   </div>
 </div>
 
+<div class="csf2-callout"><strong>Compliance Sphere Policy and Practice Capability Method v2026.1.</strong><p>NIST CSF 2.0 defines the cybersecurity outcomes. The 0 to 5 Policy and Practice scale, conservative lower-axis conclusion and target-attainment calculation are proprietary assessment methods.</p></div>
+
 <% if (!currentEngagement) { %>
   <section class="panel cm-empty-programme"><div><span class="cm-kicker">No baseline established</span><h2>Start with the decisions leadership needs to make</h2><p>Define the business context and Target Profile before collecting evidence. The programme will translate the 106 CSF outcomes into capability themes, investment priorities and a reusable reassessment baseline.</p></div><% if(canCreate){ %><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/csf/new">Create maturity programme</a><% } %></section>
 <% } else { const s=programme.rollup.summary; const complete=s.inScope?Math.round(s.assessed*100/s.inScope):0; const assessmentStatus=s.assessed===0?'Not started':(s.assessed<s.inScope?'In progress':'Concluded'); const targetDefined=Math.max(s.targetPolicyMedian||0,s.targetPracticeMedian||0)>0; %>
@@ -39,7 +41,7 @@
       <div class="cm-baseline-actions"><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment">Open maturity workbench</a><a class="btn" href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/report">Executive reporting</a></div>
     </div>
     <dl class="cm-baseline-facts">
-      <div><dt>Current maturity</dt><dd><%= s.achievedMedian==null?'—':programme.currentLabel %></dd></div>
+      <div><dt>Current maturity</dt><dd><%= s.achievedMedian==null?'-':programme.currentLabel %></dd></div>
       <div><dt>Target position</dt><dd><%= targetDefined ? programme.targetLabel : 'Not defined' %></dd></div>
       <div><dt>Policy / Practice divergence</dt><dd><%= s.divergence %><small> material disconnects</small></dd></div>
       <div><dt>Controlled baseline</dt><dd><%= programme.published ? `Version ${programme.published.version_number}` : 'Not published' %></dd></div>
@@ -54,9 +56,9 @@
         <a href="/workspaces/<%= ws.id %>/csf/<%= currentEngagement.id %>/assessment?function=<%= f.code %>" class="cm-function-row cm-function-<%= f.code.toLowerCase() %>">
           <span class="cm-function-identity"><span class="cm-function-code"><%= f.code %></span><span class="cm-function-name"><strong><%= f.name %></strong><small><%= f.summary.inScope %> outcomes in scope</small></span></span>
           <span class="cm-function-coverage"><strong><%= f.summary.assessed %> / <%= f.summary.inScope %></strong><small><%= coverage %>%</small></span>
-          <span class="cm-function-value"><strong><%= current==null?'—':current %></strong><small><%= current==null?'Pending':'Demonstrated' %></small></span>
-          <span class="cm-function-value"><strong><%= target||'—' %></strong><small>Target Profile</small></span>
-          <span class="cm-function-gap <%= current!=null&&target>current?'has-gap':'' %>"><strong><%= current==null||!target?'—':Math.max(0,target-current) %></strong><small><%= current==null?'Pending':(target>current?'Level gap':'At target') %></small></span>
+          <span class="cm-function-value"><strong><%= current==null?'-':current %></strong><small><%= current==null?'Pending':'Demonstrated' %></small></span>
+          <span class="cm-function-value"><strong><%= target||'-' %></strong><small>Target Profile</small></span>
+          <span class="cm-function-gap <%= current!=null&&target>current?'has-gap':'' %>"><strong><%= current==null||!target?'-':Math.max(0,target-current) %></strong><small><%= current==null?'Pending':(target>current?'Level gap':'At target') %></small></span>
         </a>
       <% }) %></div>
     </section>

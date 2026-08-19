@@ -34,10 +34,19 @@
     position: relative;
   }
   .pre932-value::after {
-    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1.5em;
-    background: linear-gradient(to bottom, transparent, var(--bg-subtle));
-    pointer-events: none;
+    display: none;
   }
+  .mrm-register { overflow-x: auto; }
+  .mrm-register table { min-width: 650px; }
+  .mrm-register table.t tbody td { padding: 0; vertical-align: middle; }
+  .mrm-record-link {
+    display: flex; align-items: center; min-height: 46px;
+    padding: 8px 14px; color: inherit; text-decoration: none;
+  }
+  .mrm-record-link:hover { color: inherit; text-decoration: none; }
+  .mrm-record-link.attendees { color: var(--text-secondary); line-height: 1.45; }
+  .mrm-record-link.action { justify-content: flex-end; font-weight: 500; white-space: nowrap; }
+  .mrm-register tbody tr:focus-within { background: var(--bg-subtle); outline: 2px solid var(--border-strong); outline-offset: -2px; }
 </style>
 
 <div class="page-head">
@@ -79,19 +88,20 @@
   </form>
 </div>
 
-<div class="panel" style="overflow:hidden">
+<div class="panel mrm-register">
   <table class="t">
-    <thead><tr><th style="width:140px">Date</th><th>Attendees</th><th style="width:130px">Status</th></tr></thead>
+    <thead><tr><th style="width:140px">Date</th><th>Attendees</th><th style="width:130px">Status</th><th style="width:80px;text-align:right">Action</th></tr></thead>
     <tbody>
       <% mrms.forEach(m => { %>
         <tr>
-          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="link-muted" style="font-weight:500;"><%= m.meeting_date || 'unscheduled' %></a></td>
-          <td class="text-secondary text-base"><%= m.attendees || '-' %></td>
-          <td><span class="status s-<%= m.status === 'complete' ? 'done' : 'todo' %>"><%= m.status %></span></td>
+          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="mrm-record-link" style="font-weight:500;"><%= m.meeting_date || 'unscheduled' %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="mrm-record-link attendees"><%= m.attendees || '-' %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="mrm-record-link"><span class="status s-<%= m.status === 'complete' ? 'done' : 'todo' %>"><%= m.status %></span></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/mrms/<%= m.id %>" class="mrm-record-link action" aria-label="Open management review dated <%= m.meeting_date || 'unscheduled' %>">Open →</a></td>
         </tr>
       <% }) %>
       <% if (mrms.length === 0) { %>
-        <tr><td colspan="3" style="padding:0;">
+        <tr><td colspan="4" style="padding:0;">
           <div class="empty-state">
             <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
             <div class="empty-title">Schedule the first management review</div>

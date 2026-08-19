@@ -118,7 +118,7 @@
              const isExcluded = r.applicability === 'excluded';
              const renderRefs = (fw) => {
                const refs = r.mappings[fw] || [];
-               if (!refs.length) return '<span class="meta">&mdash;</span>';
+               if (!refs.length) return '<span class="meta">-</span>';
                return refs.map(m => {
                  const noteAttr = m.notes ? ` title="${(m.notes || '').replace(/"/g,'&quot;')}"` : '';
                  const cursor = m.notes ? 'cursor:help;' : '';

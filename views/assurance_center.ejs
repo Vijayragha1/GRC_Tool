@@ -1,26 +1,26 @@
 <%- include('partials/header', { title: 'Assurance & reports', user, ws, active: 'assurance' }) %>
 
 <style>
-  .assurance-hero{background:linear-gradient(125deg,#241b20,#55212d 58%,#7c3445);color:#fff;border-radius:14px;padding:28px 30px;margin-bottom:18px;display:flex;justify-content:space-between;gap:24px;align-items:flex-end;box-shadow:0 10px 32px rgba(48,20,28,.14)}
-  .assurance-hero h1{font-family:Georgia,serif;font-size:32px;line-height:1.05;margin:0 0 8px}.assurance-hero p{margin:0;max-width:700px;color:rgba(255,255,255,.75);font-size:14px}.hero-meta{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.7);white-space:nowrap}
-  .report-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}.report-card{position:relative;display:flex;flex-direction:column;min-height:215px;padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface);text-decoration:none;color:inherit;transition:.16s ease}.report-card:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 10px 25px rgba(20,25,30,.08)}.report-index{font-family:Georgia,serif;color:var(--accent);font-size:12px}.report-card h2{font-family:Georgia,serif;font-size:21px;line-height:1.18;margin:20px 0 8px}.report-card p{font-size:13px;color:var(--text-muted);line-height:1.5;margin:0}.report-audience{margin-top:auto;padding-top:18px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)}
-  .assurance-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}.assurance-stat{padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.assurance-stat b{font-family:Georgia,serif;font-size:23px;display:block}.assurance-stat span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)}
+  .assurance-page-head{align-items:flex-end;padding:4px 0 17px;border-bottom:1px solid var(--border)}
+  .assurance-page-head .page-title{font-size:26px;margin:0}.assurance-page-head .page-subtitle{max-width:760px;line-height:1.55}.assurance-page-head .btn{flex:none}
+  .report-grid{display:block;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface);margin-bottom:18px}.report-card{display:grid;grid-template-columns:48px minmax(220px,.75fr) minmax(300px,1fr) minmax(220px,.7fr);align-items:center;gap:16px;min-height:0;padding:16px 18px;border:0;border-top:1px solid var(--border);background:transparent;text-decoration:none;color:inherit;transition:background .12s ease}.report-card:first-child{border-top:0}.report-card:hover{background:var(--bg-subtle)}.report-index{color:var(--text-tertiary);font-size:11px;font-variant-numeric:tabular-nums}.report-card h2{font-family:var(--font-display);font-size:16px;line-height:1.25;margin:0}.report-card p{font-size:12px;color:var(--text-muted);line-height:1.5;margin:0}.report-audience{margin:0;padding:1px 0 1px 16px;font-size:11px;color:var(--text-muted);border-left:1px solid var(--border)}
+  .assurance-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:18px}.assurance-stat{padding:14px 16px;border:0;border-left:1px solid var(--border);background:var(--surface)}.assurance-stat:first-child{border-left:0}.assurance-stat b{font-family:var(--font-display);font-size:23px;display:block}.assurance-stat span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)}
   .status-pill{display:inline-flex;align-items:center;border-radius:99px;padding:3px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:#eef1f5;color:#475467}.status-pill.published,.status-pill.approved{background:#e8f5ee;color:#157347}.status-pill.in_review{background:#fff4df;color:#8a5300}.status-pill.changes_requested{background:#fff0ef;color:#b42318}.hash{font-family:ui-monospace,SFMono-Regular,monospace;font-size:10px;color:var(--text-muted)}
-  .legacy-strip{margin-top:18px;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--surface-subtle,#fafafa);display:flex;justify-content:space-between;align-items:center;gap:20px}.legacy-strip h3{margin:0 0 3px;font-size:14px}.legacy-strip p{margin:0;color:var(--text-muted);font-size:12px}
-  @media(max-width:900px){.report-grid{grid-template-columns:1fr}.assurance-stats{grid-template-columns:1fr 1fr}.assurance-hero{align-items:flex-start;flex-direction:column}.hero-meta{white-space:normal}}
+  .legacy-strip{margin-top:18px;padding:16px 18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;gap:20px}.legacy-strip h3{margin:0 0 3px;font-size:14px}.legacy-strip p{margin:0;color:var(--text-muted);font-size:12px}
+  @media(max-width:900px){.report-card{grid-template-columns:38px 1fr}.report-card p{grid-column:2}.report-audience{grid-column:2;border-left:0;border-top:1px solid var(--border);padding:10px 0 0}.assurance-stats{grid-template-columns:1fr 1fr}.assurance-stat:nth-child(3){border-left:0;border-top:1px solid var(--border)}.assurance-stat:nth-child(4){border-top:1px solid var(--border)}}
 </style>
 
-<div class="assurance-hero">
+<div class="page-head assurance-page-head">
   <div>
-    <div class="hero-meta" style="margin-bottom:10px">Controlled assurance output</div>
-    <h1>Assurance &amp; reports</h1>
-    <p>Generate client-ready reports from a frozen data cutoff, preserve exact PDF and Word artifacts, and move each version through independent review and approval.</p>
+    <div class="eyebrow">Reports and approvals</div>
+    <h1 class="page-title">Assurance &amp; reports</h1>
+    <div class="page-subtitle">Create client-ready reports from a frozen data cutoff, preserve the issued PDF and Word files, and control independent review and approval.</div>
   </div>
-  <div class="hero-meta">Snapshot-backed · Traceable · Versioned</div>
+  <% if (caps.generate) { %><a class="btn btn-primary btn-sm" href="/workspaces/<%= ws.id %>/assurance/new">Generate report</a><% } %>
 </div>
 
 <% if (truth.counts.critical || truth.counts.high) { %>
-  <div style="margin:-2px 0 18px;border:1px solid var(--border);border-left:4px solid <%= truth.counts.critical ? '#b42318' : '#b54708' %>;border-radius:10px;background:var(--surface);padding:14px 18px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center">
+  <div style="margin:-2px 0 18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);padding:14px 18px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center">
     <div>
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:<%= truth.counts.critical ? '#b42318' : '#b54708' %>;margin-bottom:4px">Source-data qualification · <%= truth.verdict.label %></div>
       <div style="font-size:13px;line-height:1.45"><strong><%= truth.counts.critical %> critical conflict<%= truth.counts.critical===1?'':'s' %> and <%= truth.counts.high %> high-priority gap<%= truth.counts.high===1?'':'s' %>.</strong> Generated reports will preserve applicable quality warnings; review the source records before external publication.</div>
@@ -50,7 +50,6 @@
 <div class="panel">
   <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center">
     <div><h2>Report history</h2><div class="meta">Every row is an immutable data snapshot. Changes create a new version.</div></div>
-    <% if (caps.generate) { %><a class="btn btn-primary btn-sm" href="/workspaces/<%= ws.id %>/assurance/new">Generate report</a><% } %>
   </div>
   <% if (!runs.length) { %>
     <div class="panel-pad"><div class="empty-state"><h3>No assurance reports yet</h3><p>Choose a report above to create the first frozen version.</p></div></div>
@@ -62,7 +61,7 @@
         <td>v<%= r.version_number %></td>
         <td><span class="status-pill <%= r.status %>"><%= r.status.replaceAll('_',' ') %></span><% if (r.critical_count) { %><div class="meta" style="color:#b42318;margin-top:4px"><%= r.critical_count %> critical data warning<%= r.critical_count === 1 ? '' : 's' %></div><% } %></td>
         <td><%= String(r.generated_at).slice(0,16).replace('T',' ') %></td>
-        <td><%= r.creator_name || '—' %></td>
+        <td><%= r.creator_name || '-' %></td>
         <td><span class="hash" title="<%= r.snapshot_hash %>"><%= r.snapshot_hash.slice(0,12) %>…</span></td>
         <td><%= r.artifact_count %> / 3</td>
         <td><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/assurance/runs/<%= r.id %>">Open</a></td>

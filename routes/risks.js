@@ -63,7 +63,7 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/risks/library', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
     const picked = parseFormArray(req.body.pick);
-    if (!picked.length) return redirectBack(req, res);
+    if (!picked.length) return redirectBack(req, res, 'Select at least one risk before adding to the register.', 'error');
     const ins = db.prepare(`INSERT INTO risks (workspace_id, entity_id, title, description, threat, vulnerability,
                            likelihood, impact, treatment, status)
                            VALUES (?, ?, ?, ?, ?, ?, 3, 3, 'modify', 'open')`);

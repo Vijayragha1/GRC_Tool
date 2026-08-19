@@ -99,6 +99,32 @@ function post(pathStr, formObj) {
   });
 }
 
+function postMultipart(pathStr, fieldName, filename, content, contentType = 'text/plain') {
+  return new Promise((resolve, reject) => {
+    const boundary = `----nimbus-smoke-${Date.now().toString(16)}`;
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"\r\n` +
+      `Content-Type: ${contentType}\r\n\r\n`
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const body = Buffer.concat([head, Buffer.isBuffer(content) ? content : Buffer.from(String(content)), tail]);
+    const headers = {
+      Accept: 'application/json',
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': body.length,
+    };
+    if (cookieJar) headers.cookie = cookieJar;
+    const req = http.request({ host: '127.0.0.1', port, path: pathStr, method: 'POST', headers }, res => {
+      let resp = '';
+      res.on('data', chunk => { resp += chunk; });
+      res.on('end', () => { captureResponse(res, resp); resolve({ status: res.statusCode, body: resp, headers: res.headers }); });
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
 async function waitFor(predicate, timeoutMs = 8000, intervalMs = 150) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -214,6 +240,137 @@ function stopServer() {
       const r = await get(pathStr);
       ok(name, r.status === 200, `got ${r.status} for ${pathStr}`);
     }
+
+    console.log('\nstarter risk library');
+    const starterRisk = require(path.join(ROOT, 'data', 'risk-library'))[0];
+    const starterBeforeDb = new Database(TMP_DB, { readonly: true });
+    const starterBefore = starterBeforeDb.prepare('SELECT COUNT(*) c FROM risks WHERE workspace_id=?').get(wsId).c;
+    starterBeforeDb.close();
+    const addStarterRisk = await post(`/workspaces/${wsId}/risks/library`, { pick: '0' });
+    ok('starter risk selection reaches its dedicated import route',
+      addStarterRisk.status >= 300 && addStarterRisk.status < 400 && /^\/workspaces\/\d+\/risks\?toast=/.test(addStarterRisk.headers.location || ''),
+      `got ${addStarterRisk.status} ${addStarterRisk.headers.location || ''}`);
+    const starterAfterDb = new Database(TMP_DB, { readonly: true });
+    const starterAfter = starterAfterDb.prepare('SELECT COUNT(*) c FROM risks WHERE workspace_id=?').get(wsId).c;
+    const insertedStarter = starterAfterDb.prepare('SELECT id FROM risks WHERE workspace_id=? AND title=? ORDER BY id DESC LIMIT 1').get(wsId, starterRisk.title);
+    const starterAudit = starterAfterDb.prepare("SELECT id FROM audit_log WHERE workspace_id=? AND action='add_risks_from_library' ORDER BY id DESC LIMIT 1").get(wsId);
+    starterAfterDb.close();
+    ok('selected starter risk is inserted into the register', starterAfter === starterBefore + 1 && !!insertedStarter,
+      `before=${starterBefore}, after=${starterAfter}, title=${starterRisk.title}`);
+    ok('starter risk import retains an audit record', !!starterAudit, 'add_risks_from_library audit entry missing');
+
+    console.log('\nsupplier governed workflow');
+    const createSupplier = await post(`/workspaces/${wsId}/vendors`, {
+      name: 'Smoke Governed Supplier', service_provided: 'Critical transaction processing',
+      service_category: 'Technology', contact: 'vendor@example.test', business_owner: 'Business Owner',
+      relationship_owner: 'Relationship Owner', security_reviewer: 'Security Reviewer', privacy_owner: 'Privacy Owner'
+    });
+    ok('supplier intake redirects to inherent risk', createSupplier.status >= 300 && createSupplier.status < 400 && /\/inherent-risk/.test(createSupplier.headers.location || ''), `got ${createSupplier.status} ${createSupplier.headers.location || ''}`);
+    const supplierMatch = String(createSupplier.headers.location || '').match(/\/vendors\/(\d+)\/inherent-risk/);
+    const supplierId = supplierMatch && Number(supplierMatch[1]);
+    ok('supplier id returned after intake', Number.isInteger(supplierId), `location=${createSupplier.headers.location || ''}`);
+    const inherentPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk`);
+    ok('inherent-risk assessment renders', inherentPage.status === 200 && /25 owner inputs|Inherent-risk assessment/.test(inherentPage.body), `got ${inherentPage.status}`);
+    const inherentAnswers = { action: 'submit', physical_data_centre_applicability: 'no' };
+    for (let i = 1; i <= 25; i++) inherentAnswers[`score_Q${String(i).padStart(2, '0')}`] = 0;
+    inherentAnswers.score_Q14 = 5;
+    const submitInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk`, inherentAnswers);
+    ok('complete inherent assessment submits', submitInherent.status >= 300 && submitInherent.status < 400, `got ${submitInherent.status}`);
+    const approveInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk/approve`, { approval_rationale: 'Validated with the accountable service, technology and privacy owners.' });
+    ok('mandatory floor tier is approved', approveInherent.status >= 300 && approveInherent.status < 400, `got ${approveInherent.status}`);
+    const supplierRecord = await get(`/workspaces/${wsId}/vendors/${supplierId}`);
+    ok('five-stage supplier decision record renders', supplierRecord.status === 200 && /Assessment path/.test(supplierRecord.body) && /Tier 1/.test(supplierRecord.body), `got ${supplierRecord.status}`);
+    const startDdq = await post(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence/start`, { vendor_contact_name: 'Vendor Owner', vendor_contact_email: 'vendor@example.test', due_date: '2027-03-31' });
+    ok('tiered DDQ starts after inherent approval', startDdq.status >= 300 && startDdq.status < 400, `got ${startDdq.status}`);
+    const ddqPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence`);
+    ok('scoped DDQ reviewer page renders', ddqPage.status === 200 && /151 scoped questions|Questions/.test(ddqPage.body), `got ${ddqPage.status}`);
+    const shareDdq = await post(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence/share`, { vendor_contact_name: 'Vendor Owner', vendor_contact_email: 'vendor@example.test', due_date: '2027-03-31' });
+    ok('secure vendor DDQ link is issued', shareDdq.status >= 300 && shareDdq.status < 400, `got ${shareDdq.status}`);
+    const sharedDdqPage = await get(shareDdq.headers.location || `/workspaces/${wsId}/vendors/${supplierId}/due-diligence`);
+    const tokenMatch = sharedDdqPage.body.match(/\/supplier-ddq\/([a-f0-9]{64})/);
+    ok('raw vendor token is shown once to the issuer', !!tokenMatch, 'secure link not found in response');
+    const externalDdq = tokenMatch ? await get(`/supplier-ddq/${tokenMatch[1]}`) : { status: 0, body: '' };
+    ok('external vendor DDQ renders without an account', externalDdq.status === 200 && /Critical transaction processing|Supplier due diligence|Smoke Governed Supplier/.test(externalDdq.body), `got ${externalDdq.status}`);
+    ok('external vendor DDQ does not ask for a manual evidence reference', !/Evidence reference for/.test(externalDdq.body), 'manual evidence reference field is present');
+    ok('external vendor DDQ does not ask for evidence dates', !/Evidence date for/.test(externalDdq.body) && !/name="evidence_date_/.test(externalDdq.body), 'evidence date field is present');
+    ok('external vendor DDQ does not ask for evidence owners', !/Evidence owner for/.test(externalDdq.body) && !/name="evidence_owner_/.test(externalDdq.body), 'evidence owner field is present');
+    ok('response submission is separate from per-question evidence uploads',
+      externalDdq.body.includes('id="ddq-response-form"') &&
+      externalDdq.body.includes(`/supplier-ddq/${tokenMatch && tokenMatch[1]}/evidence/GOV-01`) &&
+      !/<form id="ddq-response-form"[^>]*multipart\/form-data/.test(externalDdq.body),
+      'single all-question multipart form is still present');
+    const evidenceUpload = tokenMatch ? await postMultipart(
+      `/supplier-ddq/${tokenMatch[1]}/evidence/GOV-01`, 'evidence', 'governance-policy.txt',
+      'Approved information security policy, version 3, approved 2026-08-01.'
+    ) : { status: 0, body: '' };
+    let evidenceUploadPayload = {};
+    try { evidenceUploadPayload = JSON.parse(evidenceUpload.body || '{}'); } catch (_) {}
+    ok('vendor can upload inspected evidence for one question without submitting all answers',
+      evidenceUpload.status === 200 && evidenceUploadPayload.ok === true && evidenceUploadPayload.files.includes('governance-policy.txt'),
+      `got ${evidenceUpload.status} ${evidenceUpload.body}`);
+    const partialVendorSubmit = tokenMatch ? await post(`/supplier-ddq/${tokenMatch[1]}`, {
+      action: 'submit', response_GOV_01: 'Yes', detail_GOV_01: 'Approved policy is current.'
+    }) : { status: 0, headers: {} };
+    ok('vendor submission is blocked while scoped rows remain incomplete', partialVendorSubmit.status >= 300 && partialVendorSubmit.status < 400 && /blocked=/.test(partialVendorSubmit.headers.location || ''), `got ${partialVendorSubmit.status} ${partialVendorSubmit.headers.location || ''}`);
+    const startContract = await post(`/workspaces/${wsId}/vendors/${supplierId}/contract-review/start`, { agreement_reference: 'MSA-SMOKE-001' });
+    ok('contract review starts', startContract.status >= 300 && startContract.status < 400, `got ${startContract.status}`);
+    const contractPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/contract-review`);
+    ok('47-clause contract review renders', contractPage.status === 200 && /47/.test(contractPage.body), `got ${contractPage.status}`);
+
+    const supplierRisk = require(path.join(ROOT, 'lib', 'supplier-risk'));
+    const supplierDb = new Database(TMP_DB);
+    const ddqAssessment = supplierDb.prepare(`SELECT * FROM supplier_ddq_assessments WHERE supplier_id=? AND status!='superseded' ORDER BY id DESC LIMIT 1`).get(supplierId);
+    const modules = JSON.parse(ddqAssessment.modules_json || '[]');
+    const scopedQuestions = supplierRisk.questionsForAssessment(ddqAssessment.tier, Object.fromEntries(modules.map(module => [module.name, module.applicability])), 'Smoke Client');
+    const seedEvidence = supplierDb.prepare(`INSERT INTO supplier_ddq_evidence
+      (workspace_id,assessment_id,question_id,filename,stored_path,sha256,size_bytes,mime_type,source)
+      VALUES (?,?,?,?,?,'0000000000000000000000000000000000000000000000000000000000000000',1,'text/plain','vendor')`);
+    for (const question of scopedQuestions.filter(item => item.evidenceMandatory)) {
+      const exists = supplierDb.prepare('SELECT 1 FROM supplier_ddq_evidence WHERE assessment_id=? AND question_id=? LIMIT 1').get(ddqAssessment.id, question.id);
+      if (!exists) seedEvidence.run(ddqAssessment.workspace_id, ddqAssessment.id, question.id, `SMOKE-${question.id}.txt`, `SMOKE-${question.id}.txt`);
+    }
+    supplierDb.close();
+    const completeVendorAnswers = { action: 'submit' };
+    for (const question of scopedQuestions) {
+      completeVendorAnswers[`response_${question.id}`] = 'Yes';
+      completeVendorAnswers[`detail_${question.id}`] = 'Implemented for the service scope.';
+    }
+    const completeVendorSubmit = tokenMatch ? await post(`/supplier-ddq/${tokenMatch[1]}`, completeVendorAnswers) : { status: 0, body: '' };
+    ok('vendor can submit only after every scoped response is complete', completeVendorSubmit.status === 200 && /Responses submitted/.test(completeVendorSubmit.body), `got ${completeVendorSubmit.status}`);
+    const lockedVendorDdq = tokenMatch ? await get(`/supplier-ddq/${tokenMatch[1]}`) : { status: 0, body: '' };
+    ok('submitted vendor questionnaire is locked against later edits', lockedVendorDdq.status === 200 && /Responses submitted/.test(lockedVendorDdq.body) && !/Save progress/.test(lockedVendorDdq.body), `got ${lockedVendorDdq.status}`);
+
+    const reviewAnswers = { action: 'complete' };
+    for (const question of scopedQuestions) {
+      reviewAnswers[`reviewer_${question.id}`] = 'Satisfactory';
+      reviewAnswers[`reviewer_comments_${question.id}`] = 'Evidence scope, currency and ownership verified.';
+    }
+    const completeDdq = await post(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence/review`, reviewAnswers);
+    ok('internal reviewer can conclude the evidence-backed DDQ', completeDdq.status >= 300 && completeDdq.status < 400, `got ${completeDdq.status}`);
+    const completedDdqPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence`);
+    ok('completed DDQ shows no review items', completedDdqPage.status === 200 && /complete/.test(completedDdqPage.body) && /Review items[\s\S]*?<div class="kpi-num">0<\/div>/.test(completedDdqPage.body), `got ${completedDdqPage.status}`);
+
+    const contractDb = new Database(TMP_DB, { readonly: true });
+    const contractReview = contractDb.prepare(`SELECT * FROM supplier_contract_reviews WHERE supplier_id=? AND status!='superseded' ORDER BY id DESC LIMIT 1`).get(supplierId);
+    const contractItems = contractDb.prepare('SELECT * FROM supplier_contract_review_items WHERE review_id=?').all(contractReview.id);
+    contractDb.close();
+    const contractAnswers = { action: 'complete' };
+    for (const item of contractItems) {
+      contractAnswers[`required_${item.clause_id}`] = item.required ? '1' : '0';
+      contractAnswers[`status_${item.clause_id}`] = item.required ? 'Present - Satisfactory' : 'Not Required';
+      contractAnswers[`reference_${item.clause_id}`] = item.required ? `MSA-${item.clause_id}` : '';
+      contractAnswers[`comments_${item.clause_id}`] = item.required ? 'Executed clause verified.' : 'Excluded by approved module scope.';
+    }
+    const completeContract = await post(`/workspaces/${wsId}/vendors/${supplierId}/contract-review`, contractAnswers);
+    ok('contract review completes when all required clauses are concluded', completeContract.status >= 300 && completeContract.status < 400, `got ${completeContract.status}`);
+    const readyRecord = await get(`/workspaces/${wsId}/vendors/${supplierId}`);
+    ok('supplier becomes ready for a governed risk decision', readyRecord.status === 200 && /Ready for risk decision/.test(readyRecord.body), `got ${readyRecord.status}`);
+    const decision = await post(`/workspaces/${wsId}/vendors/${supplierId}/decisions`, {
+      decision: 'approved', residual_risk_band: 'moderate', valid_until: '2027-08-16',
+      rationale: 'Inherent scope, vendor evidence, internal review and contract controls support approval.',
+      residual_risk_rationale: 'A material dependency remains and is accepted subject to annual reassessment.'
+    });
+    ok('governed supplier decision records only after all gates pass', decision.status >= 300 && decision.status < 400, `got ${decision.status}`);
 
     console.log('\nbespoke question coverage');
     const { getQuestions } = require(path.join(ROOT, 'data', 'assessment-questions'));

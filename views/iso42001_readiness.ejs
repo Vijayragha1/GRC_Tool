@@ -16,6 +16,8 @@
   </div>
 </div>
 
+<div class="callout" style="margin-bottom:16px"><strong>Compliance Sphere ISO 42001 Readiness Method v2026.1.</strong> The readiness bands and 0 to 4 capability scale are proprietary consulting measures. They are not an ISO score and do not replace a certification body's audit decision.</div>
+
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
   <div class="panel kpi">
     <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
@@ -35,7 +37,7 @@
   <div class="panel kpi">
     <div class="kpi-num num"><%= r.metrics.avgMaturity %></div>
     <div class="kpi-label">Average maturity</div>
-    <div class="kpi-meta">controls scored 1-4 (CMMI)</div>
+    <div class="kpi-meta">Compliance Sphere 0 to 4 capability scale</div>
   </div>
 </div>
 

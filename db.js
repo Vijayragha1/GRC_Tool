@@ -1352,6 +1352,19 @@ function addColumnIfMissing(table, column, defn) {
 function init() {
   db.exec(SCHEMA);
 
+  // Calendar policy is tenant data. Workspace timezone overrides the firm;
+  // UTC is the deterministic fallback for older records and new firms.
+  addColumnIfMissing('firms', 'timezone', "TEXT DEFAULT 'UTC'");
+  addColumnIfMissing('workspaces', 'timezone', 'TEXT');
+  db.prepare(`UPDATE firms SET timezone='UTC' WHERE timezone IS NULL OR trim(timezone)=''`).run();
+
+  // One persisted lifecycle vocabulary prevents governance records from
+  // disappearing in readiness, reports, and next-step calculations. Older
+  // builds wrote "completed" or "closed" while the governed forms write
+  // "complete". Normalise those aliases at the data boundary.
+  db.prepare(`UPDATE audits SET status='complete' WHERE lower(trim(status)) IN ('completed','closed','done')`).run();
+  db.prepare(`UPDATE mrms SET status='complete' WHERE lower(trim(status)) IN ('completed','closed','done')`).run();
+
   // Migrations: add entity_id scoping to artifact tables.
   const entityScoped = ['assets','risks','suppliers','incidents','generated_docs',
                         'audits','mrms','nonconformities','training_records','tasks'];

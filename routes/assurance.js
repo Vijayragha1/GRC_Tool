@@ -14,6 +14,20 @@ function register(app, deps) {
     return { view:has('report.view'), generate:has('report.generate'), review:has('report.review'), approve:has('report.approve'), publish:has('report.publish'), export:has('report.export') };
   }
 
+  function supplierOptions(workspaceId) {
+    return db.prepare(`SELECT s.id,s.name,s.business_owner,
+        (SELECT ia.assigned_tier FROM supplier_inherent_assessments ia
+          WHERE ia.supplier_id=s.id AND ia.workspace_id=s.workspace_id AND ia.status='approved'
+          ORDER BY ia.approved_at DESC,ia.id DESC LIMIT 1) tier,
+        (SELECT d.residual_risk_score FROM supplier_decisions d
+          WHERE d.supplier_id=s.id AND d.workspace_id=s.workspace_id AND d.superseded_at IS NULL
+          ORDER BY d.id DESC LIMIT 1) residual_risk_score,
+        (SELECT d.residual_risk_band FROM supplier_decisions d
+          WHERE d.supplier_id=s.id AND d.workspace_id=s.workspace_id AND d.superseded_at IS NULL
+          ORDER BY d.id DESC LIMIT 1) residual_risk_band
+      FROM suppliers s WHERE s.workspace_id=? AND s.archived_at IS NULL ORDER BY s.name`).all(workspaceId);
+  }
+
   function loadRun(req, res) {
     const run = reports.getRun(db, req.workspace.id, Number(req.params.id));
     if (!run) { res.status(404).render('error', { user:req.user, ws:req.workspace, message:'Assurance report not found.' }); return null; }
@@ -35,7 +49,7 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/assurance/new', requireAuth, requireWorkspace, requirePermission('report.generate'), (req, res) => {
     const key = reports.REPORTS[req.query.type] ? req.query.type : 'executive_posture';
-    const suppliers = db.prepare(`SELECT id,name,tier,residual_risk_score,business_owner FROM suppliers WHERE workspace_id=? AND archived_at IS NULL ORDER BY name`).all(req.workspace.id);
+    const suppliers = supplierOptions(req.workspace.id);
     res.render('assurance_new', { user:req.user, ws:req.workspace, definitions:Object.values(reports.REPORTS), definition:reports.REPORTS[key], suppliers, preview:null, form:{}, caps:capabilities(req) });
   });
 
@@ -61,7 +75,7 @@ function register(app, deps) {
       const preview = reports.buildSnapshot(db, req.workspace.id, key, form);
       const hasCritical = preview.quality.some(q => q.severity === 'critical');
       if (hasCritical && req.body.ack_quality !== '1') {
-        const suppliers = db.prepare(`SELECT id,name,tier,residual_risk_score,business_owner FROM suppliers WHERE workspace_id=? AND archived_at IS NULL ORDER BY name`).all(req.workspace.id);
+        const suppliers = supplierOptions(req.workspace.id);
         return res.status(422).render('assurance_new', { user:req.user, ws:req.workspace, definitions:Object.values(reports.REPORTS), definition, suppliers, preview, form, caps:capabilities(req) });
       }
       const run = reports.createRun(db, req.workspace.id, req.user.id, key, form);
@@ -69,7 +83,7 @@ function register(app, deps) {
       res.redirect(withToast(`/workspaces/${req.workspace.id}/assurance/runs/${run.id}`, 'Frozen report snapshot generated'));
     } catch (err) {
       console.error('assurance generation error:', err);
-      const suppliers = db.prepare(`SELECT id,name,tier,residual_risk_score,business_owner FROM suppliers WHERE workspace_id=? AND archived_at IS NULL ORDER BY name`).all(req.workspace.id);
+      const suppliers = supplierOptions(req.workspace.id);
       res.status(400).render('assurance_new', { user:req.user, ws:req.workspace, definitions:Object.values(reports.REPORTS), definition, suppliers, preview:{ error:err.message, quality:[] }, form, caps:capabilities(req) });
     }
   });

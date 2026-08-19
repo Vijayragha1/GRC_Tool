@@ -1,0 +1,27 @@
+<%- include('partials/header', { title: 'Performance & objectives', user, ws, active: 'metrics-library' }) %>
+<%
+  const ragLabel = { green:'On target', amber:'Near target', red:'Off target' };
+  const ragClass = { green:'good', amber:'warn', red:'risk' };
+%>
+<div class="page-head perf-page-head">
+  <div><div class="eyebrow">Performance &amp; objectives</div><h1 class="page-title">Readings</h1><div class="page-subtitle">The chronological measurement record supporting objective status and management-review conclusions.</div></div>
+  <a href="/workspaces/<%= ws.id %>/metrics/adopted" class="btn btn-secondary btn-xs">Open measures</a>
+</div>
+<%- include('partials/performance_tabs', { ws, active: 'readings' }) %>
+
+<div class="perf-kpis">
+  <div class="panel"><span>Recorded readings</span><strong><%= summary.total %></strong><small>complete measurement history</small></div>
+  <div class="panel"><span>This month</span><strong><%= summary.thisMonth %></strong><small>new performance observations</small></div>
+  <div class="panel"><span>Measures with data</span><strong><%= summary.withData %>/<%= summary.measures %></strong><small>adopted measures reporting</small></div>
+  <div class="panel"><span>Awaiting first reading</span><strong><%= summary.measures - summary.withData %></strong><small>measurement gaps to resolve</small></div>
+</div>
+
+<section class="panel perf-readings">
+  <div class="panel-head"><div><h2>Measurement record</h2><p>Each entry retains its date, recorder, context and target position.</p></div><span class="tag"><%= readings.length %></span></div>
+  <% if (!readings.length) { %><div class="empty-state"><div class="empty-title">No readings recorded</div><div class="empty-sub">Open an adopted measure and record its first observation.</div><a href="/workspaces/<%= ws.id %>/metrics/adopted" class="btn btn-primary btn-xs">Open measures</a></div><% } else { %>
+    <div class="table-scroll"><table class="t"><thead><tr><th>Date</th><th>Measure</th><th>Reading</th><th>Target</th><th>Status</th><th>Linked objectives</th><th>Recorded by</th></tr></thead><tbody>
+      <% readings.forEach(reading => { %><tr><td class="num"><%= reading.measured_at %></td><td><a class="link" href="/workspaces/<%= ws.id %>/metrics/adopted/<%= reading.metric_id %>"><%= reading.metric_name %></a><div class="meta text-xs"><%= reading.ref %><%= reading.notes ? ' · ' + reading.notes : '' %></div></td><td class="num"><strong><%= reading.valueDisplay %></strong></td><td class="num"><%= reading.targetDisplay || 'Not set' %></td><td><span class="perf-status <%= ragClass[reading.rag] || 'neutral' %>"><%= ragLabel[reading.rag] || 'No target' %></span></td><td><% if (reading.objectives.length) { %><%= reading.objectives.join(', ') %><% } else { %><span class="meta">Not linked</span><% } %></td><td><%= reading.recorder || '-' %></td></tr><% }) %>
+    </tbody></table></div>
+  <% } %>
+</section>
+<%- include('partials/footer') %>

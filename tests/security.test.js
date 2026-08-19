@@ -163,6 +163,9 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   assert.ok(!/No default user found/.test(authed.text), 'must not show a no-user error');
   assert.match(authed.text, /id="pageLoader"/, 'protected app shell must include the branded page loader');
   assert.match(authed.text, /page-loader\.js\?v=/, 'protected app shell must load the transition controller');
+  assert.match(authed.text, /class="skip-link"[^>]*>Skip to content</, 'protected app shell must offer a keyboard skip link');
+  assert.match(authed.text, /site-enhancements\.js\?v=/, 'protected app shell must load the shared interaction layer');
+  assert.match(authed.text, /data-theme-toggle/, 'protected app shell must expose the theme control');
 
   // A fresh, unauthenticated client on the same app must be redirected to login.
   // Regression guard: if a default-user bypass is ever reintroduced, this 200s.

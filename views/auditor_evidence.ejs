@@ -28,7 +28,7 @@
       <tbody>
         <% evidence.forEach(e => { %>
           <tr>
-            <td><% if (e.iso_item_id) { %><span class="iso-ref"><%= String(e.iso_item_id).replace('annex-','').toUpperCase() %></span><% } else { %><span class="meta">—</span><% } %></td>
+            <td><% if (e.iso_item_id) { %><span class="iso-ref"><%= String(e.iso_item_id).replace('annex-','').toUpperCase() %></span><% } else { %><span class="meta">-</span><% } %></td>
             <td>
               <%= e.filename %>
               <% if (e.description) { %><div class="meta text-sm" style="margin-top:3px;"><%= e.description.slice(0,160) %><%= e.description.length > 160 ? '…' : '' %></div><% } %>

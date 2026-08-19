@@ -182,6 +182,8 @@ function register(app, deps) {
       if (decision !== 'reopened') {
         if (phase === 'validation' && decision === 'not_required') {
           if (!context.completed.fieldwork || context.findings.length) return redirectError(req, res, 'Validation can be marked not required only after fieldwork sign-off when there are no confirmed client findings.');
+        } else if (phase === 'post_report' && decision === 'not_required') {
+          if (!context.gates.report.complete || context.findings.length) return redirectError(req, res, 'Post-report remediation can be marked not required only after a report is published and no confirmed client findings exist.');
         } else if (phase === 'validation' && decision === 'complete' && !context.findings.length) {
           return redirectError(req, res, 'There are no confirmed client findings to validate. Record Validation as Not required instead.');
         } else if (!context.gates[phase].ready) {

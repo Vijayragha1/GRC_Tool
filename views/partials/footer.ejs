@@ -4,13 +4,13 @@
 
 <% if (typeof user !== 'undefined' && user) { %>
 <% const clientFooterMode = user.user_type === 'client' || (typeof clientPreview !== 'undefined' && clientPreview === true); %>
-<% if (!clientFooterMode) { %>
 <!-- Command palette -->
-<div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()">
+<div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()" role="dialog" aria-modal="true" aria-labelledby="cpSearchLabel">
   <div class="cp-modal">
+    <span class="sr-only" id="cpSearchLabel">Search <%= clientFooterMode ? 'this engagement' : 'Compliance Sphere' %></span>
     <div class="cp-search">
       <svg class="cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input id="cpInput" placeholder="Search controls, risks, documents, clients…" autocomplete="off" spellcheck="false">
+      <input id="cpInput" placeholder="<%= clientFooterMode ? 'Search pages in this engagement…' : 'Search controls, risks, documents, clients…' %>" autocomplete="off" spellcheck="false" aria-label="Search">
       <span class="kbd">esc</span>
     </div>
     <div class="cp-results" id="cpResults"><div class="cp-empty">Start typing to search</div></div>
@@ -21,10 +21,9 @@
     </div>
   </div>
 </div>
-<% } %>
 
 <!-- Help modal -->
-<div class="cp-backdrop help-modal" id="helpBackdrop" onclick="if(event.target===this)closeHelp()">
+<div class="cp-backdrop help-modal" id="helpBackdrop" onclick="if(event.target===this)closeHelp()" role="dialog" aria-modal="true" aria-label="<%= clientFooterMode ? 'Portal help' : 'Keyboard shortcuts' %>">
   <div class="cp-modal">
     <div class="cp-search" style="padding:14px 18px;border-bottom:1px solid var(--border);">
       <svg class="text-tertiary" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -33,6 +32,7 @@
     </div>
     <div class="help-shortcuts">
       <% if (clientFooterMode) { %>
+      <div class="help-row"><span>Search this engagement</span><span><span class="kbd" id="hk1">⌘K</span></span></div>
       <div class="help-row"><span><strong>Requests</strong><br><small>Provide information, upload files and ask questions.</small></span></div>
       <div class="help-row"><span><strong>Engagement</strong><br><small>Track agreed deliverables, dates and approvals.</small></span></div>
       <div class="help-row"><span><strong>Approvals</strong><br><small>Review policies and confirm shared information.</small></span></div>
@@ -55,15 +55,22 @@
       <div class="help-row"><span>Nonconformities</span><span><span class="kbd">g</span> <span class="kbd">n</span></span></div>
       <div class="help-row"><span>Tasks</span><span><span class="kbd">g</span> <span class="kbd">t</span></span></div>
       <% } %>
+      <div class="help-faq" aria-label="Frequently asked questions">
+        <div class="text-xs text-tertiary help-faq-label">Frequently asked questions</div>
+        <details><summary>How do I find a page quickly?</summary><p>Use Search or press Command K on macOS and Control K on Windows. Search shows only pages available in your engagement.</p></details>
+        <details><summary>Why is a submit button unavailable?</summary><p>Required fields or supporting evidence are still missing. Complete the highlighted fields before submitting.</p></details>
+        <details><summary>Who can see uploaded evidence?</summary><p>Only authorised members of this client workspace and its assigned engagement team can access uploaded evidence.</p></details>
+        <details><summary>How do I contact the engagement team?</summary><p>Use the Contact team button in the client portal or open Portal help for guidance.</p></details>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- Toast stack -->
-<div class="toast-stack" id="toastStack"></div>
+<div class="toast-stack" id="toastStack" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Global confirm/alert modal - replaces native window.confirm/alert across the app -->
-<div id="appConfirmModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
+<div id="appConfirmModal" role="dialog" aria-modal="true" aria-labelledby="appConfirmKind" aria-describedby="appConfirmBody" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div id="appConfirmHead" style="padding:14px 18px;border-bottom:1px solid var(--border);">
       <div class="text-xs text-tertiary" id="appConfirmKind" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;">Confirm</div>
@@ -151,7 +158,7 @@ window._unmarkBusy = function (form) {
       // prefix matching here would incorrectly highlight Overview for every
       // route below /workspaces/:id.
       const isActive = portalRoot && linkUrl.pathname === path
-        ? (target.hash ? linkUrl.hash === target.hash : !linkUrl.hash)
+        ? (linkUrl.searchParams.get('view') || 'home') === (target.searchParams.get('view') || 'home')
         : (!linkUrl.hash && path === linkUrl.pathname);
       a.classList.toggle('active', isActive);
       if (isActive) a.setAttribute('aria-current', 'page');
@@ -735,11 +742,12 @@ function toast(msg, kind) {
 // Read flash from query params on page load
 (function() {
   const p = new URLSearchParams(location.search);
-  if (p.has('toast')) {
-    const msg = decodeURIComponent(p.get('toast'));
-    const kind = p.get('toastKind') || 'success';
+  const key = p.has('toast') ? 'toast' : (p.has('notice') ? 'notice' : (p.has('error') ? 'error' : ''));
+  if (key) {
+    const msg = decodeURIComponent(p.get(key));
+    const kind = p.get('toastKind') || (key === 'error' ? 'error' : 'success');
     setTimeout(() => toast(msg, kind), 50);
-    p.delete('toast'); p.delete('toastKind');
+    p.delete(key); p.delete('toastKind');
     const newUrl = location.pathname + (p.toString() ? '?' + p.toString() : '');
     history.replaceState({}, '', newUrl);
   }
@@ -755,7 +763,7 @@ let cpDebounce;
 
 function openPalette() {
   const palette = document.getElementById('cpBackdrop');
-  if (!palette || clientFooterMode) return;
+  if (!palette) return;
   palette.classList.add('open');
   setTimeout(() => document.getElementById('cpInput')?.focus(), 50);
   cpSearch('');
@@ -767,11 +775,13 @@ function closePalette() {
 async function cpSearch(q) {
   const box = document.getElementById('cpResults');
   if (!q || !q.trim()) {
-    box.innerHTML = '<div class="cp-empty">Type to search controls, risks, documents…</div>';
+    box.innerHTML = '<div class="cp-empty">' + (clientFooterMode ? 'Type to search this engagement' : 'Type to search controls, risks and documents') + '</div>';
     cpResults = []; return;
   }
   try {
-    const url = '/api/search?q=' + encodeURIComponent(q) + (wsIdParam ? '&wsId=' + wsIdParam : '');
+    const currentWsMatch = location.pathname.match(/\/workspaces\/(\d+)/);
+    const currentWsId = currentWsMatch ? currentWsMatch[1] : wsIdParam;
+    const url = '/api/search?q=' + encodeURIComponent(q) + (currentWsId ? '&wsId=' + currentWsId : '') + (clientFooterMode ? '&clientMode=1' : '');
     const r = await fetch(url);
     const data = await r.json();
     cpResults = data;
@@ -828,7 +838,7 @@ function inEditable(el) {
 }
 document.addEventListener('keydown', e => {
   // ⌘K / Ctrl+K → palette
-  if (!clientFooterMode && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
   // ⌘⇧L → toggle theme
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); toggleTheme(); return; }
   if (e.key === 'Escape') {
@@ -838,7 +848,7 @@ document.addEventListener('keydown', e => {
   }
   if (inEditable(e.target)) return;
   // / → open palette
-  if (!clientFooterMode && e.key === '/') { e.preventDefault(); openPalette(); return; }
+  if (e.key === '/') { e.preventDefault(); openPalette(); return; }
   // ? → help
   if (e.key === '?') { e.preventDefault(); openHelp(); return; }
   // g _ → navigate

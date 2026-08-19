@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 const { bootClient } = require('./helpers');
 const gapAssessmentReport = require('../lib/gap-assessment-report');
+const delivery = require('../lib/engagement-delivery');
 
 let env;
 let client;
@@ -39,6 +40,14 @@ test('adaptive plan seeds flexible phases, milestones and deliverables once', as
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_phases WHERE plan_id=?').get(plan.id).c, 11);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=?').get(plan.id).c, 27);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_deliverables WHERE plan_id=?').get(plan.id).c, 27);
+  const evidencePeriod = db.prepare(`SELECT * FROM engagement_delivery_milestones
+    WHERE plan_id=? AND milestone_key='w12-evidence'`).get(plan.id);
+  const firstAssurance = db.prepare(`SELECT * FROM engagement_delivery_milestones
+    WHERE plan_id=? AND milestone_key='w8-programme'`).get(plan.id);
+  assert.equal(evidencePeriod.minimum_duration_months, 3);
+  assert.equal(evidencePeriod.planned_end_date, delivery.addMonths(evidencePeriod.planned_start_date, 3));
+  assert.ok(firstAssurance.planned_start_date >= evidencePeriod.forecast_end_date,
+    'internal assurance cannot start before the evidence operating period finishes');
   const clientPresentation = db.prepare(`SELECT d.client_title,d.client_description,d.framework_code,d.requirement_refs
     FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
     WHERE d.plan_id=? AND m.milestone_key='w1-kickoff'`).get(plan.id);
@@ -51,7 +60,12 @@ test('adaptive plan seeds flexible phases, milestones and deliverables once', as
 });
 
 test('timeline and gates are projections and the legacy roadmap redirects', async () => {
-  assert.equal((await client.get(`/workspaces/${workspaceId}/engagement-plan?view=timeline`)).status, 200);
+  const timeline = await client.get(`/workspaces/${workspaceId}/engagement-plan?view=timeline`);
+  assert.equal(timeline.status, 200);
+  assert.match(timeline.text, /Calendar-based delivery forecast/);
+  assert.match(timeline.text, /3 calendar months minimum/);
+  assert.match(timeline.text, /ep-gantt-months/);
+  assert.match(timeline.text, /Starts after/);
   assert.equal((await client.get(`/workspaces/${workspaceId}/engagement-plan?view=gates`)).status, 200);
   const roadmap = await client.get(`/workspaces/${workspaceId}/roadmap`);
   assert.equal(roadmap.status, 302);
@@ -313,10 +327,11 @@ test('a complete imported baseline can be adopted once as an auditable, reportab
 
   const before = await client.get(`/workspaces/${importedWorkspaceId}/gap-assessment`);
   assert.equal(before.status, 200);
-  assert.match(before.text, /Imported assessment baseline · current status report available/);
-  assert.match(before.text, /Adopt baseline and enable reports/);
+  assert.match(before.text, /Current assessment position/);
+  assert.match(before.text, /118 of 118 requirements concluded/);
+  assert.match(before.text, /Adopt baseline for independent review/);
   assert.match(before.text, new RegExp(`/workspaces/${importedWorkspaceId}/export/gap-report\\.pdf`));
-  assert.match(before.text, /Working snapshot/);
+  assert.match(before.text, /Download current report/);
 
   const currentReport = await client.get(`/workspaces/${importedWorkspaceId}/export/gap-report.docx`);
   assert.equal(currentReport.status, 200);
@@ -325,13 +340,13 @@ test('a complete imported baseline can be adopted once as an auditable, reportab
 
   const adopted = await client.post(`/workspaces/${importedWorkspaceId}/gap-assessment/adopt-baseline`, {});
   assert.equal(adopted.status, 302);
-  assert.match(decodeURIComponent(adopted.location), /Imported baseline adopted as Pass 1/);
+  assert.match(decodeURIComponent(adopted.location), /different senior consultant or manager must independently sign it off/);
   const pass = db.prepare(`SELECT * FROM assessment_passes WHERE workspace_id=?`).get(importedWorkspaceId);
   assert.equal(pass.pass_number, 1);
-  assert.equal(pass.status, 'completed');
+  assert.equal(pass.status, 'in_progress');
   assert.equal(pass.label, 'Imported assessment baseline');
   assert.equal(pass.started_by, managerId);
-  assert.equal(pass.completed_by, managerId);
+  assert.equal(pass.completed_by, null);
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM control_state_history WHERE workspace_id=? AND pass_id=?`).get(importedWorkspaceId, pass.id).c, 118);
 
   const audit = db.prepare(`SELECT a.details,c.entry_hash FROM audit_log a
@@ -347,7 +362,8 @@ test('a complete imported baseline can be adopted once as an auditable, reportab
 
   const after = await client.get(`/workspaces/${importedWorkspaceId}/gap-assessment`);
   assert.equal(after.status, 200);
-  assert.match(after.text, /Current status PDF/);
+  assert.match(after.text, /Pass completion locked/);
+  assert.match(after.text, /Implemented claims need linked, current evidence/i);
   assert.match(after.text, new RegExp(`/export/gap-report\\.pdf\\?pass=${pass.id}`));
   assert.match(after.text, new RegExp(`/export/gap-report\\.docx\\?pass=${pass.id}`));
 
@@ -376,8 +392,8 @@ test('baseline adoption stays locked until every requirement has a conclusion', 
   const page = await client.get(`/workspaces/${partialWorkspaceId}/gap-assessment`);
   assert.equal(page.status, 200);
   assert.match(page.text, /1 CONCLUSIONS REMAIN/);
-  assert.doesNotMatch(page.text, /Adopt baseline and enable reports/);
-  assert.match(page.text, /1 requirement will appear as Not Assessed in the report/);
+  assert.doesNotMatch(page.text, /Adopt baseline for independent review/);
+  assert.match(page.text, /1 requirement will appear as Not Assessed/);
   assert.match(page.text, new RegExp(`/workspaces/${partialWorkspaceId}/export/gap-report\\.pdf`));
   const rejected = await client.post(`/workspaces/${partialWorkspaceId}/gap-assessment/adopt-baseline`, {});
   assert.equal(rejected.status, 302);
@@ -386,10 +402,14 @@ test('baseline adoption stays locked until every requirement has a conclusion', 
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM control_state_history WHERE workspace_id=?`).get(partialWorkspaceId).c, 0);
 });
 
-test('formal gap-assessment outputs and pass completion require decision-ready coverage', async () => {
+test('formal gap-assessment outputs and independent pass completion require decision-ready coverage', async () => {
+  const preparerId = Number(db.prepare(`INSERT INTO users
+    (email,password_hash,name,firm_id,user_type,firm_role,active)
+    SELECT 'assessment-preparer@example.com', password_hash, 'Assessment Preparer', firm_id, 'firm', 'consultant', 1
+    FROM users WHERE id=?`).run(managerId).lastInsertRowid);
   const passId = Number(db.prepare(`INSERT INTO assessment_passes
     (workspace_id,pass_number,label,status,started_by)
-    VALUES (?,1,'Initial gap assessment','in_progress',?)`).run(workspaceId, managerId).lastInsertRowid);
+    VALUES (?,1,'Initial gap assessment','in_progress',?)`).run(workspaceId, preparerId).lastInsertRowid);
 
   const gatedPage = await client.get(`/workspaces/${workspaceId}/gap-assessment`);
   assert.equal(gatedPage.status, 200);
@@ -421,12 +441,12 @@ test('formal gap-assessment outputs and pass completion require decision-ready c
   assert.equal(itemIds.length, 118);
   const saveConclusion = db.prepare(`INSERT INTO control_state_history
     (workspace_id,iso_item_id,changed_by,status,applicability,maturity,notes,pass_id)
-    VALUES (?,?,?,'Implemented','included',3,'Verified for regression coverage',?)`);
-  db.transaction(() => itemIds.forEach(item => saveConclusion.run(workspaceId, item.id, managerId, passId)))();
+    VALUES (?,?,?,'Not Implemented','included',0,'Required practice is not yet implemented; remediation ownership and target evidence must be agreed.',?)`);
+  db.transaction(() => itemIds.forEach(item => saveConclusion.run(workspaceId, item.id, preparerId, passId)))();
   db.prepare(`INSERT INTO control_state_history
     (workspace_id,iso_item_id,changed_by,status,applicability,maturity,notes,pass_id)
     VALUES (?,'clause-4.1',?,'Not Implemented','included',0,'Organizational context is not documented or approved.',?)`)
-    .run(workspaceId, managerId, passId);
+    .run(workspaceId, preparerId, passId);
   db.prepare(`INSERT INTO evidence (workspace_id,iso_item_id,filename,stored_path,sha256,size_bytes,uploaded_by,description)
     VALUES (?,'clause-4.1','scope-workshop-notes.pdf','scope-workshop-notes.pdf','report-evidence-sha',256,?,'Assessment workshop record')`)
     .run(workspaceId, managerId);
@@ -454,5 +474,10 @@ test('formal gap-assessment outputs and pass completion require decision-ready c
 
   const complete = await client.post(`/workspaces/${workspaceId}/gap-assessment/${passId}/complete`, {});
   assert.equal(complete.status, 302);
-  assert.equal(db.prepare('SELECT status FROM assessment_passes WHERE id=?').get(passId).status, 'completed');
+  const completedPass = db.prepare('SELECT status,completed_by FROM assessment_passes WHERE id=?').get(passId);
+  assert.equal(completedPass.status, 'completed');
+  assert.equal(completedPass.completed_by, managerId);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM consultant_workpapers w
+    INNER JOIN consulting_engagements e ON e.id=w.engagement_id
+    WHERE e.workspace_id=? AND w.status='frozen'`).get(workspaceId).c, 118);
 });

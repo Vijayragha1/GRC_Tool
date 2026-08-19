@@ -187,7 +187,7 @@
       <div class="panel-pad csf-conclusion-grid" style="display:grid;grid-template-columns:180px 180px 1fr;gap:14px;">
         <div><label class="label">Profile priority</label><select class="select" name="profile_priority"><% ['critical','high','medium','low'].forEach(x => { %><option value="<%= x %>" <%= detail.profile_priority===x?'selected':'' %>><%= x[0].toUpperCase()+x.slice(1) %></option><% }) %></select></div>
         <div><label class="label">Evidence confidence</label><select class="select" name="evidence_confidence"><option value="">Select</option><% ['low','medium','high'].forEach(x => { %><option value="<%= x %>" <%= detail.evidence_confidence===x?'selected':'' %>><%= x[0].toUpperCase()+x.slice(1) %></option><% }) %></select></div>
-        <div><label class="label">Effectiveness conclusion</label><input class="input" name="effectiveness_conclusion" value="<%= detail.effectiveness_conclusion || '' %>" placeholder="Effective, partially effective, ineffective, or not tested — with a concise basis"></div>
+        <div><label class="label">Effectiveness conclusion</label><input class="input" name="effectiveness_conclusion" value="<%= detail.effectiveness_conclusion || '' %>" placeholder="Effective, partially effective, ineffective, or not tested - with a concise basis"></div>
         <div style="grid-column:1/-1;"><label class="label">Current Profile statement</label><textarea class="textarea" name="current_profile_statement" rows="3" placeholder="How the organization currently achieves this outcome, grounded in retained evidence."><%= detail.current_profile_statement || '' %></textarea></div>
         <% if (engagement.scope_mode === 'CURRENT_TARGET') { %><div style="grid-column:1/-1;"><label class="label">Target Profile statement</label><textarea class="textarea" name="target_profile_statement" rows="3" placeholder="The desired cybersecurity outcome and the material change required to achieve it."><%= detail.target_profile_statement || '' %></textarea></div><% } %>
         <div style="grid-column:1/-1;"><label class="label">Business impact</label><textarea class="textarea" name="business_impact" rows="3" placeholder="Explain why any gap matters to critical services, stakeholders, obligations, or risk appetite."><%= detail.business_impact || '' %></textarea></div>
@@ -358,7 +358,7 @@
 
             <% const recs = recsByFinding[f.id] || []; %>
             <% if (recs.length) { %>
-              <div style="margin-top:8px;padding-left:12px;border-left:2px solid var(--border);">
+              <div style="margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);">
                 <div class="meta text-eyebrow" style="text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recommendations</div>
                 <% recs.forEach(r => { %>
                   <div class="text-base" style="margin-bottom:6px;line-height:1.5;">

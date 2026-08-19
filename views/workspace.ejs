@@ -362,6 +362,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
 
       <div class="col-full"><button class="btn btn-primary">Save</button></div>
     </form>
+    <% if (typeof userPerms !== 'undefined' && userPerms.has('workspace.delete')) { %>
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
       <div class="text-xs" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:var(--danger,#b91c1c);margin-bottom:8px;">Danger zone</div>
       <details>
@@ -378,6 +379,7 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
         </div>
       </details>
     </div>
+    <% } %>
   </div>
 </details>
 

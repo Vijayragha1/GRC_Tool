@@ -63,7 +63,7 @@
     <div id="invite_client_block" style="display:none;">
       <label class="text-eyebrow" style="display:block;color:var(--text-secondary);margin-bottom:4px;">Client workspace</label>
       <select class="input" name="workspace_id" style="margin-bottom:12px;">
-        <option value="">— choose a client —</option>
+        <option value="">- choose a client -</option>
         <% workspaces.forEach(w => { %>
           <option value="<%= w.id %>"><%= w.client_name %></option>
         <% }) %>
@@ -139,8 +139,8 @@
               Client &middot; <%= (rbac.ROLE_LABELS[inv.workspace_role] || inv.workspace_role || 'member').toLowerCase() %>
             <% } %>
           </td>
-          <td><%= inv.workspace_name || '—' %></td>
-          <td class="meta"><%= inv.invited_by_name || '—' %></td>
+          <td><%= inv.workspace_name || '-' %></td>
+          <td class="meta"><%= inv.invited_by_name || '-' %></td>
           <td class="meta"><%= new Date(inv.expires_at).toLocaleDateString() %></td>
           <td>
             <form method="POST" action="/admin/invitations/<%= inv.id %>/revoke" style="margin:0;">
@@ -247,7 +247,7 @@
             <td><%= u.name %></td>
             <td class="meta"><%= u.email %></td>
             <td class="meta"><%= u.workspaces %></td>
-            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '—' %></td>
+            <td class="meta"><%= u.last_active_at ? new Date(u.last_active_at).toLocaleDateString() : '-' %></td>
             <td><%= u.active ? 'Active' : 'Disabled' %></td>
             <td>
               <% if (u.active) { %>

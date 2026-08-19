@@ -97,7 +97,8 @@ function register(app, deps) {
     }
     const tagList = Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
-    const allIsoItems = db.prepare(`SELECT id, type, title FROM iso_items ORDER BY sort_order ASC`).all();
+    const allIsoItems = req.workspace.frameworks.includes('iso27001')
+      ? db.prepare(`SELECT id, type, title FROM iso_items ORDER BY sort_order ASC`).all() : [];
     // Per-framework catalogs for the "Link to..." picker on each row. Only
     // populated when the workspace has that framework enabled.
     const allIso42001Items = req.workspace.frameworks.includes('iso42001')
@@ -128,12 +129,56 @@ function register(app, deps) {
       .join(', ');
   }
 
+  // Resolve upload-form selections against the catalogs enabled for this
+  // workspace. The browser is not trusted to decide which frameworks or
+  // requirement references are valid.
+  function selectedEvidenceRefs(workspace, body) {
+    const enabled = new Set(Array.isArray(workspace.frameworks) ? workspace.frameworks : []);
+    const selected = { iso27001: [], iso42001: [], csf: [] };
+    const unique = values => [...new Set(parseFormArray(values).map(value => String(value).trim()).filter(Boolean))];
+
+    if (enabled.has('iso27001')) {
+      const refs = unique(body.iso_item_id);
+      if (refs.length) {
+        const placeholders = refs.map(() => '?').join(',');
+        const valid = new Set(db.prepare(`SELECT id FROM iso_items WHERE id IN (${placeholders})`).all(...refs).map(row => row.id));
+        selected.iso27001 = refs.filter(ref => valid.has(ref));
+      }
+    }
+    if (enabled.has('iso42001')) {
+      const refs = unique(body.iso42001_item_ref);
+      if (refs.length) {
+        const placeholders = refs.map(() => '?').join(',');
+        const valid = new Set(db.prepare(`SELECT id FROM iso42001_items WHERE id IN (${placeholders})`).all(...refs).map(row => row.id));
+        selected.iso42001 = refs.filter(ref => valid.has(ref));
+      }
+    }
+    if (enabled.has('csf')) {
+      const refs = unique(body.csf_item_ref);
+      if (refs.length) {
+        const placeholders = refs.map(() => '?').join(',');
+        const valid = new Set(db.prepare(`SELECT code FROM csf_subcategories WHERE code IN (${placeholders})`).all(...refs).map(row => row.code));
+        selected.csf = refs.filter(ref => valid.has(ref));
+      }
+    }
+    return selected;
+  }
+
+  function selectedEvidenceRefCount(selected) {
+    return selected.iso27001.length + selected.iso42001.length + selected.csf.length;
+  }
+
+  function attachSelectedEvidenceRefs(evidenceId, selected, sectionRef) {
+    for (const ref of selected.iso27001) evWrites.attachIsoControl(db, evidenceId, ref, sectionRef || null);
+    for (const ref of selected.iso42001) evWrites.attachCrossLink(db, evidenceId, 'iso42001', ref, sectionRef || null);
+    for (const ref of selected.csf) evWrites.attachCrossLink(db, evidenceId, 'csf', ref, sectionRef || null);
+  }
+
   app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
     if (!req.file) return redirectBack(req, res, 'Pick a file to upload', 'error');
-    // Accept either a single iso_item_id (legacy: control wizard upload) OR
-    // multiple iso_item_id values (new: evidence library multi-link upload).
-    const isoIds = parseFormArray(req.body.iso_item_id);
-    const primaryId = isoIds[0] || null;
+    const selected = selectedEvidenceRefs(req.workspace, req.body);
+    const primaryId = selected.iso27001[0] || null;
+    const linkCount = selectedEvidenceRefCount(selected);
     const { description, valid_from, valid_until, period_label, clause_section } = req.body;
     const tags = normaliseTags(req.body.tags);
     const buf = fs.readFileSync(req.file.path);
@@ -147,11 +192,13 @@ function register(app, deps) {
       ORDER BY id DESC LIMIT 1`).get(req.workspace.id, sha);
     if (existing) {
       try { fs.unlinkSync(req.file.path); } catch (_) {}
-      if (isoIds.length) {
-        const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, existing.id, id, clause_section || null); });
-        try { tx(); } catch (_) {}
+      if (linkCount) {
+        db.transaction(() => attachSelectedEvidenceRefs(existing.id, selected, clause_section))();
       }
-      logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, { sha, link_count: isoIds.length });
+      logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, {
+        sha, link_count: linkCount,
+        framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
+      });
       const back = req.headers.referer || '/workspaces/' + req.workspace.id + '/evidence';
       return res.redirect(withToast(back, `Same file already exists (${existing.filename}) - linked instead of duplicated`));
     }
@@ -164,11 +211,13 @@ function register(app, deps) {
            sha, req.file.size, req.user.id, description || null,
            valid_from || null, valid_until || null, period_label || null, clause_section || null,
            tags || null).lastInsertRowid;
-    if (isoIds.length) {
-      const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, evId, id, clause_section || null); });
-      try { tx(); } catch (_) {}
+    if (linkCount) {
+      db.transaction(() => attachSelectedEvidenceRefs(evId, selected, clause_section))();
     }
-    logAction(req.user.id, req.workspace.id, 'upload_evidence', 'control', primaryId, { filename: req.file.originalname, link_count: isoIds.length });
+    logAction(req.user.id, req.workspace.id, 'upload_evidence', 'evidence', evId, {
+      filename: req.file.originalname, link_count: linkCount,
+      framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
+    });
     const back = req.headers.referer || '/workspaces/' + req.workspace.id;
     res.redirect(back);
   });
@@ -178,8 +227,9 @@ function register(app, deps) {
   // and link to the same set of selected controls.
   app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.array('files', 50), (req, res) => {
     if (!req.files || !req.files.length) return redirectBack(req, res, 'Pick at least one file', 'error');
-    const isoIds = parseFormArray(req.body.iso_item_id);
-    const primaryId = isoIds[0] || null;
+    const selected = selectedEvidenceRefs(req.workspace, req.body);
+    const primaryId = selected.iso27001[0] || null;
+    const linkCount = selectedEvidenceRefCount(selected);
     const { description, valid_from, valid_until, period_label } = req.body;
     const tags = normaliseTags(req.body.tags);
     let created = 0, deduped = 0;
@@ -190,9 +240,8 @@ function register(app, deps) {
         WHERE workspace_id=? AND sha256=? AND superseded_at IS NULL ORDER BY id DESC LIMIT 1`).get(req.workspace.id, sha);
       if (existing) {
         try { fs.unlinkSync(f.path); } catch (_) {}
-        if (isoIds.length) {
-          const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, existing.id, id, null); });
-          try { tx(); } catch (_) {}
+        if (linkCount) {
+          db.transaction(() => attachSelectedEvidenceRefs(existing.id, selected, null))();
         }
         deduped++;
         continue;
@@ -204,13 +253,15 @@ function register(app, deps) {
         .run(req.workspace.id, primaryId, f.originalname, f.filename, sha, f.size, req.user.id,
              description || null, valid_from || null, valid_until || null, period_label || null,
              tags || null).lastInsertRowid;
-      if (isoIds.length) {
-        const tx = db.transaction(() => { for (const id of isoIds) evWrites.attachIsoControl(db, evId, id, null); });
-        try { tx(); } catch (_) {}
+      if (linkCount) {
+        db.transaction(() => attachSelectedEvidenceRefs(evId, selected, null))();
       }
       created++;
     }
-    logAction(req.user.id, req.workspace.id, 'bulk_upload_evidence', 'workspace', req.workspace.id, { created, deduped, link_count: isoIds.length });
+    logAction(req.user.id, req.workspace.id, 'bulk_upload_evidence', 'workspace', req.workspace.id, {
+      created, deduped, link_count: linkCount,
+      framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
+    });
     const msg = `Uploaded ${created} file${created === 1 ? '' : 's'}` + (deduped ? ` · ${deduped} re-linked (already existed)` : '');
     res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, msg));
   });
@@ -324,6 +375,9 @@ function register(app, deps) {
       // ISO 27001 keeps its own legacy route so the section_ref + primary
       // bookkeeping stays consistent. Cross-framework only here.
       return res.status(400).send('Use /controls for ISO 27001 links');
+    }
+    if (!req.workspace.frameworks.includes(framework)) {
+      return res.status(400).send('Framework is not enabled for this workspace');
     }
     const refs = parseFormArray(req.body.item_ref);
     if (!refs.length) return redirectBack(req, res);

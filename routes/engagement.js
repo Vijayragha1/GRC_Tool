@@ -373,13 +373,18 @@ function register(app, deps) {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
       const phase = db.prepare('SELECT id FROM engagement_delivery_phases WHERE id=? AND plan_id=?').get(req.body.phase_id, plan.id);
       if (!phase || !String(req.body.title || '').trim()) throw new Error('A valid phase and milestone title are required.');
+      const minimumDurationMonths = Number(req.body.minimum_duration_months || 0);
+      if (!Number.isInteger(minimumDurationMonths) || minimumDurationMonths < 0 || minimumDurationMonths > 36) {
+        throw new Error('Minimum duration must be a whole number from 0 to 36 months.');
+      }
       const key = `custom-${Date.now()}-${Math.random().toString(16).slice(2,8)}`;
       const id = db.prepare(`INSERT INTO engagement_delivery_milestones
-        (plan_id,phase_id,milestone_key,title,description,acceptance_criteria,priority,is_required,completion_mode,owner_id,planned_start_date,planned_end_date,forecast_end_date)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(plan.id, phase.id, key, req.body.title.trim(), req.body.description || null,
+        (plan_id,phase_id,milestone_key,title,description,acceptance_criteria,priority,is_required,completion_mode,owner_id,planned_start_date,planned_end_date,forecast_end_date,minimum_duration_months)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(plan.id, phase.id, key, req.body.title.trim(), req.body.description || null,
           req.body.acceptance_criteria || null, req.body.priority || 'normal', req.body.is_required ? 1 : 0,
           req.body.completion_mode || 'deliverable', req.body.owner_id || null, req.body.planned_start_date || null,
-          req.body.planned_end_date || null, req.body.forecast_end_date || req.body.planned_end_date || null).lastInsertRowid;
+          req.body.planned_end_date || null, req.body.forecast_end_date || req.body.planned_end_date || null,
+          minimumDurationMonths).lastInsertRowid;
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'milestone', id, 'created', null, 'not_started', { title: req.body.title });
       logAction(req.user.id, req.workspace.id, 'create_delivery_milestone', 'engagement_milestone', id, { title: req.body.title }, auditCtx(req));
       delivery.recalculateSchedule(db, req.workspace, req.user.id, 'milestone_created');
@@ -389,11 +394,15 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/milestones/:milestoneId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
-      const result = db.prepare(`UPDATE engagement_delivery_milestones SET title=?,description=?,acceptance_criteria=?,priority=?,is_required=?,owner_id=?,planned_start_date=?,planned_end_date=?,forecast_end_date=?,updated_at=datetime('now'),row_version=row_version+1
+      const minimumDurationMonths = Number(req.body.minimum_duration_months || 0);
+      if (!Number.isInteger(minimumDurationMonths) || minimumDurationMonths < 0 || minimumDurationMonths > 36) {
+        throw new Error('Minimum duration must be a whole number from 0 to 36 months.');
+      }
+      const result = db.prepare(`UPDATE engagement_delivery_milestones SET title=?,description=?,acceptance_criteria=?,priority=?,is_required=?,owner_id=?,planned_start_date=?,planned_end_date=?,forecast_end_date=?,minimum_duration_months=?,updated_at=datetime('now'),row_version=row_version+1
         WHERE id=? AND plan_id=? AND row_version=?`).run(req.body.title, req.body.description || null, req.body.acceptance_criteria || null,
           req.body.priority || 'normal', req.body.is_required ? 1 : 0, req.body.owner_id || null,
           req.body.planned_start_date || null, req.body.planned_end_date || null, req.body.forecast_end_date || null,
-          req.params.milestoneId, plan.id, req.body.row_version);
+          minimumDurationMonths, req.params.milestoneId, plan.id, req.body.row_version);
       if (!result.changes) throw new Error('This milestone changed in another session. Reload before saving.');
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'milestone', req.params.milestoneId, 'updated', null, null, null);
       logAction(req.user.id, req.workspace.id, 'update_delivery_milestone', 'engagement_milestone', req.params.milestoneId, null, auditCtx(req));
@@ -608,7 +617,7 @@ function register(app, deps) {
       const projection = delivery.getProjection(db, req.workspace, req.user.id);
       const h = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const rows = projection.phases.map((phase, index) => `<section><h2>${index + 1}. ${h(phase.name)} <small>${h(phase.effective_status.replaceAll('_',' '))}</small></h2><p>${h(phase.description)}</p><table><thead><tr><th>Milestone</th><th>Owner</th><th>Status</th><th>Forecast</th><th>Acceptance</th></tr></thead><tbody>${phase.milestones.map(m => `<tr><td>${h(m.title)}${m.critical_path ? '<br><em>Critical path</em>' : ''}</td><td>${h(m.owner_name || 'Unassigned')}</td><td>${h(m.effective_status.replaceAll('_',' '))}</td><td>${h(m.forecast_end_date || m.planned_end_date || 'Unscheduled')}</td><td>${h(m.deliverables.map(d => `${d.title}: ${d.status}`).join('; '))}</td></tr>`).join('')}</tbody></table></section>`).join('');
-      const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font:11px Arial;color:#17252b}h1{font-size:26px}h2{font-size:16px;margin:22px 0 3px;border-bottom:1px solid #ccd5d8;padding-bottom:5px}small{float:right;text-transform:uppercase;color:#667}p{color:#58666b}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d9e0e2;padding:6px;text-align:left;vertical-align:top}th{background:#eef2f3;font-size:9px;text-transform:uppercase}em{font-size:9px;color:#9a3412}.kpis{display:flex;gap:24px;padding:12px;background:#eef2f3}.kpis strong{font-size:18px;display:block}</style></head><body><h1>${h(projection.plan.name)}</h1><p>${h(req.workspace.brand_display_name || req.workspace.client_name)} · Generated ${new Date().toISOString().slice(0,10)} · Confidential</p><div class="kpis"><div><strong>${projection.summary.progressPct}%</strong>progress</div><div><strong>${projection.summary.phaseGatesPassed}/${projection.summary.phaseGatesTotal}</strong>gates</div><div><strong>${projection.summary.acceptedDeliverables}/${projection.summary.requiredDeliverables}</strong>accepted</div><div><strong>${projection.summary.varianceDays == null ? '—' : projection.summary.varianceDays + 'd'}</strong>variance</div></div>${rows}</body></html>`;
+      const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font:11px Arial;color:#17252b}h1{font-size:26px}h2{font-size:16px;margin:22px 0 3px;border-bottom:1px solid #ccd5d8;padding-bottom:5px}small{float:right;text-transform:uppercase;color:#667}p{color:#58666b}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d9e0e2;padding:6px;text-align:left;vertical-align:top}th{background:#eef2f3;font-size:9px;text-transform:uppercase}em{font-size:9px;color:#9a3412}.kpis{display:flex;gap:24px;padding:12px;background:#eef2f3}.kpis strong{font-size:18px;display:block}</style></head><body><h1>${h(projection.plan.name)}</h1><p>${h(req.workspace.brand_display_name || req.workspace.client_name)} · Generated ${new Date().toISOString().slice(0,10)} · Confidential</p><div class="kpis"><div><strong>${projection.summary.progressPct}%</strong>progress</div><div><strong>${projection.summary.phaseGatesPassed}/${projection.summary.phaseGatesTotal}</strong>gates</div><div><strong>${projection.summary.acceptedDeliverables}/${projection.summary.requiredDeliverables}</strong>accepted</div><div><strong>${projection.summary.varianceDays == null ? '-' : projection.summary.varianceDays + 'd'}</strong>variance</div></div>${rows}</body></html>`;
       const raw = await auditPack.renderPDF(html, { headerLeft: req.workspace.client_name, headerRight: 'Engagement delivery plan', footerLeft: 'Confidential · Controlled delivery record' });
       const pdf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       logAction(req.user.id, req.workspace.id, 'export_delivery_plan_pdf', 'engagement_plan', projection.plan.id, { bytes: pdf.length }, auditCtx(req));

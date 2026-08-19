@@ -1,33 +1,77 @@
 <%
-  // Shared evidence → control/clause picker. Used by single-upload and bulk-
-  // upload forms on /evidence (and on the client evidence library). Was
-  // duplicated as ~12 lines of inline markup in both places. Now one source
-  // of truth: change the grid layout, the chip style, or the per-item code
-  // formatter here and both forms update.
-  //
-  // Locals required:
-  //   allIsoItems      : array of { id, title, type } pulled from iso_items
-  //   placeholderText  : search-filter placeholder, optional
-  //
-  // The form-level filter + counter helpers (filterPicker, updatePickCount,
-  // clearPicker) live in evidence_library.ejs scripts and bind to anything
-  // matching .upload-filter / .pick-count.
+  const iso27001Catalog = (typeof allIsoItems !== 'undefined' && allIsoItems) ? allIsoItems : [];
+  const iso42001Catalog = (typeof allIso42001Items !== 'undefined' && allIso42001Items) ? allIso42001Items : [];
+  const csfCatalog = (typeof allCsfSubcats !== 'undefined' && allCsfSubcats) ? allCsfSubcats : [];
+  const enabledCatalogs = [
+    { key: 'iso27001', label: 'ISO 27001', count: iso27001Catalog.length },
+    { key: 'iso42001', label: 'ISO 42001', count: iso42001Catalog.length },
+    { key: 'csf', label: 'NIST CSF 2.0', count: csfCatalog.length }
+  ].filter(catalog => catalog.count > 0);
+  const initialFramework = enabledCatalogs.length ? enabledCatalogs[0].key : '';
 %>
-<input type="text" class="input upload-filter text-md" placeholder="<%= (typeof placeholderText !== 'undefined' && placeholderText) ? placeholderText : 'Filter… e.g., A.8.20, network, access' %>" style="margin-bottom:6px;" oninput="filterPicker(this)">
-<div class="upload-list" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-strong);border-radius:6px;background:var(--bg);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
-  <% (allIsoItems || []).forEach(it => {
-       const code = it.id.replace(/^annex-/,'').replace(/^clause-/,'');
-       const label = it.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
-       const isClause = it.type === 'clause';
-  %>
-    <label class="ev-pick" data-search="<%= (code + ' ' + label + ' ' + it.title).toLowerCase().replace(/"/g,'') %>" style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:12px;">
-      <input type="checkbox" name="iso_item_id" value="<%= it.id %>" style="margin:0;flex-shrink:0;" onchange="updatePickCount(this.closest('form'))">
-      <span class="mono meta text-xs <%= isClause ? 'text-secondary' : '' %>" style="min-width:50px;"><%= code.toUpperCase() %></span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= label %></span>
-    </label>
-  <% }) %>
-</div>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-  <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected</div>
-  <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
+
+<div class="evidence-framework-picker" data-evidence-picker>
+  <% if (enabledCatalogs.length) { %>
+    <div class="evidence-framework-tabs" role="tablist" aria-label="Framework catalog">
+      <% enabledCatalogs.forEach((catalog, index) => { %>
+        <button type="button" role="tab" class="evidence-framework-tab<%= index === 0 ? ' active' : '' %>"
+                data-picker-tab="<%= catalog.key %>" aria-selected="<%= index === 0 ? 'true' : 'false' %>"
+                onclick="switchEvidenceFramework(this)">
+          <span><%= catalog.label %></span><span class="evidence-framework-count"><%= catalog.count %></span>
+        </button>
+      <% }) %>
+    </div>
+    <input type="search" class="input upload-filter text-md"
+           placeholder="<%= (typeof placeholderText !== 'undefined' && placeholderText) ? placeholderText : 'Filter by reference or requirement name' %>"
+           aria-label="Filter framework requirements" oninput="filterPicker(this)">
+
+    <% if (iso27001Catalog.length) { %>
+      <div class="upload-list" data-picker-panel="iso27001" <%= initialFramework === 'iso27001' ? '' : 'hidden' %>>
+        <% iso27001Catalog.forEach(item => {
+             const code = item.id.replace(/^annex-/,'').replace(/^clause-/,'');
+             const label = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+        %>
+          <label class="ev-pick" data-search="<%= (code + ' ' + label + ' ' + item.title).toLowerCase().replace(/"/g,'') %>">
+            <input type="checkbox" name="iso_item_id" value="<%= item.id %>" onchange="updatePickCount(this.closest('form'))">
+            <span class="ev-pick-code"><%= code.toUpperCase() %></span>
+            <span class="ev-pick-label"><%= label %></span>
+          </label>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (iso42001Catalog.length) { %>
+      <div class="upload-list" data-picker-panel="iso42001" <%= initialFramework === 'iso42001' ? '' : 'hidden' %>>
+        <% iso42001Catalog.forEach(item => {
+             const code = item.id.replace(/^ai-annex-/,'').replace(/^ai-clause-/,'').replace(/^ai-/,'');
+             const label = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[\d.]+\s+/,'');
+        %>
+          <label class="ev-pick" data-search="<%= (code + ' ' + label + ' ' + item.title).toLowerCase().replace(/"/g,'') %>">
+            <input type="checkbox" name="iso42001_item_ref" value="<%= item.id %>" onchange="updatePickCount(this.closest('form'))">
+            <span class="ev-pick-code"><%= code.toUpperCase() %></span>
+            <span class="ev-pick-label"><%= label %></span>
+          </label>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (csfCatalog.length) { %>
+      <div class="upload-list" data-picker-panel="csf" <%= initialFramework === 'csf' ? '' : 'hidden' %>>
+        <% csfCatalog.forEach(item => { %>
+          <label class="ev-pick" data-search="<%= (item.code + ' ' + (item.description || '')).toLowerCase().replace(/"/g,'') %>">
+            <input type="checkbox" name="csf_item_ref" value="<%= item.code %>" onchange="updatePickCount(this.closest('form'))">
+            <span class="ev-pick-code"><%= item.code %></span>
+            <span class="ev-pick-label"><%= item.description %></span>
+          </label>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <div class="evidence-picker-footer">
+      <div class="meta pick-count-readout text-xs"><span class="pick-count">0</span> selected across enabled frameworks</div>
+      <button type="button" class="btn btn-ghost btn-xs text-xs" onclick="clearPicker(this.closest('form'))">Clear selection</button>
+    </div>
+  <% } else { %>
+    <div class="empty-state compact">No framework catalog is enabled for this client.</div>
+  <% } %>
 </div>

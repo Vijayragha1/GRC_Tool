@@ -49,11 +49,7 @@
 
   /* Preview summary tiles - condensed KPI variant for the result snapshot */
   .preview-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-  .preview-tile { padding: 14px 16px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); position: relative; overflow: hidden; }
-  .preview-tile::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; }
-  .preview-tile.t-good::before { background: #16a34a; }
-  .preview-tile.t-warn::before { background: #ca8a04; }
-  .preview-tile.t-bad::before { background: #dc2626; }
+  .preview-tile { padding: 14px 16px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
   .preview-num { font-size: 26px; font-weight: 500; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
   .preview-tile.t-good .preview-num { color: #15803d; }
   .preview-tile.t-warn .preview-num { color: #b45309; }

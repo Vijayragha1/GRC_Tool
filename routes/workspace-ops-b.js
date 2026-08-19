@@ -14,7 +14,6 @@ const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const changesSince = require('../lib/changes-since');
 const { seedFirmRiskLibraryIfEmpty } = require('../lib/firm-library');
-const { ymdLocal, ymLocal } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray } = require('../lib/http-helpers');
 
@@ -125,6 +124,31 @@ function register(app, deps) {
     const like = '%' + q.replace(/[%_]/g, '') + '%';
     const results = [];
 
+    // Client searches deliberately expose navigation only. Internal controls,
+    // risks, documents, workpapers and other clients must never leak through
+    // a convenience feature. Firm-side preview uses the same safe branch.
+    const clientMode = req.user.user_type === 'client' || req.query.clientMode === '1';
+    if (clientMode) {
+      if (!wsId) return res.json([]);
+      const ws = getWorkspace(wsId, req.user);
+      if (!ws) return res.json([]);
+      const preview = req.user.user_type === 'firm' && req.query.clientMode === '1';
+      const pages = [
+        ['Home', 'Engagement summary, programmes and contacts', 'home', 'overview dashboard contact team'],
+        ['My actions', 'Requests, deliverables and approvals', 'actions', 'request evidence approval task deliverable'],
+        ['Progress', 'Assessment stages and programme progress', 'progress', 'assessment fieldwork validation report roadmap'],
+        ['Findings and remediation', 'Confirmed findings and improvement actions', 'findings', 'gap issue remediation action'],
+        ['Reports', 'Published reports and completed work', 'reports', 'report download published completed work'],
+      ];
+      for (const [label,sublabel,view,aliases] of pages) {
+        if (!label.toLowerCase().includes(q) && !sublabel.toLowerCase().includes(q) && !aliases.includes(q)) continue;
+        const params = new URLSearchParams({ view });
+        if (preview) params.set('preview','client');
+        results.push({ type:'Page',label,sublabel,href:`/workspaces/${wsId}/client-portal?${params}` });
+      }
+      return res.json(results);
+    }
+
     // Workspaces this user can access
     const wsList = listWorkspaces(req.user).filter(w => w.client_name.toLowerCase().includes(q) || (w.industry && w.industry.toLowerCase().includes(q)));
     wsList.slice(0, 5).forEach(w => results.push({
@@ -168,7 +192,7 @@ function register(app, deps) {
           ['Controls', '/controls', 'annex a clauses wizard'],
           ['Assets', '/assets', 'inventory asset register'],
           ['Risks', '/risks', 'risk register'],
-          ['Objectives', '/objectives', 'clause 6.2 information security objectives kpi'],
+          ['Performance & objectives', '/objectives', 'clause 6.2 clause 9.1 information security objectives metrics measures readings kpi'],
           ['Risk methodology', '/risk-methodology', 'risk criteria scales'],
           ['Risk acceptances', '/risk-acceptances', 'accepted risks'],
           ['Statement of Applicability', '/soa', 'soa annex a inclusion exclusion'],
@@ -647,7 +671,7 @@ function register(app, deps) {
 
   // ==================== DELIVERABLES INDEX ====================
   // One canonical home for every export this workspace produces. The catalogue
-  // lives in views/deliverables.ejs (data-only), not here — adding a new export
+  // lives in views/deliverables.ejs (data-only), not here - adding a new export
   // to the product means adding a row there + linking the generator route.
   app.get('/workspaces/:wsId/deliverables', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
     // Backward-compatible route: the production assurance center now owns the

@@ -208,7 +208,7 @@ function register(app, deps) {
                              ORDER BY meeting_date DESC, created_at DESC`).all(req.workspace.id);
     // Preview the 9.3.2 input pack so the consultant sees what will be auto-
     // filled before submitting the create form. The same compute is then re-run
-    // server-side on POST — no risk of staleness.
+    // server-side on POST - no risk of staleness.
     const pack932Preview = compute932InputPack(req.workspace.id);
     res.render('mrms', { user: req.user, ws: req.workspace, mrms, pack932Preview });
   });
@@ -276,29 +276,29 @@ function register(app, deps) {
     }
 
     return {
-      // 9.3.2.a — prior MRM actions
+      // 9.3.2.a - prior MRM actions
       prior_actions_status: lastMrm
         ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
         : 'No prior management review on record. This is the first one.',
 
-      // 9.3.2.b — context changes
+      // 9.3.2.b - context changes
       context_changes: lastMrm
         ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution, and changes in the needs / expectations of interested parties identified during gap assessment.]`
-        : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ISMS — regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
+        : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ISMS - regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
 
-      // 9.3.2.c — performance review (extended with incidents + suppliers)
+      // 9.3.2.c - performance review (extended with incidents + suppliers)
       performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\nIncidents (last 12 months):\n  Total: ${incidents.last12m} (${incidents.open} still open)\n\nSupplier reviews:\n  ${supplierReview.total} suppliers · ${supplierReview.overdue} overdue review${supplierReview.overdue === 1 ? '' : 's'}\n\n[Add commentary on KPIs, monitoring metrics (9.1), trends, root-cause patterns.]`,
 
-      // 9.3.2.d — interested-party feedback. Parties are now captured
+      // 9.3.2.d - interested-party feedback. Parties are now captured
       // during the gap assessment + clause 4.2 work rather than a
       // dedicated register, so the auto-pack just hands the consultant
       // a structured prompt to fill in.
       feedback_interested_parties: `[Summarise feedback received in the period from interested parties identified in clause 4.2 - customer concerns / contractual security asks, regulator queries, employee survey results, supplier feedback, board observations. Quantify where possible (NPS, audit findings against customer SoWs, complaint volumes).]`,
 
-      // 9.3.2.e — risk-treatment status (existing + register diff)
+      // 9.3.2.e - risk-treatment status (existing + register diff)
       risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}${lastMrm ? `\n\nSince last MRM (${lastMrm.meeting_date}):\n  Risks added: ${risksAddedSinceLast}\n  Risks closed/treated: ${risksClosedSinceLast}` : ''}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
 
-      // 9.3.2.f — improvement opportunities
+      // 9.3.2.f - improvement opportunities
       improvement_opportunities: improvementsOpen === 0 && improvementsDone === 0
         ? 'No improvement actions recorded yet. Capture observations from audits, MRMs, incidents, and monitoring under Improvements (Clause 10.1).'
         : `Improvement log:\n  Active: ${improvementsOpen}\n  Completed: ${improvementsDone}${recentImprovements.length ? '\n\nActive items:\n' + recentImprovements.map(i => `  - ${i.title}${i.source ? ' [' + i.source + ']' : ''}`).join('\n') : ''}\n\n[Identify themes from this period's data: recurring NCs, gaps surfaced by audits, technology refresh, training needs, control automation candidates.]`,
@@ -401,7 +401,7 @@ function register(app, deps) {
       db.prepare(`UPDATE mrms SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
       logAction(req.user.id, req.workspace.id, 'update_mrm', 'mrm', req.params.id, null);
     }
-    res.redirect('/workspaces/' + req.workspace.id + '/mrms/' + req.params.id);
+    res.redirect(withToast('/workspaces/' + req.workspace.id + '/mrms/' + req.params.id, 'Management review saved'));
   });
 
   app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {

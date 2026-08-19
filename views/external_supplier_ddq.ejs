@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Supplier due diligence</title>
+  <style>
+    :root{--bg:#f2f1ec;--card:#fbfbf8;--field:#ffffff;--border:#e5e2da;--text:#181817;--muted:#6d6d68;--ink:#172026;--success:#176b45;--warn:#9a3412;--error:#b42318}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,sans-serif}
+    .wrap{max-width:980px;margin:auto;padding:38px 22px 110px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:9px;margin-bottom:14px;overflow:hidden}
+    .pad{padding:22px 24px}
+    .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+    h1{font-size:27px;line-height:1.2;margin:8px 0}
+    h2{font-size:15px;margin:0}
+    .muted{color:var(--muted)}
+    .head{display:flex;justify-content:space-between;gap:20px;padding:16px 22px;border-bottom:1px solid var(--border);cursor:pointer;list-style:none}
+    .head::-webkit-details-marker{display:none}
+    .head-count{font-size:12px;color:var(--muted);white-space:nowrap}
+    .question{padding:20px 22px;border-top:1px solid var(--border);scroll-margin-top:18px}
+    .qid{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted)}
+    .qtext{font-weight:600;margin:7px 0 4px}
+    .grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+    .field{width:100%;border:1px solid #d7d3c9;border-radius:7px;padding:10px 11px;background:var(--field);font:inherit}
+    .field:focus{outline:2px solid #172026;outline-offset:1px}
+    .detail{grid-column:1/-1}
+    .evidence-upload-form{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center;padding:12px;background:#f7f7f4;border:1px solid var(--border);border-radius:7px}
+    .evidence-files,.evidence-status{grid-column:1/-1;font-size:12px;color:var(--muted)}
+    .evidence-status:empty{display:none}
+    .evidence-status.success{color:var(--success)}
+    .evidence-status.error{color:var(--error)}
+    .progress{height:7px;background:#e9e6df;border-radius:99px;overflow:hidden;margin-top:16px}
+    .progress>span{display:block;height:100%;background:var(--ink)}
+    .notice{padding:13px 18px;color:var(--warn)}
+    .notice.success{color:var(--success)}
+    .actions{position:sticky;bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;box-shadow:0 10px 32px rgba(0,0,0,.12)}
+    .action-buttons{display:flex;gap:9px}
+    .btn{border:0;border-radius:7px;padding:11px 18px;font:600 14px Inter;background:var(--ink);color:#fff;cursor:pointer}
+    .btn:disabled{cursor:wait;opacity:.6}
+    .btn.secondary{background:var(--card);color:var(--text);border:1px solid #d7d3c9}
+    .btn.compact{padding:9px 13px;white-space:nowrap}
+    .status{text-align:center;padding:50px 26px}
+    .done{color:var(--success)}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}.wrap{padding:20px 12px 100px}.detail{grid-column:auto}.evidence-upload-form{grid-template-columns:1fr}.evidence-upload-form .btn{width:100%}.actions{align-items:flex-start;flex-direction:column}.action-buttons{width:100%}.action-buttons .btn{flex:1}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+<% if (state === 'open') { %>
+  <% const vendorBlocking=['Unanswered','Validation Required','N/A justification required','Evidence Missing']; const vendorResolved=bundle.questions.filter(question=>!vendorBlocking.includes((bundle.responseMap[question.id]||{}).status||'Unanswered')).length; const vendorPct=bundle.questions.length?Math.round(vendorResolved/bundle.questions.length*100):0; %>
+  <div class="card"><div class="pad"><div class="eyebrow"><%= assessment.brand_display_name || assessment.client_name %> · Third-party due diligence</div><h1><%= assessment.supplier_name %></h1><div class="muted"><%= methodology.tiers[assessment.tier].label %> · <%= bundle.questions.length %> scoped questions · due <%= assessment.due_date || 'date not set' %></div><p class="muted" style="margin-bottom:0">Answer for the service in scope. N/A requires a rationale. Where evidence is mandatory, upload the supporting file before submission.</p><div class="progress"><span style="width:<%= vendorPct %>%"></span></div><div class="muted" style="margin-top:7px"><strong><%= vendorResolved %> of <%= bundle.questions.length %></strong> responses ready to submit · <%= vendorPct %>%</div></div></div>
+  <% if (typeof query !== 'undefined' && query && query.blocked) { %><div class="card"><div class="notice"><strong><%= query.blocked %> response(s) still need an answer, N/A rationale or mandatory evidence.</strong></div></div><% } %>
+  <% if (typeof query !== 'undefined' && query && query.rejected) { %><div class="card"><div class="notice"><strong><%= query.rejected %> attachment(s) were not accepted.</strong> Use PDF, Office, text, image, ZIP, JSON or XML files. Your typed answers were saved, but submission remains open so the files can be replaced.</div></div><% } %>
+  <% if (typeof query !== 'undefined' && query && query.saved) { %><div class="card"><div class="notice success"><strong>Progress saved.</strong> You can close this page and return with the same secure link.</div></div><% } %>
+  <% if (typeof query !== 'undefined' && query && query.evidence_uploaded) { %><div class="card"><div class="notice success"><strong><%= query.evidence_uploaded %></strong></div></div><% } %>
+  <% if (typeof query !== 'undefined' && query && query.evidence_error) { %><div class="card"><div class="notice"><strong><%= query.evidence_error %></strong></div></div><% } %>
+
+  <form id="ddq-response-form" method="POST"></form>
+  <% const domains=[...new Set(bundle.questions.map(q=>q.domain))]; domains.forEach((domain,domainIndex)=>{ const questions=bundle.questions.filter(q=>q.domain===domain); const resolved=questions.filter(question=>!vendorBlocking.includes((bundle.responseMap[question.id]||{}).status||'Unanswered')).length; %>
+    <details class="card" <%= domainIndex===0?'open':'' %>>
+      <summary class="head"><div><h2><%= domain %></h2><div class="muted"><%= resolved===questions.length?'Section ready':'Complete the required response and evidence fields' %></div></div><span class="head-count <%= resolved===questions.length?'done':'' %>"><%= resolved %>/<%= questions.length %> ready</span></summary>
+      <% questions.forEach(question=>{ const row=bundle.responseMap[question.id]||{}; const files=bundle.evidenceMap[question.id]||[]; %>
+        <div class="question" id="question-<%= question.id %>">
+          <div class="qid"><%= question.id %> · <%= question.theme %></div>
+          <div class="qtext"><%= question.question %></div>
+          <div class="muted"><%= question.guidance %></div>
+          <div class="grid">
+            <select class="field" form="ddq-response-form" aria-label="Response for <%= question.id %>" name="response_<%= question.id %>"><option value="">Select response</option><% methodology.responses.vendor.forEach(option=>{ %><option <%= row.response===option?'selected':'' %>><%= option %></option><% }) %></select>
+            <textarea class="field detail" form="ddq-response-form" aria-label="Supporting detail for <%= question.id %>" rows="2" name="detail_<%= question.id %>" placeholder="Supporting detail or N/A rationale"><%= row.detail||'' %></textarea>
+            <form class="evidence-upload-form" method="POST" enctype="multipart/form-data" action="/supplier-ddq/<%= encodeURIComponent(token) %>/evidence/<%= encodeURIComponent(question.id) %>">
+              <input class="field" aria-label="Attachments for <%= question.id %>" type="file" name="evidence" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.rtf,.odt,.ods,.png,.jpg,.jpeg,.gif,.webp,.zip,.json,.xml" multiple>
+              <button class="btn secondary compact" type="submit">Upload evidence</button>
+              <div class="evidence-files" data-evidence-files><%= files.length ? `Attached: ${files.map(file=>file.filename).join(', ')}` : 'No evidence files attached.' %></div>
+              <div class="evidence-status" data-evidence-status role="status" aria-live="polite"></div>
+            </form>
+            <div class="muted detail">Expected evidence: <%= question.evidenceRequired %> · PDF, Office, text, image or ZIP · 25 MB each</div>
+          </div>
+        </div>
+      <% }) %>
+    </details>
+  <% }) %>
+  <div class="card actions"><div><strong><%= vendorResolved %>/<%= bundle.questions.length %> ready</strong><div class="muted">Save at any time. Submission locks the questionnaire.</div></div><div class="action-buttons"><button class="btn secondary" form="ddq-response-form" name="action" value="save">Save progress</button><button class="btn" form="ddq-response-form" name="action" value="submit">Submit for review</button></div></div>
+<% } else { const copy={submitted:['Responses submitted','The assessment team will now review your answers and may contact you for clarification.'],done:['Assessment complete','This secure questionnaire has already been completed.'],expired:['Link expired','Ask your assessment contact to issue a new secure link.'],invalid:['Link not valid','The link may have been replaced or entered incorrectly.'],uploaderror:['Attachment not accepted',typeof message!=='undefined'?message:'Remove the file and try again.']}[state]||['Unable to open assessment','Contact the assessment team.']; %>
+  <div class="card"><div class="status"><div class="eyebrow">Supplier due diligence</div><h1><%= copy[0] %></h1><p class="muted"><%= copy[1] %></p></div></div>
+<% } %>
+</div>
+<script>
+  document.querySelectorAll('.evidence-upload-form').forEach(function (form) {
+    form.addEventListener('submit', async function (event) {
+      if (!window.fetch || !window.FormData) return;
+      event.preventDefault();
+      const input = form.querySelector('input[type="file"]');
+      const button = form.querySelector('button[type="submit"]');
+      const status = form.querySelector('[data-evidence-status]');
+      const files = form.querySelector('[data-evidence-files]');
+      if (!input.files.length) {
+        status.className = 'evidence-status error';
+        status.textContent = 'Choose at least one file before uploading.';
+        return;
+      }
+      const originalLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Uploading…';
+      status.className = 'evidence-status';
+      status.textContent = 'Checking and uploading evidence…';
+      try {
+        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(function () { return {}; });
+        if (!response.ok || !payload.ok) throw new Error(payload.message || 'Evidence could not be uploaded.');
+        files.textContent = payload.files && payload.files.length ? 'Attached: ' + payload.files.join(', ') : 'No evidence files attached.';
+        status.className = 'evidence-status success';
+        status.textContent = payload.message;
+        input.value = '';
+      } catch (error) {
+        status.className = 'evidence-status error';
+        status.textContent = error.message || 'Evidence could not be uploaded.';
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    });
+  });
+</script>
+</body>
+</html>

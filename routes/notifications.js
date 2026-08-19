@@ -2,7 +2,7 @@
 // Notifications + inbox + compliance calendar routes (long-tail pass).
 
 const jobs = require('../lib/jobs');
-const { ymdLocal, ymLocal } = require('../lib/dates');
+const { todayFor, shiftMonth } = require('../lib/dates');
 const email = require('../lib/email');
 const { computeNeedsAttention } = require('../lib/next-steps');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
@@ -47,15 +47,12 @@ function register(app, deps) {
     const wsId = req.workspace.id;
     const deliveryPlan = delivery.ensurePlan(db, req.workspace, req.user.id);
     const monthStr = req.query.month && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month
-                    : ymLocal(new Date());
+                    : todayFor(req.workspace).slice(0,7);
     const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
     const monthStart = `${monthStr}-01`;
-    // Local-component formatters — toISOString() is UTC and rolls these back a day
-    // (and the prev-month label back a whole month) in IST, breaking Prev/Next nav
-    // and dropping last-of-month events from the exclusive upper bound.
-    const nextMo = ymdLocal(new Date(yr, mo, 1)); // first of next month (exclusive bound)
-    const prevMo = ymLocal(new Date(yr, mo - 2, 1));
-    const nextLabel = ymLocal(new Date(yr, mo, 1));
+    const nextLabel = shiftMonth(monthStr,1);
+    const nextMo = `${nextLabel}-01`;
+    const prevMo = shiftMonth(monthStr,-1);
 
     // Aggregate every dated item that falls inside the visible window
     // (first to last of selected month).

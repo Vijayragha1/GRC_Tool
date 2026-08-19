@@ -7,7 +7,6 @@ const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const ctlReads = require('../lib/control-reads');
 const csvImport = require('../lib/csv-import');
-const { ymdLocal, ymLocal } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, extractMentions } = require('../lib/http-helpers');
 const delivery = require('../lib/engagement-delivery');
@@ -466,7 +465,12 @@ function register(app, deps) {
     res.send(buf);
   });
 
-  app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
+  app.post('/workspaces/:wsId/risks/:id', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res, nextMw) => {
+    // This generic edit route is registered before the risk-library routes.
+    // Let named workflow paths such as /risks/library and
+    // /risks/clone-firm-library continue to their dedicated handlers instead
+    // of treating the path segment as a risk ID.
+    if (!/^\d+$/.test(String(req.params.id || ''))) return nextMw();
     const { title, description, asset_id, threat, vulnerability, likelihood, impact,
             treatment, owner_name, status, residual_likelihood, residual_impact } = req.body;
     db.prepare(`UPDATE risks SET title=?, description=?, asset_id=?, threat=?, vulnerability=?,

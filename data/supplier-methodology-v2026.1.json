@@ -1,0 +1,4196 @@
+{
+  "id": "supplier-risk-and-ddq",
+  "version": "2026.1",
+  "title": "Third-party inherent risk and due diligence methodology",
+  "source": {
+    "inherentRiskWorkbook": "Inherent risk.xlsx",
+    "dueDiligenceWorkbook": "Vendor ddq.xlsx",
+    "importedAt": "2026-08-16"
+  },
+  "scoring": {
+    "maximum": 100,
+    "unknownBlocksFinalisation": true,
+    "factorCalculation": "Average answered question score divided by 5, multiplied by the factor weight and 100.",
+    "factors": [
+      {
+        "name": "Business & regulatory criticality",
+        "weight": 0.2,
+        "questionIds": [
+          "Q01",
+          "Q02",
+          "Q03"
+        ]
+      },
+      {
+        "name": "Data sensitivity & scale",
+        "weight": 0.15,
+        "questionIds": [
+          "Q04",
+          "Q05",
+          "Q06"
+        ]
+      },
+      {
+        "name": "System & privileged access",
+        "weight": 0.15,
+        "questionIds": [
+          "Q07",
+          "Q08",
+          "Q09"
+        ]
+      },
+      {
+        "name": "Connectivity & integration",
+        "weight": 0.1,
+        "questionIds": [
+          "Q10",
+          "Q11"
+        ]
+      },
+      {
+        "name": "Hosting & technology dependency",
+        "weight": 0.1,
+        "questionIds": [
+          "Q12",
+          "Q13"
+        ]
+      },
+      {
+        "name": "Transaction & client-asset impact",
+        "weight": 0.1,
+        "questionIds": [
+          "Q14",
+          "Q15"
+        ]
+      },
+      {
+        "name": "Availability & resilience",
+        "weight": 0.08,
+        "questionIds": [
+          "Q16",
+          "Q17",
+          "Q18"
+        ]
+      },
+      {
+        "name": "Fourth-party dependency",
+        "weight": 0.05,
+        "questionIds": [
+          "Q19",
+          "Q20"
+        ]
+      },
+      {
+        "name": "Geographic & cross-border exposure",
+        "weight": 0.04,
+        "questionIds": [
+          "Q21",
+          "Q22"
+        ]
+      },
+      {
+        "name": "Concentration & exit risk",
+        "weight": 0.03,
+        "questionIds": [
+          "Q23",
+          "Q24",
+          "Q25"
+        ]
+      }
+    ],
+    "questions": [
+      {
+        "id": "Q01",
+        "order": 1,
+        "factor": "Business & regulatory criticality",
+        "factorWeight": 0.2,
+        "owner": "Business Owner",
+        "question": "How directly does the service support a {{client}} regulated or client-facing activity?",
+        "guidance": "Consider broking, trading, custody, fund operations, client onboarding and regulatory reporting.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No regulated activity"
+          },
+          {
+            "score": 1,
+            "label": "General corporate support"
+          },
+          {
+            "score": 2,
+            "label": "Supports an internal regulated process"
+          },
+          {
+            "score": 3,
+            "label": "Supports client or financial operations"
+          },
+          {
+            "score": 4,
+            "label": "Direct regulated service dependency"
+          },
+          {
+            "score": 5,
+            "label": "Critical trading, custody or market operation"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q02",
+        "order": 2,
+        "factor": "Business & regulatory criticality",
+        "factorWeight": 0.2,
+        "owner": "Business Owner",
+        "question": "What would be the business impact if the service were unavailable?",
+        "guidance": "Assess the impact before considering workarounds or vendor recovery controls.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No material impact"
+          },
+          {
+            "score": 1,
+            "label": "Minor inconvenience"
+          },
+          {
+            "score": 2,
+            "label": "Department-level delay"
+          },
+          {
+            "score": 3,
+            "label": "Material operational disruption"
+          },
+          {
+            "score": 4,
+            "label": "Client or regulatory deadline impact"
+          },
+          {
+            "score": 5,
+            "label": "Regulated or market operation stops"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q03",
+        "order": 3,
+        "factor": "Business & regulatory criticality",
+        "factorWeight": 0.2,
+        "owner": "Business Owner / Compliance",
+        "question": "What is the highest regulatory dependency associated with the service?",
+        "guidance": "Use the legal entity and activity actually receiving the service.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No regulatory dependency"
+          },
+          {
+            "score": 1,
+            "label": "Contractual obligation only"
+          },
+          {
+            "score": 2,
+            "label": "Privacy or employment obligation"
+          },
+          {
+            "score": 3,
+            "label": "Financial control or reporting dependency"
+          },
+          {
+            "score": 4,
+            "label": "SEBI or RBI regulated process"
+          },
+          {
+            "score": 5,
+            "label": "Licence, market or statutory critical obligation"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q04",
+        "order": 4,
+        "factor": "Data sensitivity & scale",
+        "factorWeight": 0.15,
+        "owner": "Privacy / Compliance",
+        "question": "What is the highest classification of data the vendor receives, stores or can access?",
+        "guidance": "Choose the highest class, including support access and logs.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No {{client}} data"
+          },
+          {
+            "score": 1,
+            "label": "Public data"
+          },
+          {
+            "score": 2,
+            "label": "Internal business data"
+          },
+          {
+            "score": 3,
+            "label": "Confidential or employee data"
+          },
+          {
+            "score": 4,
+            "label": "Personal, financial or KYC data"
+          },
+          {
+            "score": 5,
+            "label": "Restricted, authentication or client-asset data"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q05",
+        "order": 5,
+        "factor": "Data sensitivity & scale",
+        "factorWeight": 0.15,
+        "owner": "Privacy / Compliance",
+        "question": "What is the approximate number of records or individuals exposed?",
+        "guidance": "Use the maximum expected exposure over the service term.",
+        "options": [
+          {
+            "score": 0,
+            "label": "None"
+          },
+          {
+            "score": 1,
+            "label": "Fewer than 100"
+          },
+          {
+            "score": 2,
+            "label": "100 to 9,999"
+          },
+          {
+            "score": 3,
+            "label": "10,000 to 99,999"
+          },
+          {
+            "score": 4,
+            "label": "100,000 to 999,999"
+          },
+          {
+            "score": 5,
+            "label": "1,000,000 or more"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q06",
+        "order": 6,
+        "factor": "Data sensitivity & scale",
+        "factorWeight": 0.15,
+        "owner": "Privacy / Compliance",
+        "question": "How persistent or aggregated is the vendor-held data?",
+        "guidance": "Consider retention, historical depth and ability to create a consolidated profile.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No data retained"
+          },
+          {
+            "score": 1,
+            "label": "Transient processing only"
+          },
+          {
+            "score": 2,
+            "label": "Small isolated dataset"
+          },
+          {
+            "score": 3,
+            "label": "Recurring stored dataset"
+          },
+          {
+            "score": 4,
+            "label": "Long history or broad profile"
+          },
+          {
+            "score": 5,
+            "label": "Consolidated high-impact data repository"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q07",
+        "order": 7,
+        "factor": "System & privileged access",
+        "factorWeight": 0.15,
+        "owner": "Technology Owner",
+        "question": "What is the vendor's highest logical or physical access level?",
+        "guidance": "Include employees, subcontractors, support accounts and data-centre access.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No access"
+          },
+          {
+            "score": 1,
+            "label": "Observed or escorted access only"
+          },
+          {
+            "score": 2,
+            "label": "Standard user access"
+          },
+          {
+            "score": 3,
+            "label": "Application support access"
+          },
+          {
+            "score": 4,
+            "label": "Production or database access"
+          },
+          {
+            "score": 5,
+            "label": "Privileged admin, security or unrestricted access"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q08",
+        "order": 8,
+        "factor": "System & privileged access",
+        "factorWeight": 0.15,
+        "owner": "Technology Owner",
+        "question": "Which environment can the vendor access?",
+        "guidance": "Select the most sensitive accessible environment.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No environment access"
+          },
+          {
+            "score": 1,
+            "label": "Public documentation only"
+          },
+          {
+            "score": 2,
+            "label": "Development or test"
+          },
+          {
+            "score": 3,
+            "label": "Corporate endpoint or internal application"
+          },
+          {
+            "score": 4,
+            "label": "Production application or infrastructure"
+          },
+          {
+            "score": 5,
+            "label": "Critical production, database or security systems"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q09",
+        "order": 9,
+        "factor": "System & privileged access",
+        "factorWeight": 0.15,
+        "owner": "Technology Owner",
+        "question": "What change or deployment capability does the vendor have?",
+        "guidance": "Assess capability, even where {{client}} approval is required.",
+        "options": [
+          {
+            "score": 0,
+            "label": "None"
+          },
+          {
+            "score": 1,
+            "label": "Advice only"
+          },
+          {
+            "score": 2,
+            "label": "Code delivery without deployment"
+          },
+          {
+            "score": 3,
+            "label": "Non-production deployment"
+          },
+          {
+            "score": 4,
+            "label": "Production change with {{client}} approval"
+          },
+          {
+            "score": 5,
+            "label": "Standing or autonomous production change capability"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q10",
+        "order": 10,
+        "factor": "Connectivity & integration",
+        "factorWeight": 0.1,
+        "owner": "Technology Owner",
+        "question": "What is the strongest technical connection into {{client}}?",
+        "guidance": "Include SSO, VPN, API, leased lines, remote support and network trust.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No connection"
+          },
+          {
+            "score": 1,
+            "label": "Manual offline exchange"
+          },
+          {
+            "score": 2,
+            "label": "Managed file transfer"
+          },
+          {
+            "score": 3,
+            "label": "API integration"
+          },
+          {
+            "score": 4,
+            "label": "SSO, VPN or persistent remote access"
+          },
+          {
+            "score": 5,
+            "label": "Trusted network, exchange or privileged connection"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q11",
+        "order": 11,
+        "factor": "Connectivity & integration",
+        "factorWeight": 0.1,
+        "owner": "Technology Owner",
+        "question": "How automated and time-sensitive is the data flow?",
+        "guidance": "Choose the highest integration intensity.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No data flow"
+          },
+          {
+            "score": 1,
+            "label": "Ad hoc manual transfer"
+          },
+          {
+            "score": 2,
+            "label": "Scheduled one-way batch"
+          },
+          {
+            "score": 3,
+            "label": "Frequent automated transfer"
+          },
+          {
+            "score": 4,
+            "label": "Real-time bidirectional integration"
+          },
+          {
+            "score": 5,
+            "label": "Market, clearing or other critical real-time flow"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q12",
+        "order": 12,
+        "factor": "Hosting & technology dependency",
+        "factorWeight": 0.1,
+        "owner": "Technology Owner",
+        "question": "What does the vendor host for {{client}}?",
+        "guidance": "Include SaaS, cloud, infrastructure and vendor-controlled data stores.",
+        "options": [
+          {
+            "score": 0,
+            "label": "Nothing hosted"
+          },
+          {
+            "score": 1,
+            "label": "Vendor tool with no {{client}} data"
+          },
+          {
+            "score": 2,
+            "label": "Non-critical SaaS or service"
+          },
+          {
+            "score": 3,
+            "label": "{{client}} data or application hosted"
+          },
+          {
+            "score": 4,
+            "label": "Critical application or workload hosted"
+          },
+          {
+            "score": 5,
+            "label": "Core cloud, data centre or regulated platform hosted"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q13",
+        "order": 13,
+        "factor": "Hosting & technology dependency",
+        "factorWeight": 0.1,
+        "owner": "Technology Owner",
+        "question": "What operational responsibility does the vendor have for the technology?",
+        "guidance": "Separate product supply from ongoing operation and administration.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No operational role"
+          },
+          {
+            "score": 1,
+            "label": "Product advice only"
+          },
+          {
+            "score": 2,
+            "label": "Incident or break-fix support"
+          },
+          {
+            "score": 3,
+            "label": "Managed application support"
+          },
+          {
+            "score": 4,
+            "label": "Managed infrastructure or platform"
+          },
+          {
+            "score": 5,
+            "label": "Operates a critical {{client}} technology service"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q14",
+        "order": 14,
+        "factor": "Transaction & client-asset impact",
+        "factorWeight": 0.1,
+        "owner": "Business / Technology Owner",
+        "question": "What transaction capability can the vendor or its service exercise?",
+        "guidance": "Consider direct action and automated functionality, not only human access.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No transaction capability"
+          },
+          {
+            "score": 1,
+            "label": "View public information"
+          },
+          {
+            "score": 2,
+            "label": "Read internal records only"
+          },
+          {
+            "score": 3,
+            "label": "Modify non-financial records"
+          },
+          {
+            "score": 4,
+            "label": "Prepare transactions requiring {{client}} approval"
+          },
+          {
+            "score": 5,
+            "label": "Execute or alter trades, payments, holdings or client assets"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q15",
+        "order": 15,
+        "factor": "Transaction & client-asset impact",
+        "factorWeight": 0.1,
+        "owner": "Business / Technology Owner",
+        "question": "What is the maximum integrity impact of incorrect vendor processing?",
+        "guidance": "Consider corrupted, delayed, duplicated or unauthorised records.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No integrity impact"
+          },
+          {
+            "score": 1,
+            "label": "Minor metadata impact"
+          },
+          {
+            "score": 2,
+            "label": "Internal operational records"
+          },
+          {
+            "score": 3,
+            "label": "Management or financial reporting"
+          },
+          {
+            "score": 4,
+            "label": "Customer, ledger or position records"
+          },
+          {
+            "score": 5,
+            "label": "Authoritative trading, custody, clearing or client-asset records"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q16",
+        "order": 16,
+        "factor": "Availability & resilience",
+        "factorWeight": 0.08,
+        "owner": "Business Owner",
+        "question": "What is the maximum tolerable outage for the service?",
+        "guidance": "Use business tolerance, not the vendor's contractual recovery target.",
+        "options": [
+          {
+            "score": 0,
+            "label": "More than 5 business days"
+          },
+          {
+            "score": 1,
+            "label": "2 to 5 business days"
+          },
+          {
+            "score": 2,
+            "label": "24 to 48 hours"
+          },
+          {
+            "score": 3,
+            "label": "Same business day"
+          },
+          {
+            "score": 4,
+            "label": "Less than 4 hours"
+          },
+          {
+            "score": 5,
+            "label": "Near-real-time or market-hours availability"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q17",
+        "order": 17,
+        "factor": "Availability & resilience",
+        "factorWeight": 0.08,
+        "owner": "Business Owner / Compliance",
+        "question": "Who or what would be affected by an outage?",
+        "guidance": "Choose the highest consequence.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No material users"
+          },
+          {
+            "score": 1,
+            "label": "Small internal team"
+          },
+          {
+            "score": 2,
+            "label": "Multiple internal teams"
+          },
+          {
+            "score": 3,
+            "label": "Limited customer impact"
+          },
+          {
+            "score": 4,
+            "label": "Broad customer or regulatory impact"
+          },
+          {
+            "score": 5,
+            "label": "Trading, custody, clearing or market-wide impact"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q18",
+        "order": 18,
+        "factor": "Availability & resilience",
+        "factorWeight": 0.08,
+        "owner": "Business / Technology Owner",
+        "question": "How dependent is {{client}} on this service during a disruption?",
+        "guidance": "Assess inherent dependency before testing vendor continuity controls.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No dependency"
+          },
+          {
+            "score": 1,
+            "label": "Full manual workaround"
+          },
+          {
+            "score": 2,
+            "label": "Alternative service readily available"
+          },
+          {
+            "score": 3,
+            "label": "Workaround supports only limited volume"
+          },
+          {
+            "score": 4,
+            "label": "No practical short-term workaround"
+          },
+          {
+            "score": 5,
+            "label": "Sole dependency for a critical operation"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q19",
+        "order": 19,
+        "factor": "Fourth-party dependency",
+        "factorWeight": 0.05,
+        "owner": "Vendor / Technology Owner",
+        "question": "How materially does the service rely on subprocessors or other providers?",
+        "guidance": "Include public cloud, data centres, support firms and specialist processors.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No fourth parties"
+          },
+          {
+            "score": 1,
+            "label": "Incidental suppliers only"
+          },
+          {
+            "score": 2,
+            "label": "Non-critical operational supplier"
+          },
+          {
+            "score": 3,
+            "label": "Subprocessor handles {{client}} data"
+          },
+          {
+            "score": 4,
+            "label": "Subprocessor hosts or operates the service"
+          },
+          {
+            "score": 5,
+            "label": "Critical service chain depends on material fourth parties"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q20",
+        "order": 20,
+        "factor": "Fourth-party dependency",
+        "factorWeight": 0.05,
+        "owner": "Vendor / Technology Owner",
+        "question": "What is the highest exposure created by a fourth party?",
+        "guidance": "Score the exposure itself, control quality is assessed later.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No exposure"
+          },
+          {
+            "score": 1,
+            "label": "Public or non-{{client}} activity"
+          },
+          {
+            "score": 2,
+            "label": "Internal support activity"
+          },
+          {
+            "score": 3,
+            "label": "Confidential or personal data processing"
+          },
+          {
+            "score": 4,
+            "label": "Production hosting or support"
+          },
+          {
+            "score": 5,
+            "label": "Critical platform, data or regulated operation"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q21",
+        "order": 21,
+        "factor": "Geographic & cross-border exposure",
+        "factorWeight": 0.04,
+        "owner": "Privacy / Compliance",
+        "question": "Where can {{client}} data be stored or processed?",
+        "guidance": "Include backups, telemetry, support copies and disaster recovery locations.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No {{client}} data"
+          },
+          {
+            "score": 1,
+            "label": "India only"
+          },
+          {
+            "score": 2,
+            "label": "Approved region with low-sensitivity data"
+          },
+          {
+            "score": 3,
+            "label": "Routine processing outside India"
+          },
+          {
+            "score": 4,
+            "label": "Sensitive data processed outside India"
+          },
+          {
+            "score": 5,
+            "label": "Restricted or regulated data materially exposed outside India"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q22",
+        "order": 22,
+        "factor": "Geographic & cross-border exposure",
+        "factorWeight": 0.04,
+        "owner": "Technology / Compliance",
+        "question": "From where can vendor personnel remotely access the service?",
+        "guidance": "Consider standing and emergency support access.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No remote access"
+          },
+          {
+            "score": 1,
+            "label": "India only"
+          },
+          {
+            "score": 2,
+            "label": "Time-bound low-risk overseas support"
+          },
+          {
+            "score": 3,
+            "label": "Regular overseas support"
+          },
+          {
+            "score": 4,
+            "label": "Offshore production or privileged access"
+          },
+          {
+            "score": 5,
+            "label": "Offshore operation of a critical service"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q23",
+        "order": 23,
+        "factor": "Concentration & exit risk",
+        "factorWeight": 0.03,
+        "owner": "Business / Procurement",
+        "question": "How many practical alternative providers or solutions are available?",
+        "guidance": "Consider regulatory suitability, integration and market capacity.",
+        "options": [
+          {
+            "score": 0,
+            "label": "Many interchangeable options"
+          },
+          {
+            "score": 1,
+            "label": "At least three practical alternatives"
+          },
+          {
+            "score": 2,
+            "label": "Two practical alternatives"
+          },
+          {
+            "score": 3,
+            "label": "One limited alternative"
+          },
+          {
+            "score": 4,
+            "label": "Only one realistic replacement"
+          },
+          {
+            "score": 5,
+            "label": "No practical replacement or proprietary dependency"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q24",
+        "order": 24,
+        "factor": "Concentration & exit risk",
+        "factorWeight": 0.03,
+        "owner": "Business / Technology Owner",
+        "question": "How long would migration or replacement reasonably take?",
+        "guidance": "Include procurement, data migration, integration, testing and approvals.",
+        "options": [
+          {
+            "score": 0,
+            "label": "Less than 1 week"
+          },
+          {
+            "score": 1,
+            "label": "Less than 1 month"
+          },
+          {
+            "score": 2,
+            "label": "1 to 3 months"
+          },
+          {
+            "score": 3,
+            "label": "3 to 6 months"
+          },
+          {
+            "score": 4,
+            "label": "6 to 12 months"
+          },
+          {
+            "score": 5,
+            "label": "More than 12 months or exit is not feasible"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      },
+      {
+        "id": "Q25",
+        "order": 25,
+        "factor": "Concentration & exit risk",
+        "factorWeight": 0.03,
+        "owner": "Business / Technology Owner",
+        "question": "How portable are the service, data and integrations?",
+        "guidance": "Assess standard formats, documentation, customisation and ecosystem lock-in.",
+        "options": [
+          {
+            "score": 0,
+            "label": "No data or standard interchangeable service"
+          },
+          {
+            "score": 1,
+            "label": "Simple standard export"
+          },
+          {
+            "score": 2,
+            "label": "Documented migration path"
+          },
+          {
+            "score": 3,
+            "label": "Material customisation"
+          },
+          {
+            "score": 4,
+            "label": "Proprietary formats or complex integrations"
+          },
+          {
+            "score": 5,
+            "label": "Core ecosystem lock-in or non-portable service"
+          }
+        ],
+        "unknownLabel": "Unknown / Validation Required"
+      }
+    ],
+    "floors": [
+      {
+        "id": "T1-01",
+        "trigger": "Q14 = 5",
+        "minimumTier": "tier_1",
+        "reason": "Can execute or alter trades, payments, holdings or client assets",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q14",
+            "operator": "eq",
+            "score": 5
+          }
+        ]
+      },
+      {
+        "id": "T1-02",
+        "trigger": "Q08 = 5 or Q07 = 5",
+        "minimumTier": "tier_1",
+        "reason": "Privileged access to critical production, database or security systems",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q08",
+            "operator": "eq",
+            "score": 5
+          },
+          {
+            "questionId": "Q07",
+            "operator": "eq",
+            "score": 5
+          }
+        ]
+      },
+      {
+        "id": "T1-03",
+        "trigger": "Q12 = 5 or Q13 = 5",
+        "minimumTier": "tier_1",
+        "reason": "Hosts or operates core regulated technology",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q12",
+            "operator": "eq",
+            "score": 5
+          },
+          {
+            "questionId": "Q13",
+            "operator": "eq",
+            "score": 5
+          }
+        ]
+      },
+      {
+        "id": "T1-04",
+        "trigger": "Q02 = 5 or Q17 = 5",
+        "minimumTier": "tier_1",
+        "reason": "Outage stops regulated or market operations",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q02",
+            "operator": "eq",
+            "score": 5
+          },
+          {
+            "questionId": "Q17",
+            "operator": "eq",
+            "score": 5
+          }
+        ]
+      },
+      {
+        "id": "T2-01",
+        "trigger": "Q04 >= 4",
+        "minimumTier": "tier_2",
+        "reason": "Sensitive personal, financial, KYC or restricted data",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q04",
+            "operator": "gte",
+            "score": 4
+          }
+        ]
+      },
+      {
+        "id": "T2-02",
+        "trigger": "Q08 >= 4 or Q07 >= 4",
+        "minimumTier": "tier_2",
+        "reason": "Production, database or other material access",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q08",
+            "operator": "gte",
+            "score": 4
+          },
+          {
+            "questionId": "Q07",
+            "operator": "gte",
+            "score": 4
+          }
+        ]
+      },
+      {
+        "id": "T2-03",
+        "trigger": "Q10 >= 3",
+        "minimumTier": "tier_2",
+        "reason": "API, SSO, VPN, persistent remote or network connectivity",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q10",
+            "operator": "gte",
+            "score": 3
+          }
+        ]
+      },
+      {
+        "id": "T2-04",
+        "trigger": "Q09 >= 4",
+        "minimumTier": "tier_2",
+        "reason": "Production change or deployment capability",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q09",
+            "operator": "gte",
+            "score": 4
+          }
+        ]
+      },
+      {
+        "id": "T2-05",
+        "trigger": "Q21 >= 4 or Q22 >= 4",
+        "minimumTier": "tier_2",
+        "reason": "Sensitive data or privileged access outside India",
+        "reducibleByControlEvidence": false,
+        "anyOf": [
+          {
+            "questionId": "Q21",
+            "operator": "gte",
+            "score": 4
+          },
+          {
+            "questionId": "Q22",
+            "operator": "gte",
+            "score": 4
+          }
+        ]
+      }
+    ]
+  },
+  "tiers": {
+    "tier_1": {
+      "label": "Tier 1 · Critical",
+      "minimumScore": 70,
+      "maximumScore": 100,
+      "questionCount": 139,
+      "reviewCadenceMonths": 6,
+      "reviewDepth": "Full evidence review plus onsite or virtual control walkthrough."
+    },
+    "tier_2": {
+      "label": "Tier 2 · High",
+      "minimumScore": 45,
+      "maximumScore": 69.999,
+      "questionCount": 112,
+      "reviewCadenceMonths": 12,
+      "reviewDepth": "Full evidence review performed remotely."
+    },
+    "tier_3": {
+      "label": "Tier 3 · Medium",
+      "minimumScore": 20,
+      "maximumScore": 44.999,
+      "questionCount": 53,
+      "reviewCadenceMonths": 12,
+      "reviewDepth": "Evidence sampled; escalate if fieldwork reveals unscored access, hosting or data exposure."
+    },
+    "tier_4": {
+      "label": "Tier 4 · Low",
+      "minimumScore": 0,
+      "maximumScore": 19.999,
+      "questionCount": 22,
+      "reviewCadenceMonths": 12,
+      "reviewDepth": "Onboarding review followed by annual attestation and refresh."
+    }
+  },
+  "responses": {
+    "vendor": [
+      "Yes",
+      "Partially Implemented",
+      "No",
+      "Not Applicable",
+      "Unknown / Validation Required"
+    ],
+    "reviewer": [
+      "Not Reviewed",
+      "Satisfactory",
+      "Partially Satisfactory",
+      "Unsatisfactory",
+      "Not Applicable"
+    ],
+    "moduleApplicability": [
+      "Yes",
+      "No",
+      "Unknown / Validation Required"
+    ],
+    "contract": [
+      "Not Reviewed",
+      "Present - Satisfactory",
+      "Present - Gap Identified",
+      "Missing",
+      "To be Added",
+      "Not Required",
+      "Not Applicable"
+    ]
+  },
+  "statusRules": {
+    "notApplicableRequiresRationale": true,
+    "notApplicableRequiresReviewerAcceptance": true,
+    "evidenceRequiresReferenceDateAndOwner": true,
+    "adverseResponseRequiresFinding": true,
+    "assuranceNeverExemptsQuestion": true
+  },
+  "ddqQuestions": [
+    {
+      "id": "GOV-01",
+      "order": 1,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Policy framework",
+      "question": "Do you maintain a documented information security policy approved by senior management and reviewed at least annually?",
+      "guidance": "State approval authority, current version and date of last review.",
+      "evidenceRequired": "Approved policy document showing version, approver and review date",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "GOV-02",
+      "order": 2,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Accountability",
+      "question": "Is there a named executive accountable for information security (CISO or equivalent) independent of IT delivery?",
+      "guidance": "Provide name, title, reporting line and date appointed.",
+      "evidenceRequired": "Organisation chart or appointment letter",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "GOV-03",
+      "order": 3,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Risk management",
+      "question": "Do you operate a documented information security risk assessment methodology with a maintained risk register?",
+      "guidance": "Confirm assessment frequency and how risks affecting client services are treated.",
+      "evidenceRequired": "Risk methodology and extract of current risk register",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "GOV-04",
+      "order": 4,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "ISMS scope",
+      "question": "Does your certified or documented ISMS scope explicitly cover the people, processes and systems used to deliver this service to {{client}}?",
+      "guidance": "Quote the scope statement and confirm the delivery locations covered.",
+      "evidenceRequired": "ISMS scope statement or certificate scope page",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "GOV-05",
+      "order": 5,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Board oversight",
+      "question": "Is cyber and information security risk reported to the board or an equivalent governing body, and how frequently?",
+      "guidance": "State the committee, reporting frequency and last reporting date.",
+      "evidenceRequired": "Committee terms of reference and redacted minutes or reporting pack",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "GOV-06",
+      "order": 6,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Legal and regulatory register",
+      "question": "Do you maintain a register of statutory, regulatory and contractual obligations relevant to this service?",
+      "guidance": "Confirm coverage of Indian financial-sector and data protection obligations.",
+      "evidenceRequired": "Compliance obligations register extract",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "GOV-07",
+      "order": 7,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Cyber insurance",
+      "question": "Do you hold cyber liability insurance covering data breach, business interruption and third-party liability?",
+      "guidance": "State insurer, sum insured, policy period and whether client claims are covered.",
+      "evidenceRequired": "Certificate of insurance or policy schedule",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "GOV-08",
+      "order": 8,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Internal audit",
+      "question": "Is there an internal audit programme covering information security, independent of the function being audited?",
+      "guidance": "State frequency, last audit date and number of open findings.",
+      "evidenceRequired": "Internal audit plan and latest audit report summary",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "GOV-09",
+      "order": 9,
+      "domain": "Governance, Risk & Compliance",
+      "theme": "Service accountability",
+      "question": "Is there a service-level RACI covering {{client}}, the vendor and material fourth parties for security, operations, incidents, resilience, vulnerability closure and regulatory support?",
+      "guidance": "Name the accountable party for each area rather than the responsible team alone.",
+      "evidenceRequired": "Service-level RACI for the in-scope engagement",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "ORG-01",
+      "order": 10,
+      "domain": "Organisational & Personnel Security",
+      "theme": "Screening",
+      "question": "Are background verification checks performed on all personnel and contractors before granting access to client data or systems?",
+      "guidance": "List checks performed (identity, employment, education, criminal, credit) and re-verification cycle.",
+      "evidenceRequired": "Background verification policy and sample redacted completion record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "ORG-02",
+      "order": 11,
+      "domain": "Organisational & Personnel Security",
+      "theme": "Confidentiality",
+      "question": "Have all personnel and contractors with access to {{client}} data signed confidentiality or non-disclosure agreements?",
+      "guidance": "Confirm coverage of contractors and whether obligations survive termination.",
+      "evidenceRequired": "Template NDA clause and confirmation of coverage",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "ORG-03",
+      "order": 12,
+      "domain": "Organisational & Personnel Security",
+      "theme": "Awareness",
+      "question": "Is security and privacy awareness training delivered at induction and at least annually, with completion tracked?",
+      "guidance": "State completion rate for the last cycle.",
+      "evidenceRequired": "Training content outline and completion report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "ORG-04",
+      "order": 13,
+      "domain": "Organisational & Personnel Security",
+      "theme": "Role-based training",
+      "question": "Do privileged, developer and support personnel receive additional role-specific security training?",
+      "guidance": "Describe the curriculum and frequency for each role.",
+      "evidenceRequired": "Role-based training matrix and completion evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "ORG-05",
+      "order": 14,
+      "domain": "Organisational & Personnel Security",
+      "theme": "Disciplinary process",
+      "question": "Is there a documented disciplinary process for information security and privacy violations?",
+      "guidance": "Confirm it applies to contractors as well as employees.",
+      "evidenceRequired": "Disciplinary policy extract",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "ORG-06",
+      "order": 15,
+      "domain": "Organisational & Personnel Security",
+      "theme": "Exit and role change",
+      "question": "Is access revoked on termination or role change within a defined SLA, and what is that SLA?",
+      "guidance": "State the SLA in hours and how revocation is evidenced.",
+      "evidenceRequired": "Offboarding checklist and sample revocation record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "AST-01",
+      "order": 16,
+      "domain": "Asset Management & Data Classification",
+      "theme": "Asset inventory",
+      "question": "Is a current inventory maintained of all assets used to store, process or transmit {{client}} data, with assigned owners?",
+      "guidance": "Confirm inventory scope, owner assignment and review frequency.",
+      "evidenceRequired": "Asset inventory extract for the in-scope service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "AST-02",
+      "order": 17,
+      "domain": "Asset Management & Data Classification",
+      "theme": "Classification",
+      "question": "Do you operate a data classification scheme, and how is {{client}} data classified within it?",
+      "guidance": "Map {{client}} data to your classification levels and state the handling rules that follow.",
+      "evidenceRequired": "Classification policy and handling matrix",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "AST-03",
+      "order": 18,
+      "domain": "Asset Management & Data Classification",
+      "theme": "Acceptable use",
+      "question": "Is there an acceptable use policy governing the handling of client data, and how is compliance enforced?",
+      "guidance": "Describe technical enforcement, not only policy acknowledgement.",
+      "evidenceRequired": "Acceptable use policy and enforcement description",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "AST-04",
+      "order": 19,
+      "domain": "Asset Management & Data Classification",
+      "theme": "Removable media",
+      "question": "Is the use of removable media restricted or blocked on systems that handle {{client}} data?",
+      "guidance": "State whether the control is technical or procedural and any approved exceptions.",
+      "evidenceRequired": "Media control policy and technical configuration evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "AST-05",
+      "order": 20,
+      "domain": "Asset Management & Data Classification",
+      "theme": "Client segregation",
+      "question": "How is {{client}} data segregated from that of your other clients (logical, physical or dedicated instance)?",
+      "guidance": "Describe the segregation mechanism and how it is verified.",
+      "evidenceRequired": "Architecture description or tenancy design document",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "AST-06",
+      "order": 21,
+      "domain": "Asset Management & Data Classification",
+      "theme": "Service dependency inventory",
+      "question": "Is there an inventory of all systems, interfaces, data stores, critical components, locations and external dependencies supporting the {{client}} service specifically?",
+      "guidance": "This is service-scoped and is separate from your general corporate asset inventory.",
+      "evidenceRequired": "Service dependency inventory and current architecture or data-flow diagram",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "IAM-01",
+      "order": 22,
+      "domain": "Identity & Access Management",
+      "theme": "Access control policy",
+      "question": "Is there a documented access control policy applying least privilege and need-to-know to {{client}} data and systems?",
+      "guidance": "Confirm the approval workflow for granting access.",
+      "evidenceRequired": "Access control policy and access request form or workflow",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "IAM-02",
+      "order": 23,
+      "domain": "Identity & Access Management",
+      "theme": "Unique identity",
+      "question": "Are all users assigned unique named accounts, with shared or generic accounts prohibited?",
+      "guidance": "Declare any shared accounts that exist and the compensating controls.",
+      "evidenceRequired": "Sample user listing showing named accounts",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "IAM-03",
+      "order": 24,
+      "domain": "Identity & Access Management",
+      "theme": "Multi-factor authentication",
+      "question": "Is multi-factor authentication enforced for all remote access and all administrative access?",
+      "guidance": "State the factors used and any exempted access paths.",
+      "evidenceRequired": "MFA configuration screenshot or policy setting export",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "IAM-04",
+      "order": 25,
+      "domain": "Identity & Access Management",
+      "theme": "Privileged access management",
+      "question": "Is privileged access managed through a PAM solution with credential vaulting, session recording and just-in-time elevation?",
+      "guidance": "Name the tooling and state which privileged paths are in scope.",
+      "evidenceRequired": "PAM configuration summary and sample session log",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "IAM-05",
+      "order": 26,
+      "domain": "Identity & Access Management",
+      "theme": "Access review",
+      "question": "Are user and privileged access rights formally reviewed, with vendor privileged access reviewed at least quarterly and revocations evidenced?",
+      "guidance": "State the review frequency for each access class, the last completed review date, and the revocation SLA following termination, role change or a {{client}} request.",
+      "evidenceRequired": "Completed access review record with sign-off and evidence of resulting revocations",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "IAM-06",
+      "order": 27,
+      "domain": "Identity & Access Management",
+      "theme": "Authentication standard",
+      "question": "What is your authentication standard for length, complexity, lockout, rotation and credential storage?",
+      "guidance": "State whether credentials are hashed and with which algorithm.",
+      "evidenceRequired": "Password or authentication policy",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "IAM-07",
+      "order": 28,
+      "domain": "Identity & Access Management",
+      "theme": "Named access to {{client}}",
+      "question": "Is access to {{client}} data and environments restricted to a named, {{client}}-approved list of personnel?",
+      "guidance": "Confirm whether {{client}} approval is obtained before adding personnel.",
+      "evidenceRequired": "Current named access list for the {{client}} service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "IAM-08",
+      "order": 29,
+      "domain": "Identity & Access Management",
+      "theme": "Joiner-mover-leaver",
+      "question": "Is the joiner-mover-leaver process integrated with HR so that access changes are triggered automatically?",
+      "guidance": "Describe the trigger mechanism and reconciliation controls.",
+      "evidenceRequired": "Process document and sample reconciliation report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "IAM-09",
+      "order": 30,
+      "domain": "Identity & Access Management",
+      "theme": "Segregation of duties",
+      "question": "Is segregation of duties enforced so that no single individual can develop, approve and deploy a production change, and is support access separated from production change authority?",
+      "guidance": "Confirm that vendor-initiated production changes require a {{client}}-approved change record.",
+      "evidenceRequired": "SoD matrix, technical enforcement evidence and a sample vendor-initiated change record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "IAM-10",
+      "order": 31,
+      "domain": "Identity & Access Management",
+      "theme": "Emergency access",
+      "question": "Are emergency or break-glass access events pre-approved, time-boxed, logged, alerted on, reviewed after use, and followed by credential rotation?",
+      "guidance": "State the approval authority, whether dual approval applies, and the post-use review and rotation timeframe.",
+      "evidenceRequired": "Break-glass procedure, a sample post-use review and evidence of credential rotation",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "CRY-01",
+      "order": 32,
+      "domain": "Cryptography & Key Management",
+      "theme": "Encryption in transit",
+      "question": "Is {{client}} data encrypted in transit, and which protocol versions and cipher suites are permitted?",
+      "guidance": "State minimum TLS version and whether legacy protocols are disabled.",
+      "evidenceRequired": "Cryptographic standard and SSL or TLS configuration report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "CRY-02",
+      "order": 33,
+      "domain": "Cryptography & Key Management",
+      "theme": "Encryption at rest",
+      "question": "Is {{client}} data encrypted at rest, including backups, and with which algorithm and key length?",
+      "guidance": "Confirm coverage of databases, object storage and backup media.",
+      "evidenceRequired": "Encryption configuration evidence for storage and backups",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "CRY-03",
+      "order": 34,
+      "domain": "Cryptography & Key Management",
+      "theme": "Key lifecycle",
+      "question": "Is there a documented key management lifecycle covering generation, storage, rotation, revocation and destruction?",
+      "guidance": "State rotation periods and who can access key material.",
+      "evidenceRequired": "Key management procedure",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "CRY-04",
+      "order": 35,
+      "domain": "Cryptography & Key Management",
+      "theme": "Key custody",
+      "question": "Are cryptographic keys held in an HSM or managed KMS, and what are the key location, key-administrator access and customer-managed-key options?",
+      "guidance": "State whether {{client}} can hold or control its own keys, and who at the vendor can access key material.",
+      "evidenceRequired": "KMS or HSM design description, key segregation evidence and key-administrator access list",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "CRY-05",
+      "order": 36,
+      "domain": "Cryptography & Key Management",
+      "theme": "Certificate management",
+      "question": "Are digital certificates inventoried with automated expiry monitoring and renewal?",
+      "guidance": "State the monitoring tool and lead time before expiry.",
+      "evidenceRequired": "Certificate inventory and monitoring configuration",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "NET-01",
+      "order": 37,
+      "domain": "Network & Infrastructure Security",
+      "theme": "Segmentation",
+      "question": "Are production, corporate and management networks segmented, with traffic controlled between zones?",
+      "guidance": "Describe the segmentation model and how it is validated.",
+      "evidenceRequired": "Network architecture diagram and segmentation ruleset summary",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "NET-02",
+      "order": 38,
+      "domain": "Network & Infrastructure Security",
+      "theme": "Perimeter controls",
+      "question": "Are firewall and perimeter rulesets documented, approved and reviewed on a defined cycle?",
+      "guidance": "State the review frequency and last review date.",
+      "evidenceRequired": "Firewall rule review record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "NET-03",
+      "order": 39,
+      "domain": "Network & Infrastructure Security",
+      "theme": "Remote access",
+      "question": "Is remote administrative access delivered through VPN or zero-trust access, with no admin interfaces exposed to the internet?",
+      "guidance": "Confirm results of your most recent external exposure review.",
+      "evidenceRequired": "Remote access design and external attack surface scan",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "NET-04",
+      "order": 40,
+      "domain": "Network & Infrastructure Security",
+      "theme": "Threat detection",
+      "question": "Are intrusion detection or prevention capabilities deployed on networks supporting the {{client}} service?",
+      "guidance": "Name the technology and state alert handling arrangements.",
+      "evidenceRequired": "IDS or IPS deployment summary and sample alert workflow",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "NET-05",
+      "order": 41,
+      "domain": "Network & Infrastructure Security",
+      "theme": "DDoS resilience",
+      "question": "Is DDoS protection in place for internet-facing components of the service?",
+      "guidance": "Name the provider and state the tested absorption capacity.",
+      "evidenceRequired": "DDoS service description and last test or incident record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "NET-06",
+      "order": 42,
+      "domain": "Network & Infrastructure Security",
+      "theme": "Hardening",
+      "question": "Are hardening baselines defined and enforced for servers, network devices, databases and containers?",
+      "guidance": "State the benchmark used and how compliance is measured.",
+      "evidenceRequired": "Hardening standard and compliance scan output",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "NET-07",
+      "order": 43,
+      "domain": "Network & Infrastructure Security",
+      "theme": "Wireless",
+      "question": "Are corporate wireless networks secured with enterprise authentication and separated from guest access?",
+      "guidance": "State the authentication method and guest isolation controls.",
+      "evidenceRequired": "Wireless security configuration summary",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "APP-01",
+      "order": 44,
+      "domain": "Application & Secure Development",
+      "theme": "Secure SDLC",
+      "question": "Is there a documented secure development lifecycle with mandatory security gates before release?",
+      "guidance": "Describe the gates and who can approve an exception.",
+      "evidenceRequired": "SDLC procedure showing security checkpoints",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "APP-02",
+      "order": 45,
+      "domain": "Application & Secure Development",
+      "theme": "Secure coding",
+      "question": "Are secure coding standards defined and are developers trained against a recognised standard such as OWASP?",
+      "guidance": "Name the standard and state training frequency.",
+      "evidenceRequired": "Secure coding standard and developer training records",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "APP-03",
+      "order": 46,
+      "domain": "Application & Secure Development",
+      "theme": "Code review and SAST",
+      "question": "Is every code change subject to peer review and automated static analysis before merge?",
+      "guidance": "Name the tooling and state the policy for blocking on findings.",
+      "evidenceRequired": "SAST tool configuration and sample scan result",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "APP-04",
+      "order": 47,
+      "domain": "Application & Secure Development",
+      "theme": "Application testing",
+      "question": "Is dynamic application security testing or application penetration testing performed, and how often?",
+      "guidance": "State the last test date, tester and whether high findings are closed.",
+      "evidenceRequired": "Latest application test report summary and remediation status",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "APP-05",
+      "order": 48,
+      "domain": "Application & Secure Development",
+      "theme": "Environment separation",
+      "question": "Are development, test and production environments separated with distinct credentials and access rights?",
+      "guidance": "Confirm that developers do not hold standing production access.",
+      "evidenceRequired": "Environment topology and access matrix",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "APP-06",
+      "order": 49,
+      "domain": "Application & Secure Development",
+      "theme": "Non-production data",
+      "question": "Is the use of live {{client}} data in non-production environments prohibited, or masked where unavoidable?",
+      "guidance": "Describe the masking or synthetic data approach.",
+      "evidenceRequired": "Data masking standard and approval record for any exception",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "APP-07",
+      "order": 50,
+      "domain": "Application & Secure Development",
+      "theme": "Change management",
+      "question": "Are changes to systems supporting the {{client}} service formally requested, tested, approved and reversible?",
+      "guidance": "Describe emergency change handling and retrospective approval.",
+      "evidenceRequired": "Change management procedure and sample change record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "APP-08",
+      "order": 51,
+      "domain": "Application & Secure Development",
+      "theme": "Source code and secrets",
+      "question": "Is source code repository access restricted and scanned for hard-coded secrets and credentials?",
+      "guidance": "Name the scanning tool and state remediation handling.",
+      "evidenceRequired": "Repository access list and secrets scanning configuration",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "CLD-01",
+      "order": 52,
+      "domain": "Cloud & Hosting Security",
+      "theme": "Hosting profile",
+      "question": "Which cloud or hosting providers, regions and service models are used for {{client}} workloads and data?",
+      "guidance": "List every provider including backup, DR, logging and telemetry destinations.",
+      "evidenceRequired": "Hosting and region declaration for the in-scope service",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "CLD-02",
+      "order": 53,
+      "domain": "Cloud & Hosting Security",
+      "theme": "Shared responsibility",
+      "question": "Is the shared responsibility model documented for this service, showing which controls you own?",
+      "guidance": "Provide the responsibility split for identity, encryption, backup and monitoring.",
+      "evidenceRequired": "Shared responsibility matrix for the {{client}} service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "CLD-03",
+      "order": 54,
+      "domain": "Cloud & Hosting Security",
+      "theme": "Configuration assurance",
+      "question": "Is cloud configuration continuously assessed against a security baseline with drift detection?",
+      "guidance": "Name the CSPM tooling and state the current compliance score.",
+      "evidenceRequired": "CSPM report extract for the in-scope accounts",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "CLD-04",
+      "order": 55,
+      "domain": "Cloud & Hosting Security",
+      "theme": "Tenant isolation",
+      "question": "In multi-tenant platforms, how is tenant isolation enforced and independently validated?",
+      "guidance": "Describe the isolation boundary and any test performed against it.",
+      "evidenceRequired": "Isolation design document and validation or test evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "CLD-05",
+      "order": 56,
+      "domain": "Cloud & Hosting Security",
+      "theme": "Cloud administration",
+      "question": "Is access to cloud management consoles restricted to named administrators with MFA and logging?",
+      "guidance": "State the number of administrators and whether root or owner accounts are locked down.",
+      "evidenceRequired": "Cloud IAM listing and MFA enforcement evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "CLD-06",
+      "order": 57,
+      "domain": "Cloud & Hosting Security",
+      "theme": "Data residency",
+      "question": "Are technical controls in place to ensure {{client}} data and logs are stored and processed only in permitted locations, including India-only where regulation requires it?",
+      "guidance": "Confirm the control covers backups, telemetry, support copies and log data.",
+      "evidenceRequired": "Residency control configuration or policy constraint evidence covering data and logs",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "VUL-01",
+      "order": 58,
+      "domain": "Vulnerability & Patch Management",
+      "theme": "Scanning",
+      "question": "Are internal and external vulnerability scans performed on a defined cycle, including authenticated scans?",
+      "guidance": "State scan frequency, coverage and tooling.",
+      "evidenceRequired": "Scan schedule and most recent summary report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "VUL-02",
+      "order": 59,
+      "domain": "Vulnerability & Patch Management",
+      "theme": "Remediation SLA",
+      "question": "Are remediation timeframes defined by severity, and are VAPT findings affecting the {{client}} service closed within three months of the report date?",
+      "guidance": "State the SLA per severity, current adherence, and the approval route for any exception with compensating controls.",
+      "evidenceRequired": "Remediation SLA definition, current adherence metrics and closure evidence for the latest VAPT findings",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "VUL-03",
+      "order": 60,
+      "domain": "Vulnerability & Patch Management",
+      "theme": "Patching",
+      "question": "Are severity-based patch timelines defined for all in-scope components, including deployment of high-severity patches within the applicable CSCRF timeline?",
+      "guidance": "State the cadence per severity and the tested compensating controls applied where no OEM fix is available.",
+      "evidenceRequired": "Patch management procedure with severity timelines and a recent compliance report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "VUL-04",
+      "order": 61,
+      "domain": "Vulnerability & Patch Management",
+      "theme": "Penetration testing",
+      "question": "Is an independent penetration test performed at least annually against the in-scope service?",
+      "guidance": "State the last test date, testing firm and whether findings are closed.",
+      "evidenceRequired": "Executive summary of latest penetration test and closure evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "VUL-05",
+      "order": 62,
+      "domain": "Vulnerability & Patch Management",
+      "theme": "Component risk",
+      "question": "Do you perform software composition analysis on open-source and third-party components, and can you provide an SBOM?",
+      "guidance": "State the tooling and whether an SBOM can be shared for the {{client}} service.",
+      "evidenceRequired": "SCA report or SBOM for the in-scope application",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "LOG-01",
+      "order": 63,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "Log coverage",
+      "question": "Is security logging enabled across systems supporting the {{client}} service, and which event types are captured?",
+      "guidance": "Confirm capture of authentication, privilege use, configuration change and data access events.",
+      "evidenceRequired": "Logging standard and sample event catalogue",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "LOG-02",
+      "order": 64,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "Centralisation",
+      "question": "Are logs centrally collected and correlated in a SIEM or equivalent platform?",
+      "guidance": "Name the platform and state which sources are onboarded.",
+      "evidenceRequired": "SIEM source onboarding list",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "LOG-03",
+      "order": 65,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "Retention and integrity",
+      "question": "What is the log retention period, where are logs held, and how are they protected against alteration or deletion?",
+      "guidance": "Confirm whether applicable ICT logs are retained for a rolling minimum of 180 days within Indian jurisdiction, and describe immutable or WORM storage and monitoring of retention failures.",
+      "evidenceRequired": "Retention configuration, storage-location evidence and immutability or WORM control description",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "LOG-04",
+      "order": 66,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "Monitoring coverage",
+      "question": "Is security monitoring provided on a 24x7 basis, in-house or through a managed provider?",
+      "guidance": "Name the provider if outsourced and state the alert triage SLA.",
+      "evidenceRequired": "SOC operating model description and SLA",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "LOG-05",
+      "order": 67,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "Privileged activity",
+      "question": "Is privileged and administrative activity on {{client}} environments monitored, and which specific behaviours raise an alert?",
+      "guidance": "Confirm alerting on high-risk commands, bulk data access, changes to security controls and unauthorised file transfer during privileged sessions.",
+      "evidenceRequired": "Detection rule list covering the named triggers, plus a sample alert record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "LOG-06",
+      "order": 68,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "Time synchronisation",
+      "question": "Are system clocks synchronised to a common authoritative source, and are sequence controls sufficient to reconstruct the full transaction lifecycle across integrated systems?",
+      "guidance": "Name the time source and confirm coverage across every system involved in processing {{client}} transactions.",
+      "evidenceRequired": "NTP configuration standard and description of sequence or ordering controls",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "LOG-07",
+      "order": 69,
+      "domain": "Logging, Monitoring & Detection",
+      "theme": "{{client}} log access",
+      "question": "Can {{client}} obtain relevant logs and alerts promptly in an agreed usable format, and can the service integrate with {{client}}'s SIEM?",
+      "guidance": "State the delivery mechanism, format, lead time and whether streaming or API-based integration is supported.",
+      "evidenceRequired": "Log export specification or SIEM integration description",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "END-01",
+      "order": 70,
+      "domain": "Endpoint & Malware Protection",
+      "theme": "Endpoint protection",
+      "question": "Is centrally managed anti-malware or EDR deployed on all endpoints and servers used to deliver the service?",
+      "guidance": "Name the product and state current deployment coverage percentage.",
+      "evidenceRequired": "Endpoint deployment coverage report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "END-02",
+      "order": 71,
+      "domain": "Endpoint & Malware Protection",
+      "theme": "Endpoint hardening",
+      "question": "Are endpoints hardened with full-disk encryption, automatic screen lock and restricted local administrator rights?",
+      "guidance": "State any roles retaining local admin and the justification.",
+      "evidenceRequired": "Endpoint baseline configuration evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "END-03",
+      "order": 72,
+      "domain": "Endpoint & Malware Protection",
+      "theme": "Mobile and BYOD",
+      "question": "Are mobile or personally owned devices permitted to access {{client}} data, and what controls apply?",
+      "guidance": "State whether MDM or containerisation is enforced.",
+      "evidenceRequired": "Mobile device policy and MDM enrolment evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "END-04",
+      "order": 73,
+      "domain": "Endpoint & Malware Protection",
+      "theme": "Data loss prevention",
+      "question": "Are data loss prevention controls applied to email, web, endpoint and cloud egress channels?",
+      "guidance": "Describe the policies applied to client data specifically.",
+      "evidenceRequired": "DLP policy configuration and sample incident report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "PRV-01",
+      "order": 74,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Processing role",
+      "question": "In relation to {{client}} personal data, do you act solely as a Data Processor under {{client}}'s instructions?",
+      "guidance": "Declare any processing performed for your own purposes.",
+      "evidenceRequired": "Written confirmation of processing role",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "PRV-02",
+      "order": 75,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Processing scope",
+      "question": "What categories of personal data do you process for {{client}}, for which purposes, and on what lawful basis of instruction?",
+      "guidance": "List categories including any special or financial data and confirm purpose limitation.",
+      "evidenceRequired": "Data processing description or RoPA extract for the {{client}} service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "PRV-03",
+      "order": 76,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Privacy accountability",
+      "question": "Have you appointed a privacy officer, Data Protection Officer or equivalent contact for data protection matters?",
+      "guidance": "Provide name, title and contact address.",
+      "evidenceRequired": "Appointment record and published contact details",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "PRV-04",
+      "order": 77,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Privacy governance",
+      "question": "Do you maintain a documented privacy policy and records of processing activities?",
+      "guidance": "State the review cycle and whether the {{client}} service is recorded.",
+      "evidenceRequired": "Privacy policy and RoPA extract",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "PRV-05",
+      "order": 78,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Security safeguards",
+      "question": "Have you implemented reasonable technical and organisational security safeguards to protect personal data?",
+      "guidance": "Summarise the safeguards specific to personal data rather than general IT controls.",
+      "evidenceRequired": "Description of safeguards mapped to the personal data processed",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "PRV-06",
+      "order": 79,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Data principal rights",
+      "question": "Can you assist {{client}} in responding to Data Principal access, correction, erasure and grievance requests within its SLA?",
+      "guidance": "State your turnaround time and the request channel.",
+      "evidenceRequired": "Documented rights-request support procedure",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "PRV-07",
+      "order": 80,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Breach notification",
+      "question": "Will you notify {{client}} of any personal data breach, and within what timeframe from detection?",
+      "guidance": "State the committed notification window in hours and the escalation contact.",
+      "evidenceRequired": "Breach notification procedure with committed timelines",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "PRV-08",
+      "order": 81,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Erasure",
+      "question": "Will personal data be erased on completion of the purpose or on {{client}}'s instruction, with certification of erasure?",
+      "guidance": "State the timeframe, how deletion from immutable backups is handled and documented, and disclose any legal-retention exception.",
+      "evidenceRequired": "Erasure procedure, immutable-backup deletion schedule and a sample certificate of destruction",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "PRV-09",
+      "order": 82,
+      "domain": "Data Privacy & DPDPA",
+      "theme": "Cross-border transfer",
+      "question": "Is {{client}} personal data transferred outside India, to which countries, and under what safeguards?",
+      "guidance": "Include support access, telemetry, backup and disaster recovery transfers.",
+      "evidenceRequired": "Transfer declaration and contractual safeguard evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "RET-01",
+      "order": 83,
+      "domain": "Data Retention, Return & Disposal",
+      "theme": "Retention",
+      "question": "Is a documented retention schedule applied to {{client}} data, and what is the retention period?",
+      "guidance": "State the period and the trigger for deletion.",
+      "evidenceRequired": "Retention schedule extract",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "RET-02",
+      "order": 84,
+      "domain": "Data Retention, Return & Disposal",
+      "theme": "Secure disposal",
+      "question": "Is media containing {{client}} data securely sanitised or destroyed to a recognised standard before disposal or reuse?",
+      "guidance": "Name the standard applied and whether a third party performs destruction.",
+      "evidenceRequired": "Media sanitisation procedure and sample destruction certificate",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "RET-03",
+      "order": 85,
+      "domain": "Data Retention, Return & Disposal",
+      "theme": "Backup",
+      "question": "How frequently is {{client}} data backed up, where are backups stored, are they encrypted, and how often are restores tested?",
+      "guidance": "State backup frequency, retention, location and last successful restore test date.",
+      "evidenceRequired": "Backup standard and latest restore test record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "RET-04",
+      "order": 86,
+      "domain": "Data Retention, Return & Disposal",
+      "theme": "Data return",
+      "question": "Will {{client}} data be returned on termination, in what format and within what timeframe?",
+      "guidance": "State the export format and the committed timeframe in days.",
+      "evidenceRequired": "Data return commitment and export format specification",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "INC-01",
+      "order": 87,
+      "domain": "Incident Management",
+      "theme": "Incident response plan",
+      "question": "Is there a documented incident response plan with defined severity levels, roles and escalation paths?",
+      "guidance": "State the date of last review and who owns the plan.",
+      "evidenceRequired": "Incident response plan and severity matrix",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "INC-02",
+      "order": 88,
+      "domain": "Incident Management",
+      "theme": "Client notification",
+      "question": "Will you notify {{client}} of any security incident affecting its data or services, and within what timeframe?",
+      "guidance": "State the committed timeframe in hours and the notification channel.",
+      "evidenceRequired": "Notification procedure showing committed timelines",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "INC-03",
+      "order": 89,
+      "domain": "Incident Management",
+      "theme": "Contact and escalation",
+      "question": "Do you provide a 24x7 incident contact and a named escalation matrix for {{client}}?",
+      "guidance": "Provide contact details and escalation levels.",
+      "evidenceRequired": "Escalation matrix with names and contact details",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "INC-04",
+      "order": 90,
+      "domain": "Incident Management",
+      "theme": "Exercise",
+      "question": "Are incident response exercises or tabletops conducted, and how frequently?",
+      "guidance": "State the last exercise date, scenario and lessons implemented.",
+      "evidenceRequired": "Exercise report and action closure record",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "INC-05",
+      "order": 91,
+      "domain": "Incident Management",
+      "theme": "Root cause",
+      "question": "Will you provide root cause analysis and corrective action reporting to {{client}} after a relevant incident?",
+      "guidance": "State the timeframe for delivering the RCA.",
+      "evidenceRequired": "RCA template and sample redacted report",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "INC-06",
+      "order": 92,
+      "domain": "Incident Management",
+      "theme": "Regulatory reporting",
+      "question": "Can you support incident reporting obligations to CERT-In and to {{client}}'s regulators within mandated timelines?",
+      "guidance": "Confirm capability to provide information within a six-hour reporting window.",
+      "evidenceRequired": "Regulatory reporting procedure",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "INC-07",
+      "order": 93,
+      "domain": "Incident Management",
+      "theme": "Forensic readiness",
+      "question": "Do you maintain forensic readiness, preserve evidence and support {{client}}-led or regulator-led investigations?",
+      "guidance": "State evidence retention period and any retained forensic partner.",
+      "evidenceRequired": "Forensic readiness procedure and retainer confirmation",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "INC-08",
+      "order": 94,
+      "domain": "Incident Management",
+      "theme": "Incident history",
+      "question": "Disclose security and privacy incidents affecting your services in the last 24 months, with nature, impact, containment and corrective action taken.",
+      "guidance": "Include incidents affecting other clients where the same platform, personnel or infrastructure serves {{client}}.",
+      "evidenceRequired": "Incident summary or redacted post-incident reports",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "BCP-01",
+      "order": 95,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Continuity planning",
+      "question": "Do you maintain business continuity and disaster recovery plans covering the service provided to {{client}}?",
+      "guidance": "State the plan owner and last review date.",
+      "evidenceRequired": "BCP and DR plan covering the in-scope service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "BCP-02",
+      "order": 96,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Recovery objectives",
+      "question": "What recovery time objective and recovery point objective are committed for this service?",
+      "guidance": "State RTO and RPO in hours and whether they are contractually committed.",
+      "evidenceRequired": "Documented RTO and RPO commitment",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "BCP-03",
+      "order": 97,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Recovery site",
+      "question": "Is there a secondary site or region for recovery, and how independent is it from the primary?",
+      "guidance": "State location, distance and independence of power, network and staffing.",
+      "evidenceRequired": "DR architecture description with site locations",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "BCP-04",
+      "order": 98,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Testing",
+      "question": "How frequently is disaster recovery tested, when was the last test, and were objectives met?",
+      "guidance": "State the test type, date and whether RTO and RPO were achieved.",
+      "evidenceRequired": "Latest DR test report with results against RTO and RPO",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "BCP-05",
+      "order": 99,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Impact analysis",
+      "question": "Has a business impact analysis been performed identifying critical processes and dependencies for this service?",
+      "guidance": "Confirm the BIA covers fourth-party dependencies.",
+      "evidenceRequired": "BIA output for the in-scope service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "BCP-06",
+      "order": 100,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Capacity",
+      "question": "Is capacity managed and tested to sustain peak or market-hours load for this service?",
+      "guidance": "State the peak volume tested and the headroom maintained.",
+      "evidenceRequired": "Capacity management report or load test results",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "BCP-07",
+      "order": 101,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Key-person risk",
+      "question": "Are there single points of failure or key-person dependencies in delivering this service, and how are they mitigated?",
+      "guidance": "Identify any role with no trained backup.",
+      "evidenceRequired": "Resourcing and succession or cross-training plan",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "BCP-08",
+      "order": 102,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Achieved recovery",
+      "question": "What RTO and RPO were actually achieved in the most recent recovery or failover test, and what issues remain open?",
+      "guidance": "This is the tested outcome, not the committed target. State owners and closure dates for unresolved issues.",
+      "evidenceRequired": "Latest recovery test report showing achieved RTO and RPO against committed targets",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "BCP-09",
+      "order": 103,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Destructive-attack recovery",
+      "question": "Can you recover from a destructive ransomware scenario using isolated or immutable backups, with clean-room or equivalent recovery and malware-free restore validation?",
+      "guidance": "State backup immutability mechanism, isolation from production credentials, and the last validated clean restore.",
+      "evidenceRequired": "Immutable backup configuration and evidence of a validated clean recovery test",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "BCP-10",
+      "order": 104,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Market-hours scenario",
+      "question": "Has a failure scenario during market or other critical operating hours been tested end to end, covering escalation, failover, fallback and restoration to normal service?",
+      "guidance": "State the scenario, date and whether the test ran during live operating hours or simulated them.",
+      "evidenceRequired": "Scenario test report with timeline and outcomes",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "BCP-11",
+      "order": 105,
+      "domain": "Business Continuity & Resilience",
+      "theme": "Essential personnel",
+      "question": "Are the skilled personnel who deliver the core service designated as essential personnel, with back-up arrangements allowing a limited team to operate critical functions on-site during exigencies?",
+      "guidance": "Identify the roles, their named backups and the on-site or remote continuity arrangement.",
+      "evidenceRequired": "Essential personnel schedule and continuity arrangement",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "FTP-01",
+      "order": 106,
+      "domain": "Fourth-Party Management",
+      "theme": "Subcontractor disclosure",
+      "question": "List all subcontractors and subprocessors involved in delivering this service or accessing {{client}} data.",
+      "guidance": "Include cloud, data centre, support, offshore development and specialist processors.",
+      "evidenceRequired": "Current subprocessor list with country and function",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "FTP-02",
+      "order": 107,
+      "domain": "Fourth-Party Management",
+      "theme": "Due diligence",
+      "question": "Is security and privacy due diligence performed on subcontractors before engagement?",
+      "guidance": "Describe the assessment method and evidence retained.",
+      "evidenceRequired": "Third-party due diligence procedure and sample assessment",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "FTP-03",
+      "order": 108,
+      "domain": "Fourth-Party Management",
+      "theme": "Flow-down",
+      "question": "Are {{client}}'s security, privacy, audit and breach notification obligations contractually flowed down to subcontractors?",
+      "guidance": "Confirm which obligations are flowed down and any that are not.",
+      "evidenceRequired": "Sample subcontractor contract clauses",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "FTP-04",
+      "order": 109,
+      "domain": "Fourth-Party Management",
+      "theme": "Ongoing monitoring",
+      "question": "Are critical subcontractors reassessed on a defined cycle, and what does that assessment cover?",
+      "guidance": "State the frequency and last assessment date for the most critical subcontractor.",
+      "evidenceRequired": "Monitoring schedule and latest assessment outcome",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "FTP-05",
+      "order": 110,
+      "domain": "Fourth-Party Management",
+      "theme": "Change notice",
+      "question": "Will {{client}} receive prior written notice before a material subprocessor is added, replaced or relocated?",
+      "guidance": "State the notice period in days and {{client}}'s right to object.",
+      "evidenceRequired": "Contractual notice commitment",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "FTP-06",
+      "order": 111,
+      "domain": "Fourth-Party Management",
+      "theme": "Concentration",
+      "question": "Does the service depend on a single cloud provider, data centre or specialist provider with no viable alternative?",
+      "guidance": "Identify the dependency and any mitigation or portability plan.",
+      "evidenceRequired": "Dependency analysis and mitigation plan",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "FTP-07",
+      "order": 112,
+      "domain": "Fourth-Party Management",
+      "theme": "OEM arrangements",
+      "question": "Are back-to-back arrangements in place between you and the OEMs whose products underpin the {{client}} service?",
+      "guidance": "Cover support, patch supply, end-of-life notice and escalation rights.",
+      "evidenceRequired": "OEM support or partnership agreement summary",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "PHY-01",
+      "order": 113,
+      "domain": "Physical & Environmental Security",
+      "theme": "Access control",
+      "question": "Are physical access controls in place at all facilities where {{client}} data is processed, stored or accessed?",
+      "guidance": "List the facilities and the access control mechanism at each.",
+      "evidenceRequired": "Physical security policy and facility access control description",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "PHY-02",
+      "order": 114,
+      "domain": "Physical & Environmental Security",
+      "theme": "Surveillance and visitors",
+      "question": "Are CCTV, visitor registration and access logging in place, and for how long are records retained?",
+      "guidance": "State retention periods for CCTV footage and access logs.",
+      "evidenceRequired": "Visitor and surveillance procedure with retention periods",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "PHY-03",
+      "order": 115,
+      "domain": "Physical & Environmental Security",
+      "theme": "Environmental controls",
+      "question": "Do data centres supporting the service have redundant power, cooling and fire suppression?",
+      "guidance": "State the tier or resilience rating and any certification held.",
+      "evidenceRequired": "Data centre certification or facility specification",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "PHY-04",
+      "order": 116,
+      "domain": "Physical & Environmental Security",
+      "theme": "Workspace controls",
+      "question": "Are clear desk, clear screen and secure printing controls enforced in areas handling {{client}} data?",
+      "guidance": "Confirm whether delivery areas are access restricted or monitored.",
+      "evidenceRequired": "Workspace security policy and monitoring evidence",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "REG-01",
+      "order": 117,
+      "domain": "Regulatory & Contractual",
+      "theme": "Contractual schedule",
+      "question": "Will you accept {{client}}'s standard information security, privacy and business continuity contractual schedules?",
+      "guidance": "Note any clause you would seek to amend and the reason.",
+      "evidenceRequired": "Signed contract or written confirmation of acceptance",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "REG-02",
+      "order": 118,
+      "domain": "Regulatory & Contractual",
+      "theme": "Right to audit",
+      "question": "Do you accept a right of audit for {{client}}, its internal auditors and its appointed external auditors?",
+      "guidance": "State the notice period required and any restriction on scope.",
+      "evidenceRequired": "Executed right-to-audit clause",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "REG-03",
+      "order": 119,
+      "domain": "Regulatory & Contractual",
+      "theme": "Regulator access",
+      "question": "Do you accept direct inspection and access to records by SEBI, RBI or other applicable regulators?",
+      "guidance": "Confirm acceptance without additional notice requirements for the regulator.",
+      "evidenceRequired": "Contractual clause granting regulator access",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "REG-04",
+      "order": 120,
+      "domain": "Regulatory & Contractual",
+      "theme": "Records availability",
+      "question": "Will records, data and documentation relating to this service be made available in India on demand?",
+      "guidance": "State the timeframe for making records available.",
+      "evidenceRequired": "Written commitment on record availability and location",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "REG-05",
+      "order": 121,
+      "domain": "Regulatory & Contractual",
+      "theme": "CSCRF alignment",
+      "question": "Can you evidence alignment with SEBI CSCRF requirements applicable to services supporting a regulated intermediary?",
+      "guidance": "Identify the CSCRF functions you can evidence and any gaps.",
+      "evidenceRequired": "CSCRF control mapping or self-assessment for the service",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "REG-06",
+      "order": 122,
+      "domain": "Regulatory & Contractual",
+      "theme": "Adverse events",
+      "question": "Will you notify {{client}} of adverse regulatory action, sanctions, insolvency events or material litigation affecting you?",
+      "guidance": "State the notification trigger and timeframe.",
+      "evidenceRequired": "Contractual notification commitment",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "REG-07",
+      "order": 123,
+      "domain": "Regulatory & Contractual",
+      "theme": "Conflicts and ownership",
+      "question": "Confirm that the vendor is not owned or controlled by any director, key managerial personnel or approver of the outsourcing arrangement at {{client}}, or by their relatives.",
+      "guidance": "Disclose any such relationship. An exception requires approval by the Board or a Board-level committee.",
+      "evidenceRequired": "Signed declaration of ownership, control and related-party relationships",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "REG-08",
+      "order": 124,
+      "domain": "Regulatory & Contractual",
+      "theme": "Grievance redressal",
+      "question": "Confirm that the outsourcing arrangement will not compromise {{client}}'s customer grievance redressal mechanism or any customer right.",
+      "guidance": "Describe how customer complaints reaching the vendor are routed to {{client}} and within what timeframe.",
+      "evidenceRequired": "Written confirmation and grievance routing procedure",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "REG-09",
+      "order": 125,
+      "domain": "Regulatory & Contractual",
+      "theme": "Insolvency cooperation",
+      "question": "Will you cooperate with the relevant authorities in the event of insolvency or resolution proceedings affecting {{client}}, and continue service during that period?",
+      "guidance": "State the continuity commitment and any conditions attached.",
+      "evidenceRequired": "Contractual cooperation and continuity commitment",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "ASR-01",
+      "order": 126,
+      "domain": "Assurance & Certification",
+      "theme": "ISO 27001",
+      "question": "Do you hold a current ISO/IEC 27001 certification covering this service? Provide certificate number, certification body, issue and expiry dates, and the exact services, locations, systems and subcontracted activities in scope.",
+      "guidance": "The scope must name the delivery locations and systems used for {{client}}, and any subcontracted activity included or excluded.",
+      "evidenceRequired": "ISO/IEC 27001 certificate with the full scope statement",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "ASR-02",
+      "order": 127,
+      "domain": "Assurance & Certification",
+      "theme": "Statement of Applicability",
+      "question": "Can you provide a Statement of Applicability showing applicable controls, justifications and exclusions?",
+      "guidance": "Highlight any Annex A control excluded and the justification.",
+      "evidenceRequired": "Current Statement of Applicability",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "ASR-03",
+      "order": 128,
+      "domain": "Assurance & Certification",
+      "theme": "SOC 2 Type II",
+      "question": "Do you hold a current SOC 2 Type II report? State the period covered, trust services criteria, all exceptions raised, subservice organisations and their treatment, and complementary user entity controls.",
+      "guidance": "A Type I report or an expired Type II must be declared as such. Carve-out and inclusive method must be identified.",
+      "evidenceRequired": "SOC 2 Type II report including exceptions, subservice organisation treatment and CUEC listing",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "ASR-04",
+      "order": 129,
+      "domain": "Assurance & Certification",
+      "theme": "Other assurance",
+      "question": "List any other current certifications or attestations held, such as ISO 27701, ISO 22301, PCI DSS or CSA STAR.",
+      "guidance": "State scope and expiry for each.",
+      "evidenceRequired": "Certificates for each attestation claimed",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "ASR-05",
+      "order": 130,
+      "domain": "Assurance & Certification",
+      "theme": "Coverage gap",
+      "question": "Where the assurance report period has ended, can you provide a bridge or gap letter covering the period since?",
+      "guidance": "State the period the bridge letter covers.",
+      "evidenceRequired": "Bridge or gap letter from the service auditor",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "ASR-06",
+      "order": 131,
+      "domain": "Assurance & Certification",
+      "theme": "Open findings",
+      "question": "What findings, exceptions or non-conformities remain open from your latest audit or assessment, and what is the closure plan?",
+      "guidance": "List each open item with severity and target closure date.",
+      "evidenceRequired": "Corrective action plan with target dates",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "EXT-01",
+      "order": 132,
+      "domain": "Exit Management & Portability",
+      "theme": "Exit plan",
+      "question": "Is there a documented exit and transition plan for this service, and has it been tested or reviewed?",
+      "guidance": "State the plan owner and last review date.",
+      "evidenceRequired": "Exit management plan",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "EXT-02",
+      "order": 133,
+      "domain": "Exit Management & Portability",
+      "theme": "Data portability",
+      "question": "Can {{client}} data and configuration be exported in a documented, non-proprietary format?",
+      "guidance": "State the export formats available and any data that cannot be exported.",
+      "evidenceRequired": "Export format specification or sample export",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ]
+    },
+    {
+      "id": "EXT-03",
+      "order": 134,
+      "domain": "Exit Management & Portability",
+      "theme": "Transition assistance",
+      "question": "What transition assistance period and support will you provide on termination, and on what commercial terms?",
+      "guidance": "State the assistance period in months.",
+      "evidenceRequired": "Contractual transition assistance terms",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "EXT-04",
+      "order": 135,
+      "domain": "Exit Management & Portability",
+      "theme": "Destruction certificate",
+      "question": "Will you provide written certification of deletion or destruction of all {{client}} data after transition?",
+      "guidance": "State the timeframe after transition and whether backups are covered.",
+      "evidenceRequired": "Certificate of destruction template and commitment",
+      "evidenceMandatory": false,
+      "tiers": [
+        "tier_1",
+        "tier_2",
+        "tier_3",
+        "tier_4"
+      ]
+    },
+    {
+      "id": "EXT-05",
+      "order": 136,
+      "domain": "Exit Management & Portability",
+      "theme": "Escrow",
+      "question": "Is source code, configuration or key operational documentation held in escrow, with defined release conditions?",
+      "guidance": "Name the escrow agent and state the release triggers.",
+      "evidenceRequired": "Escrow agreement and latest deposit verification",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "EXT-06",
+      "order": 137,
+      "domain": "Exit Management & Portability",
+      "theme": "Egress feasibility",
+      "question": "What is the practical data egress position on exit: transfer capacity, expected lead time, and any egress or extraction cost?",
+      "guidance": "Give volumes and elapsed time for a full extraction at current data scale, and identify any data that cannot be extracted.",
+      "evidenceRequired": "Egress specification with capacity, lead time and cost schedule",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1",
+        "tier_2"
+      ]
+    },
+    {
+      "id": "EXT-07",
+      "order": 138,
+      "domain": "Exit Management & Portability",
+      "theme": "Exit testing",
+      "question": "Has the exit plan been exercised or tabletop-tested, including realistic migration timelines, dependencies, costs and unresolved barriers?",
+      "guidance": "State the date and form of the last test and what it showed.",
+      "evidenceRequired": "Exit test or tabletop report with findings",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    },
+    {
+      "id": "EXT-08",
+      "order": 139,
+      "domain": "Exit Management & Portability",
+      "theme": "Lock-in mitigation",
+      "question": "Has lock-in and concentration exposure been assessed, and is the solution designed to be provider-agnostic or portable with minimal change?",
+      "guidance": "State the assessment date and cadence, and describe what would need to change to migrate.",
+      "evidenceRequired": "Lock-in assessment and portability design note",
+      "evidenceMandatory": true,
+      "tiers": [
+        "tier_1"
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "name": "Critical Applications",
+      "questions": [
+        {
+          "id": "TRD-01",
+          "theme": "Transaction surface",
+          "question": "Identify every function of the service that can create, amend, cancel, approve or otherwise affect orders, trades, payments, holdings, NAV or client-asset records.",
+          "guidance": "Include automated functionality and batch processes, not only human-operated screens.",
+          "evidenceRequired": "Function inventory with the transaction effect of each",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-02",
+          "theme": "Authorisation",
+          "question": "Is strong authentication, least privilege and segregation of duties enforced for all transaction-affecting functions and interfaces?",
+          "guidance": "Map each transaction function to the roles that can invoke it.",
+          "evidenceRequired": "Role-to-function authorisation matrix",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-03",
+          "theme": "Maker-checker",
+          "question": "Is maker-checker or equivalent independent approval enforced for high-risk transaction and configuration changes, with exceptions documented?",
+          "guidance": "List any function that can be executed by a single party and the justification.",
+          "evidenceRequired": "Configuration evidence of dual control and the documented exception list",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-04",
+          "theme": "Input validation",
+          "question": "Are transaction inputs, instrument and account eligibility, limits, and price or quantity boundaries validated, and downstream acknowledgements confirmed, before commitment?",
+          "guidance": "State what happens when a validation fails.",
+          "evidenceRequired": "Validation rule specification and sample rejection log",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-05",
+          "theme": "Duplicate and replay",
+          "question": "Are duplicate, replayed, stale or out-of-sequence instructions prevented and detected using unique identifiers, idempotency and reconciliation?",
+          "guidance": "Describe the idempotency key and the detection window.",
+          "evidenceRequired": "Design note on idempotency and a sample detection record",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-06",
+          "theme": "Reconciliation",
+          "question": "Is timely end-to-end reconciliation performed between source instructions, vendor processing, exchange, bank or custodian acknowledgements, and {{client}} books and records?",
+          "guidance": "State the frequency, the breaks tolerance and the escalation route for unmatched items.",
+          "evidenceRequired": "Reconciliation procedure and a recent completed reconciliation with break resolution",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-07",
+          "theme": "Non-repudiation",
+          "question": "Is non-repudiable evidence retained of the identity, authority, time and content of each material instruction and approval?",
+          "guidance": "State the retention period and how the evidence is protected from alteration.",
+          "evidenceRequired": "Sample instruction audit record showing identity, authority, timestamp and payload",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-08",
+          "theme": "Lifecycle reconstruction",
+          "question": "Are time synchronisation and sequence controls sufficient to reconstruct the exact transaction lifecycle across every integrated system?",
+          "guidance": "Confirm the common time source and the sequencing mechanism across system boundaries.",
+          "evidenceRequired": "Description of sequencing and a worked reconstruction of one transaction",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-09",
+          "theme": "Safe failure",
+          "question": "Is safe behaviour defined for interface latency, partial processing, disconnection or failover during market hours, including queueing, replay and operator alerting?",
+          "guidance": "State the defined behaviour for each failure mode rather than a general resilience statement.",
+          "evidenceRequired": "Failure-mode design note and operator runbook",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-10",
+          "theme": "Kill switch",
+          "question": "Is there an authorised kill switch, circuit breaker or controlled manual fallback for unsafe processing, and has its effectiveness been tested?",
+          "guidance": "State who is authorised to invoke it, how quickly it takes effect, and the date of the last test.",
+          "evidenceRequired": "Procedure naming the authorised invokers, plus the latest test record",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-11",
+          "theme": "Audit trail",
+          "question": "Is a complete transaction audit trail retained that supports reconstruction, investigation, dispute handling and regulatory requests?",
+          "guidance": "State the retention period and the turnaround for producing an extract on request.",
+          "evidenceRequired": "Audit trail specification and a sample extract",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "TRD-12",
+          "theme": "Market dependencies",
+          "question": "Are exchange, depository, bank, custodian, market-data and network dependencies mapped, and have alternate routes or fallback arrangements been tested?",
+          "guidance": "Identify any dependency with no alternate route.",
+          "evidenceRequired": "Dependency map and evidence of the last alternate-route test",
+          "evidenceMandatory": true
+        }
+      ],
+      "rule": {
+        "source": "automatic",
+        "anyOf": [
+          {
+            "questionId": "Q14",
+            "operator": "gte",
+            "score": 3
+          },
+          {
+            "questionId": "Q15",
+            "operator": "gte",
+            "score": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "Cloud & Hosting",
+      "questions": [
+        {
+          "id": "CLM-01",
+          "theme": "Shared responsibility",
+          "question": "Is the shared responsibility model documented at the exact service and configuration level across {{client}}, the CSP, the vendor and any subcontractor?",
+          "guidance": "A generic CSP responsibility diagram is not sufficient. Map it to this service.",
+          "evidenceRequired": "Service-specific shared responsibility matrix",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-02",
+          "theme": "Data locations",
+          "question": "Identify the country, region and facility for production, DR, backup, log, support and management-plane data.",
+          "guidance": "Management-plane and log locations are frequently overlooked. State them explicitly.",
+          "evidenceRequired": "Location schedule covering all six data categories",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-03",
+          "theme": "Tenant isolation",
+          "question": "How is tenant isolation enforced across management plane, network, compute, storage, database, backup and keys, and how is it validated?",
+          "guidance": "State whether isolation has been independently tested.",
+          "evidenceRequired": "Isolation design document and validation or test evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-04",
+          "theme": "Control-plane protection",
+          "question": "Are CSP and tenant control planes protected with MFA, PAM or PIM, least privilege, conditional access and monitored break-glass use?",
+          "guidance": "State the number of accounts with control-plane privilege and how root or owner accounts are secured.",
+          "evidenceRequired": "Control-plane IAM listing with privilege levels and MFA enforcement evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-05",
+          "theme": "Configuration assurance",
+          "question": "Is cloud configuration continuously assessed against approved baselines, with prompt remediation of public exposure, excessive privilege and insecure services?",
+          "guidance": "Name the tooling and state the current compliance position and open high-severity items.",
+          "evidenceRequired": "CSPM report extract for the in-scope accounts",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-06",
+          "theme": "Key management",
+          "question": "Are encryption and key-management responsibilities, key location, rotation, administrator access and customer-managed-key options defined for this service?",
+          "guidance": "State whether {{client}} can supply or control its own keys.",
+          "evidenceRequired": "Key management design covering location, rotation and administrator access",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-07",
+          "theme": "Failure domains",
+          "question": "Is resilience demonstrated across the required failure domains and regions without creating unapproved data-location or dependency risk?",
+          "guidance": "Confirm that failover targets remain within permitted locations.",
+          "evidenceRequired": "Resilience architecture showing failure domains and failover regions",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-08",
+          "theme": "Subservice organisations",
+          "question": "Are material CSP and subservice organisations identified, and have their assurance reports, exceptions and complementary controls been reviewed?",
+          "guidance": "List each and state the assurance held, the report period and any exception relevant to this service.",
+          "evidenceRequired": "Subservice organisation register with assurance status per entity",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-09",
+          "theme": "Image integrity",
+          "question": "How is the integrity of VM and container base images used to host the service assured?",
+          "guidance": "Describe image provenance, signing, hardening and rebuild cadence.",
+          "evidenceRequired": "Image build and verification procedure",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-10",
+          "theme": "Ownership delineation",
+          "question": "Confirm there is no joint or shared ownership of any function, task or activity between {{client}} and the provider, and that each sub-task has a single accountable party.",
+          "guidance": "Where a task must be performed jointly, provide the line-item delineation of responsibility.",
+          "evidenceRequired": "Delineation schedule at sub-task level",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-11",
+          "theme": "Lock-in mitigation",
+          "question": "Has exposure to provider lock-in and concentration been assessed before contracting and periodically since, and is the solution cloud-ready or provider-agnostic?",
+          "guidance": "State the assessment date, the cadence and what migration would require.",
+          "evidenceRequired": "Lock-in and concentration assessment",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "CLM-12",
+          "theme": "CSP event integration",
+          "question": "Are CSP health and security events integrated into the vendor and {{client}} incident processes, including status pages, evidence supply and notification dependencies?",
+          "guidance": "State how a CSP-originated incident reaches {{client}} and within what timeframe.",
+          "evidenceRequired": "Incident procedure showing CSP event handling and onward notification",
+          "evidenceMandatory": true
+        }
+      ],
+      "rule": {
+        "source": "automatic",
+        "anyOf": [
+          {
+            "questionId": "Q12",
+            "operator": "gte",
+            "score": 2
+          },
+          {
+            "questionId": "Q13",
+            "operator": "gte",
+            "score": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Privileged Access & Managed Security",
+      "questions": [
+        {
+          "id": "PAM-01",
+          "theme": "MFA coverage",
+          "question": "Is strong MFA required on every privileged, remote, production, database, network, security-tool and management-plane access path?",
+          "guidance": "List any access path without MFA and the compensating control.",
+          "evidenceRequired": "MFA enforcement evidence per access path",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-02",
+          "theme": "PAM routing",
+          "question": "Is privileged access routed through a PAM or PIM system with approval, credential vaulting and auditability?",
+          "guidance": "State which privileged paths bypass the PAM system, if any.",
+          "evidenceRequired": "PAM configuration summary and a sample session record",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-03",
+          "theme": "Just-in-time",
+          "question": "Is privileged access granted just in time and least privilege, with a defined maximum duration and automatic revocation?",
+          "guidance": "State the maximum session duration and whether standing privilege exists anywhere.",
+          "evidenceRequired": "JIT configuration evidence and standing-privilege exception list",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-04",
+          "theme": "Break-glass",
+          "question": "Is break-glass access controlled with dual approval where feasible, immediate alerting, session review and post-use credential rotation?",
+          "guidance": "State the post-use review timeframe and confirm rotation is automated or evidenced.",
+          "evidenceRequired": "Break-glass procedure and a sample post-use review with rotation evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-05",
+          "theme": "Session recording",
+          "question": "Are privileged sessions recorded, or command-level activity captured, for critical systems, with tamper-protected retention?",
+          "guidance": "State the retention period and who can access or delete recordings.",
+          "evidenceRequired": "Session recording configuration and retention protection evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-06",
+          "theme": "Non-human accounts",
+          "question": "Are service and other non-human accounts inventoried with assigned owners, interactive use prohibited where possible, secrets vaulted and rotated on a risk-based schedule?",
+          "guidance": "State the number of service accounts touching the {{client}} service and the rotation period.",
+          "evidenceRequired": "Service account inventory with owners and secret rotation evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-07",
+          "theme": "Remote support control",
+          "question": "Is remote support restricted to approved managed endpoints, networks, time windows and destinations, with uncontrolled direct internet access prohibited?",
+          "guidance": "Confirm that support cannot be performed from unmanaged or personal devices.",
+          "evidenceRequired": "Remote support standard and endpoint compliance evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-08",
+          "theme": "Session alerting",
+          "question": "Does monitoring alert on high-risk commands, bulk data access, changes to security controls and unauthorised file transfer during privileged sessions?",
+          "guidance": "List the detection use cases in place for each of the four behaviours.",
+          "evidenceRequired": "Detection rule list and a sample alert",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-09",
+          "theme": "Access review and revocation",
+          "question": "Is vendor privileged access reviewed at least quarterly, and revoked within the contractual SLA following termination, role change or a {{client}} request?",
+          "guidance": "State the last review date and the revocation SLA in hours.",
+          "evidenceRequired": "Latest quarterly review record and sample revocation evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PAM-10",
+          "theme": "Change authority",
+          "question": "Is support access separated from production change authority, and do vendor-initiated production changes require a {{client}}-approved change record?",
+          "guidance": "Describe how the separation is technically enforced rather than procedurally assumed.",
+          "evidenceRequired": "Separation evidence and a sample {{client}}-approved change record",
+          "evidenceMandatory": true
+        }
+      ],
+      "rule": {
+        "source": "automatic",
+        "anyOf": [
+          {
+            "questionId": "Q07",
+            "operator": "gte",
+            "score": 4
+          },
+          {
+            "questionId": "Q08",
+            "operator": "gte",
+            "score": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "Personal Data & Privacy",
+      "questions": [
+        {
+          "id": "PRM-01",
+          "theme": "Purpose and minimisation",
+          "question": "Is the authorised purpose, the specific data elements and the minimum data necessary documented for the {{client}} service?",
+          "guidance": "Justify any element collected beyond the minimum.",
+          "evidenceRequired": "Data element schedule with purpose and necessity justification",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-02",
+          "theme": "Processing record and flow",
+          "question": "Is a current processing record and data flow maintained covering collection, use, sharing, storage, backup, support access, retention and deletion?",
+          "guidance": "Support access and backup copies are commonly omitted. Confirm they are included.",
+          "evidenceRequired": "RoPA extract and data-flow diagram for the {{client}} service",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-03",
+          "theme": "DPIA",
+          "question": "Is a privacy-by-design review and DPIA or privacy risk assessment performed before material changes involving personal data?",
+          "guidance": "State the trigger criteria and the date of the most recent assessment.",
+          "evidenceRequired": "DPIA methodology and the most recent completed assessment",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-04",
+          "theme": "Data principal rights",
+          "question": "Are procedures and contractual support in place for access, correction, deletion, grievance and other applicable requests within {{client}}'s timelines?",
+          "guidance": "State your turnaround, the request channel and the escalation route.",
+          "evidenceRequired": "Rights-request procedure with committed turnaround times",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-05",
+          "theme": "Retention across copies",
+          "question": "Is approved retention applied to production, replicas, logs and backups, with indefinite retention prevented and delayed deletion from immutable backups documented?",
+          "guidance": "State the maximum delay before an immutable backup copy is purged.",
+          "evidenceRequired": "Retention schedule covering all copy types and the immutable-backup purge cycle",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-06",
+          "theme": "Subprocessors and transfers",
+          "question": "Are subprocessors and all cross-border storage or support access identified, with {{client}} approval, safeguards and contractual flow-down applied before processing?",
+          "guidance": "Include support personnel viewing data from outside India, even without a data transfer.",
+          "evidenceRequired": "Subprocessor register with country, function and flow-down evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-07",
+          "theme": "Non-production data",
+          "question": "Is production personal data prohibited in development and test environments unless expressly approved and protected by masking, tokenisation or equivalent?",
+          "guidance": "State the approval authority and the protection applied to any approved exception.",
+          "evidenceRequired": "Masking standard and approval record for any exception",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PRM-08",
+          "theme": "Instruction conflicts",
+          "question": "Is {{client}} personal data processed only on documented instructions, and will you promptly report any instruction you believe conflicts with applicable requirements?",
+          "guidance": "State who at the vendor makes that determination and the reporting route.",
+          "evidenceRequired": "Contractual commitment and escalation procedure",
+          "evidenceMandatory": false
+        },
+        {
+          "id": "PRM-09",
+          "theme": "Privacy incident history",
+          "question": "Disclose any personal data incident affecting your services in the last 24 months, including impact, containment, notification made and corrective action.",
+          "guidance": "Include incidents affecting other clients on shared platforms or personnel.",
+          "evidenceRequired": "Incident summary or redacted post-incident report",
+          "evidenceMandatory": false
+        }
+      ],
+      "rule": {
+        "source": "automatic",
+        "anyOf": [
+          {
+            "questionId": "Q04",
+            "operator": "gte",
+            "score": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "Software & Application Security",
+      "questions": [
+        {
+          "id": "SWM-01",
+          "theme": "SBOM provision",
+          "question": "Can you provide a machine-readable SBOM for every software or application supporting {{client}} core or critical operations, covering components, dependencies and data relationships?",
+          "guidance": "State the format, for example SPDX or CycloneDX.",
+          "evidenceRequired": "SBOM for the in-scope application in a machine-readable format",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-02",
+          "theme": "SBOM currency",
+          "question": "Is the SBOM updated for each material release, with an auditable link between released software, build artefacts and SBOM version?",
+          "guidance": "Describe how a given deployed version maps to its SBOM.",
+          "evidenceRequired": "Release-to-SBOM traceability evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-03",
+          "theme": "Component risk",
+          "question": "Are vulnerabilities and licence risks in open-source and third-party components continuously identified, with remediation or approved exceptions tracked?",
+          "guidance": "Name the tooling and state current open high-severity component findings.",
+          "evidenceRequired": "SCA report and remediation tracker extract",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-04",
+          "theme": "End-of-life components",
+          "question": "Are unsupported or end-of-life components prevented in the {{client}} service, or covered by a time-bound approved exception with compensating controls and a replacement plan?",
+          "guidance": "List any EOL component currently in the service with its replacement date.",
+          "evidenceRequired": "EOL component register with exception approvals and replacement plan",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-05",
+          "theme": "Build integrity",
+          "question": "Are builds and updates cryptographically signed or otherwise verified, distribution channels protected, and secure rollback supported?",
+          "guidance": "State the signing mechanism and how a client verifies authenticity.",
+          "evidenceRequired": "Signing and release verification procedure",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-06",
+          "theme": "Pipeline security",
+          "question": "Is CI/CD administration restricted and monitored, pipeline secrets protected, build and release duties segregated, and unapproved production deployment prevented?",
+          "guidance": "State who can alter pipeline definitions and how that is logged.",
+          "evidenceRequired": "Pipeline access listing, secrets management evidence and deployment gate configuration",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-07",
+          "theme": "Testing coverage",
+          "question": "Are SAST, DAST, SCA, secret scanning and applicable infrastructure-as-code or container scanning integrated with risk-based release gates?",
+          "guidance": "State which findings block a release and who can override.",
+          "evidenceRequired": "Toolchain configuration and a sample gated release record",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-08",
+          "theme": "Code review",
+          "question": "Is independent code review required for security-relevant changes, with material findings closed before release?",
+          "guidance": "Confirm that authors cannot approve their own changes.",
+          "evidenceRequired": "Review policy and a sample reviewed change with finding closure",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-09",
+          "theme": "API inventory and authorisation",
+          "question": "Is an API inventory maintained, with strong authentication, object-level and function-level authorisation and least privilege enforced on every {{client}}-facing API?",
+          "guidance": "State how object-level authorisation is tested, not only that it is designed in.",
+          "evidenceRequired": "API inventory and authorisation design with test evidence",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-10",
+          "theme": "API abuse protection",
+          "question": "Are schema and input validation, rate limits, replay protection and allowlisting applied against common API abuse?",
+          "guidance": "State the rate limits applied to {{client}}-facing endpoints.",
+          "evidenceRequired": "API gateway or equivalent policy configuration",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-11",
+          "theme": "API logging",
+          "question": "Are API identity, request outcome, privileged action and material data-access events logged, with alerting on anomalous or abusive patterns?",
+          "guidance": "State the retention period for API logs and the anomaly detection in place.",
+          "evidenceRequired": "API logging specification and sample alert",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-12",
+          "theme": "Source continuity",
+          "question": "For software developed solely for {{client}}, is source code provided, or is escrow or equivalent continuity maintained including every update, patch and fix?",
+          "guidance": "Name the escrow agent, deposit cadence and release triggers.",
+          "evidenceRequired": "Escrow agreement and latest deposit verification",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "SWM-13",
+          "theme": "Vulnerability disclosure",
+          "question": "Do you operate a vulnerability disclosure and customer notification process, including urgent security updates, workarounds and supported-version commitments?",
+          "guidance": "State how {{client}} is notified of a critical vulnerability and within what timeframe.",
+          "evidenceRequired": "Disclosure policy and supported-version statement",
+          "evidenceMandatory": true
+        }
+      ],
+      "rule": {
+        "source": "automatic",
+        "anyOf": [
+          {
+            "questionId": "Q09",
+            "operator": "gte",
+            "score": 2
+          },
+          {
+            "questionId": "Q11",
+            "operator": "gte",
+            "score": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Physical & Data Centre",
+      "questions": [
+        {
+          "id": "PHM-01",
+          "theme": "Personnel and access",
+          "question": "Are background screening, authorised access lists, visitor escort, badge review and prompt revocation applied to personnel entering in-scope secure areas?",
+          "guidance": "State the badge review frequency and the revocation SLA.",
+          "evidenceRequired": "Physical access procedure and a recent access review record",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PHM-02",
+          "theme": "Environmental controls",
+          "question": "Are redundant power, cooling, fire detection and suppression, water and environment monitoring, and tested emergency response in place at in-scope facilities?",
+          "guidance": "State the facility resilience rating or certification held.",
+          "evidenceRequired": "Data centre certification or facility specification",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PHM-03",
+          "theme": "Media handling",
+          "question": "Is in-scope media and equipment tracked and securely sanitised or destroyed, with chain of custody and destruction evidence?",
+          "guidance": "State the sanitisation standard and whether a third party performs destruction.",
+          "evidenceRequired": "Media handling procedure and a sample destruction certificate",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PHM-04",
+          "theme": "Surveillance",
+          "question": "Is 24x7 surveillance in place at facilities holding {{client}} data, and what are the CCTV and access-log retention periods?",
+          "guidance": "State retention in days for both footage and access logs.",
+          "evidenceRequired": "Surveillance and retention procedure",
+          "evidenceMandatory": true
+        },
+        {
+          "id": "PHM-05",
+          "theme": "Emergency drills",
+          "question": "Are fire and emergency evacuation drills conducted at a defined frequency, with records retained?",
+          "guidance": "State the frequency and the date of the last drill.",
+          "evidenceRequired": "Drill schedule and latest drill record",
+          "evidenceMandatory": true
+        }
+      ],
+      "rule": {
+        "source": "owner_validation",
+        "guidance": "{{client}} data is stored or processed at vendor or subcontractor facilities, or vendor personnel access such facilities."
+      }
+    }
+  ],
+  "contractClauses": [
+    {
+      "id": "CT-01",
+      "order": 1,
+      "category": "Service Scope & SLA",
+      "requirement": "Details of the activity outsourced, including service and performance standards, applied equally to any subcontractor.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-02",
+      "order": 2,
+      "category": "Service Scope & SLA",
+      "requirement": "Deliverables and Service Level Agreements formalising performance criteria measuring quality and quantity of service.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-03",
+      "order": 3,
+      "category": "Service Scope & SLA",
+      "requirement": "SLA review frequency, agreed metrics for success and the remediation route for sustained underperformance.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-04",
+      "order": 4,
+      "category": "Governance & Regulatory",
+      "requirement": "Obligation of the service provider to comply with directions issued by the regulator in relation to the outsourced activity.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-05",
+      "order": 5,
+      "category": "Governance & Regulatory",
+      "requirement": "Service provider contractually liable for the performance and risk management practices of its subcontractors.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-06",
+      "order": 6,
+      "category": "Governance & Regulatory",
+      "requirement": "Prior approval or consent of {{client}} required before a subcontractor is used for all or part of an outsourced activity.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-07",
+      "order": 7,
+      "category": "Governance & Regulatory",
+      "requirement": "Grievance redressal mechanism not compromised in any manner by the outsourcing; customer rights preserved.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-08",
+      "order": 8,
+      "category": "Governance & Regulatory",
+      "requirement": "Resolution process, events of default, indemnities, remedies and recourse available to each party specified.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-09",
+      "order": 9,
+      "category": "Governance & Regulatory",
+      "requirement": "Service provider to cooperate with relevant authorities in the event of insolvency or resolution proceedings affecting {{client}}.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-10",
+      "order": 10,
+      "category": "Governance & Regulatory",
+      "requirement": "Regular monitoring and assessment of the service provider by {{client}} so corrective measures can be taken promptly.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-11",
+      "order": 11,
+      "category": "Governance & Regulatory",
+      "requirement": "Service provider confirmed not owned or controlled by any {{client}} director, KMP or approver of the arrangement, or their relatives; exception requires Board approval.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-12",
+      "order": 12,
+      "category": "Audit & Regulatory Access",
+      "requirement": "Right to audit the service provider and its subcontractors by {{client}}, its internal or external auditors, or appointed agents, and to obtain audit or review reports.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-13",
+      "order": 13,
+      "category": "Audit & Regulatory Access",
+      "requirement": "Authority of regulators recognised to inspect the service provider and subcontractors, and to access infrastructure, applications, data and documents.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-14",
+      "order": 14,
+      "category": "Audit & Regulatory Access",
+      "requirement": "Effective access by {{client}} to all data, books, records, information, logs, alerts and business premises relevant to the outsourced activity.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-15",
+      "order": 15,
+      "category": "Audit & Regulatory Access",
+      "requirement": "Capability to comply with the regulatory and legal requirements applicable to the outsourcing arrangement.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-16",
+      "order": 16,
+      "category": "Audit & Regulatory Access",
+      "requirement": "Storage of applicable data only in India as required by extant regulation, including logs.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-17",
+      "order": 17,
+      "category": "Data Protection",
+      "requirement": "Controls, assurance requirements and contractual arrangements ensuring data protection and {{client}} access to data processed, managed or stored by the provider.",
+      "regulatoryBasis": "DPDPA 2023 / RBI outsourcing",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-18",
+      "order": 18,
+      "category": "Data Protection",
+      "requirement": "Enforceability of the agreement and the rights under it, including data storage, data protection and confidentiality.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-19",
+      "order": 19,
+      "category": "Data Protection",
+      "requirement": "Compliance with the Information Technology Act 2000, DPDPA 2023 and other applicable requirements protecting customer data.",
+      "regulatoryBasis": "DPDPA 2023 / IT Act 2000",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-20",
+      "order": 20,
+      "category": "Data Protection",
+      "requirement": "Provider to disclose the data relating to {{client}} and its customers that is captured, processed and stored.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-21",
+      "order": 21,
+      "category": "Data Protection",
+      "requirement": "Types of data the provider may share with a {{client}} customer or any other party specified and limited.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-22",
+      "order": 22,
+      "category": "Data Protection",
+      "requirement": "Confidentiality controls over {{client}} and customer data, with provider liability in the event of a security breach or leakage.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-23",
+      "order": 23,
+      "category": "Data Protection",
+      "requirement": "Non-disclosure agreement covering information retained by the provider.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-24",
+      "order": 24,
+      "category": "Incident Notification",
+      "requirement": "Material adverse events and incidents required to be reported to {{client}} defined, enabling prompt mitigation and statutory compliance.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-25",
+      "order": 25,
+      "category": "Incident Notification",
+      "requirement": "Severity-based notification and update timelines allowing {{client}} to meet its own regulatory reporting obligations.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-26",
+      "order": 26,
+      "category": "Logging",
+      "requirement": "Required log sources, tamper-protected retention, storage location, prompt availability to {{client}}, and a rolling minimum 180-day India retention where applicable.",
+      "regulatoryBasis": "CERT-In Directions 2022 / {{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-27",
+      "order": 27,
+      "category": "Vulnerability & Patch",
+      "requirement": "Severity-based patch and VAPT finding closure SLAs, approved exception process, compensating controls and evidence obligations.",
+      "regulatoryBasis": "SEBI CSCRF / {{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-28",
+      "order": 28,
+      "category": "Software Supply Chain",
+      "requirement": "SBOM delivery and update obligations for core or critical software, vulnerability notification and supported-component commitments.",
+      "regulatoryBasis": "SEBI CSCRF / {{client}} addendum",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-29",
+      "order": 29,
+      "category": "Software Supply Chain",
+      "requirement": "Source code delivery, or escrow or equivalent continuity including every update, patch and fix, for {{client}}-only critical applications.",
+      "regulatoryBasis": "RBI outsourcing / {{client}} addendum",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-30",
+      "order": 30,
+      "category": "Software Supply Chain",
+      "requirement": "API authentication, authorisation, abuse protection, logging, vulnerability remediation and material-change notification obligations.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-31",
+      "order": 31,
+      "category": "Privileged Access",
+      "requirement": "MFA, PAM or PIM, session logging and recording, access review, revocation SLA and {{client}} approval requirements for privileged or production access.",
+      "regulatoryBasis": "SEBI CSCRF / {{client}} addendum",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-32",
+      "order": 32,
+      "category": "Transaction Integrity",
+      "requirement": "Transaction authorisation, integrity, reconciliation, non-repudiation, audit trail, safe-failure and regulatory support requirements.",
+      "regulatoryBasis": "SEBI CSCRF / {{client}} addendum",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-33",
+      "order": 33,
+      "category": "Resilience",
+      "requirement": "Contingency plans ensuring business continuity, and the associated testing requirements.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-34",
+      "order": 34,
+      "category": "Resilience",
+      "requirement": "Component-level RTO and RPO, market-hour recovery, failover and fallback testing, achieved test results and remediation commitments.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-35",
+      "order": 35,
+      "category": "Resilience",
+      "requirement": "Skilled provider resources delivering core services treated as essential personnel, with back-up arrangements enabling a limited team to operate critical functions on-site during exigencies.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-36",
+      "order": 36,
+      "category": "Fourth Parties",
+      "requirement": "Right to seek information about the third parties engaged by the provider in the supply chain.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-37",
+      "order": 37,
+      "category": "Fourth Parties",
+      "requirement": "Prior approval or notification, materiality definition, dependency and location disclosure, control flow-down, audit rights and incident obligations for material subcontractors.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-38",
+      "order": 38,
+      "category": "Fourth Parties",
+      "requirement": "Back-to-back arrangements between the service provider and the relevant OEMs.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-39",
+      "order": 39,
+      "category": "Cloud Specific",
+      "requirement": "Exposure to provider lock-in and concentration assessed before contracting and periodically, with cloud-ready or provider-agnostic solutions explored to enable migration with minimal change.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-40",
+      "order": 40,
+      "category": "Cloud Specific",
+      "requirement": "No joint or shared ownership of any function, task or activity; where performed jointly, clear delineation and fixing of responsibility for each sub-task.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-41",
+      "order": 41,
+      "category": "Cloud Specific",
+      "requirement": "Multi-tenancy arrangements and the resulting isolation obligations stated.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Conditional"
+    },
+    {
+      "id": "CT-42",
+      "order": 42,
+      "category": "Exit & Data Return",
+      "requirement": "Exit strategy and SLA stipulations covering return turnaround, data completeness and portability, secure purge from the provider environment, smooth transition, and unambiguous liabilities, damages, penalties and indemnities.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-43",
+      "order": 43,
+      "category": "Exit & Data Return",
+      "requirement": "Exit and termination plans specifying how services and data move out with minimal continuity impact, across different exit scenarios and with a minimum execution period.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-44",
+      "order": 44,
+      "category": "Exit & Data Return",
+      "requirement": "All transaction records, customer and operational information and configuration data taken over systematically and purged at the provider, with independent assurance before sign-off.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-45",
+      "order": 45,
+      "category": "Exit & Data Return",
+      "requirement": "Termination rights of {{client}}, including orderly transfer of the arrangement to another service provider.",
+      "regulatoryBasis": "RBI Outsourcing of IT Services",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-46",
+      "order": 46,
+      "category": "Exit & Data Return",
+      "requirement": "Periodic exit and transition testing, data and configuration export specifications, migration assistance, secure deletion certification and disclosed egress costs and timelines.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Yes"
+    },
+    {
+      "id": "CT-47",
+      "order": 47,
+      "category": "Assurance",
+      "requirement": "Periodic ISO, SOC, VAPT and DR evidence, bridge letter coverage, exception disclosure, and the right to perform additional testing where assurance is insufficient.",
+      "regulatoryBasis": "{{client}} addendum",
+      "requiredWhen": "Yes"
+    }
+  ]
+}
