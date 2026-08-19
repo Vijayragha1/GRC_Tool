@@ -124,7 +124,7 @@ function register(app, deps) {
     });
   });
 
-  // /register stays redirected — user provisioning is admin-driven (Phase 3)
+  // /register stays redirected - user provisioning is admin-driven (Phase 3)
   // rather than self-signup. Anything posted here goes back to login.
   app.get('/register', (_req, res) => res.redirect('/login'));
   app.post('/register', (_req, res) => res.redirect('/login'));
@@ -255,7 +255,7 @@ function register(app, deps) {
     const firmRow = db.prepare(`SELECT name FROM firms WHERE id = ?`).get(req.user.firm_id);
     const roleLabel = userType === 'firm'
       ? (rbac.ROLE_LABELS[firmRole] || 'Consultant')
-      : `Client-side — ${rbac.ROLE_LABELS[workspaceRole] || workspaceRole}`;
+      : `Client-side - ${rbac.ROLE_LABELS[workspaceRole] || workspaceRole}`;
 
     let sendError = null;
     try {
@@ -293,7 +293,7 @@ function register(app, deps) {
                            VALUES (?, ?, ?, 'firm', ?, ?)`)
       .run(email, hash, name, req.user.firm_id, firmRole).lastInsertRowid;
     try { logAction(req.user.id, null, 'create_consultant', 'user', id, { email, role: firmRole }); } catch (_) {}
-    res.redirect('/admin/users?notice=' + encodeURIComponent(`Created ${email}. Share the temp password with them — they should change it on first sign-in.`));
+    res.redirect('/admin/users?notice=' + encodeURIComponent(`Created ${email}. Share the temp password with them - they should change it on first sign-in.`));
   });
 
   app.post('/admin/users/:id/deactivate', requireAuth, (req, res) => {
@@ -315,7 +315,7 @@ function register(app, deps) {
   });
 
   // Admin-triggered password reset. Same machinery as /forgot but driven from
-  // the duplicate-detection inline action — the admin sees "account exists" on
+  // the duplicate-detection inline action - the admin sees "account exists" on
   // the invite form, clicks "send reset link", and we generate a fresh token
   // and email it. Always reports success (mirrors /forgot's no-leakage stance).
   app.post('/admin/users/send-reset', requireAuth, async (req, res) => {
@@ -323,7 +323,7 @@ function register(app, deps) {
     const email = String((req.body && req.body.email) || '').trim().toLowerCase();
     if (!email) return res.redirect('/admin/users?error=' + encodeURIComponent('Missing email.'));
 
-    // Only reset users this firm has a reason to touch — firm users in the same
+    // Only reset users this firm has a reason to touch - firm users in the same
     // firm, or client users who hold at least one workspace_member row in a
     // workspace owned by this firm. Prevents a manager from poking strangers'
     // accounts via crafted form data.
@@ -360,7 +360,7 @@ function register(app, deps) {
   });
 
   // Reactivate a previously-deactivated user. Mirror of /deactivate with the
-  // same firm-scoped permission check. Doesn't issue a reset email — admin can
+  // same firm-scoped permission check. Doesn't issue a reset email - admin can
   // trigger that separately if the user has forgotten their password.
   app.post('/admin/users/:id/reactivate', requireAuth, (req, res) => {
     if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
@@ -386,7 +386,7 @@ function register(app, deps) {
 
   // Update a firm user's role from the Users & Access page. Manager-only,
   // scoped to the same firm. Guards against demoting yourself or removing the
-  // last manager — both would lock the firm out of user management.
+  // last manager - both would lock the firm out of user management.
   app.post('/admin/users/:id/firm-role', requireAuth, (req, res) => {
     if (!isFirmOwnerLocal(req.user)) return res.status(403).send('Forbidden');
     const newRole = String((req.body && req.body.firm_role) || '').trim();
@@ -516,7 +516,7 @@ function register(app, deps) {
 
   app.post('/forgot', async (req, res) => {
     const email = String((req.body && req.body.email) || '').trim().toLowerCase();
-    // Generic response — never confirm or deny whether an account exists.
+    // Generic response - never confirm or deny whether an account exists.
     const genericNotice = 'If an account exists for that email, a reset link is on its way. It expires in 1 hour.';
     if (!email) {
       return res.status(400).render('auth/forgot', {

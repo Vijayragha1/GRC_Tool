@@ -20,6 +20,11 @@ function submittedFrameworks(value) {
   return [...new Set(values.filter(code => ALLOWED_FRAMEWORKS.includes(code)))];
 }
 
+function firmUserCan(user, permission) {
+  if (!user || user.user_type !== 'firm') return false;
+  return rbac.rolePermissions(rbac.normalizeRole(user.firm_role) || 'consultant').includes(permission);
+}
+
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           isFirmUser, computeReadiness, workspaceProgress, computeNextStep,
@@ -27,12 +32,12 @@ function register(app, deps) {
 
   // ==================== WORKSPACE CRUD ====================
   app.get('/workspaces/new', requireAuth, (req, res) => {
-    if (!isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'Only firm users can create workspaces.' });
+    if (!firmUserCan(req.user, 'workspace.create')) return res.status(403).render('error', { user: req.user, message: 'You do not have permission to create client workspaces.' });
     res.render('workspace_new', { user: req.user, ws: null });
   });
 
   app.post('/workspaces', requireAuth, (req, res) => {
-    if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+    if (!firmUserCan(req.user, 'workspace.create')) return res.status(403).send('Forbidden');
     const { client_name, industry, scope, target_cert_date } = req.body;
     if (!client_name) return res.redirect('/dashboard');
     // Every programme is optional at client creation. An empty array is a
@@ -302,8 +307,7 @@ function register(app, deps) {
   // Destructive: delete a workspace (= one client engagement) and everything
   // inside it - controls, risks, evidence rows + files on disk, audits, MRMs,
   // gap passes, registers. Requires typing the client name to confirm.
-  app.post('/workspaces/:wsId/delete', requireAuth, requireWorkspace, (req, res) => {
-    if (!isFirmUser(req.user)) return res.status(403).send('Forbidden');
+  app.post('/workspaces/:wsId/delete', requireAuth, requireWorkspace, requirePermission('workspace.delete'), (req, res) => {
     const ws = req.workspace;
     const confirm = (req.body.confirm_name || '').trim();
     if (confirm !== ws.client_name) {
@@ -415,7 +419,7 @@ function register(app, deps) {
       return res.status(403).render('error', { user: req.user, message: 'Only firm consultants can manage the engagement team.' });
     }
     const ws = req.workspace;
-    // Firm users who could be on this engagement — all active firm members of
+    // Firm users who could be on this engagement - all active firm members of
     // the firm that owns this workspace.
     const firmPool = db.prepare(`SELECT id, name, email, firm_role FROM users
        WHERE firm_id = ? AND user_type = 'firm' AND active = 1
@@ -471,7 +475,7 @@ function register(app, deps) {
     if (!exists) return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('Pick a firm consultant.'));
     try {
       db.prepare('INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)').run(req.workspace.id, userId, role);
-    } catch (_) { /* already a member — ignore */ }
+    } catch (_) { /* already a member - ignore */ }
     res.redirect('/workspaces/' + req.workspace.id + '/team?notice=' + encodeURIComponent('Consultant added to engagement.'));
   });
 
@@ -491,7 +495,7 @@ function register(app, deps) {
       return res.redirect('/workspaces/' + req.workspace.id + '/team?error=' + encodeURIComponent('A valid email is required.'));
     }
     // Reuse the duplicate-detection from /admin/users/invite. An active account
-    // gets an inline reset offer on /admin/users — for the team kickoff page we
+    // gets an inline reset offer on /admin/users - for the team kickoff page we
     // keep things simple and just redirect there so the manager handles it once.
     const existing = db.prepare(`SELECT id, active FROM users WHERE email = ?`).get(email);
     if (existing) {
@@ -500,7 +504,7 @@ function register(app, deps) {
         `An ${which} account already exists for ${email}. Open Admin → Users & access to reactivate, reset password, or add them to this workspace.`));
     }
     // Replace any pending invitation for the same email + workspace, same shape
-    // as /admin/users/invite — keeps outstanding list tidy.
+    // as /admin/users/invite - keeps outstanding list tidy.
     db.prepare(`UPDATE user_invitations SET revoked_at = CURRENT_TIMESTAMP
        WHERE firm_id = ? AND workspace_id = ? AND email = ?
          AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP`)
@@ -521,7 +525,7 @@ function register(app, deps) {
       const r = await emailLib.sendInviteEmail({
         toEmail: email, toName: name, inviterName: req.user.name,
         firmName: firmRow && firmRow.name,
-        role: `Client-side — ${rbac.ROLE_LABELS[role] || role}`,
+        role: `Client-side - ${rbac.ROLE_LABELS[role] || role}`,
         token: raw, expiresAt, firmId: req.user.firm_id
       });
       if (!r.ok) sendError = r.error || 'Email delivery failed';

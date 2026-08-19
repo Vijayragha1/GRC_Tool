@@ -1,4 +1,4 @@
-// Auditor portal routes — magic-link, no auth required.
+// Auditor portal routes - magic-link, no auth required.
 //
 // Pattern mirrors the supplier questionnaire (/q/:token): the token IS the
 // credential. We don't introduce external user accounts; the consultant mints
@@ -245,7 +245,7 @@ function register(app, deps) {
       res.send(pdf);
     } catch (e) {
       console.error('auditor audit-pack error:', e);
-      res.status(500).render('error', { user: null, message: 'Could not generate the audit pack PDF. Refresh and try again — if it persists, contact the consultant.' });
+      res.status(500).render('error', { user: null, message: 'Could not generate the audit pack PDF. Refresh and try again - if it persists, contact the consultant.' });
     }
   });
 

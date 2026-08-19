@@ -2,7 +2,8 @@
 <%
   const label = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const clientMode = user.user_type === 'client';
-  const clientStatus = s => ({ draft: 'In preparation', workspace_verified: 'Ready for approval', submitted: 'Under review', changes_requested: 'Changes requested', accepted: 'Approved', rejected: 'Not approved', superseded: 'Replaced', open: 'Open', in_progress: 'In progress', cancelled: 'Closed' }[String(s || '').toLowerCase()] || label(s));
+  const clientStatus = s => ({ draft: 'In preparation', workspace_verified: 'Ready for approval', submitted: 'Under review', changes_requested: 'Changes requested', accepted: 'Approved', rejected: 'Not approved', superseded: 'Replaced', open: 'Open', in_progress: 'In progress', cancelled: 'Cancelled' }[String(s || '').toLowerCase()] || label(s));
+  const evidenceRequired = !!request.workpaper_id || ['evidence','control'].includes(request.request_type);
   const statusClass = request.status === 'accepted' ? 'good' : request.status === 'changes_requested' ? 'bad' : request.status === 'submitted' ? 'warn' : 'neutral';
 %>
 <a class="link-muted text-base" href="/workspaces/<%= ws.id %>/client-portal">← Back to your engagement</a>
@@ -42,7 +43,7 @@
         <label class="label">Response or decision note</label><textarea class="textarea" name="response_note" rows="4" maxlength="8000" placeholder="Summarize what was provided, or explain any changes required."></textarea>
         <% if (canManage && request.workpaper_id && allowedTransitions.includes('accepted')) { %><label class="label" style="margin-top:10px">Consultant evidence-quality conclusion</label><select class="select" name="evidence_quality"><option value="not_reviewed">Not reviewed</option><option value="insufficient">Insufficient</option><option value="partially_sufficient">Partially sufficient</option><option value="sufficient">Sufficient</option></select><div class="meta" style="margin-top:4px">Only sufficient evidence can close a structured workpaper request.</div><% } %>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap;">
-          <% allowedTransitions.forEach(s => { %><button class="btn <%= s === 'accepted' ? 'btn-primary' : s === 'cancelled' ? 'btn-danger' : 'btn-secondary' %>" name="status" value="<%= s %>"><%= clientMode ? clientStatus(s) : label(s) %></button><% }) %>
+          <% allowedTransitions.forEach(s => { const submitLocked = s === 'submitted' && evidenceRequired && Number(request.evidence_count || 0) === 0; %><button class="btn <%= s === 'accepted' ? 'btn-primary' : s === 'cancelled' ? 'btn-danger' : 'btn-secondary' %>" name="status" value="<%= s %>" <%= submitLocked ? 'disabled title="Attach supporting evidence before submission"' : '' %>><%= s === 'cancelled' && !clientMode ? 'Cancel request' : (clientMode ? clientStatus(s) : label(s)) %></button><% }) %>
         </div>
       </form>
     <% } else { %><div class="panel-pad meta"><%= clientMode ? 'No action is available for this request right now.' : 'No lifecycle action is available to you in the current state.' %></div><% } %>
@@ -53,7 +54,7 @@
   <div class="panel-head"><div><h2><%= clientMode ? 'Files and supporting evidence' : 'Evidence submissions' %></h2><div class="meta"><%= clientMode ? 'Files shared for this request appear here.' : 'Files are SHA-256 hashed, deduplicated within the workspace, and retained in the evidence library.' %></div></div><span class="tag tag-neutral"><%= evidence.length %></span></div>
   <% if (evidence.length) { %><div style="overflow-x:auto;"><table class="t"><thead><tr><th>File</th><th>Submitted by</th><% if (!clientMode) { %><th>Integrity</th><% } %><th></th></tr></thead><tbody>
     <% evidence.forEach(e => { %><tr><td><strong><%= e.filename %></strong><div class="meta"><%= e.description || '' %></div></td><td><%= e.uploader || 'Unknown' %><div class="meta"><%= e.linked_at %></div></td><% if (!clientMode) { %><td><code class="text-xs"><%= e.sha256 ? e.sha256.slice(0, 14) + '…' : 'Not recorded' %></code></td><% } %><td style="text-align:right;"><a class="btn btn-secondary btn-xs" data-no-spa="1" href="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/evidence/<%= e.id %>/download">Download</a></td></tr><% }) %>
-  </tbody></table></div><% } else { %><div class="panel-pad meta">No evidence has been attached to this request.</div><% } %>
+  </tbody></table></div><% } else { %><div class="panel-pad meta"><%= evidenceRequired ? 'Supporting evidence is required before this request can be submitted.' : 'No evidence has been attached to this request.' %></div><% } %>
   <% if (canRespond && !['accepted','cancelled'].includes(request.status)) { %>
     <form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/client-portal/requests/<%= request.id %>/evidence" style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-subtle);">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>"><div style="display:grid;grid-template-columns:1fr 2fr auto;gap:8px;align-items:end;"><div><label class="label">File · maximum 50 MB</label><input class="input" type="file" name="file" required></div><div><label class="label">Description</label><input class="input" name="description" maxlength="2000" placeholder="Period, system, sample, and what the file demonstrates"></div><button class="btn btn-primary">Upload evidence</button></div>

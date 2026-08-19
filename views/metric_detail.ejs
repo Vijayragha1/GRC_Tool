@@ -1,8 +1,8 @@
-<%- include('partials/header', { title: metric.name, user, ws, active: 'metrics-library' }) %>
+<%- include('partials/header', { title: 'Performance & objectives', user, ws, active: 'metrics-library' }) %>
 <%
   const ragColor = r => r === 'green' ? '#15803d' : r === 'amber' ? '#b45309' : r === 'red' ? '#b91c1c' : '#52525b';
   const ragLabel = r => r === 'green' ? 'On target' : r === 'amber' ? 'Near target' : r === 'red' ? 'Off target' : 'No target set';
-  const fmt = v => v == null ? '—' : (Math.round(v * 100) / 100).toString();
+  const fmt = v => v == null ? '-' : (Math.round(v * 100) / 100).toString();
   const unitSuffix = (v, u) => v == null ? '' : (u === '%' ? '%' : u === 'days' ? ' d' : '');
   const today = new Date().toISOString().slice(0, 10);
   // Trend geometry
@@ -20,14 +20,13 @@
 
 <div class="page-head">
   <div>
+    <div class="eyebrow">Performance &amp; objectives · Measure</div>
     <h1 class="page-title"><%= metric.name %></h1>
     <div class="page-subtitle"><%= metric.ref %> · <%= metric.category %> · ISO/IEC 27004:2016 Annex B</div>
   </div>
   <div class="row">
     <a href="/workspaces/<%= ws.id %>/metrics/adopted" class="btn btn-secondary btn-xs">← Adopted metrics</a>
-    <form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= metric.id %>/delete" onsubmit="return confirm('Remove this metric and all its readings from the engagement?');" style="display:inline;">
-      <button type="submit" class="btn btn-danger btn-xs">Remove</button>
-    </form>
+    <% if (!linkedObjectives.length) { %><form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= metric.id %>/delete" onsubmit="return confirm('Remove this measure and all its readings from the engagement?');" style="display:inline;"><button type="submit" class="btn btn-danger btn-xs">Remove</button></form><% } %>
   </div>
 </div>
 
@@ -40,12 +39,12 @@
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
       <div class="panel kpi">
         <div class="kpi-label text-eyebrow">Latest reading</div>
-        <div class="kpi-num"><%= latest ? fmt(latest.value) + unitSuffix(latest.value, metric.unit) : '—' %></div>
+        <div class="kpi-num"><%= latest ? fmt(latest.value) + unitSuffix(latest.value, metric.unit) : '-' %></div>
         <div class="kpi-meta"><%= latest ? latest.measured_at : 'no readings yet' %></div>
       </div>
       <div class="panel kpi">
         <div class="kpi-label text-eyebrow">Target</div>
-        <div class="kpi-num"><%= metric.target_value == null ? '—' : fmt(metric.target_value) + unitSuffix(metric.target_value, metric.unit) %></div>
+        <div class="kpi-num"><%= metric.target_value == null ? '-' : fmt(metric.target_value) + unitSuffix(metric.target_value, metric.unit) %></div>
         <div class="kpi-meta"><%= metric.direction === 'lower' ? 'lower is better' : 'higher is better' %></div>
       </div>
       <div class="panel kpi">
@@ -117,7 +116,7 @@
                 <td class="num" style="font-weight:500;"><%= fmt(r.value) %><%= unitSuffix(r.value, metric.unit) %></td>
                 <td><span class="status" style="color:<%= ragColor(r.rag) %>;"><%= ragLabel(r.rag) %></span></td>
                 <td class="text-base"><%= r.notes || '' %></td>
-                <td class="meta text-base"><%= r.recorder || '—' %></td>
+                <td class="meta text-base"><%= r.recorder || '-' %></td>
               </tr>
             <% }) %>
           </tbody>
@@ -128,6 +127,10 @@
 
   <!-- RIGHT: definition + edit -->
   <div>
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-head"><h2>Linked objectives</h2><span class="meta"><%= linkedObjectives.length %></span></div>
+      <% if (!linkedObjectives.length) { %><div class="panel-pad"><div class="meta">This measure is not driving an objective yet.</div><a href="/workspaces/<%= ws.id %>/objectives" class="link text-base">Connect an objective →</a></div><% } else { %><div class="divide-row"><% linkedObjectives.forEach(objective => { %><a href="/workspaces/<%= ws.id %>/objectives" style="display:block;padding:10px 14px;text-decoration:none"><strong class="text-base"><%= objective.title %></strong><div class="meta text-xs"><%= objective.due_date ? 'Target date ' + objective.due_date : 'No target date' %></div></a><% }) %></div><% } %>
+    </div>
     <div class="panel" style="margin-bottom:14px;">
       <div class="panel-head"><h2>Target &amp; ownership</h2></div>
       <div class="panel-pad">

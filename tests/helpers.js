@@ -107,12 +107,26 @@ function makeClient(app) {
     get: (p, opts) => request('GET', p, null, opts),
     post: (p, body, opts) => request('POST', p, body || {}, opts),
     delete: (p, opts) => request('DELETE', p, null, opts),
+    baseUrl: async () => {
+      await listening;
+      return `http://127.0.0.1:${server.address().port}`;
+    },
     close: () => new Promise(resolve => {
       // Force lingering keep-alive sockets closed so a completed integration
       // suite cannot hang indefinitely in its after hook.
-      server.close(() => resolve());
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      server.once('close', finish);
+      server.close(finish);
       if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
       if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      // Some Node versions do not invoke the close callback after sockets are
+      // force-closed in the same turn. Keep teardown bounded and idempotent.
+      setTimeout(finish, 250);
     }),
     getCsrfToken: () => csrfToken,
     getCookies: () => cookieJar,

@@ -50,7 +50,7 @@
         <div class="ifw-action-cell"><a class="btn btn-xs" href="<%= programme.nextHref %>"><%= programme.nextLabel %></a></div>
         <% if (programme.key === 'csf' && programme.functions.length) { %>
           <div class="ifw-csf-functions">
-            <% programme.functions.forEach(fn => { %><span class="cm-function-<%= fn.code.toLowerCase() %>"><b><%= fn.code %></b><em><%= fn.achieved == null ? '—' : fn.achieved %></em><small><%= fn.assessed %>/<%= fn.total %></small></span><% }) %>
+            <% programme.functions.forEach(fn => { %><span class="cm-function-<%= fn.code.toLowerCase() %>"><b><%= fn.code %></b><em><%= fn.achieved == null ? '-' : fn.achieved %></em><small><%= fn.assessed %>/<%= fn.total %></small></span><% }) %>
           </div>
         <% } %>
       </article>

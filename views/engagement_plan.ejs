@@ -6,7 +6,8 @@
     : ['blocked','rejected'].includes(s) ? 'tag-danger'
     : ['in_progress','submitted','workspace_verified','changes_requested'].includes(s) ? 'tag-warn' : 'tag-neutral';
   const fmtDate = value => value ? String(value).slice(0,10) : 'Unscheduled';
-  const varianceLabel = summary.varianceDays == null ? 'No target'
+  const varianceLabel = !baseline ? 'Not baselined'
+    : summary.varianceDays == null ? 'No forecast'
     : summary.varianceDays === 0 ? 'On baseline'
     : summary.varianceDays > 0 ? `${summary.varianceDays}d late` : `${Math.abs(summary.varianceDays)}d early`;
   const evidenceFor = id => evidence.filter(e => e.deliverable_id === id);
@@ -19,23 +20,8 @@
     <h1 class="page-title"><%= plan.name %></h1>
     <div class="page-subtitle">No fixed programme length. Phases move with accepted deliverables, dependencies, forecast dates and authorised gate decisions.</div>
   </div>
-  <div class="row-center">
+  <div class="row-center delivery-head-actions">
     <% if (user.user_type === 'firm') { %><a class="btn btn-primary btn-xs" href="/workspaces/<%= ws.id %>/client-portal?preview=client">Client view</a><% } %>
-    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/engagement-plan/export.csv">Export Excel/CSV</a>
-    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/engagement-plan/report.pdf">Download PDF</a>
-    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/recalculate"><button class="btn btn-secondary btn-xs">Recalculate schedule</button></form>
-    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/fit-target"><button class="btn btn-secondary btn-xs" title="Allocate the initial template across the agreed start and target dates">Fit to target</button></form>
-    <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/create-tasks"><button class="btn btn-secondary btn-xs">Create linked tasks</button></form>
-    <details style="position:relative;">
-      <summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Bulk assign</summary>
-      <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/bulk-assign" class="panel" style="position:absolute;right:0;top:38px;width:380px;z-index:45;padding:16px;box-shadow:var(--shadow-xl);">
-        <label class="label">Milestone owner</label><select class="select" name="owner_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select>
-        <label class="label" style="margin-top:8px;">Deliverable owner</label><select class="select" name="deliverable_owner_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select>
-        <label class="label" style="margin-top:8px;">Deliverable approver</label><select class="select" name="approver_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select>
-        <label style="display:block;margin:10px 0;"><input type="checkbox" name="only_unassigned" value="1" checked> Only currently unassigned work</label>
-        <button class="btn btn-primary" style="width:100%;">Apply assignments</button>
-      </form>
-    </details>
     <details style="position:relative;">
       <summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Plan settings</summary>
       <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/settings" class="panel" style="position:absolute;right:0;top:38px;width:min(620px,85vw);z-index:40;padding:16px;box-shadow:var(--shadow-xl);display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -50,22 +36,24 @@
         <div class="col-full" style="text-align:right;"><button class="btn btn-primary">Save settings</button></div>
       </form>
     </details>
-    <details style="position:relative;">
-      <summary class="btn btn-primary btn-xs" style="list-style:none;cursor:pointer;">Approve baseline</summary>
-      <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/baselines" class="panel" style="position:absolute;right:0;top:38px;width:380px;z-index:40;padding:16px;box-shadow:var(--shadow-xl);">
-        <label class="label">Baseline label</label><input class="input" name="label" placeholder="e.g. Client-approved mobilisation baseline">
-        <label class="label" style="margin-top:10px;">Reason <span class="text-danger">required</span></label><textarea class="textarea" name="reason" rows="3" required placeholder="What was agreed, changed or re-approved?"></textarea>
-        <button class="btn btn-primary" style="margin-top:10px;width:100%;">Freeze baseline <%= plan.baseline_version + 1 %></button>
-      </form>
+    <details class="delivery-more-actions">
+      <summary class="btn btn-secondary btn-xs">More actions</summary>
+      <div class="panel delivery-more-menu">
+        <a href="/workspaces/<%= ws.id %>/engagement-plan/export.csv">Export Excel/CSV</a>
+        <a href="/workspaces/<%= ws.id %>/engagement-plan/report.pdf">Download PDF</a>
+        <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/recalculate"><button>Recalculate schedule</button></form>
+        <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/fit-target"><button>Fit dates to target</button></form>
+        <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/create-tasks"><button>Create linked tasks</button></form>
+        <details><summary>Bulk assign roles</summary><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/bulk-assign" class="delivery-more-form"><label class="label">Milestone owner</label><select class="select" name="owner_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select><label class="label">Deliverable owner</label><select class="select" name="deliverable_owner_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select><label class="label">Approver</label><select class="select" name="approver_id"><option value="">Do not change</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select><label><input type="checkbox" name="only_unassigned" value="1" checked> Only unassigned work</label><button class="btn btn-primary">Apply assignments</button></form></details>
+        <details><summary><%= baseline ? 'Approve a new baseline' : 'Approve baseline' %></summary><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/baselines" class="delivery-more-form"><label class="label">Baseline label</label><input class="input" name="label" placeholder="e.g. Client-approved mobilisation baseline"><label class="label">Reason <span class="text-danger">required</span></label><textarea class="textarea" name="reason" rows="3" required></textarea><button class="btn btn-primary">Freeze baseline <%= plan.baseline_version + 1 %></button></form></details>
+      </div>
     </details>
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px;">
+<div class="delivery-summary-grid">
   <div class="panel kpi"><div class="kpi-num" style="font-size:19px;"><%= currentPhase ? currentPhase.name : 'Complete' %></div><div class="kpi-label">Current phase</div><div class="kpi-meta"><%= summary.phaseGatesPassed %>/<%= summary.phaseGatesTotal %> gates decided</div></div>
-  <div class="panel kpi"><div class="kpi-num" style="font-size:22px;"><%= fmtDate(plan.target_completion_date) %></div><div class="kpi-label">Target</div><div class="kpi-meta"><%= baseline ? `baseline ${baseline.version_number}` : 'not baselined' %></div></div>
-  <div class="panel kpi"><div class="kpi-num" style="font-size:22px;"><%= fmtDate(plan.forecast_completion_date) %></div><div class="kpi-label">Forecast</div><div class="kpi-meta">latest plan dates</div></div>
-  <div class="panel kpi"><div class="kpi-num" style="font-size:22px;color:<%= summary.varianceDays > 0 ? '#b91c1c' : summary.varianceDays < 0 ? '#15803d' : 'var(--text)' %>;"><%= varianceLabel %></div><div class="kpi-label">Plan variance</div><div class="kpi-meta">target vs forecast</div></div>
+  <div class="panel kpi"><div class="kpi-label">Schedule</div><div class="delivery-date-pair"><span><small>Target</small><strong><%= fmtDate(plan.target_completion_date) %></strong></span><span><small>Forecast</small><strong><%= fmtDate(plan.forecast_completion_date) %></strong></span></div><div class="kpi-meta"><%= baseline ? `${varianceLabel} · baseline ${baseline.version_number}` : 'Not baselined' %></div></div>
   <div class="panel kpi"><div class="kpi-num"><%= summary.acceptedDeliverables %>/<%= summary.requiredDeliverables %></div><div class="kpi-label">Deliverables accepted</div><div class="kpi-meta"><%= summary.verifiedMilestones %> workspace-verified milestones</div></div>
   <div class="panel kpi"><div class="kpi-num <%= summary.openBlockers ? 'text-danger' : 'text-success' %>"><%= summary.openBlockers %></div><div class="kpi-label">Dependency blockers</div><div class="kpi-meta"><%= summary.completionReady ? 'completion criteria met' : `${summary.progressPct}% weighted progress` %></div></div>
 </div>
@@ -132,6 +120,7 @@
                     <div><label class="label">Planned start</label><input class="input" type="date" name="planned_start_date" value="<%= m.planned_start_date || '' %>"></div>
                     <div><label class="label">Planned finish</label><input class="input" type="date" name="planned_end_date" value="<%= m.planned_end_date || '' %>"></div>
                     <div><label class="label">Forecast finish</label><input class="input" type="date" name="forecast_end_date" value="<%= m.forecast_end_date || '' %>"></div>
+                    <div><label class="label">Minimum calendar months</label><input class="input" type="number" name="minimum_duration_months" min="0" max="36" step="1" value="<%= m.minimum_duration_months || 0 %>"></div>
                     <label style="align-self:end;padding-bottom:8px;"><input type="checkbox" name="is_required" value="1" <%= m.is_required?'checked':'' %>> Required for phase gate</label>
                   </div>
                   <button class="btn btn-primary" style="margin-top:10px;width:100%;">Save milestone</button>
@@ -147,7 +136,7 @@
                   <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;"><span class="tag <%= statusClass(d.effective_status) %> text-xxs"><%= statusLabel(d.effective_status) %></span><strong class="text-sm"><%= d.title %></strong><span class="meta text-xxs">REV <%= d.revision_number %></span><% if (d.is_required) { %><span class="meta text-xxs">REQUIRED</span><% } %><% if (d.client_visible) { %><span class="tag tag-info text-xxs">CLIENT VISIBLE</span><% } %></div>
                   <div class="meta text-xs" style="margin-top:3px;"><%= d.acceptance_criteria || 'Acceptance criteria not set' %> · due <%= fmtDate(d.due_date) %> · owner <%= d.owner_name || 'unassigned' %> · approver <%= d.approver_name || 'unassigned' %> · <%= d.evidence_count %> evidence file<%= d.evidence_count===1?'':'s' %></div>
                   <% if (d.decision_note) { %><div class="text-xs" style="margin-top:3px;">Decision: <%= d.decision_note %></div><% } %>
-                  <% evidenceFor(d.id).forEach(e => { %><a class="text-xs" style="display:inline-block;margin:4px 8px 0 0;" href="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence/<%= e.id %>/download">📎 <%= e.filename %></a><% }) %>
+                  <% evidenceFor(d.id).forEach(e => { %><a class="text-xs" style="display:inline-block;margin:4px 8px 0 0;" href="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence/<%= e.id %>/download">Attachment: <%= e.filename %></a><% }) %>
                   <% commentsFor(d.id).slice(-2).forEach(c => { %><div class="meta text-xs" style="margin-top:4px;"><strong><%= c.user_name %>:</strong> <%= c.body %><%= c.internal_only ? ' · internal' : '' %></div><% }) %>
                 </div>
                 <div class="row-center" style="justify-content:flex-end;">
@@ -202,7 +191,10 @@
             <input type="hidden" name="phase_id" value="<%= phase.id %>">
             <div class="col-full"><label class="label">New milestone</label><input class="input" name="title" required placeholder="Outcome, not activity"></div>
             <div><label class="label">Owner</label><select class="select" name="owner_id"><option value="">Unassigned</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select></div>
+            <div><label class="label">Planned start</label><input class="input" type="date" name="planned_start_date"></div>
+            <div><label class="label">Planned finish</label><input class="input" type="date" name="planned_end_date"></div>
             <div><label class="label">Forecast finish</label><input class="input" type="date" name="forecast_end_date"></div>
+            <div><label class="label">Minimum calendar months</label><input class="input" type="number" name="minimum_duration_months" min="0" max="36" step="1" value="0"></div>
             <div class="col-full"><label class="label">Acceptance criteria</label><input class="input" name="acceptance_criteria" required></div>
             <div><label><input type="checkbox" name="is_required" value="1" checked> Required for gate</label></div><div style="text-align:right;"><button class="btn btn-primary">Add milestone</button></div>
           </form>
@@ -213,33 +205,121 @@
 <% } %>
 
 <% if (view === 'timeline') {
-  const dated = milestones.filter(m => m.planned_start_date && (m.forecast_end_date || m.planned_end_date));
-  const starts = dated.map(m => m.planned_start_date).sort();
-  const ends = dated.map(m => m.forecast_end_date || m.planned_end_date).sort();
-  const timelineStart = starts[0]; const timelineEnd = ends[ends.length-1];
-  const totalDays = timelineStart && timelineEnd ? Math.max(1, Math.round((Date.parse(timelineEnd)-Date.parse(timelineStart))/86400000)) : 1;
+  const dateMs = value => Date.parse(`${String(value).slice(0,10)}T12:00:00Z`);
+  const dated = milestones.filter(m => m.planned_start_date);
+  const starts = dated.map(m => m.planned_start_date).filter(Boolean).sort();
+  const closedEnds = dated.map(m => m.forecast_end_date || m.planned_end_date).filter(Boolean).sort();
+  const openEnds = dated.filter(m => !m.forecast_end_date && !m.planned_end_date).map(m => {
+    const date = new Date(`${m.planned_start_date}T12:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1); return date.toISOString().slice(0,10);
+  });
+  const rawStart = starts[0];
+  const rawEnd = [...closedEnds, ...openEnds].sort().pop();
+  const startDate = rawStart ? new Date(`${rawStart}T12:00:00Z`) : null;
+  const endDateValue = rawEnd ? new Date(`${rawEnd}T12:00:00Z`) : null;
+  const timelineStart = startDate ? new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)).toISOString().slice(0,10) : null;
+  const timelineEnd = endDateValue ? new Date(Date.UTC(endDateValue.getUTCFullYear(), endDateValue.getUTCMonth() + 1, 0)).toISOString().slice(0,10) : null;
+  const totalDays = timelineStart && timelineEnd ? Math.max(1, Math.round((dateMs(timelineEnd)-dateMs(timelineStart))/86400000) + 1) : 1;
+  const offset = value => value && timelineStart ? Math.max(0, Math.min(100, (dateMs(value)-dateMs(timelineStart))/86400000 / totalDays * 100)) : 0;
+  const span = (start, end) => start && end ? Math.max(.45, Math.min(100-offset(start), (Math.max(0,(dateMs(end)-dateMs(start))/86400000)+1) / totalDays * 100)) : 0;
+  const durationDays = (start, end) => start && end ? Math.max(1, Math.round((dateMs(end)-dateMs(start))/86400000)+1) : null;
+  const months = [];
+  if (timelineStart && timelineEnd) {
+    let cursor = new Date(`${timelineStart}T12:00:00Z`);
+    const endMs = dateMs(timelineEnd);
+    while (cursor.getTime() <= endMs) {
+      const segmentStart = cursor.toISOString().slice(0,10);
+      const next = new Date(cursor); next.setUTCMonth(next.getUTCMonth()+1);
+      const segmentEnd = new Date(Math.min(endMs, next.getTime()-86400000)).toISOString().slice(0,10);
+      months.push({ label: cursor.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'}), left: offset(segmentStart), width: span(segmentStart,segmentEnd) });
+      cursor = next;
+    }
+  }
+  const today = new Date().toISOString().slice(0,10);
+  const todayVisible = timelineStart && today >= timelineStart && today <= timelineEnd;
+  const targetVisible = timelineStart && plan.target_completion_date && plan.target_completion_date >= timelineStart && plan.target_completion_date <= timelineEnd;
+  const criticalCount = dated.filter(m => m.critical_path).length;
+  const scheduledSpanDays = rawStart && rawEnd ? durationDays(rawStart,rawEnd) : 0;
+  const renderGrid = () => months.map(month => `<span class="ep-gantt-gridline" style="left:${month.left}%"></span>`).join('');
 %>
-  <div class="panel" style="overflow:hidden;">
-    <div class="panel-head"><h2>Delivery timeline</h2><span class="meta">Baseline and forecast dates from the authoritative plan</span></div>
-    <% phases.forEach(phase => { %>
-      <div style="padding:8px 16px;background:var(--bg-subtle);border-top:1px solid var(--border);display:flex;justify-content:space-between;"><strong class="text-sm"><%= phase.name %></strong><span class="meta text-xs"><%= fmtDate(phase.planned_start_date) %> → <%= fmtDate(phase.forecast_end_date || phase.planned_end_date) %></span></div>
-      <% phase.milestones.forEach(m => {
-        const startOffset = timelineStart && m.planned_start_date ? Math.max(0, Math.round((Date.parse(m.planned_start_date)-Date.parse(timelineStart))/86400000)) : 0;
-        const endDate = m.forecast_end_date || m.planned_end_date;
-        const length = timelineStart && endDate ? Math.max(1, Math.round((Date.parse(endDate)-Date.parse(m.planned_start_date || timelineStart))/86400000)) : 0;
-        const left = Math.min(100, startOffset / totalDays * 100); const width = Math.max(1.5, Math.min(100-left, length / totalDays * 100));
-      %>
-        <div style="display:grid;grid-template-columns:300px 1fr 110px;gap:14px;padding:9px 16px;border-top:1px solid var(--border);align-items:center;">
-          <div><div class="text-sm" style="font-weight:500;"><%= m.title %><% if (m.critical_path) { %> <span class="tag text-xxs">Critical path</span><% } %></div><div class="meta text-xs"><%= m.owner_name || 'Unassigned' %> · <%= statusLabel(m.effective_status) %><% if (m.baseline_variance_days != null) { %> · <span style="color:<%= m.baseline_variance_days > 0 ? '#b91c1c' : m.baseline_variance_days < 0 ? '#15803d' : 'inherit' %>;"><%= m.baseline_variance_days === 0 ? 'on baseline' : `${Math.abs(m.baseline_variance_days)}d ${m.baseline_variance_days > 0 ? 'late' : 'early'}` %></span><% } %></div></div>
-          <div style="height:20px;background:var(--bg-subtle);position:relative;border-radius:3px;overflow:hidden;">
-            <% if (m.planned_start_date && endDate) { %><div title="<%= m.planned_start_date %> → <%= endDate %>" style="position:absolute;left:<%= left %>%;width:<%= width %>%;height:100%;background:<%= ['complete','waived'].includes(m.effective_status) ? '#16a34a' : m.effective_status==='blocked' ? '#b91c1c' : 'var(--accent)' %>;opacity:.85;border-radius:3px;"></div><% } %>
+  <section class="panel ep-timeline">
+    <header class="ep-timeline-head">
+      <div><div class="sec-label">Calendar-based delivery forecast</div><h2>Programme timeline</h2><p>Bars show planned operating periods. Diamonds show decision points. Forecast movement follows durations and mandatory dependencies.</p></div>
+      <div class="ep-timeline-facts">
+        <div><span>Starts</span><strong><%= fmtDate(rawStart) %></strong></div>
+        <div><span>Forecast finish</span><strong><%= fmtDate(plan.forecast_completion_date || rawEnd) %></strong></div>
+        <div><span>Scheduled span</span><strong><%= scheduledSpanDays %> days</strong></div>
+        <div><span>Critical path</span><strong><%= criticalCount %> outcomes</strong></div>
+      </div>
+    </header>
+    <div class="ep-timeline-legend" aria-label="Timeline legend">
+      <span><i class="ep-legend-bar"></i>Planned period</span>
+      <span><i class="ep-legend-diamond"></i>Decision point</span>
+      <span><i class="ep-legend-critical"></i>Critical path</span>
+      <span><i class="ep-legend-target"></i>Target completion</span>
+      <span class="ep-timeline-hint">Scroll the timeline to inspect every phase and date</span>
+    </div>
+    <% if (dated.length) { %>
+      <div class="ep-gantt-scroll" tabindex="0" aria-label="Scrollable programme timeline">
+        <div class="ep-gantt">
+          <div class="ep-gantt-ruler ep-gantt-row">
+            <div class="ep-gantt-label"><span>Phase and outcome</span><small>Owner, status and schedule rule</small></div>
+            <div class="ep-gantt-canvas ep-gantt-months">
+              <% months.forEach(month => { %><span style="left:<%= month.left %>%;width:<%= month.width %>%"><%= month.label %></span><% }) %>
+              <% if (todayVisible) { %><i class="ep-gantt-marker ep-gantt-today" style="left:<%= offset(today) %>%" title="Today: <%= today %>"></i><% } %>
+              <% if (targetVisible) { %><i class="ep-gantt-marker ep-gantt-target" style="left:<%= offset(plan.target_completion_date) %>%" title="Target: <%= plan.target_completion_date %>"></i><% } %>
+            </div>
           </div>
-          <div class="num meta text-xs" style="text-align:right;"><%= fmtDate(endDate) %></div>
+          <% phases.forEach((phase, phaseIndex) => {
+            const phaseScheduled = phase.milestones.filter(m => m.planned_start_date);
+            const phaseStart = phaseScheduled.map(m => m.planned_start_date).sort()[0] || phase.planned_start_date;
+            const phaseEnd = phaseScheduled.map(m => m.forecast_end_date || m.planned_end_date).filter(Boolean).sort().pop() || (phase.is_continuous ? timelineEnd : phase.forecast_end_date || phase.planned_end_date);
+          %>
+            <div class="ep-gantt-phase ep-gantt-row">
+              <div class="ep-gantt-label"><b><%= String(phaseIndex+1).padStart(2,'0') %></b><span><strong><%= phase.name %></strong><small><%= phase.progress_pct %>% complete · <%= phaseScheduled.length %> scheduled outcome<%= phaseScheduled.length===1?'':'s' %></small></span></div>
+              <div class="ep-gantt-canvas">
+                <%- renderGrid() %>
+                <% if (todayVisible) { %><i class="ep-gantt-marker ep-gantt-today" style="left:<%= offset(today) %>%"></i><% } %>
+                <% if (targetVisible) { %><i class="ep-gantt-marker ep-gantt-target" style="left:<%= offset(plan.target_completion_date) %>%"></i><% } %>
+                <% if (phaseStart && phaseEnd) { %><span class="ep-phase-span <%= phase.is_continuous ? 'is-ongoing' : '' %>" style="left:<%= offset(phaseStart) %>%;width:<%= span(phaseStart,phaseEnd) %>%" title="<%= phaseStart %> to <%= phase.is_continuous ? 'ongoing' : phaseEnd %>"></span><% } %>
+              </div>
+            </div>
+            <% phase.milestones.forEach(m => {
+              const milestoneEnd = m.forecast_end_date || m.planned_end_date;
+              const visualEnd = milestoneEnd || timelineEnd;
+              const days = durationDays(m.planned_start_date,milestoneEnd);
+              const isDecision = m.completion_mode === 'manual' && !!milestoneEnd;
+              const predecessor = m.predecessors && m.predecessors[m.predecessors.length-1];
+            %>
+              <div class="ep-gantt-task ep-gantt-row <%= m.critical_path ? 'is-critical' : '' %>">
+                <div class="ep-gantt-label">
+                  <span class="ep-task-title"><strong><%= m.title %></strong><% if (m.critical_path) { %><em>Critical</em><% } %></span>
+                  <small><%= m.owner_name || 'Unassigned' %> · <%= statusLabel(m.effective_status) %><% if (m.minimum_duration_months) { %> · <b><%= m.minimum_duration_months %> calendar months minimum</b><% } else if (days) { %> · <%= days %> day<%= days===1?'':'s' %><% } %></small>
+                  <% if (predecessor) { %><small class="ep-task-dependency">Starts after <%= predecessor.predecessor_title %><% if (predecessor.lag_days) { %> + <%= predecessor.lag_days %> days<% } %></small><% } %>
+                </div>
+                <div class="ep-gantt-canvas">
+                  <%- renderGrid() %>
+                  <% if (todayVisible) { %><i class="ep-gantt-marker ep-gantt-today" style="left:<%= offset(today) %>%"></i><% } %>
+                  <% if (targetVisible) { %><i class="ep-gantt-marker ep-gantt-target" style="left:<%= offset(plan.target_completion_date) %>%"></i><% } %>
+                  <% if (m.planned_start_date && visualEnd) { %>
+                    <% if (isDecision) { %>
+                      <span class="ep-task-window" style="left:<%= offset(m.planned_start_date) %>%;width:<%= span(m.planned_start_date,visualEnd) %>%"></span>
+                      <span class="ep-task-diamond <%= m.critical_path ? 'is-critical' : '' %>" style="left:<%= offset(milestoneEnd) %>%" title="<%= m.title %>: <%= milestoneEnd %>"></span>
+                    <% } else { %>
+                      <span class="ep-task-bar status-<%= m.effective_status %> <%= m.critical_path ? 'is-critical' : '' %> <%= !milestoneEnd ? 'is-ongoing' : '' %>" style="left:<%= offset(m.planned_start_date) %>%;width:<%= span(m.planned_start_date,visualEnd) %>%" title="<%= m.title %>: <%= m.planned_start_date %> to <%= milestoneEnd || 'ongoing' %>"><i></i></span>
+                    <% } %>
+                    <% if (predecessor) { %><span class="ep-task-link" style="left:<%= Math.max(0,offset(m.planned_start_date)-1.2) %>%">→</span><% } %>
+                    <% if (m.baseline_end_date) { %><span class="ep-baseline-pin" style="left:<%= offset(m.baseline_end_date) %>%" title="Baseline finish: <%= m.baseline_end_date %>"></span><% } %>
+                  <% } %>
+                </div>
+              </div>
+            <% }) %>
+          <% }) %>
         </div>
-      <% }) %>
-    <% }) %>
-    <% if (!dated.length) { %><div class="empty-state"><div class="empty-title">No milestones scheduled</div><div class="empty-sub">Set phase or milestone dates from the Plan view. The timeline expands to any duration.</div></div><% } %>
-  </div>
+      </div>
+    <% } else { %>
+      <div class="empty-state"><div class="empty-title">No outcomes are scheduled</div><div class="empty-sub">Set planned dates in the Plan view. The timeline expands to the real programme duration.</div></div>
+    <% } %>
+  </section>
 <% } %>
 
 <% if (view === 'gates') { %>

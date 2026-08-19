@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Evidence library</h1>
-    <div class="page-subtitle">Client-wide store for audit evidence (network diagrams, scan reports, signed minutes, screenshots…). Upload once, link to every control it evidences. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
+    <div class="page-subtitle">Client-wide store for audit evidence such as network diagrams, scan reports, signed minutes and screenshots. Upload once, then link the file to every applicable framework requirement or outcome. Re-upload of the same file is detected by SHA-256 and re-linked rather than duplicated.</div>
   </div>
   <div class="row">
     <button class="btn btn-secondary btn-xs" type="button" onclick="document.getElementById('packDialog').showModal()">Auditor pack ↓</button>
@@ -30,7 +30,7 @@
 <details class="panel" style="margin-bottom:14px;" <%= (counters && counters.total === 0) ? 'open' : '' %>>
   <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Upload evidence <span class="meta" style="font-weight:400;">- single or bulk; tick every control each file evidences.</span>
+    Upload evidence <span class="meta" style="font-weight:400;">- single or bulk; select every framework requirement the file supports.</span>
   </summary>
 
   <div style="border-top:1px solid var(--border);background:var(--bg-subtle);">
@@ -47,8 +47,8 @@
       </div>
 
       <div class="col-full">
-        <label class="label">Link to controls / clauses</label>
-        <%- include('partials/evidence_control_picker', { allIsoItems }) %>
+        <label class="label">Link to framework requirements</label>
+        <%- include('partials/evidence_control_picker', { allIsoItems, allIso42001Items, allCsfSubcats }) %>
       </div>
 
       <div><label class="label">Period (optional)</label><input type="text" name="period_label" class="input" placeholder="e.g., Q1 2026"></div>
@@ -76,8 +76,8 @@
       </div>
 
       <div class="col-full">
-        <label class="label">Link all of them to:</label>
-        <%- include('partials/evidence_control_picker', { allIsoItems, placeholderText: 'Filter… e.g., A.8.20, network' }) %>
+        <label class="label">Link all files to framework requirements</label>
+        <%- include('partials/evidence_control_picker', { allIsoItems, allIso42001Items, allCsfSubcats, placeholderText: 'Filter by reference or requirement name' }) %>
       </div>
 
       <div><label class="label">Period (shared)</label><input type="text" name="period_label" class="input" placeholder="e.g., Q1 2026"></div>
@@ -388,22 +388,35 @@
   }
   function filterPicker(input) {
     const q = input.value.trim().toLowerCase();
-    const list = input.parentElement.querySelector('.upload-list');
-    if (!list) return;
-    list.querySelectorAll('.ev-pick').forEach(el => {
+    const picker = input.closest('[data-evidence-picker]');
+    if (!picker) return;
+    picker.querySelectorAll('.ev-pick').forEach(el => {
       const s = el.getAttribute('data-search') || '';
       el.style.display = (!q || s.includes(q)) ? '' : 'none';
     });
   }
+  function switchEvidenceFramework(btn) {
+    const picker = btn.closest('[data-evidence-picker]');
+    if (!picker) return;
+    const framework = btn.getAttribute('data-picker-tab');
+    picker.querySelectorAll('[data-picker-tab]').forEach(tab => {
+      const selected = tab === btn;
+      tab.classList.toggle('active', selected);
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+    picker.querySelectorAll('[data-picker-panel]').forEach(panel => {
+      panel.hidden = panel.getAttribute('data-picker-panel') !== framework;
+    });
+  }
   function updatePickCount(form) {
     if (!form) return;
-    const n = form.querySelectorAll('.upload-list input[type=checkbox]:checked').length;
+    const n = form.querySelectorAll('[data-evidence-picker] input[type=checkbox]:checked').length;
     const out = form.querySelector('.pick-count');
     if (out) out.textContent = n;
   }
   function clearPicker(form) {
     if (!form) return;
-    form.querySelectorAll('.upload-list input[type=checkbox]:checked').forEach(c => c.checked = false);
+    form.querySelectorAll('[data-evidence-picker] input[type=checkbox]:checked').forEach(c => c.checked = false);
     updatePickCount(form);
   }
   function filterRowList(input) {

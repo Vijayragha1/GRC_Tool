@@ -12,6 +12,14 @@ const bcrypt = require('bcrypt');
 const { db, init, ensureWorkspaceMethodology, logAction } = require('../db');
 const csfModel = require('../lib/csf-policy-practice');
 const csfMethodology = require('../data/nist-csf-policy-practice');
+const supplierRisk = require('../lib/supplier-risk');
+const engagementDelivery = require('../lib/engagement-delivery');
+const consultingDelivery = require('../lib/consulting-delivery');
+const assessmentPassQuality = require('../lib/assessment-pass-quality');
+const assuranceReports = require('../lib/assurance-reports');
+const gapFieldwork = require('../lib/gap-fieldwork');
+const { computeReadiness } = require('../lib/readiness');
+const ISO27004_METRICS = require('../data/iso27004-metrics');
 
 init();
 
@@ -26,42 +34,42 @@ const hash = value => crypto.createHash('sha256').update(String(value)).digest('
 
 const SCENARIOS = [
   {
-    key: '27001', name: 'Northstar Health — ISO 27001', short: 'Northstar Health',
+    key: '27001', name: 'Northstar Health - ISO 27001', short: 'Northstar Health',
     frameworks: ['iso27001'], industry: 'Healthcare technology', sector: 'healthcare', color: '#315C73',
     scope: 'The patient engagement platform, supporting cloud infrastructure, corporate identity services, engineering operations, customer support and the personnel who operate them.',
   },
   {
-    key: '42001', name: 'Vector AI Labs — ISO 42001', short: 'Vector AI Labs',
+    key: '42001', name: 'Vector AI Labs - ISO 42001', short: 'Vector AI Labs',
     frameworks: ['iso42001'], industry: 'Artificial intelligence software', sector: 'technology', color: '#665687',
     scope: 'The design, development, evaluation, deployment and monitoring of enterprise AI assistants, including training data, model providers, human oversight and production operations.',
   },
   {
-    key: 'csf', name: 'Harbor Retail — NIST CSF 2.0', short: 'Harbor Retail',
+    key: 'csf', name: 'Harbor Retail - NIST CSF 2.0', short: 'Harbor Retail',
     frameworks: ['csf'], industry: 'Omnichannel retail', sector: 'retail', color: '#24717A',
     scope: 'Customer-facing commerce, payment integrations, corporate technology, distribution operations and critical third parties across the United Kingdom and European Union.',
   },
   {
-    key: 'csf-42001', name: 'Quantive Systems — CSF + ISO 42001', short: 'Quantive Systems',
+    key: 'csf-42001', name: 'Quantive Systems - CSF + ISO 42001', short: 'Quantive Systems',
     frameworks: ['csf', 'iso42001'], industry: 'Enterprise analytics', sector: 'technology', color: '#4F6578',
     scope: 'The enterprise analytics platform, embedded AI services, customer data processing, cybersecurity operations, cloud infrastructure and the AI governance lifecycle.',
   },
   {
-    key: 'csf-27001', name: 'Meridian Payments — CSF + ISO 27001', short: 'Meridian Payments',
+    key: 'csf-27001', name: 'Meridian Payments - CSF + ISO 27001', short: 'Meridian Payments',
     frameworks: ['csf', 'iso27001'], industry: 'Financial technology', sector: 'financial', color: '#254E70',
     scope: 'Payment orchestration, customer onboarding, fraud operations, cloud production, corporate systems and the security functions supporting regulated payment services.',
   },
   {
-    key: '27001-42001', name: 'Atlas Cloud Services — ISO 27001 + ISO 42001', short: 'Atlas Cloud',
+    key: '27001-42001', name: 'Atlas Cloud Services - ISO 27001 + ISO 42001', short: 'Atlas Cloud',
     frameworks: ['iso27001', 'iso42001'], industry: 'Cloud managed services', sector: 'technology', color: '#456A5E',
     scope: 'Managed cloud operations and AI-assisted service management, including customer environments, privileged administration, service desk, AI-enabled automation and supporting suppliers.',
   },
   {
-    key: 'all', name: 'Pioneer Digital Group — Integrated Assurance', short: 'Pioneer Digital',
+    key: 'all', name: 'Pioneer Digital Group - Integrated Assurance', short: 'Pioneer Digital',
     frameworks: ['iso27001', 'iso42001', 'csf'], industry: 'Digital services group', sector: 'technology', color: '#3D5366',
     scope: 'Group cybersecurity governance, the customer digital platform, shared cloud and identity services, enterprise AI capabilities, security operations and critical supplier dependencies.',
   },
   {
-    key: 'management', name: 'Aurelis Group — Management Demo', short: 'Aurelis Group',
+    key: 'management', name: 'Aurelis Group - Management Demo', short: 'Aurelis Group',
     frameworks: ['iso27001', 'iso42001', 'csf'], industry: 'Global digital services', sector: 'technology', color: '#243C4A',
     scope: 'Group governance, customer-facing digital services, shared cloud and identity platforms, enterprise AI capabilities, security operations, critical suppliers and the business-resilience processes supporting regulated customers.',
     managementDemo: true,
@@ -101,9 +109,22 @@ function ensureManagementReviewer() {
     VALUES (?,?,'Morgan Lee','firm',?,'senior_consultant',1)`).run(email, passwordHash, firm.id).lastInsertRowid);
 }
 
+function ensureManagementApprover() {
+  const email = 'approver.management-demo@demo.invalid';
+  const passwordHash = bcrypt.hashSync(demoPassword, 10);
+  const existing = db.prepare(`SELECT id FROM users WHERE email=?`).get(email);
+  if (existing) {
+    db.prepare(`UPDATE users SET name='Alex Morgan',password_hash=?,user_type='firm',firm_id=?,firm_role='manager',active=1 WHERE id=?`)
+      .run(passwordHash, firm.id, existing.id);
+    return Number(existing.id);
+  }
+  return Number(db.prepare(`INSERT INTO users (email,password_hash,name,user_type,firm_id,firm_role,active)
+    VALUES (?,?,'Alex Morgan','firm',?,'manager',1)`).run(email, passwordHash, firm.id).lastInsertRowid);
+}
+
 function removePriorDemo(scenario) {
   const prior = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? AND client_name=?`).get(firm.id, scenario.name);
-  if (!prior) return;
+  if (!prior) return null;
   if (scenario.managementDemo) {
     const uploadDir = path.join(__dirname,'..','uploads',`firm_${firm.id}`);
     const storedPaths = [
@@ -119,17 +140,44 @@ function removePriorDemo(scenario) {
   // Audit rows intentionally sit outside the workspace cascade in some schema
   // generations. Delete only those belonging to this named demo workspace.
   db.prepare(`DELETE FROM audit_log WHERE workspace_id=?`).run(prior.id);
-  db.prepare(`DELETE FROM workspaces WHERE id=?`).run(prior.id);
+  // The production schema correctly makes assurance history immutable. A
+  // synthetic demo still needs a repeatable teardown path. Suspend only the
+  // no-delete triggers inside this seed transaction, remove the exact named
+  // demo workspace, then restore every trigger from sqlite_master before the
+  // transaction can commit. No application route can use this bypass.
+  const immutableDeleteTriggers = db.prepare(`SELECT name,sql FROM sqlite_master
+    WHERE type='trigger' AND sql IS NOT NULL
+      AND lower(sql) LIKE '%before delete%'
+      AND lower(sql) LIKE '%immutable%'`).all();
+  immutableDeleteTriggers.forEach(trigger => {
+    const quotedName = `"${String(trigger.name).replaceAll('"','""')}"`;
+    db.exec(`DROP TRIGGER ${quotedName}`);
+  });
+  try {
+    db.prepare(`DELETE FROM workspaces WHERE id=?`).run(prior.id);
+  } finally {
+    immutableDeleteTriggers.forEach(trigger => db.exec(trigger.sql));
+  }
+  return Number(prior.id);
 }
 
-function createWorkspace(scenario, clientUserId) {
-  const id = Number(db.prepare(`INSERT INTO workspaces
-    (firm_id,client_name,industry,scope,target_cert_date,stage,lead_consultant_id,
-     scope_confirmed_at,scope_confirmed_by,brand_display_name,brand_primary_color,sector,locale,frameworks)
-    VALUES (?,?,?,?,?,'implementation',?,CURRENT_TIMESTAMP,?,?,?,?,'en-GB',?)`)
-    .run(firm.id, scenario.name, scenario.industry, scenario.scope, date(210), owner.id,
-      owner.id, scenario.short, scenario.color, scenario.sector, JSON.stringify(scenario.frameworks)).lastInsertRowid);
+function createWorkspace(scenario, clientUserId, stableId = null) {
+  const result = stableId
+    ? db.prepare(`INSERT INTO workspaces
+      (id,firm_id,client_name,industry,scope,target_cert_date,stage,lead_consultant_id,
+       scope_confirmed_at,scope_confirmed_by,brand_display_name,brand_primary_color,sector,locale,frameworks)
+      VALUES (?,?,?,?,?,?,'implementation',?,CURRENT_TIMESTAMP,?,?,?,?,'en-GB',?)`)
+      .run(stableId, firm.id, scenario.name, scenario.industry, scenario.scope, date(210), owner.id,
+        owner.id, scenario.short, scenario.color, scenario.sector, JSON.stringify(scenario.frameworks))
+    : db.prepare(`INSERT INTO workspaces
+      (firm_id,client_name,industry,scope,target_cert_date,stage,lead_consultant_id,
+       scope_confirmed_at,scope_confirmed_by,brand_display_name,brand_primary_color,sector,locale,frameworks)
+      VALUES (?,?,?,?,?,'implementation',?,CURRENT_TIMESTAMP,?,?,?,?,'en-GB',?)`)
+      .run(firm.id, scenario.name, scenario.industry, scenario.scope, date(210), owner.id,
+        owner.id, scenario.short, scenario.color, scenario.sector, JSON.stringify(scenario.frameworks));
+  const id = Number(stableId || result.lastInsertRowid);
   ensureWorkspaceMethodology(id);
+  if (scenario.managementDemo) db.prepare(`UPDATE workspaces SET timezone='Europe/London' WHERE id=?`).run(id);
   db.prepare(`INSERT INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,'firm_owner')`).run(id, owner.id);
   db.prepare(`INSERT INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,'client_owner')`).run(id, clientUserId);
   return id;
@@ -137,7 +185,7 @@ function createWorkspace(scenario, clientUserId) {
 
 function seedIntake(wsId, scenario) {
   const answers = {
-    'org-name': scenario.name.replace(/ — .*/, ' Ltd.'), 'trading-name': scenario.short,
+    'org-name': scenario.name.replace(/ - .*/, ' Ltd.'), 'trading-name': scenario.short,
     'business-summary': `${scenario.short} provides ${scenario.industry.toLowerCase()} services to regulated and security-conscious customers.`,
     'cert-driver': 'Customer assurance, board oversight and a repeatable risk-based operating model.',
     'cert-deadline': date(210), 'products-in-scope': scenario.scope, 'products-excluded': 'Public marketing content and dormant legal entities with no operational systems.',
@@ -227,20 +275,40 @@ function seedOperatingRegisters(wsId, scenario) {
     ['Employees and contractors','workforce','Clear responsibilities, secure tools and fair monitoring','Policy communication, role training and reporting channels','People Director','Annual'],
   ].forEach(p => partyInsert.run(wsId,...p,date(-45),date(45),'Needs and response reviewed during the latest governance cycle.'));
 
+  const catalogMetric = Object.fromEntries(ISO27004_METRICS.map(metric => [metric.key, metric]));
+  const metricInsert = db.prepare(`INSERT INTO isms_metrics
+    (workspace_id,metric_key,ref,name,category,unit,direction,formula,target_value,target_text,frequency,owner_name,notes,created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const readingInsert = db.prepare(`INSERT INTO isms_metric_readings
+    (metric_id,value,measured_at,status,notes,recorded_by) VALUES (?,?,?,?,?,?)`);
+  const metricSeeds = [
+    { key:'improvement-actions', target:95, value:82, owner:'CISO' },
+    { key:'review-user-access-rights', target:100, value:91, owner:'IT Director' },
+    { key:'demo-tier-one-recovery', ref:'CUSTOM-BCM-01', name:'Tier-one recovery exercise completion', category:'Resilience', unit:'%', direction:'higher', formula:'Tier-one services exercised successfully / tier-one services planned × 100', target:100, value:67, frequency:'Quarterly', owner:'COO' },
+  ];
+  const metricIds = {};
+  metricSeeds.forEach(seed => {
+    const source = catalogMetric[seed.key] || seed;
+    const metricId = Number(metricInsert.run(wsId,seed.key,source.ref,source.name,source.category,source.unit,source.direction || 'higher',source.formula || null,
+      seed.target,source.targetText || null,seed.frequency || source.frequency || null,seed.owner,'Synthetic management-demo measure with a traceable reading.',owner.id).lastInsertRowid);
+    readingInsert.run(metricId,seed.value,date(-14),seed.value >= seed.target ? 'green' : seed.value >= seed.target * .9 ? 'amber' : 'red','Validated monthly governance reading.',owner.id);
+    metricIds[seed.key] = metricId;
+  });
+
   const objectiveInsert = db.prepare(`INSERT INTO security_objectives
-    (workspace_id,title,description,measurement,target_value,current_value,owner,due_date,status,notes)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    (workspace_id,title,description,measurement,target_value,current_value,owner,due_date,status,notes,metric_id,status_mode)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
   [
-    ['Close critical control gaps','Resolve critical evidence and implementation gaps within the approved treatment period.','Percentage closed within SLA','≥ 95%','82%','CISO',date(120),'at_risk'],
-    ['Exercise tier-one recovery','Demonstrate service recovery within approved business objectives.','Tier-one services exercised','100%','67%','COO',date(150),'on_track'],
-    ['Improve privileged-access assurance','Complete quarterly ownership and necessity recertification.','Privileged roles recertified','100%','91%','IT Director',date(60),'on_track'],
-  ].forEach(o => objectiveInsert.run(wsId,...o,'Tracked through monthly governance and quarterly executive review.'));
+    ['Close critical control gaps','Resolve critical evidence and implementation gaps within the approved treatment period.','Percentage closed within SLA','≥ 95%','82%','CISO',date(120),'at_risk','improvement-actions'],
+    ['Exercise tier-one recovery','Demonstrate service recovery within approved business objectives.','Tier-one services exercised','100%','67%','COO',date(150),'off_track','demo-tier-one-recovery'],
+    ['Improve privileged-access assurance','Complete quarterly ownership and necessity recertification.','Privileged roles recertified','100%','91%','IT Director',date(60),'at_risk','review-user-access-rights'],
+  ].forEach(o => objectiveInsert.run(wsId,...o.slice(0,8),'Tracked through monthly governance and quarterly executive review.',metricIds[o[8]],'metric'));
 
   const auditId = Number(db.prepare(`INSERT INTO audits
     (workspace_id,title,scope,audit_date,auditor_name,status,summary,created_by,auditor_competence,auditor_independence,sample_size,population_size,lifecycle_stage,
      fieldwork_started_at,report_issued_at,closed_at,sampling_justification)
-    VALUES (?,?,?,?,?,'completed',?,?,?, ?,12,64,'closed',datetime('now','-48 days'),datetime('now','-28 days'),datetime('now','-20 days'),?)`)
-    .run(wsId,'Internal assurance review — governance and operations',scenario.scope,date(-50),'Independent Internal Auditor',
+    VALUES (?,?,?,?,?,'complete',?,?,?, ?,12,64,'closed',datetime('now','-48 days'),datetime('now','-28 days'),datetime('now','-20 days'),?)`)
+    .run(wsId,'Internal assurance review - governance and operations',scenario.scope,date(-50),'Independent Internal Auditor',
       'The control environment is operating, with improvement required in privileged access evidence and supplier dependency assurance.',owner.id,
       'ISO management-system lead auditor and experienced technology assurance practitioner.','The auditor had no operational responsibility for the sampled controls.',
       'Risk-based sample across the period, critical services and accountable owners.').lastInsertRowid);
@@ -265,7 +333,7 @@ function seedOperatingRegisters(wsId, scenario) {
   db.prepare(`INSERT INTO mrms
     (workspace_id,meeting_date,attendees,status,context_changes,prior_actions_status,performance_review,feedback_interested_parties,risk_treatment_status,
      improvement_opportunities,decisions,action_items,created_by)
-    VALUES (?,?,?,'completed',?,?,?,?,?,?,?,?,?)`).run(wsId,date(-32),'CEO, COO, CISO, CTO, General Counsel, GRC Manager',
+    VALUES (?,?,?,'complete',?,?,?,?,?,?,?,?,?)`).run(wsId,date(-32),'CEO, COO, CISO, CTO, General Counsel, GRC Manager',
       'Customer assurance requirements increased; no material scope change was approved.','Five of seven prior actions closed; two remain within the approved period.',
       'Control implementation is improving, with evidence quality uneven in privileged access and supplier resilience.','Customers requested clearer recovery assurance and notification decision records.',
       'No critical risks are outside appetite; three high risks remain under active treatment.','Automate evidence collection and align service recovery tests to supplier dependencies.',
@@ -323,19 +391,31 @@ function seedDocumentsAndEvidence(wsId, scenario, frameworkCode, requirements) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
   const linkEvidence = db.prepare(`INSERT INTO evidence_requirement_links (evidence_id,requirement_id,relevance_note,section_ref) VALUES (?,?,?,?)`);
   requirements.filter((_, index) => index % 4 === 0).slice(0,24).forEach((req, index) => {
-    const filename = `${frameworkCode}-${String(index+1).padStart(2,'0')}-${req.ref.replace(/[^a-z0-9]+/gi,'-')}.${scenario.managementDemo ? 'txt' : 'pdf'}`;
+    const evidenceFormats = ['csv','json','txt','xml'];
+    const format = scenario.managementDemo ? evidenceFormats[index % evidenceFormats.length] : 'pdf';
+    const filename = `${frameworkCode}-${String(index+1).padStart(2,'0')}-${req.ref.replace(/[^a-z0-9]+/gi,'-')}.${format}`;
     let storedPath = `seed/framework-matrix/${scenario.key}/${filename}`;
     let sizeBytes = 42000+index*713;
     if (scenario.managementDemo) {
       const uploadDir = path.join(__dirname,'..','uploads',`firm_${firm.id}`);
       fs.mkdirSync(uploadDir,{recursive:true});
-      storedPath = `management-demo-${frameworkCode}-${String(index+1).padStart(2,'0')}-${hash(`${wsId}:${req.ref}`).slice(0,10)}.txt`;
-      const body = `${scenario.short} — synthetic management demonstration evidence\nFramework: ${frameworkCode}\nRequirement: ${req.ref} ${req.title}\nPeriod: FY26 operating period\nOwner: Chief Information Security Officer\nPurpose: Demonstrates operation, ownership and review within the assessment period.\n\nThis record is synthetic test data and is not a real assurance conclusion.\n`;
+      storedPath = `management-demo-${frameworkCode}-${String(index+1).padStart(2,'0')}-${hash(`${wsId}:${req.ref}`).slice(0,10)}.${format}`;
+      const record = {
+        organisation: scenario.short, framework: frameworkCode, requirement: req.ref,
+        control: req.title, period: 'FY26 operating period', owner: index % 3 === 0 ? 'Chief Information Security Officer' : index % 3 === 1 ? 'Head of Platform' : 'Governance, Risk and Compliance Manager',
+        reviewer: 'Morgan Lee', result: index % 7 === 0 ? 'exception tracked' : 'operating as designed',
+        sample_size: 12 + (index % 5), reviewed_on: date(-14-index), demo_data: true,
+      };
+      const body = format === 'json' ? `${JSON.stringify(record,null,2)}\n`
+        : format === 'csv' ? `record_id,framework,requirement,owner,reviewer,result,reviewed_on,demo_data\n${index+1},${frameworkCode},${req.ref},${record.owner},${record.reviewer},${record.result},${record.reviewed_on},true\n`
+          : format === 'xml' ? `<?xml version="1.0" encoding="UTF-8"?>\n<evidence demo="true"><framework>${frameworkCode}</framework><requirement>${req.ref}</requirement><owner>${record.owner}</owner><reviewer>${record.reviewer}</reviewer><result>${record.result}</result><reviewedOn>${record.reviewed_on}</reviewedOn></evidence>\n`
+            : `${scenario.short} management demonstration evidence\nFramework: ${frameworkCode}\nRequirement: ${req.ref} ${req.title}\nPeriod: FY26 operating period\nOwner: ${record.owner}\nReviewer: ${record.reviewer}\nResult: ${record.result}\nReviewed: ${record.reviewed_on}\n\nThis is synthetic test data, not a real assurance conclusion.\n`;
       fs.writeFileSync(path.join(uploadDir,storedPath),body,'utf8');
       sizeBytes = Buffer.byteLength(body);
+      var contentHash = hash(body);
     }
-    const evidenceId = Number(evidenceInsert.run(wsId,filename,storedPath,hash(`${filename}:${storedPath}`),sizeBytes,owner.id,
-      `Synthetic retained evidence supporting ${req.ref} ${req.title}.`,date(-180),date(185),'FY26 operating period',JSON.stringify([frameworkCode,'demo','controlled'])).lastInsertRowid);
+    const evidenceId = Number(evidenceInsert.run(wsId,filename,storedPath,contentHash || hash(`${filename}:${storedPath}`),sizeBytes,owner.id,
+      `Management-demo evidence supporting ${req.ref} ${req.title}.`,date(-180),date(185),'FY26 operating period',JSON.stringify([frameworkCode,'demo','controlled'])).lastInsertRowid);
     linkEvidence.run(evidenceId,req.id,'Demonstrates operation, ownership and review within the assessment period.',`Evidence item ${index+1}`);
   });
 }
@@ -439,8 +519,11 @@ function seedCsf(wsId, scenario, scenarioIndex) {
 
 function seedManagementExtensions(wsId, scenario) {
   const reviewerId = ensureManagementReviewer();
+  const approverId = ensureManagementApprover();
   db.prepare(`INSERT OR REPLACE INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,'senior_consultant')`).run(wsId,reviewerId);
+  db.prepare(`INSERT OR REPLACE INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,'firm_owner')`).run(wsId,approverId);
   const reviewer = db.prepare(`SELECT id,name,email FROM users WHERE id=?`).get(reviewerId);
+  const approver = db.prepare(`SELECT id,name,email FROM users WHERE id=?`).get(approverId);
 
   const createDemoFile = (name, body) => {
     const uploadDir = path.join(__dirname,'..','uploads',`firm_${firm.id}`);
@@ -449,6 +532,44 @@ function seedManagementExtensions(wsId, scenario) {
     fs.writeFileSync(path.join(uploadDir,storedPath),body,'utf8');
     return { storedPath, sizeBytes: Buffer.byteLength(body), sha256: hash(body) };
   };
+
+  // Clause-specific operating records complete the same documented-information
+  // truth that drives readiness, policy adoption and client status. These are
+  // downloadable synthetic artifacts, not placeholder filenames.
+  const competenceBody = [
+    'employee_id,role,required_competence,assessment_method,assessed_on,result,approved_by,demo_data',
+    `DEMO-001,Security Analyst,Incident triage and evidence handling,Observed simulation,${date(-42)},Competent,${reviewer.name},true`,
+    `DEMO-002,Platform Engineer,Privileged-access operation,Practical assessment,${date(-38)},Competent,${reviewer.name},true`,
+    `DEMO-003,AI Product Owner,AI impact and oversight decisions,Scenario assessment,${date(-31)},Competent,${approver.name},true`,
+    '',
+  ].join('\n');
+  const competenceFile = createDemoFile('competence-assessment-register.csv', competenceBody);
+  db.prepare(`INSERT INTO evidence
+    (workspace_id,iso_item_id,filename,stored_path,sha256,size_bytes,uploaded_by,description)
+    VALUES (?,'clause-7.2','competence-assessment-register.csv',?,?,?,?,?)`)
+    .run(wsId,competenceFile.storedPath,competenceFile.sha256,competenceFile.sizeBytes,reviewerId,
+      'Synthetic competence register with named assessment and approval records for the management demonstration.');
+
+  const monitoringBody = `${JSON.stringify({
+    organisation: scenario.short,
+    reporting_period: 'FY26 operating period',
+    prepared_by: 'Governance, Risk and Compliance Manager',
+    reviewed_by: reviewer.name,
+    approved_by: approver.name,
+    reviewed_on: date(-14),
+    measures: [
+      { name: 'Privileged access recertification', target: 100, actual: 91, unit: 'percent', disposition: 'Improvement action open' },
+      { name: 'Critical control remediation within SLA', target: 95, actual: 82, unit: 'percent', disposition: 'Below target and escalated' },
+      { name: 'Tier-one recovery exercises completed', target: 100, actual: 67, unit: 'percent', disposition: 'Exercise scheduled' },
+    ],
+    demo_data: true,
+  }, null, 2)}\n`;
+  const monitoringFile = createDemoFile('security-monitoring-results.json', monitoringBody);
+  db.prepare(`INSERT INTO evidence
+    (workspace_id,iso_item_id,filename,stored_path,sha256,size_bytes,uploaded_by,description)
+    VALUES (?,'clause-9.1','security-monitoring-results.json',?,?,?,?,?)`)
+    .run(wsId,monitoringFile.storedPath,monitoringFile.sha256,monitoringFile.sizeBytes,approverId,
+      'Synthetic monitoring and measurement results with targets, actuals, review and disposition.');
 
   // Policy lifecycle: keep a published baseline, one revision in review and
   // one working draft so the lifecycle is visible without mutating records.
@@ -471,7 +592,7 @@ function seedManagementExtensions(wsId, scenario) {
   }
   const draftDoc = db.prepare(`SELECT * FROM generated_docs WHERE workspace_id=? AND name='AI Risk Assessment Procedure'`).get(wsId);
   if (draftDoc) {
-    const revisedContent = `${draftDoc.content}\n\n## Revision 2 — draft\nProposed materiality thresholds, human-oversight triggers and post-deployment monitoring requirements.`;
+    const revisedContent = `${draftDoc.content}\n\n## Revision 2 - draft\nProposed materiality thresholds, human-oversight triggers and post-deployment monitoring requirements.`;
     const versionId = Number(db.prepare(`INSERT INTO doc_versions
       (workspace_id,document_id,version,name,content,content_hash,status,change_summary,created_by)
       VALUES (?,?,2,?,?,?,'draft','Add AI materiality and monitoring criteria',?)`)
@@ -504,85 +625,100 @@ function seedManagementExtensions(wsId, scenario) {
       'Senior consultant experienced in AI governance, model risk and management-system assurance.','Reviewer is independent of the sampled AI product and operational decisions.',
       'Risk-based sample across high-impact use cases, material suppliers and production monitoring periods.');
 
-  // TPRM: methodology, reviewed and outstanding questionnaires, assurance,
-  // decisions, findings and monitoring across three supplier tiers.
-  const methodologyId = Number(db.prepare(`INSERT INTO supplier_risk_methodologies
-    (workspace_id,version,name,domain_weights,control_weights,thresholds,review_cadence,is_active,created_by)
-    VALUES (?,?,?, ?,?,?,?,1,?)`).run(wsId,1,'Aurelis five-domain supplier risk methodology',
-      JSON.stringify({security:20,privacy:20,operational:25,resilience:20,concentration:15}),
-      JSON.stringify({assessment:40,assurance:25,contract:20,review:10,subprocessor:5}),
-      JSON.stringify({low:6,moderate:11,high:17,critical:25}),JSON.stringify({tier_1:6,tier_2:12,tier_3:24}),owner.id).lastInsertRowid);
+  // TPRM supporting records. Risk tiering and decisions are populated only by
+  // the governed inherent-risk, DDQ and contract-review workflow below.
   const suppliers = db.prepare(`SELECT * FROM suppliers WHERE workspace_id=? ORDER BY id`).all(wsId);
-  const supplierScores = [[23,8,'moderate'],[19,11,'moderate'],[12,5,'low']];
   suppliers.forEach((supplier,index) => {
-    const [inherent,residual,band] = supplierScores[index] || [12,5,'low'];
-    db.prepare(`UPDATE suppliers SET inherent_risk_score=?,residual_risk_score=?,last_assessed=?,next_review_date=? WHERE id=?`)
-      .run(inherent,residual,date(-40-index*15),date(80+index*60),supplier.id);
-    db.prepare(`INSERT INTO supplier_risk_snapshots
-      (workspace_id,supplier_id,methodology_id,methodology_version,inherent_score,control_effectiveness,calculated_residual_score,effective_residual_score,risk_band,components,rationale,event_type,recorded_by,recorded_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now',?))`)
-      .run(wsId,supplier.id,methodologyId,1,inherent,Math.round((1-residual/inherent)*100),residual,residual,band,
-        JSON.stringify({security:index===0?4:3,privacy:index===2?4:3,operational:index===0?5:3,resilience:index===0?5:3,concentration:index===0?5:2}),
-        'Residual position reflects questionnaire responses, independent assurance, contractual protections, review results and dependency context.','periodic_review',owner.id,`-${40+index*15} days`);
-    db.prepare(`INSERT INTO supplier_decisions
-      (workspace_id,supplier_id,decision,rationale,conditions,valid_until,residual_risk_score,methodology_version,decided_by,decider_name,decided_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now',?))`)
-      .run(wsId,supplier.id,index===1?'conditional':'approved',
-        'The residual risk is within the approved tolerance for the service, subject to the retained assurance and monitoring conditions.',
-        index===1?'Complete the outstanding recovery-evidence request before renewal.':'Maintain current assurance and notify material service or control changes.',
-        date(180+index*60),residual,1,reviewerId,reviewer.name,`-${35+index*12} days`);
     db.prepare(`INSERT INTO supplier_reviews
       (workspace_id,supplier_id,review_date,reviewer,outcome,inherent_risk,residual_risk,findings,action_items,next_review_date)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(wsId,supplier.id,date(-40-index*15),reviewer.name,index===1?'conditional':'approved',inherent,residual,
-        index===1?'Recovery evidence is incomplete for one material dependency.':'No material exception identified in the reviewed evidence.',
-        index===1?'Provide the latest recovery exercise and close the evidence request.':'Continue monitoring and reassess at the approved cadence.',date(80+index*60));
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(wsId,supplier.id,date(-40-index*15),reviewer.name,index===1?'in_review':'completed',null,null,
+        index===1?'Recovery evidence is incomplete for one material dependency.':'Supporting evidence was reviewed under the governed DDQ workflow.',
+        index===1?'Provide the latest recovery exercise before a risk decision is requested.':'Continue monitoring at the approved cadence.',date(80+index*60));
     ['confidentiality','security_obligations','breach_notification','audit_rights','data_return_destruction'].forEach((key,clauseIndex) => {
       db.prepare(`INSERT INTO supplier_clauses (workspace_id,supplier_id,clause_key,clause_label,status,notes,reviewed_at)
         VALUES (?,?,?,?,?,?,datetime('now','-45 days'))`).run(wsId,supplier.id,key,key.replace(/_/g,' '),clauseIndex===4&&index===1?'pending':'present',
           clauseIndex===4&&index===1?'Updated exit wording is with Legal for agreement.':'Clause verified in the current agreement.');
     });
     db.prepare(`INSERT INTO supplier_monitoring (workspace_id,supplier_id,source,score,grade,recorded_at,notes,recorded_by)
-      VALUES (?,?,?,?,?,date('now','-14 days'),?,?)`).run(wsId,supplier.id,'Quarterly supplier assurance review',100-residual*3,index===1?'B':'A',
+      VALUES (?,?,?,?,?,date('now','-14 days'),?,?)`).run(wsId,supplier.id,'Quarterly supplier assurance review',index===1?72:91,index===1?'B':'A',
         'No new material incident; contract, assurance and recovery actions reviewed.',owner.id);
-    const file = createDemoFile(`${supplier.name}-assurance-summary.txt`,`${supplier.name} synthetic assurance summary\nAssessment period: FY26\nDecision: ${index===1?'Conditional approval':'Approved'}\nResidual risk: ${residual}\nThis is synthetic management-demo evidence.\n`);
+    const file = createDemoFile(`${supplier.name}-assurance-summary.json`,`${JSON.stringify({supplier:supplier.name,period:'FY26',review:index===1?'evidence outstanding':'supporting evidence reviewed',reviewer:reviewer.name,demo_data:true},null,2)}\n`);
     db.prepare(`INSERT INTO supplier_documents
       (workspace_id,supplier_id,doc_type,name,filename,stored_path,sha256,size_bytes,effective_date,expiry_date,notes,uploaded_by)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(wsId,supplier.id,'iso_27001','Supplier assurance summary',`${supplier.name}-assurance-summary.txt`,file.storedPath,file.sha256,file.sizeBytes,date(-120),date(245),'Synthetic downloadable management-demo evidence.',owner.id);
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(wsId,supplier.id,'iso_27001','Supplier assurance summary',`${supplier.name}-assurance-summary.json`,file.storedPath,file.sha256,file.sizeBytes,date(-120),date(245),'Synthetic downloadable management-demo evidence.',owner.id);
   });
 
-  const template = db.prepare(`SELECT * FROM questionnaire_templates WHERE is_system=1 ORDER BY id LIMIT 1`).get();
-  if (template && suppliers.length >= 2) {
-    const questions = db.prepare(`SELECT * FROM questionnaire_questions WHERE template_id=? ORDER BY question_order`).all(template.id);
-    const reviewedQuestionnaireId = Number(db.prepare(`INSERT INTO supplier_questionnaires
-      (workspace_id,supplier_id,template_id,template_name,status,sent_at,responded_at,reviewed_at,reviewer,total_questions,answered_questions,score,risk_rating,reviewer_comments,
-       external_email,external_contact_name,external_completed_at,external_expires_at,invitation_status,due_date)
-      VALUES (?,?,?,?,'reviewed',datetime('now','-55 days'),datetime('now','-43 days'),datetime('now','-39 days'),?,?,?,?,?,?,?, ?,datetime('now','-43 days'),datetime('now','20 days'),'completed',?)`)
-      .run(wsId,suppliers[0].id,template.id,template.name,reviewer.name,questions.length,questions.length,88,'low',
-        'Responses and evidence were reviewed; two improvement actions remain under routine monitoring.','security@azure.example','Azure Assurance Team',date(-30)).lastInsertRowid);
-    const responseInsert = db.prepare(`INSERT INTO supplier_questionnaire_responses (questionnaire_id,question_id,answer,comment,evidence_ref) VALUES (?,?,?,?,?)`);
-    questions.forEach((question,index) => responseInsert.run(reviewedQuestionnaireId,question.id,index%9===0?'partial':(question.expected_answer||'yes'),
-      index%9===0?'Implemented with a documented improvement action.':'Implemented and supported by the current assurance pack.',`Assurance pack section ${index+1}`));
-    db.prepare(`INSERT INTO external_assessment_tokens
-      (workspace_id,assessment_id,entity_id,questionnaire_id,email,name,token_hash,issued_at,expires_at,completed_at,created_by,migrated_from)
-      VALUES (?,NULL,?,?,?,?,?,datetime('now','-55 days'),datetime('now','20 days'),datetime('now','-43 days'),?,'management-demo')`)
-      .run(wsId,suppliers[0].entity_id||null,reviewedQuestionnaireId,'security@azure.example','Azure Assurance Team',hash(`completed:${wsId}:${reviewedQuestionnaireId}`),owner.id);
+  // Workbook-governed TPRM demonstration: one decision-ready supplier, one in
+  // internal review, and one at the start of due diligence. This intentionally
+  // demonstrates different work states without representing synthetic data as
+  // real assurance.
+  const inherentResponseInsert = db.prepare(`INSERT INTO supplier_inherent_responses
+    (assessment_id,question_id,score,response_label,comment,updated_by,updated_at)
+    VALUES (?,?,?,?,?,?,datetime('now','-48 days'))`);
+  const ddqResponseInsert = db.prepare(`INSERT INTO supplier_ddq_responses
+    (assessment_id,question_id,response,detail,evidence_reference,evidence_date,evidence_owner,status,reviewer_conclusion,finding_id,reviewer_comments,vendor_updated_at,reviewer_updated_at,reviewer_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const contractItemInsert = db.prepare(`INSERT INTO supplier_contract_review_items
+    (review_id,clause_id,required,status,contract_reference,reviewer_comments,finding_id,reviewed_at)
+    VALUES (?,?,?,?,?,?,?,datetime('now','-34 days'))`);
+  suppliers.forEach((supplier,index) => {
+    const baseScore = [4,3,2][index] == null ? 2 : [4,3,2][index];
+    const answers = Object.fromEntries(supplierRisk.methodology.scoring.questions.map(question => [question.id, baseScore]));
+    if (index === 0) { answers.Q14=5; answers.Q02=5; answers.Q12=5; }
+    const result = supplierRisk.scoreInherent(answers);
+    const modules = supplierRisk.routeModules(result.answers,'no');
+    const inherentId = Number(db.prepare(`INSERT INTO supplier_inherent_assessments
+      (workspace_id,supplier_id,methodology_version,assessment_type,status,physical_data_centre_applicability,weighted_score,assigned_tier,mandatory_floors_json,module_applicability_json,unknown_count,submitted_at,approved_at,approved_by,approval_rationale,created_by,created_at,updated_at)
+      VALUES (?,?,?,'periodic','approved','no',?,?,?,?,0,datetime('now','-47 days'),datetime('now','-46 days'),?, ?,?,datetime('now','-50 days'),datetime('now','-46 days'))`)
+      .run(wsId,supplier.id,supplierRisk.methodology.version,result.weightedScore,result.assignedTier,JSON.stringify(result.triggeredFloors),JSON.stringify(modules),reviewerId,
+        'Accountable owners validated all 25 inputs; mandatory floors and routed modules were reviewed before issue.',owner.id).lastInsertRowid);
+    supplierRisk.methodology.scoring.questions.forEach(question => {
+      const option=question.options.find(item=>item.score===answers[question.id]);
+      inherentResponseInsert.run(inherentId,question.id,answers[question.id],option&&option.label,'Synthetic owner-validated management-demo response.',owner.id);
+    });
+    db.prepare(`UPDATE suppliers SET inherent_risk_score=?,tier=?,last_assessed=? WHERE id=?`).run(result.weightedScore,result.assignedTier,date(-46),supplier.id);
 
-    const sentQuestionnaireId = Number(db.prepare(`INSERT INTO supplier_questionnaires
-      (workspace_id,supplier_id,template_id,template_name,status,sent_at,total_questions,answered_questions,external_email,external_contact_name,external_expires_at,invitation_status,due_date)
-      VALUES (?,?,?,?,'sent',datetime('now','-6 days'),?,0,?,?,datetime('now','24 days'),'sent',?)`)
-      .run(wsId,suppliers[1].id,template.id,template.name,questions.length,'security@github.example','GitHub Assurance Team',date(18)).lastInsertRowid);
-    db.prepare(`INSERT INTO external_assessment_tokens
-      (workspace_id,assessment_id,entity_id,questionnaire_id,email,name,token_hash,issued_at,expires_at,created_by,migrated_from)
-      VALUES (?,NULL,?,?,?,?,?,datetime('now','-6 days'),datetime('now','24 days'),?,'management-demo')`)
-      .run(wsId,suppliers[1].entity_id||null,sentQuestionnaireId,'security@github.example','GitHub Assurance Team',hash(`open:${wsId}:${sentQuestionnaireId}`),owner.id);
-    const findingId = Number(db.prepare(`INSERT INTO findings
-      (workspace_id,source_type,source_id,title,description,severity,severity_scheme,status,created_by,migrated_from)
-      VALUES (?,'assessment',?,'Recovery assurance evidence outstanding','The current questionnaire has not yet provided evidence of the latest material service-recovery exercise.','high','operational','open',?,'management-demo')`)
-      .run(wsId,String(sentQuestionnaireId),owner.id).lastInsertRowid);
-    db.prepare(`INSERT INTO supplier_finding_links
-      (finding_id,supplier_id,questionnaire_id,domain,due_date,owner_name)
-      VALUES (?,?,?,?,?,?)`).run(findingId,suppliers[1].id,sentQuestionnaireId,'resilience',date(25),'Head of Platform');
-  }
+    const moduleScope=Object.fromEntries(modules.map(module=>[module.name,module.applicability]));
+    const scopedQuestions=supplierRisk.questionsForAssessment(result.assignedTier,moduleScope,scenario.short);
+    const ddqStatus=index===0?'complete':index===1?'under_review':'draft';
+    const ddqId=Number(db.prepare(`INSERT INTO supplier_ddq_assessments
+      (workspace_id,supplier_id,inherent_assessment_id,methodology_version,tier,assessment_type,status,modules_json,vendor_contact_name,vendor_contact_email,due_date,issued_at,opened_at,submitted_at,completed_at,completed_by,created_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,'periodic',?,?,?,?,?,datetime('now','-45 days'),datetime('now','-44 days'),?,?,?, ?,datetime('now','-45 days'),datetime('now','-30 days'))`)
+      .run(wsId,supplier.id,inherentId,supplierRisk.methodology.version,result.assignedTier,ddqStatus,JSON.stringify(modules),`${supplier.name} Assurance Team`,supplier.contact,date(30),
+        index===0?new Date(Date.now()-40*day).toISOString():null,index===0?new Date(Date.now()-35*day).toISOString():null,index===0?reviewerId:null,owner.id).lastInsertRowid);
+    scopedQuestions.forEach((question,questionIndex) => {
+      const reviewed=index===0 || (index===1 && questionIndex<Math.min(42,scopedQuestions.length));
+      ddqResponseInsert.run(ddqId,question.id,reviewed?'Yes':null,reviewed?'Control is implemented for the service scope and supported by the cited management-demo artifact.':null,
+        reviewed?`DEMO-${supplier.id}-${question.id}`:null,reviewed?date(-70):null,reviewed?`${supplier.name} Control Owner`:null,
+        reviewed?'Response Complete':'Unanswered',reviewed?'Satisfactory':'Not Reviewed',null,reviewed?'Evidence reference, currency and scope reviewed.':null,
+        reviewed?new Date(Date.now()-40*day).toISOString():null,reviewed?new Date(Date.now()-35*day).toISOString():null,reviewed?reviewerId:null);
+    });
+
+    if (index < 2) {
+      const contractStatus=index===0?'complete':'in_progress';
+      const contractId=Number(db.prepare(`INSERT INTO supplier_contract_reviews
+        (workspace_id,supplier_id,inherent_assessment_id,methodology_version,status,agreement_reference,agreement_date,reviewer_id,completed_at,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,datetime('now','-42 days'),datetime('now','-34 days'))`)
+        .run(wsId,supplier.id,inherentId,supplierRisk.methodology.version,contractStatus,`DEMO-MSA-${supplier.id}`,date(-380),reviewerId,index===0?new Date(Date.now()-34*day).toISOString():null).lastInsertRowid);
+      supplierRisk.methodology.contractClauses.forEach((clause,clauseIndex) => {
+        const required=supplierRisk.contractClauseRequired(clause,moduleScope);
+        const reviewed=index===0 || clauseIndex<28;
+        contractItemInsert.run(contractId,clause.id,required?1:0,required?(reviewed?'Present - Satisfactory':'Not Reviewed'):'Not Required',required&&reviewed?`MSA §${Math.floor(clauseIndex/4)+1}.${clauseIndex%4+1}`:null,required&&reviewed?'Clause verified against the synthetic executed agreement.':'Conditional clause excluded by the approved module scope.',null);
+      });
+      if(index===0){
+        const residualRationale = 'Material cloud dependency remains, but reviewed DDQ evidence, contractual protections and monitoring support the accepted position.';
+        db.prepare(`INSERT INTO supplier_decisions
+          (workspace_id,supplier_id,decision,rationale,conditions,valid_until,residual_risk_score,methodology_version,decided_by,decider_name,
+           residual_risk_band,residual_risk_rationale,readiness_snapshot_json,inherent_assessment_id,ddq_assessment_id,contract_review_id,decided_at)
+          VALUES (?,?, 'approved',?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','-32 days'))`)
+          .run(wsId,supplier.id,'Residual risk accepted after independent review of the governed inherent-risk assessment, DDQ, contract and monitoring record.',
+            'Notify material service, control, location or subprocessor changes within the contractual period.',date(210),9,supplierRisk.methodology.version,
+            reviewerId,reviewer.name,'moderate',residualRationale,JSON.stringify({ready:true,blockers:[]}),inherentId,ddqId,contractId);
+        db.prepare(`UPDATE suppliers SET residual_risk_score=9,approved_by=?,approved_at=datetime('now','-32 days') WHERE id=?`).run(reviewer.name,supplier.id);
+      }
+    }
+    if(index>0) db.prepare(`UPDATE supplier_decisions SET superseded_at=datetime('now') WHERE supplier_id=? AND superseded_at IS NULL`).run(supplier.id);
+  });
 
   // Incident register with one closed record and one active material scenario.
   const closedIncident = db.prepare(`SELECT * FROM incidents WHERE workspace_id=? ORDER BY id LIMIT 1`).get(wsId);
@@ -645,13 +781,13 @@ function seedManagementExtensions(wsId, scenario) {
     VALUES (?,?,?,?,?,?,?,?,datetime('now',?),?,?)`);
   const servicePlanId = Number(planInsert.run(wsId,'Tier-one digital service continuity plan','Business-led continuity plan for customer processing, identity, communications and critical supplier coordination.','bcp',
     '1. Confirm incident command and business priorities.\n2. Validate customer-processing and identity impact.\n3. Invoke regional recovery and supplier escalation.\n4. Reconcile data and obtain business acceptance.\n5. Communicate recovery status and capture decisions.',
-    'Incident Commander — COO\nTechnology Recovery Lead — CTO\nSecurity Lead — CISO\nCustomer Communications — Chief Customer Officer','Remote operations plus secondary cloud region','active','-45 days',date(320),owner.id).lastInsertRowid);
+    'Incident Commander - COO\nTechnology Recovery Lead - CTO\nSecurity Lead - CISO\nCustomer Communications - Chief Customer Officer','Remote operations plus secondary cloud region','active','-45 days',date(320),owner.id).lastInsertRowid);
   const drPlanId = Number(planInsert.run(wsId,'Cloud platform disaster-recovery plan','Technical recovery plan for cloud production, data, identity and security telemetry.','dr',
     '1. Declare technical recovery.\n2. Protect evidence and freeze unsafe changes.\n3. Restore identity and core data services.\n4. Recover applications in dependency order.\n5. Validate RTO/RPO and hand back to business operations.',
-    'Technology Recovery Lead — CTO\nDatabase Recovery Lead — Head of Platform\nSecurity Validation — Security Operations','Secondary cloud region','active','-30 days',date(335),owner.id).lastInsertRowid);
+    'Technology Recovery Lead - CTO\nDatabase Recovery Lead - Head of Platform\nSecurity Validation - Security Operations','Secondary cloud region','active','-30 days',date(335),owner.id).lastInsertRowid);
   const crisisPlanId = Number(planInsert.run(wsId,'Executive cyber-crisis management plan','Executive decisions, legal assessment, customer communications and board escalation for a material cyber event.','crisis',
     '1. Establish decision authority.\n2. Confirm known facts, uncertainty and immediate harms.\n3. Assess notification and communication duties.\n4. Approve strategic response and customer commitments.\n5. Maintain decision log and commission the post-incident review.',
-    'Executive Sponsor — CEO\nIncident Commander — COO\nLegal — General Counsel\nSecurity — CISO\nCommunications — Corporate Affairs','Secure virtual crisis room','under_review','-120 days',date(20),owner.id).lastInsertRowid);
+    'Executive Sponsor - CEO\nIncident Commander - COO\nLegal - General Counsel\nSecurity - CISO\nCommunications - Corporate Affairs','Secure virtual crisis room','under_review','-120 days',date(20),owner.id).lastInsertRowid);
   const linkProcess = db.prepare(`INSERT INTO bcp_plan_processes (plan_id,process_id) VALUES (?,?)`);
   [processIds['Customer transaction processing'],processIds['Customer authentication'],processIds['Security monitoring and incident response']].forEach(id=>linkProcess.run(servicePlanId,id));
   [processIds['Customer transaction processing'],processIds['Customer authentication'],processIds['Security monitoring and incident response']].forEach(id=>linkProcess.run(drPlanId,id));
@@ -662,13 +798,299 @@ function seedManagementExtensions(wsId, scenario) {
   testInsert.run(wsId,drPlanId,'technical',date(-70),'Platform Engineering, Database Operations, Security Operations and service owners',
     'Loss of the primary cloud region during peak processing.','Core services recovered in 3.5 hours with 42 minutes of data exposure; business acceptance completed.','Identity dependency order should be made explicit in the recovery checklist.',3.5,0.7,1,'Update the dependency diagram and retain automated recovery-test evidence.',date(295),reviewerId);
   testInsert.run(wsId,servicePlanId,'tabletop',date(-35),'COO, CTO, CISO, Customer Operations, Legal, Communications and Azure service owner',
-    'Ransomware disrupts production while the primary cloud supplier reports a concurrent regional incident.','Decision authority and technical recovery were effective, but supplier escalation and customer-message approval exceeded the exercise objective.','Pre-authorise escalation contacts and customer-message decision thresholds.',5.5,1.2,0,'Owner: COO — update supplier escalation by '+date(30)+'; Owner: Corporate Affairs — approve message templates by '+date(45)+'.',date(90),reviewerId);
+    'Ransomware disrupts production while the primary cloud supplier reports a concurrent regional incident.','Decision authority and technical recovery were effective, but supplier escalation and customer-message approval exceeded the exercise objective.','Pre-authorise escalation contacts and customer-message decision thresholds.',5.5,1.2,0,'Owner: COO - update supplier escalation by '+date(30)+'; Owner: Corporate Affairs - approve message templates by '+date(45)+'.',date(90),reviewerId);
   testInsert.run(wsId,crisisPlanId,'simulation',date(-18),'CEO, COO, CISO, General Counsel, Privacy Officer and Corporate Affairs',
     'Suspected cross-tenant exposure requiring notification assessment and customer communications.','The team reached declaration, legal assessment and executive decisions within the exercise objectives.','Record alternative hypotheses and evidence-confidence changes more explicitly.',null,null,1,'Add an evidence-confidence field to the next exercise decision log.',date(165),reviewerId);
+
+  // Governed conclusions, delivery accountability, immutable reports and
+  // commercial records make this a complete demonstration, not a collection
+  // of disconnected sample registers.
+  const clientUser = db.prepare(`SELECT u.* FROM workspace_members wm JOIN users u ON u.id=wm.user_id
+    WHERE wm.workspace_id=? AND u.user_type='client' AND u.active=1 ORDER BY u.id LIMIT 1`).get(wsId);
+  db.prepare(`UPDATE control_instances SET review_status='approved',reviewed_by=?,reviewed_at=datetime('now','-12 days'),
+    review_reason='Independent review completed against the retained management-demo evidence.',last_verified_at=datetime('now','-12 days')
+    WHERE workspace_id=?`).run(reviewerId,wsId);
+
+  const csfEngagement = db.prepare(`SELECT * FROM csf_engagements WHERE workspace_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`).get(wsId);
+  if (csfEngagement) {
+    db.prepare(`INSERT OR IGNORE INTO csf_engagement_assignments (engagement_id,user_id,role_on_engagement,assigned_by) VALUES (?,?,'REVIEWER',?)`).run(csfEngagement.id,reviewerId,owner.id);
+    db.prepare(`INSERT OR IGNORE INTO csf_engagement_assignments (engagement_id,user_id,role_on_engagement,assigned_by) VALUES (?,?,'ENGAGEMENT_LEAD',?)`).run(csfEngagement.id,approverId,owner.id);
+    db.prepare(`UPDATE csf_profile_contexts SET status='approved',approved_by=?,approved_at=datetime('now','-11 days'),row_version=row_version+1,updated_at=datetime('now','-11 days') WHERE engagement_id=?`)
+      .run(approverId,csfEngagement.id);
+    db.prepare(`UPDATE csf_subcategory_assessments SET status='Approved',reviewed_by=?,reviewed_at=datetime('now','-13 days'),approved_by=?,approved_at=datetime('now','-11 days'),
+      review_conclusion='Independent review confirmed that the Policy and Practice conclusions follow the stated evidence gates, sampling basis and proprietary capability method.',
+      client_validation_status='not_requested',row_version=row_version+1,last_edited_by=?,last_edited_at=datetime('now','-11 days') WHERE engagement_id=?`)
+      .run(reviewerId,approverId,approverId,csfEngagement.id);
+    db.prepare(`UPDATE csf_findings SET status='Reviewed',updated_at=datetime('now','-10 days') WHERE engagement_id=? AND deleted_at IS NULL`).run(csfEngagement.id);
+    const versionId = csfModel.createVersion(db,csfEngagement,owner,'Approved FY26 enterprise cybersecurity maturity baseline');
+    db.prepare(`UPDATE csf_assessment_versions_v2 SET status='published',reviewed_by=?,reviewed_at=datetime('now','-9 days'),approved_by=?,approved_at=datetime('now','-8 days'),
+      published_by=?,published_at=datetime('now','-7 days'),is_current=1 WHERE id=?`).run(reviewerId,approverId,approverId,versionId);
+    db.prepare(`UPDATE csf_engagements SET status='Published',visible_in_portal=1,current_version='1.0',updated_at=datetime('now','-7 days') WHERE id=?`).run(csfEngagement.id);
+  }
+
+  const ws = db.prepare(`SELECT * FROM workspaces WHERE id=?`).get(wsId);
+  ws.frameworks = JSON.parse(ws.frameworks || '[]');
+
+  // The ISO assessment is a real maker-checker chain. Unsupported
+  // "implemented" claims are conservatively restated as partial until evidence
+  // exists, and every requirement receives a traceable pass snapshot.
+  db.prepare(`UPDATE control_instances SET status='not_implemented',maturity=0,
+    notes='The requirement was assessed and is not yet implemented; the required improvement remains tracked in the delivery plan.'
+    WHERE workspace_id=? AND requirement_id IN (
+      SELECT r.id FROM requirements r JOIN frameworks f ON f.id=r.framework_id WHERE f.code='iso27001'
+    ) AND status='not_assessed'`).run(wsId);
+  db.prepare(`UPDATE control_instances SET status='partially_implemented',maturity=2,
+    notes='Some expected practices operate, but implementation is not claimed as complete until relevant retained evidence is reviewed.'
+    WHERE workspace_id=? AND status='implemented' AND requirement_id IN (
+      SELECT r.id FROM requirements r JOIN frameworks f ON f.id=r.framework_id WHERE f.code='iso27001'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM evidence_requirement_links erl JOIN evidence e ON e.id=erl.evidence_id
+      WHERE erl.requirement_id=control_instances.requirement_id AND e.workspace_id=control_instances.workspace_id AND e.superseded_at IS NULL
+    )`).run(wsId);
+  const passId = Number(db.prepare(`INSERT INTO assessment_passes
+    (workspace_id,pass_number,label,notes,status,started_at,started_by)
+    VALUES (?,1,'FY26 ISO 27001 gap assessment','Synthetic management demonstration: independently reviewed, evidence-gated conclusions.','in_progress',datetime('now','-15 days'),?)`)
+    .run(wsId,owner.id).lastInsertRowid);
+  const passRows = db.prepare(`SELECT r.ref iso_item_id,cs.status,cs.applicability,cs.maturity,cs.scope_pct,
+      cs.inclusion_justification,cs.exclusion_justification,cs.notes,cs.assessment_answers
+    FROM requirements r JOIN frameworks f ON f.id=r.framework_id AND f.code='iso27001'
+    LEFT JOIN v_control_states cs ON cs.workspace_id=? AND cs.iso_item_id=r.ref
+    ORDER BY r.sort_order,r.id`).all(wsId);
+  const historyInsert = db.prepare(`INSERT INTO control_state_history
+    (workspace_id,iso_item_id,snapshot_at,changed_by,status,applicability,maturity,scope_pct,
+     inclusion_justification,exclusion_justification,notes,assessment_answers,pass_id)
+    VALUES (?,?,datetime('now','-14 days'),?,?,?,?,?,?,?,?,?,?)`);
+  passRows.forEach(row => historyInsert.run(wsId,row.iso_item_id,owner.id,row.status,row.applicability,row.maturity,row.scope_pct,
+    row.inclusion_justification,row.exclusion_justification,row.notes,row.assessment_answers,passId));
+  const pass = db.prepare(`SELECT * FROM assessment_passes WHERE id=?`).get(passId);
+  const passQuality = assessmentPassQuality.qualityForPass(db,wsId,pass);
+  if (!passQuality.ready) throw new Error(`Management demo ISO pass is not sign-off ready: ${assessmentPassQuality.gateMessage(passQuality)}`);
+  const assessmentProjection = consultingDelivery.materializeAssessmentPass(db,ws,pass,reviewerId);
+  db.prepare(`UPDATE assessment_passes SET status='completed',completed_at=datetime('now','-12 days'),completed_by=? WHERE id=?`)
+    .run(reviewerId,passId);
+
+  // Give the client journey a real, traceable fieldwork history. These records
+  // are the sources used by the progress view and phase gates; no client-facing
+  // phase is advanced by a presentation-only flag.
+  const interviewInsert = db.prepare(`INSERT INTO gap_fieldwork_interviews
+    (workspace_id,assessment_pass_id,title,objective,participant_role,owner_id,scheduled_at,duration_minutes,status,
+     completion_summary,completed_at,client_visible,created_by,updated_by,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,'completed',?,datetime('now',?),1,?,?,datetime('now',?),datetime('now',?))`);
+  [
+    ['Scope, governance and accountability','Validate the ISMS boundary, interested parties, decision rights and management oversight.','Executive sponsor and ISMS manager',clientUser?.id||owner.id,-55,75,'Scope, governance forums and accountable owners were confirmed; two boundary clarifications were incorporated into the approved scope statement.','-55 days'],
+    ['Identity and privileged-access operations','Walk through joiner, mover, leaver and privileged-access review practices using retained samples.','IT director and identity operations lead',owner.id,-48,90,'The operating walkthrough confirmed the identity lifecycle and identified an incomplete evidence trail for one privileged-role recertification population.','-48 days'],
+    ['Security monitoring and incident response','Validate monitoring coverage, escalation, evidence preservation and lessons-learned practices.','CISO and security operations lead',owner.id,-41,90,'Alert triage, incident command and evidence preservation were demonstrated; decision timestamps were sampled against two completed incident records.','-41 days'],
+    ['Supplier assurance and service resilience','Validate critical-supplier governance, contractual security controls and recovery dependencies.','Procurement lead and service continuity owner',clientUser?.id||owner.id,-34,75,'Critical supplier scope and recovery dependencies were confirmed; the client accepted one contractual-assurance improvement for remediation.','-34 days'],
+  ].forEach(([title,objective,role,ownerId,offset,duration,summary,stamp]) => interviewInsert.run(
+    wsId,passId,title,objective,role,ownerId,date(offset),duration,summary,stamp,owner.id,reviewerId,stamp,stamp));
+
+  const evidenceBackedWorkpapers = db.prepare(`SELECT w.id,w.engagement_id,r.ref,r.title,we.evidence_id
+    FROM consultant_workpapers w JOIN requirements r ON r.id=w.requirement_id
+    JOIN consultant_workpaper_evidence we ON we.workpaper_id=w.id
+    WHERE w.workspace_id=? AND r.ref IN ('annex-a.5.20','annex-a.5.24','annex-a.5.36')
+    GROUP BY w.id ORDER BY r.sort_order`).all(wsId);
+  if (evidenceBackedWorkpapers.length !== 3) throw new Error('Management demo requires three evidence-backed ISO workpapers for governed RFIs and findings.');
+
+  const rfiDefinitions = [
+    ['Executed critical-supplier security schedule','Provide the executed security schedule and the current critical-supplier review record.','Confirms contractual security, incident-notification and assurance obligations.','Executed supplier agreement, security schedule and completed supplier review.'],
+    ['Incident-response exercise decision record','Provide the approved exercise record, decision log and retained actions from the latest material scenario.','Confirms that incident command and evidence-preservation practices operate beyond policy.','Approved exercise report, timestamped decision log and action tracker.'],
+    ['Policy-compliance monitoring sample','Provide the latest policy-compliance monitoring results, exception decisions and closure evidence.','Tests whether compliance with information-security policy is monitored and acted upon.','Monitoring output, approved exception record and closure evidence.'],
+  ];
+  evidenceBackedWorkpapers.forEach((workpaper,index) => {
+    const [title,description,reason,examples] = rfiDefinitions[index];
+    const requestId = consultingDelivery.createClientRequest(db,ws,owner.id,workpaper.id,{
+      assignee_id:clientUser?.id,title,description,request_reason:reason,acceptable_examples:examples,
+      priority:index===0?'high':'normal',due_date:date(-28+index*3),evidence_period_start:date(-365),
+      evidence_period_end:date(-30),confidentiality:'client_confidential'
+    });
+    db.prepare(`INSERT INTO client_request_evidence (request_id,evidence_id,linked_by,linked_at)
+      VALUES (?,?,?,datetime('now',?))`).run(requestId,workpaper.evidence_id,clientUser?.id||owner.id,`${-27+index*3} days`);
+    db.prepare(`INSERT INTO client_request_events
+      (request_id,workspace_id,actor_id,event_type,note,metadata,created_at)
+      VALUES (?,?,?,'evidence_linked','Client supplied the agreed evidence package.',?,datetime('now',?))`).run(
+        requestId,wsId,clientUser?.id||owner.id,JSON.stringify({evidence_id:workpaper.evidence_id}),`${-27+index*3} days`);
+    db.prepare(`UPDATE client_requests SET status='accepted',response_note=?,reviewed_by=?,submitted_at=datetime('now',?),
+      closed_at=datetime('now',?),evidence_quality='sufficient',updated_at=datetime('now',?),version=version+1 WHERE id=?`).run(
+        'Requested evidence was provided and independently assessed as sufficient for the stated purpose.',reviewerId,
+        `${-27+index*3} days`,`${-25+index*3} days`,`${-25+index*3} days`,requestId);
+    db.prepare(`INSERT INTO client_request_events
+      (request_id,workspace_id,actor_id,event_type,from_status,to_status,note,created_at)
+      VALUES (?,?,?,'status_changed','open','accepted','Independent review found the submitted evidence sufficient.',datetime('now',?))`).run(
+        requestId,wsId,reviewerId,`${-25+index*3} days`);
+  });
+
+  const excludedRequirements = db.prepare(`SELECT r.id,r.ref,r.title FROM requirements r
+    JOIN frameworks f ON f.id=r.framework_id AND f.code='iso27001'
+    JOIN control_instances ci ON ci.requirement_id=r.id AND ci.workspace_id=?
+    WHERE ci.applicability='excluded' ORDER BY r.sort_order LIMIT 3`).all(wsId);
+  const defaultInsert = db.prepare(`INSERT INTO gap_declared_defaults
+    (workspace_id,assessment_pass_id,requirement_id,declaration,rationale,status,client_visible,recorded_by,confirmed_by,confirmed_at,updated_at)
+    VALUES (?,?,?,?,?,'confirmed',1,?,?,datetime('now','-30 days'),datetime('now','-30 days'))`);
+  excludedRequirements.forEach(row => defaultInsert.run(wsId,passId,row.id,
+    `${row.ref} is excluded from the current assessment boundary.`,
+    `The approved scope and operating model confirm that ${row.title.replace(/^A\.\d+\.\d+\s*/, '').toLowerCase()} is not performed within the assessed service boundary; the exclusion was validated during fieldwork.`,
+    owner.id,reviewerId));
+
+  db.prepare(`INSERT INTO gap_fieldwork_blockers
+    (workspace_id,assessment_pass_id,title,description,owner_id,priority,due_date,status,resolution_note,resolved_at,
+     client_visible,created_by,updated_by,created_at,updated_at)
+    VALUES (?,?,?,?,?,'high',?,'resolved',?,datetime('now','-29 days'),1,?,?,datetime('now','-38 days'),datetime('now','-29 days'))`)
+    .run(wsId,passId,'Privileged-access population was incomplete','The initial export omitted dormant administrative identities and could not support the planned sample.',
+      clientUser?.id||owner.id,date(-30),'A complete population was re-exported from the identity platform, reconciled to HR and used for the final sample.',owner.id,reviewerId);
+
+  const findingDefinitions = [
+    {
+      title:'Critical-supplier agreements do not consistently state incident-notification evidence requirements',severity:'high',finding_type:'gap',
+      condition_text:'Two of six sampled critical-supplier agreements state notification timeframes but do not require retention of the facts, decisions and communications supporting a material incident notification.',
+      criteria_text:'ISO 27001 Annex A.5.20 requires information-security requirements to be established and agreed with suppliers based on the type of supplier relationship.',
+      cause_text:'The current security schedule template predates the approved supplier incident-evidence standard.',
+      effect_text:'The organisation may receive a notification without enough retained information to make timely customer, regulatory and recovery decisions.',
+      recommendation_text:'Update the standard security schedule and remediate the two affected critical agreements at renewal or earlier risk review.',
+      remediation_plan:'Legal and Supplier Risk will issue the approved schedule, obtain amendments for the two affected suppliers and retain executed evidence.',
+      effort_estimate:'Medium, approximately 8 to 12 person-days',cost_estimate:'GBP 12,000 to GBP 18,000',
+      retest_criteria:'Inspect the approved template and executed amendments for both affected suppliers.',
+      closure_evidence_requirements:'Approved schedule, executed amendments and independent supplier-risk review.'
+    },
+    {
+      title:'Incident exercises do not consistently retain executive decision timestamps',severity:'medium',finding_type:'observation',
+      condition_text:'The latest two exercises retained outcomes and action owners, but one exercise record did not preserve timestamps for legal assessment and customer-message approval.',
+      criteria_text:'ISO 27001 Annex A.5.24 requires incident-management processes, roles and responsibilities to be planned and prepared.',
+      cause_text:'The exercise template captures decisions and actions but does not require a timestamp or decision authority for each material decision.',
+      effect_text:'Management may be unable to demonstrate that material notification and communication decisions were reached within required periods.',
+      recommendation_text:'Add decision time, authority, known facts and evidence confidence to the controlled exercise and incident decision log.',
+      remediation_plan:'Security Operations will deploy the revised decision log and validate it in the next executive simulation.',
+      effort_estimate:'Low, approximately 3 to 5 person-days',cost_estimate:'Internal effort',
+      retest_criteria:'Observe one completed simulation and inspect the approved decision log for all required fields.',
+      closure_evidence_requirements:'Approved template, completed simulation record and exercise-owner sign-off.'
+    },
+    {
+      title:'Policy-compliance exception closure is not sampled across all business units',severity:'medium',finding_type:'improvement',
+      condition_text:'Quarterly compliance reporting covers all business units, but closure-evidence sampling was performed only for technology and operations during the assessment period.',
+      criteria_text:'ISO 27001 Annex A.5.36 requires compliance with the organisation information-security policy, topic-specific policies, rules and standards to be regularly reviewed.',
+      cause_text:'The monitoring method defines reporting coverage but not a risk-based closure-evidence sample across business units.',
+      effect_text:'Reported closure rates may overstate the consistency of corrective action outside the sampled functions.',
+      recommendation_text:'Define and approve a risk-based cross-business sampling method and apply it to the next quarterly compliance review.',
+      remediation_plan:'GRC will approve a stratified sample, execute it next quarter and report exceptions to the management review.',
+      effort_estimate:'Low, approximately 5 person-days',cost_estimate:'Internal effort',
+      retest_criteria:'Reperform the approved sample and reconcile exceptions to retained closure evidence.',
+      closure_evidence_requirements:'Approved sampling method, completed sample and management-review record.'
+    }
+  ];
+  evidenceBackedWorkpapers.forEach((workpaper,index) => {
+    const definition = findingDefinitions[index];
+    const findingId = consultingDelivery.createFinding(db,ws,owner.id,workpaper.id,{
+      ...definition,client_visible:'1',owner_id:clientUser?.id,due_date:date(75+index*30)
+    });
+    consultingDelivery.linkFindingEvidence(db,ws,owner.id,findingId,{evidence_id:workpaper.evidence_id,evidence_role:'source'});
+    let finding = consultingDelivery.findingDetail(db,ws,findingId);
+    consultingDelivery.transitionFinding(db,ws,reviewerId,findingId,'confirm',{
+      row_version:finding.row_version,note:'Independent factual and evidence review confirmed the condition, criteria, effect and client-safe wording.'
+    });
+    finding = consultingDelivery.findingDetail(db,ws,findingId);
+    consultingDelivery.transitionFinding(db,ws,reviewerId,findingId,'plan',{
+      row_version:finding.row_version,owner_id:clientUser?.id||owner.id,due_date:date(75+index*30),
+      remediation_plan:definition.remediation_plan,effort_estimate:definition.effort_estimate,cost_estimate:definition.cost_estimate,
+      retest_criteria:definition.retest_criteria,closure_evidence_requirements:definition.closure_evidence_requirements
+    });
+  });
+
+  const snapshotInsert = db.prepare(`INSERT INTO gap_fieldwork_snapshots
+    (workspace_id,assessment_pass_id,week_ending,requirements_covered,requirements_total,interviews_completed,interviews_planned,
+     requests_received,requests_total,active_blockers,declared_defaults,snapshot_json,snapshot_hash,created_by,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now',?))`);
+  [
+    {offset:-49,covered:42,interviews:1,requests:0,blockers:1,defaults:0},
+    {offset:-35,covered:88,interviews:3,requests:1,blockers:1,defaults:1},
+    {offset:-21,covered:118,interviews:4,requests:3,blockers:0,defaults:excludedRequirements.length},
+  ].forEach(point => {
+    const payload = {version:1,workspace_id:wsId,assessment_pass_id:passId,week_ending:date(point.offset),metrics:{
+      requirementsCovered:point.covered,requirementsTotal:118,interviewsCompleted:point.interviews,interviewsPlanned:4,
+      requestsReceived:point.requests,requestsTotal:3,activeBlockers:point.blockers,declaredDefaults:point.defaults
+    },synthetic_demo:true};
+    const json = JSON.stringify(payload);
+    snapshotInsert.run(wsId,passId,date(point.offset),point.covered,118,point.interviews,4,point.requests,3,point.blockers,
+      point.defaults,json,hash(json),reviewerId,`${point.offset} days`);
+  });
+
+  const decideGapPhase = (phase,rationale) => {
+    const context = gapFieldwork.assessmentContext(db,ws);
+    if (!context.gates[phase]?.ready) {
+      const failed = context.gates[phase]?.checks.filter(check=>!check.pass).map(check=>check.label).join('; ');
+      throw new Error(`Management demo ${phase} gate is not ready: ${failed}`);
+    }
+    const decisionId = Number(db.prepare(`INSERT INTO gap_assessment_phase_decisions
+      (workspace_id,assessment_pass_id,phase,decision,rationale,decided_by,decided_at)
+      VALUES (?,?,?,'complete',?,?,datetime('now','-18 days'))`).run(wsId,passId,phase,rationale,reviewerId).lastInsertRowid);
+    db.prepare(`INSERT INTO gap_assessment_phase_events
+      (phase_decision_id,from_decision,to_decision,rationale,actor_id,created_at)
+      VALUES (?,NULL,'complete',?,?,datetime('now','-18 days'))`).run(decisionId,rationale,reviewerId);
+  };
+  decideGapPhase('mobilisation','Scope, sampling basis, applicability decisions, evidence expectations and the fieldwork plan were independently reviewed and approved.');
+  decideGapPhase('fieldwork','The assessment pass, interviews, RFIs, blockers and retained evidence were reviewed; fieldwork is complete and ready for client factual validation.');
+  decideGapPhase('validation','Client-visible findings were factually validated and the independent reviewer approved their condition, criteria, effect and remediation requirements.');
+
+  const plan = engagementDelivery.ensurePlan(db,ws,owner.id);
+  const deliverables = db.prepare(`SELECT * FROM engagement_delivery_deliverables WHERE plan_id=? ORDER BY id`).all(plan.id);
+  deliverables.forEach((deliverable,index) => {
+    const clientAction = clientUser && index >= 20 && index <= 22;
+    const status = clientAction ? (index === 22 ? 'submitted' : 'draft') : 'accepted';
+    db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=?,status=?,due_date=?,submitted_by=?,submitted_at=?,reviewed_by=?,reviewed_at=?,accepted_by=?,accepted_at=?,
+      decision_note=?,evidence_snapshot_json=?,row_version=row_version+1,updated_at=datetime('now') WHERE id=?`)
+      .run(clientAction?clientUser.id:owner.id,reviewerId,status,date(clientAction?28+index:-(18+index)),
+        status==='submitted'?clientUser.id:(status==='accepted'?owner.id:null),status==='submitted'||status==='accepted'?new Date(Date.now()-(30-index)*day).toISOString():null,
+        status==='accepted'?reviewerId:null,status==='accepted'?new Date(Date.now()-(29-index)*day).toISOString():null,
+        status==='accepted'?reviewerId:null,status==='accepted'?new Date(Date.now()-(28-index)*day).toISOString():null,
+        status==='accepted'?'Accepted after independent review against the stated criteria.':status==='submitted'?'Submitted by the client team and awaiting independent review.':null,
+        status==='accepted'?JSON.stringify({schema_version:1,accepted:true,owner_id:owner.id,approver_id:reviewerId,recorded_at:new Date().toISOString()}):null,deliverable.id);
+  });
+  db.prepare(`SELECT id,name FROM engagement_delivery_phases WHERE plan_id=? AND sort_order<=7 ORDER BY sort_order`).all(plan.id)
+    .forEach(phase => engagementDelivery.decideGate(db,ws,reviewerId,phase.id,'passed',
+      `${phase.name} deliverables were accepted and the phase evidence snapshot was independently reviewed.`,null));
+
+  const consultingEngagement = consultingDelivery.ensureEngagement(db,ws,owner.id);
+  db.prepare(`UPDATE consulting_engagements SET name='Aurelis integrated assurance and implementation programme',engagement_type='implementation',status='active',
+    quality_reviewer_id=?,client_sponsor_id=?,assessment_period_start=?,assessment_period_end=?,start_date=?,target_date=?,row_version=row_version+1,updated_at=datetime('now') WHERE id=?`)
+    .run(reviewerId,clientUser&&clientUser.id,date(-180),date(-1),date(-210),date(120),consultingEngagement.id);
+  db.prepare(`INSERT OR IGNORE INTO consulting_engagement_team (engagement_id,user_id,role,planned_hours,assigned_by) VALUES (?,?,'quality_reviewer',160,?)`).run(consultingEngagement.id,reviewerId,owner.id);
+  if (clientUser) db.prepare(`INSERT OR IGNORE INTO consulting_engagement_team (engagement_id,user_id,role,planned_hours,assigned_by) VALUES (?,?,'client_sponsor',80,?)`).run(consultingEngagement.id,clientUser.id,owner.id);
+  db.prepare(`UPDATE engagement_commercials SET currency='GBP',contract_value_minor=18500000,planned_hours=1650,internal_cost_rate_minor=6500,
+    billing_model='milestone',billing_status='in_progress',invoiced_minor=12500000,collected_minor=11000000,updated_by=?,updated_at=datetime('now'),row_version=row_version+1
+    WHERE engagement_id=?`).run(approverId,consultingEngagement.id);
+  const timeInsert = db.prepare(`INSERT INTO engagement_time_entries (engagement_id,user_id,work_date,hours,category,description,billable,approved_by,approved_at)
+    VALUES (?,?,?,?,?,?,1,?,datetime('now','-2 days'))`);
+  [['planning',18],['planning',20],['assessment',22],['assessment',23],['assessment',21],['assessment',19],['client_meeting',16],['client_meeting',18],
+    ['review',20],['review',21],['review',18],['reporting',22],['reporting',20],['remediation',23],['remediation',22],['remediation',20],['remediation',19],['administration',12]].forEach(([category,hours],index) =>
+    timeInsert.run(consultingEngagement.id,index%2?reviewerId:owner.id,date(-60+index*8),hours,category,`${category.replace('_',' ')} work completed for the integrated assurance programme.`,approverId));
+
+  const consultingReportId = consultingDelivery.generateReport(db,ws,owner.id,consultingEngagement.id,{
+    report_type:'assessment',title:'Aurelis ISO 27001 gap assessment report'
+  });
+  consultingDelivery.transitionReport(db,ws,reviewerId,consultingReportId,'approve',
+    'Independent quality review confirmed the frozen workpapers, evidence links and assessment conclusions.');
+  consultingDelivery.transitionReport(db,ws,approverId,consultingReportId,'publish',
+    'Approved for controlled release to the client portal after management review.');
+  consultingDelivery.event(db,wsId,consultingEngagement.id,approverId,'assessment_pass',passId,
+    'published_report_linked',{ report_id:consultingReportId,assessment_projection:assessmentProjection });
+
+  const assuranceRun = assuranceReports.createRun(db,wsId,owner.id,'executive_posture',{
+    title:'Aurelis executive security posture',reporting_period_start:date(-180),reporting_period_end:date(-1),
+    cutoff_at:new Date().toISOString(),framework:'Integrated ISO 27001, ISO 42001 and NIST CSF programme',audience:'Board and executive risk committee',
+    classification:'Confidential',watermark:'Management demonstration',prepared_for:scenario.short,prepared_by:firm.name,
+    executive_summary:'A governed, evidence-backed demonstration of the current security, AI governance, supplier and resilience position. Synthetic data is clearly identified and material actions remain visible.',
+  });
+  db.prepare(`UPDATE assurance_report_runs SET status='published',submitted_by=?,submitted_at=datetime('now','-6 days'),reviewed_by=?,reviewed_at=datetime('now','-5 days'),
+    approved_by=?,approved_at=datetime('now','-4 days'),approval_note='Independent review completed; source lineage and decision-data quality accepted.',published_by=?,published_at=datetime('now','-3 days') WHERE id=?`)
+    .run(owner.id,reviewerId,approverId,approverId,assuranceRun.id);
+  db.prepare(`INSERT INTO assurance_report_events (run_id,action,from_status,to_status,note,actor_id,snapshot_hash) VALUES (?,'published','approved','published',?,?,?)`)
+    .run(assuranceRun.id,'Approved immutable snapshot released to the client portal.',approverId,assuranceRun.snapshot_hash);
 }
 
 function managementSummary(wsId) {
   const scalar = sql => db.prepare(sql).get(wsId).c;
+  const workspace = db.prepare(`SELECT * FROM workspaces WHERE id=?`).get(wsId);
+  const readiness = computeReadiness(workspace);
+  const evidenceFormats = new Set(db.prepare(`SELECT filename FROM evidence WHERE workspace_id=?`).all(wsId)
+    .map(row => path.extname(row.filename || '').slice(1).toLowerCase()).filter(Boolean)).size;
   return {
     assets: scalar(`SELECT COUNT(*) c FROM assets WHERE workspace_id=?`),
     risks: scalar(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`),
@@ -677,18 +1099,37 @@ function managementSummary(wsId) {
     evidence: scalar(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`),
     audits: scalar(`SELECT COUNT(*) c FROM audits WHERE workspace_id=?`),
     suppliers: scalar(`SELECT COUNT(*) c FROM suppliers WHERE workspace_id=?`),
-    questionnaires: scalar(`SELECT COUNT(*) c FROM supplier_questionnaires WHERE workspace_id=?`),
+    dueDiligenceAssessments: scalar(`SELECT COUNT(*) c FROM supplier_ddq_assessments WHERE workspace_id=?`),
     incidents: scalar(`SELECT COUNT(*) c FROM incidents WHERE workspace_id=?`),
     changes: scalar(`SELECT COUNT(*) c FROM changes WHERE workspace_id=?`),
     continuityProcesses: scalar(`SELECT COUNT(*) c FROM bcp_processes WHERE workspace_id=?`),
     continuityPlans: scalar(`SELECT COUNT(*) c FROM bcp_plans WHERE workspace_id=?`),
     continuityExercises: scalar(`SELECT COUNT(*) c FROM bcp_tests WHERE workspace_id=?`),
     csfOutcomes: db.prepare(`SELECT COUNT(*) c FROM csf_subcategory_assessments a JOIN csf_engagements e ON e.id=a.engagement_id WHERE e.workspace_id=?`).get(wsId).c,
+    approvedCsfOutcomes: db.prepare(`SELECT COUNT(*) c FROM csf_subcategory_assessments a JOIN csf_engagements e ON e.id=a.engagement_id WHERE e.workspace_id=? AND a.status='Approved'`).get(wsId).c,
+    publishedReports: db.prepare(`SELECT
+      (SELECT COUNT(*) FROM consulting_report_snapshots WHERE workspace_id=? AND status='published') +
+      (SELECT COUNT(*) FROM assurance_report_runs WHERE workspace_id=? AND status='published') c`).get(wsId,wsId).c,
+    namedDeliverables: scalar(`SELECT COUNT(*) c FROM engagement_delivery_deliverables WHERE workspace_id=? AND owner_id IS NOT NULL AND approver_id IS NOT NULL`),
+    signedAssessmentPasses: scalar(`SELECT COUNT(*) c FROM assessment_passes WHERE workspace_id=? AND status='completed' AND started_by<>completed_by`),
+    frozenWorkpapers: scalar(`SELECT COUNT(*) c FROM consultant_workpapers WHERE workspace_id=? AND status='frozen'`),
+    governanceRecords: scalar(`SELECT COUNT(*) c FROM audits WHERE workspace_id=? AND status='complete'`) + scalar(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete'`),
+    reviewedFindings: scalar(`SELECT COUNT(*) c FROM csf_findings f JOIN csf_engagements e ON e.id=f.engagement_id WHERE e.workspace_id=? AND f.status='Reviewed'`),
+    confirmedIsoFindings: scalar(`SELECT COUNT(*) c FROM consulting_findings WHERE workspace_id=? AND client_visible=1 AND status IN ('confirmed','remediation_planned','ready_for_validation','closed')`),
+    fieldworkInterviews: scalar(`SELECT COUNT(*) c FROM gap_fieldwork_interviews WHERE workspace_id=? AND status='completed'`),
+    resolvedRfis: scalar(`SELECT COUNT(*) c FROM client_requests WHERE workspace_id=? AND status='accepted' AND evidence_quality='sufficient'`),
+    fieldworkSnapshots: scalar(`SELECT COUNT(*) c FROM gap_fieldwork_snapshots WHERE workspace_id=?`),
+    gapPhaseDecisions: scalar(`SELECT COUNT(*) c FROM gap_assessment_phase_decisions WHERE workspace_id=? AND decision='complete'`),
+    passedPlanGates: db.prepare(`SELECT COUNT(*) c FROM engagement_delivery_gate_decisions g JOIN engagement_delivery_phases p ON p.id=g.phase_id JOIN engagement_delivery_plans ep ON ep.id=p.plan_id WHERE ep.workspace_id=? AND g.decision='passed'`).get(wsId).c,
+    clientAccounts: scalar(`SELECT COUNT(*) c FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=? AND u.user_type='client' AND u.active=1`),
+    evidenceFormats,
+    requiredRecords: readiness.records.mandatory.found,
+    commercialValue: db.prepare(`SELECT COALESCE(SUM(ec.contract_value_minor),0) c FROM engagement_commercials ec JOIN consulting_engagements e ON e.id=ec.engagement_id WHERE e.workspace_id=?`).get(wsId).c,
   };
 }
 
 function assertManagementSummary(summary) {
-  const minimums = { assets:6,risks:6,requirements:183,documents:12,evidence:60,audits:2,suppliers:3,questionnaires:2,incidents:2,changes:4,continuityProcesses:4,continuityPlans:3,continuityExercises:3,csfOutcomes:106 };
+  const minimums = { assets:6,risks:6,requirements:183,documents:12,evidence:60,evidenceFormats:4,requiredRecords:15,audits:2,governanceRecords:2,reviewedFindings:5,confirmedIsoFindings:3,fieldworkInterviews:4,resolvedRfis:3,fieldworkSnapshots:3,gapPhaseDecisions:3,passedPlanGates:7,clientAccounts:1,suppliers:3,dueDiligenceAssessments:3,incidents:2,changes:4,continuityProcesses:4,continuityPlans:3,continuityExercises:3,csfOutcomes:106,approvedCsfOutcomes:106,publishedReports:2,namedDeliverables:25,signedAssessmentPasses:1,frozenWorkpapers:118,commercialValue:18500000 };
   const failures = Object.entries(minimums).filter(([key,value]) => summary[key] < value);
   if (failures.length) throw new Error(`Management demo is incomplete: ${failures.map(([key,value])=>`${key} ${summary[key]}/${value}`).join(', ')}`);
 }
@@ -702,9 +1143,9 @@ const created = db.transaction(() => {
   const results = [];
   selectedScenarios.forEach((scenario) => {
     const scenarioIndex = SCENARIOS.findIndex(item=>item.key===scenario.key);
-    removePriorDemo(scenario);
+    const stableId = removePriorDemo(scenario);
     const clientUserId = ensureClientUser(scenario);
-    const wsId = createWorkspace(scenario, clientUserId);
+    const wsId = createWorkspace(scenario, clientUserId, stableId);
     seedIntake(wsId, scenario);
     seedOperatingRegisters(wsId, scenario);
     for (const framework of scenario.frameworks) {

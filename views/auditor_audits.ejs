@@ -27,7 +27,7 @@
                       : ['fieldwork','draft_report','reporting'].includes(statusS) ? 'warn'
                       : ['planned','scoping'].includes(statusS) ? 'neutral' : 'neutral';
           %>
-          <span class="chip chip-<%= sk %>" style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '—' %></span>
+          <span class="chip chip-<%= sk %>" style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '-' %></span>
         </div>
       </div>
       <div class="panel-pad" style="padding-top:14px;padding-bottom:14px;">
@@ -52,7 +52,7 @@
                                 : ['open'].includes(fstatusS) ? 'bad' : 'neutral';
               %>
                 <tr>
-                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '—' %></span></td>
+                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '-' %></span></td>
                   <td>
                     <%= f.description %>
                     <% if (f.iso_item_id) { %><div class="meta text-sm" style="margin-top:2px;font-family:ui-monospace,monospace;"><%= String(f.iso_item_id).replace('annex-','').toUpperCase() %><% if (f.iso_title) { %> · <%= f.iso_title %><% } %></div><% } %>

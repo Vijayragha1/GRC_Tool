@@ -31,3 +31,24 @@ test('upload validation checks content signatures rather than trusting names', (
     else process.env.UPLOAD_AV_MODE = previous;
   }
 });
+
+test('memory-backed uploads receive the same signature inspection', () => {
+  const previous = process.env.UPLOAD_AV_MODE;
+  process.env.UPLOAD_AV_MODE = 'off';
+  try {
+    const csv = Buffer.from('owner,status\nPriya,approved\n', 'utf8');
+    assert.equal(uploadSecurity.validateUpload({
+      buffer: csv, originalname: 'evidence.csv', size: csv.length
+    }, new Set(['csv'])).ok, true);
+
+    const disguisedBinary = Buffer.from([0x4d, 0x5a, 0x00, 0x01, 0x02]);
+    const rejected = uploadSecurity.validateUpload({
+      buffer: disguisedBinary, originalname: 'evidence.csv', size: disguisedBinary.length
+    }, new Set(['csv']));
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.message, /do not match/i);
+  } finally {
+    if (previous === undefined) delete process.env.UPLOAD_AV_MODE;
+    else process.env.UPLOAD_AV_MODE = previous;
+  }
+});

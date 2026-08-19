@@ -6,20 +6,17 @@
     <div class="page-subtitle">Govern supplier intake, due diligence, risk decisions, ongoing oversight and exit from one defensible record.</div>
   </div>
   <div class="row">
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/supplier-methodology">Assessment configuration</a>
     <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/vendors/export.csv">Export register</a>
     <button onclick="document.getElementById('newV').classList.toggle('hidden')" class="btn btn-primary">Add supplier</button>
   </div>
 </div>
 
 <% if (supplierTruth && supplierTruth.issues.length) { %>
-  <div class="panel" style="margin-bottom:16px;padding:14px 18px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center">
-    <div>
-      <div class="text-xs" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:<%= supplierTruth.counts.critical ? '#b42318' : '#b54708' %>;margin-bottom:4px">TPRM decision-data health</div>
-      <div style="font-size:13px;line-height:1.45"><strong><%= supplierTruth.issues.length %> portfolio quality rule<%= supplierTruth.issues.length===1?'':'s' %> open.</strong> <%= supplierTruth.issues.slice(0,3).map(issue => issue.title).join(' · ') %></div>
-      <div class="meta" style="margin-top:3px">These gaps affect whether residual-risk and approval decisions are defensible—not merely whether the supplier record exists.</div>
-    </div>
-    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/data-quality?domain=suppliers">Review supplier data →</a>
-  </div>
+  <section class="supplier-exceptions" aria-labelledby="supplier-exceptions-title">
+    <div class="supplier-exceptions-head"><div><h2 id="supplier-exceptions-title">Portfolio exceptions</h2><p>Complete these records before relying on supplier approval or residual-risk decisions.</p></div><a href="/workspaces/<%= ws.id %>/data-quality?domain=suppliers">View all checks →</a></div>
+    <div class="supplier-exception-grid"><% supplierTruth.issues.slice(0,4).forEach(issue => { const cleanedTitle = issue.title.replace(/^\d+\s+/, '').replace(/^Active suppliers /, 'Suppliers '); const tileTitle = cleanedTitle.charAt(0).toUpperCase() + cleanedTitle.slice(1); const tileDetail = issue.detail.startsWith('The underlying records are present') ? issue.impact : issue.detail; %><a class="panel supplier-exception supplier-exception-<%= issue.severity %>" href="<%= issue.href %>"><span><%= issue.severity === 'critical' || issue.severity === 'high' ? 'Needs action' : 'Improve record' %></span><strong><%= issue.count %></strong><h3><%= tileTitle %></h3><p><%= tileDetail %></p><b><%= issue.cta %> →</b></a><% }) %></div>
+  </section>
 <% } %>
 
 <div style="display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border);overflow-x:auto;">
@@ -29,7 +26,7 @@
 </div>
 
 <div id="newV" class="hidden panel" style="margin-bottom:18px">
-  <div class="panel-head"><h2>Supplier intake</h2><span class="meta">Creates the accountable TPRM record and initial risk snapshot</span></div>
+  <div class="panel-head"><h2>Supplier intake</h2><span class="meta">Capture identity and accountability first; risk is assessed in the governed 25-question workflow</span></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/vendors" class="panel-pad" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
     <div style="grid-column:span 2"><label class="label">Legal / trading name</label><input class="input" name="name" required></div>
     <div><label class="label">Service category</label><input class="input" name="service_category" placeholder="Cloud, payroll, legal…"></div>
@@ -39,21 +36,9 @@
     <div><label class="label">Relationship owner</label><input class="input" name="relationship_owner"></div>
     <div><label class="label">Security reviewer</label><input class="input" name="security_reviewer"></div>
     <div><label class="label">Privacy owner</label><input class="input" name="privacy_owner"></div>
-    <div><label class="label">Processing purpose</label><input class="input" name="processing_purpose"></div>
-    <div><label class="label">Data categories</label><input class="input" name="data_categories" placeholder="Employee PII, customer data…"></div>
-    <div><label class="label">Hosting locations</label><input class="input" name="hosting_locations" placeholder="US, EU, India…"></div>
-    <div><label class="label">Business criticality</label><select class="select" name="business_criticality"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></div>
-    <div><label class="label">Data access</label><select class="select" name="data_access"><option>none</option><option>public</option><option>internal</option><option>confidential</option><option>restricted</option></select></div>
-    <div><label class="label">Data volume</label><select class="select" name="data_volume"><option>none</option><option selected>low</option><option>medium</option><option>high</option></select></div>
-    <div><label class="label">Dependency</label><select class="select" name="dependency_type"><option value="multi_source">Multi-source</option><option value="alternative">Alternative available</option><option value="single_source">Single source</option></select></div>
-    <div><label class="label">Location / headquarters</label><input class="input" name="location"></div>
-    <div><label class="label">Regulatory exposure</label><input class="input" name="regulatory_exposure" placeholder="GDPR, HIPAA, PCI DSS…"></div>
-    <div><label class="label">Critical processes supported</label><input class="input" name="critical_processes"></div>
-    <div><label class="label">System access</label><input class="input" name="system_access" placeholder="SSO, API, privileged…"></div>
-    <div><label class="label">RTO (hours)</label><input class="input" type="number" min="0" name="rto_hours"></div>
-    <div><label class="label">RPO (hours)</label><input class="input" type="number" min="0" name="rpo_hours"></div>
-    <div style="grid-column:span 2"><label class="label">Exit strategy</label><input class="input" name="exit_strategy" placeholder="Replacement, transition and data-return approach"></div>
-    <div style="grid-column:1/-1"><button class="btn btn-primary">Create supplier record</button></div>
+    <div style="grid-column:span 2"><label class="label">Initial service context</label><input class="input" name="processing_purpose" placeholder="Why the organisation is engaging this supplier"></div>
+    <div><label class="label">Headquarters / primary location</label><input class="input" name="location"></div>
+    <div style="grid-column:1/-1"><div class="meta" style="margin-bottom:10px">After creation, the business, technology and privacy owners complete the weighted inherent-risk assessment. The resulting tier automatically selects the 22, 53, 112 or 139-question DDQ and any conditional modules.</div><button class="btn btn-primary">Create and assess inherent risk</button></div>
   </form>
 </div>
 
@@ -70,10 +55,10 @@
   <div class="panel" style="margin-bottom:14px;">
     <div class="panel-head"><h2>Action queue</h2><span class="meta">Items requiring a human decision or follow-up</span></div>
     <div class="panel-pad" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;">
-      <div><div class="sec-label">Overdue reviews</div><% actionQueue.overdueReviews.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.id %>?tab=reviews"><strong><%= x.name %></strong><div class="meta"><%= x.next_review_date %> · <%= x.tier.replace('_',' ') %></div></a><% }) %><% if(!actionQueue.overdueReviews.length){ %><div class="meta">Nothing overdue</div><% } %></div>
-      <div><div class="sec-label">Assessments due</div><% actionQueue.dueAssessments.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>/questionnaires/<%= x.id %>"><strong><%= x.supplier_name %></strong><div class="meta"><%= x.template_name %> · <%= x.due_date %></div></a><% }) %><% if(!actionQueue.dueAssessments.length){ %><div class="meta">Nothing due in 14 days</div><% } %></div>
-      <div><div class="sec-label">Expiring evidence</div><% actionQueue.expiringEvidence.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>?tab=documents"><strong><%= x.supplier_name %></strong><div class="meta"><%= x.name %> · <%= x.expiry_date %></div></a><% }) %><% if(!actionQueue.expiringEvidence.length){ %><div class="meta">Nothing expiring in 30 days</div><% } %></div>
-      <div><div class="sec-label">Overdue findings</div><% actionQueue.overdueFindings.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>?tab=findings"><strong><%= x.supplier_name %></strong><div class="meta"><%= x.title %> · <%= x.due_date %></div></a><% }) %><% if(!actionQueue.overdueFindings.length){ %><div class="meta">Nothing overdue</div><% } %></div>
+      <div><div class="sec-label">Inherent risk approval</div><% actionQueue.inherentApprovals.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>/inherent-risk"><strong><%= x.supplier_name %></strong><div class="meta"><%= tierLabel(x.assigned_tier) %> · <%= Number(x.weighted_score).toFixed(2) %>/100</div></a><% }) %><% if(!actionQueue.inherentApprovals.length){ %><div class="meta">Nothing awaiting approval</div><% } %></div>
+      <div><div class="sec-label">Due-diligence work</div><% actionQueue.dueAssessments.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>/due-diligence"><strong><%= x.supplier_name %></strong><div class="meta"><%= x.status.replace(/_/g,' ') %><% if(x.due_date){ %> · due <%= x.due_date %><% } %></div></a><% }) %><% if(!actionQueue.dueAssessments.length){ %><div class="meta">No open DDQs</div><% } %></div>
+      <div><div class="sec-label">Contract review</div><% actionQueue.contractReviews.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>/contract-review"><strong><%= x.supplier_name %></strong><div class="meta"><%= x.open_items %> required clause<%= x.open_items===1?'':'s' %> open</div></a><% }) %><% if(!actionQueue.contractReviews.length){ %><div class="meta">No contract reviews open</div><% } %></div>
+      <div><div class="sec-label">Risk decision</div><% actionQueue.readyDecisions.forEach(x=>{ %><a class="link-muted" style="display:block;padding:6px 0" href="/workspaces/<%= ws.id %>/vendors/<%= x.supplier_id %>#decision"><strong><%= x.supplier_name %></strong><div class="meta"><%= tierLabel(x.assigned_tier) %> · all gates passed</div></a><% }) %><% if(!actionQueue.readyDecisions.length){ %><div class="meta">No decisions awaiting approval</div><% } %></div>
     </div>
   </div>
 
@@ -85,14 +70,14 @@
 
 <% if (section === 'register') { %>
   <div class="page-head" style="margin-bottom:12px"><div><h2>Supplier register</h2><div class="meta">Current and historical third parties</div></div><select onchange="window.location='?section=register&filter='+this.value" class="select" style="width:190px"><option value="active" <%= filter==='active'?'selected':'' %>>Active</option><option value="all" <%= filter==='all'?'selected':'' %>>All including archived</option><option value="review" <%= filter==='review'?'selected':'' %>>Review due</option><option value="high_risk" <%= filter==='high_risk'?'selected':'' %>>High residual risk</option></select></div>
-  <div class="panel" style="overflow:auto"><table class="t"><thead><tr><th>Supplier</th><th>Owner</th><th>Tier</th><th>Inherent</th><th>Residual</th><th>Stage</th><th>Evidence</th><th>Assessment</th><th>Next review</th></tr></thead><tbody>
-    <% vendors.forEach(v=>{ %><tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= v.id %>'"><td><strong><%= v.name %></strong><div class="meta"><%= v.service_provided||'Service not described' %></div></td><td><%= v.business_owner||v.relationship_owner||'-' %></td><td><span class="tag <%= v.tier==='tier_1'?'tag-danger':v.tier==='tier_2'?'tag-warn':'tag-neutral' %>"><%= (v.tier||'tier_2').replace('_',' ') %></span></td><td class="num"><%= v.inherent_risk_score||'-' %></td><td class="num"><strong><%= v.residual_risk_score||'-' %></strong></td><td><span class="status s-<%= v.archived_at||v.lifecycle_stage==='terminated'?'closed':'in_progress' %>"><%= v.archived_at?'archived':(v.lifecycle_stage||'active').replace(/_/g,' ') %></span></td><td class="meta"><%= v.doc_count %><% if(v.expired_docs){ %> · <span class="text-danger"><%= v.expired_docs %> expired</span><% } %></td><td class="meta"><%= v.q_count %><% if(v.best_q_score!==null){ %> · <%= v.best_q_score %>%<% } %></td><td class="meta"><%= v.next_review_date||'-' %></td></tr><% }) %>
-    <% if(!vendors.length){ %><tr><td colspan="9" class="t-empty">No suppliers match this view.</td></tr><% } %>
+  <div class="panel" style="overflow:auto"><table class="t"><thead><tr><th>Supplier</th><th>Owner</th><th>Inherent assessment</th><th>Tier / score</th><th>Due diligence</th><th>Contract</th><th>Decision / residual risk</th><th>Next review</th></tr></thead><tbody>
+    <% vendors.forEach(v=>{ const authTier=v.workbook_tier; %><tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= v.id %>'"><td><strong><%= v.name %></strong><div class="meta"><%= v.service_provided||'Service not described' %></div></td><td><%= v.business_owner||v.relationship_owner||'-' %></td><td><span class="status s-<%= v.inherent_status==='approved'?'done':v.inherent_status==='submitted'?'in_progress':'todo' %>"><%= (v.inherent_status||'not started').replace(/_/g,' ') %></span></td><td><% if(authTier){ %><strong><%= tierLabel(authTier) %></strong><div class="meta"><%= v.workbook_inherent_score==null?'-':Number(v.workbook_inherent_score).toFixed(2) %> / 100</div><% } else { %><span class="meta">Not assigned</span><% } %></td><td><span class="status s-<%= v.ddq_status==='complete'?'done':v.ddq_status?'in_progress':'todo' %>"><%= (v.ddq_status||'not started').replace(/_/g,' ') %></span></td><td><span class="status s-<%= v.contract_status==='complete'?'done':v.contract_status?'in_progress':'todo' %>"><%= (v.contract_status||'not started').replace(/_/g,' ') %></span></td><td><% if(v.decision_status){ %><strong><%= v.decision_status.replace(/_/g,' ') %></strong><div class="meta"><%= v.residual_risk_band ? v.residual_risk_band+' residual risk' : 'Residual band not recorded' %></div><% } else { %><span class="meta">Awaiting governed decision</span><% } %></td><td class="meta"><%= v.next_review_date||'-' %></td></tr><% }) %>
+    <% if(!vendors.length){ %><tr><td colspan="8" class="t-empty">No suppliers match this view.</td></tr><% } %>
   </tbody></table></div><% if(pg){ %><%- include('partials/pager',{pg,pagerHref}) %><% } %>
 <% } %>
 
 <% if (section === 'assessments') { %>
-  <div class="panel" style="overflow:auto"><div class="panel-head"><h2>Due diligence assessments</h2><span class="meta">Vendor invitation and internal review status</span></div><table class="t"><thead><tr><th>Supplier</th><th>Questionnaire</th><th>Vendor status</th><th>Due</th><th>Progress</th><th>Score</th><th>Risk</th></tr></thead><tbody><% assessments.forEach(q=>{ %><tr onclick="location='/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/questionnaires/<%= q.id %>'" style="cursor:pointer"><td><strong><%= q.supplier_name %></strong><div class="meta"><%= q.tier.replace('_',' ') %></div></td><td><%= q.template_name %></td><td><span class="status s-<%= q.invitation_status==='submitted'||q.status==='reviewed'?'done':q.invitation_status==='in_progress'?'in_progress':'todo' %>"><%= (q.status==='reviewed'?'reviewed':q.invitation_status||'not sent').replace(/_/g,' ') %></span></td><td class="meta"><%= q.due_date||'-' %></td><td><%= q.answered_questions %>/<%= q.total_questions %></td><td><%= q.score===null?'-':q.score+'%' %></td><td><%= q.risk_rating||'-' %></td></tr><% }) %><% if(!assessments.length){ %><tr><td colspan="7" class="t-empty">No due diligence assessments yet. Open a supplier and create one from its Assessments tab.</td></tr><% } %></tbody></table></div>
+  <div class="panel" style="overflow:auto"><div class="panel-head"><h2>Governed due diligence</h2><span class="meta">Tiered questionnaire, conditional modules, evidence validation and internal review</span></div><table class="t"><thead><tr><th>Supplier</th><th>Scope</th><th>Status</th><th>Due</th><th>Review complete</th><th>Vendor</th></tr></thead><tbody><% governedAssessments.forEach(q=>{ %><tr onclick="location='/workspaces/<%= ws.id %>/vendors/<%= q.supplier_id %>/due-diligence'" style="cursor:pointer"><td><strong><%= q.supplier_name %></strong></td><td><%= tierLabel(q.tier) %><div class="meta"><%= q.total_questions %> scoped questions</div></td><td><span class="status s-<%= q.status==='complete'?'done':q.status==='draft'?'todo':'in_progress' %>"><%= q.status.replace(/_/g,' ') %></span></td><td class="meta"><%= q.due_date||'-' %></td><td><%= q.completed_questions %>/<%= q.total_questions %></td><td><%= q.vendor_contact_email||'-' %></td></tr><% }) %><% if(!governedAssessments.length){ %><tr><td colspan="6" class="t-empty">No governed DDQs yet. Complete and approve inherent risk for a supplier first.</td></tr><% } %></tbody></table></div>
 <% } %>
 
 <% if (section === 'findings') { %>

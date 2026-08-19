@@ -1,0 +1,10 @@
+<div class="subtabs perf-tabs" aria-label="Performance and objectives">
+  <% [
+    ['objectives','Objectives','/objectives'],
+    ['adopted','Measures','/metrics/adopted'],
+    ['readings','Readings','/metrics/readings'],
+    ['library','Measure library','/metrics/library']
+  ].forEach(([key,label,path]) => { %>
+    <a href="/workspaces/<%= ws.id %><%= path %>" class="subtab <%= active === key ? 'is-active' : '' %>"><%= label %></a>
+  <% }) %>
+</div>

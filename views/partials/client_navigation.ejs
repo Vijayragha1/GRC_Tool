@@ -94,8 +94,7 @@
       items: csfOnly ? [
         { label: 'Assets', href: `/workspaces/${ws.id}/assets`, active: ['assets'], shortcut: 'g a' },
         { label: 'Risk register', href: `/workspaces/${ws.id}/risks`, active: ['risks'], shortcut: 'g r' },
-        { label: 'Security objectives', href: `/workspaces/${ws.id}/objectives`, active: ['objectives'] },
-        { label: 'Metrics', href: `/workspaces/${ws.id}/metrics/adopted`, active: ['metrics-library'] }
+        { label: 'Performance & objectives', href: `/workspaces/${ws.id}/objectives`, active: ['objectives', 'metrics-library'] }
       ] : [
         { label: 'Assets', href: `/workspaces/${ws.id}/assets`, active: ['assets'], shortcut: 'g a' },
         { label: 'Risk register', href: `/workspaces/${ws.id}/risks`, active: ['risks'], shortcut: 'g r' },
@@ -126,8 +125,7 @@
       icon: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
       active: ['objectives', 'metrics-library', 'mrms', 'training', 'competence', 'communication-plan'],
       items: [
-        { label: 'Security objectives', href: `/workspaces/${ws.id}/objectives`, active: ['objectives'] },
-        { label: 'Metrics', href: `/workspaces/${ws.id}/metrics/adopted`, active: ['metrics-library'] },
+        { label: 'Performance & objectives', href: `/workspaces/${ws.id}/objectives`, active: ['objectives', 'metrics-library'] },
         { label: 'Management reviews', href: `/workspaces/${ws.id}/mrms`, active: ['mrms'], shortcut: 'g m' },
         { label: 'Training & awareness', href: `/workspaces/${ws.id}/training`, active: ['training'] },
         { label: 'Competence', href: `/workspaces/${ws.id}/competence`, active: ['competence'] },

@@ -3,7 +3,7 @@
   const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
   const canSignoff = typeof userPerms !== 'undefined' && userPerms.has('assessment.signoff');
   const canEdit = typeof userPerms !== 'undefined' && userPerms.has('control.update');
-  const fmt = value => value ? new Intl.DateTimeFormat(ws.locale || 'en-GB', { day:'numeric', month:'short', year:'numeric' }).format(new Date(`${String(value).slice(0,10)}T12:00:00`)) : '—';
+  const fmt = value => value ? new Intl.DateTimeFormat(ws.locale || 'en-GB', { day:'numeric', month:'short', year:'numeric' }).format(new Date(`${String(value).slice(0,10)}T12:00:00`)) : '-';
   const phaseLabels = { mobilisation:'Mobilisation', fieldwork:'Fieldwork', validation:'Validation', report:'Report', post_report:'Post-report' };
   const statusLabel = value => String(value || '').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 %>
@@ -28,7 +28,7 @@
   <div class="gfw-gates">
     <% ['mobilisation','fieldwork','validation','report','post_report'].forEach(phase => { const gate=context.gates[phase]; const decision=context.decisionMap[phase]; const complete=context.completed[phase]; %>
       <article class="panel gfw-gate <%= complete ? 'is-complete' : context.currentPhase===phase ? 'is-current' : '' %>">
-        <header><div><span><%= phaseLabels[phase] %></span><strong><%= complete ? (decision?.decision === 'not_required' ? 'Not required' : 'Complete') : context.currentPhase===phase ? 'Current' : 'Pending' %></strong></div><b><%= complete ? '✓' : '—' %></b></header>
+        <header><div><span><%= phaseLabels[phase] %></span><strong><%= complete ? (decision?.decision === 'not_required' ? 'Not required' : 'Complete') : context.currentPhase===phase ? 'Current' : 'Pending' %></strong></div><b><%= complete ? '✓' : '-' %></b></header>
         <div class="gfw-checks"><% gate.checks.forEach(check => { %><div class="<%= check.pass ? 'pass' : 'fail' %>"><span><%= check.pass ? '✓' : '○' %></span><%= check.label %></div><% }) %></div>
         <% if (decision) { %><p class="gfw-decision"><strong><%= decision.decided_by_name %></strong> · <%= decision.rationale %></p><% } %>
         <% if (phase !== 'report' && canSignoff) { %>

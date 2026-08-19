@@ -8,12 +8,19 @@
   <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs">All documents →</a>
 </div>
 
-<!-- KPI band 1: mandatory coverage + review status -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+<div class="callout" style="margin-bottom:14px;"><strong>One document truth.</strong> Controlled-policy adoption and ISO readiness resolve approved or published documents from the same document register. Readiness also includes non-policy records such as scope, the SoA, audits and management reviews, so its denominator is broader.</div>
+
+<!-- KPI band 1: controlled-policy coverage + ISO record readiness + review status -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;">
   <div class="panel kpi" style="">
     <div class="kpi-num" style="color:<%= kpis.mandatoryPct >= 80 ? '#15803d' : kpis.mandatoryPct >= 50 ? '#a16207' : '#b91c1c' %>;"><%= kpis.mandatoryPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-label">Mandatory adopted</div>
-    <div class="kpi-meta"><%= kpis.mandatoryAdopted %> / <%= kpis.mandatoryTotal %> ISO-mandatory templates</div>
+    <div class="kpi-label">Controlled policies adopted</div>
+    <div class="kpi-meta"><%= kpis.mandatoryAdopted %> / <%= kpis.mandatoryTotal %> mandatory policy templates</div>
+  </div>
+  <div class="panel kpi">
+    <div class="kpi-num"><%= kpis.requiredRecordsFound %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= kpis.requiredRecordsTotal %></span></div>
+    <div class="kpi-label">ISO required records ready</div>
+    <div class="kpi-meta"><a href="/workspaces/<%= ws.id %>/readiness">same readiness record set →</a></div>
   </div>
   <div class="panel kpi">
     <div class="kpi-num text-success"><%= kpis.published %></div>
@@ -41,9 +48,9 @@
   <div style="margin-left:auto;font-size:11px;color:var(--text-tertiary);"><strong style="color:var(--text);"><%= kpis.total %></strong> total documents</div>
 </div>
 
-<!-- Mandatory template adoption coverage -->
+<!-- Mandatory controlled-policy template coverage -->
 <div class="panel" style="margin-bottom:16px;">
-  <div class="panel-head"><h2>Mandatory ISO 27001 templates (<%= kpis.mandatoryAdopted %>/<%= kpis.mandatoryTotal %>)</h2><span class="meta">these are the clause-required documents</span></div>
+  <div class="panel-head"><h2>Mandatory controlled-policy templates (<%= kpis.mandatoryAdopted %>/<%= kpis.mandatoryTotal %>)</h2><span class="meta">policy adoption subset, not the full ISO record set</span></div>
   <table class="t">
     <thead><tr><th>Template</th><th style="width:140px;">Status</th><th style="width:120px;">Workspace doc</th></tr></thead>
     <tbody>

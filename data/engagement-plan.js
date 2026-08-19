@@ -150,6 +150,7 @@ const PHASES = [
     milestones: [
       { id: 'w12-evidence', title: 'Confirm 3 months of operational evidence per critical control',
         deliverables: 'Evidence library coverage report - green on critical controls',
+        minimumDurationMonths: 3,
         clauses: ['7.5', '9.1'] },
       { id: 'w12-handoff', title: 'Hand engagement to client for Stage 2 audit',
         deliverables: 'Handover pack: residual risks, year-1 surveillance plan',

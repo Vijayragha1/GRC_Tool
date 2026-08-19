@@ -1,0 +1,85 @@
+<%- include('partials/header', { title: 'Supplier inherent risk', user, ws, active: 'vendors' }) %>
+
+<div class="page-head">
+  <div>
+    <a class="link-muted text-xs" href="/workspaces/<%= ws.id %>/vendors/<%= v.id %>">← <%= v.name %></a>
+    <h1 class="page-title" style="margin-top:8px">Inherent-risk assessment</h1>
+    <div class="page-subtitle">Assess the service before considering controls, assurance or contractual protections.</div>
+  </div>
+  <% if (assessment) { %><span class="status s-<%= assessment.status === 'approved' ? 'done' : assessment.status === 'submitted' ? 'in_progress' : 'todo' %>"><%= assessment.status %></span><% } %>
+</div>
+
+<% if (!assessment) { %>
+  <div class="panel" style="max-width:720px">
+    <div class="panel-head"><h2>Start the assessment</h2></div>
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk/start" class="panel-pad grid-2">
+      <div><label class="label">Assessment type</label><select class="select" name="assessment_type"><option value="onboarding">Onboarding</option><option value="periodic">Periodic</option><option value="triggered">Triggered</option></select></div>
+      <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
+      <div class="col-full"><button class="btn btn-primary">Start assessment</button></div>
+    </form>
+  </div>
+<% } else { %>
+  <% const locked = assessment.status !== 'draft'; %>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-pad" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:0">
+      <div class="kpi" style="border-right:1px solid var(--border)"><div class="sec-label">Weighted inherent risk</div><div class="kpi-num"><%= result ? result.weightedScore.toFixed(2) : '-' %><span class="meta"> / 100</span></div></div>
+      <div class="kpi" style="border-right:1px solid var(--border)"><div class="sec-label">Calculated tier</div><div style="font-size:18px;font-weight:600;margin-top:7px"><%= result ? tierLabel(result.assignedTier) : 'Not assigned' %></div></div>
+      <div class="kpi" style="border-right:1px solid var(--border)"><div class="sec-label">Mandatory floors</div><div class="kpi-num"><%= result ? result.triggeredFloors.length : 0 %></div><div class="meta"><%= result && result.triggeredFloors.length ? result.triggeredFloors.map(f=>f.id).join(', ') : 'None triggered' %></div></div>
+      <div class="kpi"><div class="sec-label">Decision readiness</div><div style="font-size:18px;font-weight:600;margin-top:7px"><%= result && result.finalisable ? 'Complete' : 'Inputs unresolved' %></div><div class="meta"><%= result ? result.unknownQuestionIds.length + result.unansweredQuestionIds.length : 25 %> answer(s) open</div></div>
+    </div>
+  </div>
+
+  <% if (result && result.triggeredFloors.length) { %>
+    <div class="panel" style="margin-bottom:16px;padding:14px 18px;background:#fff8f2">
+      <div class="sec-label">Non-reducible tier floors</div>
+      <% result.triggeredFloors.forEach(floor => { %><div style="padding:7px 0"><strong><%= floor.id %> · <%= tierLabel(floor.minimumTier) %></strong><div class="meta"><%= floor.reason %>. Control evidence cannot reduce this floor.</div></div><% }) %>
+    </div>
+  <% } %>
+
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk">
+    <% methodology.scoring.factors.forEach((factor, factorIndex) => { const factorQuestions = methodology.scoring.questions.filter(q => factor.questionIds.includes(q.id)); %>
+      <details class="panel" style="margin-bottom:12px" <%= factorIndex < 2 ? 'open' : '' %>>
+        <summary class="panel-head" style="cursor:pointer;list-style:none">
+          <div><div class="sec-label"><%= factor.questionIds.join(' · ') %></div><h2><%= factor.name %></h2></div>
+          <div style="text-align:right"><strong><%= Math.round(factor.weight * 100) %>%</strong><div class="meta">factor weight</div></div>
+        </summary>
+        <div>
+          <% factorQuestions.forEach(question => { const row = responseMap[question.id] || {}; const selected = row.response_label === question.unknownLabel ? 'unknown' : (row.score == null ? '' : String(row.score)); %>
+            <div style="padding:18px;border-top:1px solid var(--border);display:grid;grid-template-columns:56px minmax(0,1fr);gap:14px">
+              <div class="tag tag-neutral" style="align-self:start;text-align:center"><%= question.id %></div>
+              <div>
+                <div style="font-weight:600;line-height:1.45"><%= clientText(question.question, ws.client_name) %></div>
+                <div class="meta" style="margin-top:4px"><%= clientText(question.guidance, ws.client_name) %> · Owner: <%= question.owner %></div>
+                <select class="select" name="score_<%= question.id %>" required style="margin-top:12px" <%= locked ? 'disabled' : '' %>>
+                  <option value="">Select the inherent exposure</option>
+                  <% question.options.forEach(option => { %><option value="<%= option.score %>" <%= selected === String(option.score) ? 'selected' : '' %>><%= option.score %> · <%= clientText(option.label, ws.client_name) %></option><% }) %>
+                  <option value="unknown" <%= selected === 'unknown' ? 'selected' : '' %>><%= question.unknownLabel %></option>
+                </select>
+                <input class="input" style="margin-top:8px" name="comment_<%= question.id %>" value="<%= row.comment || '' %>" placeholder="Context or source used for this answer" <%= locked ? 'disabled' : '' %>>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </details>
+    <% }) %>
+
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><div><h2>Physical and data-centre scope</h2><div class="meta">Owner validation is required because this condition cannot be inferred safely from a single numeric answer.</div></div></div>
+      <div class="panel-pad"><select class="select" name="physical_data_centre_applicability" required <%= locked ? 'disabled' : '' %>><option value="unknown" <%= assessment.physical_data_centre_applicability==='unknown'?'selected':'' %>>Unknown / Validation Required</option><option value="yes" <%= assessment.physical_data_centre_applicability==='yes'?'selected':'' %>>Yes · client data is processed/stored at a vendor facility or vendor personnel access one</option><option value="no" <%= assessment.physical_data_centre_applicability==='no'?'selected':'' %>>No</option></select></div>
+    </div>
+
+    <% if (!locked) { %><div class="row" style="margin-bottom:20px"><button class="btn btn-secondary" name="action" value="save">Save draft</button><button class="btn btn-primary" name="action" value="submit">Submit for approval</button></div><% } %>
+  </form>
+
+  <% if (assessment.status === 'submitted') { %>
+    <div class="panel" style="max-width:760px">
+      <div class="panel-head"><h2>Approve calculated scope</h2><span class="meta">Requires supplier approval permission</span></div>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk/approve" class="panel-pad">
+        <label class="label">Approval or return rationale</label><textarea class="textarea" name="approval_rationale" rows="3" required placeholder="Confirm the business context, source owners, any mandatory floor and why the resulting DDQ scope is appropriate-or explain what must be corrected."></textarea>
+        <div class="row" style="margin-top:10px"><button class="btn btn-secondary" name="action" value="return">Return for changes</button><button class="btn btn-primary" name="action" value="approve">Approve <%= result ? tierLabel(result.assignedTier) : 'tier' %></button></div>
+      </form>
+    </div>
+  <% } %>
+<% } %>
+
+<%- include('partials/footer') %>

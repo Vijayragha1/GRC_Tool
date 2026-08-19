@@ -11,12 +11,21 @@
 <meta name="view-transition" content="same-origin">
 <title><%= typeof title !== 'undefined' ? title : 'Dashboard' %> · Compliance Sphere</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
-<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/app.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/page-loader.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<script>
+  try {
+    const savedTheme = localStorage.getItem('isms-theme');
+    if (savedTheme === 'dark' || (!savedTheme && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } catch (_) {}
+</script>
 <script src="/page-loader.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script>
+<script src="/site-enhancements.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#mainContent">Skip to content</a>
 <%- include('page_loader') %>
 <% if (typeof user !== 'undefined' && user) { %>
 <%
@@ -33,13 +42,13 @@
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-section">
-      <a class="sidebar-brand" href="<%= shellClientMode ? shellPortalUrl : '/dashboard' %>" aria-label="Compliance Sphere dashboard" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:#1a1a1a;line-height:1.1;">
+      <a class="sidebar-brand" href="<%= shellClientMode ? shellPortalUrl : '/dashboard' %>" aria-label="Compliance Sphere dashboard" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text);line-height:1.1;">
         <svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true" style="flex-shrink:0;">
-          <circle cx="11" cy="11" r="9.5" fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
-          <circle cx="11" cy="11" r="6"   fill="none" stroke="#1a1a1a" stroke-width="1.3"/>
-          <circle cx="11" cy="11" r="2.5" fill="#1a1a1a"/>
+          <circle cx="11" cy="11" r="9.5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="11" cy="11" r="6"   fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="11" cy="11" r="2.5" fill="currentColor"/>
         </svg>
-        <span class="sidebar-brand-name" style="font-size:14.5px;font-weight:500;color:#1a1a1a;letter-spacing:-0.2px;">Compliance Sphere</span>
+        <span class="sidebar-brand-name" style="font-size:14.5px;font-weight:500;color:inherit;letter-spacing:-0.2px;">Compliance Sphere</span>
       </a>
       <%# Tenant switcher: shows the active firm name below the brand.
           Static text when only one firm exists (the common case); a
@@ -48,29 +57,29 @@
       <% if (user.user_type === 'firm' && !shellClientMode && typeof activeFirm !== 'undefined' && activeFirm) { %>
         <% const otherFirms = (typeof allFirms !== 'undefined' ? allFirms : []).filter(f => f.id !== activeFirm.id); %>
         <% if (otherFirms.length === 0) { %>
-          <div class="tenant-current" style="margin-top:10px;display:flex;align-items:center;gap:6px;font-size:11px;color:#6b6b66;">
+          <div class="tenant-current" style="margin-top:10px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary);">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.7;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= activeFirm.name %></span>
           </div>
         <% } else { %>
           <details class="tenant-switcher" style="margin-top:10px;">
-            <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:11px;color:#3a3a3a;">
+            <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.7;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
               <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;"><%= activeFirm.name %></span>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.6;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
             </summary>
-            <div style="margin-top:6px;background:#ffffff;border:1px solid #ecebe5;border-radius:6px;max-height:260px;overflow-y:auto;">
+            <div style="margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;max-height:260px;overflow-y:auto;">
               <% otherFirms.forEach(f => { %>
                 <form method="POST" action="/tenants/<%= f.id %>/switch" style="margin:0;">
                   <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-                  <button type="submit" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;background:transparent;border:0;text-align:left;color:#1a1a1a;font-size:12px;cursor:pointer;border-bottom:1px solid #ecebe5;font-family:inherit;">
+                  <button type="submit" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;background:transparent;border:0;text-align:left;color:var(--text);font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);font-family:inherit;">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.5;flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= f.name %></span>
-                    <span style="font-size:10px;color:#8a8a87;flex-shrink:0;"><%= f.workspace_count %> client<%= f.workspace_count === 1 ? '' : 's' %></span>
+                    <span style="font-size:10px;color:var(--text-tertiary);flex-shrink:0;"><%= f.workspace_count %> client<%= f.workspace_count === 1 ? '' : 's' %></span>
                   </button>
                 </form>
               <% }) %>
-              <a href="/tenants" style="display:block;padding:8px 12px;font-size:11px;color:#6b6b66;text-decoration:none;border-top:1px solid #ecebe5;background:rgba(26,26,26,0.04);">Manage firms →</a>
+              <a href="/tenants" style="display:block;padding:8px 12px;font-size:11px;color:var(--text-secondary);text-decoration:none;border-top:1px solid var(--border);background:var(--bg-subtle);">Manage firms →</a>
             </div>
           </details>
         <% } %>
@@ -91,9 +100,9 @@
     %>
     <div class="sidebar-section ws-context" style="<%= brandColor ? 'padding-left:11px;' : '' %>">
       <% if (externalClientUser) { %>
-        <div class="text-xs" style="color:#6b6b66;text-transform:uppercase;letter-spacing:.08em;">Client portal</div>
+        <div class="text-xs" style="color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;">Client portal</div>
       <% } else { %>
-        <a class="text-xs" href="/dashboard" style="color:#6b6b66;text-decoration:none;">← All clients</a>
+        <a class="text-xs" href="/dashboard" style="color:var(--text-secondary);text-decoration:none;">← All clients</a>
       <% } %>
       <%# Client name is now the trigger for the switcher dropdown.
           On click expands a list of every other workspace in this firm so
@@ -107,30 +116,30 @@
         <div class="client-portal-context-name"><%= ws.brand_display_name || ws.client_name %></div>
       <% } else { %>
       <details class="ws-switcher" style="margin-top:10px;">
-        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;color:#1a1a1a;">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text);">
           <span class="text-lg" style="font-weight: 500;letter-spacing:-0.005em;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= ws.brand_display_name || ws.client_name %></span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.6;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
         </summary>
-        <div class="ws-switcher-menu" style="margin-top:8px;background:#ffffff;border:1px solid #ecebe5;border-radius:6px;max-height:280px;overflow-y:auto;">
+        <div class="ws-switcher-menu" style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;max-height:280px;overflow-y:auto;">
           <% if (otherWorkspaces.length === 0) { %>
-            <div style="padding:10px 12px;font-size:12px;color:#8a8a87;">No other clients yet.</div>
+            <div style="padding:10px 12px;font-size:12px;color:var(--text-tertiary);">No other clients yet.</div>
           <% } else { %>
             <% otherWorkspaces.forEach(w => {
                  const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'rgba(26,26,26,0.2)';
             %>
-              <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:#1a1a1a;font-size:13px;border-bottom:1px solid #ecebe5;">
+              <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);">
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= dot %>;flex-shrink:0;"></span>
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %></span>
-                <% if (w.sector) { %><span style="font-size:10px;color:#8a8a87;flex-shrink:0;"><%= w.sector %></span><% } %>
+                <% if (w.sector) { %><span style="font-size:10px;color:var(--text-tertiary);flex-shrink:0;"><%= w.sector %></span><% } %>
               </a>
             <% }) %>
           <% } %>
-          <a href="/dashboard" style="display:block;padding:8px 12px;font-size:12px;color:#6b6b66;text-decoration:none;border-top:1px solid #ecebe5;background:rgba(26,26,26,0.04);">All clients →</a>
+          <a href="/dashboard" style="display:block;padding:8px 12px;font-size:12px;color:var(--text-secondary);text-decoration:none;border-top:1px solid var(--border);background:var(--bg-subtle);">All clients →</a>
         </div>
       </details>
       <% } %>
-      <div class="text-xs" style="margin-top:3px;color:#8a8a87;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <% if (ws.sector) { %><span class="text-xxs" style="background:rgba(26,26,26,0.08);padding:1px 6px;border-radius:999px;font-weight:500;"><%= ws.sector %></span><% } %>
+      <div class="text-xs" style="margin-top:3px;color:var(--text-tertiary);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <% if (ws.sector) { %><span class="text-xxs" style="background:var(--nav-active);padding:1px 6px;border-radius:999px;font-weight:500;"><%= ws.sector %></span><% } %>
         <% if (ws.industry) { %><span><%= ws.industry %></span><% } else if (!externalClientUser) { %><span><%= ws.stage.replace(/_/g,' ') %></span><% } %>
       </div>
     </div>
@@ -160,20 +169,20 @@
         <% const allWs = (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []); %>
         <% if (allWs.length > 0) { %>
           <details class="ws-switcher" style="margin:0 14px 12px;">
-            <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 11px;background:rgba(26,26,26,0.04);border-radius:6px;color:#1a1a1a;font-size:13px;">
+            <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--nav-hover);border-radius:6px;color:var(--text);font-size:13px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.7;flex-shrink:0;"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
               <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;">Jump to a client</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.6;flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
             </summary>
-            <div class="ws-switcher-menu" style="margin-top:6px;background:#ffffff;border:1px solid #ecebe5;border-radius:6px;max-height:340px;overflow-y:auto;">
+            <div class="ws-switcher-menu" style="margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;max-height:340px;overflow-y:auto;">
               <% allWs.forEach(w => {
-                   const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'rgba(26,26,26,0.2)';
+                   const dot = (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) ? w.brand_primary_color : 'var(--text-tertiary)';
                    const isLast = (typeof lastWs !== 'undefined' && lastWs && lastWs.id === w.id);
               %>
-                <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:#1a1a1a;font-size:13px;border-bottom:1px solid #ecebe5;<%= isLast ? 'background:rgba(26,26,26,0.04);' : '' %>">
+                <a href="/workspaces/<%= w.id %>" style="display:flex;align-items:center;gap:8px;padding:8px 12px;text-decoration:none;color:var(--text);font-size:13px;border-bottom:1px solid var(--border);<%= isLast ? 'background:var(--nav-hover);' : '' %>">
                   <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= dot %>;flex-shrink:0;"></span>
-                  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %><% if (isLast) { %> <span style="font-size:10px;color:#8a8a87;font-weight:400;">· last viewed</span><% } %></span>
-                  <% if (w.sector) { %><span style="font-size:10px;color:#8a8a87;flex-shrink:0;"><%= w.sector %></span><% } %>
+                  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= w.brand_display_name || w.client_name %><% if (isLast) { %> <span style="font-size:10px;color:var(--text-tertiary);font-weight:400;">· last viewed</span><% } %></span>
+                  <% if (w.sector) { %><span style="font-size:10px;color:var(--text-tertiary);flex-shrink:0;"><%= w.sector %></span><% } %>
                 </a>
               <% }) %>
             </div>
@@ -232,28 +241,28 @@
     </nav>
 
     <div class="sidebar-foot">
-      <div class="avatar text-xs" title="<%= shellDisplayUser.name %>" style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#71717a,#52525b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight: 500;flex-shrink:0;"><%= shellDisplayUser.name.charAt(0).toUpperCase() %></div>
+      <div class="avatar text-xs" title="<%= shellDisplayUser.name %>" style="width:28px;height:28px;border:1px solid var(--border-strong);border-radius:50%;background:var(--bg-muted);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:600;flex-shrink:0;"><%= shellDisplayUser.name.charAt(0).toUpperCase() %></div>
       <div style="min-width:0;flex:1;">
-        <div class="text-lg" style="font-weight:500;line-height:1.2;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= shellDisplayUser.name %></div>
-        <div class="text-eyebrow" style="color:#8a8a87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= shellPreviewMode ? 'Read-only client preview' : shellDisplayUser.email %></div>
+        <div class="text-lg" style="font-weight:500;line-height:1.2;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= shellDisplayUser.name %></div>
+        <div class="text-eyebrow" style="color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><%= shellPreviewMode ? 'Read-only client preview' : shellDisplayUser.email %></div>
       </div>
-      <button class="sidebar-foot-action" onclick="toggleTheme()" title="Toggle theme" style="background:transparent;border:0;color:#6b6b66;cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#1a1a1a';this.style.background='rgba(26,26,26,0.06)'" onmouseout="this.style.color='#6b6b66';this.style.background='transparent'">
+      <button class="sidebar-foot-action" data-theme-toggle title="Toggle theme" aria-label="Switch to dark mode" aria-pressed="false">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
       <% if (shellPreviewMode) { %>
-      <a class="sidebar-foot-action" href="/workspaces/<%= ws.id %>/engagement-plan" title="Exit client preview" aria-label="Exit client preview" style="color:#6b6b66;padding:4px;display:flex;align-items:center;border-radius:4px;">
+      <a class="sidebar-foot-action" href="/workspaces/<%= ws.id %>/engagement-plan" title="Exit client preview" aria-label="Exit client preview">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
       </a>
       <% } else { %><form class="sidebar-foot-action" method="POST" action="/logout" style="margin:0;display:flex;">
         <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-        <button type="submit" title="Sign out" aria-label="Sign out" style="background:transparent;border:0;color:#6b6b66;cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:4px;transition:all 0.12s;" onmouseover="this.style.color='#1a1a1a';this.style.background='rgba(26,26,26,0.06)'" onmouseout="this.style.color='#6b6b66';this.style.background='transparent'">
+        <button type="submit" title="Sign out" aria-label="Sign out">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
       </form><% } %>
     </div>
   </aside>
 
-  <main class="main">
+  <main class="main" id="mainContent" tabindex="-1">
     <div class="main-inner">
       <div class="topbar">
         <button class="icon-btn menu-toggle" onclick="toggleSidebar(true)" title="Menu" aria-label="Open menu">
@@ -262,11 +271,11 @@
         <button class="icon-btn sidebar-collapse-toggle" id="sidebarCollapseButton" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" aria-pressed="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
         </button>
-        <% if (user.user_type === 'firm' && !shellClientMode) { %><button class="palette-trigger" onclick="openPalette()">
+        <button class="palette-trigger" onclick="openPalette()" aria-label="Search this <%= shellClientMode ? 'engagement' : 'application' %>">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span>Search or jump to…</span>
+          <span><%= shellClientMode ? 'Search this engagement…' : 'Search or jump to…' %></span>
           <span class="kbd" id="kbdHint">⌘K</span>
-        </button><% } %>
+        </button>
         <% // Tenant switcher - shows the active tenant (firm) and lets you switch.
            // Hidden if there's only one tenant and no point in cluttering the header. %>
         <% // Tenant switcher only matters when there is more than one firm. For
@@ -325,6 +334,6 @@
       </div>
 <% } else { %>
 <div class="app" style="background:var(--bg-deep)">
-  <main class="main">
+  <main class="main" id="mainContent" tabindex="-1">
     <div class="main-inner" style="max-width:420px;">
 <% } %>

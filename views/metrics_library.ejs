@@ -1,9 +1,10 @@
-<%- include('partials/header', { title: 'ISMS metrics library', user, ws, active: 'metrics-library' }) %>
+<%- include('partials/header', { title: 'Performance & objectives', user, ws, active: 'metrics-library' }) %>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">ISMS metrics library</h1>
-    <div class="page-subtitle">ISO/IEC 27004:2016 Annex B measurement constructs. Expand any measure to see its full definition, then adopt the ones relevant to this engagement; each lands with the standard's suggested target and frequency, ready to record readings against (clause 9.1).</div>
+    <div class="eyebrow">Performance &amp; objectives</div>
+    <h1 class="page-title">Measure library</h1>
+    <div class="page-subtitle">Select relevant ISO/IEC 27004 measurement constructs, then set ownership, record readings and connect them to objectives.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/metrics/adopted" class="btn btn-secondary btn-xs">Adopted metrics (<%= adoptedCount %>) →</a>
 </div>
@@ -50,10 +51,10 @@
               <div class="row" style="flex-shrink:0;align-items:center;gap:10px;">
                 <span class="status s-implemented">Adopted</span>
                 <a href="/workspaces/<%= ws.id %>/metrics/adopted/<%= m.adoptedId %>" class="link-muted text-base">Open</a>
-                <form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= m.adoptedId %>/delete" onsubmit="return confirm('Remove this metric and its readings from the engagement?');" style="display:inline;">
+                <% if (m.objectiveCount) { %><span class="meta text-xs">Drives <%= m.objectiveCount %> objective<%= m.objectiveCount === 1 ? '' : 's' %></span><% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/metrics/adopted/<%= m.adoptedId %>/delete" onsubmit="return confirm('Remove this measure and its readings from the engagement?');" style="display:inline;">
                   <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
                   <button type="submit" class="text-base" title="Remove from engagement" style="background:none;border:none;padding:0;cursor:pointer;color:#b91c1c;font-family:inherit;">Remove</button>
-                </form>
+                </form><% } %>
               </div>
             <% } %>
           </div>

@@ -14,8 +14,10 @@ const evWrites = require('../lib/evidence-writes');
 const docApprovals = require('../lib/doc-approvals');
 const delivery = require('../lib/engagement-delivery');
 const clientGapAssessment = require('../lib/client-gap-assessment');
+const { buildIntegratedDashboard } = require('../lib/integrated-dashboard');
 const uploadSecurity = require('../lib/upload-security');
 const { withToast, auditCtx } = require('../lib/http-helpers');
+const { todayFor } = require('../lib/dates');
 
 const REQUEST_TYPES = new Set(['evidence', 'policy', 'control', 'action']);
 const PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
@@ -31,7 +33,7 @@ const MAX_COMMENT = 8000;
 const clientStatus = value => ({
   draft: 'in preparation', workspace_verified: 'ready for approval', submitted: 'under review',
   changes_requested: 'changes requested', accepted: 'approved', rejected: 'not approved',
-  superseded: 'replaced', open: 'open', in_progress: 'in progress', cancelled: 'closed'
+  superseded: 'replaced', open: 'open', in_progress: 'in progress', cancelled: 'cancelled'
 }[String(value || '').toLowerCase()] || String(value || '').replace(/_/g, ' '));
 
 function sanitizePolicyHtml(content) {
@@ -187,18 +189,21 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/client-portal', requireAuth, requireWorkspace,
     requirePermission('client_portal.view'), (req, res) => {
+      const allowedPortalViews = new Set(['home', 'actions', 'progress', 'findings', 'reports']);
+      const portalView = allowedPortalViews.has(String(req.query.view || '')) ? String(req.query.view) : 'home';
       const clientPreview = req.user.user_type === 'firm' && req.query.preview === 'client';
       const members = clientMembers(req);
       const clientPreviewUser = clientPreview
         ? (members.find(member => member.role === 'client_owner') || members[0] || null)
         : null;
       const portalActorId = clientPreviewUser?.id || req.user.id;
+      const clientAudience = req.user.user_type === 'client' || clientPreview;
       const filters = [];
       const params = [req.workspace.id];
       if (isContributor(req)) {
         filters.push('cr.assignee_id=?');
         params.push(req.user.id);
-      }
+      } else if (clientAudience) filters.push('cr.assignee_id IS NOT NULL');
       const status = String(req.query.status || 'active');
       if (status === 'active') filters.push("cr.status NOT IN ('accepted','cancelled')");
       else if (status === 'closed') filters.push("cr.status IN ('accepted','cancelled')");
@@ -221,12 +226,13 @@ function register(app, deps) {
         .map(r => decryptRequest(r, req.workspace.id));
 
       const allVisible = db.prepare(`SELECT status, due_date FROM client_requests cr
-        WHERE cr.workspace_id=?${isContributor(req) ? ' AND cr.assignee_id=?' : ''}`).all(
+        WHERE cr.workspace_id=?${isContributor(req) ? ' AND cr.assignee_id=?' : (clientAudience ? ' AND cr.assignee_id IS NOT NULL' : '')}`).all(
         ...(isContributor(req) ? [req.workspace.id, req.user.id] : [req.workspace.id]));
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayFor(req.workspace);
       const requestMetrics = {
         active: allVisible.filter(r => !TERMINAL.has(r.status)).length,
-        overdue: allVisible.filter(r => !TERMINAL.has(r.status) && r.due_date && r.due_date < today).length,
+        overdue: allVisible.filter(r => ['open','in_progress','changes_requested'].includes(r.status) &&
+          r.due_date && r.due_date < today).length,
         awaitingReview: allVisible.filter(r => r.status === 'submitted').length,
         completed: allVisible.filter(r => r.status === 'accepted').length
       };
@@ -255,7 +261,8 @@ function register(app, deps) {
       let deliveryWork = [];
       if (deliveryProjection) {
         deliveryWork = deliveryProjection.deliverables.filter(d => d.client_visible &&
-          (!isContributor(req) || !d.owner_id || d.owner_id === req.user.id || d.approver_id === req.user.id));
+          (!clientAudience || d.owner_id != null || d.approver_id != null) &&
+          (!isContributor(req) || d.owner_id === req.user.id || d.approver_id === req.user.id));
       }
       const deliveryEvidence = deliveryWork.length ? db.prepare(`SELECT de.deliverable_id,e.id,e.filename,e.uploaded_at
         FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
@@ -315,18 +322,35 @@ function register(app, deps) {
         nextTitle: pendingDelivery?.client_title || null,
         nextDue: pendingDelivery?.due_date || null
       };
+      const clientMemberIds = new Set(members.map(member => member.id));
+      const isClientDeliveryAction = d => {
+        const effectiveStatus = d.effective_status || d.status;
+        if (isContributor(req)) {
+          return (d.owner_id === portalActorId && ['draft','changes_requested'].includes(d.status)) ||
+            (d.approver_id === portalActorId && ['submitted','workspace_verified'].includes(effectiveStatus));
+        }
+        if (clientAudience) {
+          return (clientMemberIds.has(d.owner_id) && ['draft','changes_requested'].includes(d.status)) ||
+            (clientMemberIds.has(d.approver_id) && ['submitted','workspace_verified'].includes(effectiveStatus));
+        }
+        return (d.owner_id === portalActorId && ['draft','changes_requested'].includes(d.status)) ||
+          (d.approver_id === portalActorId && ['submitted','workspace_verified'].includes(effectiveStatus));
+      };
       const clientDeliveryActions = deliveryWork.filter(d =>
-        ((!d.owner_id || d.owner_id === portalActorId) && ['draft','changes_requested'].includes(d.status)) ||
-        (d.approver_id === portalActorId && ['submitted','workspace_verified'].includes(d.effective_status))
-      );
-      const overdueDeliverables = deliveryWork.filter(d =>
+        isClientDeliveryAction(d));
+      const overdueDeliverables = clientDeliveryActions.filter(d =>
         d.due_date && d.due_date < today && !['accepted','superseded'].includes(d.status)).length;
-      const awaitingReviewDeliverables = deliveryWork.filter(d =>
-        ['submitted','workspace_verified'].includes(d.effective_status)).length;
+      const awaitingReviewDeliverables = deliveryWork.filter(d => {
+        const effectiveStatus = d.effective_status || d.status;
+        if (!['submitted','workspace_verified'].includes(effectiveStatus)) return false;
+        if (isContributor(req)) return d.owner_id === portalActorId && !clientMemberIds.has(d.approver_id);
+        if (clientAudience) return clientMemberIds.has(d.owner_id) && !clientMemberIds.has(d.approver_id);
+        return d.owner_id === portalActorId;
+      }).length;
       const metrics = {
-        activeRequests: requestMetrics.active,
+        activeRequests: allVisible.filter(r => ['open', 'in_progress', 'changes_requested'].includes(r.status)).length,
         deliverablesToProvide: clientDeliveryActions.filter(d =>
-          (!d.owner_id || d.owner_id === req.user.id) && ['draft','changes_requested'].includes(d.status)).length,
+          clientMemberIds.has(d.owner_id) && ['draft','changes_requested'].includes(d.status)).length,
         overdue: requestMetrics.overdue + overdueDeliverables,
         awaitingReview: requestMetrics.awaitingReview + awaitingReviewDeliverables,
         overdueRequests: requestMetrics.overdue,
@@ -339,6 +363,50 @@ function register(app, deps) {
       const gapAssessment = clientGapAssessment.buildClientGapAssessmentProjection(db, req.workspace, {
         assigneeId: isContributor(req) ? req.user.id : null
       });
+      let frameworkWorkspace = req.workspace;
+      if (!Array.isArray(frameworkWorkspace.frameworks)) {
+        let parsed = [];
+        try { parsed = JSON.parse(frameworkWorkspace.frameworks || '[]'); } catch (_) {}
+        frameworkWorkspace = { ...frameworkWorkspace, frameworks: parsed };
+      }
+      const programmeTruth = buildIntegratedDashboard(db, frameworkWorkspace, {
+        actorId: isContributor(req) ? portalActorId : null,
+        clientFacing: clientAudience,
+        today
+      });
+      metrics.overdue = programmeTruth.client.overdueCount;
+      metrics.awaitingReview = programmeTruth.client.awaitingReviewCount;
+      metrics.allZero = metrics.activeRequests === 0 && metrics.deliverablesToProvide === 0 &&
+        metrics.overdue === 0 && metrics.awaitingReview === 0;
+      const clientProgrammes = programmeTruth.programmes.map(programme => ({
+        key: programme.key,
+        label: programme.label,
+        short: programme.short,
+        descriptor: programme.descriptor,
+        status: programme.status,
+        completionPct: programme.completionPct,
+        assessmentDetail: programme.assessmentDetail,
+        currentLabel: programme.currentLabel,
+        currentDetail: programme.currentDetail,
+        openItems: programme.openItems,
+        unsupportedImplemented: programme.unsupportedImplemented || 0
+      }));
+      const actionCount = programmeTruth.client.actionCount + pendingApprovals.length +
+        (clientValidations || []).length + (csfValidations || []).length;
+      const blockerCount = programmeTruth.client.blockerCount +
+        (gapAssessment.applicable ? gapAssessment.blockers.filter(blocker => blocker.source === 'fieldwork').length : 0);
+      const statusTone = blockerCount ? 'risk' : actionCount ? 'attention' : 'good';
+      const clientStatusSummary = {
+        tone: statusTone,
+        label: statusTone === 'risk' ? 'Needs attention' : statusTone === 'attention' ? 'In progress' : 'On track',
+        actionCount,
+        blockerCount,
+        message: statusTone === 'risk'
+          ? `${blockerCount} blocker${blockerCount === 1 ? ' needs' : 's need'} attention.`
+          : actionCount
+            ? `${actionCount} item${actionCount === 1 ? ' needs' : 's need'} action from your team.`
+            : 'There is nothing your team needs to do right now.'
+      };
 
       res.render('client_portal', {
         user: req.user, ws: req.workspace, active: 'client-portal', title: 'Client portal',
@@ -348,7 +416,8 @@ function register(app, deps) {
         controls: can(req, 'client_request.manage') ? controlCatalog() : [],
         documents: can(req, 'client_request.manage') ? documentCatalog(req) : [],
         deliveryPlan: deliveryProjection?.plan || null, deliveryWork, deliveryEvidence, deliveryComments, clientValidations, publishedReports,
-        csfValidations, csfPublishedReports, consultantContact, deliverySummary, gapAssessment
+        csfValidations, csfPublishedReports, consultantContact, deliverySummary, clientDeliveryActions, gapAssessment,
+        portalView, clientProgrammes, clientStatusSummary
       });
     });
 
@@ -374,8 +443,8 @@ function register(app, deps) {
         delivery.transitionDeliverable(db, req.workspace, req.user.id, row.id, 'submit', req.body.note);
         logAction(req.user.id, req.workspace.id, 'client_submit_delivery_deliverable', 'engagement_deliverable', row.id, null, auditCtx(req));
         notify(row.approver_id, req, 'Deliverable awaiting approval: ' + row.title, row.milestone_title, `/workspaces/${req.workspace.id}/client-portal`);
-        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, 'Sent for approval.'));
-      } catch (error) { res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, error.message, 'error')); }
+        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal?view=actions`, 'Sent for approval.'));
+      } catch (error) { res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal?view=actions`, error.message, 'error')); }
     });
 
   ['accept','changes','reject'].forEach(action => app.post(`/workspaces/:wsId/client-portal/deliverables/:id/${action}`, requireAuth, requireWorkspace,
@@ -386,8 +455,8 @@ function register(app, deps) {
         delivery.transitionDeliverable(db, req.workspace, req.user.id, row.id, action, req.body.note);
         logAction(req.user.id, req.workspace.id, `client_${action}_delivery_deliverable`, 'engagement_deliverable', row.id, { note: req.body.note }, auditCtx(req));
         notify(row.owner_id, req, `Deliverable ${action}: ${row.title}`, req.body.note, `/workspaces/${req.workspace.id}/client-portal`, action === 'changes' ? 'warning' : 'info');
-        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, 'Your response has been saved.'));
-      } catch (error) { res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal`, error.message, 'error')); }
+        res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal?view=actions`, 'Your response has been saved.'));
+      } catch (error) { res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal?view=actions`, error.message, 'error')); }
     }));
 
   app.post('/workspaces/:wsId/client-portal/deliverables/:id/comments', requireAuth, requireWorkspace,
@@ -401,7 +470,7 @@ function register(app, deps) {
       delivery.event(db, req.workspace.id, row.plan_id, req.user.id, 'deliverable', row.id, 'client_commented', null, null, null);
       logAction(req.user.id, req.workspace.id, 'client_comment_delivery_deliverable', 'engagement_deliverable', row.id, null, auditCtx(req));
       notify(row.owner_id === req.user.id ? row.approver_id : row.owner_id, req, 'Delivery comment: ' + row.title, body.slice(0,180), `/workspaces/${req.workspace.id}/client-portal`);
-      res.redirect(`/workspaces/${req.workspace.id}/client-portal#engagement`);
+      res.redirect(`/workspaces/${req.workspace.id}/client-portal?view=actions`);
     });
 
   app.post('/workspaces/:wsId/client-portal/deliverables/:id/evidence', requireAuth, requireWorkspace,
@@ -424,7 +493,7 @@ function register(app, deps) {
       })();
       logAction(req.user.id, req.workspace.id, 'client_upload_delivery_evidence', 'engagement_deliverable', row.id, { evidence_id: evidenceId }, auditCtx(req));
       notify(row.approver_id, req, 'Evidence added: ' + row.title, req.file.originalname, `/workspaces/${req.workspace.id}/client-portal`);
-      res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal#engagement`, 'File added.'));
+      res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal?view=actions`, 'File added.'));
     });
 
   app.get('/workspaces/:wsId/client-portal/deliverables/:id/evidence/:evidenceId/download', requireAuth, requireWorkspace,
@@ -523,12 +592,21 @@ function register(app, deps) {
       if (!request) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Request not found or not assigned to you.' });
       const managing = can(req, 'client_request.manage');
       if (!managing && request.assignee_id !== req.user.id) return res.status(403).render('error', { user: req.user, ws: req.workspace, message: 'Only the assigned client user can respond to this request.' });
+      const version = parseInt(req.body.version, 10);
+      if (!Number.isInteger(version)) return badRequest(req, res, 'Refresh the page before updating this request.');
+      if (version !== Number(request.version)) {
+        return res.status(409).render('error', { user: req.user, ws: req.workspace, message: 'This request changed in another session. Refresh it before applying your decision.' });
+      }
       const target = String(req.body.status || '');
       const allowed = managing ? MANAGER_TRANSITIONS[request.status] : RESPONDER_TRANSITIONS[request.status];
       if (!allowed || !allowed.has(target)) return badRequest(req, res, `This request cannot move from ${clientStatus(request.status)} to ${target ? clientStatus(target) : 'that status'}.`);
       const note = clean(req.body.response_note, MAX_NOTE);
       if (note === null) return badRequest(req, res, `Response notes must be under ${MAX_NOTE} characters.`);
       if (target === 'changes_requested' && !note) return badRequest(req, res, 'Explain the changes required before sending the request back.');
+      const evidenceRequired = !!request.workpaper_id || ['evidence','control'].includes(request.request_type);
+      if (target === 'submitted' && evidenceRequired && Number(request.evidence_count || 0) === 0) {
+        return badRequest(req, res, 'Attach at least one supporting file before submitting this request for review.');
+      }
       const evidenceQuality = String(req.body.evidence_quality || request.evidence_quality || 'not_reviewed');
       if (!['not_reviewed','insufficient','partially_sufficient','sufficient'].includes(evidenceQuality)) {
         return badRequest(req, res, 'Choose a valid evidence-quality conclusion.');
@@ -536,8 +614,6 @@ function register(app, deps) {
       if (managing && target === 'accepted' && request.workpaper_id && evidenceQuality !== 'sufficient') {
         return badRequest(req, res, 'Structured workpaper requests can only be accepted when the submitted evidence is concluded sufficient. Request changes when evidence remains incomplete.');
       }
-      const version = parseInt(req.body.version, 10);
-      if (!Number.isInteger(version)) return badRequest(req, res, 'Refresh the page before updating this request.');
       const encryptedNote = enc.encryptIfNeeded(note || request.response_note || null,
         req.workspace.id, !!req.workspace.encryption_enabled);
       const result = db.prepare(`UPDATE client_requests SET status=?, response_note=?, reviewed_by=?, evidence_quality=?,

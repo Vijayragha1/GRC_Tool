@@ -1,4 +1,5 @@
 <%- include('partials/header', { title: v.name, user, ws, active: 'vendors' }) %>
+<% const currentDecision = decisions.find(decision => !decision.superseded_at); const governedTier = programme.inherentAssessment && programme.inherentAssessment.assigned_tier; %>
 
 <a href="/workspaces/<%= ws.id %>/vendors?section=register" class="link-muted text-base">← Supplier register</a>
 
@@ -12,22 +13,22 @@
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <span class="tag <%= v.tier === 'tier_1' ? 'tag-danger' : v.tier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= (v.tier || 'tier_2').replace('_',' ') %></span>
+    <span class="tag <%= governedTier === 'tier_1' ? 'tag-danger' : governedTier === 'tier_2' ? 'tag-warn' : 'tag-neutral' %>"><%= governedTier ? tierLabel(governedTier) : 'Tier not approved' %></span>
     <span class="status s-<%= v.lifecycle_stage === 'terminated' ? 'closed' : 'in_progress' %>"><%= (v.lifecycle_stage || 'active').replace(/_/g,' ') %></span>
   </div>
 </div>
 
-<!-- Risk summary tiles -->
+<!-- Governed supplier truth -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
   <div class="panel kpi">
-    <div class="kpi-num num" style="color:<%= (inherent||0) >= 18 ? '#b91c1c' : (inherent||0) >= 10 ? '#a16207' : '#15803d' %>"><%= inherent || '-' %><span class="text-xl text-tertiary" style="font-weight:400;">/25</span></div>
-    <div class="kpi-label">Inherent risk</div>
-    <div class="kpi-meta">five risk domains · versioned</div>
+    <div class="kpi-num num"><%= programme.inherentAssessment && programme.inherentAssessment.weighted_score != null ? Number(programme.inherentAssessment.weighted_score).toFixed(2) : '-' %><span class="text-xl text-tertiary" style="font-weight:400;">/100</span></div>
+    <div class="kpi-label">Approved inherent risk</div>
+    <div class="kpi-meta"><%= governedTier ? tierLabel(governedTier) : 'assessment not approved' %></div>
   </div>
   <div class="panel kpi">
-    <div class="kpi-num num" style="color:<%= (residual||0) >= 18 ? '#b91c1c' : (residual||0) >= 10 ? '#a16207' : '#15803d' %>"><%= residual || '-' %><span class="text-xl text-tertiary" style="font-weight:400;">/25</span></div>
-    <div class="kpi-label">Residual risk</div>
-    <div class="kpi-meta"><%= v.risk_override_score ? 'approved override active' : 'after reviewed controls' %></div>
+    <div class="kpi-num"><%= currentDecision && currentDecision.residual_risk_band ? currentDecision.residual_risk_band.replace(/\b\w/g, c => c.toUpperCase()) : '-' %></div>
+    <div class="kpi-label">Approved residual risk</div>
+    <div class="kpi-meta"><%= currentDecision ? currentDecision.decision.replace(/_/g,' ') : 'decision not recorded' %></div>
   </div>
   <div class="panel kpi">
     <div class="kpi-num num"><%= docs.length %></div>
@@ -36,17 +37,16 @@
     <% if (expDocs > 0) { %><div class="kpi-meta text-danger"><%= expDocs %> expiring soon</div><% } %>
   </div>
   <div class="panel kpi">
-    <% const presentClauses = clauses.filter(c => c.status === 'present').length; const totalClauses = clauses.length; %>
-    <div class="kpi-num num"><%= presentClauses %><span class="text-xl text-tertiary" style="font-weight:400;">/<%= totalClauses %></span></div>
-    <div class="kpi-label">Contract clauses present</div>
+    <div class="kpi-num num"><%= programme.contractProgress ? programme.contractProgress.complete : 0 %><span class="text-xl text-tertiary" style="font-weight:400;">/47</span></div>
+    <div class="kpi-label">Contract review complete</div>
   </div>
 </div>
 
 <!-- Tabs -->
 <div style="display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);overflow-x:auto;">
-  <% const tabs = [['overview','Profile'],['risk','Risk'],['questionnaires','Assessments'],['findings','Findings'],['documents','Evidence'],['clauses','Contracts'],['subprocessors','Sub-processors'],['controls','Controls'],['reviews','Reviews'],['monitoring','Oversight'],['decisions','Decisions'],['termination','Offboarding'],['notes','Activity']]; %>
+  <% const tabs = [['overview','Profile'],['findings','Findings'],['documents','Evidence'],['clauses','Contracts'],['subprocessors','Sub-processors'],['controls','Controls'],['reviews','Reviews'],['monitoring','Oversight'],['termination','Offboarding'],['notes','Activity']]; %>
   <% tabs.forEach(([k, label]) => { %>
-    <a href="?tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span class="text-xs text-tertiary">(<%= docs.length %>)</span><% } %><% if (k === 'questionnaires' && questionnaires.length) { %> <span class="text-xs text-tertiary">(<%= questionnaires.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span class="text-xs text-tertiary">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span class="text-xs text-tertiary">(<%= reviews.length %>)</span><% } %></a>
+    <a href="?view=support&amp;tab=<%= k %>" style="padding:8px 14px;border-bottom:2px solid <%= tab === k ? 'var(--accent)' : 'transparent' %>;font-size:13px;font-weight:<%= tab === k ? '600' : '500' %>;color:<%= tab === k ? 'var(--ink)' : 'var(--text-secondary)' %>;text-decoration:none;margin-bottom:-1px;transition:all 0.12s;"><%= label %><% if (k === 'documents' && docs.length) { %> <span class="text-xs text-tertiary">(<%= docs.length %>)</span><% } %><% if (k === 'subprocessors' && subprocessors.length) { %> <span class="text-xs text-tertiary">(<%= subprocessors.length %>)</span><% } %><% if (k === 'reviews' && reviews.length) { %> <span class="text-xs text-tertiary">(<%= reviews.length %>)</span><% } %></a>
   <% }) %>
 </div>
 
@@ -72,7 +72,7 @@
     <div><label class="label">Processing purpose</label><input class="input" name="processing_purpose" value="<%= v.processing_purpose || '' %>"></div>
     <div><label class="label">Data categories</label><input class="input" name="data_categories" value="<%= v.data_categories || '' %>"></div>
 
-    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Risk drivers (recompute on save)</div></div>
+    <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;"><div class="sec-label">Service context</div><div class="meta">Changes here update the supplier profile. Start a new governed inherent-risk assessment when the exposure changes.</div></div>
     <div><label class="label">Business criticality</label>
       <select class="select" name="business_criticality">
         <% ['low','medium','high','critical'].forEach(s => { %><option value="<%= s %>" <%= v.business_criticality === s ? 'selected' : '' %>><%= s %></option><% }) %>
@@ -93,11 +93,6 @@
         <option value="multi_source" <%= v.dependency_type === 'multi_source' ? 'selected' : '' %>>Multi-source</option>
         <option value="alternative" <%= v.dependency_type === 'alternative' ? 'selected' : '' %>>Alternative available</option>
         <option value="single_source" <%= v.dependency_type === 'single_source' ? 'selected' : '' %>>Single source</option>
-      </select>
-    </div>
-    <div><label class="label">Tier (auto from inherent)</label>
-      <select class="select" name="tier">
-        <% ['tier_1','tier_2','tier_3'].forEach(s => { %><option value="<%= s %>" <%= v.tier === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
       </select>
     </div>
     <div><label class="label">Regulatory exposure</label><input class="input" name="regulatory_exposure" value="<%= v.regulatory_exposure || '' %>" placeholder="GDPR, HIPAA, PCI…"></div>
@@ -141,36 +136,14 @@
 <% if (!v.archived_at) { %><div class="panel" style="margin-top:14px"><div class="panel-head"><h2>Archive supplier</h2><span class="meta">Retains assessments, decisions, evidence and audit history</span></div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/archive" class="panel-pad row" onsubmit="return appConfirmForm(event, 'Archive this supplier? Historical records will be retained.')"><input class="input" style="flex:1" name="reason" required minlength="5" placeholder="Reason for archival"><button class="btn btn-danger">Archive</button></form></div><% } %>
 <% } %>
 
-<% if (tab === 'risk') { const latestRisk = riskHistory[0]; const riskParts = latestRisk ? latestRisk.components_parsed : {}; %>
-<div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-bottom:14px;">
-  <div class="panel"><div class="panel-head"><h2>Risk calculation</h2><span class="tag tag-neutral">Method v<%= riskMethodology.version %></span></div><div class="panel-pad">
-    <div class="meta" style="margin-bottom:14px"><strong><%= riskMethodology.name %></strong>. Inherent risk is the sum of five scored domains. Residual risk applies only reviewed, current control evidence.</div>
-    <% if (riskParts.domains) { %><div class="sec-label">Inherent domains</div><% Object.entries(riskParts.domains).forEach(([name,value])=>{ %><div style="display:grid;grid-template-columns:130px 1fr 35px;gap:10px;align-items:center;margin:9px 0"><span style="text-transform:capitalize"><%= name %></span><div style="height:7px;background:var(--border);border-radius:10px;overflow:hidden"><div style="height:100%;width:<%= value*20 %>%;background:<%= value>=4?'#dc2626':value>=3?'#ca8a04':'#16a34a' %>"></div></div><strong class="num"><%= value %>/5</strong></div><% }) %><% } %>
-    <% if (riskParts.controls) { %><div class="sec-label" style="margin-top:20px">Control effectiveness</div><% Object.entries(riskParts.controls).forEach(([name,value])=>{ %><div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span style="text-transform:capitalize"><%= name %></span><strong>+<%= value %> points</strong></div><% }) %><div style="display:flex;justify-content:space-between;padding-top:10px"><strong>Total effectiveness</strong><strong><%= latestRisk.control_effectiveness %>%</strong></div><% } %>
-  </div></div>
-  <div>
-    <div class="panel" style="margin-bottom:14px"><div class="panel-head"><h2>Effective risk</h2></div><div class="panel-pad"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Calculated residual</span><strong><%= latestRisk ? latestRisk.calculated_residual_score : residual %>/25</strong></div><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Effective residual</span><strong class="text-xl"><%= residual %>/25</strong></div><div style="display:flex;justify-content:space-between"><span>Band</span><span class="tag <%= residual>=18?'tag-danger':residual>=12?'tag-warn':'tag-success' %>"><%= latestRisk ? latestRisk.risk_band : '-' %></span></div><% if(v.risk_override_score){ %><div style="margin-top:12px;padding:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px"><strong>Override active</strong><div class="meta"><%= v.risk_override_reason %></div></div><% } %></div></div>
-    <div class="panel"><div class="panel-head"><h2><%= v.risk_override_score?'Remove override':'Risk override' %></h2><span class="meta">Requires risk acceptance authority</span></div>
-      <% if(v.risk_override_score){ %><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/risk-override/clear" class="panel-pad"><label class="label">Removal rationale</label><textarea class="textarea" name="reason" required minlength="10"></textarea><button class="btn btn-secondary" style="margin-top:8px">Restore calculated risk</button></form>
-      <% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/risk-override" class="panel-pad"><label class="label">Approved residual score (1–25)</label><input class="input" type="number" min="1" max="25" name="score" required><label class="label" style="margin-top:8px">Rationale</label><textarea class="textarea" name="reason" required minlength="10"></textarea><button class="btn btn-primary" style="margin-top:8px">Record override</button></form><% } %>
-    </div>
-  </div>
-</div>
-<div class="panel"><div class="panel-head"><h2>Immutable risk history</h2><span class="meta"><%= riskHistory.length %> snapshots</span></div><table class="t"><thead><tr><th>Recorded</th><th>Event</th><th>Method</th><th>Inherent</th><th>Effectiveness</th><th>Calculated</th><th>Effective</th><th>By</th></tr></thead><tbody><% riskHistory.forEach(r=>{ %><tr><td class="meta"><%= (r.recorded_at||'').replace('T',' ').slice(0,16) %></td><td><%= r.event_type.replace(/_/g,' ') %></td><td>v<%= r.methodology_version %></td><td><%= r.inherent_score %></td><td><%= r.control_effectiveness %>%</td><td><%= r.calculated_residual_score %></td><td><strong><%= r.effective_residual_score %></strong></td><td><%= r.recorded_by_name||'System' %></td></tr><% }) %><% if(!riskHistory.length){ %><tr><td colspan="8" class="t-empty">The first snapshot is created on the next profile or evidence update.</td></tr><% } %></tbody></table></div>
-<% } %>
-
 <% if (tab === 'findings') { %>
-<div class="panel" style="margin-bottom:14px"><div class="panel-head"><h2>Create finding</h2><span class="meta">Assessment, contract, monitoring or manual concern</span></div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings" class="panel-pad" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px"><div><label class="label">Title</label><input class="input" name="title" required></div><div><label class="label">Domain</label><select class="select" name="domain"><option>security</option><option>privacy</option><option>operational</option><option>resilience</option><option>contract</option><option>concentration</option></select></div><div><label class="label">Severity</label><select class="select" name="severity"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></div><div style="grid-column:span 2"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div><div><label class="label">Owner</label><input class="input" name="owner_name"></div><div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div><div><label class="label">Source assessment</label><select class="select" name="questionnaire_id"><option value="">Manual / other</option><% questionnaires.forEach(q=>{ %><option value="<%= q.id %>"><%= q.template_name %></option><% }) %></select></div><div style="align-self:end"><button class="btn btn-primary">Create finding</button></div></form></div>
+<div class="panel" style="margin-bottom:14px"><div class="panel-head"><h2>Create finding</h2><span class="meta">Assessment, contract, monitoring or manual concern</span></div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings" class="panel-pad" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px"><div><label class="label">Title</label><input class="input" name="title" required></div><div><label class="label">Domain</label><select class="select" name="domain"><option>security</option><option>privacy</option><option>operational</option><option>resilience</option><option>contract</option><option>concentration</option></select></div><div><label class="label">Severity</label><select class="select" name="severity"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></div><div style="grid-column:span 2"><label class="label">Description</label><textarea class="textarea" name="description" rows="2"></textarea></div><div><label class="label">Owner</label><input class="input" name="owner_name"></div><div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div><div style="align-self:end"><button class="btn btn-primary">Create finding</button></div></form></div>
 <div class="panel"><div class="panel-head"><h2>Findings and risk acceptances</h2></div><div class="divide-row"><% supplierFindings.forEach(f=>{ %><div style="padding:14px 16px"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="display:flex;gap:8px;align-items:center"><strong><%= f.title %></strong><span class="tag <%= ['high','critical'].includes(f.severity)?'tag-danger':f.severity==='medium'?'tag-warn':'tag-neutral' %>"><%= f.severity %></span><span class="status s-<%= ['closed','verified'].includes(f.status)?'done':'open' %>"><%= f.status.replace(/_/g,' ') %></span></div><div class="meta" style="margin-top:5px"><%= f.domain||'general' %> · Owner: <%= f.owner_name||'unassigned' %> · Due: <%= f.due_date||'not set' %></div><% if(f.description){ %><p class="text-base"><%= f.description %></p><% } %><% if(f.risk_acceptance_reason){ %><div style="padding:8px;background:#fff7ed;border-radius:6px"><strong>Risk accepted until <%= f.risk_acceptance_expires_at %></strong><div class="meta"><%= f.risk_acceptance_reason %></div></div><% } %></div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings/<%= f.id %>/status" class="row"><select class="select" name="status"><% ['open','in_remediation','verified','closed'].forEach(s=>{ %><option value="<%= s %>" <%= f.status===s?'selected':'' %>><%= s.replace('_',' ') %></option><% }) %></select><button class="btn btn-secondary btn-xs">Update</button></form></div><% if(!['closed','verified','accepted_risk'].includes(f.status)){ %><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/findings/<%= f.id %>/accept" style="display:grid;grid-template-columns:1fr 150px auto;gap:8px;margin-top:10px"><input class="input" name="reason" minlength="10" required placeholder="Risk acceptance rationale"><input class="input" type="date" name="expires_at" required><button class="btn btn-secondary btn-xs">Accept risk</button></form><% } %></div><% }) %><% if(!supplierFindings.length){ %><div class="t-empty">No findings recorded for this supplier.</div><% } %></div></div>
-<% } %>
-
-<% if (tab === 'decisions') { %>
-<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:14px"><div class="panel"><div class="panel-head"><h2>Record governance decision</h2><span class="meta">Immutable and risk-versioned</span></div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" class="panel-pad"><label class="label">Decision</label><select class="select" name="decision"><option value="approved">Approve</option><option value="conditional">Approve with conditions</option><option value="rejected">Reject</option><option value="renewed">Renew</option><option value="offboard">Offboard</option></select><label class="label" style="margin-top:9px">Rationale</label><textarea class="textarea" name="rationale" minlength="10" required></textarea><label class="label" style="margin-top:9px">Conditions</label><textarea class="textarea" name="conditions" placeholder="Required for conditional approval"></textarea><label class="label" style="margin-top:9px">Valid until</label><input class="input" type="date" name="valid_until"><button class="btn btn-primary" style="margin-top:10px">Record decision</button></form></div><div class="panel"><div class="panel-head"><h2>Decision history</h2></div><div class="divide-row"><% decisions.forEach(d=>{ %><div style="padding:14px 16px;opacity:<%= d.superseded_at?'.7':'1' %>"><div style="display:flex;justify-content:space-between"><div><span class="tag <%= d.decision==='rejected'||d.decision==='offboard'?'tag-danger':d.decision==='conditional'?'tag-warn':'tag-success' %>"><%= d.decision.replace(/_/g,' ') %></span><% if(!d.superseded_at){ %> <span class="tag tag-neutral">current</span><% } %></div><span class="meta"><%= (d.decided_at||'').slice(0,10) %></span></div><p><%= d.rationale %></p><% if(d.conditions){ %><div class="meta"><strong>Conditions:</strong> <%= d.conditions %></div><% } %><div class="meta">By <%= d.decided_by_name||d.decider_name %> · residual risk <%= d.residual_risk_score %>/25 · method v<%= d.methodology_version %><% if(d.valid_until){ %> · valid until <%= d.valid_until %><% } %></div></div><% }) %><% if(!decisions.length){ %><div class="t-empty">No formal decision recorded.</div><% } %></div></div></div>
 <% } %>
 
 <% if (tab === 'documents') { %>
 <div class="panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>Upload attestation / contract / report</h2><span class="meta">Risk score recomputes on upload</span></div>
+  <div class="panel-head"><h2>Upload attestation / contract / report</h2><span class="meta">Retained as current supplier evidence</span></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/documents" enctype="multipart/form-data" class="panel-pad grid-2">
     <div><label class="label">Document type</label>
       <select class="select" name="doc_type">
@@ -229,52 +202,6 @@
       <% if (docs.length === 0) { %>
         <tr><td colspan="6" class="t-empty">No documents yet. Upload SOC 2, ISO 27001, pentest reports, DPAs, etc.</td></tr>
       <% } %>
-    </tbody>
-  </table>
-</div>
-<% } %>
-
-<% if (tab === 'questionnaires') { %>
-<div class="panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>Create vendor assessment</h2><span class="meta">Create the assessment first, then review and send its secure invitation</span></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/questionnaires" class="panel-pad" style="display:grid;grid-template-columns:2fr 1.3fr 1.5fr 1fr auto;gap:8px;align-items:end">
-    <div><label class="label">Questionnaire</label><select name="template_id" class="select" required><option value="">- pick a template -</option><% templates.forEach(t => { %><option value="<%= t.id %>"><%= t.name %> (<%= t.q_count %> questions)</option><% }) %></select></div>
-    <div><label class="label">Vendor contact</label><input class="input" name="external_contact_name" placeholder="Name"></div>
-    <div><label class="label">Vendor email</label><input class="input" type="email" name="external_email" value="<%= v.contact&&v.contact.includes('@')?v.contact:'' %>" placeholder="security@vendor.com"></div>
-    <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
-    <button class="btn btn-primary" style="white-space:nowrap;">Create</button>
-  </form>
-</div>
-
-<div class="panel" style="overflow:hidden">
-  <table class="t">
-    <thead><tr>
-      <th>Template</th><th style="width:100px">Sent</th><th style="width:120px">Status</th>
-      <th style="width:120px">Score</th><th style="width:100px">Risk</th><th style="width:120px">Progress</th>
-    </tr></thead>
-    <tbody>
-      <% questionnaires.forEach(q => { %>
-        <tr style="cursor:pointer" onclick="location='/workspaces/<%= ws.id %>/vendors/<%= v.id %>/questionnaires/<%= q.id %>'">
-          <td>
-            <div style="font-weight:500"><%= q.template_name %></div>
-            <div class="meta"><%= q.category %></div>
-          </td>
-          <td class="num meta"><%= q.sent_at ? q.sent_at.split(' ')[0] : '-' %></td>
-          <td><span class="status s-<%= q.status === 'reviewed' ? 'done' : q.invitation_status === 'in_progress' || q.status === 'responded' ? 'in_review' : 'todo' %>"><%= (q.status==='reviewed'?'reviewed':q.invitation_status||q.status).replace(/_/g,' ') %></span></td>
-          <td>
-            <% if (q.score !== null) { %>
-              <span class="num" style="font-weight:500;color:<%= q.score >= 80 ? '#15803d' : q.score >= 60 ? '#a16207' : '#b91c1c' %>"><%= q.score %>%</span>
-            <% } else { %><span class="meta">-</span><% } %>
-          </td>
-          <td>
-            <% if (q.risk_rating) { %>
-              <span class="tag <%= q.risk_rating === 'high' ? 'tag-danger' : q.risk_rating === 'medium' ? 'tag-warn' : 'tag-success' %>"><%= q.risk_rating %></span>
-            <% } else { %><span class="meta">-</span><% } %>
-          </td>
-          <td class="meta"><%= q.answered_questions %>/<%= q.total_questions %></td>
-        </tr>
-      <% }) %>
-      <% if (questionnaires.length === 0) { %><tr><td colspan="6" class="t-empty">No questionnaires sent yet.</td></tr><% } %>
     </tbody>
   </table>
 </div>
@@ -421,10 +348,6 @@
               <% if (r.reviewer) { %><span class="meta">· <%= r.reviewer %></span><% } %>
             </div>
             <% if (r.next_review_date) { %><span class="meta">next: <%= r.next_review_date %></span><% } %>
-          </div>
-          <div class="text-xs text-tertiary" style="display:flex;gap:8px;margin-bottom:6px;">
-            <% if (r.inherent_risk !== null) { %><span>inherent: <%= r.inherent_risk %>/25</span><% } %>
-            <% if (r.residual_risk !== null) { %><span>· residual: <%= r.residual_risk %>/25</span><% } %>
           </div>
           <% if (r.findings) { %><div class="text-lg" style="margin-bottom:4px;"><strong>Findings:</strong> <%= r.findings %></div><% } %>
           <% if (r.action_items) { %><div class="text-lg text-secondary"><strong>Actions:</strong> <%= r.action_items %></div><% } %>

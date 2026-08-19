@@ -8,6 +8,10 @@ const ctlReads = require('../lib/control-reads');
 const evReads = require('../lib/evidence-reads');
 const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
 const { parseWorkspaceFrameworks } = require('../lib/frameworks');
+const performanceObjectives = require('../lib/performance-objectives');
+const { todayFor, ymdInZone, workspaceTimeZone } = require('../lib/dates');
+const documentTruth = require('../lib/document-truth');
+const { computeReadiness } = require('../lib/readiness');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, upload } = deps;
@@ -16,11 +20,13 @@ function register(app, deps) {
   // Auto-computed KPIs from existing tables. The auditor's complaint was that
   // MRM inputs are free-text; this lets a consultant click "Feed to MRM" and
   // have the numbers land in the next management-review record.
-  function computeIsmsMetrics(wsId) {
-    const today = new Date().toISOString().slice(0, 10);
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-    const oneEightyDaysAgo = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
-    const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  function computeIsmsMetrics(workspace) {
+    const wsId = workspace.id;
+    const zone = workspaceTimeZone(workspace);
+    const today = todayFor(workspace);
+    const ninetyDaysAgo = ymdInZone(new Date(Date.now() - 90 * 86400000), zone);
+    const oneEightyDaysAgo = ymdInZone(new Date(Date.now() - 180 * 86400000), zone);
+    const oneYearAgo = ymdInZone(new Date(Date.now() - 365 * 86400000), zone);
     const cnt = (sql, ...args) => { try { return db.prepare(sql).get(wsId, ...args)?.c || 0; } catch (_) { return 0; } };
     const safeAll = (sql, ...args) => { try { return db.prepare(sql).all(wsId, ...args); } catch (_) { return []; } };
     const Tm = ctlReads.tables(db, wsId);
@@ -113,11 +119,17 @@ function register(app, deps) {
     res.redirect('/workspaces/' + req.workspace.id + '/metrics/adopted');
   });
 
+  // A single entry point for clause 6.2 objectives and clause 9.1 measures.
+  // Legacy URLs remain stable for bookmarks and audit trails.
+  app.get('/workspaces/:wsId/performance', requireAuth, requireWorkspace, (req, res) => {
+    res.redirect('/workspaces/' + req.workspace.id + '/objectives');
+  });
+
   // Push current metrics into the chosen MRM's performance_review field.
   app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
     const mrm = db.prepare(`SELECT id FROM mrms WHERE id=? AND workspace_id=?`).get(req.params.mrmId, req.workspace.id);
     if (!mrm) return res.status(404).send('MRM not found');
-    const m = computeIsmsMetrics(req.workspace.id);
+    const m = computeIsmsMetrics(req.workspace);
     const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
     let block = [
       `--- ISMS performance metrics (auto-fed ${ts}) ---`,
@@ -171,11 +183,7 @@ function register(app, deps) {
   // RAG status for a reading vs the adopted target, honouring the metric's direction
   // (whether a higher or lower value is better). Null when no target/value is set.
   function ismsMetricRag(value, target, direction) {
-    if (value == null || target == null) return null;
-    const lower = direction === 'lower';
-    if (lower ? value <= target : value >= target) return 'green';
-    if (lower ? value <= target * 1.1 : value >= target * 0.9) return 'amber';
-    return 'red';
+    return performanceObjectives.metricRag(value, target, direction);
   }
 
   // Resolve iso_item ids to {id, title, type} for display + linking to controls.
@@ -191,14 +199,19 @@ function register(app, deps) {
   // the view can link/remove), and the full definition of each before adoption.
   app.get('/workspaces/:wsId/metrics/library', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
     const adoptedById = {};
-    db.prepare(`SELECT id, metric_key FROM isms_metrics WHERE workspace_id=?`).all(req.workspace.id).forEach(a => { adoptedById[a.metric_key] = a.id; });
+    db.prepare(`SELECT m.id,m.metric_key,(SELECT COUNT(*) FROM security_objectives o WHERE o.metric_id=m.id) AS objective_count
+      FROM isms_metrics m WHERE m.workspace_id=?`).all(req.workspace.id).forEach(a => { adoptedById[a.metric_key] = a; });
     const byCategory = {};
     ISO27004_METRICS.forEach(m => {
       (byCategory[m.category] = byCategory[m.category] || []).push({
-        ...m, adoptedId: adoptedById[m.key] || null, adopted: adoptedById[m.key] != null, controlsResolved: resolveControls(m.controls),
+        ...m, adoptedId: adoptedById[m.key]?.id || null, adopted: adoptedById[m.key] != null,
+        objectiveCount: adoptedById[m.key]?.objective_count || 0, controlsResolved: resolveControls(m.controls),
       });
     });
-    const categories = ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]);
+    const categories = [
+      ...ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]),
+      ...Object.keys(byCategory).filter(c => !ISO27004_METRICS.CATEGORIES.includes(c)).sort(),
+    ];
     res.render('metrics_library', { user: req.user, ws: req.workspace, byCategory, categories, total: ISO27004_METRICS.length, adoptedCount: Object.keys(adoptedById).length });
   });
 
@@ -227,18 +240,19 @@ function register(app, deps) {
 
   // Adopted measures with their latest reading vs target (RAG).
   app.get('/workspaces/:wsId/metrics/adopted', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-    const rows = db.prepare(`
-      SELECT m.*,
-        (SELECT value FROM isms_metric_readings r WHERE r.metric_id=m.id ORDER BY r.measured_at DESC, r.id DESC LIMIT 1) AS latest_value,
-        (SELECT measured_at FROM isms_metric_readings r WHERE r.metric_id=m.id ORDER BY r.measured_at DESC, r.id DESC LIMIT 1) AS latest_at,
-        (SELECT COUNT(*) FROM isms_metric_readings r WHERE r.metric_id=m.id) AS reading_count
-      FROM isms_metrics m WHERE m.workspace_id=? ORDER BY m.category, m.name`).all(req.workspace.id);
+    const rows = performanceObjectives.listAdoptedMetrics(db, req.workspace.id);
+    const readingCounts = new Map(db.prepare(`SELECT metric_id,COUNT(*) AS c FROM isms_metric_readings
+      WHERE metric_id IN (SELECT id FROM isms_metrics WHERE workspace_id=?) GROUP BY metric_id`).all(req.workspace.id)
+      .map(row => [row.metric_id, row.c]));
     const byCategory = {};
     rows.forEach(m => {
-      m.rag = ismsMetricRag(m.latest_value, m.target_value, m.direction);
+      m.reading_count = readingCounts.get(m.id) || 0;
       (byCategory[m.category] = byCategory[m.category] || []).push(m);
     });
-    const categories = ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]);
+    const categories = [
+      ...ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]),
+      ...Object.keys(byCategory).filter(c => !ISO27004_METRICS.CATEGORIES.includes(c)).sort(),
+    ];
     const ragCounts = { green: 0, amber: 0, red: 0, none: 0 };
     rows.forEach(m => ragCounts[m.rag || 'none']++);
     const upcomingMrms = db.prepare(`SELECT id, meeting_date FROM mrms WHERE workspace_id=? AND status != 'closed' ORDER BY meeting_date IS NULL, meeting_date LIMIT 5`).all(req.workspace.id);
@@ -255,7 +269,38 @@ function register(app, deps) {
     const controlsResolved = resolveControls(catalog.controls || []);
     const latest = readings.length ? readings[readings.length - 1] : null;
     metric.rag = latest ? ismsMetricRag(latest.value, metric.target_value, metric.direction) : null;
-    res.render('metric_detail', { user: req.user, ws: req.workspace, metric, readings, catalog, controlsResolved, latest });
+    const linkedObjectives = db.prepare(`SELECT id,title,due_date,status FROM security_objectives
+      WHERE workspace_id=? AND metric_id=? ORDER BY due_date IS NULL,due_date,id`).all(req.workspace.id, metric.id);
+    res.render('metric_detail', { user: req.user, ws: req.workspace, metric, readings, catalog, controlsResolved, latest, linkedObjectives });
+  });
+
+  // One chronological register across the measurement programme. This is the
+  // evidence trail behind every metric-driven objective status.
+  app.get('/workspaces/:wsId/metrics/readings', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+    const readings = db.prepare(`
+      SELECT r.*,m.id AS metric_id,m.ref,m.name AS metric_name,m.unit,m.direction,m.target_value,
+        u.name AS recorder,
+        (SELECT GROUP_CONCAT(o.title,'||') FROM security_objectives o WHERE o.metric_id=m.id) AS objective_titles
+      FROM isms_metric_readings r
+      JOIN isms_metrics m ON m.id=r.metric_id
+      LEFT JOIN users u ON u.id=r.recorded_by
+      WHERE m.workspace_id=?
+      ORDER BY r.measured_at DESC,r.id DESC`).all(req.workspace.id);
+    readings.forEach(reading => {
+      reading.rag = ismsMetricRag(reading.value, reading.target_value, reading.direction);
+      reading.objectives = reading.objective_titles ? reading.objective_titles.split('||') : [];
+      reading.valueDisplay = performanceObjectives.formatMetricValue(reading.value, reading.unit);
+      reading.targetDisplay = performanceObjectives.formatMetricValue(reading.target_value, reading.unit);
+    });
+    const measures = db.prepare(`SELECT COUNT(*) AS total,
+      SUM(CASE WHEN EXISTS(SELECT 1 FROM isms_metric_readings r WHERE r.metric_id=m.id) THEN 1 ELSE 0 END) AS with_data
+      FROM isms_metrics m WHERE m.workspace_id=? AND m.is_active=1`).get(req.workspace.id);
+    const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+    const thisMonth = readings.filter(reading => reading.measured_at >= monthStart).length;
+    res.render('metric_readings', {
+      user: req.user, ws: req.workspace, readings,
+      summary: { total: readings.length, thisMonth, measures: measures.total || 0, withData: measures.with_data || 0 },
+    });
   });
 
   // Record a reading against an adopted measure.
@@ -288,6 +333,8 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/metrics/adopted/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const metric = db.prepare(`SELECT id FROM isms_metrics WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!metric) return res.status(404).render('error', { user: req.user, message: 'Metric not found.' });
+    const linked = db.prepare(`SELECT COUNT(*) AS c FROM security_objectives WHERE workspace_id=? AND metric_id=?`).get(req.workspace.id, metric.id).c;
+    if (linked) return redirectBack(req, res, `This measure drives ${linked} objective${linked === 1 ? '' : 's'}. Unlink it from those objectives before removing it.`, 'warn');
     db.prepare(`DELETE FROM isms_metrics WHERE id=?`).run(metric.id);
     logAction(req.user.id, req.workspace.id, 'remove_isms_metric', 'isms_metric', metric.id, null, auditCtx(req));
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/metrics/adopted', 'Metric removed'));
@@ -299,26 +346,21 @@ function register(app, deps) {
   // with doc_templates.tier to surface mandatory-vs-recommended adoption.
   app.get('/workspaces/:wsId/policy-adoption', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
     const wsId = req.workspace.id;
-    const today = new Date().toISOString().slice(0, 10);
-    const soonDate = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-    const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+    const zone = workspaceTimeZone(req.workspace);
+    const today = todayFor(req.workspace);
+    const soonDate = ymdInZone(new Date(Date.now() + 30 * 86400000), zone);
+    const staleCutoff = ymdInZone(new Date(Date.now() - 365 * 86400000), zone);
 
     // All workspace docs joined with their source template tier (mandatory/expected/recommended).
-    const docs = db.prepare(`SELECT d.id, d.name, d.category, d.status, d.version, d.created_at, d.updated_at,
-        d.next_review_date,
-        (SELECT name FROM users WHERE id = d.approved_by) AS approved_by_name,
-        d.approved_at,
-        COALESCE(t.tier, 'recommended') AS tier
-      FROM generated_docs d
-      LEFT JOIN doc_templates t ON t.id = d.template_id
-      WHERE d.workspace_id = ?
-      ORDER BY
-        CASE COALESCE(t.tier, 'recommended')
-          WHEN 'mandatory' THEN 1
-          WHEN 'expected' THEN 2
-          ELSE 3
-        END,
-        d.name`).all(wsId);
+    const docs = documentTruth.workspaceDocuments(db,wsId).map(document => ({
+      ...document,
+      approved_by_name: document.approved_by ? (db.prepare(`SELECT name FROM users WHERE id=?`).get(document.approved_by) || {}).name : null,
+      tier: document.template_tier || 'recommended'
+    })).sort((a,b) =>
+      ({ mandatory: 1, expected: 2, recommended: 3 }[a.tier] || 4) -
+      ({ mandatory: 1, expected: 2, recommended: 3 }[b.tier] || 4) ||
+      a.name.localeCompare(b.name)
+    );
 
     // Decorate with review band: current / due_soon / overdue / never_reviewed
     const decorated = docs.map(d => {
@@ -333,13 +375,10 @@ function register(app, deps) {
 
     // Mandatory coverage: for each mandatory template name pattern, do we have a workspace doc?
     // Just count templates with tier='mandatory' that have ZERO workspace docs.
-    const mandatoryTemplates = db.prepare(`SELECT id, name FROM doc_templates WHERE tier='mandatory' AND is_system=1`).all();
-    const adoptedTemplateIds = new Set(docs.filter(d => d.tier === 'mandatory').map(d => d.id));
-    // Quicker version: per template, do we have any generated_doc?
-    const templateAdoption = mandatoryTemplates.map(t => {
-      const adopted = db.prepare(`SELECT id, status FROM generated_docs WHERE workspace_id=? AND template_id=? ORDER BY id LIMIT 1`).get(wsId, t.id);
-      return { template_name: t.name, adopted: !!adopted, status: adopted ? adopted.status : null, doc_id: adopted ? adopted.id : null };
-    });
+    // Template-originated and locally authored controlled documents are
+    // reconciled through the same semantic document projection.
+    const templateAdoption = documentTruth.mandatoryTemplateAdoption(db, wsId);
+    const readinessTruth = computeReadiness(req.workspace);
 
     // KPIs
     const kpis = {
@@ -357,6 +396,8 @@ function register(app, deps) {
       noReviewDate: decorated.filter(d => d.reviewBand === 'unset').length,
       mandatoryAdopted: templateAdoption.filter(t => t.adopted).length,
       mandatoryTotal: templateAdoption.length,
+      requiredRecordsFound: readinessTruth.records.mandatory.found,
+      requiredRecordsTotal: readinessTruth.records.mandatory.total,
       stale: decorated.filter(d => d.stale).length
     };
     kpis.mandatoryPct = kpis.mandatoryTotal ? Math.round((kpis.mandatoryAdopted / kpis.mandatoryTotal) * 100) : 0;
@@ -376,8 +417,8 @@ function register(app, deps) {
     }
     const wsId = req.workspace.id;
     const filter = req.query.filter || 'included'; // 'included' | 'all' | 'missing' | 'stale'
-    const today = new Date().toISOString().slice(0, 10);
-    const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+    const today = todayFor(req.workspace);
+    const staleCutoff = ymdInZone(new Date(Date.now() - 365 * 86400000),workspaceTimeZone(req.workspace));
 
     const rows = db.prepare(`SELECT i.id, i.title, i.category, i.type, i.evidence_to_look_for,
         COALESCE(cs.status,'Not Assessed') AS status,

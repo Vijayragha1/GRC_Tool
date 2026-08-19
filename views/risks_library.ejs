@@ -10,13 +10,13 @@
 
 <%- include('partials/risk_tabs', { ws, active: 'register' }) %>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/risks/library">
+<form method="POST" action="/workspaces/<%= ws.id %>/risks/library" data-bulk-select-form>
   <div style="position:sticky;top:0;background:var(--bg-deep);padding:8px 0;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);z-index:5;">
-    <div class="meta"><span id="pickCount">0</span> selected · <%= Object.keys(byDomain).length %> domains · <%= Object.values(byDomain).reduce((n, a) => n + a.length, 0) %> risks total</div>
+    <div class="meta" aria-live="polite"><span data-selected-count>0</span> selected · <%= Object.keys(byDomain).length %> domains · <%= Object.values(byDomain).reduce((n, a) => n + a.length, 0) %> risks total</div>
     <div class="row">
-      <button type="button" onclick="pickAll(true)" class="btn btn-secondary btn-xs">Select all visible</button>
-      <button type="button" onclick="pickAll(false)" class="btn btn-secondary btn-xs">Clear</button>
-      <button type="submit" class="btn btn-primary btn-xs">Add selected to register</button>
+      <button type="button" data-select-all class="btn btn-secondary btn-xs">Select all visible</button>
+      <button type="button" data-clear-selection class="btn btn-secondary btn-xs">Clear</button>
+      <button type="submit" data-bulk-submit class="btn btn-primary btn-xs" disabled>Select at least one risk</button>
     </div>
   </div>
 
@@ -24,7 +24,7 @@
     <div class="panel" style="margin-bottom:14px;">
       <div class="panel-head"><h2><%= domain %></h2><span class="meta"><%= byDomain[domain].length %> risk<%= byDomain[domain].length === 1 ? '' : 's' %></span></div>
       <% byDomain[domain].forEach(r => { %>
-        <label style="display:grid;grid-template-columns:24px 1fr;gap:10px;padding:10px 16px;border-top:1px solid var(--border);cursor:pointer;align-items:start;" onclick="setTimeout(updateCount, 0)">
+        <label style="display:grid;grid-template-columns:24px 1fr;gap:10px;padding:10px 16px;border-top:1px solid var(--border);cursor:pointer;align-items:start;">
           <input type="checkbox" name="pick" value="<%= r.idx %>" style="margin-top:3px;">
           <div>
             <div style="font-size:13.5px;font-weight:500;line-height:1.4;"><%= r.title %></div>
@@ -44,15 +44,5 @@
     </div>
   <% }) %>
 </form>
-
-<script>
-function updateCount() {
-  document.getElementById('pickCount').textContent = document.querySelectorAll('input[name="pick"]:checked').length;
-}
-function pickAll(state) {
-  document.querySelectorAll('input[name="pick"]').forEach(c => c.checked = state);
-  updateCount();
-}
-</script>
 
 <%- include('partials/footer') %>

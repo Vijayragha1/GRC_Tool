@@ -4,7 +4,7 @@
   <div>
     <h1 class="page-title"><%= user.user_type === 'firm' ? 'Portfolio' : 'My clients' %></h1>
   </div>
-  <% if (user.user_type === 'firm') { %>
+  <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.create')) { %>
     <button onclick="document.getElementById('newWs').showModal()" class="btn btn-primary">+ New client</button>
   <% } %>
 </div>
@@ -201,7 +201,7 @@
   </div>
 <% } %>
 
-<% if (user.user_type === 'firm') { %>
+<% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.create')) { %>
 <%# New-client form lives in a native <dialog>. The previous inline
     expanding-panel pattern was invisible to a first-time user: they'd
     click "New client," nothing visibly happened (the panel was further
@@ -295,7 +295,7 @@
               <span class="num text-xs text-tertiary" style="min-width:42px;"><%= w.progress.assessed %>/<%= w.progress.total %></span>
             </div>
           </td>
-          <% if (user.user_type === 'firm') { %>
+          <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.delete')) { %>
           <td onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
             <button type="button"
                     onclick="deleteClient(<%= w.id %>, '<%= w.client_name.replace(/'/g, "\\'") %>')"
@@ -314,7 +314,7 @@
             </div>
             <div class="empty-title">No clients yet</div>
             <div class="empty-sub">Add your first client to get started. Each client gets its own scope, risks, controls, and audit trail.</div>
-            <% if (user.user_type === 'firm') { %>
+            <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.create')) { %>
               <button onclick="document.getElementById('newWs').showModal()" class="btn btn-primary">+ New client</button>
             <% } %>
           </div>

@@ -75,7 +75,7 @@
   // weren't passed. Safe-default lets the page render gracefully if
   // an old route handler is in memory and didn't include summary.
   const summary = locals.summary || {
-    tier: '—', effort: { weeks: '—' }, pressure: null,
+    tier: '-', effort: { weeks: '-' }, pressure: null,
     flags: [], readinessMarkers: [],
     score: { total: 0 }, headcount: 0, cloudCount: 0, locCount: 0
   };
@@ -93,7 +93,7 @@
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--border);background:var(--bg);margin-bottom:18px;">
   <div style="padding:18px 22px;border-right:1px solid var(--border);">
     <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Complexity tier</div>
-    <div style="display:flex;align-items:baseline;gap:10px;font-family:'Source Serif 4',Georgia,serif;">
+    <div style="display:flex;align-items:baseline;gap:10px;font-family:var(--font-display);">
       <span style="font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:<%= tierColor %>;"><%= summary.tier %></span>
       <span class="meta text-sm">score <%= summary.score.total.toFixed(1) %></span>
     </div>
@@ -104,16 +104,16 @@
   </div>
   <div style="padding:18px 22px;border-right:1px solid var(--border);">
     <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Estimated effort</div>
-    <div style="font-family:'Source Serif 4',Georgia,serif;font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);"><%= summary.effort.weeks %> <span style="font-size:18px;color:var(--text-tertiary);font-weight:400;">wks</span></div>
+    <div style="font-family:var(--font-display);font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);"><%= summary.effort.weeks %> <span style="font-size:18px;color:var(--text-tertiary);font-weight:400;">wks</span></div>
     <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">to Stage 1 audit, based on firm benchmarks for <%= summary.tier.toLowerCase() %> clients</div>
   </div>
   <div style="padding:18px 22px;">
     <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Deadline pressure</div>
     <% if (summary.pressure) { %>
-      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight: 500;letter-spacing:-0.01em;color:<%= pressureColor %>;"><%= summary.pressure.label %></div>
+      <div style="font-family:var(--font-display);font-size:28px;font-weight: 500;letter-spacing:-0.01em;color:<%= pressureColor %>;"><%= summary.pressure.label %></div>
       <div class="meta text-sm" style="margin-top:8px;line-height:1.5;"><%= summary.pressure.days %></div>
     <% } else { %>
-      <div style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:500;color:var(--text-tertiary);font-style:italic;">No deadline set</div>
+      <div style="font-family:var(--font-display);font-size:24px;font-weight:500;color:var(--text-tertiary);font-style:italic;">No deadline set</div>
       <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">Add a target date in the form below to see pressure</div>
     <% } %>
   </div>
@@ -165,7 +165,7 @@
                   <input class="input" type="number" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
                 <% } else if (q.type === 'select') { %>
                   <select class="select" id="q-<%= q.id %>" name="<%= q.id %>" <%= q.required ? 'required' : '' %>>
-                    <option value="">— Select —</option>
+                    <option value="">- Select -</option>
                     <% (q.options || []).forEach(opt => { %>
                       <option value="<%= opt %>" <%= (answers[q.id] === opt) ? 'selected' : '' %>><%= opt %></option>
                     <% }) %>

@@ -43,7 +43,7 @@
     --info: #1d4ed8; --info-soft: #2563eb14;
     --neutral: #52525b; --neutral-soft: #71717a14;
   }
-  html, body { padding: 0; margin: 0; font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 10.5pt; color: var(--text); line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { padding: 0; margin: 0; font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 10.5pt; color: var(--text); line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   * { box-sizing: border-box; }
   .num { font-variant-numeric: tabular-nums; }
   .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
@@ -109,12 +109,7 @@
 
   /* KPI tiles for the executive summary */
   .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-bottom: 6mm; }
-  .kpi { padding: 4mm; border: 0.2mm solid var(--border); border-radius: 2mm; background: white; position: relative; overflow: hidden; }
-  .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0.8mm; background: var(--border-strong); }
-  .kpi.good::before  { background: var(--good); }
-  .kpi.warn::before  { background: var(--warn); }
-  .kpi.bad::before   { background: var(--bad); }
-  .kpi.brand::before { background: var(--brand); }
+  .kpi { padding: 4mm; border: 0.2mm solid var(--border); border-radius: 2mm; background: white; }
   .kpi-label { font-size: 7.5pt; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
   .kpi-num { font-size: 22pt; font-weight: 500; line-height: 1.05; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 2mm; }
   .kpi-meta { font-size: 8pt; color: var(--text-tertiary); margin-top: 1.5mm; }
@@ -161,8 +156,8 @@
   .hash { font-family: 'SF Mono', ui-monospace, monospace; font-size: 8pt; color: var(--text-secondary); word-break: break-all; }
 
   /* Footnote callouts (e.g., "live state, not a snapshot") */
-  .callout { padding: 3mm 4mm; border-left: 0.6mm solid var(--brand); background: var(--brand-soft); font-size: 9pt; color: var(--text); margin-bottom: 4mm; border-radius: 0 1mm 1mm 0; }
-  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+  .callout { padding: 3mm 4mm; border: 0.2mm solid var(--border); background: var(--brand-soft); font-size: 9pt; color: var(--text); margin-bottom: 4mm; border-radius: 1mm; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
 </style>
 </head>
 <body>
@@ -494,7 +489,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;margin-bottom:3mm;">
           <div>
             <h3 style="margin-bottom:1.5mm;"><%= a.title %></h3>
-            <div class="mini"><%= fmt(a.audit_date) || 'No date' %> · Auditor: <%= a.auditor_name || '—' %> · <span style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '—' %></span></div>
+            <div class="mini"><%= fmt(a.audit_date) || 'No date' %> · Auditor: <%= a.auditor_name || '-' %> · <span style="text-transform:capitalize;"><%= a.lifecycle_stage || a.status || '-' %></span></div>
           </div>
           <%- chip(a.lifecycle_stage || a.status, statusChipKind(a.lifecycle_stage || a.status)) %>
         </div>
@@ -512,7 +507,7 @@
             <tbody>
               <% a.findings.forEach(f => { %>
                 <tr>
-                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '—' %></span></td>
+                  <td><span class="chip chip-neutral" style="text-transform:capitalize;"><%= f.finding_type || '-' %></span></td>
                   <td><%= f.description %><% if (f.iso_item_id) { %><div class="mini" style="margin-top:1mm;"><%= String(f.iso_item_id).replace('annex-','').toUpperCase() %></div><% } %></td>
                   <td><%- chip(f.severity, severityChipKind(f.severity)) %></td>
                   <td><%- chip(f.status, statusChipKind(f.status)) %></td>

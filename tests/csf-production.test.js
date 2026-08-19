@@ -135,7 +135,7 @@ test('Policy evidence cannot prove Practice and evidence gates scale with the cl
   assert.ok(model.scoreGateDefects(db,current,'practice',4).some(d=>/passed effectiveness test/i.test(d)));
 });
 
-test('rollups use separate medians, distributions, and conservative achieved levels — never averages',()=>{
+test('rollups use separate medians, distributions, and conservative achieved levels - never averages',()=>{
   const model=require('../lib/csf-policy-practice');const e=db.prepare(`SELECT * FROM csf_engagements WHERE id=?`).get(engagementId);
   const rows=db.prepare(`SELECT id FROM csf_subcategory_assessments WHERE engagement_id=? ORDER BY id LIMIT 2`).all(engagementId);
   db.prepare(`UPDATE csf_subcategory_assessments SET policy_score=5,practice_score=1,target_policy_score=5,target_practice_score=2 WHERE id=?`).run(rows[0].id);

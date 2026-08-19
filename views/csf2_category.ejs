@@ -4,14 +4,14 @@
 <% const s=category.summary; const current=s.achievedMedian; const target=Math.max(...[s.targetPolicyMedian,s.targetPracticeMedian].filter(v=>v!=null),0); const coverage=s.inScope?Math.round(s.assessed*100/s.inScope):0; %>
 <section class="cm-category-hero cm-function-<%= selectedFunction.code.toLowerCase() %>">
   <div><span class="cm-kicker">Capability position</span><h2><%= maturityLabel(current) %></h2><p><%= s.targetPct %>% of concluded outcomes meet the Target Profile. Review the weakest demonstrated practices and evidence limitations before forming a category conclusion.</p></div>
-  <div><span>Target<strong><%= target||'—' %></strong></span><span>Coverage<strong><%= coverage %>%</strong></span><span>Low confidence<strong><%= s.lowConfidence %></strong></span><span>Material divergence<strong><%= s.divergence %></strong></span></div>
+  <div><span>Target<strong><%= target||'-' %></strong></span><span>Coverage<strong><%= coverage %>%</strong></span><span>Low confidence<strong><%= s.lowConfidence %></strong></span><span>Material divergence<strong><%= s.divergence %></strong></span></div>
 </section>
 <section class="cm-category-outcomes">
   <div class="cm-section-head"><div><span class="cm-kicker">Outcome workpapers</span><h2><%= category.rows.length %> evidence-backed judgments</h2><p>Open a workpaper to inspect maturity anchors, evidence, sampling, tests and reviewer decisions.</p></div></div>
   <% category.rows.forEach(r=>{ const achieved=r.achieved_level; const targetLevel=Math.max(r.target_policy_score||0,r.target_practice_score||0); const below=achieved!=null&&targetLevel&&achieved<targetLevel; %>
     <a class="cm-outcome-card" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment/<%= r.subcategory_id %>">
-      <div class="cm-outcome-code"><span><%= r.code %></span><b class="<%= below?'gap':'' %>"><%= achieved==null?'—':achieved %></b></div>
-      <div class="cm-outcome-main"><strong><%= r.description %></strong><p><%= r.business_impact||'Business impact will be established during fieldwork.' %></p><div><span>Policy <b><%= r.policy_score==null?'—':r.policy_score %></b></span><span>Practice <b><%= r.practice_score==null?'—':r.practice_score %></b></span><span>Target <b><%= targetLevel||'—' %></b></span></div></div>
+      <div class="cm-outcome-code"><span><%= r.code %></span><b class="<%= below?'gap':'' %>"><%= achieved==null?'-':achieved %></b></div>
+      <div class="cm-outcome-main"><strong><%= r.description %></strong><p><%= r.business_impact||'Business impact will be established during fieldwork.' %></p><div><span>Policy <b><%= r.policy_score==null?'-':r.policy_score %></b></span><span>Practice <b><%= r.practice_score==null?'-':r.practice_score %></b></span><span>Target <b><%= targetLevel||'-' %></b></span></div></div>
       <div class="cm-outcome-assurance"><span class="status-pill"><%= r.status %></span><small><b><%= r.evidence_count %></b> evidence · <b><%= r.test_count %></b> tests</small><small><%= r.evidence_confidence||'unrated' %> confidence</small><em>Open workpaper →</em></div>
     </a>
   <% }) %>

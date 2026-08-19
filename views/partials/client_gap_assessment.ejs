@@ -3,10 +3,10 @@
   <div class="cp-section-heading">
     <div>
       <span>ISO 27001 gap assessment</span>
-      <h2>Your assessment journey</h2>
-      <p>Follow the agreed scope from mobilisation through fieldwork, fact checking, reporting and remediation.</p>
+      <h2>ISO 27001 assessment progress</h2>
+      <p>See the current phase, agreed scope, fieldwork activity and confirmed outcomes.</p>
     </div>
-    <div class="cp-section-stat"><strong><%= gapAssessment.coverage.pct %>%</strong><span><%= gapAssessment.coverage.assessed %> of <%= gapAssessment.coverage.total %> requirements covered</span></div>
+    <div class="cp-section-stat"><strong><%= gapAssessment.coverage.pct %>%</strong><span>assessment coverage · <%= gapAssessment.coverage.assessed %> of <%= gapAssessment.coverage.total %> concluded</span></div>
   </div>
 
   <div class="panel cp-gap-overview">
@@ -81,7 +81,7 @@
           <article class="cp-gap-card">
             <span>Sampling</span><h3>Sampling basis</h3>
             <p><%= gapAssessment.methodology.sampling.basis %></p>
-            <% if (gapAssessment.methodology.sampling.sample_size || gapAssessment.methodology.sampling.population_size) { %><div class="cp-gap-sample"><strong><%= gapAssessment.methodology.sampling.sample_size || '—' %></strong><span>sample</span><strong><%= gapAssessment.methodology.sampling.population_size || '—' %></strong><span>population</span></div><% } %>
+            <% if (gapAssessment.methodology.sampling.sample_size || gapAssessment.methodology.sampling.population_size) { %><div class="cp-gap-sample"><strong><%= gapAssessment.methodology.sampling.sample_size || '-' %></strong><span>sample</span><strong><%= gapAssessment.methodology.sampling.population_size || '-' %></strong><span>population</span></div><% } %>
           </article>
         </div>
 

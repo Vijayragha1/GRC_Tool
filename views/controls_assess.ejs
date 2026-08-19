@@ -355,7 +355,7 @@
         <% } %>
       </div>
       <div>
-        <label class="label">Maturity (0–5) <span class="meta">ISO/IEC 33020 scale</span></label>
+        <label class="label">Advisory capability (0–5) <span class="meta">Nimbus proprietary method</span></label>
         <select class="select" name="maturity">
           <option value="0" <%= state.maturity == 0 ? 'selected' : '' %>>0 - Not implemented; no documentation; no awareness</option>
           <option value="1" <%= state.maturity == 1 ? 'selected' : '' %>>1 - Ad hoc; informal practice; no documentation</option>
@@ -364,7 +364,7 @@
           <option value="4" <%= state.maturity == 4 ? 'selected' : '' %>>4 - Performed, measured, and improved on data</option>
           <option value="5" <%= state.maturity == 5 ? 'selected' : '' %>>5 - Optimized; predictive metrics; continual improvement</option>
         </select>
-        <div class="meta text-xs" style="margin-top:4px;">Stage 1 target: every applicable control ≥ 2 (documented + approved). Stage 2 target: ≥ 3 (operating, with records).</div>
+        <div class="meta text-xs" style="margin-top:4px;">Nimbus planning thresholds: level 2 indicates documented design; level 3 indicates consistent operation with records. These are consulting decision aids, not ISO-issued scores.</div>
       </div>
     </div>
 

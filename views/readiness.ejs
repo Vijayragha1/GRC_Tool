@@ -12,8 +12,8 @@
   /* Header (was the document title block) */
   .pack-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
   .pack-title-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px; }
-  .pack-title h1 { font-family: 'Inter', system-ui, sans-serif; font-size: 22px; line-height: 1.2; font-weight: 500; letter-spacing: -0.4px; margin: 0; color: var(--text); }
-  .pack-title h1 .sub { display: block; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 400; font-style: normal; color: var(--text-secondary); margin-top: 6px; letter-spacing: 0; }
+  .pack-title h1 { font-family: system-ui, sans-serif; font-size: 22px; line-height: 1.2; font-weight: 500; letter-spacing: -0.4px; margin: 0; color: var(--text); }
+  .pack-title h1 .sub { display: block; font-family: system-ui, sans-serif; font-size: 13px; font-weight: 400; font-style: normal; color: var(--text-secondary); margin-top: 6px; letter-spacing: 0; }
   .pack-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 170px; }
   .pack-actions .btn { justify-content: center; white-space: nowrap; }
 
@@ -26,11 +26,11 @@
   .pack-section-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
   details.pack-section > summary.pack-section-head { padding-bottom: 16px; border-bottom: 0; margin-bottom: 0; }
   .pack-section-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; background: var(--bg-muted); font-size: 12px; font-weight: 500; color: var(--text-secondary); flex-shrink: 0; }
-  .pack-section-title { font-family: 'Inter', system-ui, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); margin: 0; flex: 1; }
+  .pack-section-title { font-family: system-ui, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); margin: 0; flex: 1; }
   .pack-section-meta { font-size: 11px; color: var(--text-tertiary); font-weight: 400; letter-spacing: 0; text-transform: none; }
 
   /* Captions = small section labels */
-  .pack-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 0 0 8px; font-family: 'Inter', system-ui, sans-serif; font-size: 12px; font-weight: 500; color: var(--text); letter-spacing: 0; }
+  .pack-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 0 0 8px; font-family: system-ui, sans-serif; font-size: 12px; font-weight: 500; color: var(--text); letter-spacing: 0; }
   .pack-caption .label { color: var(--text-tertiary); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
   .pack-source { padding: 8px 0 0; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.55; font-style: normal; }
   .pack-source strong { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 11.5px; color: var(--text-secondary); margin-right: 4px; }
@@ -73,8 +73,8 @@
   /* Verdict hero card (no left-rail accent; status carried by a dot + the
      coloured verdict word) */
   .pack-verdict { display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center; padding: 18px 22px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
-  .pack-verdict .stamp { font-family: 'Inter', system-ui, sans-serif; font-style: normal; font-weight: 500; font-size: 20px; letter-spacing: -0.3px; color: var(--text); padding-right: 22px; border-right: 1px solid var(--border); }
-  .pack-verdict .stamp .label { display: block; font-family: 'Inter', sans-serif; font-style: normal; font-size: 10px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
+  .pack-verdict .stamp { font-family: system-ui, sans-serif; font-style: normal; font-weight: 500; font-size: 20px; letter-spacing: -0.3px; color: var(--text); padding-right: 22px; border-right: 1px solid var(--border); }
+  .pack-verdict .stamp .label { display: block; font-family: sans-serif; font-style: normal; font-size: 10px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
   .pack-verdict .stamp .word { color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
   .pack-verdict .stamp .word::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
   .pack-verdict.go .stamp .word { color: #166534; }
@@ -83,10 +83,10 @@
   .pack-verdict.caution .stamp .word::before { background: #b45309; }
   .pack-verdict.stop .stamp .word { color: #b91c1c; }
   .pack-verdict.stop .stamp .word::before { background: #b91c1c; }
-  .pack-verdict .narrative { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; line-height: 1.55; color: var(--text-secondary); letter-spacing: 0; }
+  .pack-verdict .narrative { font-family: system-ui, sans-serif; font-size: 13px; line-height: 1.55; color: var(--text-secondary); letter-spacing: 0; }
   .pack-verdict .countdown { text-align: right; font-variant-numeric: tabular-nums; }
   .pack-verdict .countdown .n { font-size: 26px; font-weight: 500; color: var(--text); display: block; line-height: 1; }
-  .pack-verdict .countdown .lbl { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 500; margin-top: 4px; display: block; }
+  .pack-verdict .countdown .lbl { font-family: sans-serif; font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 500; margin-top: 4px; display: block; }
 
   /* Dashboard KPI tile row */
   .rd-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -106,13 +106,13 @@
   details.pack-appendix > summary { margin: -18px -20px 0; padding: 16px 20px; }
   details.pack-appendix[open] > summary { margin-bottom: 14px; border-bottom: 1px solid var(--border); }
   .pack-appendix-head { display: flex; align-items: center; gap: 10px; }
-  .pack-appendix-eyebrow { display: inline-flex; align-items: center; justify-content: center; padding: 2px 7px; border-radius: 5px; background: var(--bg-muted); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-secondary); }
-  .pack-appendix-title { font-family: 'Inter', system-ui, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); margin: 0; flex: 1; }
+  .pack-appendix-eyebrow { display: inline-flex; align-items: center; justify-content: center; padding: 2px 7px; border-radius: 5px; background: var(--bg-muted); font-family: sans-serif; font-size: 10px; font-weight: 500; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-secondary); }
+  .pack-appendix-title { font-family: system-ui, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); margin: 0; flex: 1; }
   .pack-appendix-meta { font-size: 11px; color: var(--text-tertiary); font-weight: 400; letter-spacing: 0; text-transform: none; }
   .pack-appendix-grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
   .pack-appendix .wp td.numref { width: 28px; text-align: center; vertical-align: top; padding-top: 10px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
   .pack-appendix .wp td.term { width: 200px; vertical-align: top; padding-top: 9px; font-weight: 500; color: var(--text); font-size: 12.5px; letter-spacing: 0; }
-  .pack-appendix .wp td.term .meta { display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 400; color: var(--text-tertiary); letter-spacing: 0; text-transform: none; margin-top: 3px; }
+  .pack-appendix .wp td.term .meta { display: block; font-family: sans-serif; font-size: 10px; font-weight: 400; color: var(--text-tertiary); letter-spacing: 0; text-transform: none; margin-top: 3px; }
   .pack-appendix .wp td.def { vertical-align: top; padding-top: 9px; color: var(--text-secondary); line-height: 1.6; font-size: 12px; }
   .pack-appendix .wp td.def code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; background: var(--bg-muted); color: var(--text); padding: 1px 5px; border-radius: 3px; letter-spacing: 0; }
   .pack-appendix .pack-caption { color: var(--text); margin-bottom: 4px; }
@@ -203,6 +203,11 @@
     </div>
   </div>
 
+  <div class="callout" style="margin:0 0 18px">
+    <strong>Compliance Sphere ISO 27001 Readiness Method v2026.1.</strong>
+    This is a proprietary consulting decision aid. Its stage gates and maturity thresholds are not an ISO score and do not replace a certification body's audit decision.
+  </div>
+
   <div class="pack-body">
 
     <%# Dashboard KPI tiles %>
@@ -224,7 +229,7 @@
       </div>
       <div class="rd-kpi <%= r.daysToTarget !== null && r.daysToTarget < 30 ? 'bad' : (r.daysToTarget !== null && r.daysToTarget < 90 ? 'warn' : '') %>">
         <div class="k-label">Days to target cert</div>
-        <div class="k-val"><%= r.daysToTarget !== null ? r.daysToTarget : '—' %></div>
+        <div class="k-val"><%= r.daysToTarget !== null ? r.daysToTarget : '-' %></div>
         <div class="k-sub"><%= ws.target_cert_date || 'No target date set' %></div>
       </div>
     </div>
@@ -243,7 +248,7 @@
         </div>
       <% } else { %>
         <div class="countdown">
-          <span class="n" style="color:var(--text-tertiary);font-size:18px;">—</span>
+          <span class="n" style="color:var(--text-tertiary);font-size:18px;">-</span>
           <span class="lbl">No target date set</span>
         </div>
       <% } %>
@@ -549,7 +554,7 @@
           <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-top:6px;">Stage 1 floor 60%</div>
         </div>
         <div style="font-size:12.5px;line-height:1.6;color:var(--text-secondary);">
-          Average maturity across <strong style="color:var(--text);font-weight:500;"><%= r.applicableControls %></strong> applicable Annex A controls, on the 0-5 ISO/IEC 33020 scale.
+          Average advisory capability across <strong style="color:var(--text);font-weight:500;"><%= r.applicableControls %></strong> applicable Annex A controls, using the Nimbus proprietary 0-5 method.
           <% if (r.maturityPct < 60) { %><br><span style="color:#b91c1c;">Below the 60% Stage 1 floor; aggregated minor nonconformities risk escalating to major (§3.12 Note 1).</span><% } else { %><br>Meets the 60% Stage 1 floor.<% } %>
           Unassessed applicable controls count as 0. Set per-control maturity in the gap-assessment wizard.
         </div>
@@ -675,8 +680,8 @@
                   <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight: 500;"><%= rowNum %></td>
                   <td><span class="mark"><span class="dot <%= flagDotFor(f.severity) %>"></span><span class="lbl"><%= sevLabel(f.severity) %></span></span></td>
                   <td style="color:var(--text);font-weight:500;"><%= f.label.replace(/^\d+\s+/, '') %></td>
-                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>—<% } %></td>
-                  <td class="num"><%= (f.items || []).length || '—' %></td>
+                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>-<% } %></td>
+                  <td class="num"><%= (f.items || []).length || '-' %></td>
                 </tr>
               <% }) %>
             <% } %>
@@ -687,8 +692,8 @@
                   <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight: 500;"><%= rowNum %></td>
                   <td><span class="mark"><span class="dot <%= flagDotFor(f.severity) %>"></span><span class="lbl"><%= sevLabel(f.severity) %></span></span></td>
                   <td style="color:var(--text);font-weight:500;"><%= f.label.replace(/^\d+\s+/, '') %></td>
-                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>—<% } %></td>
-                  <td class="num"><%= (f.items || []).length || '—' %></td>
+                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>-<% } %></td>
+                  <td class="num"><%= (f.items || []).length || '-' %></td>
                 </tr>
               <% }) %>
             <% } %>
@@ -699,8 +704,8 @@
                   <td class="center" style="font-family:'SF Mono',Menlo,monospace;font-size:11px;color:var(--text-secondary);font-weight: 500;"><%= rowNum %></td>
                   <td><span class="mark"><span class="dot <%= flagDotFor(f.severity) %>"></span><span class="lbl"><%= sevLabel(f.severity) %></span></span></td>
                   <td style="color:var(--text);font-weight:500;"><%= f.label.replace(/^\d+\s+/, '') %></td>
-                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>—<% } %></td>
-                  <td class="num"><%= (f.items || []).length || '—' %></td>
+                  <td style="font-size:11.5px;color:var(--text-tertiary);font-style:italic;line-height:1.5;"><% if (r.sample) { %><%= r.sample %><% if (r.more) { %> &middot; +<%= r.more %> more<% } %><% } else { %>-<% } %></td>
+                  <td class="num"><%= (f.items || []).length || '-' %></td>
                 </tr>
               <% }) %>
             <% } %>
@@ -868,7 +873,7 @@
             <tr><td class="numref" style="font-size:11px;">c</td><td class="term">High-severity flags<span class="meta">Inverse</span></td><td class="num">15%</td><td class="num">20%</td><td class="def">Penalised at <code>max(0, 1 − highFlags / 5)</code>. Five high-severity flags = zero contribution.</td></tr>
             <tr><td class="numref" style="font-size:11px;">d</td><td class="term">Management review<span class="meta">Status = complete</span></td><td class="num">10%</td><td class="num">10%</td><td class="def">At least one MRM marked complete in this workspace.</td></tr>
             <tr><td class="numref" style="font-size:11px;">e</td><td class="term">Internal audit<span class="meta">Status = complete</span></td><td class="num">10%</td><td class="num">10%</td><td class="def">At least one internal audit marked complete in this workspace.</td></tr>
-            <tr><td class="numref" style="font-size:11px;">f</td><td class="term">Evidence coverage<span class="meta">Files / 0.6 × items</span></td><td class="num">—</td><td class="num">10%</td><td class="def">Capped at 1.0 once evidence count reaches 60% of total controls. Stage 2 only.</td></tr>
+            <tr><td class="numref" style="font-size:11px;">f</td><td class="term">Evidence coverage<span class="meta">Files / 0.6 × items</span></td><td class="num">-</td><td class="num">10%</td><td class="def">Capped at 1.0 once evidence count reaches 60% of total controls. Stage 2 only.</td></tr>
           </tbody>
         </table>
         <div class="pack-source"><strong>Note</strong> Stage 1 weights sum to 100%. Stage 2 weights also sum to 100%; the operational evidence component (f) is added at the cost of reduced weight on records and flags.</div>

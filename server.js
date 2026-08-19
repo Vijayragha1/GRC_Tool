@@ -2,11 +2,6 @@
 // take precedence over the file, so deploys that inject real env still win.
 try { process.loadEnvFile(); } catch (_) { /* no .env present */ }
 
-// Pin the whole app to India Standard Time so "today", date math, scheduled
-// scans and the calendar all operate in IST regardless of the host's timezone.
-// Must run before anything constructs a Date.
-process.env.TZ = 'Asia/Kolkata';
-
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcrypt');
@@ -29,8 +24,8 @@ function looksLikeMarkdown(s) {
   return !/<(p|h[1-6]|ul|ol|li|table|tr|td|th|div|span|strong|em|br|hr|img|a)\b/i.test(s);
 }
 
-// Local-timezone date helpers live in lib/dates.js.
-const { ymdLocal, ymLocal } = require('./lib/dates');
+const { workspaceTimeZone } = require('./lib/dates');
+const uploadSecurity = require('./lib/upload-security');
 const { db, init, logAction, verifyAuditChain, defaultMethodology, ensureWorkspaceMethodology, getActiveMethodology, methodologyBand } = require('./db');
 const enc = require('./lib/encryption');
 const rbac = require('./lib/rbac');
@@ -119,6 +114,18 @@ backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+// Product typography deliberately avoids em dashes. Normalise the final EJS
+// output as well as authored copy so older database records follow the same
+// presentation rule without rewriting the underlying evidence or audit data.
+const { normalizeDisplayPunctuation } = require('./lib/typography');
+const renderEjs = app.render.bind(app);
+app.render = function renderWithoutEmDashes(view, options, callback) {
+  return renderEjs(view, options, (err, html) => {
+    callback(err, err ? html : normalizeDisplayPunctuation(html));
+  });
+};
+
 if (process.env.NODE_ENV === 'production') {
   app.set('view cache', true);
   // Express must trust the terminating reverse proxy before secure cookies
@@ -160,7 +167,7 @@ app.use(express.json({ limit: '10mb' }));
 // serve a stale stylesheet or favicon after a change.
 app.locals.assetVersion = (() => {
   const h = crypto.createHash('md5');
-  for (const f of ['public/app.css', 'public/auditor.css', 'public/page-loader.css', 'public/page-loader.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
+  for (const f of ['public/app.css', 'public/auditor.css', 'public/page-loader.css', 'public/page-loader.js', 'public/site-enhancements.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
     try { h.update(fs.readFileSync(path.join(__dirname, f))); } catch (_) {}
   }
   return h.digest('hex').slice(0, 8);
@@ -271,7 +278,11 @@ if (process.env.DISABLE_CSRF !== '1') {
 // the basename - resolveUploadPath() rebuilds the absolute path on read,
 // trying the per-firm location first and falling back to legacy uploads/ for
 // files written before partitioning existed.
-const upload = multer({
+const GENERAL_UPLOAD_EXTENSIONS = new Set([
+  'pdf','doc','docx','xls','xlsx','ppt','pptx','csv','txt','md','markdown','rtf',
+  'odt','ods','png','jpg','jpeg','gif','webp','zip','json','xml'
+]);
+const rawUpload = multer({
   storage: multer.diskStorage({
     destination: function (req, _file, cb) {
       const firmId = (req.workspace && req.workspace.firm_id) || (req.user && req.user.firm_id) || 0;
@@ -287,12 +298,62 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
+function removeStagedFiles(files) {
+  (files || []).forEach(file => {
+    try { if (file && file.path) fs.unlinkSync(file.path); } catch (_) {}
+  });
+}
+
+function stagedFiles(req) {
+  if (!req) return [];
+  const many = Array.isArray(req.files)
+    ? req.files
+    : (req.files && typeof req.files === 'object' ? Object.values(req.files).flat() : []);
+  return [req.file, ...many].filter(Boolean);
+}
+
+function inspectedUpload(middleware, allowedExtensions = GENERAL_UPLOAD_EXTENSIONS) {
+  return function inspectMultipart(req, res, next) {
+    middleware(req, res, err => {
+      if (err) return next(err);
+      const files = stagedFiles(req);
+      for (const file of files) {
+        const result = uploadSecurity.validateUpload(file, allowedExtensions);
+        if (!result.ok) {
+          removeStagedFiles(files);
+          req.file = undefined;
+          req.files = Array.isArray(req.files) ? [] : {};
+          return res.status(400).render('error', {
+            user: req.user || null, ws: req.workspace || null,
+            message: result.message || 'The uploaded file did not pass security inspection.'
+          });
+        }
+      }
+      next();
+    });
+  };
+}
+
+// A single inspected facade is injected into every route module. Any new
+// persistent upload route receives signature validation and malware scanning
+// without relying on the route author to remember a second middleware.
+const upload = {
+  single: field => inspectedUpload(rawUpload.single(field)),
+  array: (field, maxCount) => inspectedUpload(rawUpload.array(field, maxCount)),
+  fields: fields => inspectedUpload(rawUpload.fields(fields)),
+  any: () => inspectedUpload(rawUpload.any())
+};
+
 // CSV import uploader: memory-only, ~5MB cap, single file. Used by the
 // asset/risk CSV import preview routes. Parsed in-process; never persisted.
-const csvUpload = multer({
+const rawCsvUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 }
 });
+const CSV_UPLOAD_EXTENSIONS = new Set(['csv']);
+const csvUpload = {
+  single: field => inspectedUpload(rawCsvUpload.single(field),CSV_UPLOAD_EXTENSIONS)
+};
 
 // Questionnaire evidence uploader. Used on both the external (vendor, anonymous)
 // and internal (consultant) questionnaire pages. Stricter than `upload`: a
@@ -334,12 +395,23 @@ const questionnaireUpload = multer({
 function qUploadAny(req, res, next) {
   questionnaireUpload.any()(req, res, (err) => {
     if (err) req._uploadError = err;
+    if (!err && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        const result = uploadSecurity.validateUpload(file, QFILE_ALLOWED_EXT);
+        if (!result.ok) {
+          removeStagedFiles(req.files);
+          req.files = [];
+          req._uploadError = { code: 'UPLOAD_INSPECTION', message: result.message };
+          break;
+        }
+      }
+    }
     next();
   });
 }
 
 // Resolve the firm (for upload partitioning) from a questionnaire's external
-// token BEFORE multer parses the body — multer's destination() needs
+// token BEFORE multer parses the body - multer's destination() needs
 // req.workspace.firm_id, and req.params.token is available pre-parse. Also
 // short-circuits invalid / completed / expired links with the same status
 // pages the GET route renders, so multer never runs for a dead link. On
@@ -378,6 +450,11 @@ function persistQuestionnaireFiles({ files, questionnaireId, workspaceId, source
   let saved = 0;
   for (const f of files) {
     try {
+      const inspection = uploadSecurity.validateUpload(f, QFILE_ALLOWED_EXT);
+      if (!inspection.ok) {
+        try { fs.unlinkSync(f.path); } catch (_) {}
+        continue;
+      }
       const m = /^file_(\d+)$/.exec(f.fieldname || '');
       const questionId = m ? parseInt(m[1], 10) : null;
       let sha = null;
@@ -416,7 +493,7 @@ function getActiveFirmId(req) {
     const first = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
     return first ? first.id : null;
   }
-  // Firm users always operate within their own firm — session value is ignored.
+  // Firm users always operate within their own firm - session value is ignored.
   if (user.user_type === 'firm') return user.firm_id;
   // Client users: honour session value only if they have workspace membership
   // in that firm, otherwise fall back to the first firm they belong to.
@@ -480,7 +557,7 @@ const PUBLIC_AUTH_PATHS = [
 
 function requireAuth(req, res, next) {
   // Reject unauthenticated requests. The no-auth firm-owner fallback was
-  // removed when real login was enabled — currentUser() now returns a user
+  // removed when real login was enabled - currentUser() now returns a user
   // only when req.session.userId is set and that user is still active.
   req.user = currentUser(req);
   if (!req.user) {
@@ -499,15 +576,24 @@ function requireAuth(req, res, next) {
 }
 
 function getWorkspace(workspaceId, user) {
-  const ws = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(workspaceId);
+  const ws = db.prepare(`SELECT w.*,f.timezone AS firm_timezone
+    FROM workspaces w JOIN firms f ON f.id=w.firm_id WHERE w.id=?`).get(workspaceId);
   if (!ws) return null;
   if (user.user_type === 'firm' && user.firm_id === ws.firm_id) {
-    // Firm-side access: role on the workspace record mirrors the user's firm
-    // role bucket. Manager / Senior consultant / Consultant all use the
-    // 'consultant' bundle for non-permission UI (e.g. who you can be assigned
-    // as) but _userRole keeps the precise role so RBAC can differentiate.
     const fr = rbac.normalizeRole(user.firm_role) || 'consultant';
-    return { ...ws, role: 'consultant', _userRole: fr };
+    // Managers own the tenant and senior consultants explicitly receive the
+    // cross-engagement permission. Everyone else must be assigned to the
+    // workspace. Keeping the membership check here (rather than only hiding
+    // links in the UI) closes direct-URL access to other clients.
+    if (rbac.isManager(fr) || rbac.rolePermissions(fr).includes('firm.cross_view')) {
+      return { ...ws, role: 'consultant', _userRole: fr };
+    }
+    const member = db.prepare(`SELECT role FROM workspace_members
+      WHERE workspace_id=? AND user_id=?`).get(ws.id, user.id);
+    if (!member) return null;
+    const memberRole = rbac.normalizeRole(member.role);
+    const effectiveRole = rbac.FIRM_ROLES.includes(memberRole) ? memberRole : fr;
+    return { ...ws, role: 'consultant', _userRole: effectiveRole };
   }
   const m = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?')
     .get(workspaceId, user.id);
@@ -523,6 +609,7 @@ function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
   ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
+  ws.effective_timezone = workspaceTimeZone(ws);
   req.workspace = ws;
   // Every client-side account is confined to the collaboration boundary.
   // Client owners/coordinators see all client-visible work; contributors see
@@ -584,6 +671,14 @@ function isFirmOwner(user) { return user.user_type === 'firm' && rbac.isManager(
 
 function listWorkspaces(user) {
   if (user.user_type === 'firm') {
+    const role = rbac.normalizeRole(user.firm_role) || 'consultant';
+    if (!rbac.isManager(role) && !rbac.rolePermissions(role).includes('firm.cross_view')) {
+      return db.prepare(`SELECT w.*,m.role AS my_role,
+          (SELECT name FROM users WHERE id = w.lead_consultant_id) AS lead_name
+          FROM workspaces w
+          INNER JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=?
+          WHERE w.firm_id=? ORDER BY w.created_at DESC`).all(user.id,user.firm_id);
+    }
     return db.prepare(`SELECT w.*,
         (SELECT name FROM users WHERE id = w.lead_consultant_id) AS lead_name
         FROM workspaces w WHERE w.firm_id = ? ORDER BY w.created_at DESC`).all(user.firm_id);
@@ -646,7 +741,7 @@ function getOrCreateState(wsId, isoId) {
 app.locals.escapeHtml = escapeHtml;
 // Tier marker as a crisp inline SVG (star/diamond/dot) instead of unicode
 // glyphs (★ ◆ ·), which render inconsistently across fonts. Colour is inherited
-// via currentColor. Safe to emit with <%- %> — no user input.
+// via currentColor. Safe to emit with <%- %> - no user input.
 app.locals.tierIcon = (tier, size = 12) => {
   const open = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="vertical-align:-0.125em;flex-shrink:0;">`;
   if (tier === 'mandatory') return open + '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
@@ -755,10 +850,9 @@ app.use((req, res, next) => {
     if (u) {
       const firmId = getActiveFirmId(req);
       if (firmId) {
-        res.locals.firmWorkspaces = db.prepare(
-          `SELECT id, client_name, brand_display_name, brand_primary_color, sector, industry
-           FROM workspaces WHERE firm_id=? ORDER BY created_at DESC, client_name`
-        ).all(firmId);
+        // The client switcher is a navigation surface, not an authorization
+        // bypass. It must use the same scoped workspace list as /dashboard.
+        res.locals.firmWorkspaces = listWorkspaces(u);
       }
       const lastId = req.session && req.session.last_ws_id;
       if (lastId) {
@@ -918,6 +1012,10 @@ require('./routes/readiness').register(app, { db, requireAuth, requireWorkspace 
 // management, vendors (TPRM) + questionnaires + external vendor links.
 require('./routes/registers').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, upload, resolveUploadPath, activeEntityFilter, qUploadAny, persistQuestionnaireFiles });
+require('./routes/supplier-programme').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction, qUploadAny,
+  resolveUploadPath, questionnaireFileExtensions: QFILE_ALLOWED_EXT
+});
 
 // ==================== PERFORMANCE + PEOPLE ====================
 // Lives in routes/performance.js (slice 11): ISMS metrics + 27004 library,

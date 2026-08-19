@@ -42,7 +42,7 @@
       <div style="flex:1;">
         <label class="label">Engagement lead<span class="meta" style="font-weight:400;margin-left:8px;">primary client contact for this workspace; signs off assessments</span></label>
         <select class="select" name="lead_consultant_id" required>
-          <option value="">— pick a lead —</option>
+          <option value="">- pick a lead -</option>
           <% firmPool.forEach(u => { %>
             <option value="<%= u.id %>" <%= (leadConsultant && leadConsultant.id === u.id) ? 'selected' : '' %>><%= u.name %> &nbsp;·&nbsp; <%= u.email %><% if (rbac.isManager(u.firm_role)) { %> &nbsp;·&nbsp; Manager<% } %></option>
           <% }) %>
@@ -99,7 +99,7 @@
         <div style="flex:1;">
           <label class="label">Add another consultant</label>
           <select class="select" name="user_id" required>
-            <option value="">— pick a consultant —</option>
+            <option value="">- pick a consultant -</option>
             <% addable.forEach(u => { %>
               <option value="<%= u.id %>"><%= u.name %> &nbsp;·&nbsp; <%= u.email %><% if (rbac.isManager(u.firm_role)) { %> &nbsp;·&nbsp; Manager<% } %></option>
             <% }) %>

@@ -4,18 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Security questionnaire<% if (typeof q !== 'undefined' && q && q.supplier_name) { %> · <%= q.supplier_name %><% } %></title>
-<link rel="stylesheet" href="/fonts/inter.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <link rel="stylesheet" href="/page-loader.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
 <script src="/page-loader.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script>
 <style>
   :root{
-    --bg:#f5f3ed; --card:#ffffff; --border:#e7e4dc; --border-strong:#d8d6cf;
+    --bg:#f2f1ec; --card:#fbfbf8; --border:#e7e4dc; --border-strong:#d8d6cf;
     --text:#1a1a1a; --muted:#6f6f6a; --faint:#9c9ca5;
     --accent:#1a1a1a; --accent-soft:#f0eee8; --success:#15803d;
   }
   *{box-sizing:border-box;}
   body{
-    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,Helvetica,Arial,sans-serif;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,Helvetica,Arial,sans-serif;
     background:var(--bg); color:var(--text); margin:0; line-height:1.55;
     -webkit-font-smoothing:antialiased;
   }
@@ -143,7 +142,7 @@
       <div class="pad footer-card">
         <div class="privacy">Your answers and any files you attach are shared only with <%= requester || 'the requesting organisation' %>. You don't need an account; this link is your secure access.</div>
         <div style="display:flex;gap:10px;flex-shrink:0;">
-          <button class="btn" type="submit" name="action" value="save" style="background:#fff;color:var(--text);border:1px solid var(--border);">Save progress</button>
+          <button class="btn" type="submit" name="action" value="save" style="background:var(--card);color:var(--text);border:1px solid var(--border);">Save progress</button>
           <button class="btn" type="submit" name="action" value="submit">Submit responses</button>
         </div>
       </div>

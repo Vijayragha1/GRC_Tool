@@ -60,7 +60,7 @@
   </div>
 </div>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>" class="panel" style="margin-bottom:16px">
+<form id="mrmReviewForm" method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>" class="panel" style="margin-bottom:16px">
   <div class="panel-pad grid-2">
     <div><label class="label">Meeting date</label><input class="input" type="date" name="meeting_date" value="<%= mrm.meeting_date || '' %>"></div>
     <div><label class="label">Attendees</label><input class="input" name="attendees" value="<%= mrm.attendees || '' %>"></div>
@@ -75,9 +75,13 @@
 
   <div style="border-top:1px solid var(--border);padding:12px 20px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;">
     <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Required inputs · 9.3.2</div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs" style="display:inline;" onsubmit="return appConfirmForm(event, 'Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current client data? This overwrites the auto-filled fields below - your free-text additions to those fields will be lost.')">
-      <button class="btn btn-secondary btn-xs" title="Re-pull live data into the auto-filled fields below">↻ Refresh inputs from live data</button>
-    </form>
+    <button type="submit"
+            class="btn btn-secondary btn-xs"
+            formaction="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/refresh-inputs"
+            formmethod="POST"
+            formnovalidate
+            onclick="return appConfirmClick(event, 'Re-pull NC counts, audit/finding counts, risk-register snapshot, and prior-action references from current client data? This overwrites the auto-filled fields below - your free-text additions to those fields will be lost.', { danger: false, confirmLabel: 'Refresh inputs' })"
+            title="Re-pull live data into the auto-filled fields below">↻ Refresh inputs from live data</button>
   </div>
   <div class="panel-pad" style="display:grid;grid-template-columns:1fr;gap:12px;">
     <div><label class="label">Status of actions from previous MRMs</label><textarea class="textarea" name="prior_actions_status" rows="2"><%= mrm.prior_actions_status || '' %></textarea></div>
@@ -97,10 +101,13 @@
   </div>
 
   <div class="panel-pad" style="border-top:1px solid var(--border);display:flex;gap:6px;">
-    <button class="btn btn-primary">Save</button>
-    <form method="POST" action="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
-      <button class="btn btn-danger">Delete</button>
-    </form>
+    <button type="submit" class="btn btn-primary">Save changes</button>
+    <button type="submit"
+            class="btn btn-danger"
+            formaction="/workspaces/<%= ws.id %>/mrms/<%= mrm.id %>/delete"
+            formmethod="POST"
+            formnovalidate
+            onclick="return appConfirmClick(event, 'Delete this management review? This cannot be undone.', { confirmLabel: 'Delete review' })">Delete</button>
   </div>
 </form>
 

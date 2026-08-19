@@ -1,99 +1,105 @@
-<%- include('partials/header', { title: 'Security objectives', user, ws, active: 'objectives' }) %>
+<%- include('partials/header', { title: 'Performance & objectives', user, ws, active: 'objectives' }) %>
+<%
+  const statusLabel = { on_track:'On target', at_risk:'Near target', off_track:'Off target', achieved:'Achieved', paused:'Paused', no_data:'Awaiting data' };
+  const statusClass = { on_track:'good', achieved:'good', at_risk:'warn', off_track:'risk', paused:'neutral', no_data:'neutral' };
+%>
 
-<div class="page-head">
+<div class="page-head perf-page-head">
   <div>
-    <h1 class="page-title">Information security objectives</h1>
-    <div class="page-subtitle">Clause 6.2 - measurable, time-bound goals consistent with the policy. Each must be monitored, communicated, updated as appropriate, and have a documented plan (target, measurement, owner, due date).</div>
+    <div class="eyebrow">ISO 27001 clauses 6.2 and 9.1</div>
+    <h1 class="page-title">Performance &amp; objectives</h1>
+    <div class="page-subtitle">Set the outcome once, connect it to a governed measure, and let recorded readings show whether the objective is on target.</div>
   </div>
+  <a href="/workspaces/<%= ws.id %>/metrics/library" class="btn btn-secondary btn-xs">Browse measure library</a>
 </div>
 
-<details class="panel" style="margin-bottom:14px;" <%= rows.length === 0 ? 'open' : '' %>>
-  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Add objective</summary>
-  <form method="POST" action="/workspaces/<%= ws.id %>/objectives" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-    <div class="col-full"><label class="label">Title <span class="meta">required - concrete, measurable</span></label><input class="input" name="title" required placeholder="e.g., Reduce mean time to patch critical vulnerabilities from 14 to 7 days"></div>
-    <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="2" placeholder="Why this objective exists; how it ties to policy / risk / customer commitment."></textarea></div>
-    <div><label class="label">Measurement <span class="meta">how progress is gauged</span></label><input class="input" name="measurement" placeholder="e.g., Monthly patching report, % within SLA"></div>
-    <div><label class="label">Owner</label><input class="input" name="owner" placeholder="e.g., VP Engineering"></div>
-    <div><label class="label">Target value</label><input class="input" name="target_value" placeholder="e.g., ≥ 95% within 7 days"></div>
-    <div><label class="label">Current value</label><input class="input" name="current_value" placeholder="e.g., 78%"></div>
-    <div><label class="label">Due date</label><input type="date" name="due_date" class="input"></div>
-    <div><label class="label">Status</label>
-      <select name="status" class="select">
-        <option value="on_track">On track</option>
-        <option value="at_risk">At risk</option>
-        <option value="off_track">Off track</option>
-        <option value="achieved">Achieved</option>
-        <option value="paused">Paused</option>
+<%- include('partials/performance_tabs', { ws, active: 'objectives' }) %>
+
+<div class="perf-kpis">
+  <div class="panel"><span>Objectives</span><strong><%= objectiveCounts.total %></strong><small>owned, time-bound outcomes</small></div>
+  <div class="panel"><span>Connected to measures</span><strong><%= objectiveCounts.linked %></strong><small>updated from recorded readings</small></div>
+  <div class="panel"><span>On target</span><strong><%= objectiveCounts.onTrack %></strong><small>including achieved objectives</small></div>
+  <div class="panel"><span>Needs attention</span><strong><%= objectiveCounts.attention %></strong><small>near, off target or awaiting data</small></div>
+</div>
+
+<details class="panel perf-create" <%= rows.length === 0 ? 'open' : '' %>>
+  <summary><span>New objective</span><small>Define the desired result, owner, deadline and its measurement source.</small></summary>
+  <form method="POST" action="/workspaces/<%= ws.id %>/objectives" class="perf-objective-form">
+    <div class="wide"><label class="label">Objective <span class="meta">required</span></label><input class="input" name="title" required placeholder="e.g. Close critical control gaps within the approved treatment period"></div>
+    <div class="wide"><label class="label">Why it matters</label><textarea class="textarea" name="description" rows="2" placeholder="Policy, risk, regulatory or customer commitment this objective supports"></textarea></div>
+    <div class="wide"><label class="label">Measurement source</label>
+      <select class="select js-objective-metric" name="metric_id">
+        <option value="">Manual update</option>
+        <% metrics.forEach(metric => { %><option value="<%= metric.id %>"><%= metric.ref %> · <%= metric.name %><%= metric.latestDisplay ? ' · latest ' + metric.latestDisplay : ' · awaiting first reading' %></option><% }) %>
       </select>
+      <div class="meta text-xs" style="margin-top:5px"><%= metrics.length ? 'A connected objective derives its target, current value and status from this measure.' : 'No measures are adopted yet. Create a manual objective or adopt a measure from the library.' %></div>
     </div>
-    <div class="col-full"><button class="btn btn-primary">Add objective</button></div>
+    <div><label class="label">Owner</label><input class="input" name="owner" placeholder="e.g. CISO"></div>
+    <div><label class="label">Target date</label><input type="date" name="due_date" class="input"></div>
+    <div class="js-manual-field"><label class="label">Manual measurement</label><input class="input" name="measurement" placeholder="e.g. Percentage closed within SLA"></div>
+    <div class="js-manual-field"><label class="label">Manual target</label><input class="input" name="target_value" placeholder="e.g. ≥ 95%"></div>
+    <div class="js-manual-field"><label class="label">Manual current value</label><input class="input" name="current_value" placeholder="e.g. 82%"></div>
+    <div class="js-manual-field"><label class="label">Manual status</label><select name="status" class="select"><option value="on_track">On target</option><option value="at_risk">Near target</option><option value="off_track">Off target</option><option value="achieved">Achieved</option><option value="paused">Paused</option></select></div>
+    <div class="wide perf-form-actions"><button class="btn btn-primary">Add objective</button></div>
   </form>
 </details>
 
-<div class="panel" style="overflow:hidden;">
-  <% if (rows.length === 0) { %>
-    <div class="empty-state">
-      <div class="empty-title">No objectives set yet</div>
-      <div class="empty-sub">Required by clause 6.2. Aim for 3–7 objectives that the management review can meaningfully evaluate.</div>
-      <div class="row" style="justify-content:center;margin-top:10px;">
-        <a href="#" onclick="var t=document.querySelector('form input[name=title]'); if(t)t.focus(); return false;" class="btn btn-primary">Add first objective →</a>
-      </div>
-    </div>
+<section class="panel perf-objectives">
+  <div class="panel-head"><div><h2>Objective register</h2><p>Current position is calculated from the linked measure unless the objective is explicitly maintained manually.</p></div><span class="tag"><%= rows.length %></span></div>
+  <% if (!rows.length) { %>
+    <div class="empty-state"><div class="empty-title">No objectives set</div><div class="empty-sub">Add 3–7 outcomes that management can meaningfully own and review.</div></div>
   <% } else { %>
-    <table class="t">
-      <thead><tr>
-        <th>Objective</th>
-        <th style="width:160px;">Measurement</th>
-        <th style="width:110px;">Target</th>
-        <th style="width:110px;">Current</th>
-        <th style="width:120px;">Owner</th>
-        <th style="width:110px;">Due</th>
-        <th style="width:110px;">Status</th>
-        <th style="width:80px;"></th>
-      </tr></thead>
-      <tbody>
-        <% const statusColor = { on_track:'#15803d', at_risk:'#a16207', off_track:'#b91c1c', achieved:'#16a34a', paused:'#71717a' }; %>
-        <% rows.forEach(r => {
-             const today = new Date().toISOString().slice(0,10);
-             const overdue = r.due_date && r.due_date < today && r.status !== 'achieved';
-        %>
-          <tr>
-            <td>
-              <strong class="text-lg"><%= r.title %></strong>
-              <% if (r.description) { %><div class="meta text-sm" style="margin-top:2px;line-height:1.4;"><%= r.description %></div><% } %>
-            </td>
-            <td class="text-base"><%= r.measurement || '-' %></td>
-            <td class="num text-base" style="font-weight:500;"><%= r.target_value || '-' %></td>
-            <td class="num text-base"><%= r.current_value || '-' %></td>
-            <td class="text-base"><%= r.owner || '-' %></td>
-            <td class="text-sm <%= overdue ? 'text-danger fw-bold' : '' %>"><%= r.due_date || '-' %><% if (overdue) { %> · overdue<% } %></td>
-            <td><span class="tag" style="font-size:10.5px;background:<%= statusColor[r.status] || '#71717a' %>;color:white;border:0;"><%= (r.status || 'on_track').replace('_',' ') %></span></td>
-            <td>
-              <details>
-                <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Edit</summary>
-                <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= r.id %>" style="position:absolute;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);width:420px;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;right:18px;">
-                  <input name="title" value="<%= r.title %>" class="input text-base col-full">
-                  <textarea name="description" rows="2" class="textarea text-base col-full"><%= r.description || '' %></textarea>
-                  <input name="measurement" value="<%= r.measurement || '' %>" placeholder="Measurement" class="input text-base col-full">
-                  <input name="target_value" value="<%= r.target_value || '' %>" placeholder="Target" class="input text-base">
-                  <input name="current_value" value="<%= r.current_value || '' %>" placeholder="Current" class="input text-base">
-                  <input name="owner" value="<%= r.owner || '' %>" placeholder="Owner" class="input text-base">
-                  <input type="date" name="due_date" value="<%= r.due_date || '' %>" class="input text-base">
-                  <select name="status" class="select text-base col-full">
-                    <% ['on_track','at_risk','off_track','achieved','paused'].forEach(s => { %><option value="<%= s %>" <%= r.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
-                  </select>
-                  <button class="btn btn-primary btn-xs col-full">Save</button>
-                </form>
-              </details>
-              <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this objective?')">
-                <button class="btn btn-ghost btn-xs text-xs text-danger">×</button>
+    <div class="perf-objective-list">
+      <% rows.forEach(row => { const overdue = row.due_date && row.due_date < new Date().toISOString().slice(0,10) && row.effectiveStatus !== 'achieved'; %>
+        <article>
+          <div class="perf-objective-main">
+            <div class="perf-objective-title"><strong><%= row.title %></strong><span class="perf-status <%= statusClass[row.effectiveStatus] || 'neutral' %>"><%= statusLabel[row.effectiveStatus] || row.effectiveStatus %></span></div>
+            <% if (row.description) { %><p><%= row.description %></p><% } %>
+            <div class="perf-source">
+              <% if (row.metricDriven) { %>
+                <span>Live measure</span><a href="/workspaces/<%= ws.id %>/metrics/adopted/<%= row.metric_id %>"><%= row.effectiveMeasurement %></a><small><%= row.latest_at ? 'Latest reading ' + row.latest_at : 'No reading recorded' %></small>
+              <% } else { %>
+                <span>Manual update</span><b><%= row.effectiveMeasurement || 'Measurement not defined' %></b><small>Values and status are maintained on this objective</small>
+              <% } %>
+            </div>
+          </div>
+          <dl class="perf-objective-values">
+            <div><dt>Current</dt><dd><%= row.effectiveCurrent || '-' %></dd></div>
+            <div><dt>Target</dt><dd><%= row.effectiveTarget || '-' %></dd></div>
+            <div><dt>Owner</dt><dd><%= row.owner || row.metric_owner || 'Unassigned' %></dd></div>
+            <div><dt>Target date</dt><dd class="<%= overdue ? 'text-danger' : '' %>"><%= row.due_date || 'Not set' %><%= overdue ? ' · overdue' : '' %></dd></div>
+          </dl>
+          <div class="perf-objective-actions">
+            <details>
+              <summary class="btn btn-secondary btn-xs">Edit</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= row.id %>" class="perf-objective-form perf-edit-form">
+                <div class="wide"><label class="label">Objective</label><input name="title" value="<%= row.title %>" class="input" required></div>
+                <div class="wide"><label class="label">Why it matters</label><textarea name="description" rows="2" class="textarea"><%= row.description || '' %></textarea></div>
+                <div class="wide"><label class="label">Measurement source</label><select name="metric_id" class="select js-objective-metric"><option value="">Manual update</option><% metrics.forEach(metric => { %><option value="<%= metric.id %>" <%= row.metric_id === metric.id ? 'selected' : '' %>><%= metric.ref %> · <%= metric.name %></option><% }) %></select></div>
+                <div><label class="label">Owner</label><input name="owner" value="<%= row.owner || '' %>" class="input"></div>
+                <div><label class="label">Target date</label><input type="date" name="due_date" value="<%= row.due_date || '' %>" class="input"></div>
+                <div class="js-manual-field"><label class="label">Manual measurement</label><input name="measurement" value="<%= row.measurement || '' %>" class="input"></div>
+                <div class="js-manual-field"><label class="label">Manual target</label><input name="target_value" value="<%= row.target_value || '' %>" class="input"></div>
+                <div class="js-manual-field"><label class="label">Manual current value</label><input name="current_value" value="<%= row.current_value || '' %>" class="input"></div>
+                <div class="js-manual-field"><label class="label">Manual status</label><select name="status" class="select"><% ['on_track','at_risk','off_track','achieved','paused'].forEach(status => { %><option value="<%= status %>" <%= row.status === status ? 'selected' : '' %>><%= statusLabel[status] %></option><% }) %></select></div>
+                <div class="wide perf-form-actions"><button class="btn btn-primary btn-xs">Save changes</button></div>
               </form>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
+            </details>
+            <form method="POST" action="/workspaces/<%= ws.id %>/objectives/<%= row.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete this objective? The linked measure and its readings will be retained.')"><button class="btn btn-ghost btn-xs text-danger">Delete</button></form>
+          </div>
+        </article>
+      <% }) %>
+    </div>
   <% } %>
-</div>
+</section>
+
+<script>
+  document.querySelectorAll('.perf-objective-form').forEach(function(form){
+    var source=form.querySelector('.js-objective-metric');
+    if(!source)return;
+    function sync(){form.querySelectorAll('.js-manual-field').forEach(function(field){field.hidden=Boolean(source.value);});}
+    source.addEventListener('change',sync);sync();
+  });
+</script>
 
 <%- include('partials/footer') %>

@@ -13,7 +13,7 @@
     "csf-demo": "node scripts/csf-demo.js",
     "content-parity": "node scripts/content-parity.js",
     "content-staleness": "node scripts/content-staleness.js",
-    "test": "node tests/smoke.test.js && node tests/routes.test.js && node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/upload-security.test.js tests/grc-truth.test.js && node --test --test-force-exit tests/engagement-delivery.test.js tests/client-portal.test.js tests/consulting-delivery.test.js tests/csf-production.test.js",
+    "test": "node --test --test-force-exit tests/site-enhancements.test.js tests/supplier-risk-v2.test.js tests/supplier-methodology.test.js tests/performance-objectives.test.js tests/typography.test.js tests/mrm-detail.test.js tests/dates.test.js && node tests/smoke.test.js && node tests/routes.test.js && node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/upload-security.test.js tests/grc-truth.test.js tests/evidence-frameworks.test.js && node --test --test-force-exit tests/engagement-delivery.test.js tests/client-portal.test.js tests/consulting-delivery.test.js tests/csf-production.test.js",
     "test:routes": "node tests/routes.test.js",
     "restore-check": "node scripts/restore-check.js",
     "test:security": "node --test --test-force-exit tests/security.test.js tests/rbac.test.js tests/upload-security.test.js",

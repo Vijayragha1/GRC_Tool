@@ -13,6 +13,7 @@ const ctlWrites = require('../lib/control-writes');
 const evReads = require('../lib/evidence-reads');
 const docLinks = require('../lib/doc-links');
 const assessmentPassQuality = require('../lib/assessment-pass-quality');
+const consultingDelivery = require('../lib/consulting-delivery');
 const { buildWorkspaceTruth } = require('../lib/grc-truth');
 const { withToast, redirectBack, auditCtx, parseFormArray, escapeHtml } = require('../lib/http-helpers');
 
@@ -182,7 +183,7 @@ function register(app, deps) {
     // Re-check open-task existence inside the transaction. The post-assessment
     // summary view filters with `has_open_task` at render time, but two
     // consultants both looking at the same list and both clicking "Spawn" would
-    // each INSERT — duplicate "Remediate A.5.15…" tasks for the same control.
+    // each INSERT - duplicate "Remediate A.5.15…" tasks for the same control.
     // This statement is run per id at commit time, so it catches concurrent
     // spawns no matter when the render happened.
     const hasOpen = db.prepare(`SELECT 1 FROM tasks
@@ -272,7 +273,7 @@ function register(app, deps) {
     const nextById = position < allOrder.length ? allOrder[position].id : null;
 
     // Theme-jump navigator data. A real consultant doesn't walk 118 items
-    // sequentially — they bounce between themes. The nav builds an index of
+    // sequentially - they bounce between themes. The nav builds an index of
     // every clause + control with its current assessment status, grouped into
     // (a) main clauses by section, (b) Annex A by category.
     const navRows = db.prepare(`SELECT i.id, i.type, i.category, i.title, i.sort_order,
@@ -592,7 +593,7 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${item.id}`);
   });
 
-  app.post('/workspaces/:wsId/controls/assess/:isoId/review-action', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/controls/assess/:isoId/review-action', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
     const item = db.prepare(`SELECT id FROM iso_items WHERE id=?`).get(req.params.isoId);
     if (!item) return res.status(404).send('Not found');
     const action = req.body.action; // 'approve' or 'send_back'
@@ -717,6 +718,7 @@ function register(app, deps) {
           FROM ${ctlReads.tables(db, wsId).cs} WHERE workspace_id=? AND status != 'Not Assessed'`).get(wsId)
       : null;
     const canAdoptBaseline = rbac.hasPermission(res.locals.userPerms, 'assessment.signoff');
+    const canSignoff = canAdoptBaseline;
 
     // Find the next un-assessed item (continue button target).
     const nextItem = active
@@ -801,7 +803,7 @@ function register(app, deps) {
       title: 'Gap assessment',
       active: 'gap-assessment',
       passes, activePass: active,
-      totalItems, assessedNow, legacyBaseline, canAdoptBaseline,
+      totalItems, assessedNow, legacyBaseline, canAdoptBaseline, canSignoff,
       nextItem,
       orientation, trend, heatmap, themeNames: ANNEX_THEMES
     });
@@ -862,9 +864,9 @@ function register(app, deps) {
         }, { first: null, last: null });
         const notes = 'Controlled adoption of the pre-existing assessment baseline. Current conclusions were copied without alteration; this adoption records lineage from this point forward and does not represent retrospective fieldwork in the platform.';
         const passId = Number(db.prepare(`INSERT INTO assessment_passes
-          (workspace_id, pass_number, label, notes, status, started_at, completed_at, started_by, completed_by)
-          VALUES (?, 1, 'Imported assessment baseline', ?, 'completed', ?, ?, ?, ?)`)
-          .run(wsId, notes, adoptedAt, adoptedAt, req.user.id, req.user.id).lastInsertRowid);
+          (workspace_id, pass_number, label, notes, status, started_at, started_by)
+          VALUES (?, 1, 'Imported assessment baseline', ?, 'in_progress', ?, ?)`)
+          .run(wsId, notes, adoptedAt, req.user.id).lastInsertRowid);
         const insertSnapshot = db.prepare(`INSERT INTO control_state_history
           (workspace_id, iso_item_id, snapshot_at, changed_by, status, applicability,
            maturity, scope_pct, inclusion_justification, exclusion_justification,
@@ -914,23 +916,17 @@ function register(app, deps) {
         disclosure: 'Current conclusions copied without alteration; no retrospective fieldwork claimed.'
       }, auditCtx(req));
       return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
-        'Imported baseline adopted as Pass 1. The PDF and editable Word report are now available.'));
+        'Imported baseline adopted as Pass 1. A different senior consultant or manager must independently sign it off before governed reporting.'));
     });
 
-  app.post('/workspaces/:wsId/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('assessment.start_pass'), (req, res) => {
     const wsId = req.workspace.id;
-    // If an active pass exists, complete it before starting a new one - only
-    // one pass can be in_progress at a time.
+    // Only a sign-off holder may complete a pass. Starting a new pass must
+    // never silently sign off the current preparer's work.
     const active = getActivePass(wsId);
     if (active) {
-      const quality = assessmentPassQuality.qualityForPass(db, wsId, active);
-      if (!quality.ready) {
-        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
-          `Pass ${active.pass_number} cannot be completed. ${assessmentPassQuality.gateMessage(quality)}`, 'error'));
-      }
-      db.prepare(`UPDATE assessment_passes
-        SET status='completed', completed_at=datetime('now'), completed_by=?
-        WHERE id=?`).run(req.user.id, active.id);
+      return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+        `Pass ${active.pass_number} is still active. An independent reviewer must complete it before another pass can start.`, 'error'));
     }
     const lastNum = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n
       FROM assessment_passes WHERE workspace_id=?`).get(wsId).n;
@@ -948,11 +944,15 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`, `Started Pass ${nextNum}: ${label}`));
   });
 
-  app.post('/workspaces/:wsId/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
     const wsId = req.workspace.id;
     const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
     if (!p) return res.status(404).send('Not found');
     if (p.status === 'completed') return res.redirect(`/workspaces/${wsId}/gap-assessment`);
+    if (Number(p.started_by) === Number(req.user.id)) {
+      return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+        `Pass ${p.pass_number} requires independent sign-off by a different senior consultant or manager.`, 'error'));
+    }
     const quality = assessmentPassQuality.qualityForPass(db, wsId, p);
     if (!quality.ready) {
       return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
@@ -963,32 +963,44 @@ function register(app, deps) {
     // matches and writes completed_by; the second sees changes=0 and is told
     // it was already completed. Replaces the previous LWW behaviour where both
     // writes succeeded and the audit trail recorded two different completers.
-    const result = db.prepare(`UPDATE assessment_passes
-      SET status='completed', completed_at=datetime('now'), completed_by=?
-      WHERE id=? AND status='in_progress'`).run(req.user.id, p.id);
+    let deliveryProjection;
+    let result;
+    try {
+      db.transaction(() => {
+        deliveryProjection = consultingDelivery.materializeAssessmentPass(db, req.workspace, p, req.user.id);
+        result = db.prepare(`UPDATE assessment_passes
+          SET status='completed', completed_at=datetime('now'), completed_by=?
+          WHERE id=? AND status='in_progress'`).run(req.user.id, p.id);
+        if (result.changes === 0) throw Object.assign(new Error('PASS_ALREADY_COMPLETED'), { code: 'PASS_ALREADY_COMPLETED' });
+      })();
+    } catch (error) {
+      if (error && error.code === 'PASS_ALREADY_COMPLETED') {
+        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+          `Pass ${p.pass_number} was just completed by another consultant.`, 'info'));
+      }
+      return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+        `Pass ${p.pass_number} was not completed because its governed delivery record could not be frozen: ${error.message}`, 'error'));
+    }
     if (result.changes === 0) {
       return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
         `Pass ${p.pass_number} was just completed by another consultant.`, 'info'));
     }
-    logAction(req.user.id, wsId, 'complete_assessment_pass', 'pass', p.id, { pass_number: p.pass_number });
-    res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`, `Completed Pass ${p.pass_number}: ${p.label}`));
+    logAction(req.user.id, wsId, 'complete_assessment_pass', 'pass', p.id, {
+      pass_number: p.pass_number, delivery_projection: deliveryProjection
+    });
+    res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+      `Completed Pass ${p.pass_number}: ${p.label}. ${deliveryProjection.frozen} governed workpapers were frozen for reporting.`));
   });
 
-  app.post('/workspaces/:wsId/gap-assessment/:passId/reopen', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/gap-assessment/:passId/reopen', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
     const wsId = req.workspace.id;
     const p = db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(req.params.passId, wsId);
     if (!p) return res.status(404).send('Not found');
-    // Only one pass can be in_progress - close any other before reopening.
+    // Reopening is a governed exception; never auto-sign off a different pass.
     const other = getActivePass(wsId);
     if (other && other.id !== p.id) {
-      const quality = assessmentPassQuality.qualityForPass(db, wsId, other);
-      if (!quality.ready) {
-        return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
-          `Pass ${other.pass_number} cannot be completed to reopen Pass ${p.pass_number}. ${assessmentPassQuality.gateMessage(quality)}`, 'error'));
-      }
-      db.prepare(`UPDATE assessment_passes
-        SET status='completed', completed_at=datetime('now'), completed_by=?
-        WHERE id=?`).run(req.user.id, other.id);
+      return res.redirect(withToast(`/workspaces/${wsId}/gap-assessment`,
+        `Pass ${other.pass_number} is active. Complete it before reopening Pass ${p.pass_number}.`, 'error'));
     }
     db.prepare(`UPDATE assessment_passes SET status='in_progress', completed_at=NULL, completed_by=NULL WHERE id=?`).run(p.id);
     logAction(req.user.id, wsId, 'reopen_assessment_pass', 'pass', p.id, { pass_number: p.pass_number });
