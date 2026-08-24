@@ -59,9 +59,17 @@ const RECONCILED_DRIFTS = Object.freeze({
     reconciledBy: '054_tprm_upgrade_reconciliation.js',
   }),
   '054_tprm_upgrade_reconciliation.js': Object.freeze({
-    applied: '9ce929a79ea0d25ef9732ee3077199d3588ecaa09cc99e037be66f278e7229d5',
-    current: '40a05fbce451be761aaadd65d8a57513938d5113eaba179cec373a1daecc051a',
-    reconciledBy: '055_tprm_exact_schema_reconciliation.js',
+    applied: Object.freeze([
+      '9ce929a79ea0d25ef9732ee3077199d3588ecaa09cc99e037be66f278e7229d5',
+      '40a05fbce451be761aaadd65d8a57513938d5113eaba179cec373a1daecc051a',
+    ]),
+    current: '97c8795eb2673f4f6d18039781293eeae9281b252c74c74066a70e93ca5c3703',
+    reconciledBy: '060_tprm_foreign_key_scope_reconciliation.js',
+  }),
+  '055_tprm_exact_schema_reconciliation.js': Object.freeze({
+    applied: '636205b23b077ee9e0899c5ab3b78853e38491b9649a4f1d14e9f188582f5ff6',
+    current: 'a3171275db81df0fd6f212361f4647d7dfe4a8f06effd8ea157140c3ab1627e3',
+    reconciledBy: '060_tprm_foreign_key_scope_reconciliation.js',
   }),
 });
 
@@ -97,7 +105,8 @@ const KNOWN_LEGACY_DRIFTS = Object.freeze({
 
 function isKnownReconciledDrift(file, appliedChecksum, currentChecksum) {
   const known = RECONCILED_DRIFTS[file];
-  return Boolean(known && known.applied === appliedChecksum && known.current === currentChecksum);
+  const acceptedApplied = known && (Array.isArray(known.applied) ? known.applied : [known.applied]);
+  return Boolean(known && acceptedApplied.includes(appliedChecksum) && known.current === currentChecksum);
 }
 
 function isKnownLegacyDrift(file, appliedChecksum, currentChecksum) {

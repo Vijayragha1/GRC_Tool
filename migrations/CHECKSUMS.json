@@ -52,10 +52,11 @@
   "051_tprm_webhook_ingress_limits.sql": "e4f51f3cd08fd274cb8853217ed4c0cb1608028a1a4e96bd5473936b1713746b",
   "052_tprm_decision_reversal_integrity.sql": "6a9d48727a492d501fd0016a017c8c6f4084cce0518c4295814906d18cd211b2",
   "053_tprm_hash_chain_continuity.sql": "a89bcd7f3fba4e68a2d17c73e97806f0c147452c61eadc98f6e03a9b4aace537",
-  "054_tprm_upgrade_reconciliation.js": "40a05fbce451be761aaadd65d8a57513938d5113eaba179cec373a1daecc051a",
-  "055_tprm_exact_schema_reconciliation.js": "636205b23b077ee9e0899c5ab3b78853e38491b9649a4f1d14e9f188582f5ff6",
+  "054_tprm_upgrade_reconciliation.js": "97c8795eb2673f4f6d18039781293eeae9281b252c74c74066a70e93ca5c3703",
+  "055_tprm_exact_schema_reconciliation.js": "a3171275db81df0fd6f212361f4647d7dfe4a8f06effd8ea157140c3ab1627e3",
   "056_dpdpa_gap_assessment.sql": "0f9718fdc7d6873bf1c17e04366f3d56153d41c02975eb2f140f42da77b305ec",
   "057_vciso_service.sql": "7f1f496d78de76718ea69157aa5c3e410f6df717b61b21b68699e6f812d77e92",
   "058_framework_catalog_releases.sql": "b3e41ae665144c0c57bf485a8fef212090bc08598bcde13e04a8d63eee73a9c4",
-  "059_repair_misplaced_iso27001_intakes.sql": "fbc82540a376bf05d825aab53d7bf47198f3c7c04b0f4fbef4c180364b76728c"
+  "059_repair_misplaced_iso27001_intakes.sql": "fbc82540a376bf05d825aab53d7bf47198f3c7c04b0f4fbef4c180364b76728c",
+  "060_tprm_foreign_key_scope_reconciliation.js": "c19f2a257c7f3c176ce375ceeb8fab821d67cbc7ef1b0a786b88a02808edbad6"
 }

@@ -18,6 +18,55 @@ const TARGETS = Object.freeze([
 
 const SHADOW_SUFFIX = '__055_rebuild';
 
+function foreignKeyViolationSignature(violation) {
+  return JSON.stringify([
+    String(violation.table || ''),
+    violation.rowid == null ? null : Number(violation.rowid),
+    String(violation.parent || ''),
+    violation.fkid == null ? null : Number(violation.fkid),
+  ]);
+}
+
+function isTprmForeignKeyViolation(violation) {
+  return String(violation.table || '').startsWith('tprm_')
+    || String(violation.parent || '').startsWith('tprm_');
+}
+
+function readForeignKeyViolations(db) {
+  return db.prepare('PRAGMA foreign_key_check').all();
+}
+
+function assertNoPreExistingTprmViolations(violations) {
+  const tprmViolations = violations.filter(isTprmForeignKeyViolation);
+  if (tprmViolations.length) {
+    throw new Error(`TPRM exact reconciliation refused ${tprmViolations.length} pre-existing TPRM foreign-key violation(s)`);
+  }
+}
+
+function assertNoForeignKeyRegression(db, before) {
+  const baseline = new Map();
+  for (const violation of before) {
+    const signature = foreignKeyViolationSignature(violation);
+    baseline.set(signature, (baseline.get(signature) || 0) + 1);
+  }
+  const after = readForeignKeyViolations(db);
+  const tprmViolations = after.filter(isTprmForeignKeyViolation);
+  if (tprmViolations.length) {
+    throw new Error(`TPRM exact reconciliation produced ${tprmViolations.length} TPRM foreign-key violation(s)`);
+  }
+
+  const introduced = after.filter(violation => {
+    const signature = foreignKeyViolationSignature(violation);
+    const remaining = baseline.get(signature) || 0;
+    if (!remaining) return true;
+    baseline.set(signature, remaining - 1);
+    return false;
+  });
+  if (introduced.length) {
+    throw new Error(`TPRM exact reconciliation produced ${introduced.length} new foreign-key violation(s) outside TPRM`);
+  }
+}
+
 const CANONICAL_COLUMNS = Object.freeze({
   tprm_legal_entities: Object.freeze([
     'id', 'workspace_id', 'supplier_id', 'legal_name', 'trading_name',
@@ -378,11 +427,8 @@ function ensureCanonicalFindingParentIndex(db) {
   }
 }
 
-function assertTenantAndRelationshipIntegrity(db) {
-  const existingForeignKeys = db.prepare('PRAGMA foreign_key_check').all();
-  if (existingForeignKeys.length) {
-    throw new Error(`TPRM exact reconciliation refused ${existingForeignKeys.length} pre-existing foreign-key violation(s)`);
-  }
+function assertTenantAndRelationshipIntegrity(db, existingForeignKeys) {
+  assertNoPreExistingTprmViolations(existingForeignKeys);
 
   if (db.prepare(`SELECT 1 FROM tprm_service_relationships
     WHERE alternate_provider_relationship_id=id LIMIT 1`).get()) {
@@ -549,7 +595,7 @@ function reconcileCanonicalBoundaryObjects(db) {
   `);
 }
 
-function assertCanonicalResult(db) {
+function assertCanonicalResult(db, existingForeignKeys) {
   for (const table of TARGETS) {
     assertExactColumns(db, table);
     if (needsRebuild(db, table)) throw new Error(`${table} did not reach its canonical schema`);
@@ -575,10 +621,7 @@ function assertCanonicalResult(db) {
     throw new Error('legacy connector ingress boundary objects remain after reconciliation');
   }
 
-  const foreignKeyErrors = db.prepare('PRAGMA foreign_key_check').all();
-  if (foreignKeyErrors.length) {
-    throw new Error(`TPRM exact reconciliation produced ${foreignKeyErrors.length} foreign-key violation(s)`);
-  }
+  assertNoForeignKeyRegression(db, existingForeignKeys);
   const quickCheck = db.pragma('quick_check', { simple: true });
   if (quickCheck !== 'ok') throw new Error(`TPRM exact reconciliation integrity check failed: ${quickCheck}`);
 }
@@ -588,6 +631,10 @@ function up(db) {
     throw new Error('055 exact TPRM reconciliation requires runner-controlled foreign_keys=OFF');
   }
 
+  // Preserve unrelated legacy orphans byte-for-byte while proving that this
+  // rebuild neither accepts a broken TPRM boundary nor creates a new orphan.
+  const existingForeignKeys = readForeignKeyViolations(db);
+
   assertNoStaleShadows(db);
   for (const table of TARGETS) {
     if (!tableExists(db, table)) throw new Error(`required TPRM table is missing: ${table}`);
@@ -595,11 +642,11 @@ function up(db) {
     sequenceState(db, table);
   }
   ensureCanonicalFindingParentIndex(db);
-  assertTenantAndRelationshipIntegrity(db);
+  assertTenantAndRelationshipIntegrity(db, existingForeignKeys);
 
   for (const table of TARGETS) rebuildCanonicalTable(db, table);
   reconcileCanonicalBoundaryObjects(db);
-  assertCanonicalResult(db);
+  assertCanonicalResult(db, existingForeignKeys);
 }
 
 module.exports = { up, foreignKeysOff: true };
