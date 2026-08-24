@@ -1,0 +1,178 @@
+<%
+  const recommendationFlow = recommendationWorkflow || null;
+  const recommendationDraft = recommendationFlow && recommendationFlow.draft;
+  const draftRevision = recommendationFlow && recommendationFlow.currentRevision;
+  const isDraftAuthor = Boolean(recommendationDraft && recommendationDraft.author_id === user.id);
+  const isAssignedReviewer = Boolean(recommendationDraft && recommendationDraft.reviewer_id === user.id);
+  const editableByUser = Boolean(canDraftRecommendation && (!recommendationDraft || (isDraftAuthor && ['draft','changes_requested'].includes(recommendationDraft.status))));
+  const revisionValues = draftRevision || { outcome:'', executiveSummary:'', rationale:'', residualRiskBand:'unknown', residualRiskScore:null, validUntil:null, conditions:[] };
+  const conditionValues = revisionValues.conditions && revisionValues.conditions.length ? revisionValues.conditions : [{}];
+  const workflowRoot = `/workspaces/${ws.id}/tprm/third-parties/${thirdParty.id}`;
+  const readiness = recommendationReadiness || null;
+  const positiveGateBlockers = readiness ? readiness.blockers.filter(item => item.key !== 'findings') : [];
+  const positiveDraftLocked = Boolean(readiness && !readiness.hardReady && !recommendationDraft);
+%>
+
+<section class="tprm-section" id="recommendation">
+  <div class="tprm-section-head">
+    <div>
+      <div class="tprm-kicker">Consultancy recommendation</div>
+      <h2>Draft, independent review and issue</h2>
+      <p>The author drafts the recommendation; a different authorised reviewer issues it. The assigned client decision authority makes the final decision.</p>
+    </div>
+    <% if (recommendationDraft) { %><span class="tprm-status"><%= titleCase(recommendationDraft.status) %> · revision <%= recommendationDraft.current_revision_number %></span><% } else if (currentRecommendation) { %><span class="tprm-status tprm-status-complete">Issued recommendation v<%= currentRecommendation.version %></span><% } %>
+  </div>
+  <div class="tprm-section-body">
+    <% if (currentClientDecision) { %>
+      <div class="tprm-callout"><strong>This assessment cycle has a client final decision.</strong> Start a new assessment cycle before preparing a reassessment recommendation.</div>
+    <% } else if (!cycle) { %>
+      <div class="tprm-callout"><strong>Start an assessment cycle first.</strong> Every recommendation revision must be tied to one controlled cycle and its exact evidence set.</div>
+    <% } else if (!canDraftRecommendation && !canIssueRecommendation) { %>
+      <div class="tprm-callout"><strong>Recommendation access required.</strong> Draft workpapers are restricted to authorized consultancy authors and independent reviewers.</div>
+    <% } else { %>
+      <% if (projectionBlockers.length) { %>
+        <div class="tprm-callout" style="margin-bottom:14px"><strong>Open assessment gates:</strong> <%= projectionBlockers.map(item => typeof item === 'string' ? item : item.message).join(' ') %></div>
+      <% } %>
+
+      <% if (readiness && !readiness.hardReady) { %>
+        <div class="tprm-callout" style="margin-bottom:14px">
+          <strong>Positive recommendation is currently locked.</strong>
+          You may record a defensible <em>Do not recommend onboarding</em> or <em>Insufficient information</em> conclusion now.
+          Before recommending onboarding, complete: <%= positiveGateBlockers.map(item => item.message).join(' ') %>
+        </div>
+      <% } else if (readiness && !readiness.readyWithoutConditions) { %>
+        <div class="tprm-callout" style="margin-bottom:14px">
+          <strong>Only a conditional positive recommendation is available.</strong>
+          Link a structured condition to every open high or critical finding, or resolve the findings before recommending onboarding without conditions.
+        </div>
+      <% } %>
+
+      <% if (recommendationDraft) { %>
+        <div class="tprm-record-list" style="margin-bottom:16px">
+          <div class="tprm-record-row"><span><strong>Accountable author (maker)</strong><small>Only this person can save or submit revisions</small></span><span><%= recommendationDraft.author_name %></span></div>
+          <div class="tprm-record-row"><span><strong>Assigned independent reviewer</strong><small>Only this person can request changes or issue</small></span><span><%= recommendationDraft.reviewer_name || 'Assigned when submitted' %></span></div>
+          <% if (recommendationDraft.submitted_revision_number) { %><div class="tprm-record-row"><span><strong>Exact submitted revision</strong><small>Later edits cannot silently replace it</small></span><span>Revision <%= recommendationDraft.submitted_revision_number %></span></div><% } %>
+        </div>
+      <% } %>
+
+      <% if (recommendationDraft && recommendationDraft.status === 'changes_requested') { %>
+        <div class="tprm-callout" style="margin-bottom:14px"><strong>Quality reviewer requested changes:</strong> <%= recommendationDraft.changes_requested_note %></div>
+      <% } %>
+
+      <% if (editableByUser) { %>
+        <form method="POST" action="<%= recommendationDraft ? `${workflowRoot}/recommendation-drafts/${recommendationDraft.id}/revisions` : `${workflowRoot}/recommendation-drafts` %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="idempotency_key" value="<%= recommendationDraft ? recommendationNonces.save : recommendationNonces.create %>">
+          <% if (recommendationDraft) { %>
+            <input type="hidden" name="expected_row_version" value="<%= recommendationDraft.row_version %>">
+            <input type="hidden" name="expected_revision_number" value="<%= recommendationDraft.current_revision_number %>">
+          <% } else { %>
+            <input type="hidden" name="cycle_id" value="<%= cycle.id %>">
+            <input type="hidden" name="expected_cycle_row_version" value="<%= cycle.row_version %>">
+          <% } %>
+          <div class="form-grid">
+            <label class="form-field"><span>Consultancy recommendation *</span><select class="select" name="outcome" required>
+              <option value="">Select a defensible outcome</option>
+              <option value="recommend_onboard" <%= revisionValues.outcome === 'recommend_onboard' ? 'selected' : '' %> <%= readiness && !readiness.readyWithoutConditions && revisionValues.outcome !== 'recommend_onboard' ? 'disabled' : '' %>>Recommend onboarding<%= readiness && !readiness.readyWithoutConditions ? ' - unavailable until all gates pass' : '' %></option>
+              <option value="recommend_with_conditions" <%= revisionValues.outcome === 'recommend_with_conditions' ? 'selected' : '' %> <%= positiveDraftLocked ? 'disabled' : '' %>>Recommend onboarding with conditions<%= positiveDraftLocked ? ' - unavailable until assessment gates pass' : '' %></option>
+              <option value="do_not_recommend" <%= revisionValues.outcome === 'do_not_recommend' ? 'selected' : '' %>>Do not recommend onboarding</option>
+              <option value="insufficient_information" <%= revisionValues.outcome === 'insufficient_information' ? 'selected' : '' %>>Insufficient information</option>
+            </select></label>
+            <label class="form-field"><span>Residual-risk band *</span><select class="select" name="residual_risk_band" required>
+              <% ['unknown','low','moderate','high','critical'].forEach(band => { %><option value="<%= band %>" <%= revisionValues.residualRiskBand === band ? 'selected' : '' %>><%= titleCase(band) %></option><% }) %>
+            </select></label>
+            <label class="form-field"><span>Residual-risk score (0–100)</span><input class="input" type="number" name="residual_risk_score" min="0" max="100" step="1" value="<%= revisionValues.residualRiskScore == null ? '' : revisionValues.residualRiskScore %>"></label>
+            <label class="form-field"><span>Recommendation valid until</span><input class="input" type="date" name="valid_until" value="<%= revisionValues.validUntil || '' %>"></label>
+            <label class="form-field" style="grid-column:1/-1"><span>Executive summary *</span><textarea class="textarea" name="executive_summary" rows="3" minlength="20" maxlength="4000" required placeholder="State the decision-relevant consultancy conclusion in plain language."><%= revisionValues.executiveSummary || '' %></textarea></label>
+            <label class="form-field" style="grid-column:1/-1"><span>Assessment rationale *</span><textarea class="textarea" name="rationale" rows="4" minlength="20" maxlength="8000" required placeholder="Explain the evidence, material findings, contract position and residual-risk conclusion."><%= revisionValues.rationale || '' %></textarea></label>
+          </div>
+          <details class="tprm-conditions-editor" style="margin-top:14px" <%= conditionValues.some(item => item.title) ? 'open' : '' %>>
+            <summary>Structured recommendation conditions <span>required for “Recommend onboarding with conditions”</span></summary>
+            <div class="tprm-rec-condition-list tprm-condition-list">
+              <% conditionValues.forEach((condition, index) => { %>
+                <div class="tprm-condition-entry" data-condition-index="<%= index %>"><div class="form-grid">
+                  <label class="form-field"><span>Condition title</span><input class="input" name="conditions[<%= index %>][title]" maxlength="240" value="<%= condition.title || '' %>"></label>
+                  <label class="form-field"><span>Linked finding</span><select class="select" name="conditions[<%= index %>][finding_id]"><option value="">No linked finding</option><% findings.filter(f => !['closed','verified'].includes(f.status)).forEach(finding => { %><option value="<%= finding.id %>" <%= Number(condition.findingId) === finding.id ? 'selected' : '' %>><%= titleCase(finding.severity) %> · <%= finding.title %></option><% }) %></select></label>
+                  <label class="form-field"><span>Type</span><select class="select" name="conditions[<%= index %>][condition_type]"><% ['remediation','control','contract','evidence','monitoring','risk_acceptance','other'].forEach(type => { %><option value="<%= type %>" <%= (condition.conditionType || 'remediation') === type ? 'selected' : '' %>><%= titleCase(type) %></option><% }) %></select></label>
+                  <label class="form-field"><span>Severity</span><select class="select" name="conditions[<%= index %>][severity]"><% ['moderate','low','high','critical'].forEach(severity => { %><option value="<%= severity %>" <%= (condition.severity || 'moderate') === severity ? 'selected' : '' %>><%= titleCase(severity) %></option><% }) %></select></label>
+                  <label class="form-field"><span>Owner type</span><select class="select" name="conditions[<%= index %>][owner_type]"><% ['client','third_party','consultancy'].forEach(owner => { %><option value="<%= owner %>" <%= (condition.ownerType || 'client') === owner ? 'selected' : '' %>><%= titleCase(owner) %></option><% }) %></select></label>
+                  <label class="form-field"><span>Named owner</span><input class="input" name="conditions[<%= index %>][owner_name]" maxlength="160" value="<%= condition.ownerName || '' %>"></label>
+                  <label class="form-field"><span>Due date</span><input class="input" type="date" name="conditions[<%= index %>][due_date]" value="<%= condition.dueDate || '' %>"></label>
+                  <label class="form-field" style="grid-column:1/-1"><span>Description</span><textarea class="textarea" name="conditions[<%= index %>][description]" rows="2" maxlength="2000"><%= condition.description || '' %></textarea></label>
+                  <label class="form-field" style="grid-column:1/-1"><span>Verification criteria</span><textarea class="textarea" name="conditions[<%= index %>][verification_criteria]" rows="2" maxlength="2000"><%= condition.verificationCriteria || '' %></textarea></label>
+                </div><button class="btn btn-xs tprm-remove-rec-condition" type="button" <%= conditionValues.length === 1 ? 'hidden' : '' %>>Remove condition</button></div>
+              <% }) %>
+            </div>
+            <button class="btn btn-xs tprm-add-rec-condition" type="button" style="margin-top:10px">Add another condition</button>
+          </details>
+          <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn <%= recommendationDraft || positiveDraftLocked ? '' : 'btn-primary' %>" type="submit"><%= recommendationDraft ? 'Save immutable revision' : (currentRecommendation ? 'Save corrected successor draft' : (positiveDraftLocked ? 'Save negative or insufficient-information draft' : 'Save first draft')) %></button></div>
+        </form>
+
+        <% if (recommendationDraft && draftRevision) { %>
+          <% if (recommendationReviewers.length) { %>
+            <form method="POST" action="<%= workflowRoot %>/recommendation-drafts/<%= recommendationDraft.id %>/submit" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= recommendationNonces.submit %>"><input type="hidden" name="expected_row_version" value="<%= recommendationDraft.row_version %>"><input type="hidden" name="expected_revision_number" value="<%= recommendationDraft.current_revision_number %>">
+              <div class="form-grid"><label class="form-field"><span>Independent quality reviewer *</span><select class="select" name="reviewer_id" required><option value="">Select a different authorized reviewer</option><% recommendationReviewers.forEach(reviewer => { %><option value="<%= reviewer.id %>" <%= recommendationDraft.reviewer_id === reviewer.id ? 'selected' : '' %>><%= reviewer.name %> · <%= titleCase(reviewer.firm_role) %></option><% }) %></select></label></div>
+              <p class="tprm-muted">Submission freezes revision <%= recommendationDraft.current_revision_number %> for review. The reviewer can issue only that exact revision or return it with a rationale.</p>
+              <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">Submit revision <%= recommendationDraft.current_revision_number %> for independent review</button></div>
+            </form>
+          <% } else { %><div class="tprm-callout" style="margin-top:14px"><strong>Independent review is blocked.</strong> Assign another active consultancy user with recommendation issue permission.</div><% } %>
+        <% } %>
+      <% } else if (recommendationDraft && ['draft','changes_requested'].includes(recommendationDraft.status)) { %>
+        <div class="tprm-callout"><strong>Waiting for <%= recommendationDraft.author_name %>.</strong> Only the accountable author can change or submit this consultancy workpaper.</div>
+      <% } %>
+
+      <% if (recommendationDraft && recommendationDraft.status === 'in_review') { %>
+        <div class="tprm-callout" style="margin-bottom:14px"><strong>Revision <%= recommendationDraft.submitted_revision_number %> is frozen for independent review.</strong> Issuing the consultancy recommendation sends it to the client decision stage; it does not onboard the third party.</div>
+        <% if (draftRevision) { %>
+          <div class="tprm-record-list" style="margin-bottom:16px">
+            <div class="tprm-record-row"><span><strong><%= titleCase(draftRevision.outcome) %></strong><small><%= draftRevision.executiveSummary %></small></span><span><%= titleCase(draftRevision.residualRiskBand) %><small><%= draftRevision.residualRiskScore == null ? 'No score' : `${draftRevision.residualRiskScore}/100` %></small></span></div>
+            <div class="tprm-record-row"><span><strong>Assessment rationale</strong><small><%= draftRevision.rationale %></small></span><span><code><%= draftRevision.revision_hash.slice(0,12) %>…</code></span></div>
+            <% draftRevision.conditions.forEach(condition => { %><div class="tprm-record-row"><span><strong>Condition · <%= condition.title %></strong><small><%= condition.description %></small></span><span><%= dateOnly(condition.dueDate) %><small><%= condition.ownerName %></small></span></div><% }) %>
+          </div>
+        <% } %>
+        <% if (isAssignedReviewer && canIssueRecommendation) { %>
+          <form method="POST" action="<%= workflowRoot %>/recommendation-drafts/<%= recommendationDraft.id %>/issue">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= recommendationNonces.issue %>"><input type="hidden" name="expected_row_version" value="<%= recommendationDraft.row_version %>"><input type="hidden" name="expected_revision_number" value="<%= recommendationDraft.submitted_revision_number %>"><input type="hidden" name="expected_current_recommendation_id" value="<%= currentRecommendation ? currentRecommendation.id : 0 %>">
+            <label class="form-field"><span>Independent quality-review rationale *</span><textarea class="textarea" name="quality_review_rationale" rows="3" minlength="10" maxlength="4000" required placeholder="Record what you challenged, checked and concluded against this exact revision."></textarea></label>
+            <label class="tprm-confirm"><input type="checkbox" name="quality_review_confirmed" value="1" required><span>I independently reviewed the exact submitted revision, assessment scope, evidence lineage, contract assurance and material findings. I am not its author.</span></label>
+            <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn btn-primary" type="submit">Issue recommendation for client decision</button></div>
+          </form>
+          <details style="margin-top:16px"><summary>Return to author for changes</summary><form method="POST" action="<%= workflowRoot %>/recommendation-drafts/<%= recommendationDraft.id %>/request-changes" style="margin-top:10px"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= recommendationNonces.changes %>"><input type="hidden" name="expected_row_version" value="<%= recommendationDraft.row_version %>"><input type="hidden" name="expected_revision_number" value="<%= recommendationDraft.submitted_revision_number %>"><label class="form-field"><span>Required changes and rationale *</span><textarea class="textarea" name="note" rows="3" minlength="10" maxlength="4000" required></textarea></label><button class="btn" type="submit">Request changes</button></form></details>
+        <% } else { %>
+          <div class="tprm-callout"><strong>Waiting for <%= recommendationDraft.reviewer_name %>.</strong> Only the assigned independent reviewer can issue or request changes for this exact revision.</div>
+        <% } %>
+      <% } %>
+
+      <% if (recommendationDraft && ((['draft','changes_requested'].includes(recommendationDraft.status) && isDraftAuthor) || (recommendationDraft.status === 'in_review' && isAssignedReviewer))) { %>
+        <details style="margin-top:16px"><summary>Withdraw this draft</summary><form method="POST" action="<%= workflowRoot %>/recommendation-drafts/<%= recommendationDraft.id %>/withdraw" style="margin-top:10px"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= recommendationNonces.withdraw %>"><input type="hidden" name="expected_row_version" value="<%= recommendationDraft.row_version %>"><label class="form-field"><span>Withdrawal reason *</span><textarea class="textarea" name="reason" rows="2" minlength="10" maxlength="2000" required></textarea></label><button class="btn" type="submit">Withdraw draft and retain history</button></form></details>
+      <% } %>
+
+      <% if (recommendationFlow && recommendationFlow.revisions.length) { %>
+        <details style="margin-top:18px"><summary>Immutable internal revision history</summary><div class="tprm-record-list" style="margin-top:10px"><% recommendationFlow.revisions.forEach(revision => { %><div class="tprm-record-row"><span><strong>Revision <%= revision.revision_number %> · <%= titleCase(revision.outcome) %></strong><small><%= revision.created_by_name %> · <%= dateOnly(revision.created_at) %></small></span><span><code><%= revision.revision_hash.slice(0,12) %>…</code></span></div><% }) %></div></details>
+      <% } %>
+    <% } %>
+  </div>
+</section>
+
+<script>
+(function(){
+  document.querySelectorAll('.tprm-rec-condition-list').forEach(function(list){
+    const add = list.parentElement.querySelector('.tprm-add-rec-condition');
+    if (!add || !list.firstElementChild) return;
+    add.addEventListener('click', function(){
+      const clone = list.firstElementChild.cloneNode(true);
+      const index = list.children.length;
+      clone.dataset.conditionIndex = String(index);
+      clone.querySelectorAll('[name]').forEach(function(field){
+        field.name = field.name.replace(/conditions\[\d+\]/, 'conditions[' + index + ']');
+        if (field.tagName === 'SELECT') field.selectedIndex = 0; else field.value = '';
+      });
+      const remove = clone.querySelector('.tprm-remove-rec-condition');
+      if (remove) { remove.hidden = false; remove.addEventListener('click', function(){ clone.remove(); }); }
+      list.appendChild(clone);
+    });
+    list.querySelectorAll('.tprm-remove-rec-condition').forEach(function(button){ button.addEventListener('click', function(){ button.closest('.tprm-condition-entry').remove(); }); });
+  });
+})();
+</script>

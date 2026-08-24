@@ -4,6 +4,7 @@
 // readiness, engagement plan, exec brief.
 
 const crypto = require('crypto');
+const isoLifecycle = require('../lib/iso-lifecycle');
 const rbac = require('../lib/rbac');
 const enc = require('../lib/encryption');
 const jobs = require('../lib/jobs');
@@ -1232,7 +1233,7 @@ function register(app, deps) {
     const ws = req.workspace;
     const tiles = [];
 
-    if (ws.frameworks.includes('iso27001')) {
+    if (ws.frameworks.includes('iso27001') && !isoLifecycle.isGapOnly(ws.engagement_outcome)) {
       const r = computeReadiness(ws);
       tiles.push({
         key: 'iso27001',

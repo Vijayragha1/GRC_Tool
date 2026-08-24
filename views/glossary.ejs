@@ -23,7 +23,7 @@
 
 <!-- Search + category filter -->
 <div class="panel" style="margin-bottom:10px;">
-  <form method="GET" action="/glossary" class="panel-pad" style="display:grid;grid-template-columns:1fr 220px auto;gap:8px;align-items:end;">
+  <form method="GET" action="/glossary" class="panel-pad stack-grid" style="--cols:1fr 220px auto;gap:8px;align-items:end;">
     <div>
       <label class="label">Search</label>
       <input class="input" name="q" value="<%= q %>" placeholder="Term, alias, or any word in the definition…">
@@ -142,7 +142,7 @@
                   <% if (e.clauseRef) { %><span class="meta text-eyebrow" style="font-family:ui-monospace,monospace;"><% if (typeof renderClauseRef === 'function') { %><%- renderClauseRef(e.clauseRef) %><% } else { %><%= e.clauseRef %><% } %></span><% } %>
                 </div>
               </summary>
-              <div class="text-lg" style="padding:0 18px 16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;line-height:1.55;">
+              <div class="text-lg stack-grid" style="padding:0 18px 16px 18px;--cols:1fr 1fr;gap:14px;line-height:1.55;">
                 <% if (e.definition) { %>
                   <div class="col-full">
                     <div class="sec-label">Formal definition</div>

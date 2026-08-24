@@ -3,8 +3,9 @@
   const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
   const canSignoff = typeof userPerms !== 'undefined' && userPerms.has('assessment.signoff');
   const canEdit = typeof userPerms !== 'undefined' && userPerms.has('control.update');
+  const canClose = typeof userPerms !== 'undefined' && userPerms.has('workspace.update');
   const fmt = value => value ? new Intl.DateTimeFormat(ws.locale || 'en-GB', { day:'numeric', month:'short', year:'numeric' }).format(new Date(`${String(value).slice(0,10)}T12:00:00`)) : '-';
-  const phaseLabels = { mobilisation:'Mobilisation', fieldwork:'Fieldwork', validation:'Validation', report:'Report', post_report:'Post-report' };
+  const phaseLabels = { mobilisation:'Mobilisation', fieldwork:'Fieldwork', validation:'Validation', report:'Report', post_report:'Post-report', complete: context?.closure?.complete ? 'Engagement complete' : 'Report issued - ready for closure' };
   const statusLabel = value => String(value || '').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 %>
 
@@ -18,7 +19,7 @@
 <% } else { %>
 <section class="panel gfw-position">
   <div><span>Assessment pass</span><strong>Pass <%= context.pass.pass_number %> · <%= context.pass.label || 'Gap assessment' %></strong><small><%= statusLabel(context.pass.status) %></small></div>
-  <div><span>Current governed phase</span><strong><%= phaseLabels[context.currentPhase] %></strong><small>Based on signed decisions and released outputs</small></div>
+  <div><span>Current governed phase</span><strong><%= phaseLabels[context.currentPhase] %></strong><small><%= context.currentPhase === 'complete' ? (context.closure.complete ? 'The governed engagement is closed' : 'The controlled report is issued; contract closure is still required') : 'Based on signed decisions and released outputs' %></small></div>
   <div><span>Requirements concluded</span><strong><%= context.live.requirementsCovered %>/<%= context.live.requirementsTotal %></strong><small><%= context.live.requirementsTotal ? Math.round(context.live.requirementsCovered/context.live.requirementsTotal*100) : 0 %>% coverage</small></div>
   <div><span>Open constraints</span><strong><%= context.live.activeBlockers %></strong><small>Manual and RFI-derived blockers</small></div>
 </section>
@@ -26,7 +27,7 @@
 <section class="gfw-section">
   <div class="gfw-section-head"><div><span>Governance</span><h2>Phase gates</h2><p>Stages advance only after their prerequisites are satisfied and a sign-off holder records a rationale.</p></div></div>
   <div class="gfw-gates">
-    <% ['mobilisation','fieldwork','validation','report','post_report'].forEach(phase => { const gate=context.gates[phase]; const decision=context.decisionMap[phase]; const complete=context.completed[phase]; %>
+    <% context.phases.forEach(phase => { const gate=context.gates[phase]; const decision=context.decisionMap[phase]; const complete=context.completed[phase]; %>
       <article class="panel gfw-gate <%= complete ? 'is-complete' : context.currentPhase===phase ? 'is-current' : '' %>">
         <header><div><span><%= phaseLabels[phase] %></span><strong><%= complete ? (decision?.decision === 'not_required' ? 'Not required' : 'Complete') : context.currentPhase===phase ? 'Current' : 'Pending' %></strong></div><b><%= complete ? '✓' : '-' %></b></header>
         <div class="gfw-checks"><% gate.checks.forEach(check => { %><div class="<%= check.pass ? 'pass' : 'fail' %>"><span><%= check.pass ? '✓' : '○' %></span><%= check.label %></div><% }) %></div>
@@ -39,6 +40,27 @@
       </article>
     <% }) %>
   </div>
+  <% if (context.gapOnly) { %>
+    <article class="panel panel-pad" style="margin-top:14px">
+      <div class="gfw-section-head" style="margin:0"><div><span>Agreed endpoint</span><h2><%= context.closure.complete ? 'Gap-assessment engagement complete' : 'Close at the controlled report' %></h2><p>This contract ends when the independently approved assessment report is published. Remediation is not part of the agreed delivery scope.</p></div></div>
+      <% if (context.closure.complete) { %>
+        <div class="status status-good" style="margin-top:10px">Engagement complete</div>
+        <p class="meta" style="margin-top:8px"><%= context.closure.openFindings %> confirmed finding<%= context.closure.openFindings === 1 ? '' : 's' %> remain recorded as client-owned improvement recommendation<%= context.closure.openFindings === 1 ? '' : 's' %>. Contract closure did not mark them remediated or closed.</p>
+      <% } else if (context.closure.ready && canClose) { %>
+        <form method="POST" action="/workspaces/<%= ws.id %>/delivery/engagements/<%= context.engagement.id %>/complete-gap-assessment" style="margin-top:12px">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="row_version" value="<%= context.engagement.row_version %>">
+          <label class="label">Completion note (optional)<textarea class="textarea" name="completion_note" rows="2" maxlength="4000" placeholder="Add any final client handover context"></textarea></label>
+          <p class="meta" style="margin:8px 0">Closing retains <%= context.closure.openFindings %> confirmed finding<%= context.closure.openFindings === 1 ? '' : 's' %> as open recommendations and client obligations. It does not claim that remediation was performed.</p>
+          <button class="btn btn-primary btn-sm">Close gap-assessment engagement</button>
+        </form>
+      <% } else { %>
+        <div style="margin-top:10px"><strong><%= context.completed.report ? 'Close checks remain' : 'Available after report publication' %></strong>
+          <% if (context.closure.blockers.length) { %><ul class="meta"><% context.closure.blockers.forEach(blocker => { %><li><%= blocker %></li><% }) %></ul><% } %>
+          <% if (context.closure.ready && !canClose) { %><p class="meta">A workspace manager must record contract closure.</p><% } %>
+        </div>
+      <% } %>
+    </article>
+  <% } %>
 </section>
 
 <section class="gfw-section">

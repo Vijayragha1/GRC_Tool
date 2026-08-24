@@ -237,9 +237,14 @@
         <% } %>
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/print" target="_blank" class="btn btn-secondary btn-xs">Print</a>
         <% if (can('document.delete')) { %>
-          <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')">
-            <button class="btn btn-danger btn-xs">Delete</button>
-          </form>
+          <details style="position:relative;">
+            <summary class="btn btn-danger btn-xs" style="list-style:none;cursor:pointer;">Withdraw</summary>
+            <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/delete" onsubmit="return appConfirmForm(event, 'Withdraw this document? It will leave active views, but all versions, approvals, signatures, and audit evidence will be retained.');" class="popover-panel" style="position:absolute;right:0;top:30px;z-index:20;--popover-w:320px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);">
+              <label class="label" for="withdrawReason">Reason for withdrawal</label>
+              <textarea class="textarea" id="withdrawReason" name="reason" rows="3" maxlength="2000" required placeholder="Why should this controlled document leave active use?"></textarea>
+              <button class="btn btn-danger btn-xs" style="margin-top:8px;">Confirm withdrawal</button>
+            </form>
+          </details>
         <% } %>
       </div>
     </div>
@@ -321,9 +326,9 @@
     <div id="decidePanel" class="hidden panel-pad" style="background:rgba(202,138,4,0.06);border-bottom:1px solid var(--border);">
       <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/decide">
         <div class="sec-label">Your decision (approver #<%= pendingApprover.sequence %><% if (pendingApprover.role_label) { %> · <%= pendingApprover.role_label %><% } %>)</div>
-        <div style="margin-bottom:10px;"><label class="label">Reason / comment</label><textarea class="textarea" name="reason" rows="2"></textarea></div>
+        <div style="margin-bottom:10px;"><label class="label">Reason / comment (required for reject)</label><textarea class="textarea" name="reason" rows="2" maxlength="4000" required></textarea></div>
         <div class="row">
-          <button name="decision" value="approve" class="btn btn-primary btn-xs">Approve</button>
+          <button name="decision" value="approve" class="btn btn-primary btn-xs" formnovalidate>Approve</button>
           <button name="decision" value="reject" class="btn btn-danger btn-xs" onclick="return appConfirmClick(event, 'Reject and send back to draft?')">Reject</button>
         </div>
       </form>

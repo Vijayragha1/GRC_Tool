@@ -5,13 +5,13 @@
 <% if (typeof user !== 'undefined' && user) { %>
 <% const clientFooterMode = user.user_type === 'client' || (typeof clientPreview !== 'undefined' && clientPreview === true); %>
 <!-- Command palette -->
-<div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()" role="dialog" aria-modal="true" aria-labelledby="cpSearchLabel">
-  <div class="cp-modal">
+<div class="cp-backdrop" id="cpBackdrop" onclick="if(event.target===this)closePalette()" role="dialog" aria-modal="true" aria-labelledby="cpSearchLabel" aria-hidden="true" hidden>
+  <div class="cp-modal" tabindex="-1">
     <span class="sr-only" id="cpSearchLabel">Search <%= clientFooterMode ? 'this engagement' : 'Compliance Sphere' %></span>
     <div class="cp-search">
       <svg class="cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="cpInput" placeholder="<%= clientFooterMode ? 'Search pages in this engagement…' : 'Search controls, risks, documents, clients…' %>" autocomplete="off" spellcheck="false" aria-label="Search">
-      <span class="kbd">esc</span>
+      <button type="button" class="btn btn-ghost btn-xs" onclick="closePalette()" aria-label="Close search">Close</button>
     </div>
     <div class="cp-results" id="cpResults"><div class="cp-empty">Start typing to search</div></div>
     <div class="cp-foot">
@@ -23,12 +23,12 @@
 </div>
 
 <!-- Help modal -->
-<div class="cp-backdrop help-modal" id="helpBackdrop" onclick="if(event.target===this)closeHelp()" role="dialog" aria-modal="true" aria-label="<%= clientFooterMode ? 'Portal help' : 'Keyboard shortcuts' %>">
-  <div class="cp-modal">
+<div class="cp-backdrop help-modal" id="helpBackdrop" onclick="if(event.target===this)closeHelp()" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" aria-hidden="true" hidden>
+  <div class="cp-modal" tabindex="-1">
     <div class="cp-search" style="padding:14px 18px;border-bottom:1px solid var(--border);">
       <svg class="text-tertiary" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span class="text-xl" style="font-weight: 500;flex:1;"><%= clientFooterMode ? 'Portal help' : 'Keyboard shortcuts' %></span>
-      <span class="kbd">esc</span>
+      <span class="text-xl" id="helpModalTitle" style="font-weight: 500;flex:1;"><%= clientFooterMode ? 'Portal help' : 'Keyboard shortcuts' %></span>
+      <button type="button" class="btn btn-ghost btn-xs" onclick="closeHelp()" aria-label="Close help">Close</button>
     </div>
     <div class="help-shortcuts">
       <% if (clientFooterMode) { %>
@@ -70,7 +70,7 @@
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Global confirm/alert modal - replaces native window.confirm/alert across the app -->
-<div id="appConfirmModal" role="dialog" aria-modal="true" aria-labelledby="appConfirmKind" aria-describedby="appConfirmBody" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
+<div id="appConfirmModal" role="dialog" aria-modal="true" aria-labelledby="appConfirmKind" aria-describedby="appConfirmBody" aria-hidden="true" hidden style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div id="appConfirmHead" style="padding:14px 18px;border-bottom:1px solid var(--border);">
       <div class="text-xs text-tertiary" id="appConfirmKind" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;">Confirm</div>
@@ -333,7 +333,11 @@ window._unmarkBusy = function (form) {
     // CSRF token (rotation is rare but possible)
     const newCsrf = newDoc.querySelector('meta[name="csrf-token"]');
     const curCsrf = document.querySelector('meta[name="csrf-token"]');
-    if (newCsrf && curCsrf) curCsrf.setAttribute('content', newCsrf.getAttribute('content'));
+    if (newCsrf && curCsrf) {
+      const nextToken = newCsrf.getAttribute('content') || '';
+      curCsrf.setAttribute('content', nextToken);
+      window._csrfToken = nextToken;
+    }
 
     // Decide whether to swap the sidebar too. If the sidebar structure is the
     // same (same context), keep the live sidebar element in place - its
@@ -590,9 +594,11 @@ function toggleSidebarCollapse() {
 }
 
 // ----- CSRF token injection -----
-// Read the per-session CSRF token from the <meta> tag once, then ensure every
-// form has a hidden `_csrf` field before it submits. We hook three places:
-//   1. DOMContentLoaded - every form already in the DOM gets a hidden input.
+// Read the per-session CSRF token from the <meta> tag, then ensure every
+// state-changing form has a hidden `_csrf` field before it submits. Safe GET
+// forms must never receive the token because their fields become the URL.
+// We hook three places:
+//   1. DOMContentLoaded - every state-changing form gets a hidden input.
 //   2. submit event - covers forms added dynamically (the dashboard's
 //      delete-client modal builds its form via JS).
 //   3. appConfirmForm helper (below) - that helper bypasses the submit event
@@ -600,12 +606,37 @@ function toggleSidebarCollapse() {
 //      itself before re-submitting.
 (function () {
   const meta = document.querySelector('meta[name="csrf-token"]');
-  const token = meta ? meta.getAttribute('content') : '';
-  window._csrfToken = token;
+  window._csrfToken = meta ? meta.getAttribute('content') : '';
+
+  function stripTokenFromAction(form) {
+    const action = form.getAttribute('action');
+    if (!action || !/[?&]_csrf=/.test(action)) return;
+    try {
+      const parsed = new URL(action, window.location.href);
+      parsed.searchParams.delete('_csrf');
+      const sameOrigin = parsed.origin === window.location.origin;
+      form.setAttribute('action', sameOrigin ? parsed.pathname + parsed.search + parsed.hash : parsed.href);
+    } catch (_) {
+      // If an authored action is not URL-parseable, leave it unchanged rather
+      // than risking a broken submit. Newly stamped actions never add tokens.
+    }
+  }
 
   function stampForm(form) {
-    if (!form || !token) return;
-    let inp = form.querySelector('input[name="_csrf"]');
+    if (!form) return;
+    const method = String(form.getAttribute('method') || 'GET').toUpperCase();
+    const safe = method === 'GET' || method === 'HEAD';
+    const inputs = form.querySelectorAll('input[name="_csrf"]');
+
+    if (safe) {
+      inputs.forEach(inp => inp.remove());
+      stripTokenFromAction(form);
+      return;
+    }
+
+    const token = window._csrfToken || '';
+    if (!token) return;
+    let inp = inputs[0];
     if (!inp) {
       inp = document.createElement('input');
       inp.type = 'hidden';
@@ -613,16 +644,11 @@ function toggleSidebarCollapse() {
       form.appendChild(inp);
     }
     inp.value = token;
-    // Multipart bodies aren't parsed by the global CSRF middleware (multer
-    // runs per-route, after CSRF). Append the token to the action URL so it
-    // arrives via req.query instead.
-    if ((form.getAttribute('enctype') || '').toLowerCase().includes('multipart')) {
-      const action = form.getAttribute('action') || '';
-      if (!/[?&]_csrf=/.test(action)) {
-        const sep = action.includes('?') ? '&' : '?';
-        form.setAttribute('action', action + sep + '_csrf=' + encodeURIComponent(token));
-      }
-    }
+    // Remove duplicate legacy fields and any token previously embedded in a
+    // multipart action. Multer now validates this hidden body field after it
+    // parses the upload, so the secret never needs to enter a URL.
+    Array.from(inputs).slice(1).forEach(extra => extra.remove());
+    stripTokenFromAction(form);
   }
   // Initial pass.
   document.addEventListener('DOMContentLoaded', () => {
@@ -631,7 +657,74 @@ function toggleSidebarCollapse() {
   // Catch dynamically-created forms or forms whose token gets stripped.
   document.addEventListener('submit', e => stampForm(e.target), true);
   // Expose so appConfirmForm and the deleteClient builder can call it.
-  window._csrfStamp = stampForm;
+window._csrfStamp = stampForm;
+})();
+
+// ----- Accessible modal lifecycle -----
+// Dialogs start with the native `hidden` attribute, so closed controls cannot
+// remain in the accessibility tree or keyboard tab order. While a dialog is
+// open the application shell is inert, Tab is contained inside the dialog,
+// and closing returns focus to the control that opened it.
+window._modalAccessibility = (function () {
+  const returnFocus = new WeakMap();
+  const focusableSelector = [
+    'a[href]', 'button:not([disabled])', 'input:not([disabled])',
+    'select:not([disabled])', 'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(',');
+
+  function setShellInert(inert) {
+    const shell = document.getElementById('app');
+    if (!shell) return;
+    if (inert) {
+      shell.setAttribute('inert', '');
+      shell.setAttribute('aria-hidden', 'true');
+    } else {
+      shell.removeAttribute('inert');
+      shell.removeAttribute('aria-hidden');
+    }
+  }
+
+  function activate(modal, initialFocus) {
+    if (!modal) return;
+    const opener = document.activeElement;
+    if (opener && opener !== document.body) returnFocus.set(modal, opener);
+    modal.hidden = false;
+    modal.removeAttribute('aria-hidden');
+    const target = initialFocus || modal.querySelector(focusableSelector) || modal;
+    if (target && typeof target.focus === 'function') target.focus();
+    setShellInert(true);
+  }
+
+  function deactivate(modal) {
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    if (!document.querySelector('[role="dialog"]:not([hidden])')) setShellInert(false);
+    const opener = returnFocus.get(modal);
+    returnFocus.delete(modal);
+    if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+  }
+
+  function trap(modal, event) {
+    if (!modal || modal.hidden || event.key !== 'Tab') return;
+    const items = Array.from(modal.querySelectorAll(focusableSelector))
+      .filter(item => item.getClientRects().length && item.getAttribute('aria-hidden') !== 'true');
+    if (!items.length) {
+      event.preventDefault();
+      modal.focus();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first.focus();
+    }
+  }
+
+  return { activate, deactivate, trap };
 })();
 
 // ----- Global modal API: replaces native window.confirm / window.alert -----
@@ -653,6 +746,7 @@ function toggleSidebarCollapse() {
 
   function close(result) {
     modal.style.display = 'none';
+    window._modalAccessibility.deactivate(modal);
     const r = resolver; resolver = null;
     if (r) r(result);
   }
@@ -677,15 +771,16 @@ function toggleSidebarCollapse() {
     }
     cancelBtn.style.display = isAlert ? 'none' : '';
     modal.style.display = 'flex';
-    setTimeout(() => okBtn.focus(), 30);
+    window._modalAccessibility.activate(modal, okBtn);
     return new Promise(res => { resolver = res; });
   }
 
   okBtn.addEventListener('click', () => close(true));
   cancelBtn.addEventListener('click', () => close(false));
   modal.addEventListener('click', e => { if (e.target === modal) close(false); });
+  modal.addEventListener('keydown', e => window._modalAccessibility.trap(modal, e));
   document.addEventListener('keydown', e => {
-    if (modal.style.display !== 'flex') return;
+    if (modal.hidden || modal.style.display !== 'flex') return;
     if (e.key === 'Escape') { e.preventDefault(); close(false); }
     else if (e.key === 'Enter') { e.preventDefault(); close(true); }
   });
@@ -765,11 +860,16 @@ function openPalette() {
   const palette = document.getElementById('cpBackdrop');
   if (!palette) return;
   palette.classList.add('open');
-  setTimeout(() => document.getElementById('cpInput')?.focus(), 50);
+  if (palette.hidden) window._modalAccessibility.activate(palette, document.getElementById('cpInput'));
+  document.querySelectorAll('[aria-controls="cpBackdrop"]').forEach(trigger => trigger.setAttribute('aria-expanded', 'true'));
   cpSearch('');
 }
 function closePalette() {
-  document.getElementById('cpBackdrop')?.classList.remove('open');
+  const palette = document.getElementById('cpBackdrop');
+  if (!palette || palette.hidden) return;
+  palette.classList.remove('open');
+  window._modalAccessibility.deactivate(palette);
+  document.querySelectorAll('[aria-controls="cpBackdrop"]').forEach(trigger => trigger.setAttribute('aria-expanded', 'false'));
   if (document.getElementById('cpInput')) document.getElementById('cpInput').value = '';
 }
 async function cpSearch(q) {
@@ -817,10 +917,30 @@ document.getElementById('cpInput')?.addEventListener('keydown', e => {
   else if (e.key === 'Enter') { e.preventDefault(); if (cpResults[cpSelected]) location.href = cpResults[cpSelected].href; }
   else if (e.key === 'Escape') { closePalette(); }
 });
+document.getElementById('cpBackdrop')?.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
+  window._modalAccessibility.trap(document.getElementById('cpBackdrop'), e);
+});
 
 // ----- Help modal -----
-function openHelp() { document.getElementById('helpBackdrop').classList.add('open'); }
-function closeHelp() { document.getElementById('helpBackdrop').classList.remove('open'); }
+function openHelp() {
+  const help = document.getElementById('helpBackdrop');
+  if (!help) return;
+  help.classList.add('open');
+  if (help.hidden) window._modalAccessibility.activate(help, help.querySelector('button[aria-label="Close help"]'));
+  document.querySelectorAll('[aria-controls="helpBackdrop"]').forEach(trigger => trigger.setAttribute('aria-expanded', 'true'));
+}
+function closeHelp() {
+  const help = document.getElementById('helpBackdrop');
+  if (!help || help.hidden) return;
+  help.classList.remove('open');
+  window._modalAccessibility.deactivate(help);
+  document.querySelectorAll('[aria-controls="helpBackdrop"]').forEach(trigger => trigger.setAttribute('aria-expanded', 'false'));
+}
+document.getElementById('helpBackdrop')?.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeHelp(); return; }
+  window._modalAccessibility.trap(document.getElementById('helpBackdrop'), e);
+});
 
 // ----- Keyboard shortcuts -----
 const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;

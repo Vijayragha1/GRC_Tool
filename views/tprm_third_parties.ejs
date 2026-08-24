@@ -1,0 +1,29 @@
+<%- include('partials/header', { title: 'Third parties', user, ws, active }) %>
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+<header class="tprm-page-head"><div><div class="tprm-kicker">Register</div><h1>Third parties</h1><p>Organisations and service relationships for <%= ws.client_name %>.</p></div><div class="tprm-head-actions"><a class="btn" href="/workspaces/<%= ws.id %>/tprm/relationships">Relationships</a><a class="btn" href="/workspaces/<%= ws.id %>/tprm/concentration">Concentration</a><% if (canManage) { %><a class="btn" href="/workspaces/<%= ws.id %>/tprm/third-parties/import">Import</a><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/tprm/third-parties/new">Add third party</a><% } %></div></header>
+
+<form class="tprm-filters" method="GET" action="/workspaces/<%= ws.id %>/tprm/third-parties">
+  <input class="input" type="search" name="q" value="<%= filters.q %>" placeholder="Search third party, service or owner" aria-label="Search third parties">
+  <select class="select" name="status" aria-label="Lifecycle status"><option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active records</option><option value="all" <%= filters.status === 'all' ? 'selected' : '' %>>All records</option><option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>>Closed and retained</option></select>
+  <select class="select" name="risk" aria-label="Residual risk"><option value="">All residual risk</option><option value="high_critical" <%= filters.risk === 'high_critical' ? 'selected' : '' %>>High or critical</option><option value="critical" <%= filters.risk === 'critical' ? 'selected' : '' %>>Critical</option><option value="high" <%= filters.risk === 'high' ? 'selected' : '' %>>High</option><option value="moderate" <%= filters.risk === 'moderate' ? 'selected' : '' %>>Moderate</option><option value="low" <%= filters.risk === 'low' ? 'selected' : '' %>>Low</option></select>
+  <select class="select" name="per_page" aria-label="Rows per page"><option value="25" <%= pg.perPage === 25 ? 'selected' : '' %>>25 per page</option><option value="50" <%= pg.perPage === 50 ? 'selected' : '' %>>50 per page</option><option value="100" <%= pg.perPage === 100 ? 'selected' : '' %>>100 per page</option></select>
+  <button class="btn" type="submit">Apply filters</button>
+</form>
+
+<section class="tprm-section tprm-table-wrap">
+  <div class="tprm-register-count">Showing <%= pg.total ? ((pg.page - 1) * pg.perPage + 1) : 0 %>–<%= Math.min(pg.page * pg.perPage, pg.total) %> of <%= pg.total %> matching third parties</div>
+  <table class="tprm-table"><thead><tr><th>Third party / service</th><th>Stage</th><th>Tier</th><th>Residual risk</th><th>Owners</th><th>Next action</th><th>Next review</th></tr></thead><tbody>
+  <% rows.forEach(row => { %><tr>
+    <td><a href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= row.id %>"><strong><%= row.name %></strong><small><%= row.service_provided || 'Service not recorded' %></small></a></td>
+    <td><span class="tprm-status"><%= row.stage_label %></span></td>
+    <td><strong><%= titleCase(row.governed_tier, 'Not assigned') %></strong><small><%= row.governed_inherent_score == null ? 'Not scored' : `${Math.round(row.governed_inherent_score)}/100 inherent` %></small></td>
+    <td><span class="tprm-status tprm-status-<%= String(row.residual_risk_band || '').toLowerCase() %>"><%= titleCase(row.residual_risk_band, 'No decision') %></span></td>
+    <td><strong><%= row.business_owner || 'Business owner unset' %></strong><small><%= row.relationship_owner || 'Consultancy owner unset' %></small></td>
+    <td><a href="<%= row.nextAction.href %>"><strong><%= row.nextAction.label %></strong><small>Pending with <%= row.nextAction.waitingOn %></small></a></td>
+    <td><strong><%= dateOnly(row.next_review_date) || 'Not scheduled' %></strong><small><%= row.open_finding_count %> open finding<%= row.open_finding_count === 1 ? '' : 's' %></small></td>
+  </tr><% }) %>
+  <% if (!rows.length) { %><tr><td colspan="7"><div class="tprm-empty"><strong>No third parties match these filters</strong><span>Clear a filter or add the first third party.</span></div></td></tr><% } %>
+  </tbody></table>
+  <div class="tprm-pager-shell"><%- include('partials/pager', { pg, pagerHref }) %></div>
+</section>
+<%- include('partials/footer') %>

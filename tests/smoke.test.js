@@ -33,6 +33,8 @@ const ENV = { ...process.env, ISMS_KEY_FILE: path.join(TMP, 'master.key'), ISMS_
 // Login credentials seeded into the test user before the server boots.
 const TEST_EMAIL = 'smoke@test.local';
 const TEST_PASSWORD = 'smoke-test-password-1234';
+const REVIEWER_EMAIL = 'smoke-reviewer@test.local';
+const REVIEWER_PASSWORD = 'smoke-reviewer-password-1234';
 
 let serverProc = null;
 let port = 3344;
@@ -171,6 +173,16 @@ async function startServer() {
                       VALUES (?, ?, 'Smoke Tester', ?, 'firm', 'manager', 1)`)
       .run(TEST_EMAIL, hash, firmId);
   }
+  const reviewerHash = bcrypt.hashSync(REVIEWER_PASSWORD, 4);
+  const existingReviewer = seedConn.prepare('SELECT id FROM users WHERE email=?').get(REVIEWER_EMAIL);
+  if (existingReviewer) {
+    seedConn.prepare(`UPDATE users SET password_hash=?, active=1, firm_role='manager', firm_id=?, user_type='firm' WHERE id=?`)
+      .run(reviewerHash, firmId, existingReviewer.id);
+  } else {
+    seedConn.prepare(`INSERT INTO users (email, password_hash, name, firm_id, user_type, firm_role, active)
+                      VALUES (?, ?, 'Smoke Independent Reviewer', ?, 'firm', 'manager', 1)`)
+      .run(REVIEWER_EMAIL, reviewerHash, firmId);
+  }
   seedConn.close();
 
   serverProc = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
@@ -187,11 +199,17 @@ async function startServer() {
   // Authenticate: GET /login to capture CSRF token + initial session cookie,
   // then POST /login with the seeded credentials. The login handler regenerates
   // the session id and sets userId; subsequent requests via cookieJar are auth'd.
-  await get('/login');
-  const loginRes = await post('/login', { email: TEST_EMAIL, password: TEST_PASSWORD });
+  const loginRes = await loginAs(TEST_EMAIL, TEST_PASSWORD);
   if (loginRes.status < 300 || loginRes.status >= 400) {
     throw new Error(`login failed: expected 3xx, got ${loginRes.status}. Body preview: ${(loginRes.body || '').slice(0, 200)}`);
   }
+}
+
+async function loginAs(email, password) {
+  cookieJar = '';
+  csrfToken = null;
+  await get('/login');
+  return post('/login', { email, password });
 }
 
 function stopServer() {
@@ -260,15 +278,41 @@ function stopServer() {
     ok('starter risk import retains an audit record', !!starterAudit, 'add_risks_from_library audit entry missing');
 
     console.log('\nsupplier governed workflow');
+    const enableTprm = await post(`/workspaces/${wsId}/modules/tprm`, {
+      service_model: 'managed_lifecycle',
+      reason: 'Enable the standalone managed Third-party risk lifecycle for the smoke journey.'
+    });
+    ok('standalone TPRM service period is enabled before supplier intake',
+      enableTprm.status >= 300 && enableTprm.status < 400 && /\/tprm/.test(enableTprm.headers.location || ''),
+      `got ${enableTprm.status} ${enableTprm.headers.location || ''}`);
     const createSupplier = await post(`/workspaces/${wsId}/vendors`, {
       name: 'Smoke Governed Supplier', service_provided: 'Critical transaction processing',
       service_category: 'Technology', contact: 'vendor@example.test', business_owner: 'Business Owner',
       relationship_owner: 'Relationship Owner', security_reviewer: 'Security Reviewer', privacy_owner: 'Privacy Owner'
     });
-    ok('supplier intake redirects to inherent risk', createSupplier.status >= 300 && createSupplier.status < 400 && /\/inherent-risk/.test(createSupplier.headers.location || ''), `got ${createSupplier.status} ${createSupplier.headers.location || ''}`);
-    const supplierMatch = String(createSupplier.headers.location || '').match(/\/vendors\/(\d+)\/inherent-risk/);
+    ok('supplier intake redirects to the canonical third-party control tower',
+      createSupplier.status >= 300 && createSupplier.status < 400 && /\/tprm\/third-parties\/\d+/.test(createSupplier.headers.location || ''),
+      `got ${createSupplier.status} ${createSupplier.headers.location || ''}`);
+    const supplierMatch = String(createSupplier.headers.location || '').match(/\/(?:vendors|tprm\/third-parties)\/(\d+)/);
     const supplierId = supplierMatch && Number(supplierMatch[1]);
     ok('supplier id returned after intake', Number.isInteger(supplierId), `location=${createSupplier.headers.location || ''}`);
+    const cyclePage = await get(`/workspaces/${wsId}/tprm/third-parties/${supplierId}#cycle-governance`);
+    const relationshipId = Number((cyclePage.body.match(/name="relationship_ids" value="(\d+)"/) || [])[1]);
+    const cycleNonce = (cyclePage.body.match(/name="idempotency_key" value="([a-f0-9]{48})"/) || [])[1];
+    const startCycle = await post(`/workspaces/${wsId}/tprm/third-parties/${supplierId}/cycles`, {
+      expected_current_cycle_id: '0', idempotency_key: cycleNonce,
+      cycle_type: 'onboarding', relationship_ids: String(relationshipId),
+      trigger_reason: 'Smoke-test onboarding of the exact primary service relationship.'
+    });
+    ok('governed assessment cycle freezes the exact service scope',
+      cyclePage.status === 200 && Number.isInteger(relationshipId) && !!cycleNonce && startCycle.status >= 300 && startCycle.status < 400,
+      `page=${cyclePage.status}, relationship=${relationshipId}, nonce=${Boolean(cycleNonce)}, start=${startCycle.status}`);
+    const startInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk/start`, {
+      assessment_type: 'onboarding', trigger_reason: 'Initial inherent-risk assessment for the scoped service.'
+    });
+    ok('inherent-risk fieldwork starts inside the governed cycle',
+      startInherent.status >= 300 && startInherent.status < 400 && /\/inherent-risk/.test(startInherent.headers.location || ''),
+      `got ${startInherent.status} ${startInherent.headers.location || ''}`);
     const inherentPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk`);
     ok('inherent-risk assessment renders', inherentPage.status === 200 && /25 owner inputs|Inherent-risk assessment/.test(inherentPage.body), `got ${inherentPage.status}`);
     const inherentAnswers = { action: 'submit', physical_data_centre_applicability: 'no' };
@@ -276,14 +320,20 @@ function stopServer() {
     inherentAnswers.score_Q14 = 5;
     const submitInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk`, inherentAnswers);
     ok('complete inherent assessment submits', submitInherent.status >= 300 && submitInherent.status < 400, `got ${submitInherent.status}`);
+    const reviewerLogin = await loginAs(REVIEWER_EMAIL, REVIEWER_PASSWORD);
+    ok('independent consultancy reviewer signs in', reviewerLogin.status >= 300 && reviewerLogin.status < 400, `got ${reviewerLogin.status}`);
     const approveInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk/approve`, { approval_rationale: 'Validated with the accountable service, technology and privacy owners.' });
     ok('mandatory floor tier is approved', approveInherent.status >= 300 && approveInherent.status < 400, `got ${approveInherent.status}`);
-    const supplierRecord = await get(`/workspaces/${wsId}/vendors/${supplierId}`);
-    ok('five-stage supplier decision record renders', supplierRecord.status === 200 && /Assessment path/.test(supplierRecord.body) && /Tier 1/.test(supplierRecord.body), `got ${supplierRecord.status}`);
+    const operatorLogin = await loginAs(TEST_EMAIL, TEST_PASSWORD);
+    ok('assessment operator resumes after independent tier approval', operatorLogin.status >= 300 && operatorLogin.status < 400, `got ${operatorLogin.status}`);
+    const supplierRecord = await get(`/workspaces/${wsId}/tprm/third-parties/${supplierId}`);
+    ok('canonical third-party control tower renders the approved tier',
+      supplierRecord.status === 200 && /Approved tier[\s\S]*Tier 1/.test(supplierRecord.body),
+      `got ${supplierRecord.status}`);
     const startDdq = await post(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence/start`, { vendor_contact_name: 'Vendor Owner', vendor_contact_email: 'vendor@example.test', due_date: '2027-03-31' });
     ok('tiered DDQ starts after inherent approval', startDdq.status >= 300 && startDdq.status < 400, `got ${startDdq.status}`);
     const ddqPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence`);
-    ok('scoped DDQ reviewer page renders', ddqPage.status === 200 && /151 scoped questions|Questions/.test(ddqPage.body), `got ${ddqPage.status}`);
+    ok('scoped DDQ reviewer page renders', ddqPage.status === 200 && /Third-party due diligence/.test(ddqPage.body) && />Questions</.test(ddqPage.body), `got ${ddqPage.status}`);
     const shareDdq = await post(`/workspaces/${wsId}/vendors/${supplierId}/due-diligence/share`, { vendor_contact_name: 'Vendor Owner', vendor_contact_email: 'vendor@example.test', due_date: '2027-03-31' });
     ok('secure vendor DDQ link is issued', shareDdq.status >= 300 && shareDdq.status < 400, `got ${shareDdq.status}`);
     const sharedDdqPage = await get(shareDdq.headers.location || `/workspaces/${wsId}/vendors/${supplierId}/due-diligence`);
@@ -312,7 +362,9 @@ function stopServer() {
       action: 'submit', response_GOV_01: 'Yes', detail_GOV_01: 'Approved policy is current.'
     }) : { status: 0, headers: {} };
     ok('vendor submission is blocked while scoped rows remain incomplete', partialVendorSubmit.status >= 300 && partialVendorSubmit.status < 400 && /blocked=/.test(partialVendorSubmit.headers.location || ''), `got ${partialVendorSubmit.status} ${partialVendorSubmit.headers.location || ''}`);
-    const startContract = await post(`/workspaces/${wsId}/vendors/${supplierId}/contract-review/start`, { agreement_reference: 'MSA-SMOKE-001' });
+    const startContract = await post(`/workspaces/${wsId}/vendors/${supplierId}/contract-review/start`, {
+      agreement_reference: 'MSA-SMOKE-001', agreement_date: '2026-08-01'
+    });
     ok('contract review starts', startContract.status >= 300 && startContract.status < 400, `got ${startContract.status}`);
     const contractPage = await get(`/workspaces/${wsId}/vendors/${supplierId}/contract-review`);
     ok('47-clause contract review renders', contractPage.status === 200 && /47/.test(contractPage.body), `got ${contractPage.status}`);
@@ -363,14 +415,18 @@ function stopServer() {
     }
     const completeContract = await post(`/workspaces/${wsId}/vendors/${supplierId}/contract-review`, contractAnswers);
     ok('contract review completes when all required clauses are concluded', completeContract.status >= 300 && completeContract.status < 400, `got ${completeContract.status}`);
-    const readyRecord = await get(`/workspaces/${wsId}/vendors/${supplierId}`);
-    ok('supplier becomes ready for a governed risk decision', readyRecord.status === 200 && /Ready for risk decision/.test(readyRecord.body), `got ${readyRecord.status}`);
-    const decision = await post(`/workspaces/${wsId}/vendors/${supplierId}/decisions`, {
-      decision: 'approved', residual_risk_band: 'moderate', valid_until: '2027-08-16',
-      rationale: 'Inherent scope, vendor evidence, internal review and contract controls support approval.',
-      residual_risk_rationale: 'A material dependency remains and is accepted subject to annual reassessment.'
+    const readyRecord = await get(`/workspaces/${wsId}/tprm/third-parties/${supplierId}`);
+    ok('completed fieldwork exposes the separated recommendation and client-decision boundary',
+      readyRecord.status === 200 && /Consultancy recommendation/.test(readyRecord.body)
+        && /Onboarding decision/.test(readyRecord.body)
+        && /Only the assigned client decision authority can/.test(readyRecord.body),
+      `got ${readyRecord.status}`);
+    const retiredFirmDecision = await post(`/workspaces/${wsId}/vendors/${supplierId}/decisions`, {
+      decision: 'approved', residual_risk_band: 'moderate',
+      rationale: 'This legacy firm-side decision path must remain unavailable.'
     });
-    ok('governed supplier decision records only after all gates pass', decision.status >= 300 && decision.status < 400, `got ${decision.status}`);
+    ok('legacy firm-side onboarding decision endpoint remains retired', retiredFirmDecision.status === 410,
+      `got ${retiredFirmDecision.status}`);
 
     console.log('\nbespoke question coverage');
     const { getQuestions } = require(path.join(ROOT, 'data', 'assessment-questions'));

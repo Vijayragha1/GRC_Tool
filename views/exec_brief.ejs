@@ -114,6 +114,27 @@
     .pack-foot, .pack-methodology { padding: 12px 16mm; }
     body { font-size: 10.5px; }
   }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .pack-classification,
+    .pack-classification .right,
+    .pack-title-eyebrow,
+    .pack-meta-stack .k,
+    .pack-section-meta,
+    .pack-summary-head,
+    .pack-summary-points li::before,
+    .pack-scorecard thead th,
+    .rag,
+    .pack-ask-priority,
+    .pack-rank thead th,
+    .pack-foot,
+    .pack-methodology,
+    body
+    { font-size: 11px; }
+  }
 </style>
 
 <%

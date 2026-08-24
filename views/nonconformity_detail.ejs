@@ -11,16 +11,23 @@
     <span class="status s-<%= nc.status === 'verified' || nc.status === 'closed' ? 'done' : nc.status %>"><%= nc.status %></span>
   </div>
 
+  <% if (certificationLineage) { %>
+    <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
+      <strong>Retained <%= certificationLineage.event_type === 'stage_1' ? 'Stage 1' : 'Stage 2' %> certification finding</strong>
+      <div class="meta" style="margin-top:4px;line-height:1.5;">The audit source and finding record are immutable. Closure requires corrective action, an effectiveness conclusion and independent validation evidence<%= ['major','minor'].includes(String(nc.severity || '').toLowerCase()) ? ', plus root-cause analysis' : '' %>.</div>
+    </div>
+  <% } %>
+
   <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>" class="panel-pad grid-2">
     <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= nc.title %>" required></div>
     <div><label class="label">Source</label>
-      <select class="select" name="source">
+      <select class="select" name="source" <%= certificationLineage ? 'disabled aria-disabled="true"' : '' %>>
         <% ['internal_audit','external_audit','incident','customer','monitoring','other'].forEach(s => { %>
           <option value="<%= s %>" <%= nc.source === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option>
         <% }) %>
       </select>
     </div>
-    <div><label class="label">Source reference</label><input class="input" name="source_ref" value="<%= nc.source_ref || '' %>"></div>
+    <div><label class="label">Source reference</label><input class="input" name="source_ref" value="<%= nc.source_ref || '' %>" <%= certificationLineage ? 'disabled aria-disabled="true"' : '' %>></div>
     <div><label class="label">Severity</label>
       <select class="select" name="severity">
         <% ['major','minor','observation'].forEach(s => { %><option value="<%= s %>" <%= nc.severity === s ? 'selected' : '' %>><%= s %></option><% }) %>
@@ -41,7 +48,7 @@
     <div class="col-full"><label class="label">Corrective action</label><textarea class="textarea" name="corrective_action" rows="3"><%= nc.corrective_action || '' %></textarea></div>
     <div><label class="label">Responsible</label><input class="input" name="responsible" value="<%= nc.responsible || '' %>"></div>
     <div><label class="label">Due date</label><input class="input" type="date" name="due_date" value="<%= nc.due_date || '' %>"></div>
-    <div class="col-full"><label class="label">Effectiveness check</label><textarea class="textarea" name="effectiveness_check" rows="2"><%= nc.effectiveness_check || '' %></textarea></div>
+    <div class="col-full"><label class="label">Effectiveness conclusion</label><textarea class="textarea" name="effectiveness_check" rows="2" placeholder="State how the corrective action was tested and whether it was effective."><%= nc.effectiveness_check || '' %></textarea></div>
     <div><label class="label">Status</label>
       <select class="select" name="status">
         <% ['open','in_progress','closed','verified'].forEach(s => { %><option value="<%= s %>" <%= nc.status === s ? 'selected' : '' %>><%= s.replace('_',' ') %></option><% }) %>
@@ -50,11 +57,37 @@
     <div></div>
     <div class="col-full row">
       <button class="btn btn-primary">Save</button>
-      <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>/delete" onsubmit="return appConfirmForm(event, 'Delete?')" style="display:inline">
-        <button class="btn btn-danger">Delete</button>
-      </form>
+      <% if (!certificationLineage) { %><button class="btn btn-danger" type="submit"
+        formaction="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>/delete" formmethod="post" formnovalidate
+        onclick="return appConfirmClick(event, 'Delete this nonconformity?')">Delete</button><% } %>
     </div>
   </form>
+</div>
+
+<div class="panel" style="margin-top:14px">
+  <div class="panel-head"><div><h2>CAPA evidence lineage</h2><div class="meta">Links are permanent audit history. Validation evidence is required before a certification finding can close.</div></div><span class="tag"><%= findingEvidence.length %> linked</span></div>
+  <% if (!findingEvidence.length) { %>
+    <div class="panel-pad meta">No remediation or validation evidence is linked yet.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>Evidence</th><th style="width:140px;">Role</th><th style="width:145px;">Hash</th><th style="width:180px;">Linked by</th></tr></thead>
+      <tbody><% findingEvidence.forEach(link => { %><tr>
+        <td><strong><%= link.filename %></strong><div class="meta"><%= link.uploaded_at || '' %></div></td>
+        <td><span class="status s-<%= link.evidence_role === 'validation' ? 'done' : 'in_progress' %>"><%= link.evidence_role %></span></td>
+        <td class="mono meta"><%= link.sha256 ? link.sha256.slice(0,12) : '-' %></td>
+        <td><%= link.linked_by_name || 'Retained user' %><div class="meta"><%= link.linked_at %></div></td>
+      </tr><% }) %></tbody>
+    </table>
+  <% } %>
+  <% if (evidenceCatalog.length) { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/nonconformities/<%= nc.id %>/evidence" class="panel-pad" style="display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr) auto;gap:10px;align-items:end;border-top:1px solid var(--border);">
+      <div><label class="label">Existing workspace evidence</label><select class="select" name="evidence_id" required><option value="">Choose evidence…</option><% evidenceCatalog.forEach(evidence => { %><option value="<%= evidence.id %>"><%= evidence.filename %> · <%= evidence.uploaded_at %></option><% }) %></select></div>
+      <div><label class="label">Evidence role</label><select class="select" name="evidence_role" required><option value="remediation">Remediation proof</option><option value="validation">Independent validation proof</option></select></div>
+      <button class="btn btn-primary btn-xs">Link retained evidence</button>
+    </form>
+  <% } else { %>
+    <div class="panel-pad" style="border-top:1px solid var(--border);"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/evidence">Add evidence to this workspace</a></div>
+  <% } %>
 </div>
 
 <div class="panel" style="margin-top:14px">

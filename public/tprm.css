@@ -1,0 +1,1723 @@
+/* Third-party risk management
+   Restrained, audit-oriented interface for high-density operational work. */
+
+/* Component tokens only.
+
+   This stylesheet used to replace the entire product palette on every TPRM
+   surface: --bg, --bg-deep, --sidebar-bg, --border, --text, --accent and the
+   rest. Walking from Clients into Third-party risk therefore shifted the whole
+   shell, sidebar included, from the warm cream the rest of Nimbus uses
+   (#fbfbf8 / #f2f1ec) to a cool neutral grey (#ffffff / #f3f3f3), which reads
+   as a different application rather than a different section of this one.
+
+   The module keeps its own restrained component vocabulary. It no longer
+   repaints the shell, and every token below either points at the shared
+   palette or is a semantic colour drawn from the same set app.css uses. */
+:root {
+  --tprm-ink: var(--ink);
+  --tprm-muted: var(--text-secondary);
+  --tprm-faint: var(--text-tertiary);
+  --tprm-action: var(--accent);
+  --tprm-action-hover: var(--accent-deep);
+  --tprm-action-contrast: var(--accent-contrast);
+  --tprm-border: var(--border);
+  --tprm-border-strong: var(--border-strong);
+  --tprm-surface: var(--bg);
+  --tprm-subtle: var(--bg-subtle);
+  --tprm-row-hover: var(--bg-subtle);
+  --tprm-focus: var(--accent);
+  --tprm-focus-ring: var(--accent-soft);
+  /* Semantic colours matched to app.css. The module previously carried its own
+     muted set (#8f2d2d, #79551f, #2f6249), so a warning here and a warning one
+     page away were different colours, and the tinted badge backgrounds were
+     mixed cool against a warm page. */
+  --tprm-danger: #b91c1c;
+  --tprm-danger-bg: #fbf1f0;
+  --tprm-danger-border: #e3c6c3;
+  --tprm-warning: #b45309;
+  --tprm-warning-bg: #faf4e9;
+  --tprm-warning-border: #dccdae;
+  --tprm-success: #15803d;
+  --tprm-success-bg: #eef4ee;
+  --tprm-success-border: #c3d3c4;
+  --tprm-neutral-status: var(--text-secondary);
+  --tprm-neutral-status-bg: var(--bg-muted);
+  --tprm-neutral-status-border: var(--border-strong);
+  --tprm-radius: var(--radius);
+  --tprm-radius-sm: 4px;
+}
+
+/* Only the fixed semantic colours need a dark variant. Everything else above
+   is a reference to a shared token, which app.css already switches by theme. */
+[data-theme="dark"] {
+  --tprm-danger: #ef9189;
+  --tprm-danger-bg: #342526;
+  --tprm-danger-border: #704248;
+  --tprm-warning: #e4ad69;
+  --tprm-warning-bg: #312b20;
+  --tprm-warning-border: #655536;
+  --tprm-success: #77c995;
+  --tprm-success-bg: #223029;
+  --tprm-success-border: #42634f;
+}
+
+/* Module navigation */
+.tprm-module-nav {
+  display: none;
+  gap: 0;
+  overflow-x: auto;
+  margin: 0 0 22px;
+  padding: 0;
+  border-bottom: 1px solid var(--tprm-border-strong);
+  background: transparent;
+  scrollbar-width: thin;
+}
+
+.tprm-module-nav a,
+.tprm-module-nav .tprm-nav-disabled {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 9px 12px 8px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--tprm-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tprm-module-nav a:hover {
+  color: var(--tprm-ink);
+  background: var(--tprm-subtle);
+}
+
+.tprm-module-nav a.active {
+  color: var(--tprm-ink);
+  border-bottom-color: var(--tprm-action);
+  background: transparent;
+  box-shadow: none;
+}
+
+.tprm-module-nav .tprm-nav-disabled {
+  color: var(--tprm-faint);
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+.tprm-service-model-banner small {
+  display: block;
+  margin-top: 5px;
+  color: var(--tprm-muted);
+}
+
+/* Shared focus treatment */
+.tprm-module-nav a:focus-visible,
+.tprm-metric:focus-visible,
+.tprm-queue-row:focus-visible,
+.tprm-table a:focus-visible,
+.tprm-report-card a:focus-visible,
+.tprm-conditions-editor > summary:focus-visible,
+.tprm-withdraw summary:focus-visible {
+  outline: 2px solid var(--tprm-focus);
+  outline-offset: 2px;
+}
+
+.tprm-section .input:focus,
+.tprm-section .select:focus,
+.tprm-section .textarea:focus,
+.tprm-filters .input:focus,
+.tprm-filters .select:focus,
+.tprm-csv-fallback:focus,
+.tprm-file-zone:focus-within {
+  border-color: var(--tprm-focus);
+  box-shadow: 0 0 0 2px var(--tprm-focus-ring);
+  outline: none;
+}
+
+/* Page hierarchy and actions */
+.tprm-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+/* 25px/600 shouted next to the 22px/500 the rest of the product uses for a
+   page title, which is a large part of why this surface read as a different,
+   louder application. */
+.tprm-page-head h1 {
+  margin: 0 0 5px;
+  color: var(--tprm-ink);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+
+.tprm-page-head p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--tprm-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.tprm-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tprm-kicker {
+  color: var(--tprm-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .075em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.tprm-page-head .btn,
+.tprm-section .btn,
+.tprm-detail-action .btn,
+.tprm-report-card .btn,
+.tprm-assurance-banner .btn,
+.tprm-form-actions .btn {
+  border-radius: 5px;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+  transform: none;
+}
+
+.tprm-page-head .btn:hover,
+.tprm-section .btn:hover,
+.tprm-detail-action .btn:hover,
+.tprm-report-card .btn:hover,
+.tprm-assurance-banner .btn:hover,
+.tprm-form-actions .btn:hover {
+  transform: none;
+}
+
+.tprm-page-head .btn-primary,
+.tprm-section .btn-primary,
+.tprm-detail-action .btn-primary,
+.tprm-report-card .btn-primary,
+.tprm-assurance-banner .btn-primary,
+.tprm-form-actions .btn-primary {
+  border-color: var(--tprm-action);
+  background: var(--tprm-action);
+  color: var(--tprm-action-contrast);
+}
+
+.tprm-page-head .btn-primary:hover,
+.tprm-section .btn-primary:hover,
+.tprm-detail-action .btn-primary:hover,
+.tprm-report-card .btn-primary:hover,
+.tprm-assurance-banner .btn-primary:hover,
+.tprm-form-actions .btn-primary:hover {
+  border-color: var(--tprm-action-hover);
+  background: var(--tprm-action-hover);
+}
+
+/* Executive metrics */
+.tprm-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.tprm-metric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  min-height: 70px;
+  padding: 12px 14px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+  color: var(--tprm-ink);
+  text-decoration: none;
+  transition: border-color .12s ease, background .12s ease;
+}
+
+.tprm-metric:hover {
+  border-color: var(--tprm-border-strong);
+  background: var(--tprm-row-hover);
+}
+
+.tprm-metric span {
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tprm-metric strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+  color: var(--tprm-ink);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.tprm-metric small {
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.tprm-metric.needs-attention {
+  border-color: var(--tprm-warning-border);
+  background: var(--tprm-warning-bg);
+}
+
+/* Next action and governed sections */
+.tprm-next-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 15px 17px;
+  border: 1px solid var(--tprm-border-strong);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-subtle);
+}
+
+.tprm-next-card h2 {
+  margin: 3px 0;
+  color: var(--tprm-ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tprm-next-card p {
+  margin: 0;
+  color: var(--tprm-muted);
+  font-size: 11.5px;
+}
+
+.tprm-next-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 9px;
+}
+
+.tprm-next-meta span {
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+}
+
+.tprm-next-meta strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--tprm-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.tprm-section {
+  margin: 0 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+  box-shadow: none;
+}
+
+.tprm-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 54px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--tprm-border);
+  background: var(--tprm-subtle);
+}
+
+.tprm-section-head h2 {
+  margin: 2px 0;
+  color: var(--tprm-ink);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+}
+
+.tprm-section-head p {
+  margin: 0;
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.tprm-section-body {
+  padding: 14px;
+}
+
+.tprm-section .form-field > span,
+.tprm-section .form-field > label {
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tprm-section .input,
+.tprm-section .select,
+.tprm-section .textarea,
+.tprm-filters .input,
+.tprm-filters .select {
+  border-color: var(--tprm-border-strong);
+  border-radius: var(--tprm-radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+}
+
+/* Prioritized work queue */
+.tprm-queue {
+  min-width: 0;
+}
+
+.tprm-queue-row {
+  display: grid;
+  grid-template-columns: 4px minmax(180px, 1.2fr) minmax(210px, 1.5fr) minmax(150px, 1fr) 110px 16px;
+  align-items: center;
+  gap: 12px;
+  min-height: 51px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--tprm-border);
+  color: var(--tprm-ink);
+  text-decoration: none;
+}
+
+.tprm-queue-row:last-child {
+  border-bottom: 0;
+}
+
+.tprm-queue-row:hover {
+  background: var(--tprm-row-hover);
+}
+
+.tprm-priority {
+  width: 3px;
+  height: 24px;
+  border-radius: 1px;
+  background: var(--tprm-border-strong);
+}
+
+.tprm-priority-critical { background: var(--tprm-danger); }
+.tprm-priority-high { background: var(--tprm-warning); }
+.tprm-priority-waiting { background: var(--tprm-neutral-status); }
+.tprm-priority-normal { background: var(--tprm-success); }
+
+.tprm-queue-row strong {
+  display: block;
+  color: var(--tprm-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tprm-queue-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.tprm-queue-identity {
+  min-width: 0;
+}
+
+.tprm-queue-identity strong,
+.tprm-queue-identity small {
+  overflow-wrap: anywhere;
+}
+
+.tprm-queue-owner strong,
+.tprm-queue-due strong {
+  font-weight: 550;
+}
+
+.tprm-row-arrow {
+  color: var(--tprm-faint);
+  font-size: 14px;
+}
+
+.tprm-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 28px 20px;
+  color: var(--tprm-muted);
+  text-align: center;
+}
+
+.tprm-empty strong {
+  color: var(--tprm-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tprm-empty span {
+  font-size: 10.5px;
+}
+
+/* Lifecycle rail */
+.tprm-lifecycle {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(90px, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tprm-lifecycle li {
+  position: relative;
+  padding: 24px 8px 5px;
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.tprm-lifecycle li::before {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--tprm-border-strong);
+  border-radius: 2px;
+  background: var(--tprm-surface);
+  content: '';
+  transform: translateX(-50%);
+}
+
+.tprm-lifecycle li::after {
+  position: absolute;
+  top: 12px;
+  right: 50%;
+  left: -50%;
+  height: 1px;
+  background: var(--tprm-border-strong);
+  content: '';
+}
+
+.tprm-lifecycle li:first-child::after {
+  display: none;
+}
+
+.tprm-lifecycle li.done {
+  color: var(--tprm-ink);
+}
+
+.tprm-lifecycle li.done::before {
+  border-color: var(--tprm-success);
+  background: var(--tprm-success);
+}
+
+.tprm-lifecycle li.done::after,
+.tprm-lifecycle li.current::after {
+  background: var(--tprm-success);
+}
+
+.tprm-lifecycle li.current {
+  color: var(--tprm-action);
+}
+
+.tprm-lifecycle li.current::before {
+  border: 2px solid var(--tprm-action);
+  background: var(--tprm-surface);
+}
+
+/* Filters, register tables and statuses */
+.tprm-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-subtle);
+}
+
+.tprm-filters .input {
+  /* Basis kept small enough that the search box, both selects and the submit
+     button share one line at the narrowest desktop width; the input then grows
+     into whatever is left over. A 240px basis pushed the button onto a second
+     row even when there was room for it. */
+  flex: 1 1 200px;
+  min-width: 160px;
+  background-color: var(--tprm-surface);
+}
+
+/* The selects inherit width:100% from the shared stylesheet, which pushed each
+   control onto its own full-width line and turned three filters into a block
+   the height of the work queue's first four rows. */
+.tprm-filters .select {
+  flex: 0 1 175px;
+  width: auto;
+  min-width: 145px;
+  /* background-color, not the shorthand: the shared stylesheet draws the
+     dropdown chevron as a background-image with its own repeat, position and
+     size, and the shorthand resets all of those. */
+  background-color: var(--tprm-surface);
+}
+
+.tprm-filters .btn { flex: 0 0 auto; }
+
+.tprm-table-wrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tprm-table {
+  width: 100%;
+  min-width: 850px;
+  border-collapse: collapse;
+  color: var(--tprm-ink);
+}
+
+.tprm-table th {
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--tprm-border-strong);
+  background: var(--tprm-subtle);
+  color: var(--tprm-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .055em;
+  line-height: 1.3;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tprm-table td {
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--tprm-border);
+  font-size: 11px;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.tprm-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tprm-table tbody tr:hover {
+  background: var(--tprm-row-hover);
+}
+
+.tprm-table a {
+  color: var(--tprm-ink);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.tprm-table a:hover {
+  color: var(--tprm-action);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tprm-table strong {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.tprm-table small {
+  display: block;
+  margin-top: 2px;
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.tprm-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 6px;
+  border: 1px solid var(--tprm-border-strong);
+  border-radius: var(--tprm-radius-sm);
+  background: transparent;
+  color: var(--tprm-muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.tprm-status-critical,
+.tprm-status-high,
+.tprm-status-error,
+.tprm-status-failed,
+.tprm-status-rejected,
+.tprm-status-overdue {
+  border-color: var(--tprm-danger-border);
+  background: var(--tprm-danger-bg);
+  color: var(--tprm-danger);
+}
+
+.tprm-status-medium,
+.tprm-status-warning,
+.tprm-status-quarantined,
+.tprm-status-needs-review {
+  border-color: var(--tprm-warning-border);
+  background: var(--tprm-warning-bg);
+  color: var(--tprm-warning);
+}
+
+.tprm-status-complete,
+.tprm-status-approved,
+.tprm-status-monitoring,
+.tprm-status-active,
+.tprm-status-verified,
+.tprm-status-processed {
+  border-color: var(--tprm-success-border);
+  background: var(--tprm-success-bg);
+  color: var(--tprm-success);
+}
+
+.tprm-status-issued,
+.tprm-status-in-progress,
+.tprm-status-under-review,
+.tprm-status-waiting,
+.tprm-status-open,
+.tprm-status-pending,
+.tprm-status-draft {
+  border-color: var(--tprm-neutral-status-border);
+  background: var(--tprm-neutral-status-bg);
+  color: var(--tprm-neutral-status);
+}
+
+/* Third-party detail and decision authority */
+.tprm-detail-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, .8fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tprm-detail-primary,
+.tprm-detail-action {
+  padding: 16px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+}
+
+.tprm-detail-primary h1 {
+  margin: 3px 0 4px;
+  color: var(--tprm-ink);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -.015em;
+}
+
+.tprm-detail-primary p {
+  margin: 0;
+  color: var(--tprm-muted);
+  font-size: 11.5px;
+}
+
+.tprm-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin: 14px 0 0;
+}
+
+.tprm-facts div {
+  padding-top: 8px;
+  border-top: 1px solid var(--tprm-border);
+}
+
+.tprm-facts dt {
+  color: var(--tprm-faint);
+  font-size: 8.5px;
+  font-weight: 650;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.tprm-facts dd {
+  margin: 3px 0 0;
+  color: var(--tprm-ink);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tprm-detail-action {
+  border-color: var(--tprm-border-strong);
+  background: var(--tprm-subtle);
+}
+
+.tprm-detail-action h2 {
+  margin: 3px 0 5px;
+  color: var(--tprm-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tprm-detail-action p {
+  margin: 0 0 11px;
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tprm-detail-action .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.tprm-decision-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tprm-decision-card {
+  padding: 14px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+}
+
+.tprm-decision-card.client,
+.tprm-decision-card.consultancy {
+  border-top: 1px solid var(--tprm-border);
+}
+
+.tprm-decision-card.client {
+  background: var(--tprm-subtle);
+}
+
+.tprm-decision-card h2 {
+  margin: 3px 0 4px;
+  color: var(--tprm-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tprm-decision-card p {
+  margin: 0;
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tprm-decision-card .tprm-decision-value {
+  display: block;
+  margin: 11px 0 4px;
+  color: var(--tprm-ink);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.tprm-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.tprm-record-list {
+  display: grid;
+  gap: 0;
+}
+
+.tprm-record-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--tprm-border);
+}
+
+.tprm-record-row:last-child {
+  border: 0;
+}
+
+.tprm-record-row strong {
+  color: var(--tprm-ink);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tprm-record-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--tprm-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.tprm-record-row > span:last-child {
+  color: var(--tprm-muted);
+  font-size: 9.5px;
+  text-align: right;
+}
+
+/* Assurance, reports and notices */
+.tprm-callout {
+  padding: 11px 13px;
+  border: 1px solid var(--tprm-neutral-status-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-neutral-status-bg);
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.tprm-callout strong {
+  color: var(--tprm-ink);
+}
+
+.tprm-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tprm-report-card {
+  display: flex;
+  min-height: 136px;
+  padding: 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+}
+
+.tprm-report-card h2 {
+  margin: 0;
+  color: var(--tprm-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tprm-report-card p {
+  margin: 0 0 auto;
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tprm-quality {
+  color: var(--tprm-ink);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tprm-assurance-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 15px 16px;
+  border: 1px solid var(--tprm-border-strong);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+}
+
+.tprm-assurance-banner h1 {
+  margin: 3px 0 4px;
+  color: var(--tprm-ink);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -.015em;
+}
+
+.tprm-assurance-banner p {
+  max-width: 750px;
+  margin: 0;
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tprm-assurance-mark {
+  display: grid;
+  place-items: center;
+  width: 94px;
+  min-height: 66px;
+  padding: 8px;
+  border: 1px solid var(--tprm-neutral-status-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-neutral-status-bg);
+  color: var(--tprm-neutral-status);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.tprm-assurance-mark strong {
+  display: block;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recommendation conditions and controlled withdrawal */
+.tprm-conditions-editor {
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-subtle);
+}
+
+.tprm-conditions-editor > summary {
+  padding: 9px 11px;
+  color: var(--tprm-ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tprm-conditions-editor > summary span {
+  margin-left: 6px;
+  color: var(--tprm-faint);
+  font-weight: 400;
+}
+
+.tprm-condition-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.tprm-rec-condition-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tprm-condition-entry {
+  padding: 11px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-surface);
+}
+
+.tprm-conditions-editor > #addRecommendationCondition {
+  margin: 9px 10px 10px !important;
+}
+
+.tprm-remove-condition {
+  margin-top: 7px;
+  color: var(--tprm-danger);
+}
+
+.tprm-add-rec-condition {
+  border-color: var(--tprm-border-strong);
+  background: var(--tprm-surface);
+  color: var(--tprm-ink);
+}
+
+.tprm-remove-rec-condition {
+  margin-top: 7px;
+  color: var(--tprm-danger);
+}
+
+.tprm-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--tprm-border-strong);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-subtle);
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tprm-confirm input {
+  margin-top: 2px;
+}
+
+.tprm-inline-governance small,
+.tprm-condition-entry small {
+  color: var(--tprm-faint);
+  font-size: 9px;
+}
+
+.tprm-disclosure-warning {
+  border-color: var(--tprm-warning-border);
+  background: var(--tprm-warning-bg);
+}
+
+.tprm-withdraw {
+  min-width: 190px;
+}
+
+.tprm-withdraw summary {
+  color: var(--tprm-danger);
+  cursor: pointer;
+  font-size: 9.5px;
+  font-weight: 650;
+}
+
+.tprm-withdraw form {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+  padding: 9px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-subtle);
+}
+
+.tprm-withdraw .form-field span {
+  font-size: 9px;
+}
+
+.tprm-muted {
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+}
+
+/* Bulk intake */
+.tprm-import-error {
+  margin-bottom: 12px;
+  border-color: var(--tprm-danger-border);
+  background: var(--tprm-danger-bg);
+  color: var(--tprm-danger);
+}
+
+.tprm-import-rules {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.tprm-import-rules div {
+  padding: 10px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-subtle);
+}
+
+.tprm-import-rules strong {
+  display: block;
+  color: var(--tprm-ink);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tprm-import-rules span {
+  display: block;
+  margin-top: 4px;
+  color: var(--tprm-muted);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.tprm-file-zone {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  padding: 28px 18px;
+  border: 1px dashed var(--tprm-border-strong);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-subtle);
+  cursor: pointer;
+  text-align: center;
+}
+
+.tprm-file-zone:hover {
+  border-color: var(--tprm-action);
+  background: var(--tprm-row-hover);
+}
+
+.tprm-file-zone strong {
+  color: var(--tprm-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tprm-file-zone span {
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+}
+
+.tprm-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.tprm-csv-fallback {
+  width: 100%;
+  margin-top: 10px;
+  border-color: var(--tprm-border-strong);
+  border-radius: var(--tprm-radius-sm);
+  font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.tprm-form-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.tprm-import-columns {
+  min-width: 700px;
+}
+
+.tprm-import-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 11px;
+}
+
+.tprm-import-summary div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-surface);
+}
+
+.tprm-import-summary div.needs-attention {
+  border-color: var(--tprm-danger-border);
+  background: var(--tprm-danger-bg);
+}
+
+.tprm-import-summary span {
+  color: var(--tprm-muted);
+  font-size: 9px;
+}
+
+.tprm-import-summary strong {
+  color: var(--tprm-ink);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tprm-import-commit {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.tprm-import-preview {
+  min-width: 900px;
+}
+
+.tprm-row-error,
+.tprm-row-warning {
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+.tprm-row-error { color: var(--tprm-danger); }
+.tprm-row-warning { color: var(--tprm-warning); }
+
+.tprm-register-count {
+  margin: 0 0 7px;
+  color: var(--tprm-faint);
+  font-size: 9.5px;
+}
+
+.tprm-pager-shell {
+  padding: 0 12px 12px;
+}
+
+.tprm-action-note {
+  margin: 10px 0;
+  padding: 9px 11px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-subtle);
+  color: var(--tprm-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.tprm-action-note strong {
+  color: var(--tprm-ink);
+}
+
+/* Legacy assessment workbenches are intentionally scoped. */
+.tprm-workbench {
+  color: var(--tprm-ink);
+}
+
+.tprm-workbench .page-head {
+  align-items: flex-start;
+  gap: 22px;
+  margin-bottom: 18px;
+}
+
+.tprm-workbench .page-title {
+  color: var(--tprm-ink);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -.018em;
+}
+
+.tprm-workbench .page-subtitle,
+.tprm-workbench .meta {
+  color: var(--tprm-muted);
+}
+
+.tprm-workbench .page-subtitle {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tprm-workbench .panel {
+  border-color: var(--tprm-border);
+  border-radius: var(--tprm-radius);
+  background: var(--tprm-surface);
+  box-shadow: none;
+}
+
+.tprm-workbench .panel-head {
+  min-height: 48px;
+  padding: 10px 14px;
+  border-color: var(--tprm-border);
+  background: var(--tprm-subtle);
+}
+
+.tprm-workbench .panel-head h2,
+.tprm-workbench .panel-head h3 {
+  margin: 0;
+  color: var(--tprm-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tprm-workbench .panel-pad {
+  padding: 14px;
+}
+
+.tprm-workbench .kpi {
+  min-height: 76px;
+  padding: 13px 14px;
+}
+
+.tprm-workbench .kpi-num {
+  margin-top: 4px;
+  color: var(--tprm-ink);
+  font-size: 21px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tprm-workbench .sec-label {
+  color: var(--tprm-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.tprm-workbench .tag,
+.tprm-workbench .status {
+  min-height: 20px;
+  padding: 2px 6px;
+  border: 1px solid var(--tprm-border-strong);
+  border-radius: var(--tprm-radius-sm);
+  background: transparent;
+  color: var(--tprm-muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  box-shadow: none;
+}
+
+.tprm-workbench .status.s-done {
+  border-color: var(--tprm-success-border);
+  background: var(--tprm-success-bg);
+  color: var(--tprm-success);
+}
+
+.tprm-workbench .status.s-in_progress {
+  border-color: var(--tprm-neutral-status-border);
+  background: var(--tprm-neutral-status-bg);
+  color: var(--tprm-neutral-status);
+}
+
+.tprm-workbench .status.s-todo {
+  border-color: var(--tprm-neutral-status-border);
+  background: var(--tprm-neutral-status-bg);
+  color: var(--tprm-neutral-status);
+}
+
+.tprm-workbench .btn {
+  border-radius: 5px;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+  transform: none;
+}
+
+.tprm-workbench .btn:hover {
+  transform: none;
+}
+
+.tprm-workbench .btn-primary {
+  border-color: var(--tprm-action);
+  background: var(--tprm-action);
+  color: var(--tprm-action-contrast);
+}
+
+.tprm-workbench .btn-primary:hover {
+  border-color: var(--tprm-action-hover);
+  background: var(--tprm-action-hover);
+}
+
+.tprm-workbench .btn-secondary {
+  border-color: var(--tprm-border-strong);
+  background: var(--tprm-surface);
+  color: var(--tprm-ink);
+}
+
+.tprm-workbench .input,
+.tprm-workbench .select,
+.tprm-workbench .textarea {
+  border-color: var(--tprm-border-strong);
+  border-radius: var(--tprm-radius-sm);
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.tprm-workbench .input:focus,
+.tprm-workbench .select:focus,
+.tprm-workbench .textarea:focus {
+  border-color: var(--tprm-focus);
+  box-shadow: 0 0 0 2px var(--tprm-focus-ring);
+}
+
+.tprm-workbench .label {
+  color: var(--tprm-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tprm-workbench details.panel > summary,
+.tprm-workbench .panel > details > summary,
+.tprm-workbench .panel details > summary {
+  color: var(--tprm-ink);
+}
+
+.tprm-workbench details.panel[open] > summary,
+.tprm-workbench .panel details[open] > summary {
+  border-bottom-color: var(--tprm-border);
+}
+
+.tprm-workbench details > summary:focus-visible,
+.tprm-workbench .tabs a:focus-visible,
+.tprm-workbench .btn:focus-visible {
+  outline: 2px solid var(--tprm-focus);
+  outline-offset: 2px;
+}
+
+.tprm-workbench .tabs {
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--tprm-border-strong);
+  background: transparent;
+}
+
+.tprm-workbench .tab {
+  min-height: 35px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--tprm-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.tprm-workbench .tab:hover {
+  background: var(--tprm-subtle);
+  color: var(--tprm-ink);
+}
+
+.tprm-workbench .tab.active {
+  border-bottom-color: var(--tprm-action);
+  background: transparent;
+  color: var(--tprm-ink);
+  box-shadow: none;
+}
+
+.tprm-workbench table.t {
+  color: var(--tprm-ink);
+  font-size: 11px;
+}
+
+.tprm-workbench table.t th {
+  padding: 8px 11px;
+  border-color: var(--tprm-border-strong);
+  background: var(--tprm-subtle);
+  color: var(--tprm-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .055em;
+}
+
+.tprm-workbench table.t td {
+  padding: 9px 11px;
+  border-color: var(--tprm-border);
+}
+
+.tprm-workbench table.t tbody tr:hover {
+  background: var(--tprm-row-hover);
+}
+
+.tprm-workbench a:not(.btn):not(.tab) {
+  color: var(--tprm-action);
+  text-underline-offset: 2px;
+}
+
+.tprm-workbench .link-muted {
+  color: var(--tprm-muted) !important;
+}
+
+.tprm-workbench [style*="border-radius:7px"] {
+  border-radius: var(--tprm-radius-sm) !important;
+}
+
+/* The persistent TPRM sidebar is the desktop navigation. The compact tab
+   strip returns only when the sidebar becomes a drawer. */
+@media (min-width: 901px) {
+  .tprm-module-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .tprm-module-nav {
+    display: flex;
+  }
+}
+
+@media(max-width:1050px){.tprm-metrics{grid-template-columns:repeat(2,1fr)}.tprm-queue-row{grid-template-columns:4px minmax(160px,1fr) minmax(200px,1.3fr) 130px 16px}.tprm-queue-due{display:none}.tprm-detail-hero{grid-template-columns:1fr}.tprm-report-grid{grid-template-columns:1fr 1fr}.tprm-import-rules{grid-template-columns:1fr 1fr}.tprm-import-summary{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:720px){.tprm-module-nav{flex-wrap:wrap;overflow:visible;gap:0;padding:0;border:1px solid var(--tprm-border);border-bottom:0;border-radius:var(--tprm-radius)}.tprm-module-nav a,.tprm-module-nav .tprm-nav-disabled{flex:1 1 145px;min-width:0;padding:9px 10px;border-right:1px solid var(--tprm-border);border-bottom:1px solid var(--tprm-border);text-align:left;white-space:normal}.tprm-module-nav a.active{background:var(--tprm-subtle);box-shadow:inset 3px 0 0 var(--tprm-action)}.tprm-page-head{display:block}.tprm-head-actions{justify-content:flex-start;margin-top:11px}.tprm-head-actions .btn{flex:1 1 150px;justify-content:center}.tprm-metrics{grid-template-columns:1fr 1fr}.tprm-next-card{grid-template-columns:1fr}.tprm-queue-row{grid-template-columns:4px 1fr 16px;gap:9px}.tprm-queue-action,.tprm-queue-owner{grid-column:2}.tprm-lifecycle{display:flex;overflow-x:auto;padding-bottom:4px}.tprm-lifecycle li{min-width:112px}.tprm-decision-grid,.tprm-grid-2,.tprm-report-grid,.tprm-import-rules{grid-template-columns:1fr}.tprm-facts{grid-template-columns:1fr 1fr}.tprm-section-head{align-items:flex-start;flex-direction:column}.tprm-section-head>.btn,.tprm-section-head>form{align-self:stretch}.tprm-section-head>.btn{justify-content:center}.tprm-assurance-mark{display:none}.tprm-import-summary{grid-template-columns:1fr 1fr}.tprm-form-actions{align-items:stretch;flex-direction:column}.tprm-form-actions .btn{justify-content:center}.tprm-workbench .page-head{align-items:stretch;flex-direction:column}.tprm-workbench .page-head>.row{justify-content:flex-start}.tprm-workbench .grid-2{grid-template-columns:1fr}.tprm-workbench .col-full{grid-column:1}.tprm-workbench .panel-pad[style*="grid-template-columns"]{overflow-x:auto}.tprm-workbench details summary[style*="grid-template-columns"]{grid-template-columns:minmax(50px,auto) minmax(200px,1fr);overflow-x:auto}.tprm-workbench .tabs{display:flex;overflow-x:auto}.tprm-workbench .tab{flex:0 0 auto}}
+@media(max-width:460px){.tprm-module-nav a,.tprm-module-nav .tprm-nav-disabled{flex-basis:130px}.tprm-page-head h1,.tprm-assurance-banner h1,.tprm-workbench .page-title{font-size:22px}.tprm-metrics,.tprm-import-summary{grid-template-columns:1fr}.tprm-filters{align-items:stretch;flex-direction:column}.tprm-filters .input{min-width:100%}.tprm-filters .btn{justify-content:center}.tprm-detail-primary,.tprm-detail-action,.tprm-section-body{padding:12px}.tprm-facts{grid-template-columns:1fr}.tprm-record-row{grid-template-columns:1fr}.tprm-record-row>span:last-child{text-align:left}.tprm-next-meta{display:grid;grid-template-columns:1fr 1fr}.tprm-withdraw{min-width:0}.tprm-workbench .panel-pad,.tprm-workbench .panel-head{padding:11px}.tprm-workbench .kpi{min-width:128px;padding:11px}.tprm-workbench .row{align-items:stretch;flex-direction:column}.tprm-workbench .row .btn{justify-content:center}}
+
+@media (max-width: 720px) {
+  .tprm-workbench form [style*="display:grid"][style*="grid-template-columns"],
+  .tprm-workbench details [style*="display:grid"][style*="grid-template-columns"],
+  .tprm-workbench .panel-pad[style*="repeat(3,minmax(0,1fr))"] {
+    grid-template-columns: 1fr !important;
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tprm-metric,
+  .tprm-module-nav a {
+    transition: none;
+  }
+}
+
+@media print {
+  .sidebar,
+  .topbar,
+  .tprm-module-nav,
+  .tprm-head-actions,
+  .btn {
+    display: none !important;
+  }
+
+  .main-inner {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .tprm-section,
+  .tprm-assurance-banner {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+
+  .tprm-table {
+    min-width: 0;
+  }
+
+  .tprm-assurance-mark {
+    display: grid;
+  }
+}
+
+/* Portfolio summary line. Replaces the four-card metric grid: three of those
+   cards read zero for most firms, and a card is a lot of chrome to say "none". */
+.tprm-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-top: 10px;
+  color: var(--tprm-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tprm-summary > span:not(:last-child)::after {
+  content: "·";
+  margin-left: 8px;
+  color: var(--tprm-faint);
+}
+.tprm-summary strong { color: var(--tprm-ink); font-weight: 600; }
+.tprm-summary a { color: inherit; text-decoration: none; }
+.tprm-summary a:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.tprm-figure-attention { color: var(--tprm-danger); }
+
+/* Work queue groups. One heading per action, the affected records beneath. */
+.tprm-queue-group { border-bottom: 1px solid var(--tprm-border); padding: 10px 14px; }
+.tprm-queue-group:last-child { border-bottom: 0; }
+.tprm-queue-group-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.tprm-queue-group-head .tprm-priority { height: 12px; align-self: center; }
+.tprm-queue-group-label { color: var(--tprm-ink); font-size: 11.5px; font-weight: 600; }
+.tprm-queue-group-meta { color: var(--tprm-faint); font-size: 9.5px; }
+.tprm-queue-entries { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 8px; margin-left: 13px; }
+.tprm-queue-entries a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--tprm-border);
+  border-radius: var(--tprm-radius-sm);
+  background: var(--tprm-surface);
+  color: var(--tprm-muted);
+  font-size: 11px;
+  text-decoration: none;
+}
+.tprm-queue-entries a:hover { border-color: var(--tprm-border-strong); color: var(--tprm-ink); }
+.tprm-queue-entry-count { color: var(--tprm-faint); font-size: 9.5px; }
+
+/* Counts align on their digits and stop competing with the labels. */
+.tprm-table th.tprm-num, .tprm-table td.tprm-num { text-align: right; font-variant-numeric: tabular-nums; }
+.tprm-table td.tprm-num { color: var(--tprm-muted); }
+.tprm-table td.tprm-figure-attention { color: var(--tprm-danger); font-weight: 600; }
+.tprm-queue-group-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--tprm-ink);
+  text-decoration: none;
+}
+.tprm-queue-group-link:hover { background: var(--tprm-row-hover); }
+.tprm-queue-group-link .tprm-queue-group-head { flex: 1; min-width: 0; }
+
+/* Phone layout. These live here rather than in app.css because this stylesheet
+   loads after it, so a shared rule at equal specificity would lose. Measured at
+   375px: the queue row's four columns collapsed onto each other and several
+   labels sat at 9px. */
+@media (max-width: 760px) {
+  /* Sized through the font shorthand, so it is not in the generated list. */
+  .tprm-csv-fallback { font-size: 11px; }
+
+  /* Microtype floor. tprm.css loads after app.css, so this floor has to live here.
+     The desktop scale uses 8-10px for eyebrows, table heads and secondary
+     labels, which reads at arm's length on a monitor and not in a hand.
+     Only selectors that declared below 11px are listed, so nothing that was
+     already at a readable size gets shrunk. */
+  .tprm-kicker,
+  .tprm-metric span,
+  .tprm-metric small,
+  .tprm-next-meta span,
+  .tprm-section-head p,
+  .tprm-section .form-field > label,
+  .tprm-queue-row small,
+  .tprm-empty span,
+  .tprm-lifecycle li,
+  .tprm-table th,
+  .tprm-table small,
+  .tprm-status,
+  .tprm-facts dt,
+  .tprm-facts dd,
+  .tprm-detail-action p,
+  .tprm-decision-card p,
+  .tprm-record-row strong,
+  .tprm-record-row small,
+  .tprm-record-row > span:last-child,
+  .tprm-callout,
+  .tprm-report-card p,
+  .tprm-assurance-banner p,
+  .tprm-assurance-mark,
+  .tprm-confirm,
+  .tprm-condition-entry small,
+  .tprm-withdraw summary,
+  .tprm-withdraw .form-field span,
+  .tprm-muted,
+  .tprm-import-rules strong,
+  .tprm-import-rules span,
+  .tprm-file-zone span,
+  .tprm-import-summary span,
+  .tprm-row-warning,
+  .tprm-register-count,
+  .tprm-action-note,
+  .tprm-workbench .sec-label,
+  .tprm-workbench .status,
+  .tprm-workbench .label,
+  .tprm-workbench table.t th,
+  .tprm-queue-group-meta,
+  .tprm-queue-entry-count
+  { font-size: 11px; }
+
+  .tprm-kicker { font-size: 11px; }
+  .tprm-queue-row small, .tprm-queue-group-meta, .tprm-metric small { font-size: 11px; }
+  .tprm-queue-row strong, .tprm-queue-group-label { font-size: 13px; }
+  .tprm-table th, .tprm-table td { font-size: 12.5px; }
+  .tprm-table th { font-size: 11px; }
+  .tprm-summary { font-size: 12.5px; gap: 4px 12px; }
+
+  /* The four-column queue row becomes a stacked record: identity first, then
+     the action, then who and when. */
+  .tprm-queue-row {
+    grid-template-columns: 4px minmax(0, 1fr);
+    row-gap: 7px;
+    padding: 12px 14px;
+    min-height: 0;
+  }
+  .tprm-queue-row > .tprm-row-arrow { display: none; }
+  .tprm-queue-identity, .tprm-queue-action, .tprm-queue-owner, .tprm-queue-due { grid-column: 2; }
+  .tprm-priority { height: 100%; min-height: 18px; }
+
+  .tprm-queue-group { padding: 12px 14px; }
+  .tprm-queue-entries { margin-left: 0; }
+  .tprm-queue-entries a { min-height: 32px; align-items: center; }
+
+  .tprm-filters { padding: 10px; }
+  .tprm-filters .input, .tprm-filters .select { flex: 1 1 100%; min-width: 0; }
+  .tprm-filters .btn { flex: 1 1 100%; }
+
+  .tprm-page-head { display: block; }
+  .tprm-page-head h1 { font-size: 20px; }
+  .tprm-head-actions { justify-content: flex-start; margin-top: 12px; }
+  .tprm-section-head { display: block; }
+}

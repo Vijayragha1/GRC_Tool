@@ -11,7 +11,53 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
+const crypto = require('crypto');
 const { bootApp, bootClient, makeClient } = require('./helpers');
+const { sanitizeDocumentHtml } = require('../lib/document-html');
+
+test('document HTML sanitizer removes executable and remote-content payloads while preserving controlled prose', () => {
+  const clean = sanitizeDocumentHtml(`<h2>Controlled policy</h2>
+    <script>window.pwned=1</script>
+    <p onclick="window.pwned=2" style="color:#123456;background-image:url(https://tracker.invalid/pixel)">Body</p>
+    <a href="javascript:window.pwned=3">unsafe link</a>
+    <img src="https://tracker.invalid/pixel.png" onerror="window.pwned=4">
+    <iframe src="https://attacker.invalid"></iframe>`);
+  assert.match(clean, /<h2>Controlled policy<\/h2>/);
+  assert.match(clean, /<p[^>]*>Body<\/p>/);
+  assert.doesNotMatch(clean, /script|onclick|onerror|javascript:|iframe|tracker\.invalid|attacker\.invalid|background-image/i);
+});
+
+test('Public trust path explains evaluation, access, security, privacy, and disclosure before sign-in', async (t) => {
+  const { app, dbPath } = bootApp();
+  const client = makeClient(app);
+  t.after(() => client.close());
+
+  const conn = new Database(dbPath);
+  conn.prepare(`INSERT INTO firms (name) VALUES (?)`).run('PRIVATE-TENANT-CANARY');
+  conn.close();
+
+  const expected = new Map([
+    ['/', /Request an evaluation/],
+    ['/register', /Access starts with an invitation/],
+    ['/security', /Security boundaries should be testable/],
+    ['/privacy', /Privacy responsibilities are shared/],
+    ['/terms', /does not itself certify conformity/],
+    ['/contact', /Start with the workflow you need to test/],
+  ]);
+  for (const [url, marker] of expected) {
+    const response = await client.get(url);
+    assert.equal(response.status, 200, `${url} should be public`);
+    assert.match(response.text, marker, `${url} should provide its promised next step`);
+    assert.doesNotMatch(response.text, /PRIVATE-TENANT-CANARY/, `${url} must not expose tenant data`);
+  }
+
+  const disclosure = await client.get('/.well-known/security.txt');
+  assert.equal(disclosure.status, 200);
+  assert.match(String(disclosure.headers['content-type']), /^text\/plain/);
+  assert.match(disclosure.text, /^Contact: /m);
+  assert.match(disclosure.text, /^Expires: /m);
+  assert.match(disclosure.text, /^Policy: /m);
+});
 
 test('CSRF - POST without token is rejected with 403', async (t) => {
   const { client } = await bootClient();
@@ -102,7 +148,7 @@ test('XSS - a script payload in a client name is HTML-escaped on render', async 
   // user genuinely sees (unlike /tenants firm creation, which the original test
   // posted to but never rendered for a normal user - a false pass waiting to happen).
   const CANARY = 'XSSCANARY<script>window.__xss_canary=1</script>END';
-  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001' });
+  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001', engagement_outcome: 'certification_support' });
   assert.equal(post.status, 302, 'client creation should redirect');
 
   const dash = await client.get('/dashboard');
@@ -122,7 +168,7 @@ test('XSS - an attribute-breakout payload in a client name cannot escape its ele
   t.after(() => client.close());
 
   const CANARY = 'XSSATTR" onclick="window.__xss_pwn=1"';
-  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001' });
+  const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001', engagement_outcome: 'certification_support' });
   assert.equal(post.status, 302);
 
   const dash = await client.get('/dashboard');
@@ -136,7 +182,7 @@ test('XSS - an attribute-breakout payload in a client name cannot escape its ele
 test('Workspace creation preserves an intentionally empty programme selection', async (t) => {
   const { client, dbPath } = await bootClient();
   t.after(() => client.close());
-  const created = await client.post('/workspaces', { client_name:'Programme Pending Client', industry:'Technology', scope:'Programme selection remains under client discussion.' });
+  const created = await client.post('/workspaces', { client_name:'Programme Pending Client', industry:'Technology', scope:'Programme selection remains under client discussion.', engagement_outcome:'certification_support' });
   assert.equal(created.status,302);
   const conn = new Database(dbPath);
   const workspace = conn.prepare(`SELECT id,frameworks FROM workspaces WHERE client_name='Programme Pending Client'`).get();
@@ -146,6 +192,53 @@ test('Workspace creation preserves an intentionally empty programme selection', 
   assert.equal(overview.status,200,overview.text.slice(0,500));
   assert.match(overview.text,/Programme decision pending/);
   assert.doesNotMatch(overview.text,/ISO 27001 programme|Stage 1 maturity/);
+});
+
+test('Workspace deletion removes a populated client while restoring immutable-history guards', async (t) => {
+  const { client, dbPath } = await bootClient();
+  t.after(() => client.close());
+
+  const created = await client.post('/workspaces', {
+    client_name: 'Deletion Regression Client',
+    industry: 'Technology',
+    scope: 'A disposable workspace containing governed history.',
+    frameworks: 'iso27001',
+    engagement_outcome: 'certification_support',
+  });
+  assert.equal(created.status, 302);
+
+  const conn = new Database(dbPath);
+  const workspace = conn.prepare(`SELECT id FROM workspaces WHERE client_name=?`).get('Deletion Regression Client');
+  const user = conn.prepare(`SELECT id FROM users WHERE email=?`).get('sec-test@example.com');
+  const snapshot = JSON.stringify({ workspaceId: workspace.id, covered: 1 });
+  conn.prepare(`INSERT INTO gap_fieldwork_snapshots
+    (workspace_id,week_ending,requirements_covered,requirements_total,interviews_completed,
+     interviews_planned,requests_received,requests_total,active_blockers,declared_defaults,
+     snapshot_json,snapshot_hash,created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(workspace.id, '2026-08-16', 1, 118, 1, 2, 1, 3, 0, 0,
+      snapshot, crypto.createHash('sha256').update(snapshot).digest('hex'), user.id);
+
+  assert.throws(
+    () => conn.prepare(`DELETE FROM gap_fieldwork_snapshots WHERE workspace_id=?`).run(workspace.id),
+    /fieldwork snapshots are immutable/,
+    'ordinary history deletion must remain blocked before the workspace purge'
+  );
+  conn.close();
+
+  const deleted = await client.post(`/workspaces/${workspace.id}/delete`, {
+    confirm_name: 'Deletion Regression Client',
+  });
+  assert.equal(deleted.status, 302, deleted.text.slice(0, 500));
+  assert.match(deleted.location, /^\/dashboard\?/);
+
+  const verify = new Database(dbPath);
+  assert.equal(verify.prepare(`SELECT COUNT(*) c FROM workspaces WHERE id=?`).get(workspace.id).c, 0);
+  assert.equal(verify.prepare(`SELECT COUNT(*) c FROM gap_fieldwork_snapshots WHERE workspace_id=?`).get(workspace.id).c, 0);
+  assert.ok(verify.prepare(`SELECT name FROM sqlite_master WHERE type='trigger' AND name='trg_gap_snapshot_no_delete'`).get(),
+    'immutable-history trigger must be restored before commit');
+  assert.deepEqual(verify.pragma('foreign_key_check'), []);
+  verify.close();
 });
 
 test('Auth - protected pages require authentication (no default-user bypass)', async (t) => {
@@ -166,6 +259,9 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   assert.match(authed.text, /class="skip-link"[^>]*>Skip to content</, 'protected app shell must offer a keyboard skip link');
   assert.match(authed.text, /site-enhancements\.js\?v=/, 'protected app shell must load the shared interaction layer');
   assert.match(authed.text, /data-theme-toggle/, 'protected app shell must expose the theme control');
+  const authedRoot = await client.get('/');
+  assert.equal(authedRoot.status, 302, 'signed-in users should go directly to their dashboard');
+  assert.equal(authedRoot.location, '/dashboard');
 
   // A fresh, unauthenticated client on the same app must be redirected to login.
   // Regression guard: if a default-user bypass is ever reintroduced, this 200s.
@@ -178,6 +274,29 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   assert.equal(login.status, 200);
   assert.match(login.text, /id="pageLoader"/, 'authentication shell must include the branded page loader');
   assert.match(login.text, /page-loader\.css\?v=/, 'authentication shell must load the loader presentation');
+});
+
+test('Auth - logout crosses the view-transition boundary without retaining the authenticated session', async (t) => {
+  const { client } = await bootClient();
+  t.after(() => client.close());
+
+  const logout = await client.post('/logout');
+  assert.equal(logout.status, 302);
+  assert.equal(logout.location, '/login?signed_out=1');
+
+  const signedOut = await client.get(logout.location);
+  assert.equal(signedOut.status, 200);
+  assert.match(signedOut.text, /You have been signed out\./);
+  assert.match(signedOut.text, /<meta name="view-transition" content="same-origin"\s*\/?>/,
+    'logout destination must share the protected shell transition contract');
+  assert.match(signedOut.text, /@view-transition\s*\{\s*navigation:\s*auto;?\s*\}/,
+    'logout destination must opt into cross-document transitions');
+  assert.match(signedOut.text, /::view-transition-old\(root\)[\s\S]*animation-duration:\s*0s/,
+    'the auth boundary must not cross-fade the previously authenticated page');
+
+  const protectedPage = await client.get('/dashboard');
+  assert.equal(protectedPage.status, 302, 'the destroyed session must not retain protected access');
+  assert.match(protectedPage.location, /^\/login/);
 });
 
 test('Auth - legacy MFA account data cannot trigger a second-factor challenge', async (t) => {

@@ -158,10 +158,11 @@
       <form method="POST" action="/approve/<%= token %>" class="decide-card">
         <div class="eyebrow">Your decision</div>
         <div class="question">Do you approve "<%= docName %>" v<%= docVersion %>?</div>
-        <label for="reason">Reason or comment (optional for approve, recommended for reject)</label>
-        <textarea name="reason" id="reason" placeholder="e.g. Approved, looks good / Reject because Section 4 needs the new vendor list"></textarea>
+        <% if (decisionError) { %><div role="alert" style="margin:10px 0;padding:10px 12px;border:1px solid #dc2626;border-radius:6px;color:#991b1b;background:#fef2f2;"><%= decisionError %></div><% } %>
+        <label for="reason">Reason or comment (required for reject)</label>
+        <textarea name="reason" id="reason" maxlength="4000" required placeholder="Explain what must change if you reject this version"></textarea>
         <div class="btn-row">
-          <button name="decision" value="approve" class="btn btn-approve">Approve this document</button>
+          <button name="decision" value="approve" class="btn btn-approve" formnovalidate>Approve this document</button>
           <button name="decision" value="reject" class="btn btn-reject" onclick="return confirm('Reject and send back to draft?')">Reject</button>
         </div>
       </form>

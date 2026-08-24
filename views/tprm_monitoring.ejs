@@ -1,0 +1,68 @@
+<%- include('partials/header', { title: 'Third-party monitoring and renewals', user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-action:var(--text);--tprm-action-hover:var(--text-secondary);--tprm-action-contrast:var(--surface);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--border-strong);--tprm-neutral-status:var(--text-secondary);--tprm-neutral-status-bg:var(--bg-muted);--tprm-neutral-status-border:var(--border-strong);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Third-party operations</div>
+    <h1>Monitoring &amp; renewals</h1>
+    <p>Review due dates, contract renewals, evidence expiry and monitoring signals.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn btn-primary" href="/workspaces/<%= ws.id %>/tprm/monitoring/connectors">Review signal triage</a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/relationships">Service relationships</a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/concentration">Concentration &amp; exit</a>
+  </div>
+</header>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <div class="tprm-kicker">Forward schedule</div>
+      <h2>Reviews, renewals and evidence</h2>
+      <p>Dates are recorded against each governed third-party relationship.</p>
+    </div>
+  </div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Third party and service</th><th>Next review</th><th>Contract</th><th>Evidence</th><th>Residual risk</th><th>Owners</th><th>Next action</th></tr></thead>
+      <tbody>
+        <% renewals.forEach(row => { const reviewOverdue = row.next_review_date && row.next_review_date < portfolio.today; %>
+        <tr>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= row.id %>"><strong><%= row.name %></strong><small><%= row.service_provided || 'Service not recorded' %></small></a></td>
+          <td><strong class="<%= reviewOverdue ? 'text-danger' : '' %>"><%= dateOnly(row.next_review_date) || 'Not scheduled' %></strong><small><%= reviewOverdue ? 'Overdue' : 'Scheduled review' %></small></td>
+          <td><strong><%= dateOnly(row.contract_end) || 'Not recorded' %></strong><small><%= row.auto_renew ? 'Auto-renewal' : 'Manual renewal' %></small></td>
+          <td><strong><%= row.expiring_document_count %></strong><small>Expired or due in 30 days</small></td>
+          <td><strong><%= titleCase(row.residual_risk_band, 'No decision') %></strong></td>
+          <td><strong><%= row.relationship_owner || 'Consultancy owner unset' %></strong><small><%= row.business_owner || 'Client owner unset' %></small></td>
+          <td><a href="<%= row.nextAction.href %>"><strong><%= row.nextAction.label %></strong><small>Waiting on <%= row.nextAction.waitingOn %></small></a></td>
+        </tr>
+        <% }) %>
+        <% if (!renewals.length) { %><tr><td colspan="7"><div class="tprm-empty"><strong>No monitoring dates recorded</strong><span>An approved client decision creates the next review date.</span></div></td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <div class="tprm-kicker">Recorded signals</div>
+      <h2>Monitoring history</h2>
+      <p>Attributable external ratings and internal observations.</p>
+    </div>
+    <a class="btn btn-xs" href="/workspaces/<%= ws.id %>/tprm/monitoring/connectors#triage">Open triage queue</a>
+  </div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Third party</th><th>Source</th><th>Recorded</th><th>Rating</th><th>Observation</th></tr></thead>
+      <tbody>
+        <% events.forEach(event => { %><tr><td><strong><%= event.supplier_name %></strong></td><td><%= event.source || 'Internal monitoring' %></td><td><%= dateOnly(event.recorded_at) %></td><td><%= event.grade || (event.score == null ? 'No rating' : event.score) %></td><td><%= event.notes || 'No narrative recorded' %></td></tr><% }) %>
+        <% if (!events.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No monitoring signals recorded</strong><span>Signals appear after onboarding and during periodic review.</span></div></td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+<%- include('partials/footer') %>

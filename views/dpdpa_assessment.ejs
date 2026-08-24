@@ -1,0 +1,430 @@
+<%- include('partials/header', { title: 'DPDPA assessment workbench', user, ws, active: 'dpdpa-assessment' }) %>
+<%- include('dpdpa_styles') %>
+<%
+  const base = `/workspaces/${ws.id}/dpdpa`;
+  const url = `${base}/assessments/${assessment.id}`;
+  const r = position.readiness;
+  const pct = value => (r.total ? (value * 100 / r.total) : 0).toFixed(2);
+  const gateCount = gates.reduce((sum, group) => sum + group.items.length, 0);
+  const canEdit = caps.assess && editable;
+  const slug = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const comparison = (assessment.baseline_comparison || dashboard.baseline_comparison || {}).summary || {};
+  const substantive = runway.find(phase => phase.id === 'phase_3_substantive');
+  let profile = assessment.applicability_profile || assessment.scope_profile || {};
+  if (typeof profile === 'string') { try { profile = JSON.parse(profile); } catch (_) { profile = {}; } }
+  const roles = Array.isArray(profile.organisation_roles) ? profile.organisation_roles.join(', ') : (profile.organisation_roles || 'Not recorded');
+%>
+
+<div class="dp">
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title"><%= assessment.title %></h1>
+    <div class="page-subtitle"><%= assessment.scope_statement %></div>
+    <div class="dp-facts">
+      <span class="status s-<%= slug(assessment.status) %>"><%= assessment.status %></span>
+      <span>As of <strong><%= assessment.as_of_date %></strong></span>
+      <span><strong><%= r.concluded %></strong> of <strong><%= r.total %></strong> concluded</span>
+      <span>Roles <strong><%= roles %></strong></span>
+      <% if (substantive && !substantive.inForce) { %>
+        <span><strong><%= substantive.daysRemaining %></strong> days to <%= substantive.effectiveDateLong %></span>
+      <% } %>
+    </div>
+  </div>
+  <div class="row">
+    <% if (caps.review) { %><a class="btn btn-secondary" href="<%= url %>/review">Independent review</a><% } %>
+    <% if (canEdit) { %><a class="btn btn-primary" href="#submit">Submit for review</a><% } %>
+  </div>
+</div>
+
+<%# Position first, in one bar. The page used to open with four stacked notice
+    boxes and a seven-card metric grid before any obligation was visible. %>
+<section class="panel panel-pad">
+  <div class="dp-headline">
+    <b><%= r.readinessPct %>%</b>
+    <span>readiness across <%= r.inScope %> in-scope obligations · <%= r.completionPct %>% of the catalogue concluded</span>
+  </div>
+  <div class="dp-bar" role="img" aria-label="<%= r.implemented %> implemented, <%= r.partial %> partially implemented, <%= r.notImplemented %> not implemented, <%= r.notApplicable %> not applicable, <%= r.notAssessed %> not assessed">
+    <% if (r.implemented) { %><span class="dp-bar-implemented" style="width:<%= pct(r.implemented) %>%"></span><% } %>
+    <% if (r.partial) { %><span class="dp-bar-partial" style="width:<%= pct(r.partial) %>%"></span><% } %>
+    <% if (r.notImplemented) { %><span class="dp-bar-gap" style="width:<%= pct(r.notImplemented) %>%"></span><% } %>
+    <% if (r.notApplicable) { %><span class="dp-bar-na" style="width:<%= pct(r.notApplicable) %>%"></span><% } %>
+    <% if (r.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= pct(r.notAssessed) %>%"></span><% } %>
+  </div>
+  <div class="dp-legend">
+    <a href="<%= url %>?status=Implemented"><i class="k-implemented"></i><strong><%= r.implemented %></strong> implemented</a>
+    <a href="<%= url %>?status=Partially%20Implemented"><i class="k-partial"></i><strong><%= r.partial %></strong> partially implemented</a>
+    <a href="<%= url %>?status=Not%20Implemented"><i class="k-gap"></i><strong><%= r.notImplemented %></strong> not implemented</a>
+    <a href="<%= url %>?status=Not%20Applicable"><i class="k-na"></i><strong><%= r.notApplicable %></strong> not applicable</a>
+    <a href="<%= url %>?status=Not%20Assessed"><i class="k-unassessed"></i><strong><%= r.notAssessed %></strong> not assessed</a>
+  </div>
+  <%# Legal timing sits with the position, not in a notice box of its own. At
+      any as-of date before 13 May 2027 nearly every duty is future-effective,
+      which is exactly why the two are counted apart. %>
+  <p class="meta text-xs" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--border);line-height:1.55;">
+    Legal timing at <%= assessment.as_of_date %>:
+    <strong><%= dashboard.currently_effective ? dashboard.currently_effective.total : 0 %></strong> obligations are currently effective,
+    <strong><%= dashboard.future_effective ? dashboard.future_effective.total : 0 %></strong> are future-effective, and
+    <strong><%= dashboard.effective_date_not_set ? dashboard.effective_date_not_set.total : 0 %></strong> have no controlled effective date.
+    Future-effective duties are tracked separately and do not inflate current-effective readiness.
+  </p>
+</section>
+
+<% if (!editable) { %>
+  <div class="callout" style="margin-bottom:18px;">
+    <div class="callout-title">Read-only</div>
+    <%= assessment.status === 'Under Review'
+      ? 'The submitted version is frozen while an independent reviewer decides whether to return or approve it.'
+      : 'Approved and superseded assessments cannot be edited. Create a new assessment for a later as-of date.' %>
+  </div>
+<% } %>
+
+<% if (assessment.baseline_assessment_id) { %>
+  <div class="callout" style="margin-bottom:18px;">
+    <div class="callout-title">Reassessment of approved baseline #<%= assessment.baseline_assessment_id %></div>
+    <span class="text-success" style="font-weight:500;"><%= comparison.improved || 0 %> improved</span>,
+    <span class="text-danger" style="font-weight:500;"><%= comparison.regressed || 0 %> regressed</span>,
+    <%= comparison.unchanged || 0 %> unchanged, <%= comparison.newly_na || 0 %> newly not applicable and
+    <%= comparison.new || 0 %> new catalogue rows. Work here never rewrites that frozen baseline.
+    <% if (caps.export) { %>
+      <a class="link" style="margin-left:6px;" href="<%= base %>/assessments/<%= assessment.baseline_assessment_id %>/report?snapshot=<%= assessment.baseline_snapshot_id %>">Open the frozen baseline</a>
+    <% } %>
+  </div>
+<% } %>
+
+<% if (gates.length) { %>
+  <%# Every gate links to the obligation that raised it. This panel used to be
+      the same sentence repeated once per blocked item, with no reference and
+      nothing to click. %>
+  <section class="panel" id="gates">
+    <div class="panel-head">
+      <h2><%= gateCount %> submission gate<%= gateCount === 1 ? '' : 's' %> remain</h2>
+      <span class="meta">Checked again at submission</span>
+    </div>
+    <% gates.forEach(group => { %>
+      <div class="dp-gate">
+        <div class="dp-gate-head">
+          <strong><%= group.label %></strong>
+          <span class="meta"><%= group.items.length %></span>
+        </div>
+        <p><%= group.fix %></p>
+        <div class="dp-refs">
+          <% group.items.slice(0, 30).forEach(entry => { %>
+            <a href="#item-<%= entry.id %>" title="<%= entry.title %>"><%= entry.ref %></a>
+          <% }) %>
+          <% if (group.items.length > 30) { %><span class="meta text-xs">+ <%= group.items.length - 30 %> more</span><% } %>
+        </div>
+      </div>
+    <% }) %>
+  </section>
+<% } %>
+
+<%# Method and boundary, folded away. It is worth one click when a reviewer
+    challenges a conclusion, and worth no space at all the rest of the time. %>
+<details class="panel" style="margin-bottom:18px;">
+  <summary class="panel-head dp-summary">
+    <h2>Assessment method and frozen boundary</h2>
+    <span class="meta">Evidence gates, applicability profile, catalogue</span>
+  </summary>
+  <div class="panel-pad">
+    <div class="grid-2" style="gap:22px;">
+      <div>
+        <div class="sec-label">How a conclusion is gated</div>
+        <ul style="margin:0;padding-left:17px;font-size:12.5px;line-height:1.6;color:var(--text-secondary);">
+          <li>Implemented and Partially Implemented require retained evidence that is current at <%= assessment.as_of_date %>.</li>
+          <li>Not Applicable requires a specific rationale of at least 80 characters and explicit acceptance by the independent approver.</li>
+          <li>Partially Implemented and Not Implemented require both a gap statement and a recommendation.</li>
+          <li>Profile answers produce review hints only. No obligation is ever excluded automatically.</li>
+          <li>These are readiness conclusions for a stated boundary. They are not legal certification.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="sec-label">Frozen applicability profile</div>
+        <dl class="dp-kv">
+          <div><dt>Organisation roles</dt><dd><%= roles %></dd></div>
+          <div><dt>Digital personal data</dt><dd><%= profile.digital_personal_data_in_scope || 'Unknown' %></dd></div>
+          <div><dt>Children or guardian processing</dt><dd><%= profile.children_or_guardian_processing || 'Unknown' %></dd></div>
+          <div><dt>Significant Data Fiduciary</dt><dd><%= profile.sdf_designation_state || 'Unknown' %></dd></div>
+          <div><dt>Consent Manager activity</dt><dd><%= profile.statutory_consent_manager_activity || 'Unknown' %></dd></div>
+          <div><dt>Cross-border transfers</dt><dd><%= profile.cross_border_processing_or_transfers || 'Unknown' %></dd></div>
+          <div><dt>Legacy consent cohort</dt><dd><%= profile.legacy_consent_cohort || 'Unknown' %></dd></div>
+          <div><dt>Exemptions and assumptions</dt><dd><%= profile.exemptions_or_public_data_assumptions || 'None recorded' %></dd></div>
+          <div><dt>Scope limitations</dt><dd><%= profile.scope_limitations || 'None recorded' %></dd></div>
+          <div><dt>Catalogue</dt><dd><%= assessment.catalog_version || 'Not recorded' %><% if (assessment.catalog_hash) { %> · <span class="dp-hash"><%= String(assessment.catalog_hash).slice(0, 16) %></span><% } %></dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+</details>
+
+<form class="panel dp-filter" method="GET" action="<%= url %>" aria-label="Filter obligations">
+  <div>
+    <label class="label" for="dpq">Search</label>
+    <input class="input" id="dpq" type="search" name="q" value="<%= filters.q %>" maxlength="160" placeholder="Reference, title, text or note">
+  </div>
+  <div>
+    <label class="label" for="dpdomain">Domain</label>
+    <select class="select" id="dpdomain" name="domain">
+      <option value="">All domains</option>
+      <% position.matrix.slice().sort((a, b) => a.order - b.order).forEach(row => { %>
+        <option value="<%= row.domain %>" <%= filters.domain === row.domain ? 'selected' : '' %>><%= row.domain %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="label" for="dpstatus">Result</label>
+    <select class="select" id="dpstatus" name="status">
+      <option value="">All results</option>
+      <% statusOptions.forEach(status => { %>
+        <option value="<%= status %>" <%= filters.status === status ? 'selected' : '' %>><%= status %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="meta text-xs" style="align-self:end;padding-bottom:8px;">
+    <%= visibleCount %> of <%= r.total %> shown
+  </div>
+  <div class="row" style="align-self:end;">
+    <button class="btn btn-secondary" type="submit">Apply</button>
+    <% if (filtered) { %><a class="btn btn-ghost" href="<%= url %>">Clear</a><% } %>
+  </div>
+</form>
+
+<% if (!groups.length) { %>
+  <div class="panel empty-state">
+    <div class="empty-title">No obligation matches these filters</div>
+    <div class="empty-sub">Clear one or more filters to return to the full controlled catalogue.</div>
+    <a class="btn btn-secondary" href="<%= url %>">Clear filters</a>
+  </div>
+<% } %>
+
+<% groups.forEach(group => { const g = group.readiness; %>
+  <section class="dp-group">
+    <div class="dp-group-head">
+      <h3><%= group.domain %></h3>
+      <span class="meta text-xs"><%= g.concluded %>/<%= g.total %> concluded<% if (g.openGaps) { %> · <%= g.openGaps %> open<% } %></span>
+      <div class="dp-bar dp-bar-sm" role="img" aria-label="<%= g.readinessPct %>% ready">
+        <% if (g.implemented) { %><span class="dp-bar-implemented" style="width:<%= (g.implemented * 100 / g.total).toFixed(2) %>%"></span><% } %>
+        <% if (g.partial) { %><span class="dp-bar-partial" style="width:<%= (g.partial * 100 / g.total).toFixed(2) %>%"></span><% } %>
+        <% if (g.notImplemented) { %><span class="dp-bar-gap" style="width:<%= (g.notImplemented * 100 / g.total).toFixed(2) %>%"></span><% } %>
+        <% if (g.notApplicable) { %><span class="dp-bar-na" style="width:<%= (g.notApplicable * 100 / g.total).toFixed(2) %>%"></span><% } %>
+        <% if (g.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= (g.notAssessed * 100 / g.total).toFixed(2) %>%"></span><% } %>
+      </div>
+    </div>
+    <div class="dp-group-body">
+      <% group.items.forEach(item => {
+           const c = item.content;
+           const evidenceClaim = ['Implemented', 'Partially Implemented'].includes(item.status);
+           const currentEvidence = Number(item.evidence_current_count || 0);
+           const staleEvidence = Number(item.evidence_stale_count || 0);
+           const openByFilter = filtered && group.items.length <= 6; %>
+        <details class="dp-ob" id="item-<%= item.id %>" <%= openByFilter ? 'open' : '' %>>
+          <summary>
+            <div class="dp-ob-row">
+              <span class="dp-ob-ref"><%= item.ref %></span>
+              <span class="dp-ob-title">
+                <strong><%= item.title %></strong>
+                <span class="meta text-xs">
+                  <%= c ? c.sourceSectionRule : (item.source_section || '') %>
+                  <% if (c) { %> · <%= c.severityLabel %> severity · commences <%= c.effectiveDateLong %><% } %>
+                  <% if (item.owner_name) { %> · <%= item.owner_name %><% } %>
+                  <% if (item.due_date) { %> · target <%= item.due_date %><% } %>
+                </span>
+              </span>
+              <span class="dp-ob-state">
+                <% if (evidenceClaim && !item.evidence_sufficient) { %>
+                  <span class="dp-ob-flag">Evidence gate open</span>
+                <% } else if (currentEvidence) { %>
+                  <span class="meta text-xs"><%= currentEvidence %> evidence<%= staleEvidence ? ` · ${staleEvidence} stale` : '' %></span>
+                <% } %>
+                <span class="status s-<%= slug(item.status) %>"><%= item.status %></span>
+              </span>
+            </div>
+          </summary>
+
+          <div class="dp-ob-body">
+            <div class="dp-ob-split">
+              <%# The statutory side of the record. The catalogue has carried
+                  the condition, the implementation guidance and the expected
+                  evidence all along; none of it used to reach this screen. %>
+              <div class="dp-law">
+                <div>
+                  <h4>The obligation</h4>
+                  <p class="dp-requirement"><%= c ? c.requirement : (item.description || 'Refer to the controlled catalogue for this obligation.') %></p>
+                  <%# Citations carry the house .iso-ref treatment: the exact
+                      provision, dotted-underlined, linked to the Gazette copy
+                      it was drawn from. %>
+                  <% if (c) { %>
+                    <span class="dp-cite">
+                      <% c.citations.forEach(cite => { %>
+                        <span class="dp-cite-item">
+                          <% if (cite.url) { %><a class="iso-ref" href="<%= cite.url %>" target="_blank" rel="noopener noreferrer"><%= cite.provisionLabel %></a><% } else { %><span class="iso-ref"><%= cite.provisionLabel %></span><% } %>
+                          <span class="meta text-xs"><%= cite.shortTitle %></span>
+                        </span>
+                      <% }) %>
+                    </span>
+                  <% } %>
+                </div>
+                <% if (c && c.condition) { %>
+                  <div>
+                    <h4>When it applies</h4>
+                    <p><%= c.condition %></p>
+                    <% if (item.applicability_hint === 'Potentially Out of Scope') { %>
+                      <p style="margin-top:6px;color:var(--dp-warn);">The profile suggests this may fall outside the boundary. It is not excluded automatically: select Not Applicable and record why.</p>
+                    <% } %>
+                  </div>
+                <% } %>
+                <% if (c && c.guidance.length) { %>
+                  <div>
+                    <h4>What good looks like</h4>
+                    <ul><% c.guidance.forEach(line => { %><li><%= line %></li><% }) %></ul>
+                  </div>
+                <% } %>
+                <% if (c && c.evidence.length) { %>
+                  <div>
+                    <h4>Evidence to expect</h4>
+                    <ul><% c.evidence.forEach(line => { %><li><%= line %></li><% }) %></ul>
+                  </div>
+                <% } %>
+                <div>
+                  <h4>Commencement</h4>
+                  <p>
+                    <%= c ? c.phaseLabel : 'Phase not recorded' %>, effective <%= c ? c.effectiveDateLong : (item.effective_date || 'date not set') %>.
+                    <%= item.legal_effective_status === 'Effective' ? 'This duty is enforceable at the assessment date.' : 'This duty is not yet enforceable at the assessment date and is reported separately from current readiness.' %>
+                  </p>
+                </div>
+              </div>
+
+              <%# The assessor's own record. %>
+              <% if (canEdit) { %>
+                <form class="dp-form" method="POST" action="<%= url %>/items/<%= item.id %>">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <input type="hidden" name="row_version" value="<%= item.row_version %>">
+                  <input type="hidden" name="requirement_ref" value="<%= item.ref %>">
+                  <div class="dp-form-grid">
+                    <div>
+                      <label class="label" for="status-<%= item.id %>">Result <span class="meta">required</span></label>
+                      <select class="select dp-status-select" id="status-<%= item.id %>" name="status" data-item="<%= item.id %>" required>
+                        <% statusOptions.forEach(status => { %>
+                          <option value="<%= status %>" <%= item.status === status ? 'selected' : '' %>><%= status %></option>
+                        <% }) %>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="label" for="owner-<%= item.id %>">Accountable owner</label>
+                      <select class="select" id="owner-<%= item.id %>" name="owner_id">
+                        <option value="">Unassigned</option>
+                        <% users.forEach(owner => { %>
+                          <option value="<%= owner.id %>" <%= Number(owner.id) === Number(item.owner_id) ? 'selected' : '' %>><%= owner.name %> · <%= owner.user_type === 'firm' ? 'consultancy' : 'client' %></option>
+                        <% }) %>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="label" for="due-<%= item.id %>">Target date</label>
+                      <input class="input" id="due-<%= item.id %>" type="date" name="due_date" value="<%= item.due_date || '' %>">
+                    </div>
+
+                    <div class="col-full">
+                      <label class="label" for="note-<%= item.id %>">Conclusion</label>
+                      <textarea class="textarea" id="note-<%= item.id %>" name="assessment_note" maxlength="12000" rows="3" placeholder="What was examined, what was demonstrated, and the basis for this result"><%= item.assessment_note || '' %></textarea>
+                    </div>
+                    <div class="col-full dp-when-gap" data-item="<%= item.id %>">
+                      <label class="label" for="gap-<%= item.id %>">Implementation gap</label>
+                      <textarea class="textarea" id="gap-<%= item.id %>" name="gap_description" maxlength="12000" rows="2" placeholder="The specific missing or ineffective implementation, and the scope it affects"><%= item.gap_description || '' %></textarea>
+                    </div>
+                    <div class="col-full dp-when-gap" data-item="<%= item.id %>">
+                      <label class="label" for="rec-<%= item.id %>">Recommendation</label>
+                      <textarea class="textarea" id="rec-<%= item.id %>" name="recommendation" maxlength="12000" rows="2" placeholder="The action, the expected evidence and the accountable outcome"><%= item.recommendation || '' %></textarea>
+                    </div>
+                    <div class="col-full dp-when-na" data-item="<%= item.id %>">
+                      <label class="label" for="na-<%= item.id %>">Not-applicable rationale <span class="meta">minimum 80 characters</span></label>
+                      <textarea class="textarea" id="na-<%= item.id %>" name="na_rationale" maxlength="12000" rows="2" placeholder="The factual scope basis, the dependencies and the approving authority"><%= item.na_rationale || '' %></textarea>
+                    </div>
+                  </div>
+
+                  <div class="dp-form-foot">
+                    <span class="meta text-xs">
+                      <a class="link-muted" href="/workspaces/<%= ws.id %>/evidence">Evidence library</a> ·
+                      <%= currentEvidence %> current, <%= staleEvidence %> stale, <%= item.finding_count || 0 %> finding<%= Number(item.finding_count) === 1 ? '' : 's' %> ·
+                      saving checks version <%= item.row_version %>
+                    </span>
+                    <button class="btn btn-primary btn-xs" type="submit">Save result</button>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="dp-readonly">
+                  <div><h4>Conclusion</h4><p><%= item.assessment_note || 'No conclusion note retained.' %></p></div>
+                  <% if (item.gap_description) { %><div><h4>Implementation gap</h4><p><%= item.gap_description %></p></div><% } %>
+                  <% if (item.recommendation) { %><div><h4>Recommendation</h4><p><%= item.recommendation %></p></div><% } %>
+                  <% if (item.status === 'Not Applicable') { %><div><h4>Not-applicable rationale</h4><p><%= item.na_rationale || 'No rationale retained.' %></p></div><% } %>
+                  <div><h4>Record</h4><p><%= item.owner_name || 'No owner assigned' %><%= item.due_date ? ` · target ${item.due_date}` : '' %> · <%= currentEvidence %> current evidence, <%= staleEvidence %> stale · version <%= item.row_version %></p></div>
+                </div>
+              <% } %>
+            </div>
+          </div>
+        </details>
+      <% }) %>
+    </div>
+  </section>
+<% }) %>
+
+<% if (canEdit) { %>
+  <section class="panel" id="submit" style="margin-top:18px;">
+    <div class="panel-head">
+      <h2>Submit for independent review</h2>
+      <span class="meta"><%= gateCount ? `${gateCount} gate${gateCount === 1 ? '' : 's'} open` : 'No open gates' %></span>
+    </div>
+    <div class="panel-pad">
+      <p class="text-sm text-secondary" style="margin-bottom:12px;line-height:1.6;max-width:74ch;">
+        Submission freezes the current row versions and routes the record to a reviewer who neither created nor submitted it.
+        Every result, rationale and evidence link is rechecked at that moment, so a gate resolved on screen but not saved will
+        still stop the submission.
+      </p>
+      <form class="dp-form" method="POST" action="<%= url %>/submit">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="row_version" value="<%= assessment.row_version %>">
+        <div>
+          <label class="label" for="dpSubmitNote">Submission note</label>
+          <textarea class="textarea" id="dpSubmitNote" name="note" maxlength="4000" rows="3" placeholder="Scope limitations, review focus and the material judgments a reviewer should test first"></textarea>
+        </div>
+        <div class="dp-form-foot">
+          <span class="meta text-xs">Saving checks assessment version <%= assessment.row_version %>.</span>
+          <button class="btn btn-primary" type="submit">Submit for independent review</button>
+        </div>
+      </form>
+    </div>
+  </section>
+<% } %>
+
+</div>
+
+<script>
+  // Progressive disclosure on the conclusion form. Every obligation used to
+  // show a Not Applicable rationale box even when the result was Implemented,
+  // and hid the gap and recommendation boxes behind the same flat layout, so
+  // the required field was never the obvious one.
+  (function () {
+    function apply(select) {
+      var id = select.getAttribute('data-item');
+      var status = select.value;
+      var gap = status === 'Partially Implemented' || status === 'Not Implemented';
+      var na = status === 'Not Applicable';
+      document.querySelectorAll('.dp-when-gap[data-item="' + id + '"]').forEach(function (node) { node.hidden = !gap; });
+      document.querySelectorAll('.dp-when-na[data-item="' + id + '"]').forEach(function (node) { node.hidden = !na; });
+    }
+    var selects = document.querySelectorAll('.dp-status-select');
+    selects.forEach(function (select) {
+      apply(select);
+      select.addEventListener('change', function () { apply(select); });
+    });
+    // A gate link points at a collapsed record; open it on arrival.
+    function openTarget() {
+      if (!location.hash) return;
+      var node = document.querySelector(location.hash);
+      if (node && node.tagName === 'DETAILS') { node.open = true; node.scrollIntoView({ block: 'start' }); }
+    }
+    window.addEventListener('hashchange', openTarget);
+    openTarget();
+  })();
+</script>
+
+<%- include('partials/footer') %>

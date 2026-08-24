@@ -1,0 +1,42 @@
+<%- include('partials/header', { title: 'Third-party assessments', user, ws, active }) %>
+<div class="tprm-neutral-page" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--bg-muted);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border-strong)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+<header class="tprm-page-head">
+  <div>
+    <h1>Assessments</h1>
+    <p>Inherent risk, due diligence and contract assurance by third party.</p>
+  </div>
+</header>
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <h2>Assessment queue</h2>
+      <p><%= rows.length %> active assessment record<%= rows.length === 1 ? '' : 's' %>. Provider completion and internal review are tracked separately.</p>
+    </div>
+  </div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead>
+        <tr><th>Third party</th><th>Inherent risk</th><th>Due diligence</th><th>Contract assurance</th><th>Findings</th><th>Waiting on</th><th>Next action</th></tr>
+      </thead>
+      <tbody>
+        <% const semanticStatusTones = new Set(['critical','high','error','failed','rejected','overdue','medium','warning','quarantined','needs-review','complete','approved','monitoring','active','verified','processed']); rows.forEach(row => { const inherentTone = String(row.inherent_status || '').replaceAll('_','-'); const dueDiligenceTone = String(row.ddq_status || '').replaceAll('_','-'); const contractTone = String(row.contract_status || '').replaceAll('_','-'); %>
+          <tr>
+            <td><a href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= row.id %>"><strong><%= row.name %></strong><small><%= row.service_provided || 'Service not recorded' %></small></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/vendors/<%= row.id %>/inherent-risk"><span class="tprm-status<%= semanticStatusTones.has(inherentTone) ? ` tprm-status-${inherentTone}` : '' %>"><%= titleCase(row.inherent_status) %></span><small><%= titleCase(row.governed_tier, 'Tier pending') %></small></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/vendors/<%= row.id %>/due-diligence"><span class="tprm-status<%= semanticStatusTones.has(dueDiligenceTone) ? ` tprm-status-${dueDiligenceTone}` : '' %>"><%= titleCase(row.ddq_status) %></span><small><%= row.provider_contact_name || 'Provider contact unset' %></small></a></td>
+            <td><a href="/workspaces/<%= ws.id %>/vendors/<%= row.id %>/contract-review"><span class="tprm-status<%= semanticStatusTones.has(contractTone) ? ` tprm-status-${contractTone}` : '' %>"><%= titleCase(row.contract_status) %></span></a></td>
+            <td><strong><%= row.open_finding_count %> open</strong><small><%= row.blocking_finding_count %> decision-blocking</small></td>
+            <td><strong><%= row.nextAction.waitingOn %></strong><small><%= row.nextAction.owner %></small></td>
+            <td><a href="<%= row.nextAction.href %>"><strong><%= row.nextAction.label %></strong><small><%= dateOnly(row.nextAction.dueDate) || 'No due date' %></small></a></td>
+          </tr>
+        <% }) %>
+        <% if (!rows.length) { %>
+          <tr><td colspan="7"><div class="tprm-empty"><strong>No assessments started</strong><span>Add a third party to start inherent-risk tiering.</span></div></td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+<%- include('partials/footer') %>

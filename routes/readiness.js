@@ -6,16 +6,19 @@
 const ctlReads = require('../lib/control-reads');
 const { computeReadiness } = require('../lib/readiness');
 const { buildWorkspaceTruth } = require('../lib/grc-truth');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace } = deps;
+  const requireCertificationSupport = outcomeScope.requirePostGapService(
+    'Certification readiness is outside this gap-assessment-only engagement. Use Gap assessment and the controlled assessment report instead.');
 
-  app.get('/workspaces/:wsId/readiness', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/readiness', requireAuth, requireWorkspace, requireCertificationSupport, (req, res) => {
     const r = computeReadiness(req.workspace);
     res.render('readiness', { user: req.user, ws: req.workspace, r });
   });
 
-  app.get('/api/workspaces/:wsId/readiness', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/api/workspaces/:wsId/readiness', requireAuth, requireWorkspace, requireCertificationSupport, (req, res) => {
     res.json(computeReadiness(req.workspace));
   });
 
@@ -37,7 +40,7 @@ function register(app, deps) {
 
   // Audit-readiness blockers - concrete things the auditor will catch if you ignore them.
   // Distinct from /readiness which is a high-level percentage view.
-  app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/readiness/blockers', requireAuth, requireWorkspace, requireCertificationSupport, (req, res) => {
     const wsId = req.workspace.id;
     const blockers = [];
     const T = ctlReads.tables(db, wsId);

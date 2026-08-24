@@ -8,6 +8,15 @@
   .status-pill{display:inline-flex;align-items:center;border-radius:99px;padding:3px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:#eef1f5;color:#475467}.status-pill.published,.status-pill.approved{background:#e8f5ee;color:#157347}.status-pill.in_review{background:#fff4df;color:#8a5300}.status-pill.changes_requested{background:#fff0ef;color:#b42318}.hash{font-family:ui-monospace,SFMono-Regular,monospace;font-size:10px;color:var(--text-muted)}
   .legacy-strip{margin-top:18px;padding:16px 18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);display:flex;justify-content:space-between;align-items:center;gap:20px}.legacy-strip h3{margin:0 0 3px;font-size:14px}.legacy-strip p{margin:0;color:var(--text-muted);font-size:12px}
   @media(max-width:900px){.report-card{grid-template-columns:38px 1fr}.report-card p{grid-column:2}.report-audience{grid-column:2;border-left:0;border-top:1px solid var(--border);padding:10px 0 0}.assurance-stats{grid-template-columns:1fr 1fr}.assurance-stat:nth-child(3){border-left:0;border-top:1px solid var(--border)}.assurance-stat:nth-child(4){border-top:1px solid var(--border)}}
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .status-pill,
+    .hash
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head assurance-page-head">

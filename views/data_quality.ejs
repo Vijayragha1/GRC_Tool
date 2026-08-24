@@ -8,6 +8,31 @@
   .dq-issue{border:1px solid var(--border);border-radius:6px;background:var(--surface);margin-bottom:10px;overflow:hidden}.dq-issue-head{padding:15px 18px 14px;border-bottom:1px solid var(--border)}.dq-issue-meta{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:9px}.dq-issue h2{font-size:15px;line-height:1.3;margin:0}.dq-domain{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted)}.dq-severity{border:1px solid currentColor;border-radius:3px;padding:3px 6px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.075em;background:transparent}.dq-severity.critical{color:#b42318}.dq-severity.high{color:#b54708}.dq-severity.medium{color:#946200}.dq-severity.low{color:#475467}.dq-finding-grid{font-size:12px;line-height:1.5}.dq-finding-row{display:grid;grid-template-columns:118px minmax(0,1fr);border-bottom:1px solid var(--border)}.dq-finding-row:last-child{border-bottom:0}.dq-finding-label{padding:11px 12px 11px 18px;background:var(--bg-subtle);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.065em;color:var(--text-muted)}.dq-finding-value{padding:10px 18px;color:var(--text-secondary)}.dq-finding-value strong{color:var(--ink)}.dq-records{padding:13px 18px;border-top:1px solid var(--border)}.dq-records-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:9px}.dq-records-head span:first-child{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted)}.dq-records-head span:last-child{font-size:10px;color:var(--text-muted)}.dq-items{display:flex;gap:6px;flex-wrap:wrap;margin:0}.dq-item{font-size:10px;border:1px solid var(--border);border-radius:3px;padding:4px 7px;text-decoration:none;color:var(--text-secondary);background:var(--surface)}.dq-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 18px;border-top:1px solid var(--border);background:var(--bg-subtle)}.dq-count{font-size:10px;color:var(--text-muted)}
   .dq-aside{align-self:start;position:sticky;top:18px}.dq-aside .panel{margin-bottom:12px}.dq-gate{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px}.dq-gate:last-child{border-bottom:0}.dq-gate b{font-variant-numeric:tabular-nums}.dq-note{font-size:12px;line-height:1.55;color:var(--text-secondary);margin:0}.dq-empty{text-align:center;padding:46px 20px}.dq-empty h2{font-family:var(--font-display);margin:0 0 8px}
   @media(max-width:950px){.dq-layout{grid-template-columns:1fr}.dq-aside{position:static}.dq-stats{grid-template-columns:1fr 1fr}.dq-stat:first-child{grid-column:1/-1}.dq-verdict{text-align:left}.dq-filters{align-items:flex-start;flex-direction:column}.dq-finding-row{grid-template-columns:1fr}.dq-finding-label{padding-bottom:5px}.dq-finding-value{padding-top:4px}.dq-actions{align-items:flex-start;flex-direction:column}}
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    /* .dq-main is a grid item, so its automatic minimum is its content width.
+       That held the column at 524px on a 375px screen and the overflow was
+       clipped by .main rather than scrolled, so the right edge of every issue
+       card was simply unreachable. Releasing the minimum is only half of it:
+       the rows inside have to be able to wrap once the column can shrink. */
+    .dq-main, .dq-aside { min-width: 0; }
+    .dq-domains { max-width: 100%; min-width: 0; }
+    .dq-issue-meta, .dq-gate { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+    .dq-verdict span,
+    .dq-stat span,
+    .dq-domain,
+    .dq-severity,
+    .dq-finding-label,
+    .dq-records-head span:first-child,
+    .dq-records-head span:last-child,
+    .dq-item,
+    .dq-count
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head dq-page-head">
@@ -32,7 +57,7 @@
 </div>
 
 <div class="dq-layout">
-  <main>
+  <div class="dq-main">
     <div class="dq-filters">
       <div class="dq-domains">
         <a class="dq-filter <%= domain==='all'?'active':'' %>" href="?severity=<%= severity %>">All domains</a>
@@ -61,7 +86,7 @@
         <footer class="dq-actions"><span class="dq-count"><%= issue.count %> affected record<%= issue.count===1?'':'s' %> · <code><%= issue.code %></code></span><a class="btn btn-secondary btn-xs" href="<%= issue.href %>"><%= issue.cta %> →</a></footer>
       </article>
     <% }) %>
-  </main>
+  </div>
 
   <aside class="dq-aside">
     <div class="panel"><div class="panel-head"><h2>Readiness evidence</h2></div><div class="panel-pad">

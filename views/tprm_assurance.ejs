@@ -1,0 +1,62 @@
+<%- include('partials/header', { title: 'Third-party risk assurance', user, ws, active }) %>
+<link rel="stylesheet" href="/tprm.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-action:var(--text);--tprm-action-hover:var(--text-secondary);--tprm-action-contrast:var(--surface);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--border-strong);--tprm-neutral-status:var(--text-secondary);--tprm-neutral-status-bg:var(--bg-muted);--tprm-neutral-status-border:var(--border-strong);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border)">
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Read-only assurance · <%= ws.client_name %> · <%= portfolio.active.length %> active records</div>
+    <h1>Third-party risk assurance</h1>
+    <p>Governed register, assessment coverage, decisions, material exceptions and audit lineage. Provider credentials and edit actions are excluded.</p>
+  </div>
+  <div class="tprm-head-actions"><button class="btn btn-primary" type="button" onclick="window.print()">Print evidence view</button><a class="btn" href="/workspaces/<%= ws.id %>/tprm/reports">Reports</a></div>
+</header>
+<%- include('partials/tprm_metric_cards', { portfolio, basePath: `/workspaces/${ws.id}/tprm` }) %>
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Governance</div><h2>Method and decision rights</h2></div></div>
+  <div class="tprm-section-body tprm-record-list">
+    <div class="tprm-record-row"><span><strong>Active methodology</strong></span><span><%= methodology ? methodology.name : 'Not established' %></span></div>
+    <div class="tprm-record-row"><span><strong>Method version</strong></span><span><%= methodology ? `v${methodology.version}` : '-' %></span></div>
+    <div class="tprm-record-row"><span><strong>Publication state</strong></span><span><%= methodology ? titleCase(methodology.status) : 'Missing' %></span></div>
+    <div class="tprm-record-row"><span><strong>Definition identity</strong></span><span><%= methodology && methodology.content_hash ? methodology.content_hash.slice(0,16) : 'Legacy or missing' %></span></div>
+    <div class="tprm-record-row"><span><strong>Questionnaire and evidence review</strong></span><span>Consultancy</span></div>
+    <div class="tprm-record-row"><span><strong>Recommendation issuance</strong></span><span>Authorized senior reviewer</span></div>
+    <div class="tprm-record-row"><span><strong>Final onboarding decision</strong></span><span>Client decision authority</span></div>
+    <div class="tprm-record-row"><span><strong>Residual-risk acceptance</strong></span><span>Client decision authority</span></div>
+  </div>
+</section>
+<section class="tprm-section" id="framework-evidence">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Framework traceability</div><h2>Operational evidence coverage</h2><p>Supporting evidence only. This is not a certification or conformity conclusion.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Framework</th><th>Reference</th><th>Control</th><th>Coverage</th><th>Sources</th></tr></thead><tbody>
+    <% frameworkEvidence.frameworks.iso27001.forEach(item => { %><tr><td>ISO/IEC 27001:2022</td><td><strong><%= item.ref %></strong></td><td><%= item.title %></td><td><strong><%= item.percentage %>%</strong><small><%= titleCase(item.status) %></small></td><td><%= item.evidenceCount %> traceable record<%= item.evidenceCount === 1 ? '' : 's' %></td></tr><% }) %>
+    <% frameworkEvidence.frameworks.nistCsf.forEach(item => { %><tr><td>NIST CSF 2.0 supply chain</td><td><strong><%= item.ref %></strong></td><td><%= item.title %></td><td><strong><%= item.percentage %>%</strong><small><%= titleCase(item.status) %></small></td><td><%= item.evidenceCount %> traceable record<%= item.evidenceCount === 1 ? '' : 's' %></td></tr><% }) %>
+  </tbody></table></div>
+</section>
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Portfolio traceability</div><h2>Assurance register</h2><p>Records are scoped to this client and service relationship.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Third party</th><th>Service</th><th>Tier</th><th>Assessment gates</th><th>Consultancy recommendation</th><th>Client decision</th><th>Residual risk</th><th>Next review</th></tr></thead><tbody>
+    <% portfolio.active.forEach(row => { %><tr><td><strong><%= row.name %></strong></td><td><%= row.service_provided || 'Not recorded' %></td><td><%= titleCase(row.governed_tier, 'Pending') %></td><td><strong><%= row.inherent_status === 'approved' && row.ddq_status === 'complete' && row.contract_status === 'complete' ? 'Complete' : 'Open' %></strong><small><%= titleCase(row.stage_label) %></small></td><td><%= titleCase(row.recommendation, 'Not issued') %></td><td><%= titleCase(row.client_decision, 'Not recorded') %></td><td><%= titleCase(row.residual_risk_band, 'Not concluded') %></td><td><%= dateOnly(row.next_review_date) || 'Not scheduled' %></td></tr><% }) %>
+    <% if (!portfolio.active.length) { %><tr><td colspan="8"><div class="tprm-empty"><strong>No active third parties</strong></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Material exceptions</div><h2>High exposure and overdue obligations</h2></div></div>
+  <%- include('partials/tprm_queue', { queueRows: portfolio.queue.filter(row => ['critical','high'].includes(row.nextAction.priority)).slice(0,20), showClient: false, titleCase, dateOnly }) %>
+</section>
+
+<section class="tprm-section" id="evidence-disclosures">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Client disclosure boundary</div><h2>Evidence release register</h2><p>Allowlisted client-safe metadata only. Withdrawals and expiries remain auditable; storage locations are excluded.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Third party</th><th>Label and purpose</th><th>Category</th><th>Cycle</th><th>Released</th><th>Access</th><th>Status</th></tr></thead><tbody>
+    <% evidenceDisclosures.forEach(record => { const releaseExpired = record.release_expires_at && record.release_expires_at < portfolio.today; %><tr><td><a href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= record.supplier_id %>#client-evidence"><strong><%= record.third_party_name %></strong></a></td><td><%= record.client_label %><small><%= record.client_description || 'Purpose not recorded' %></small></td><td><%= titleCase(record.source_category) %><small><%= record.question_id || 'Relationship evidence' %></small></td><td>#<%= record.cycle_id %></td><td><%= record.released_by_name || 'Consultancy user' %><small><%= dateOnly(record.released_at) %><%= record.release_expires_at ? ` · access expires ${dateOnly(record.release_expires_at)}` : ' · no access expiry' %></small></td><td><%= record.allow_download ? 'Metadata + download' : 'Metadata only' %></td><td><strong><%= record.withdrawal_id ? 'Withdrawn' : (releaseExpired ? 'Expired' : 'Released') %></strong><% if (record.withdrawal_id) { %><small><%= record.withdrawal_reason %> · <%= dateOnly(record.withdrawn_at) %></small><% } %></td></tr><% }) %>
+    <% if (!evidenceDisclosures.length) { %><tr><td colspan="7"><div class="tprm-empty"><strong>No client evidence releases</strong><span>Client evidence remains deny-by-default.</span></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Audit lineage</div><h2>Recent governed events</h2></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Action</th><th>Entity</th><th>Actor</th><th>Date</th></tr></thead><tbody>
+    <% auditEvents.forEach(event => { %><tr><td><strong><%= titleCase(event.action) %></strong></td><td><%= event.entity_type %></td><td><%= event.actor_name || 'System' %></td><td><%= dateOnly(event.created_at) %></td></tr><% }) %>
+    <% if (!auditEvents.length) { %><tr><td colspan="4"><div class="tprm-empty"><strong>No third-party risk audit events recorded</strong></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+</div>
+<%- include('partials/footer') %>

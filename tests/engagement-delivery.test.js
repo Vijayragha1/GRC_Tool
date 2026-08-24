@@ -37,9 +37,10 @@ test('adaptive plan seeds flexible phases, milestones and deliverables once', as
   assert.doesNotMatch(page.text, /12-week client plan/);
   const plan = db.prepare('SELECT * FROM engagement_delivery_plans WHERE workspace_id=?').get(workspaceId);
   assert.ok(plan);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_phases WHERE plan_id=?').get(plan.id).c, 11);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=?').get(plan.id).c, 27);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_deliverables WHERE plan_id=?').get(plan.id).c, 27);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_phases WHERE plan_id=?').get(plan.id).c, 12);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=?').get(plan.id).c, 31);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_deliverables WHERE plan_id=?').get(plan.id).c, 29);
+  assert.ok(db.prepare(`SELECT 1 FROM engagement_delivery_phases WHERE plan_id=? AND phase_key='gap_assessment'`).get(plan.id));
   const evidencePeriod = db.prepare(`SELECT * FROM engagement_delivery_milestones
     WHERE plan_id=? AND milestone_key='w12-evidence'`).get(plan.id);
   const firstAssurance = db.prepare(`SELECT * FROM engagement_delivery_milestones
@@ -72,12 +73,16 @@ test('timeline and gates are projections and the legacy roadmap redirects', asyn
   assert.equal(roadmap.location, `/workspaces/${workspaceId}/engagement-plan?view=timeline`);
 });
 
-test('ISO 27001 client setup remains discoverable after scope confirmation', async () => {
+test('ISO 27001 intake remains discoverable after scope confirmation', async () => {
   db.prepare(`UPDATE workspaces SET frameworks='["iso27001"]',scope_confirmed_at=datetime('now'),stage='implementation' WHERE id=?`)
     .run(workspaceId);
   const page = await client.get(`/workspaces/${workspaceId}/intake`);
   assert.equal(page.status, 200);
-  assert.match(page.text, new RegExp(`href="/workspaces/${workspaceId}/intake"[^>]*>\\s*<span class="nav-subitem-text">Client setup</span>`));
+  // This entry is now labelled for the programme it belongs to. "Client setup"
+  // is the programme-agnostic hub at /setup, which every client gets; the
+  // ISO 27001 questionnaire sits beside it and stays reachable after sign-off.
+  assert.match(page.text, new RegExp(`href="/workspaces/${workspaceId}/intake"[^>]*>\\s*<span class="nav-subitem-text">ISO 27001 intake</span>`));
+  assert.match(page.text, new RegExp(`href="/workspaces/${workspaceId}/setup"[^>]*>\\s*<span class="nav-subitem-text">Client setup</span>`));
 });
 
 test('incident actions stay on the incident page when no Referer header is supplied', async () => {
@@ -206,7 +211,7 @@ test('approved baselines are immutable snapshots with hashes', async () => {
   const baseline = db.prepare(`SELECT * FROM engagement_delivery_baselines b JOIN engagement_delivery_plans p ON p.id=b.plan_id WHERE p.workspace_id=?`).get(workspaceId);
   assert.equal(baseline.version_number, 1);
   assert.equal(baseline.snapshot_hash.length, 64);
-  assert.match(baseline.snapshot_json, /Adaptive Plan Client|ISO 27001 adaptive delivery plan/);
+  assert.match(baseline.snapshot_json, /Adaptive Plan Client|ISO 27001 certification support delivery plan/);
 });
 
 test('the shared deliverable state machine rejects evidence-free submission', async () => {
@@ -480,4 +485,7 @@ test('formal gap-assessment outputs and independent pass completion require deci
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM consultant_workpapers w
     INNER JOIN consulting_engagements e ON e.id=w.engagement_id
     WHERE e.workspace_id=? AND w.status='frozen'`).get(workspaceId).c, 118);
+  assert.equal(db.prepare(`SELECT engagement_type FROM consulting_engagements
+    WHERE workspace_id=? ORDER BY id LIMIT 1`).get(workspaceId).engagement_type, 'implementation',
+  'materializing a gap assessment must not shorten a full certification-support contract');
 });

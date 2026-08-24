@@ -1,0 +1,31 @@
+<%- include('partials/header', { title: statusCode === 409 ? 'DPDPA record changed' : 'DPDPA action blocked', user, ws, active: active || 'dpdpa' }) %>
+<%- include('dpdpa_styles') %>
+
+<div class="dp">
+  <section class="panel panel-pad dp-issue" role="alert" aria-labelledby="dpIssueTitle">
+    <div class="eyebrow"><%= statusCode === 409 ? 'Version conflict · nothing was overwritten' : `Readiness gate · ${statusCode}` %></div>
+    <h1 id="dpIssueTitle"><%= title %></h1>
+    <p><%= message %></p>
+
+    <% if (details && details.length) { %>
+      <div class="callout" style="margin-top:16px;">
+        <div class="callout-title"><%= conflict ? 'The stored version was preserved' : 'Resolve these checks and try again' %></div>
+        <ul style="margin:6px 0 0;padding-left:17px;line-height:1.6;">
+          <% details.forEach(detail => { %><li><%= detail %></li><% }) %>
+        </ul>
+      </div>
+    <% } else if (conflict) { %>
+      <div class="callout" style="margin-top:16px;">
+        <div class="callout-title">Your values were not applied</div>
+        Another user or session saved a newer version of this record. Reload it, compare the current conclusion against what you intended, and re-enter the change.
+      </div>
+    <% } %>
+
+    <div class="row" style="margin-top:18px;">
+      <a class="btn btn-primary" href="<%= backUrl %>"><%= backLabel %></a>
+      <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/dpdpa">DPDPA overview</a>
+    </div>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

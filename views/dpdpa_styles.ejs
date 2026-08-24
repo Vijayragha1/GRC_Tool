@@ -1,0 +1,4 @@
+<%# Module stylesheet. Previously ~110 lines of inline CSS re-sent on every
+    DPDPA page render, carrying a private palette that matched nothing else in
+    the product. Now a fingerprinted file built on the shared app.css tokens. %>
+<link rel="stylesheet" href="/dpdpa.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">

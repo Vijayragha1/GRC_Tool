@@ -201,7 +201,7 @@
               <details style="position:relative;">
                 <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Edit</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= p.id %>/rename"
-                      style="position:absolute;right:0;top:100%;width:300px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);margin-top:4px;">
+                      class="popover-panel" style="position:absolute;right:0;top:100%;--popover-w:300px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;z-index:30;box-shadow:var(--shadow-md);margin-top:4px;">
                   <input type="text" name="label" value="<%= p.label || '' %>" class="input text-base" placeholder="Label" style="margin-bottom:6px;">
                   <textarea name="notes" rows="2" class="textarea text-base" placeholder="Notes" style="margin-bottom:6px;"><%= p.notes || '' %></textarea>
                   <button class="btn btn-primary btn-xs" style="width:100%;">Save</button>

@@ -7,6 +7,7 @@ const email = require('../lib/email');
 const { computeNeedsAttention } = require('../lib/next-steps');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 const delivery = require('../lib/engagement-delivery');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction } = deps;
@@ -45,7 +46,9 @@ function register(app, deps) {
   // NCs, cert events, doc reviews, treatment actions, risk-acceptance expiries.
   app.get('/workspaces/:wsId/calendar', requireAuth, requireWorkspace, (req, res) => {
     const wsId = req.workspace.id;
-    const deliveryPlan = delivery.ensurePlan(db, req.workspace, req.user.id);
+    const deliveryPlan = outcomeScope.hasIso27001(req.workspace)
+      ? delivery.ensurePlan(db, req.workspace, req.user.id)
+      : null;
     const monthStr = req.query.month && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month
                     : todayFor(req.workspace).slice(0,7);
     const [yr, mo] = monthStr.split('-').map(n => parseInt(n, 10));
@@ -69,19 +72,32 @@ function register(app, deps) {
       .forEach(m => add(m.meeting_date, 'mrm', `MRM`, `/workspaces/${wsId}/mrms/${m.id}`, 'low'));
     db.prepare(`SELECT id, title, due_date, status FROM nonconformities WHERE workspace_id=? AND due_date IS NOT NULL`).all(wsId)
       .forEach(n => add(n.due_date, 'nc', n.title, `/workspaces/${wsId}/nonconformities/${n.id}`, n.status === 'closed' ? 'low' : 'high'));
-    db.prepare(`SELECT id, event_type, planned_date, status FROM cert_cycle_events WHERE workspace_id=? AND planned_date IS NOT NULL`).all(wsId)
-      .forEach(e => add(e.planned_date, 'cert', e.event_type.replace(/_/g, ' '), `/workspaces/${wsId}/cert-cycle`, 'medium'));
+    if (outcomeScope.isCertificationSupport(req.workspace)) {
+      db.prepare(`SELECT id, event_type, planned_date, status FROM cert_cycle_events WHERE workspace_id=? AND planned_date IS NOT NULL`).all(wsId)
+        .forEach(e => add(e.planned_date, 'cert', e.event_type.replace(/_/g, ' '), `/workspaces/${wsId}/cert-cycle`, 'medium'));
+    }
     db.prepare(`SELECT id, name, next_review_date FROM generated_docs WHERE workspace_id=? AND next_review_date IS NOT NULL`).all(wsId)
       .forEach(d => add(d.next_review_date, 'doc-review', `Review: ${d.name}`, `/workspaces/${wsId}/documents/${d.id}`, 'medium'));
     db.prepare(`SELECT rta.id, rta.title, rta.due_date, rta.status, rta.risk_id FROM risk_treatment_actions rta WHERE rta.workspace_id=? AND rta.due_date IS NOT NULL`).all(wsId)
       .forEach(a => add(a.due_date, 'treatment', a.title, `/workspaces/${wsId}/risks/${a.risk_id}`, a.status === 'done' ? 'low' : 'medium'));
     db.prepare(`SELECT a.id, a.expires_at, a.risk_id, r.title FROM risk_acceptances a INNER JOIN risks r ON r.id=a.risk_id WHERE a.workspace_id=? AND a.revoked_at IS NULL AND a.expires_at IS NOT NULL`).all(wsId)
       .forEach(a => add(a.expires_at, 'risk-accept', `R-${a.risk_id} acceptance expires`, `/workspaces/${wsId}/risks/${a.risk_id}`, 'medium'));
-    db.prepare(`SELECT id,title,COALESCE(forecast_end_date,planned_end_date) due,status FROM engagement_delivery_milestones
-      WHERE plan_id=? AND COALESCE(forecast_end_date,planned_end_date) IS NOT NULL`).all(deliveryPlan.id)
-      .forEach(m => add(m.due, 'plan-milestone', m.title, `/workspaces/${wsId}/engagement-plan?view=timeline`, m.status === 'blocked' ? 'high' : 'medium'));
-    db.prepare(`SELECT id,title,due_date,status FROM engagement_delivery_deliverables WHERE plan_id=? AND due_date IS NOT NULL AND status NOT IN ('superseded')`).all(deliveryPlan.id)
-      .forEach(d => add(d.due_date, 'deliverable', d.title, `/workspaces/${wsId}/engagement-plan`, ['changes_requested','rejected'].includes(d.status) ? 'high' : 'medium'));
+    if (deliveryPlan) {
+      const phaseScope = outcomeScope.phaseSqlForWorkspace(req.workspace, 'ph');
+      db.prepare(`SELECT m.id,m.title,COALESCE(m.forecast_end_date,m.planned_end_date) due,m.status
+        FROM engagement_delivery_milestones m
+        JOIN engagement_delivery_phases ph ON ph.id=m.phase_id
+        WHERE m.plan_id=? AND ${phaseScope}
+          AND COALESCE(m.forecast_end_date,m.planned_end_date) IS NOT NULL`).all(deliveryPlan.id)
+        .forEach(m => add(m.due, 'plan-milestone', m.title, `/workspaces/${wsId}/engagement-plan?view=timeline`, m.status === 'blocked' ? 'high' : 'medium'));
+      db.prepare(`SELECT d.id,d.title,d.due_date,d.status
+        FROM engagement_delivery_deliverables d
+        JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
+        JOIN engagement_delivery_phases ph ON ph.id=m.phase_id
+        WHERE d.plan_id=? AND ${phaseScope}
+          AND d.due_date IS NOT NULL AND d.status NOT IN ('superseded')`).all(deliveryPlan.id)
+        .forEach(d => add(d.due_date, 'deliverable', d.title, `/workspaces/${wsId}/engagement-plan`, ['changes_requested','rejected'].includes(d.status) ? 'high' : 'medium'));
+    }
     db.prepare(`SELECT id,title,due_date,status FROM tasks WHERE workspace_id=? AND due_date IS NOT NULL`).all(wsId)
       .forEach(t => add(t.due_date, 'task', t.title, `/workspaces/${wsId}/tasks`, t.status === 'blocked' ? 'high' : 'low'));
 

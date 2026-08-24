@@ -4,6 +4,7 @@
 // approvals, e-signatures, and the magic-link approval portal.
 
 const path = require('path');
+const rbac = require('../lib/rbac');
 const fs = require('fs');
 const crypto = require('crypto');
 const MarkdownIt = require('markdown-it');
@@ -13,6 +14,8 @@ const email = require('../lib/email');
 const docLinks = require('../lib/doc-links');
 const ctlReads = require('../lib/control-reads');
 const docApprovals = require('../lib/doc-approvals');
+const documentHtml = require('../lib/document-html');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 const { looksLikeMarkdown } = require('../lib/docx-gen');
 const { snapshotDocVersion, listVersions, listApprovers, listSignatures, verifyVersionSignatures } = require('../lib/doc-versions');
 const { paginate, pageHref } = require('../lib/paginate');
@@ -21,8 +24,52 @@ const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray } = requir
 const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: true });
 
 function register(app, deps) {
+  // AUTHZ-005: canonical internal-approver eligibility. Mirrors the candidate
+  // list the picker offers (workspace member OR active firm user of the
+  // workspace's owning firm) and additionally requires document.review, so a
+  // hand-crafted POST cannot insert someone the UI would never show.
+  function approverEligibility(userId, ws) {
+    const u = db.prepare('SELECT id, name, active, user_type, firm_id, firm_role FROM users WHERE id = ?').get(userId);
+    if (!u) return { ok: false, reason: 'that user does not exist.' };
+    if (!u.active) return { ok: false, reason: 'that account is deactivated.' };
+
+    const membership = db.prepare(
+      'SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?'
+    ).get(ws.id, userId);
+    const isFirmOfWorkspace = u.user_type === 'firm' && Number(u.firm_id) === Number(ws.firm_id);
+
+    if (!membership && !isFirmOfWorkspace) {
+      return { ok: false, reason: 'that user is not part of this engagement.' };
+    }
+
+    // Permission comes from the exact membership for clients. Firm Managers
+    // retain their firm-wide permission; other firm staff use an explicit
+    // workspace membership role when present, otherwise their firm role.
+    const role = u.user_type === 'client'
+      ? membership.role
+      : (rbac.isManager(u.firm_role) ? 'manager' : (membership ? membership.role : u.firm_role));
+    const overrides = db.prepare(`SELECT permission, granted FROM workspace_role_overrides
+      WHERE workspace_id=? AND user_id=?`).all(ws.id, userId);
+    const perms = rbac.effectivePermissions(role, overrides);
+    if (!rbac.hasPermission(perms, 'document.review')) {
+      return { ok: false, reason: 'that user cannot review documents.' };
+    }
+    return { ok: true };
+  }
+
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           upload, resolveUploadPath, isFirmUser, diffObjects } = deps;
+  const requireDocumentImplementation = outcomeScope.requirePostGapService(
+    'Policy and document implementation is outside this gap-assessment-only engagement. Existing client documents remain available as assessment inputs.');
+  function rejectGapOnlyExternalApproval(res, row) {
+    const workspace = row && db.prepare('SELECT * FROM workspaces WHERE id=?').get(row.workspace_id);
+    if (!outcomeScope.isGapAssessmentOnly(workspace)) return false;
+    res.status(409).render('approve_error', {
+      title: 'Approval outside engagement scope',
+      message: 'Document implementation and approval are not included in this gap-assessment-only engagement. Contact the engagement owner if the contracted service has changed.'
+    });
+    return true;
+  }
 
   // ==================== DOCUMENTS ====================
   function substitutePlaceholders(content, vars) {
@@ -41,7 +88,7 @@ function register(app, deps) {
     const params = tagFilter ? [req.workspace.id, tagFilter] : [req.workspace.id];
 
     const pgDocs = paginate(db, req, {
-      count: `SELECT COUNT(*) c FROM generated_docs d WHERE d.workspace_id = ? ${docFilterClause}`,
+      count: `SELECT COUNT(*) c FROM generated_docs d WHERE d.workspace_id = ? AND d.status != 'withdrawn' ${docFilterClause}`,
       rows: `SELECT d.*, u.name AS creator, t.name AS template_name,
       (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc WHERE dc.document_id = d.id) AS tag_count,
       (CASE
@@ -53,7 +100,7 @@ function register(app, deps) {
       FROM generated_docs d
       LEFT JOIN users u ON u.id = d.created_by
       LEFT JOIN doc_templates t ON t.id = d.template_id
-      WHERE d.workspace_id = ? ${docFilterClause}
+      WHERE d.workspace_id = ? AND d.status != 'withdrawn' ${docFilterClause}
       ORDER BY d.updated_at DESC`,
       params, perPage: 50,
     });
@@ -76,7 +123,7 @@ function register(app, deps) {
       FROM ${docLinks.docControlsExpr('iso27001')} dc
       INNER JOIN generated_docs d ON d.id = dc.document_id
       INNER JOIN iso_items i ON i.id = dc.iso_item_id
-      WHERE d.workspace_id = ? ORDER BY i.sort_order`).all(req.workspace.id);
+      WHERE d.workspace_id = ? AND d.status != 'withdrawn' ORDER BY i.sort_order`).all(req.workspace.id);
 
     const templates = db.prepare(`SELECT * FROM doc_templates
       WHERE is_system = 1 OR firm_id = ? ORDER BY category, name`).all(req.workspace.firm_id);
@@ -102,14 +149,14 @@ function register(app, deps) {
 
   const TIER_RANK = { mandatory: 0, expected: 1, recommended: 2 };
 
-  app.get('/workspaces/:wsId/templates', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  app.get('/workspaces/:wsId/templates', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     const templates = db.prepare(`SELECT id, name, category, description, tier, controls, clauses
       FROM doc_templates
       WHERE is_system=1 OR firm_id=?
       ORDER BY name`).all(req.workspace.firm_id);
 
     const adoptedRows = db.prepare(`SELECT template_id, MIN(id) AS doc_id, COUNT(*) AS n
-      FROM generated_docs WHERE workspace_id=? AND template_id IS NOT NULL
+      FROM generated_docs WHERE workspace_id=? AND template_id IS NOT NULL AND status!='withdrawn'
       GROUP BY template_id`).all(req.workspace.id);
     const adoptedByTpl = {};
     adoptedRows.forEach(r => { adoptedByTpl[r.template_id] = r; });
@@ -140,7 +187,7 @@ function register(app, deps) {
     });
   });
 
-  app.get('/workspaces/:wsId/templates/:id(\\d+)', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  app.get('/workspaces/:wsId/templates/:id(\\d+)', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     const tpl = db.prepare(`SELECT * FROM doc_templates WHERE id=? AND (is_system=1 OR firm_id=?)`)
       .get(req.params.id, req.workspace.firm_id);
     if (!tpl) return res.status(404).render('error', { user: req.user, message: 'Template not found.' });
@@ -154,7 +201,7 @@ function register(app, deps) {
         .all(...refs).forEach(r => { isoLookup[r.id] = r.title; });
     }
     const existing = db.prepare(`SELECT id FROM generated_docs
-      WHERE workspace_id=? AND template_id=? ORDER BY id DESC LIMIT 1`)
+      WHERE workspace_id=? AND template_id=? AND status!='withdrawn' ORDER BY id DESC LIMIT 1`)
       .get(req.workspace.id, tpl.id);
 
     // Render the template body with workspace context substituted, then pass the
@@ -169,7 +216,7 @@ function register(app, deps) {
       .replace(/{{approval_authority}}/g, 'Top Management')
       .replace(/{{review_period}}/g, 'Annual')
       .replace(/{{industry}}/g, req.workspace.industry || '');
-    const previewHtml = mdRenderer.render(sample);
+    const previewHtml = documentHtml.sanitizeDocumentHtml(mdRenderer.render(sample));
 
     res.render('template_detail', {
       user: req.user, ws: req.workspace,
@@ -177,12 +224,12 @@ function register(app, deps) {
     });
   });
 
-  app.post('/workspaces/:wsId/templates/adopt-mandatory', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  app.post('/workspaces/:wsId/templates/adopt-mandatory', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     // Bulk-adopt every mandatory template that isn't already in this workspace.
     // Stops short of expected/recommended so the consultant isn't drowned in
     // 74 documents to review.
     const adopted = db.prepare(`SELECT template_id FROM generated_docs
-      WHERE workspace_id=? AND template_id IS NOT NULL`).all(req.workspace.id);
+      WHERE workspace_id=? AND template_id IS NOT NULL AND status!='withdrawn'`).all(req.workspace.id);
     const adoptedSet = new Set(adopted.map(r => r.template_id));
     const toAdopt = db.prepare(`SELECT * FROM doc_templates
       WHERE is_system=1 AND tier='mandatory' ORDER BY name`).all()
@@ -204,7 +251,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/templates`, msg));
   });
 
-  app.post('/workspaces/:wsId/templates/:id(\\d+)/adopt', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  app.post('/workspaces/:wsId/templates/:id(\\d+)/adopt', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     const tpl = db.prepare(`SELECT * FROM doc_templates WHERE id=? AND (is_system=1 OR firm_id=?)`)
       .get(req.params.id, req.workspace.firm_id);
     if (!tpl) return res.status(404).render('error', { user: req.user, message: 'Template not found.' });
@@ -213,7 +260,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/documents/${r.docId}`, `${tpl.name} adopted${linkSuffix}`));
   });
 
-  app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/from-template', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     const { template_id, document_owner, approval_authority, review_period } = req.body;
     const tpl = db.prepare('SELECT * FROM doc_templates WHERE id = ? AND (is_system=1 OR firm_id=?)').get(template_id, req.workspace.firm_id);
     if (!tpl) return redirectBack(req, res);
@@ -243,7 +290,7 @@ function register(app, deps) {
       review_period: (overrides && overrides.review_period) || 'Annual',
       industry: workspace.industry || ''
     };
-    const content = substitutePlaceholders(tpl.content, vars);
+    const content = documentHtml.sanitizeDocumentHtml(substitutePlaceholders(tpl.content, vars));
     const encContent = enc.encryptIfNeeded(content, workspace.id, !!workspace.encryption_enabled);
     const docId = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, template_id, name, category, content, created_by)
                            VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -274,10 +321,10 @@ function register(app, deps) {
     return { docId, linkedControls };
   }
 
-  app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     const { name, category } = req.body;
     if (!name) return redirectBack(req, res);
-    const initial = '# ' + name + '\n\n';
+    const initial = documentHtml.sanitizeDocumentHtml('# ' + name + '\n\n');
     const id = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, name, category, content, created_by)
                            VALUES (?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, req.entityScopeId || null, name, category || 'policy',
@@ -291,7 +338,7 @@ function register(app, deps) {
 
   // Upload an existing client policy/procedure (DOCX, PDF, MD, TXT). Converts to editable markdown
   // and preserves the original file as the approved source-of-truth attachment.
-  app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, requirePermission('document.create'), upload.single('file'), async (req, res) => {
+  app.post('/workspaces/:wsId/documents/upload', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), upload.single('file'), async (req, res) => {
     if (!req.file) return redirectBack(req, res);
     const { name, category } = req.body;
     const ext = path.extname(req.file.originalname).toLowerCase();
@@ -338,7 +385,7 @@ function register(app, deps) {
     const docName = (name && name.trim()) || req.file.originalname.replace(/\.[^.]+$/, '');
     const cat = category || 'policy';
     const heading = `<h1>${docName.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</h1>\n<p><em>Imported from: ${req.file.originalname.replace(/&/g,'&amp;').replace(/</g,'&lt;')} (sha256 ${sha.slice(0,12)}…)</em></p>\n${conversionNote}<hr>\n`;
-    const content = heading + bodyHtml;
+    const content = documentHtml.sanitizeDocumentHtml(heading + bodyHtml);
     const encContent = enc.encryptIfNeeded(content, req.workspace.id, !!req.workspace.encryption_enabled);
 
     const id = db.prepare(`INSERT INTO generated_docs
@@ -373,9 +420,15 @@ function register(app, deps) {
     let plainContent = enc.decryptIfNeeded(docRaw.content, req.workspace.id);
     // Lazy migration: legacy markdown -> HTML so the rich editor can render it natively.
     if (looksLikeMarkdown(plainContent)) {
-      plainContent = mdRenderer.render(plainContent);
-      const enc2 = enc.encryptIfNeeded(plainContent, req.workspace.id, !!req.workspace.encryption_enabled);
-      db.prepare('UPDATE generated_docs SET content=? WHERE id=?').run(enc2, docRaw.id);
+      plainContent = documentHtml.sanitizeDocumentHtml(mdRenderer.render(plainContent));
+      // Historical/locked content may already be signed. Render it safely but
+      // never rewrite those governed bytes in place.
+      if (!docRaw.locked) {
+        const enc2 = enc.encryptIfNeeded(plainContent, req.workspace.id, !!req.workspace.encryption_enabled);
+        db.prepare('UPDATE generated_docs SET content=? WHERE id=?').run(enc2, docRaw.id);
+      }
+    } else {
+      plainContent = documentHtml.sanitizeDocumentHtml(plainContent);
     }
     const doc = { ...docRaw, content: plainContent };
     const comments = db.prepare(`SELECT c.*, u.name AS author FROM comments c
@@ -396,7 +449,8 @@ function register(app, deps) {
     const wsUsers = db.prepare(`SELECT DISTINCT u.id, u.name, u.email FROM users u
       LEFT JOIN workspace_members m ON m.user_id=u.id
       WHERE (m.workspace_id=? OR (u.firm_id=? AND u.user_type='firm' AND u.active=1))
-      ORDER BY u.name`).all(req.workspace.id, req.workspace.firm_id);
+      ORDER BY u.name`).all(req.workspace.id, req.workspace.firm_id)
+      .filter(u => approverEligibility(u.id, req.workspace).ok);
 
     // Linked Annex A controls + clauses (Phase A: doc <-> control bidirectional mapping).
     // drl-native (document_controls demolished); link_id = drl.id.
@@ -477,7 +531,7 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${req.params.isoId}`);
   });
 
-  app.post('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.edit'), (req, res) => {
     const before = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!before) return redirectBack(req, res);
     if (before.locked) return res.status(400).render('error', { user: req.user, message: 'Document is locked. Open a new version to edit.' });
@@ -487,7 +541,8 @@ function register(app, deps) {
     if (name !== undefined) { sets.push('name=?'); vals.push(name); }
     if (content !== undefined) {
       sets.push('content=?');
-      vals.push(enc.encryptIfNeeded(content, req.workspace.id, !!req.workspace.encryption_enabled));
+      const safeContent = documentHtml.sanitizeDocumentHtml(content);
+      vals.push(enc.encryptIfNeeded(safeContent, req.workspace.id, !!req.workspace.encryption_enabled));
     }
     // Status changes only allowed via dedicated workflow endpoints; keep this for legacy autosave.
     sets.push('updated_at=CURRENT_TIMESTAMP');
@@ -513,7 +568,9 @@ function register(app, deps) {
       .get(req.params.id, req.workspace.id);
     if (!docRaw) return res.status(404).send('Not found');
     let plainContent = enc.decryptIfNeeded(docRaw.content, req.workspace.id);
-    if (looksLikeMarkdown(plainContent)) plainContent = mdRenderer.render(plainContent);
+    plainContent = documentHtml.renderDocumentHtml(plainContent, {
+      isMarkdown: looksLikeMarkdown(plainContent), markdownRenderer: mdRenderer
+    });
     const doc = { ...docRaw, content: plainContent };
     res.render('document_print', { doc, ws: req.workspace });
   });
@@ -527,16 +584,47 @@ function register(app, deps) {
     res.send(enc.decryptIfNeeded(doc.content, req.workspace.id));
   });
 
-  app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, requirePermission('document.delete'), (req, res) => {
-    db.prepare('DELETE FROM generated_docs WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
+  app.post('/workspaces/:wsId/documents/:id/delete', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.delete'), (req, res) => {
+    const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?')
+      .get(req.params.id, req.workspace.id);
+    if (!doc) return res.status(404).send('Not found');
+    if (doc.status === 'withdrawn') return res.redirect('/workspaces/' + req.workspace.id + '/documents');
+    const reason = String(req.body.reason || '').trim();
+    if (!reason) {
+      return res.status(422).render('error', {
+        user: req.user,
+        message: 'Explain why this controlled document is being withdrawn. The reason becomes part of its audit history.'
+      });
+    }
+    if (reason.length > 2000) {
+      return res.status(422).render('error', { user: req.user, message: 'Withdrawal reason must be 2,000 characters or fewer.' });
+    }
+    const history = {
+      versions: db.prepare('SELECT COUNT(*) c FROM doc_versions WHERE document_id=?').get(doc.id).c,
+      internal_approvers: db.prepare('SELECT COUNT(*) c FROM doc_approvers WHERE document_id=?').get(doc.id).c,
+      external_approvers: db.prepare('SELECT COUNT(*) c FROM external_approvers WHERE document_id=?').get(doc.id).c,
+      signatures: db.prepare('SELECT COUNT(*) c FROM doc_signatures WHERE document_id=?').get(doc.id).c
+    };
+    db.transaction(() => {
+      const updated = db.prepare(`UPDATE generated_docs
+        SET status='withdrawn', locked=1, withdrawn_at=CURRENT_TIMESTAMP,
+            withdrawn_by=?, withdrawal_reason=?, updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND workspace_id=? AND status!='withdrawn'`)
+        .run(req.user.id, reason, doc.id, req.workspace.id);
+      if (updated.changes !== 1) throw new Error('Document was already changed; reload and try again.');
+      logAction(req.user.id, req.workspace.id, 'withdraw_document', 'document', doc.id,
+        { reason, previous_status: doc.status, previous_version: doc.version, history },
+        { ...auditCtx(req), before: { name: doc.name, status: doc.status, version: doc.version },
+          after: { name: doc.name, status: 'withdrawn', version: doc.version }, strict: true });
+    })();
     fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'document', entityId: req.params.id });
-    res.redirect('/workspaces/' + req.workspace.id + '/documents');
+    res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents', 'Document withdrawn; governed history and audit evidence were retained.'));
   });
 
   // Snooze a document's review date by N days. Used by the overdue/due-soon
   // banner on /documents and the per-row action on /policy-adoption. Records
   // who snoozed and why in audit log.
-  app.post('/workspaces/:wsId/documents/:id/snooze-review', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/snooze-review', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.edit'), (req, res) => {
     const days = parseInt(req.body.days, 10) || 30;
     if (![14, 30, 60, 90, 180].includes(days)) return res.status(400).send('Bad snooze period');
     const doc = db.prepare(`SELECT id, next_review_date FROM generated_docs WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
@@ -620,7 +708,7 @@ function register(app, deps) {
   // Submit current draft for review - snapshots a new version, sets approver chain.
   // The chain can mix internal (user-account) approvers and external (magic-link)
   // approvers. Form sends approvers_json containing the ordered chain.
-  app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/submit-review', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.submit_review'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!doc) return redirectBack(req, res);
     if (doc.locked) return res.status(400).render('error', { user: req.user, message: 'Document is locked. Create a new version first.' });
@@ -635,11 +723,25 @@ function register(app, deps) {
       return res.status(400).render('error', { user: req.user, message: 'Add at least one approver before submitting for review.' });
     }
     // Validate each row
+    const seenInternal = new Set();
     for (let i = 0; i < chain.length; i++) {
       const r = chain[i];
       if (r.kind === 'internal') {
         if (!r.user_id || isNaN(parseInt(r.user_id, 10))) {
           return res.status(400).render('error', { user: req.user, message: `Approver #${i + 1}: pick a user.` });
+        }
+        // AUTHZ-005: the only prior check was "is this a number", so any user id
+        // in the system could be inserted as an internal approver of any
+        // document, including a client from a different workspace or firm, who
+        // was then notified and could act. Verify eligibility before any write.
+        const uid = parseInt(r.user_id, 10);
+        if (seenInternal.has(uid)) {
+          return res.status(400).render('error', { user: req.user, message: `Approver #${i + 1}: that person is already in the chain.` });
+        }
+        seenInternal.add(uid);
+        const elig = approverEligibility(uid, req.workspace);
+        if (!elig.ok) {
+          return res.status(400).render('error', { user: req.user, message: `Approver #${i + 1}: ${elig.reason}` });
         }
       } else if (r.kind === 'external') {
         if (!r.name || !r.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) {
@@ -651,18 +753,6 @@ function register(app, deps) {
     }
 
     const summary = req.body.change_summary || null;
-    let v;
-    try {
-      v = snapshotDocVersion(doc.id, req.workspace.id, 'in_review', req.user.id, summary);
-    } catch (e) {
-      if (e && e.code === 'DOC_VERSION_CONFLICT') {
-        return res.status(409).render('error', { user: req.user,
-          message: 'Another consultant submitted this document for review at the same time. Open the document, review the new version, and decide whether to add another reviewer.' });
-      }
-      throw e;
-    }
-    db.prepare(`UPDATE generated_docs SET status='in_review', locked=1, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
-    db.prepare(`UPDATE doc_versions SET submitted_at=CURRENT_TIMESTAMP WHERE id=?`).run(v.id);
 
     const insInternal = db.prepare(`INSERT INTO doc_approvers (workspace_id, document_id, version_id, sequence, user_id, role_label, notified_at)
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`);
@@ -674,7 +764,15 @@ function register(app, deps) {
     // enough to send the emails after the transaction commits. They're
     // never written to the DB in raw form.
     const rawTokens = {};
+    // AUTHZ-005: snapshot, lock, version stamp and approver rows must all
+    // commit together. Previously the document was snapshotted and locked
+    // before the approver inserts, so a failure mid-chain left a locked
+    // in_review document with a partial approval chain.
+    let v;
     const tx = db.transaction(() => {
+      v = snapshotDocVersion(doc.id, req.workspace.id, 'in_review', req.user.id, summary);
+      db.prepare(`UPDATE generated_docs SET status='in_review', locked=1, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);
+      db.prepare(`UPDATE doc_versions SET submitted_at=CURRENT_TIMESTAMP WHERE id=?`).run(v.id);
       chain.forEach((r, idx) => {
         const seq = idx + 1;
         if (r.kind === 'internal') {
@@ -687,11 +785,21 @@ function register(app, deps) {
           rawTokens[seq] = token;
         }
       });
+      logAction(req.user.id, req.workspace.id, 'submit_for_review', 'document', doc.id,
+        { version: v.version, approvers: chain.length,
+          internal: chain.filter(c => c.kind === 'internal').length,
+          external: chain.filter(c => c.kind === 'external').length, summary },
+        { ...auditCtx(req), strict: true });
     });
-    tx();
-
-    logAction(req.user.id, req.workspace.id, 'submit_for_review', 'document', doc.id,
-      { version: v.version, approvers: chain.length, internal: chain.filter(c => c.kind === 'internal').length, external: chain.filter(c => c.kind === 'external').length, summary }, auditCtx(req));
+    try {
+      tx();
+    } catch (e) {
+      if (e && e.code === 'DOC_VERSION_CONFLICT') {
+        return res.status(409).render('error', { user: req.user,
+          message: 'Another consultant submitted this document for review at the same time. Open the document, review the new version, and decide whether to add another reviewer.' });
+      }
+      throw e;
+    }
 
     // Notify only the first approver in sequence (the one whose turn it
     // is right now); later approvers get nudged as the chain advances in
@@ -877,14 +985,13 @@ function register(app, deps) {
     return true;
   }
 
-  app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace, requirePermission('document.review'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.review'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     const decisionBack = req.user.user_type === 'client'
       ? `/workspaces/${req.workspace.id}/client-portal/policies/${req.params.id}`
       : `/workspaces/${req.workspace.id}/documents/${req.params.id}`;
     if (!doc || !doc.current_version_id) return res.redirect(decisionBack);
-    const { decision, reason } = req.body;
-    if (!['approve','reject'].includes(decision)) return redirectBack(req, res);
+    const { decision } = req.body;
 
     // The logged-in user must be the next pending approver (mixed-chain
     // aware - they have to be at the front of the merged queue, not just
@@ -897,6 +1004,11 @@ function register(app, deps) {
     if (!upNext || upNext.kind !== 'internal' || upNext.row.id !== myRow.id) {
       return res.status(400).render('error', { user: req.user, message: `Approver #${upNext ? upNext.row.sequence : '?'} must decide first.` });
     }
+    const validation = docApprovals.validateDecision(decision, req.body.reason);
+    if (!validation.ok) {
+      return res.status(422).render('error', { user: req.user, message: validation.error });
+    }
+    const reason = validation.reason;
 
     // CAS the decision so re-submits (browser double-click, network retry)
     // and concurrent decisions can't double-write. If 0 rows changed, someone
@@ -946,6 +1058,27 @@ function register(app, deps) {
   // via the external sentinel user (id=0) which resolves to
   // external@isms.local in the activity stream.
 
+  function renderExternalApproval(req, res, row, { status = 200, decisionError = null } = {}) {
+    const myTurn = docApprovals.isExternalRowMyTurn(db, row);
+    const chain = docApprovals.listChain(db, row.version_id);
+    let bodyRaw = row.content;
+    try { bodyRaw = enc.decryptIfNeeded(bodyRaw, row.workspace_id); } catch (_) {}
+    const bodyHtml = documentHtml.renderDocumentHtml(bodyRaw, {
+      isMarkdown: looksLikeMarkdown(bodyRaw), markdownRenderer: mdRenderer
+    });
+    return res.status(status).render('approve', {
+      row, chain, myTurn, decisionError,
+      workspaceName: row.workspace_name,
+      docName: row.doc_name,
+      docVersion: row.version,
+      docContent: bodyHtml,
+      submitterName: row.submitter_name,
+      brandColor: row.brand_primary_color || '#1a1a1a',
+      token: req.params.token,
+      csrfToken: '' // route is CSRF-skipped (token is the credential)
+    });
+  }
+
   app.get('/approve/:token', (req, res) => {
     const row = docApprovals.findByToken(db, req.params.token);
     if (!row) {
@@ -954,6 +1087,7 @@ function register(app, deps) {
         message: 'This approval link is not valid. It may have been revoked or replaced. Ask the person who sent it to issue a new one.'
       });
     }
+    if (rejectGapOnlyExternalApproval(res, row)) return;
     if (row.effective_status === 'revoked') {
       return res.status(410).render('approve_error', {
         title: 'Approval link revoked',
@@ -972,29 +1106,7 @@ function register(app, deps) {
         message: 'You already ' + row.decision + ' this document on ' + new Date(row.decided_at + 'Z').toLocaleString() + '. The decision is recorded; the link is no longer active.'
       });
     }
-    // Verify it's actually their turn before showing the approve form.
-    // (If not, render a "waiting on earlier approver" state instead.)
-    const myTurn = docApprovals.isExternalRowMyTurn(db, row);
-    const chain = docApprovals.listChain(db, row.version_id);
-
-    // Document body may be stored as markdown or HTML; render markdown
-    // -> HTML so the view can drop it in with <%- %>. Decrypt first if
-    // the workspace has encryption enabled.
-    let bodyRaw = row.content;
-    try { bodyRaw = enc.decryptIfNeeded(bodyRaw, row.workspace_id); } catch (_) {}
-    const bodyHtml = looksLikeMarkdown(bodyRaw) ? mdRenderer.render(bodyRaw) : bodyRaw;
-
-    res.render('approve', {
-      row, chain, myTurn,
-      workspaceName: row.workspace_name,
-      docName: row.doc_name,
-      docVersion: row.version,
-      docContent: bodyHtml,
-      submitterName: row.submitter_name,
-      brandColor: row.brand_primary_color || '#1a1a1a',
-      token: req.params.token,
-      csrfToken: '' // route is CSRF-skipped (token is the credential)
-    });
+    return renderExternalApproval(req, res, row);
   });
 
   app.post('/approve/:token', (req, res) => {
@@ -1005,10 +1117,13 @@ function register(app, deps) {
         message: 'This approval link is no longer valid (expired, revoked, or already decided).'
       });
     }
-    const { decision, reason } = req.body;
-    if (!['approve','reject'].includes(decision)) {
-      return res.status(400).render('approve_error', { title: 'Bad request', message: 'Pick approve or reject.' });
+    if (rejectGapOnlyExternalApproval(res, row)) return;
+    const { decision } = req.body;
+    const validation = docApprovals.validateDecision(decision, req.body.reason);
+    if (!validation.ok) {
+      return renderExternalApproval(req, res, row, { status: 422, decisionError: validation.error });
     }
+    const reason = validation.reason;
     if (!docApprovals.isExternalRowMyTurn(db, row)) {
       return res.status(400).render('approve_error', {
         title: 'Not your turn yet',
@@ -1026,7 +1141,7 @@ function register(app, deps) {
     // tabs of the same magic link decide simultaneously.
     const decResult = db.prepare(`UPDATE external_approvers
       SET decision=?, decision_reason=?, decided_at=CURRENT_TIMESTAMP, ip_address=?, user_agent=?
-      WHERE id=? AND decision IS NULL`).run(decisionVal, reason || null, ip, ua, row.id);
+      WHERE id=? AND decision IS NULL`).run(decisionVal, reason, ip, ua, row.id);
     if (decResult.changes === 0) {
       return res.status(410).render('approve_error', {
         title: 'Already decided',
@@ -1066,7 +1181,7 @@ function register(app, deps) {
     } catch (e) { console.error('[approve] signature insert failed:', e.message); }
 
     logAction(0, row.workspace_id, decisionVal === 'approved' ? 'external_approve_document' : 'external_reject_document',
-      'document', row.doc_id, { version_id: row.version_id, external_approver: row.name, email: row.email, reason: reason || null },
+      'document', row.doc_id, { version_id: row.version_id, external_approver: row.name, email: row.email, reason },
       { ip, userAgent: ua });
 
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=?').get(row.doc_id);
@@ -1106,7 +1221,7 @@ function register(app, deps) {
   // browser tab) immediately stops working. Only the submitter / firm
   // can trigger this from the doc detail page.
   app.post('/workspaces/:wsId/documents/:id/external-approvers/:eaId/resend',
-    requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
+    requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.submit_review'), (req, res) => {
       const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
       if (!doc) return redirectBack(req, res);
       const ea = db.prepare('SELECT * FROM external_approvers WHERE id=? AND workspace_id=? AND document_id=?').get(req.params.eaId, req.workspace.id, doc.id);
@@ -1141,7 +1256,7 @@ function register(app, deps) {
   // 'revoked' and render an error. Does not remove the row - audit trail
   // requires we keep the history of who was invited.
   app.post('/workspaces/:wsId/documents/:id/external-approvers/:eaId/revoke',
-    requireAuth, requireWorkspace, requirePermission('document.submit_review'), (req, res) => {
+    requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.submit_review'), (req, res) => {
       const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
       if (!doc) return redirectBack(req, res);
       const ea = db.prepare('SELECT * FROM external_approvers WHERE id=? AND workspace_id=? AND document_id=?').get(req.params.eaId, req.workspace.id, doc.id);
@@ -1156,7 +1271,7 @@ function register(app, deps) {
     });
 
   // E-signature endpoint. Captures user's identity, hashes content, generates HMAC, stores ip/UA.
-  app.post('/workspaces/:wsId/documents/:id/sign', requireAuth, requireWorkspace, requirePermission('document.sign'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/sign', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.sign'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!doc || !doc.current_version_id) return redirectBack(req, res);
     const { intent, signature_role, attestation } = req.body;
@@ -1178,7 +1293,7 @@ function register(app, deps) {
   });
 
   // Publish an approved document.
-  app.post('/workspaces/:wsId/documents/:id/publish', requireAuth, requireWorkspace, requirePermission('document.publish'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/publish', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.publish'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!doc) return redirectBack(req, res);
     if (doc.status !== 'approved') return res.status(400).render('error', { user: req.user, message: 'Only approved documents can be published.' });
@@ -1189,7 +1304,7 @@ function register(app, deps) {
   });
 
   // Retire a published document.
-  app.post('/workspaces/:wsId/documents/:id/retire', requireAuth, requireWorkspace, requirePermission('document.retire'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/retire', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.retire'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!doc) return redirectBack(req, res);
     db.prepare(`UPDATE generated_docs SET status='retired', retired_at=CURRENT_TIMESTAMP, locked=1 WHERE id=?`).run(doc.id);
@@ -1199,7 +1314,7 @@ function register(app, deps) {
   });
 
   // Reopen for editing - creates a new draft version branched off current.
-  app.post('/workspaces/:wsId/documents/:id/new-version', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/new-version', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.edit'), (req, res) => {
     const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!doc) return redirectBack(req, res);
     db.prepare(`UPDATE generated_docs SET status='draft', locked=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doc.id);

@@ -1,0 +1,284 @@
+<%- include('partials/header', { title: 'DPDPA independent review', user, ws, active: 'dpdpa-review' }) %>
+<%- include('dpdpa_styles') %>
+<%
+  const base = `/workspaces/${ws.id}/dpdpa`;
+  const url = `${base}/assessments/${assessment.id}`;
+  const r = position.readiness;
+  const pct = value => (r.total ? (value * 100 / r.total) : 0).toFixed(2);
+  const slug = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const gateCount = gates.reduce((sum, group) => sum + group.items.length, 0);
+  const snapshots = Array.isArray(assessment.snapshots) ? assessment.snapshots : [];
+  const reviews = Array.isArray(assessment.reviews) ? assessment.reviews : [];
+  const comparison = (assessment.baseline_comparison || dashboard.baseline_comparison || {}).summary || {};
+  const movedRefs = new Set(((assessment.baseline_comparison || {}).items || [])
+    .filter(row => row.movement && row.movement !== 'unchanged')
+    .map(row => row.ref || row.requirement_ref));
+
+  const independent = caps.approve
+    && Number(user.id) !== Number(assessment.created_by)
+    && Number(user.id) !== Number(assessment.submitted_by);
+  const acceptedByMe = item => reviews.some(review => review.action === 'N/A Accepted'
+    && Number(review.assessment_item_id) === Number(item.id)
+    && Number(review.actor_id) === Number(user.id)
+    && Number(review.item_row_version) === Number(item.row_version));
+
+  // A reviewer does not read fifty-five conclusions end to end. They test the
+  // ones that carry judgment: the gaps, the evidence-gated claims, the
+  // exclusions they have to accept personally, and anything that moved since
+  // the approved baseline.
+  const lenses = [
+    { key: '', label: 'All', match: () => true },
+    { key: 'gaps', label: 'Open gaps', match: item => ['Not Implemented', 'Partially Implemented'].includes(item.status) },
+    { key: 'evidence', label: 'Evidence claims', match: item => ['Implemented', 'Partially Implemented'].includes(item.status) },
+    { key: 'applicability', label: 'Exclusions', match: item => item.status === 'Not Applicable' },
+    { key: 'movement', label: 'Movement', match: item => movedRefs.has(item.ref) },
+  ];
+  const active = lenses.find(lens => lens.key === focus) || lenses[0];
+  const visible = position.items.filter(active.match);
+  const outstandingNa = position.items.filter(item => item.status === 'Not Applicable' && !acceptedByMe(item));
+%>
+
+<div class="dp">
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Independent review</h1>
+    <div class="page-subtitle"><%= assessment.title %>. Test the submitted conclusions, the evidence behind each implementation claim and the rationale behind each exclusion before this position is frozen.</div>
+    <div class="dp-facts">
+      <span class="status s-<%= slug(assessment.status) %>"><%= assessment.status %></span>
+      <span>As of <strong><%= assessment.as_of_date %></strong></span>
+      <span>Prepared by <strong><%= assessment.created_by_name || `User ${assessment.created_by}` %></strong></span>
+      <% if (assessment.submitted_by_name) { %>
+        <span>Submitted by <strong><%= assessment.submitted_by_name %></strong><%= assessment.submitted_at ? ` on ${String(assessment.submitted_at).slice(0, 10)}` : '' %></span>
+      <% } %>
+    </div>
+  </div>
+  <div class="row">
+    <a class="btn btn-secondary" href="<%= url %>">Open the workbench</a>
+    <% if (assessment.latest_snapshot && caps.export) { %><a class="btn btn-secondary" href="<%= url %>/report">Frozen report</a><% } %>
+  </div>
+</div>
+
+<section class="panel panel-pad">
+  <div class="dp-headline">
+    <b><%= r.readinessPct %>%</b>
+    <span>readiness across <%= r.inScope %> in-scope obligations · <%= r.concluded %> of <%= r.total %> concluded</span>
+  </div>
+  <div class="dp-bar" role="img" aria-label="<%= r.implemented %> implemented, <%= r.partial %> partially implemented, <%= r.notImplemented %> not implemented, <%= r.notApplicable %> not applicable, <%= r.notAssessed %> not assessed">
+    <% if (r.implemented) { %><span class="dp-bar-implemented" style="width:<%= pct(r.implemented) %>%"></span><% } %>
+    <% if (r.partial) { %><span class="dp-bar-partial" style="width:<%= pct(r.partial) %>%"></span><% } %>
+    <% if (r.notImplemented) { %><span class="dp-bar-gap" style="width:<%= pct(r.notImplemented) %>%"></span><% } %>
+    <% if (r.notApplicable) { %><span class="dp-bar-na" style="width:<%= pct(r.notApplicable) %>%"></span><% } %>
+    <% if (r.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= pct(r.notAssessed) %>%"></span><% } %>
+  </div>
+  <div class="dp-legend">
+    <span><i class="k-implemented"></i><strong><%= r.implemented %></strong> implemented</span>
+    <span><i class="k-partial"></i><strong><%= r.partial %></strong> partially implemented</span>
+    <span><i class="k-gap"></i><strong><%= r.notImplemented %></strong> not implemented</span>
+    <span><i class="k-na"></i><strong><%= r.notApplicable %></strong> not applicable</span>
+    <span><i class="k-unassessed"></i><strong><%= r.notAssessed %></strong> not assessed</span>
+  </div>
+  <p class="meta text-xs" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--border);line-height:1.55;">
+    Maker-checker separation is enforced in the domain: whoever created or submitted this assessment cannot approve it.
+    Approval freezes this exact record as a hash-addressed snapshot. It records readiness for a stated boundary; it is not legal certification.
+  </p>
+</section>
+
+<% if (gateCount) { %>
+  <section class="panel">
+    <div class="panel-head">
+      <h2><%= gateCount %> approval gate<%= gateCount === 1 ? '' : 's' %> open</h2>
+      <span class="meta">Approval is refused until each is cleared</span>
+    </div>
+    <% gates.forEach(group => { %>
+      <div class="dp-gate">
+        <div class="dp-gate-head">
+          <strong><%= group.label %></strong>
+          <span class="meta"><%= group.items.length %></span>
+        </div>
+        <p><%= group.fix %></p>
+        <div class="dp-refs">
+          <% group.items.slice(0, 30).forEach(entry => { %>
+            <a href="#review-item-<%= entry.id %>" title="<%= entry.title %>"><%= entry.ref %></a>
+          <% }) %>
+        </div>
+      </div>
+    <% }) %>
+  </section>
+<% } %>
+
+<div class="dp-split dp-split-rail">
+  <section class="panel">
+    <div class="panel-head" style="flex-wrap:wrap;gap:10px;">
+      <h2>Submitted conclusions</h2>
+      <span class="meta"><%= visible.length %> of <%= position.items.length %></span>
+    </div>
+    <div class="subtabs" style="margin:0;padding:0 14px;">
+      <% lenses.forEach(lens => {
+           const count = position.items.filter(lens.match).length; %>
+        <a class="subtab <%= lens.key === active.key ? 'is-active' : '' %>" href="<%= url %>/review<%= lens.key ? `?focus=${lens.key}` : '' %>">
+          <%= lens.label %> <span class="meta num"><%= count %></span>
+        </a>
+      <% }) %>
+    </div>
+
+    <% if (!visible.length) { %>
+      <div class="t-empty">Nothing in this view. <%= active.key === 'applicability' ? 'No obligation was concluded Not Applicable.' : 'Choose another view above.' %></div>
+    <% } %>
+
+    <% visible.forEach(item => {
+         const c = item.content;
+         const currentEvidence = Number(item.evidence_current_count || 0);
+         const staleEvidence = Number(item.evidence_stale_count || 0);
+         const evidenceClaim = ['Implemented', 'Partially Implemented'].includes(item.status);
+         const accepted = acceptedByMe(item); %>
+      <article class="dp-review-card" id="review-item-<%= item.id %>">
+        <div class="dp-ob-row">
+          <span class="dp-ob-ref"><%= item.ref %></span>
+          <span class="dp-ob-title">
+            <strong><%= item.title %></strong>
+            <span class="meta text-xs">
+              <%= c ? c.domain : item.domain %> · <%= c ? c.sourceSectionRule : (item.source_section || '') %>
+              <% if (c) { %> · <%= c.severityLabel %> severity · commences <%= c.effectiveDateLong %><% } %>
+            </span>
+          </span>
+          <span class="dp-ob-state">
+            <% if (evidenceClaim && !item.evidence_sufficient) { %><span class="dp-ob-flag">No current evidence</span><% } %>
+            <span class="status s-<%= slug(item.status) %>"><%= item.status %></span>
+          </span>
+        </div>
+
+        <div class="dp-review-body">
+          <% if (c) { %><div><b>Obligation</b> <span><%= c.requirement %></span></div><% } %>
+          <% if (item.assessment_note) { %><div><b>Conclusion</b> <span><%= item.assessment_note %></span></div><% } %>
+          <% if (item.gap_description) { %><div><b>Gap</b> <span><%= item.gap_description %></span></div><% } %>
+          <% if (item.recommendation) { %><div><b>Recommendation</b> <span><%= item.recommendation %></span></div><% } %>
+          <% if (item.status === 'Not Applicable') { %><div><b>Exclusion rationale</b> <span><%= item.na_rationale || 'Missing' %></span></div><% } %>
+          <div class="meta text-xs">
+            <%= currentEvidence %> current evidence, <%= staleEvidence %> stale ·
+            <%= item.finding_count || 0 %> finding<%= Number(item.finding_count) === 1 ? '' : 's' %> ·
+            <%= item.owner_name || 'No owner assigned' %><%= item.due_date ? ` · target ${item.due_date}` : '' %> ·
+            version <%= item.row_version %>
+            <% if (item.applicability_hint === 'Potentially Out of Scope') { %> · profile hint: potentially out of scope<% } %>
+          </div>
+        </div>
+
+        <% if (item.status === 'Not Applicable' && independent) { %>
+          <% if (accepted) { %>
+            <div class="meta text-xs" style="margin-top:9px;"><span class="text-success" style="font-weight:500;">You accepted this exclusion</span> at version <%= item.row_version %>. A later edit to the conclusion reopens the acceptance.</div>
+          <% } else if (assessment.status === 'Under Review') { %>
+            <form class="dp-accept" method="POST" action="<%= url %>/items/<%= item.id %>/accept-na">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="row_version" value="<%= item.row_version %>">
+              <label class="label" for="accept-<%= item.id %>">Acceptance rationale <span class="meta">required</span></label>
+              <textarea class="textarea" id="accept-<%= item.id %>" name="note" minlength="20" maxlength="4000" rows="2" required placeholder="Why this exclusion holds inside the frozen scope"></textarea>
+              <div style="margin-top:8px;"><button class="btn btn-secondary btn-xs" type="submit">Accept exclusion</button></div>
+            </form>
+          <% } %>
+        <% } %>
+      </article>
+    <% }) %>
+  </section>
+
+  <aside>
+    <% if (assessment.status === 'Under Review' && independent) { %>
+      <section class="panel">
+        <div class="panel-head"><h2>Decision</h2></div>
+        <div class="panel-pad">
+          <% if (gateCount) { %>
+            <p class="text-sm text-secondary" style="line-height:1.6;">Approval is blocked while <%= gateCount %> gate<%= gateCount === 1 ? '' : 's' %> remain open. Return the assessment for changes, or clear the gates listed above first.</p>
+          <% } else if (outstandingNa.length) { %>
+            <p class="text-sm text-secondary" style="line-height:1.6;">
+              <%= outstandingNa.length %> exclusion<%= outstandingNa.length === 1 ? '' : 's' %> still need your personal acceptance.
+              Acceptance is recorded against you and against the exact conclusion version, so it does not carry over to an edited record.
+            </p>
+            <a class="btn btn-secondary" style="margin-top:10px;" href="<%= url %>/review?focus=applicability">Review the exclusions</a>
+          <% } else { %>
+            <form class="dp-form" method="POST" action="<%= url %>/approve">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="row_version" value="<%= assessment.row_version %>">
+              <div>
+                <label class="label" for="dpApproveNote">Approval conclusion <span class="meta">required</span></label>
+                <textarea class="textarea" id="dpApproveNote" name="note" minlength="20" maxlength="4000" rows="4" required placeholder="The review work performed, the reliance limitations and the basis for approval"></textarea>
+              </div>
+              <button class="btn btn-primary" type="submit">Approve and freeze</button>
+            </form>
+          <% } %>
+        </div>
+      </section>
+    <% } else if (assessment.status === 'Under Review' && caps.approve) { %>
+      <div class="callout">
+        <div class="callout-title">Independent approver required</div>
+        You created or submitted this assessment, so maker-checker separation prevents you from accepting exclusions or approving this baseline.
+      </div>
+    <% } %>
+
+    <% if (assessment.status === 'Under Review' && caps.review) { %>
+      <section class="panel">
+        <div class="panel-head"><h2>Return for changes</h2></div>
+        <div class="panel-pad">
+          <form class="dp-form" method="POST" action="<%= url %>/return">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="row_version" value="<%= assessment.row_version %>">
+            <div>
+              <label class="label" for="dpReturnNote">Reasons for return <span class="meta">required</span></label>
+              <textarea class="textarea" id="dpReturnNote" name="note" minlength="20" maxlength="4000" rows="4" required placeholder="Name the obligations, the evidence or the rationale the assessment team has to revisit"></textarea>
+            </div>
+            <button class="btn btn-secondary" type="submit">Return to the assessment team</button>
+          </form>
+        </div>
+      </section>
+    <% } %>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Accountability</h2></div>
+      <div class="panel-pad">
+        <dl class="dp-kv">
+          <div><dt>Prepared by</dt><dd><%= assessment.created_by_name || `User ${assessment.created_by}` %></dd></div>
+          <div><dt>Submitted by</dt><dd><%= assessment.submitted_by_name || 'Not submitted' %><%= assessment.submitted_at ? ` · ${String(assessment.submitted_at).slice(0, 10)}` : '' %></dd></div>
+          <div><dt>Approved by</dt><dd><%= assessment.approved_by_name || 'Not approved' %><%= assessment.approved_at ? ` · ${String(assessment.approved_at).slice(0, 10)}` : '' %></dd></div>
+          <div><dt>As-of date</dt><dd><%= assessment.as_of_date %></dd></div>
+          <div><dt>Catalogue</dt><dd><%= assessment.catalog_version || '-' %></dd></div>
+          <div><dt>Baseline</dt><dd><%= assessment.baseline_assessment_id ? `Assessment #${assessment.baseline_assessment_id}, snapshot #${assessment.baseline_snapshot_id}` : 'Initial baseline' %></dd></div>
+          <% if (assessment.baseline_assessment_id) { %>
+            <div><dt>Movement</dt><dd><%= comparison.improved || 0 %> improved, <%= comparison.regressed || 0 %> regressed, <%= comparison.unchanged || 0 %> unchanged</dd></div>
+          <% } %>
+        </dl>
+      </div>
+    </section>
+
+    <% if (caps.export && ['Under Review', 'Approved', 'Superseded'].includes(assessment.status)) { %>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Frozen snapshots</h2>
+          <span class="meta"><%= snapshots.length %></span>
+        </div>
+        <div class="panel-pad">
+          <% if (snapshots.length) { %>
+            <div style="display:grid;gap:7px;margin-bottom:14px;">
+              <% snapshots.forEach(snapshot => { %>
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                  <a class="link-muted text-sm" href="<%= url %>/report?snapshot=<%= snapshot.id %>">Snapshot <%= snapshot.sequence_number %></a>
+                  <span class="meta text-xs num"><%= String(snapshot.created_at || '').slice(0, 10) %></span>
+                </div>
+              <% }) %>
+            </div>
+          <% } %>
+          <form class="dp-form" method="POST" action="<%= url %>/snapshots">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div>
+              <label class="label" for="dpSnapReason">Take a progress snapshot</label>
+              <textarea class="textarea" id="dpSnapReason" name="reason" maxlength="4000" rows="2" placeholder="Why this state is being preserved"></textarea>
+            </div>
+            <button class="btn btn-ghost btn-xs" type="submit">Create snapshot</button>
+          </form>
+          <p class="meta text-xs" style="margin-top:10px;line-height:1.5;">A progress snapshot preserves the current state without changing lifecycle. It is marked as not approved and carries that label into every export.</p>
+        </div>
+      </section>
+    <% } %>
+  </aside>
+</div>
+
+</div>
+
+<%- include('partials/footer') %>

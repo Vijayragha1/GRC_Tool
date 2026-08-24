@@ -1,0 +1,32 @@
+<%- include('partials/header', { title: 'Third-party risk', user, ws, active }) %>
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<header class="tprm-page-head">
+  <div><div class="tprm-kicker">TPRM</div><h1>Third-party risk management</h1><p>Assessment, recommendation, client decision, and ongoing oversight.</p></div>
+  <div class="tprm-head-actions"><a class="btn" href="/tprm">Firm view</a><a class="btn" href="/workspaces/<%= ws.id %>/tprm/third-parties">Register</a><% if (canManage) { %><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/tprm/third-parties/new">Add third party</a><% } %></div>
+</header>
+
+<%- include('partials/tprm_metric_cards', { portfolio, basePath: `/workspaces/${ws.id}/tprm` }) %>
+
+<% const next = portfolio.queue[0]; %>
+<section class="tprm-next-card" aria-label="Highest-priority next action">
+  <div><div class="tprm-kicker">Priority action</div><h2><%= next ? next.nextAction.label : 'No priority actions' %></h2><p><%= next ? `${next.name} · ${next.service_provided || 'Service not recorded'}` : 'No critical or high-priority items are open.' %></p>
+    <% if (next) { %><div class="tprm-next-meta"><span>Pending with<strong><%= next.nextAction.waitingOn %></strong></span><span>Owner<strong><%= next.nextAction.owner %></strong></span><span>Due date<strong><%= dateOnly(next.nextAction.dueDate) || 'Not set' %></strong></span><span>Stage<strong><%= next.stage_label %></strong></span></div><% } %>
+  </div>
+  <% if (next) { %><a class="btn btn-primary" href="<%= next.nextAction.href %>">Open action</a><% } else { %><a class="btn" href="/workspaces/<%= ws.id %>/tprm/monitoring">View monitoring</a><% } %>
+</section>
+
+<section class="tprm-section" aria-label="Every record has one next action">
+  <div class="tprm-section-head"><div><h2>Work queue</h2><p>Ordered by blocked decisions, overdue items, and assessment gates.</p></div><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/tprm/assessments">View assessments</a></div>
+  <%- include('partials/tprm_queue', { queueRows: portfolio.queue.slice(0, 12), showClient: false, titleCase, dateOnly }) %>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><h2>Governance model</h2><p>The consultancy recommends. The client decision authority approves or declines onboarding.</p></div></div>
+  <div class="tprm-section-body">
+    <ol class="tprm-lifecycle"><li class="done">Request</li><li class="done">Triage and tier</li><li class="done">Due diligence</li><li class="done">Contract assurance</li><li class="done">Consultancy recommendation</li><li class="current">Client decision</li><li>Monitor</li></ol>
+    <div class="tprm-callout" style="margin-top:16px"><strong>Decision authority:</strong> consultants assess and recommend. A named client authority records the final onboarding decision.</div>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

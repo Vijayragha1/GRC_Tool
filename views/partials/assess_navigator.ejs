@@ -56,6 +56,14 @@
     border-radius: 999px; overflow: hidden;
   }
   .nav-jump-meter > span { display: block; height: 100%; background: var(--accent); }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .nav-jump-code
+    { font-size: 11px; }
+  }
 </style>
 
 <aside class="nav-jump">

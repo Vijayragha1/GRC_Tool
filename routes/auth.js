@@ -50,9 +50,66 @@ function register(app, deps) {
   }
   function clearBadLogin(email) { LOGIN_BAD.delete((email || '').toLowerCase()); }
 
+  function validPublicEmail(value) {
+    const email = String(value || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+    if (/@(?:example\.(?:com|org|net)|isms\.local)$/i.test(email)) return null;
+    return email;
+  }
+
+  function publicContactDetails() {
+    let contactEmail = validPublicEmail(process.env.EVALUATION_CONTACT_EMAIL);
+    if (!contactEmail) {
+      try {
+        const configured = db.prepare(`SELECT COALESCE(reply_to,from_email) email
+          FROM firm_email_settings
+          WHERE enabled=1 AND COALESCE(reply_to,from_email) IS NOT NULL
+          ORDER BY firm_id LIMIT 1`).get();
+        contactEmail = validPublicEmail(configured && configured.email);
+      } catch (_) {}
+    }
+    const securityEmail = validPublicEmail(process.env.SECURITY_CONTACT_EMAIL) || contactEmail;
+    const configuredUrl = String(process.env.EVALUATION_REQUEST_URL || '').trim();
+    const evaluationUrl = /^https:\/\/[^\s]+$/i.test(configuredUrl) ? configuredUrl : '/contact';
+    return { contactEmail, securityEmail, evaluationUrl };
+  }
+
+  function renderPublic(req, res, page, extra = {}) {
+    const pages = {
+      home: ['Evaluate Compliance Sphere', 'Evidence-backed GRC delivery for consulting firms and client teams.'],
+      access: ['Request access', 'Access is invite-only so every account starts in an explicitly assigned firm or client workspace.'],
+      security: ['Security', 'How the product protects access, governed records, uploads, and external sharing.'],
+      privacy: ['Privacy', 'What this site processes and which responsibilities belong to the organization operating it.'],
+      terms: ['Terms of use', 'Plain-language conditions for evaluating and using this software.'],
+      contact: ['Request an evaluation', 'Choose the next step without creating an unscoped account.']
+    };
+    const [title, description] = pages[page] || pages.home;
+    return res.render('auth/public', {
+      page, title, description, ...publicContactDetails(),
+      topic: ['evaluation','security','privacy'].includes(String(req.query.topic || '')) ? String(req.query.topic) : 'evaluation',
+      ...extra
+    });
+  }
+
   app.get('/', (req, res) => {
     if (req.session && req.session.userId) return res.redirect('/dashboard');
-    return res.redirect('/login');
+    return renderPublic(req, res, 'home');
+  });
+
+  app.get('/security', (req, res) => renderPublic(req, res, 'security'));
+  app.get('/privacy', (req, res) => renderPublic(req, res, 'privacy'));
+  app.get('/terms', (req, res) => renderPublic(req, res, 'terms'));
+  app.get('/contact', (req, res) => renderPublic(req, res, 'contact'));
+  app.get('/.well-known/security.txt', (req, res) => {
+    const { securityEmail } = publicContactDetails();
+    const configuredBase = /^https:\/\/[^\s]+$/i.test(String(process.env.APP_BASE_URL || ''))
+      ? String(process.env.APP_BASE_URL).replace(/\/+$/, '')
+      : `${req.protocol}://${String(req.get('host') || 'localhost').replace(/[^a-z0-9.:[\]-]/gi, '')}`;
+    const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    const contacts = [securityEmail ? `Contact: mailto:${securityEmail}` : null, `Contact: ${configuredBase}/contact?topic=security`]
+      .filter(Boolean).join('\n');
+    res.type('text/plain').set('Cache-Control', 'public, max-age=3600').send(
+      `${contacts}\nExpires: ${expires}\nPolicy: ${configuredBase}/security\nPreferred-Languages: en\n`);
   });
 
   app.get('/login', (req, res) => {
@@ -80,7 +137,7 @@ function register(app, deps) {
     if (!email || !password) return renderFail('Email and password are required.');
     if (isLockedOut(email)) return renderFail('Too many failed attempts. Wait 15 minutes and try again, or reset your password.');
 
-    const user = db.prepare(`SELECT id, email, password_hash, active FROM users WHERE email = ?`).get(email);
+    const user = db.prepare(`SELECT id, email, password_hash, active, auth_epoch FROM users WHERE email = ?`).get(email);
     // Constant-ish-time response: always run a bcrypt compare even if user is
     // missing, so a probe can't distinguish "no such email" from "wrong password"
     // by timing alone.
@@ -102,6 +159,8 @@ function register(app, deps) {
       // Touch last_active_at for the activity-feed and any "last seen" UX.
       try { db.prepare(`UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?`).run(user.id); } catch (_) {}
       req.session.userId = user.id;
+      // SESS-001: bind the session to the user's current authorization epoch.
+      req.session.authEpoch = Number(user.auth_epoch || 0);
       res.redirect(nextUrl);
     });
   });
@@ -124,10 +183,12 @@ function register(app, deps) {
     });
   });
 
-  // /register stays redirected - user provisioning is admin-driven (Phase 3)
-  // rather than self-signup. Anything posted here goes back to login.
-  app.get('/register', (_req, res) => res.redirect('/login'));
-  app.post('/register', (_req, res) => res.redirect('/login'));
+  // Self-signup stays disabled, but the public route now explains the access
+  // model and offers a useful next step instead of looping back to sign-in.
+  app.get('/register', (req, res) => renderPublic(req, res, 'access'));
+  app.post('/register', (req, res) => renderPublic(req, res.status(405), 'access', {
+    accessNotice: 'Self-signup is disabled. Request an evaluation or use the single-use invitation sent by your administrator.'
+  }));
 
   // -------- User invitations (Phase 3) --------
   // Owner-only management surface. Lists firm users, client-side users this
@@ -311,6 +372,9 @@ function register(app, deps) {
     }
     if (!ok) return res.redirect('/admin/users?error=' + encodeURIComponent('Not allowed.'));
     db.prepare(`UPDATE users SET active = 0 WHERE id = ?`).run(target.id);
+    // SESS-001: deactivation must also terminate live sessions, not just block
+    // future sign-ins.
+    try { deps.revokeUserSessions(target.id); } catch (_) {}
     res.redirect('/admin/users?notice=' + encodeURIComponent('User deactivated.'));
   });
 
@@ -497,6 +561,8 @@ function register(app, deps) {
     req.session.regenerate((err) => {
       if (err) return res.redirect('/login?invited=1');
       req.session.userId = newUserId;
+      req.session.authEpoch = Number(
+        db.prepare('SELECT auth_epoch FROM users WHERE id = ?').get(newUserId)?.auth_epoch || 0);
       req.session.cookie.maxAge = SESSION_DEFAULT_MAX_AGE;
       const nextUrl = inv.workspace_id ? `/workspaces/${inv.workspace_id}/client-portal` : '/dashboard';
       res.redirect(nextUrl);
@@ -590,11 +656,16 @@ function register(app, deps) {
     if (pw !== pw2)    return renderFail('Passwords do not match.');
 
     const hash = bcrypt.hashSync(pw, 12);
+    let newEpoch = 0;
     const tx = db.transaction(() => {
       db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hash, row.user_id);
       db.prepare(`UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?`).run(row.id);
       // Invalidate any other outstanding reset tokens for the same user
       db.prepare(`UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL`).run(row.user_id);
+      // SESS-001: account recovery must contain a stolen session. Bump the
+      // authorization epoch and delete persisted session rows for this user, so
+      // every cookie minted before this instant stops resolving to a user.
+      newEpoch = deps.revokeUserSessions(row.user_id);
     });
     tx();
     clearBadLogin(row.email);
@@ -604,6 +675,7 @@ function register(app, deps) {
     req.session.regenerate((err) => {
       if (err) return res.redirect('/login?reset_ok=1');
       req.session.userId = row.user_id;
+      req.session.authEpoch = newEpoch;
       req.session.cookie.maxAge = SESSION_DEFAULT_MAX_AGE;
       res.redirect('/dashboard');
     });

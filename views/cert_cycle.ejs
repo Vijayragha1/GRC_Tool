@@ -4,6 +4,7 @@
   const today = new Date().toISOString().slice(0,10);
   const ETYPES = {};
   eventTypes.forEach(t => { ETYPES[t.key] = t; });
+  const canManageNc = typeof userPerms !== 'undefined' && rbac.hasPermission(userPerms, 'nc.manage');
   const daysUntil = (d) => {
     if (!d) return null;
     const ms = new Date(d).getTime() - Date.now();
@@ -37,6 +38,30 @@
   </div>
 <% } %>
 
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+    <div>
+      <h2>Stage 2 delivery checkpoint</h2>
+      <div class="meta text-sm" style="margin-top:3px;">The consulting team supports and represents the client during the Stage 2 audit, records the certification-body outcome, and coordinates corrective action through validated closure.</div>
+    </div>
+    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/engagement-plan">Open delivery milestones</a>
+  </div>
+  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+    <div style="padding:12px;border:1px solid var(--border);border-radius:8px;">
+      <div class="meta text-sm">Stage 2 audit support</div>
+      <strong class="<%= stage2State.auditComplete ? 'text-success' : 'text-warning' %>" style="display:block;margin-top:4px;"><%= stage2State.auditComplete ? 'Completed and dated' : 'Completion not recorded' %></strong>
+    </div>
+    <div style="padding:12px;border:1px solid var(--border);border-radius:8px;">
+      <div class="meta text-sm">Open material findings</div>
+      <strong class="<%= stage2State.openMaterialFindings ? 'text-danger' : 'text-success' %>" style="display:block;margin-top:4px;"><%= stage2State.openMaterialFindings %> major or minor</strong>
+    </div>
+    <div style="padding:12px;border:1px solid var(--border);border-radius:8px;">
+      <div class="meta text-sm">Open observations</div>
+      <strong class="<%= stage2State.openObservations ? 'text-danger' : 'text-success' %>" style="display:block;margin-top:4px;"><%= stage2State.openObservations %> tracked</strong>
+    </div>
+  </div>
+</div>
+
 <% if (events.length === 0) { %>
   <div class="panel" style="margin-bottom:18px;">
     <div class="panel-head"><h2>No cycle planned yet</h2></div>
@@ -69,7 +94,7 @@
              const overdue = e.planned_date && e.planned_date < today && e.status !== 'closed' && !e.actual_date;
         %>
           <form method="POST" action="/workspaces/<%= ws.id %>/cert-cycle/<%= e.id %>" class="contents">
-            <tr>
+            <tr id="cert-event-row-<%= e.id %>">
               <td>
                 <div class="text-lg" style="font-weight:500;"><%= t.label %></div>
                 <div class="meta text-sm"><%= t.desc %></div>
@@ -93,6 +118,58 @@
               <td><button class="btn btn-ghost btn-xs text-xs">Save</button></td>
             </tr>
           </form>
+          <% if (['stage_1','stage_2'].includes(e.event_type)) {
+               const stageLabel = e.event_type === 'stage_1' ? 'Stage 1' : 'Stage 2';
+          %>
+            <tr id="cert-event-<%= e.id %>">
+              <td colspan="7" style="padding:0;background:var(--bg-subtle);">
+                <div style="padding:14px 18px;display:grid;gap:12px;">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+                    <div>
+                      <strong><%= stageLabel %> support, representation and findings</strong>
+                      <div class="meta text-sm" style="margin-top:3px;">Enter the actual audit date and close the event only after the certification-body audit is complete. Record every finding below so remediation retains direct audit lineage.</div>
+                    </div>
+                    <div class="row-center" style="flex-wrap:wrap;justify-content:flex-end;">
+                      <span class="tag <%= e.status === 'closed' && e.actual_date ? 'tag-success' : 'tag-neutral' %>"><%= e.status === 'closed' && e.actual_date ? 'Audit complete' : 'Audit support open' %></span>
+                      <span class="tag <%= e.open_material_findings ? 'tag-danger' : 'tag-success' %>"><%= e.open_material_findings %> material open</span>
+                      <span class="tag <%= e.open_observations ? 'tag-danger' : 'tag-success' %>"><%= e.open_observations %> observation<%= e.open_observations === 1 ? '' : 's' %> open</span>
+                    </div>
+                  </div>
+
+                  <% if (e.findings.length) { %>
+                    <table class="t" style="background:var(--bg);border:1px solid var(--border);">
+                      <thead><tr><th>Finding / observation</th><th style="width:110px;">Severity</th><th style="width:120px;">Status</th><th style="width:90px;"></th></tr></thead>
+                      <tbody>
+                        <% e.findings.forEach(finding => { %>
+                          <tr>
+                            <td><strong><%= finding.title %></strong><% if (finding.description) { %><div class="meta text-sm" style="margin-top:2px;"><%= finding.description %></div><% } %></td>
+                            <td><span class="tag <%= finding.severity === 'major' ? 'tag-danger' : finding.severity === 'minor' ? 'tag-warn' : 'tag-neutral' %>"><%= finding.severity %></span></td>
+                            <td><span class="status s-<%= ['closed','verified'].includes(finding.status) ? 'done' : finding.status %>"><%= finding.status.replaceAll('_',' ') %></span></td>
+                            <td><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/nonconformities/<%= finding.id %>">Manage</a></td>
+                          </tr>
+                        <% }) %>
+                      </tbody>
+                    </table>
+                  <% } else { %>
+                    <div class="meta text-sm">No <%= stageLabel %> findings have been recorded. If the certification body raises none, the remediation milestone becomes clear when this audit is closed with an actual date.</div>
+                  <% } %>
+
+                  <% if (canManageNc) { %>
+                    <details>
+                      <summary class="btn btn-secondary btn-xs" style="display:inline-flex;list-style:none;cursor:pointer;">+ Record <%= stageLabel %> finding or observation</summary>
+                      <form method="POST" action="/workspaces/<%= ws.id %>/cert-cycle/<%= e.id %>/findings" style="display:grid;grid-template-columns:minmax(220px,1fr) 150px minmax(260px,1.4fr) auto;gap:8px;align-items:end;margin-top:10px;">
+                        <div><label class="label">Title</label><input class="input" name="title" required maxlength="300" placeholder="Certification-body finding"></div>
+                        <div><label class="label">Classification</label><select class="select" name="severity"><option value="major">Major NC</option><option value="minor">Minor NC</option><option value="observation" selected>Observation</option></select></div>
+                        <div><label class="label">Condition / auditor note</label><input class="input" name="description" maxlength="5000" placeholder="What the auditor observed"></div>
+                        <button class="btn btn-primary">Record</button>
+                      </form>
+                    </details>
+                  <% } %>
+                  <div class="meta text-xs">Every open nonconformity and observation blocks this audit's remediation milestone. Stage 2 remediation must be clear before the certification-support engagement can complete.</div>
+                </div>
+              </td>
+            </tr>
+          <% } %>
         <% }) %>
       </tbody>
     </table>

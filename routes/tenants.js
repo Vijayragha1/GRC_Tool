@@ -70,6 +70,9 @@ function resolveOnboardingHref(db, href, firmId) {
   return `/workspaces/${ws.id}/${subpath.replace(/^\//, '')}`.replace(/\/$/, '');
 }
 
+const rbac = require('../lib/rbac');
+const { auditCtx } = require('../lib/http-helpers');
+
 function register(app, deps) {
   const { db, bcrypt, requireAuth, isFirmUser, getActiveFirmId, listUserFirms, withToast, projectRoot } = deps;
 
@@ -83,17 +86,44 @@ function register(app, deps) {
     res.render('tenants', { user: req.user, firms, activeFirmId });
   });
 
+  // AUTHZ-001: tenant creation provisions a firm, an owner account and an
+  // upload root. It was previously reachable by ANY authenticated principal,
+  // including client and prospect portal users. Require a firm user holding
+  // firm.manage, and provision inside a transaction so a failure cannot leave
+  // a partial firm / owner / onboarding row behind.
   app.post('/tenants', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user) || !rbac.rolePermissions(req.user.firm_role).includes('firm.manage')) {
+      return res.status(403).render('error', {
+        user: req.user, message: 'Creating a tenant requires a firm manager.' });
+    }
     const name = (req.body.name || '').trim();
     if (!name) return res.redirect('/tenants');
-    const fid = db.prepare('INSERT INTO firms (name) VALUES (?)').run(name).lastInsertRowid;
-    const placeholderEmail = `owner+firm${fid}@local`;
-    const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
-    db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
-                VALUES (?, ?, ?, 'firm', ?, 'owner', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, fid);
-    const tenantDir = path.join(projectRoot, 'uploads', `firm_${fid}`);
-    try { fs.mkdirSync(tenantDir, { recursive: true }); } catch (_) {}
-    db.prepare(`INSERT INTO tenant_onboarding (firm_id, current_step) VALUES (?, 1)`).run(fid);
+
+    let fid = null;
+    try {
+      fid = db.transaction(() => {
+        const id = db.prepare('INSERT INTO firms (name) VALUES (?)').run(name).lastInsertRowid;
+        const placeholderEmail = `owner+firm${id}@local`;
+        const placeholderHash = bcrypt.hashSync('disabled-' + Date.now(), 10);
+        db.prepare(`INSERT INTO users (email, password_hash, name, user_type, firm_id, firm_role, active)
+                    VALUES (?, ?, ?, 'firm', ?, 'manager', 1)`).run(placeholderEmail, placeholderHash, `${name} owner`, id);
+        db.prepare(`INSERT INTO tenant_onboarding (firm_id, current_step) VALUES (?, 1)`).run(id);
+        return id;
+      })();
+    } catch (err) {
+      return res.status(500).render('error', {
+        user: req.user, message: 'Could not create the tenant. No changes were saved.' });
+    }
+
+    // Directory creation is outside the transaction because it is not
+    // transactional; if it fails the firm still exists and uploads will be
+    // created lazily, so surface it rather than rolling back governed rows.
+    try { fs.mkdirSync(path.join(projectRoot, 'uploads', `firm_${fid}`), { recursive: true }); }
+    catch (err) { console.error('[tenants] upload dir for firm', fid, err.message); }
+
+    if (typeof deps.logAction === 'function') {
+      try { deps.logAction(req.user.id, null, 'create_firm', 'firm', fid, { name }, auditCtx(req)); } catch (_) {}
+    }
     req.session.active_firm_id = fid;
     res.redirect('/onboarding');
   });

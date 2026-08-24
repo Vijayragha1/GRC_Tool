@@ -69,10 +69,37 @@ cd /opt/grc-tool && docker compose restart
 
 ### Manual backup
 ```bash
-cd /opt/grc-tool && docker compose exec isms node scripts/backup.js
+cd /opt/grc-tool && docker compose exec -T isms node scripts/backup.js
 ```
 
-Automated backups run daily at 2am (see `/etc/cron.d/grc-backup`).
+The command backs up the configured `DB_PATH` and writes an encrypted database
+plus a checksum manifest under `/app/data/backups` (`./data/backups` on the
+host), so the result survives container replacement. The encryption key is not
+included in the backup and must be held separately. Automated backups run once
+daily at 2am from `/etc/cron.d/grc-backup`; the application does not start a
+second in-process schedule, and both cron and the backup service use locks.
+
+After the first backup, prove it is usable:
+
+```bash
+cd /opt/grc-tool && docker compose exec -T isms node scripts/restore-check.js
+```
+
+For off-host redundancy, mount encrypted storage into the container and set
+`BACKUP_MIRROR_DIR` to that mount. Do not point it back at `/app/data/backups`.
+
+The deployment also configures Nginx access logs to record `$uri` without the
+query string. This prevents filters, reset links, and legacy CSRF-bearing URLs
+from being retained in proxy logs. Review and securely expire any access logs
+created before this configuration was installed according to your retention
+policy.
+
+### Runtime file permissions
+
+The container runs as UID/GID `1000:1000`. Deployment scripts enforce `0700`
+on `data`, `data/backups`, and `uploads`, `0600` on their files, and `0600`
+root ownership on `.env`. Re-run `sudo /opt/grc-tool/deploy/update.sh` to
+remediate permissions on an existing deployment before restarting it.
 
 ### Check SSL certificate renewal
 ```bash

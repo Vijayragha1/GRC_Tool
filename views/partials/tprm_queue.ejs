@@ -1,0 +1,104 @@
+<%#
+  Prioritised work queue, grouped by the action rather than by the record.
+
+  A firm with unclassified legacy modules was getting one row per provider
+  record where three of the four columns held the same words on every row:
+  "Classify legacy module records", "Module setup / Owner: Firm manager",
+  "Not set / Due date", thirty-seven times over. The queue looked full and
+  said nothing. Records that share an action now share a row, and records
+  that share a destination collapse into one entry with a count, so the only
+  thing repeated on screen is the thing that actually differs.
+
+  A group holding a single record still renders as an ordinary row, so a
+  healthy mixed queue looks exactly as it did before.
+%>
+<%
+  const queueGroups = [];
+  const groupByLabel = new Map();
+  queueRows.forEach(row => {
+    const label = row.nextAction.label;
+    if (!groupByLabel.has(label)) {
+      const group = {
+        label,
+        priority: row.nextAction.priority,
+        owner: row.nextAction.owner,
+        waitingOn: row.nextAction.waitingOn,
+        dueDates: new Set(),
+        count: 0,
+        entries: new Map(),
+      };
+      groupByLabel.set(label, group);
+      queueGroups.push(group);
+    }
+    const group = groupByLabel.get(label);
+    group.count++;
+    group.dueDates.add(row.nextAction.dueDate || null);
+    // Records pointing at the same destination are one entry: seven providers
+    // in one client that all resolve to that client's module setup is one
+    // link, not seven identical ones.
+    const href = row.nextAction.href;
+    if (!group.entries.has(href)) {
+      group.entries.set(href, { href, row, count: 0 });
+    }
+    group.entries.get(href).count++;
+  });
+  const groupDue = group => {
+    const dates = [...group.dueDates].filter(Boolean).sort();
+    if (!dates.length) return '';
+    return dates.length === 1 || dates[0] === dates[dates.length - 1]
+      ? `due ${dateOnly(dates[0])}`
+      : `due ${dateOnly(dates[0])} to ${dateOnly(dates[dates.length - 1])}`;
+  };
+  // A destination that names a third-party record identifies that record; any
+  // other destination is a page for the whole client, so labelling the entry
+  // with a provider name there would be arbitrary among its siblings.
+  const entryLabel = entry => (String(entry.href).includes('/third-parties/')
+    ? entry.row.name
+    : (showClient ? entry.row.client_name : entry.row.name));
+%>
+<div class="tprm-queue" role="list">
+  <% queueGroups.forEach(group => { %>
+    <% if (group.count === 1) { const row = group.entries.values().next().value.row; %>
+      <a class="tprm-queue-row" role="listitem" data-third-party-id="<%= row.id %>" data-workspace-id="<%= row.workspace_id %>" href="<%= row.nextAction.href %>">
+        <span class="tprm-priority tprm-priority-<%= row.nextAction.priority %>" aria-label="<%= titleCase(row.nextAction.priority) %> priority"></span>
+        <span class="tprm-queue-identity">
+          <strong><%= row.name %></strong>
+          <small><% if (showClient) { %><%= row.client_name %> · <% } %><%= row.service_provided || 'Service not recorded' %></small>
+        </span>
+        <span class="tprm-queue-action"><strong><%= row.nextAction.label %></strong><small><%= row.stage_label %></small></span>
+        <span class="tprm-queue-owner"><strong><%= row.nextAction.waitingOn %></strong><small>Owner: <%= row.nextAction.owner %></small></span>
+        <span class="tprm-queue-due"><strong><%= dateOnly(row.nextAction.dueDate) || 'Not set' %></strong><small>Due date</small></span>
+        <span class="tprm-row-arrow" aria-hidden="true"></span>
+      </a>
+    <% } else if (group.entries.size === 1) { const only = group.entries.values().next().value; %>
+      <%# Every record in this group resolves to one destination, so the group
+          heading is the link and a list of chips would just repeat it. %>
+      <a class="tprm-queue-group tprm-queue-group-link" role="listitem" href="<%= only.href %>" data-workspace-id="<%= only.row.workspace_id %>">
+        <span class="tprm-queue-group-head">
+          <span class="tprm-priority tprm-priority-<%= group.priority %>" aria-label="<%= titleCase(group.priority) %> priority"></span>
+          <span class="tprm-queue-group-label"><%= group.label %></span>
+          <span class="tprm-queue-group-meta"><%= [`${group.count} records`, showClient ? only.row.client_name : '', group.waitingOn ? `waiting on ${group.waitingOn}` : '', group.owner ? `owner ${group.owner}` : '', groupDue(group)].filter(Boolean).join(' · ') %></span>
+        </span>
+        <span class="tprm-row-arrow" aria-hidden="true"></span>
+      </a>
+    <% } else { %>
+      <div class="tprm-queue-group" role="listitem">
+        <div class="tprm-queue-group-head">
+          <span class="tprm-priority tprm-priority-<%= group.priority %>" aria-label="<%= titleCase(group.priority) %> priority"></span>
+          <span class="tprm-queue-group-label"><%= group.label %></span>
+          <span class="tprm-queue-group-meta"><%= [`${group.count} records`, group.waitingOn ? `waiting on ${group.waitingOn}` : '', group.owner ? `owner ${group.owner}` : '', groupDue(group)].filter(Boolean).join(' · ') %></span>
+        </div>
+        <div class="tprm-queue-entries">
+          <% [...group.entries.values()].forEach(entry => { %>
+            <a href="<%= entry.href %>" data-third-party-id="<%= entry.row.id %>" data-workspace-id="<%= entry.row.workspace_id %>">
+              <%= entryLabel(entry) %><% if (entry.count > 1) { %> <span class="tprm-queue-entry-count">×<%= entry.count %></span><% } %>
+            </a>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+  <% }) %>
+  <% if (!queueRows.length) { %>
+    <div class="tprm-empty"><strong>No open portfolio actions</strong><span>There are no actions in the current scope.</span></div>
+  <% } %>
+</div>

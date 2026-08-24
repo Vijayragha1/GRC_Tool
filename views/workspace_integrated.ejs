@@ -46,7 +46,7 @@
         </div>
         <div class="ifw-position-cell"><strong><%= programme.currentLabel %></strong><small><%= programme.currentDetail %></small></div>
         <div class="ifw-number-cell"><strong><%= programme.evidence %></strong><small>evidence items</small><span><%= programme.documents %> controlled documents</span></div>
-        <div class="ifw-number-cell"><strong><%= programme.openItems %></strong><small><%= programme.key === 'csf' ? 'open findings' : 'requirements not implemented' %></small></div>
+        <div class="ifw-number-cell"><strong><%= programme.key === 'csf' ? programme.unassessedOutcomes : programme.openItems %></strong><small><%= programme.key === 'csf' ? 'outcomes to assess' : 'requirements not implemented' %></small><% if (programme.key === 'csf') { %><span><%= programme.openConfirmedFindings || 0 %> confirmed finding<%= programme.openConfirmedFindings === 1 ? '' : 's' %></span><% } %></div>
         <div class="ifw-action-cell"><a class="btn btn-xs" href="<%= programme.nextHref %>"><%= programme.nextLabel %></a></div>
         <% if (programme.key === 'csf' && programme.functions.length) { %>
           <div class="ifw-csf-functions">

@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const express = require('express');
 const archiver = require('archiver');
 const fts = require('../lib/fts');
@@ -22,6 +23,8 @@ const jobs = require('../lib/jobs');
 const backup = require('../lib/backup');
 const keyrotation = require('../lib/keyrotation');
 const ctlReads = require('../lib/control-reads');
+const tprmDomain = require('../lib/tprm-domain');
+const serviceCapabilities = require('../lib/tprm-capabilities');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const evReads = require('../lib/evidence-reads');
@@ -32,6 +35,7 @@ const gapAssessmentReport = require('../lib/gap-assessment-report');
 const auditPack = require('../lib/audit-pack');
 const { computeReadiness } = require('../lib/readiness');
 const delivery = require('../lib/engagement-delivery');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 const performanceObjectives = require('../lib/performance-objectives');
 const { ymdLocal, ymLocal, isValidTimeZone, workspaceTimeZone } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
@@ -45,6 +49,12 @@ function register(app, deps) {
           getActiveMethodology, methodologyBand, activeEntityFilter,
           resolveUploadPath, upload, csvUpload, qUploadAny, resolveQuestionnaireFirm, computeClientStage, permissionsFor, persistQuestionnaireFiles,
           verifyAuditChain, listWorkspaces, workspaceProgress } = deps;
+  const requireReadinessService = outcomeScope.requirePostGapService(
+    'Certification readiness is outside this gap-assessment-only engagement. Use the assessment findings and controlled report instead.');
+  const requireInternalAuditService = outcomeScope.requirePostGapService(
+    'Internal audit delivery is outside this gap-assessment-only engagement. Assessment findings and client-owned recommendations remain available.');
+  const requireDocumentImplementation = outcomeScope.requirePostGapService(
+    'Policy and document implementation is outside this gap-assessment-only engagement. Existing client documents remain available as assessment inputs.');
 
   // ==================== EXEC BRIEF (one-page CISO/board readout) ====================
   // Single-page health summary that renders as one screen, prints to one A4
@@ -101,10 +111,15 @@ function register(app, deps) {
       SUM(CASE WHEN due_date < date('now') AND status NOT IN ('closed','verified') THEN 1 ELSE 0 END) AS overdue
       FROM nonconformities WHERE workspace_id=?`).get(ws.id);
 
-    // Adaptive engagement plan projection (same truth as Plan/Timeline/Tasks).
-    const planProjection = delivery.getProjection(db, ws, req.user.id);
-    const planTotal = planProjection.summary.totalMilestones;
-    const planDone = planProjection.summary.completeMilestones;
+    // Adaptive ISO delivery truth is meaningful only when ISO 27001 is in the
+    // selected programme.  A generic executive brief must not materialise or
+    // label an ISO plan for CSF/ISO 42001-only workspaces.
+    const frameworks = Array.isArray(ws.frameworks) ? ws.frameworks : [];
+    const planProjection = frameworks.includes('iso27001')
+      ? delivery.getProjection(db, ws, req.user.id)
+      : null;
+    const planTotal = planProjection?.summary.totalMilestones || 0;
+    const planDone = planProjection?.summary.completeMilestones || 0;
 
     res.render('exec_brief', {
       user: req.user, ws,
@@ -112,7 +127,7 @@ function register(app, deps) {
       velocityNow: velNow, velocityPrior: velPrior, velocityDelta,
       residualAle, openRiskCount: openRisks.length,
       topRisks, topNCs, ncTotals,
-      planTotal, planDone, planPct: planProjection.summary.progressPct,
+      planTotal, planDone, planPct: planProjection?.summary.progressPct || 0,
       derivedStage: computeClientStage(ws),
     });
   });
@@ -603,7 +618,7 @@ function register(app, deps) {
 
   // Stage 1/2 readiness pack - single ZIP with the management-system docs +
   // linked evidence + manifest.
-  app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorkspace, requireReadinessService, async (req, res) => {
     const ws = req.workspace;
     const stage = (req.query.stage === '2') ? 2 : 1;
     const dateLabel = new Date().toISOString().slice(0,10);
@@ -719,7 +734,7 @@ function register(app, deps) {
     res.render('documents_tree', { user: req.user, ws: req.workspace, docs });
   });
 
-  app.post('/workspaces/:wsId/documents/:id/parent', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+  app.post('/workspaces/:wsId/documents/:id/parent', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.edit'), (req, res) => {
     const pid = req.body.parent_doc_id ? parseInt(req.body.parent_doc_id, 10) : null;
     // Prevent self-loop
     if (pid && pid == req.params.id) return redirectBack(req, res);
@@ -730,7 +745,7 @@ function register(app, deps) {
   });
 
   // ==================== AUDIT PROGRAMME + SAMPLING ====================
-  app.get('/workspaces/:wsId/audit-programme', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.get('/workspaces/:wsId/audit-programme', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const year = parseInt(req.query.year || new Date().getFullYear(), 10);
     let programme = db.prepare('SELECT * FROM audit_programmes WHERE workspace_id=? AND year=?').get(req.workspace.id, year);
     if (!programme) {
@@ -742,7 +757,7 @@ function register(app, deps) {
     res.render('audit_programme', { user: req.user, ws: req.workspace, programme, audits, year });
   });
 
-  app.post('/workspaces/:wsId/audit-programme/:id', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audit-programme/:id', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const { description, approved_by } = req.body;
     const sets = [];
     const vals = [];
@@ -836,19 +851,45 @@ function register(app, deps) {
   });
 
   // ==================== SUPPLIER MONITORING + TERMINATION + CONCENTRATION ====================
-  app.post('/workspaces/:wsId/vendors/:id/monitoring', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/monitoring', requireAuth, requireWorkspace,
+    serviceCapabilities.requireCapability(db, serviceCapabilities.CAPABILITIES.MONITORING_SIGNALS),
+    requirePermission('tprm.monitoring.manage'), (req, res) => {
     const { source, score, grade, recorded_at, notes } = req.body;
     if (!source) return redirectBack(req, res);
-    db.prepare(`INSERT INTO supplier_monitoring (workspace_id, supplier_id, source, score, grade, recorded_at, notes, recorded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      req.workspace.id, req.params.id, source,
-      score ? parseFloat(score) : null, grade || null,
-      recorded_at || new Date().toISOString().slice(0,10),
-      notes || null, req.user.id);
-    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?view=support&tab=monitoring`);
+    const supplier = db.prepare('SELECT id,name FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!supplier) return res.status(404).render('error', { user:req.user, ws:req.workspace, message:'Third party not found.' });
+    const numericScore = score === '' || score == null ? null : Number(score);
+    const severity = numericScore == null ? 'info' : numericScore < 40 ? 'critical' : numericScore < 60 ? 'high' : numericScore < 80 ? 'moderate' : 'low';
+    const observedAt = recorded_at || new Date().toISOString().slice(0,10);
+    try {
+      db.transaction(() => {
+        const legacyId = Number(db.prepare(`INSERT INTO supplier_monitoring (workspace_id, supplier_id, source, score, grade, recorded_at, notes, recorded_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+          req.workspace.id, supplier.id, source,
+          Number.isFinite(numericScore) ? numericScore : null, grade || null,
+          observedAt, notes || null, req.user.id).lastInsertRowid);
+        tprmDomain.recordMonitoringSignal(db, {
+          workspaceId:req.workspace.id, supplierId:supplier.id,
+          source:String(source).trim(), sourceReference:`supplier_monitoring:${legacyId}`,
+          signalType:'other', severity,
+          title:`${supplier.name} monitoring update`, detail:notes || null,
+          observedAt, requiresReassessment:req.body.requires_reassessment === '1' || ['high','critical'].includes(severity),
+          actorId:req.user.id, actorType:'consultant', actorName:req.user.name,
+          metadata:{ score:Number.isFinite(numericScore) ? numericScore : null, grade:grade || null },
+        });
+      })();
+    } catch (error) {
+      return res.status([400,403,409].includes(Number(error.status)) ? Number(error.status) : 409)
+        .render('error', { user:req.user, ws:req.workspace, message:error.message || 'Monitoring signal could not be recorded.' });
+    }
+    res.redirect(`/workspaces/${req.workspace.id}/tprm/third-parties/${supplier.id}#monitoring`);
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/termination/start', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/termination/start', requireAuth, requireWorkspace,
+    serviceCapabilities.requireCapability(db, serviceCapabilities.CAPABILITIES.OPERATIONAL_LIFECYCLE),
+    requirePermission('tprm.monitoring.manage'), (req, res) => {
+    const supplier = db.prepare('SELECT id FROM suppliers WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!supplier) return res.status(404).render('error', { user:req.user, ws:req.workspace, message:'Third party not found.' });
     const items = [
       ['access_revoked', 'Logical access revoked'],
       ['vpn_keys_revoked', 'VPN / API keys revoked'],
@@ -859,35 +900,73 @@ function register(app, deps) {
       ['contract_closed', 'Contract formally closed'],
       ['communications_done', 'Internal stakeholders notified']
     ];
-    const ins = db.prepare(`INSERT OR IGNORE INTO supplier_termination_items (workspace_id, supplier_id, item_key, label) VALUES (?, ?, ?, ?)`);
-    items.forEach(([k, l]) => ins.run(req.workspace.id, req.params.id, k, l));
-    db.prepare(`UPDATE suppliers SET termination_started_at=CURRENT_TIMESTAMP, termination_owner=?, lifecycle_stage='terminating' WHERE id=? AND workspace_id=?`)
-      .run(req.body.termination_owner || req.user.name, req.params.id, req.workspace.id);
+    try {
+      db.transaction(() => {
+        const cycle = tprmDomain.ensureCurrentCycle(db, {
+          workspaceId:req.workspace.id, supplierId:supplier.id, actorId:req.user.id,
+          cycleType:'triggered', triggerReason:'Governed third-party exit initiated.',
+        }).cycle;
+        const projection = tprmDomain.lifecycleProjection(db, req.workspace.id, supplier.id);
+        if (projection.stage !== 'offboarding') {
+          tprmDomain.transition(db, {
+            workspaceId:req.workspace.id, supplierId:supplier.id, cycleId:cycle.id,
+            expectedStage:projection.stage, fromStage:projection.stage, toStage:'offboarding',
+            actorId:req.user.id, actorType:'consultant',
+            reason:String(req.body.reason || 'Third-party exit and access revocation initiated.').trim(),
+          });
+        }
+        const ins = db.prepare(`INSERT OR IGNORE INTO supplier_termination_items (workspace_id, supplier_id, item_key, label) VALUES (?, ?, ?, ?)`);
+        items.forEach(([k, l]) => ins.run(req.workspace.id, supplier.id, k, l));
+        db.prepare(`UPDATE suppliers SET termination_started_at=COALESCE(termination_started_at,CURRENT_TIMESTAMP), termination_owner=? WHERE id=? AND workspace_id=?`)
+          .run(req.body.termination_owner || req.user.name, supplier.id, req.workspace.id);
+      })();
+    } catch (error) {
+      return res.status([400,403,404,409].includes(Number(error.status)) ? Number(error.status) : 409)
+        .render('error', { user:req.user, ws:req.workspace, message:error.message || 'Offboarding could not be started.' });
+    }
     logAction(req.user.id, req.workspace.id, 'start_termination', 'supplier', req.params.id, null, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?view=support&tab=termination`);
+    res.redirect(`/workspaces/${req.workspace.id}/tprm/third-parties/${req.params.id}#offboarding`);
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/termination/:itemId', requireAuth, requireWorkspace,
+    serviceCapabilities.requireCapability(db, serviceCapabilities.CAPABILITIES.OPERATIONAL_LIFECYCLE),
+    requirePermission('tprm.monitoring.manage'), (req, res) => {
     const done = req.body.done === '1' ? 1 : 0;
     db.prepare(`UPDATE supplier_termination_items SET done=?, done_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END, evidence=?, notes=? WHERE id=? AND supplier_id=? AND workspace_id=?`)
       .run(done, done, req.body.evidence || null, req.body.notes || null, req.params.itemId, req.params.id, req.workspace.id);
     // If all items done, mark terminated
     const remaining = db.prepare('SELECT COUNT(*) c FROM supplier_termination_items WHERE supplier_id=? AND workspace_id=? AND done=0').get(req.params.id, req.workspace.id).c;
     if (remaining === 0) {
-      db.prepare(`UPDATE suppliers SET lifecycle_stage='terminated', terminated_at=CURRENT_TIMESTAMP, data_return_completed=1 WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+      try {
+        db.transaction(() => {
+          const projection = tprmDomain.lifecycleProjection(db, req.workspace.id, req.params.id);
+          if (projection.stage !== 'offboarding') throw new tprmDomain.TprmDomainError('TPRM_EXIT_STATE_INVALID', 'The governed lifecycle is not in offboarding.', 409);
+          tprmDomain.transition(db, {
+            workspaceId:req.workspace.id, supplierId:req.params.id, cycleId:projection.cycle.id,
+            expectedStage:'offboarding', fromStage:'offboarding', toStage:'closed',
+            actorId:req.user.id, actorType:'consultant', reason:'Every governed offboarding control was completed.',
+          });
+          db.prepare(`UPDATE suppliers SET terminated_at=CURRENT_TIMESTAMP, data_return_completed=1 WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+        })();
+      } catch (error) {
+        return res.status([400,403,404,409].includes(Number(error.status)) ? Number(error.status) : 409)
+          .render('error', { user:req.user, ws:req.workspace, message:error.message || 'Offboarding could not be completed.' });
+      }
     }
-    res.redirect(`/workspaces/${req.workspace.id}/vendors/${req.params.id}?view=support&tab=termination`);
+    res.redirect(`/workspaces/${req.workspace.id}/tprm/third-parties/${req.params.id}#offboarding`);
   });
 
   // Legacy questionnaire endpoints are retained only to provide a clear migration path.
-  // Governed supplier due diligence is the sole writable assessment workflow.
-  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  // Governed third-party due diligence is the sole writable assessment workflow.
+  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace,
+    serviceCapabilities.requireCapability(db, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT),
+    requirePermission('tprm.assessment.manage'), (req, res) => {
     res.status(410).render('error', { user: req.user, ws: req.workspace,
-      message: 'This questionnaire workflow is retired. Issue the governed due-diligence assessment from the supplier record.' });
+      message: 'This questionnaire workflow is retired. Issue the governed due-diligence assessment from the third-party record.' });
   });
 
   app.all('/q/:token', (req, res) => {
-    res.status(410).send('This supplier questionnaire link has been retired. Ask your engagement contact for a new governed due-diligence link.');
+    res.status(410).send('This provider questionnaire link has been retired. Ask your engagement contact for a new governed provider due-diligence link.');
   });
 
   // Historical implementation retained below for database compatibility. These
@@ -897,7 +976,9 @@ function register(app, deps) {
   // email is supplied - emails the vendor the /q/<token> link. The token in the URL is the
   // credential; the vendor never sees the rest of the tool. Re-running this rotates the
   // token (older links stop working) so it doubles as "resend".
-  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), async (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/questionnaires/:qId/share', requireAuth, requireWorkspace,
+    serviceCapabilities.requireCapability(db, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT),
+    requirePermission('tprm.assessment.manage'), async (req, res) => {
     const toEmail = (req.body.email || '').trim().toLowerCase();
     const toName = (req.body.name || '').trim() || null;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
@@ -1135,14 +1216,29 @@ function register(app, deps) {
   // ==================== MEMBERS: BULK INVITE + STATS ====================
   app.post('/workspaces/:wsId/members/bulk', requireAuth, requireWorkspace, requirePermission('members.add'), (req, res) => {
     const lines = (req.body.csv || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const parsed = lines.map(ln => {
+      const [name, email, submittedRole] = ln.split(',').map(s => s.trim());
+      const normalizedRole = rbac.normalizeRole(submittedRole || 'contributor');
+      const role = rbac.CLIENT_ROLES.includes(normalizedRole) ? normalizedRole : 'contributor';
+      return { name, email, role };
+    });
+    // `members.add` authorizes creating a basic collaborator, not elevating
+    // that account to client sponsor/coordinator. Reject the entire import
+    // before any writes so a crafted privileged row cannot partially apply.
+    if (parsed.some(row => row.role !== 'contributor') &&
+        !rbac.hasPermission(req.userPerms, 'members.assign_role')) {
+      return res.status(403).render('error', {
+        user: req.user,
+        message: 'Bulk assignment of privileged client roles requires member role-assignment permission.'
+      });
+    }
     let added = 0;
-    for (const ln of lines) {
-      const parts = ln.split(',').map(s => s.trim());
-      const [name, email, role] = parts;
+    for (const row of parsed) {
+      const { name, email, role: r } = row;
       if (!name || !email) continue;
       const e = email.toLowerCase();
-      const r = ['client_owner','contributor','reviewer','auditor','read_only'].includes(role) ? role : 'contributor';
       let user = db.prepare('SELECT * FROM users WHERE email=?').get(e);
+      if (user && user.user_type !== 'client') continue;
       if (!user) {
         const hash = bcrypt.hashSync('temporary-' + crypto.randomBytes(8).toString('hex'), 10);
         const uid = db.prepare(`INSERT INTO users (email, password_hash, name, user_type) VALUES (?, ?, ?, 'client')`).run(e, hash, name).lastInsertRowid;
@@ -1302,7 +1398,7 @@ function register(app, deps) {
   });
 
   // ==================== READINESS DRILL-DOWN ====================
-  app.get('/workspaces/:wsId/readiness/auditor', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/readiness/auditor', requireAuth, requireWorkspace, requireReadinessService, requirePermission('control.view'), (req, res) => {
     // Auditor checklist view: per-clause / per-Annex A, what evidence exists, what's missing
     const items = db.prepare(`SELECT i.id, i.title, i.type, i.category, i.evidence_needed, i.documentation_needed,
       cs.status, cs.applicability, cs.last_updated, cs.notes,
@@ -1738,7 +1834,7 @@ function register(app, deps) {
     return SAMPLE_SIZE_HINTS[controlId] || SAMPLE_SIZE_HINTS._default;
   }
 
-  app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
 
@@ -1787,7 +1883,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, msg));
   });
 
-  app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
     const category = req.body.category;
@@ -1819,7 +1915,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, msg));
   });
 
-  app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/observations', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
     const { iso_item_id, description, recommendation } = req.body;
@@ -1829,12 +1925,12 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
   });
 
-  app.post('/workspaces/:wsId/audits/observations/:obsId/close', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/observations/:obsId/close', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     db.prepare(`UPDATE audit_observations SET status='closed' WHERE id=? AND audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`).run(req.params.obsId, req.workspace.id);
     redirectBack(req, res);
   });
 
-  app.post('/workspaces/:wsId/audits/:id/checklist/clear', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/checklist/clear', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
     const result = db.prepare(`DELETE FROM audit_observations WHERE audit_id=? AND status='open'`).run(audit.id);
@@ -1843,12 +1939,12 @@ function register(app, deps) {
       `Cleared ${result.changes} open checklist item${result.changes === 1 ? '' : 's'} (closed items kept)`));
   });
 
-  app.post('/workspaces/:wsId/audits/observations/:obsId/reopen', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/observations/:obsId/reopen', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     db.prepare(`UPDATE audit_observations SET status='open' WHERE id=? AND audit_id IN (SELECT id FROM audits WHERE workspace_id=?)`).run(req.params.obsId, req.workspace.id);
     redirectBack(req, res);
   });
 
-  app.post('/workspaces/:wsId/audits/observations/:obsId/notes', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/observations/:obsId/notes', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const obs = db.prepare(`SELECT o.id, o.audit_id FROM audit_observations o
       INNER JOIN audits a ON a.id = o.audit_id
       WHERE o.id=? AND a.workspace_id=?`).get(req.params.obsId, req.workspace.id);
@@ -1858,7 +1954,7 @@ function register(app, deps) {
     redirectBack(req, res);
   });
 
-  app.post('/workspaces/:wsId/audits/observations/:obsId/promote', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/observations/:obsId/promote', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const obs = db.prepare(`SELECT o.* FROM audit_observations o
       INNER JOIN audits a ON a.id = o.audit_id
       WHERE o.id=? AND a.workspace_id=?`).get(req.params.obsId, req.workspace.id);

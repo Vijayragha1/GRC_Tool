@@ -4,8 +4,8 @@
        launchctl load -w ~/Library/LaunchAgents/com.grc.dev-backup.plist
        launchctl start com.grc.dev-backup    # run once to verify
      Paths below are machine-specific (this dev box); adjust if relocated.
-     Runs scripts/dev-backup.js, which runs scripts/backup.js (file bundle) AND
-     records a backup_runs row (the Phase 7 demolition gate keys off backup_runs). -->
+     Runs scripts/dev-backup.js, which delegates once to the governed encrypted
+     backup CLI. That service writes the backup_runs record and owns locking. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -31,9 +31,9 @@
     <integer>30</integer>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/vijayraghavan/iso27001-tool/backups/dev-backup.log</string>
+    <string>/Users/vijayraghavan/iso27001-tool/data/backups/dev-backup.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/vijayraghavan/iso27001-tool/backups/dev-backup.log</string>
+    <string>/Users/vijayraghavan/iso27001-tool/data/backups/dev-backup.log</string>
   <key>RunAtLoad</key>
   <false/>
 </dict>

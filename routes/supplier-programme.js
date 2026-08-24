@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const email = require('../lib/email');
 const supplierRisk = require('../lib/supplier-risk');
+const tprmDomain = require('../lib/tprm-domain');
+const serviceCapabilities = require('../lib/tprm-capabilities');
 const supplierMethodologies = require('../lib/supplier-methodologies');
 const uploadSecurity = require('../lib/upload-security');
 const { todayFor } = require('../lib/dates');
@@ -15,6 +17,86 @@ function register(app, deps) {
     db, requireAuth, requireWorkspace, requirePermission, logAction, qUploadAny,
     resolveUploadPath, questionnaireFileExtensions
   } = deps;
+
+  function latestTprmModule(workspaceId) {
+    return db.prepare(`SELECT * FROM tprm_modules
+      WHERE workspace_id=? ORDER BY id DESC LIMIT 1`).get(workspaceId) || null;
+  }
+
+  function methodologyForRead(assessment, workspaceId, userId = null) {
+    const module = latestTprmModule(workspaceId);
+    if (module && module.status === 'active') {
+      return supplierMethodologies.forAssessment(db, assessment, workspaceId, userId);
+    }
+    const snapshot = supplierMethodologies.parseDefinition(assessment && assessment.methodology_snapshot_json);
+    if (snapshot) {
+      return {
+        id: assessment.methodology_id || null,
+        version: assessment.methodology_version || snapshot.version || 'retained',
+        content_hash: assessment.methodology_hash || supplierMethodologies.hashDefinition(snapshot),
+        definition: snapshot,
+        snapshot: true,
+      };
+    }
+    if (assessment && assessment.methodology_id) {
+      const row = db.prepare(`SELECT * FROM supplier_risk_methodologies
+        WHERE id=? AND workspace_id=?`).get(assessment.methodology_id, workspaceId);
+      const definition = row && supplierMethodologies.parseDefinition(row.definition_json);
+      if (row && definition) return { ...row, definition };
+    }
+    const retained = db.prepare(`SELECT * FROM supplier_risk_methodologies
+      WHERE workspace_id=? AND status='published' AND definition_json IS NOT NULL
+      ORDER BY is_active DESC,version DESC,id DESC LIMIT 1`).get(workspaceId);
+    const definition = retained && supplierMethodologies.parseDefinition(retained.definition_json);
+    if (retained && definition) return { ...retained, definition };
+    const fallback = supplierMethodologies.clone(supplierMethodologies.defaultDefinition);
+    return {
+      id: null,
+      version: fallback.version || 'retained-default',
+      content_hash: supplierMethodologies.hashDefinition(fallback),
+      definition: fallback,
+      snapshot: true,
+    };
+  }
+
+  app.use('/workspaces/:wsId/supplier-methodology', requireAuth, requireWorkspace, (req, res, next) => {
+    const module = latestTprmModule(req.workspace.id);
+    if (!module) return res.status(404).render('error', { user:req.user, ws:req.workspace,
+      message:'Third-party risk is not enabled for this client.' });
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      try {
+        serviceCapabilities.assertCapability(
+          db, req.workspace.id, serviceCapabilities.CAPABILITIES.METHODOLOGY_GOVERNANCE
+        );
+      } catch (error) {
+        if (!(error instanceof serviceCapabilities.TprmCapabilityError)) return next(error);
+        return res.status(error.status).render('error', {
+          user:req.user, ws:req.workspace, message:error.message,
+        });
+      }
+    }
+    res.locals.tprmModule = module;
+    res.locals.tprmPolicy = serviceCapabilities.policyForModule(module);
+    res.locals.tprmReadOnly = module.status !== 'active';
+    res.locals.tprmReadOnlyReason = module.status === 'closed'
+      ? 'This service period is closed. Retained records are read-only.'
+      : 'This historic service period must be classified before records can be changed.';
+    next();
+  });
+
+  function requireAssessmentMutation(req, res, next) {
+    if (['GET', 'HEAD'].includes(req.method)) return next();
+    return serviceCapabilities.requireCapability(
+      db, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT
+    )(req, res, next);
+  }
+
+  // These legacy fieldwork screens pre-date the governed TPRM routes and write
+  // directly to assessment tables. Keep their retained GET history readable,
+  // but apply the same contracted-service boundary to every mutation.
+  app.use('/workspaces/:wsId/vendors/:id/inherent-risk', requireAuth, requireWorkspace, requireAssessmentMutation);
+  app.use('/workspaces/:wsId/vendors/:id/due-diligence', requireAuth, requireWorkspace, requireAssessmentMutation);
+  app.use('/workspaces/:wsId/vendors/:id/contract-review', requireAuth, requireWorkspace, requireAssessmentMutation);
 
   const supplier = (wsId, supplierId) => db.prepare('SELECT * FROM suppliers WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(supplierId, wsId);
   const currentInherent = supplierId => db.prepare(`SELECT * FROM supplier_inherent_assessments WHERE supplier_id=? AND status!='superseded' ORDER BY id DESC LIMIT 1`).get(supplierId);
@@ -114,7 +196,7 @@ function register(app, deps) {
 
   function ddqBundle(assessment, clientName) {
     if (!assessment) return null;
-    const methodologyRecord = supplierMethodologies.forAssessment(db, assessment, assessment.workspace_id);
+    const methodologyRecord = methodologyForRead(assessment, assessment.workspace_id);
     const methodology = methodologyRecord.definition;
     const modules = parseModules(assessment.modules_json);
     const questions = supplierRisk.questionsForAssessment(assessment.tier, moduleMap(modules), clientName, methodology);
@@ -141,6 +223,20 @@ function register(app, deps) {
       FROM supplier_ddq_assessments a JOIN suppliers s ON s.id=a.supplier_id JOIN workspaces w ON w.id=a.workspace_id
       WHERE a.token_hash=?`).get(hash);
     if (!assessment) return res.render('external_supplier_ddq', { state: 'invalid' });
+    const module = latestTprmModule(assessment.workspace_id);
+    if (!module || module.status !== 'active') {
+      return res.status(409).render('external_supplier_ddq', { state:'closed' });
+    }
+    try {
+      serviceCapabilities.assertCapability(
+        db, assessment.workspace_id, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT
+      );
+    } catch (error) {
+      if (!(error instanceof serviceCapabilities.TprmCapabilityError)) return next(error);
+      return res.status(error.status).render('external_supplier_ddq', {
+        state:'closed', message:error.message,
+      });
+    }
     req._supplierDdq = assessment;
     req.workspace = { id: assessment.workspace_id, firm_id: assessment.firm_id, client_name: assessment.client_name };
     next();
@@ -148,15 +244,263 @@ function register(app, deps) {
 
   function contractBundle(review) {
     if (!review) return null;
-    const methodologyRecord = supplierMethodologies.forAssessment(db, review, review.workspace_id);
+    const methodologyRecord = methodologyForRead(review, review.workspace_id);
     const methodology = methodologyRecord.definition;
     const items = db.prepare('SELECT * FROM supplier_contract_review_items WHERE review_id=?').all(review.id);
     const itemMap = Object.fromEntries(items.map(row => [row.clause_id, row]));
     return { review, methodology, methodologyRecord, items, itemMap, progress: supplierRisk.contractProgress(methodology.contractClauses, itemMap) };
   }
 
-  app.get('/workspaces/:wsId/supplier-methodology', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
-    const activeMethodology = supplierMethodologies.active(db, req.workspace.id, req.user.id);
+  function assessmentFindingInput(req) {
+    const values = req.method === 'GET' ? req.query : req.body;
+    const assessmentText = String(values.assessment_id || '').trim();
+    const itemKey = String(values.item_key || '').trim();
+    return {
+      source: String(values.source || '').trim(),
+      assessmentId: /^[1-9]\d*$/.test(assessmentText) ? Number(assessmentText) : null,
+      itemKey: itemKey.length <= 160 ? itemKey : '',
+    };
+  }
+
+  function assessmentFindingContext(req) {
+    const v = supplier(req.workspace.id, req.params.id);
+    if (!v) return null;
+    const input = assessmentFindingInput(req);
+    if (!input.assessmentId || !input.itemKey || !['ddq', 'contract'].includes(input.source)) return null;
+
+    if (input.source === 'ddq') {
+      const assessment = db.prepare(`SELECT * FROM supplier_ddq_assessments
+        WHERE id=? AND workspace_id=? AND supplier_id=?`).get(input.assessmentId, req.workspace.id, v.id);
+      if (!assessment) return null;
+      const bundle = ddqBundle(assessment, req.workspace.client_name);
+      const question = bundle.questions.find(item => String(item.id) === input.itemKey);
+      if (!question) return null;
+      const current = currentDdq(v.id);
+      const response = bundle.responseMap[input.itemKey] || {};
+      return {
+        source:'ddq', assessmentId:assessment.id, itemKey:input.itemKey, assessment, v,
+        item:question, itemResponse:response, linkedFindingId:Number(response.finding_id) || null,
+        domain:question.domain || question.module || 'Due diligence',
+        contextLabel:`Due-diligence question ${question.id}`,
+        contextTitle:question.theme || question.question,
+        contextDescription:question.question,
+        editable:Boolean(current && current.id === assessment.id && ['submitted', 'under_review'].includes(assessment.status)),
+        returnBase:`/workspaces/${req.workspace.id}/vendors/${v.id}/due-diligence`,
+        returnAnchor:`#question-${encodeURIComponent(question.id)}`,
+      };
+    }
+
+    const assessment = db.prepare(`SELECT * FROM supplier_contract_reviews
+      WHERE id=? AND workspace_id=? AND supplier_id=?`).get(input.assessmentId, req.workspace.id, v.id);
+    if (!assessment) return null;
+    const bundle = contractBundle(assessment);
+    const clause = bundle.methodology.contractClauses.find(item => String(item.id) === input.itemKey);
+    const itemResponse = bundle.itemMap[input.itemKey];
+    if (!clause || !itemResponse) return null;
+    const current = currentContract(v.id);
+    const requirement = String(clause.requirement || '').replaceAll('{{client}}', req.workspace.client_name);
+    return {
+      source:'contract', assessmentId:assessment.id, itemKey:input.itemKey, assessment, v,
+      item:clause, itemResponse, linkedFindingId:Number(itemResponse.finding_id) || null,
+      domain:clause.category || 'Contract',
+      contextLabel:`Contract clause ${clause.id}`,
+      contextTitle:clause.category || clause.id,
+      contextDescription:requirement,
+      editable:Boolean(current && current.id === assessment.id && assessment.status === 'in_progress'),
+      returnBase:`/workspaces/${req.workspace.id}/vendors/${v.id}/contract-review`,
+      returnAnchor:`#clause-${encodeURIComponent(clause.id)}`,
+    };
+  }
+
+  function defaultFindingDueDate(workspace) {
+    const date = new Date(`${todayFor(workspace)}T12:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + 30);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function assessmentFindingValues(context, workspace, supplied = {}) {
+    return {
+      title: supplied.title ?? `${context.itemKey} - ${context.contextTitle}`,
+      description: supplied.description ?? '',
+      severity: supplied.severity ?? 'medium',
+      owner_name: supplied.owner_name ?? context.v.security_reviewer ?? context.v.relationship_owner ?? context.v.business_owner ?? '',
+      due_date: supplied.due_date ?? defaultFindingDueDate(workspace),
+      finding_id: supplied.finding_id ?? '',
+    };
+  }
+
+  function currentLinkedFinding(context) {
+    if (!context.linkedFindingId) return null;
+    return db.prepare(`SELECT f.id,f.title,f.severity,f.status,l.domain,l.owner_name,l.due_date
+      FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id
+      WHERE f.id=? AND f.workspace_id=? AND l.supplier_id=?`)
+      .get(context.linkedFindingId, context.assessment.workspace_id, context.v.id) || null;
+  }
+
+  function renderAssessmentFinding(req, res, context, options = {}) {
+    return res.status(options.status || 200).render('tprm_assessment_finding_new', {
+      user:req.user, ws:req.workspace, v:context.v, context,
+      currentFinding:currentLinkedFinding(context),
+      findings:supplierFindings(req.workspace.id, context.v.id),
+      values:assessmentFindingValues(context, req.workspace, options.values),
+      error:options.error || null,
+      today:todayFor(req.workspace),
+    });
+  }
+
+  function loadEditableAssessmentFinding(req, res) {
+    const context = assessmentFindingContext(req);
+    if (!context) {
+      res.status(404).render('error', { user:req.user, ws:req.workspace,
+        message:'This assessment row does not exist for this third party and client.' });
+      return null;
+    }
+    if (!context.editable) {
+      res.status(409).render('error', { user:req.user, ws:req.workspace,
+        message:'This assessment row is no longer open for review. Return to the current assessment instead of changing retained history.' });
+      return null;
+    }
+    return context;
+  }
+
+  function assertAssessmentFindingEditable(context) {
+    const row = context.source === 'ddq'
+      ? db.prepare(`SELECT status FROM supplier_ddq_assessments
+          WHERE id=? AND workspace_id=? AND supplier_id=?`).get(context.assessmentId, context.assessment.workspace_id, context.v.id)
+      : db.prepare(`SELECT status FROM supplier_contract_reviews
+          WHERE id=? AND workspace_id=? AND supplier_id=?`).get(context.assessmentId, context.assessment.workspace_id, context.v.id);
+    const allowed = context.source === 'ddq'
+      ? row && ['submitted', 'under_review'].includes(row.status)
+      : row && row.status === 'in_progress';
+    if (!allowed) {
+      const error = new Error('Assessment finding context is no longer editable.');
+      error.code = 'TPRM_ASSESSMENT_FINDING_CONTEXT_CLOSED';
+      throw error;
+    }
+  }
+
+  function attachAssessmentFinding(context, findingId, actorId) {
+    assertAssessmentFindingEditable(context);
+    if (context.source === 'ddq') {
+      const latestResponse = db.prepare(`SELECT * FROM supplier_ddq_responses
+        WHERE assessment_id=? AND question_id=?`).get(context.assessmentId, context.itemKey) || {};
+      const nextStatus = supplierRisk.evaluateDdqResponse(context.item, {
+        ...latestResponse, finding_id:findingId,
+      });
+      db.prepare(`INSERT INTO supplier_ddq_responses
+        (assessment_id,question_id,status,reviewer_conclusion,finding_id,reviewer_updated_at,reviewer_id)
+        VALUES (?,? ,?,'Not Reviewed',?,datetime('now'),?)
+        ON CONFLICT(assessment_id,question_id) DO UPDATE SET
+          status=excluded.status,finding_id=excluded.finding_id,reviewer_updated_at=datetime('now'),
+          reviewer_id=excluded.reviewer_id,row_version=row_version+1`)
+        .run(context.assessmentId, context.itemKey, nextStatus, findingId, actorId);
+      db.prepare(`UPDATE supplier_ddq_assessments SET updated_at=datetime('now')
+        WHERE id=? AND workspace_id=? AND supplier_id=?`).run(context.assessmentId, context.assessment.workspace_id, context.v.id);
+      return;
+    }
+    const updated = db.prepare(`UPDATE supplier_contract_review_items SET finding_id=?,reviewed_at=datetime('now'),row_version=row_version+1
+      WHERE review_id=? AND clause_id=?`).run(findingId, context.assessmentId, context.itemKey);
+    if (updated.changes !== 1) {
+      const error = new Error('Assessment finding row is no longer available.');
+      error.code = 'TPRM_ASSESSMENT_FINDING_CONTEXT_CLOSED';
+      throw error;
+    }
+    db.prepare(`UPDATE supplier_contract_reviews SET reviewer_id=?,updated_at=datetime('now')
+      WHERE id=? AND workspace_id=? AND supplier_id=?`).run(actorId, context.assessmentId, context.assessment.workspace_id, context.v.id);
+  }
+
+  function assessmentFindingRedirect(context, message) {
+    return `${withToast(context.returnBase, message, 'success')}${context.returnAnchor}`;
+  }
+
+  const assessmentFindingAccess = [
+    requireAuth,
+    requireWorkspace,
+    requirePermission('tprm.assessment.review'),
+    requirePermission('tprm.finding.manage'),
+    serviceCapabilities.requireCapability(db, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT),
+  ];
+
+  app.get('/workspaces/:wsId/vendors/:id/assessment-findings/new', ...assessmentFindingAccess, (req, res) => {
+    const context = loadEditableAssessmentFinding(req, res);
+    if (!context) return;
+    return renderAssessmentFinding(req, res, context);
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/assessment-findings/link', ...assessmentFindingAccess, (req, res) => {
+    const context = loadEditableAssessmentFinding(req, res);
+    if (!context) return;
+    const findingId = Number(req.body.finding_id);
+    const finding = Number.isInteger(findingId) && findingId > 0
+      ? db.prepare(`SELECT f.id,f.title FROM findings f INNER JOIN supplier_finding_links l ON l.finding_id=f.id
+          WHERE f.id=? AND f.workspace_id=? AND l.supplier_id=? AND f.status NOT IN ('closed','verified')`)
+        .get(findingId, req.workspace.id, context.v.id)
+      : null;
+    if (!finding) {
+      return renderAssessmentFinding(req, res, context, {
+        status:400, error:'Choose an open finding already governed for this third party.',
+        values:{ finding_id:req.body.finding_id || '' },
+      });
+    }
+    try {
+      db.transaction(() => attachAssessmentFinding(context, finding.id, req.user.id))();
+    } catch (error) {
+      if (error.code !== 'TPRM_ASSESSMENT_FINDING_CONTEXT_CLOSED') throw error;
+      return res.status(409).render('error', { user:req.user, ws:req.workspace, message:error.message });
+    }
+    logAction(req.user.id, req.workspace.id, 'link_supplier_assessment_finding', 'finding', finding.id, {
+      supplierId:context.v.id, source:context.source, assessmentId:context.assessmentId, itemKey:context.itemKey,
+    }, auditCtx(req));
+    return res.redirect(303, assessmentFindingRedirect(context, `Finding #${finding.id} linked to ${context.contextLabel}.`));
+  });
+
+  app.post('/workspaces/:wsId/vendors/:id/assessment-findings/create', ...assessmentFindingAccess, (req, res) => {
+    const context = loadEditableAssessmentFinding(req, res);
+    if (!context) return;
+    const values = {
+      title:String(req.body.title || '').trim(),
+      description:String(req.body.description || '').trim(),
+      severity:String(req.body.severity || '').trim(),
+      owner_name:String(req.body.owner_name || '').trim(),
+      due_date:String(req.body.due_date || '').trim(),
+    };
+    const severity = ['low', 'medium', 'high', 'critical'].includes(values.severity) ? values.severity : null;
+    const dueDate = futureDueDate(values.due_date, req.workspace);
+    let validationError = null;
+    if (values.title.length < 3 || values.title.length > 240) validationError = 'Enter a finding title between 3 and 240 characters.';
+    else if (values.description.length < 10 || values.description.length > 4000) validationError = 'Describe the verified gap in at least 10 characters.';
+    else if (!severity) validationError = 'Choose a valid finding severity.';
+    else if (values.owner_name.length < 2 || values.owner_name.length > 160) validationError = 'Name the accountable finding owner.';
+    else if (!dueDate) validationError = 'Choose a valid target date of today or later.';
+    if (validationError) return renderAssessmentFinding(req, res, context, { status:400, error:validationError, values });
+
+    let findingId;
+    try {
+      findingId = db.transaction(() => {
+        const sourceId = `supplier_${context.source}:${context.assessmentId}:${context.itemKey}`;
+        const id = Number(db.prepare(`INSERT INTO findings
+          (workspace_id,source_type,source_id,title,description,severity,severity_scheme,status,created_by)
+          VALUES (?,'assessment',?,?,?,?, 'hml','open',?)`)
+          .run(req.workspace.id, sourceId, values.title, values.description, severity, req.user.id).lastInsertRowid);
+        db.prepare(`INSERT INTO supplier_finding_links
+          (finding_id,supplier_id,questionnaire_id,domain,due_date,owner_name)
+          VALUES (?,?,NULL,?,?,?)`).run(id, context.v.id, context.domain, dueDate, values.owner_name);
+        attachAssessmentFinding(context, id, req.user.id);
+        return id;
+      })();
+    } catch (error) {
+      if (error.code !== 'TPRM_ASSESSMENT_FINDING_CONTEXT_CLOSED') throw error;
+      return res.status(409).render('error', { user:req.user, ws:req.workspace, message:error.message });
+    }
+    logAction(req.user.id, req.workspace.id, 'create_supplier_assessment_finding', 'finding', findingId, {
+      supplierId:context.v.id, source:context.source, assessmentId:context.assessmentId,
+      itemKey:context.itemKey, severity, ownerName:values.owner_name, dueDate,
+    }, auditCtx(req));
+    return res.redirect(303, assessmentFindingRedirect(context, `Finding #${findingId} created and linked to ${context.contextLabel}.`));
+  });
+
+  app.get('/workspaces/:wsId/supplier-methodology', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
+    const activeMethodology = methodologyForRead(null, req.workspace.id, req.user.id);
     const draftMethodology = supplierMethodologies.draft(db, req.workspace.id);
     const history = db.prepare(`SELECT id,version,name,status,is_active,created_at,published_at,content_hash
       FROM supplier_risk_methodologies WHERE workspace_id=? ORDER BY version DESC`).all(req.workspace.id);
@@ -167,13 +511,13 @@ function register(app, deps) {
     });
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/draft', requireAuth, requireWorkspace, requirePermission('supplier.approve'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/draft', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = supplierMethodologies.createDraft(db, req.workspace.id, req.user.id);
     logAction(req.user.id, req.workspace.id, 'create_supplier_methodology_draft', 'supplier_risk_methodology', row.id, { version: row.version }, auditCtx(req));
     res.redirect(withToast(`/workspaces/${req.workspace.id}/supplier-methodology`, `Editable version ${row.version} created. Published assessments are unchanged.`, 'success'));
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/general', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/general', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = editableMethodology(req, res); if (!row) return;
     const definition = supplierMethodologies.clone(row.definition);
     definition.title = String(req.body.title || '').trim();
@@ -190,7 +534,7 @@ function register(app, deps) {
     return saveMethodologyDraft(req, res, row, definition, 'Methodology settings saved to the draft.');
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/inherent/:questionId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/inherent/:questionId', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = editableMethodology(req, res); if (!row) return;
     const definition = supplierMethodologies.clone(row.definition);
     const question = definition.scoring.questions.find(item => item.id === req.params.questionId);
@@ -202,7 +546,7 @@ function register(app, deps) {
     return saveMethodologyDraft(req, res, row, definition, `${question.id} updated in the draft.`);
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/ddq/:questionId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/ddq/:questionId', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = editableMethodology(req, res); if (!row) return;
     const definition = supplierMethodologies.clone(row.definition);
     let question = definition.ddqQuestions.find(item => item.id === req.params.questionId);
@@ -229,7 +573,7 @@ function register(app, deps) {
     return saveMethodologyDraft(req, res, row, definition, `${question.id} updated in the draft.`);
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/ddq', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/ddq', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = editableMethodology(req, res); if (!row) return;
     const definition = supplierMethodologies.clone(row.definition);
     const id = String(req.body.question_id || '').trim().toUpperCase().replace(/[^A-Z0-9._-]/g, '-');
@@ -252,7 +596,7 @@ function register(app, deps) {
     return saveMethodologyDraft(req, res, row, definition, `${id} added to the draft questionnaire.`);
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/module/:moduleIndex', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/module/:moduleIndex', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = editableMethodology(req, res); if (!row) return;
     const definition = supplierMethodologies.clone(row.definition);
     const module = definition.modules[Number(req.params.moduleIndex)];
@@ -262,7 +606,7 @@ function register(app, deps) {
     return saveMethodologyDraft(req, res, row, definition, 'Conditional module updated in the draft.');
   });
 
-  app.post('/workspaces/:wsId/supplier-methodology/publish', requireAuth, requireWorkspace, requirePermission('supplier.approve'), (req, res) => {
+  app.post('/workspaces/:wsId/supplier-methodology/publish', requireAuth, requireWorkspace, requirePermission('tprm.methodology.manage'), (req, res) => {
     const row = supplierMethodologies.draft(db, req.workspace.id);
     const result = supplierMethodologies.publishDraft(db, row, req.user.id);
     if (!result.ok) return res.redirect(withToast(`/workspaces/${req.workspace.id}/supplier-methodology`, result.errors.join(' '), 'error'));
@@ -271,22 +615,47 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/supplier-methodology?section=versions`, `Version ${result.record.version} published and activated for new assessments.`, 'success'));
   });
 
-  app.get('/workspaces/:wsId/vendors/:id/inherent-risk', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/inherent-risk', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     if (!v) return res.status(404).send('Supplier not found');
     const assessment = currentInherent(v.id);
-    const methodologyRecord = supplierMethodologies.forAssessment(db, assessment, req.workspace.id, req.user.id);
+    const methodologyRecord = methodologyForRead(assessment, req.workspace.id, req.user.id);
     const methodology = methodologyRecord.definition;
     const responseMap = assessment ? inherentResponseMap(assessment.id) : {};
     const result = assessment ? supplierRisk.scoreInherent(Object.fromEntries(Object.entries(responseMap).map(([id, row]) => [id, row.response_label === 'Unknown / Validation Required' ? 'unknown' : row.score])), methodology) : null;
-    res.render('supplier_inherent_assessment', { user: req.user, ws: req.workspace, v, assessment, responseMap, result, methodology, methodologyRecord, clientText: supplierRisk.clientText, tierLabel: (tier) => supplierRisk.tierLabel(tier, methodology) });
+    const activeCycle = tprmDomain.currentCycle(db, req.workspace.id, v.id);
+    const scopedServiceCount = activeCycle ? db.prepare(`SELECT COUNT(*) AS count FROM tprm_cycle_relationship_scopes
+      WHERE workspace_id=? AND cycle_id=?`).get(req.workspace.id, activeCycle.id).count : 0;
+    res.render('supplier_inherent_assessment', {
+      user:req.user, ws:req.workspace, v, assessment, responseMap, result, methodology, methodologyRecord,
+      activeCycle, scopedServiceCount,
+      clientText:supplierRisk.clientText, tierLabel:(tier) => supplierRisk.tierLabel(tier, methodology)
+    });
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/inherent-risk/start', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/inherent-risk/start', requireAuth, requireWorkspace, requirePermission('tprm.intake.manage'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     if (!v) return res.status(404).send('Supplier not found');
     const current = currentInherent(v.id);
     if (current && ['draft', 'submitted'].includes(current.status)) return res.redirect(`/workspaces/${req.workspace.id}/vendors/${v.id}/inherent-risk`);
+    const activeCycle = tprmDomain.currentCycle(db, req.workspace.id, v.id);
+    if (!activeCycle) {
+      return res.redirect(303, withToast(
+        `/workspaces/${req.workspace.id}/tprm/third-parties/${v.id}#cycle-governance`,
+        'Start the governed assessment cycle and select the exact services in scope first.',
+        'error'
+      ));
+    }
+    if (activeCycle && activeCycle.inherent_assessment_id) {
+      return res.status(409).render('error', { user:req.user, ws:req.workspace,
+        message:'An assessment cycle is already in progress. Complete or cancel it before starting a reassessment.' });
+    }
+    const scopedServiceCount = db.prepare(`SELECT COUNT(*) AS count FROM tprm_cycle_relationship_scopes
+      WHERE workspace_id=? AND cycle_id=?`).get(req.workspace.id, activeCycle.id).count;
+    if (!scopedServiceCount) {
+      return res.status(409).render('error', { user:req.user, ws:req.workspace,
+        message:'This assessment cycle has no service scope. Cancel it or have a manager repair the scope before starting fieldwork.' });
+    }
     const methodologyRecord = supplierMethodologies.active(db, req.workspace.id, req.user.id);
     const methodSnapshot = supplierMethodologies.snapshot(methodologyRecord);
     const assessmentType = supplierRisk.allowedChoice(req.body.assessment_type, ['onboarding', 'periodic', 'triggered'], 'onboarding');
@@ -294,15 +663,21 @@ function register(app, deps) {
       db.prepare(`UPDATE supplier_inherent_assessments SET status='superseded',updated_at=datetime('now') WHERE supplier_id=? AND status!='superseded'`).run(v.id);
       db.prepare(`UPDATE supplier_ddq_assessments SET status='superseded',token_hash=NULL,updated_at=datetime('now') WHERE supplier_id=? AND status!='superseded'`).run(v.id);
       db.prepare(`UPDATE supplier_contract_reviews SET status='superseded',updated_at=datetime('now') WHERE supplier_id=? AND status!='superseded'`).run(v.id);
-      return db.prepare(`INSERT INTO supplier_inherent_assessments
+      const assessmentId = Number(db.prepare(`INSERT INTO supplier_inherent_assessments
         (workspace_id,supplier_id,methodology_version,methodology_id,methodology_snapshot_json,methodology_hash,assessment_type,status,due_date,created_by)
-        VALUES (?,?,?,?,?,? ,?,'draft',?,?)`).run(req.workspace.id, v.id, methodSnapshot.methodologyVersion, methodSnapshot.methodologyId, methodSnapshot.methodologyJson, methodSnapshot.methodologyHash, assessmentType, req.body.due_date || null, req.user.id).lastInsertRowid;
+        VALUES (?,?,?,?,?,? ,?,'draft',?,?)`).run(req.workspace.id, v.id, methodSnapshot.methodologyVersion, methodSnapshot.methodologyId, methodSnapshot.methodologyJson, methodSnapshot.methodologyHash, assessmentType, req.body.due_date || null, req.user.id).lastInsertRowid);
+      tprmDomain.ensureCurrentCycle(db, {
+        workspaceId:req.workspace.id, supplierId:v.id, actorId:req.user.id,
+        cycleType:assessmentType, triggerReason:req.body.trigger_reason || `${assessmentType} third-party assessment started.`,
+        dueAt:req.body.due_date || null, inherentAssessmentId:assessmentId,
+      });
+      return assessmentId;
     })();
     logAction(req.user.id, req.workspace.id, 'start_supplier_inherent_assessment', 'supplier_inherent_assessment', id, { supplierId: v.id }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/vendors/${v.id}/inherent-risk`);
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/inherent-risk', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/inherent-risk', requireAuth, requireWorkspace, requirePermission('tprm.intake.manage'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const assessment = v && currentInherent(v.id);
     if (!v || !assessment || assessment.status !== 'draft') return redirectBack(req, res, 'This assessment is locked while awaiting approval or after approval.', 'warn');
@@ -341,10 +716,14 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}/inherent-risk`, message));
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/inherent-risk/approve', requireAuth, requireWorkspace, requirePermission('supplier.approve'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/inherent-risk/approve', requireAuth, requireWorkspace, requirePermission('tprm.assessment.review'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const assessment = v && currentInherent(v.id);
     if (!v || !assessment || assessment.status !== 'submitted') return redirectBack(req, res, 'Submit a complete assessment before approval.', 'warn');
+    if (Number(assessment.created_by) === Number(req.user.id)) {
+      return res.status(409).render('error', { user:req.user, ws:req.workspace,
+        message:'The person who prepared this inherent-risk assessment cannot approve its tier. Ask a different authorised reviewer.' });
+    }
     const methodology = supplierMethodologies.forAssessment(db, assessment, req.workspace.id).definition;
     const rationale = String(req.body.approval_rationale || '').trim();
     if (!rationale) return redirectBack(req, res, 'Approval or return rationale is required.', 'warn');
@@ -365,7 +744,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}`, `${supplierRisk.tierLabel(result.assignedTier, methodology)} approved. The required due-diligence scope is ready.`));
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/due-diligence/start', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/due-diligence/start', requireAuth, requireWorkspace, requirePermission('tprm.assessment.manage'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const inherent = v && currentInherent(v.id);
     if (!v || !inherent || inherent.status !== 'approved') return redirectBack(req, res, 'Approve inherent risk before issuing due diligence.', 'warn');
@@ -381,11 +760,17 @@ function register(app, deps) {
     const id = db.prepare(`INSERT INTO supplier_ddq_assessments
       (workspace_id,supplier_id,inherent_assessment_id,methodology_version,methodology_id,methodology_snapshot_json,methodology_hash,tier,assessment_type,status,modules_json,vendor_contact_name,vendor_contact_email,due_date,created_by)
       VALUES (?,?,?,?,?,?,?, ?,?,'draft',?,?,?,?,?)`).run(req.workspace.id, v.id, inherent.id, methodSnapshot.methodologyVersion, methodSnapshot.methodologyId, methodSnapshot.methodologyJson, methodSnapshot.methodologyHash, inherent.assigned_tier, inherent.assessment_type, inherent.module_applicability_json, req.body.vendor_contact_name || null, req.body.vendor_contact_email || v.contact || null, dueDate, req.user.id).lastInsertRowid;
+    tprmDomain.ensureCurrentCycle(db, {
+      workspaceId:req.workspace.id, supplierId:v.id, actorId:req.user.id,
+      cycleType:inherent.assessment_type || 'onboarding',
+      triggerReason:'Due diligence linked to the active assessment cycle.',
+      inherentAssessmentId:inherent.id, ddqAssessmentId:Number(id), dueAt:dueDate,
+    });
     logAction(req.user.id, req.workspace.id, 'start_supplier_due_diligence', 'supplier_ddq_assessment', id, { supplierId: v.id, tier: inherent.assigned_tier }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/vendors/${v.id}/due-diligence`);
   });
 
-  app.get('/workspaces/:wsId/vendors/:id/due-diligence', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/due-diligence', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     if (!v) return res.status(404).send('Supplier not found');
     const inherent = currentInherent(v.id);
@@ -393,12 +778,12 @@ function register(app, deps) {
     const bundle = ddqBundle(assessment, req.workspace.client_name);
     const inviteLink = req.session && req.session.supplierDdqInvite && req.session.supplierDdqInvite.assessmentId === (assessment && assessment.id) ? req.session.supplierDdqInvite.url : null;
     if (inviteLink && req.session) delete req.session.supplierDdqInvite;
-    const methodologyRecord = bundle ? bundle.methodologyRecord : supplierMethodologies.forAssessment(db, inherent, req.workspace.id, req.user.id);
+    const methodologyRecord = bundle ? bundle.methodologyRecord : methodologyForRead(inherent, req.workspace.id, req.user.id);
     const methodology = methodologyRecord.definition;
     res.render('supplier_due_diligence', { user: req.user, ws: req.workspace, v, inherent, inherentModules: inherent ? parseModules(inherent.module_applicability_json) : [], bundle, methodology, methodologyRecord, inviteLink, tierLabel: (tier) => supplierRisk.tierLabel(tier, methodology), findings: supplierFindings(req.workspace.id, v.id) });
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/due-diligence/share', requireAuth, requireWorkspace, requirePermission('supplier.manage'), async (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/due-diligence/share', requireAuth, requireWorkspace, requirePermission('tprm.assessment.manage'), async (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const assessment = v && currentDdq(v.id);
     if (!v || !assessment) return redirectBack(req, res);
@@ -445,7 +830,7 @@ function register(app, deps) {
     return res.redirect(withToast(destination, `Email was not delivered${delivery.error ? `: ${delivery.error}` : '.'}`, 'error'));
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/due-diligence/review', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/due-diligence/review', requireAuth, requireWorkspace, requirePermission('tprm.assessment.review'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const assessment = v && currentDdq(v.id);
     if (!v || !assessment) return redirectBack(req, res);
@@ -477,7 +862,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}/due-diligence`, req.body.action === 'complete' && !canComplete ? `${refreshed.progress.open} item(s) still block completion.` : 'Due-diligence review saved.'));
   });
 
-  app.get('/workspaces/:wsId/vendors/:id/due-diligence/evidence/:evidenceId', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/due-diligence/evidence/:evidenceId', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
     const row = db.prepare(`SELECT e.* FROM supplier_ddq_evidence e JOIN supplier_ddq_assessments a ON a.id=e.assessment_id WHERE e.id=? AND a.supplier_id=? AND e.workspace_id=?`).get(req.params.evidenceId, req.params.id, req.workspace.id);
     if (!row) return res.status(404).send('Evidence not found');
     const filePath = resolveUploadPath(row.stored_path, req.workspace.firm_id);
@@ -485,48 +870,79 @@ function register(app, deps) {
     res.download(filePath, row.filename);
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/contract-review/start', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/contract-review/start', requireAuth, requireWorkspace, requirePermission('tprm.assessment.manage'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     if (!v) return res.status(404).send('Supplier not found');
     const inherent = currentInherent(v.id);
     if (!inherent || inherent.status !== 'approved') return redirectBack(req, res, 'Approve inherent risk before starting the contract review.', 'warn');
+    const agreement = supplierRisk.agreementDetails(req.body.agreement_reference, req.body.agreement_date);
+    if (!agreement.valid) {
+      return res.redirect(withToast(
+        `/workspaces/${req.workspace.id}/vendors/${v.id}/contract-review`,
+        'Agreement reference and a valid agreement date are required before starting the contract review.',
+        'error'
+      ));
+    }
     const modules = moduleMap(parseModules(inherent.module_applicability_json));
     let review = currentContract(v.id);
+    let startedReview = null;
     if (!review || review.status === 'complete') {
-      if (review) db.prepare(`UPDATE supplier_contract_reviews SET status='superseded',updated_at=datetime('now') WHERE id=?`).run(review.id);
-      db.prepare(`UPDATE supplier_contract_reviews SET status='superseded',updated_at=datetime('now') WHERE supplier_id=? AND status!='superseded'`).run(v.id);
       const methodologyRecord = supplierMethodologies.forAssessment(db, inherent, req.workspace.id, req.user.id);
       const methodSnapshot = supplierMethodologies.snapshot(methodologyRecord);
       const methodology = methodologyRecord.definition;
-      const id = db.prepare(`INSERT INTO supplier_contract_reviews (workspace_id,supplier_id,inherent_assessment_id,methodology_version,methodology_id,methodology_snapshot_json,methodology_hash,agreement_reference,agreement_date,reviewer_id) VALUES (?,?,?,?,?,?,?,?,?,?)`)
-        .run(req.workspace.id, v.id, inherent.id, methodSnapshot.methodologyVersion, methodSnapshot.methodologyId, methodSnapshot.methodologyJson, methodSnapshot.methodologyHash, req.body.agreement_reference || null, req.body.agreement_date || null, req.user.id).lastInsertRowid;
-      const insert = db.prepare(`INSERT INTO supplier_contract_review_items (review_id,clause_id,required,status) VALUES (?,?,?,?)`);
-      db.transaction(() => methodology.contractClauses.forEach(clause => {
-        const required = supplierRisk.contractClauseRequired(clause, modules);
-        insert.run(id, clause.id, required ? 1 : 0, required ? 'Not Reviewed' : 'Not Required');
-      }))();
-      review = db.prepare('SELECT * FROM supplier_contract_reviews WHERE id=?').get(id);
+      const createReview = db.transaction(() => {
+        if (review) db.prepare(`UPDATE supplier_contract_reviews SET status='superseded',updated_at=datetime('now') WHERE id=? AND status!='superseded'`).run(review.id);
+        db.prepare(`UPDATE supplier_contract_reviews SET status='superseded',updated_at=datetime('now') WHERE supplier_id=? AND status!='superseded'`).run(v.id);
+        const id = Number(db.prepare(`INSERT INTO supplier_contract_reviews (workspace_id,supplier_id,inherent_assessment_id,methodology_version,methodology_id,methodology_snapshot_json,methodology_hash,agreement_reference,agreement_date,reviewer_id) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .run(req.workspace.id, v.id, inherent.id, methodSnapshot.methodologyVersion, methodSnapshot.methodologyId, methodSnapshot.methodologyJson, methodSnapshot.methodologyHash, agreement.reference, agreement.date, req.user.id).lastInsertRowid);
+        const insert = db.prepare(`INSERT INTO supplier_contract_review_items (review_id,clause_id,required,status) VALUES (?,?,?,?)`);
+        methodology.contractClauses.forEach(clause => {
+          const required = supplierRisk.contractClauseRequired(clause, modules);
+          insert.run(id, clause.id, required ? 1 : 0, required ? 'Not Reviewed' : 'Not Required');
+        });
+        return db.prepare('SELECT * FROM supplier_contract_reviews WHERE id=?').get(id);
+      });
+      review = createReview.immediate();
+      startedReview = review;
+    }
+    if (startedReview) {
+      tprmDomain.ensureCurrentCycle(db, {
+        workspaceId:req.workspace.id, supplierId:v.id, actorId:req.user.id,
+        cycleType:inherent.assessment_type || 'onboarding',
+        triggerReason:'Contract assurance linked to the active assessment cycle.',
+        inherentAssessmentId:inherent.id,
+        ddqAssessmentId:(currentDdq(v.id) || {}).id || null,
+        contractReviewId:startedReview.id,
+      });
+      logAction(req.user.id, req.workspace.id, 'start_supplier_contract_review', 'supplier_contract_review', startedReview.id,
+        { supplierId: v.id, agreementReference: startedReview.agreement_reference, agreementDate: startedReview.agreement_date }, auditCtx(req));
     }
     res.redirect(`/workspaces/${req.workspace.id}/vendors/${v.id}/contract-review`);
   });
 
-  app.get('/workspaces/:wsId/vendors/:id/contract-review', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/contract-review', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     if (!v) return res.status(404).send('Supplier not found');
     const review = currentContract(v.id);
     const bundle = contractBundle(review);
-    res.render('supplier_contract_review', { user: req.user, ws: req.workspace, v, bundle, methodology: bundle ? bundle.methodology : supplierMethodologies.active(db, req.workspace.id, req.user.id).definition, findings: supplierFindings(req.workspace.id, v.id) });
+    res.render('supplier_contract_review', { user: req.user, ws: req.workspace, v, bundle, methodology: bundle ? bundle.methodology : methodologyForRead(null, req.workspace.id, req.user.id).definition, findings: supplierFindings(req.workspace.id, v.id) });
   });
 
-  app.post('/workspaces/:wsId/vendors/:id/contract-review', requireAuth, requireWorkspace, requirePermission('supplier.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/vendors/:id/contract-review', requireAuth, requireWorkspace, requirePermission('tprm.assessment.review'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const review = v && currentContract(v.id);
     if (!v || !review || review.status === 'complete') return redirectBack(req, res);
     const bundle = contractBundle(review);
     const methodology = bundle.methodology;
+    const hasAgreementReference = Object.prototype.hasOwnProperty.call(req.body, 'agreement_reference');
+    const hasAgreementDate = Object.prototype.hasOwnProperty.call(req.body, 'agreement_date');
+    const agreement = supplierRisk.agreementDetails(
+      hasAgreementReference ? req.body.agreement_reference : review.agreement_reference,
+      hasAgreementDate ? req.body.agreement_date : review.agreement_date
+    );
     const upsert = db.prepare(`INSERT INTO supplier_contract_review_items (review_id,clause_id,required,status,contract_reference,reviewer_comments,finding_id,reviewed_at)
       VALUES (?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(review_id,clause_id) DO UPDATE SET required=excluded.required,status=excluded.status,contract_reference=excluded.contract_reference,reviewer_comments=excluded.reviewer_comments,finding_id=excluded.finding_id,reviewed_at=datetime('now'),row_version=row_version+1`);
-    db.transaction(() => {
+    const outcome = db.transaction(() => {
       for (const clause of methodology.contractClauses) {
         const required = req.body[`required_${clause.id}`] === '0' ? 0 : 1;
         const status = supplierRisk.allowedChoice(req.body[`status_${clause.id}`], methodology.responses.contract, required ? 'Not Reviewed' : 'Not Required');
@@ -534,12 +950,28 @@ function register(app, deps) {
         upsert.run(review.id, clause.id, required, status, req.body[`reference_${clause.id}`] || null, req.body[`comments_${clause.id}`] || null, findingId);
         linkFinding(findingId, v.id, clause.category);
       }
+      const refreshed = contractBundle(review);
+      const status = req.body.action === 'complete' && refreshed.progress.open === 0 && agreement.valid ? 'complete' : 'in_progress';
+      db.prepare(`UPDATE supplier_contract_reviews SET agreement_reference=?,agreement_date=?,status=?,
+        completed_at=CASE WHEN ?='complete' THEN datetime('now') ELSE NULL END,
+        reviewer_id=?,updated_at=datetime('now') WHERE id=?`)
+        .run(agreement.reference, agreement.date, status, status, req.user.id, review.id);
+      return { status, progress: refreshed.progress };
     })();
-    const refreshed = contractBundle(review);
-    const status = req.body.action === 'complete' && refreshed.progress.open === 0 ? 'complete' : 'in_progress';
-    db.prepare(`UPDATE supplier_contract_reviews SET status=?,completed_at=CASE WHEN ?='complete' THEN datetime('now') ELSE completed_at END,reviewer_id=?,updated_at=datetime('now') WHERE id=?`).run(status, status, req.user.id, review.id);
-    logAction(req.user.id, req.workspace.id, 'update_supplier_contract_review', 'supplier_contract_review', review.id, { status, open: refreshed.progress.open }, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}/contract-review`, req.body.action === 'complete' && refreshed.progress.open ? `${refreshed.progress.open} clause(s) still block completion.` : 'Contract review saved.'));
+    logAction(req.user.id, req.workspace.id, 'update_supplier_contract_review', 'supplier_contract_review', review.id,
+      { status: outcome.status, open: outcome.progress.open, agreementReference: agreement.reference, agreementDate: agreement.date }, auditCtx(req));
+    let message = 'Contract review saved.';
+    let toastKind = 'success';
+    if (req.body.action === 'complete' && !agreement.valid) {
+      message = 'Agreement reference and a valid agreement date are required before completion.';
+      toastKind = 'error';
+    } else if (req.body.action === 'complete' && outcome.progress.open) {
+      message = `${outcome.progress.open} clause(s) still block completion.`;
+      toastKind = 'warn';
+    } else if (outcome.status === 'complete') {
+      message = 'Contract review completed.';
+    }
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}/contract-review`, message, toastKind));
   });
 
   app.get('/supplier-ddq/:token', (req, res) => {
@@ -548,6 +980,18 @@ function register(app, deps) {
       FROM supplier_ddq_assessments a JOIN suppliers s ON s.id=a.supplier_id JOIN workspaces w ON w.id=a.workspace_id
       WHERE a.token_hash=?`).get(hash);
     if (!assessment || ['submitted', 'under_review', 'complete'].includes(assessment.status)) return res.render('external_supplier_ddq', { state: assessment ? (assessment.status === 'submitted' ? 'submitted' : 'done') : 'invalid' });
+    const module = latestTprmModule(assessment.workspace_id);
+    if (!module || module.status !== 'active') return res.status(409).render('external_supplier_ddq', { state:'closed' });
+    try {
+      serviceCapabilities.assertCapability(
+        db, assessment.workspace_id, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT
+      );
+    } catch (error) {
+      if (!(error instanceof serviceCapabilities.TprmCapabilityError)) throw error;
+      return res.status(error.status).render('external_supplier_ddq', {
+        state:'closed', message:error.message,
+      });
+    }
     if (!assessment.token_expires_at || new Date(assessment.token_expires_at) <= new Date()) return res.render('external_supplier_ddq', { state: 'expired' });
     db.prepare(`UPDATE supplier_ddq_assessments SET opened_at=COALESCE(opened_at,datetime('now')),status=CASE WHEN status='issued' THEN 'in_progress' ELSE status END WHERE id=?`).run(assessment.id);
     const bundle = ddqBundle(assessment, assessment.client_name);

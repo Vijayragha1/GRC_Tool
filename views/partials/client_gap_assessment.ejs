@@ -13,7 +13,7 @@
     <div class="cp-gap-overview-copy">
       <span>Current stage</span>
       <strong><%= gapAssessment.currentPhaseLabel %></strong>
-      <p><%= gapAssessment.phases.find(phase => phase.key === gapAssessment.currentPhase).description %></p>
+      <p><%= gapAssessment.currentPhaseDescription %></p>
     </div>
     <div class="cp-gap-overview-metrics">
       <div><strong><%= gapAssessment.tracker.openRequests %></strong><span>open requests</span></div>
@@ -168,6 +168,7 @@
       <summary><span class="cp-gap-stage-number">04</span><div><strong>Report</strong><small>Gap register, consolidated findings and improvement roadmap</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[3].state === 'complete' ? 'Complete' : gapAssessment.phases[3].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
       <div class="cp-gap-stage-body">
         <% if (!gapAssessment.reports.length) { %><div class="cp-gap-empty cp-gap-empty-large"><strong>The assessment report has not been released yet</strong><p>Your final gap register, consolidated findings and roadmap will appear here after fact checking and quality review.</p></div><% } else { %>
+          <% if (gapAssessment.gapOnly) { %><div class="cp-gap-validation-note"><div><strong><%= gapAssessment.contractClosed ? 'Gap-assessment engagement complete' : 'Report issued - ready for governed closure' %></strong><p><%= gapAssessment.contractClosed ? 'The governed engagement is closed.' : 'The controlled report has been released; a workspace manager must still record contract closure.' %> Findings below remain open as recommendations owned by your organisation; their presence does not mean remediation is included in this engagement.</p></div></div><% } %>
           <div class="cp-gap-report-grid">
             <article class="cp-gap-card"><span>Released reports</span><h3>Assessment reports</h3><div class="cp-report-list"><% gapAssessment.reports.forEach(report => { %><a href="/workspaces/<%= ws.id %>/client-portal/reports/<%= report.id %>"><div><span><%= label(report.report_type) %></span><strong><%= report.title %></strong><small>Version <%= report.version_number %> · Released <%= formatDate(report.published_at) %></small></div><b>View →</b></a><% }) %></div></article>
             <article class="cp-gap-card"><span>Consolidated position</span><h3>Confirmed findings</h3><div class="cp-gap-severity-summary"><% gapAssessment.findingSummary.forEach(item => { %><div><strong><%= item.count %></strong><span><%= item.severity %></span></div><% }) %></div></article>
@@ -179,7 +180,7 @@
       </div>
     </details>
 
-    <details class="panel cp-gap-stage" id="gap-post_report" <%= gapAssessment.currentPhase === 'post_report' ? 'open' : '' %>>
+    <% if (!gapAssessment.gapOnly) { %><details class="panel cp-gap-stage" id="gap-post_report" <%= gapAssessment.currentPhase === 'post_report' ? 'open' : '' %>>
       <summary><span class="cp-gap-stage-number">05</span><div><strong>Post-report</strong><small>Remediation, re-test criteria and closure evidence</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[4].state === 'complete' ? 'Complete' : gapAssessment.phases[4].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
       <div class="cp-gap-stage-body">
         <% const remediation = gapAssessment.findings.filter(finding => ['remediation_planned','ready_for_validation','closed'].includes(finding.status)); %>
@@ -187,7 +188,7 @@
           <div class="cp-gap-table-wrap"><table class="cp-gap-table"><thead><tr><th>Finding</th><th>Remediation action</th><th>Owner / due</th><th>Re-test criteria</th><th>Closure evidence</th><th>Status</th></tr></thead><tbody><% remediation.forEach(finding => { %><tr><td><strong><%= finding.finding_ref %></strong><br><%= finding.title %></td><td><%= finding.remediation_plan || finding.recommendation_text %></td><td><%= finding.owner %><br><span class="meta"><%= formatDate(finding.due_date) %></span></td><td><%= finding.retest_criteria || 'To be agreed with the engagement team' %></td><td><%= finding.closure_requirement || 'To be agreed with the engagement team' %><br><span class="meta"><%= finding.closure_evidence_count %> file<%= finding.closure_evidence_count === 1 ? '' : 's' %> received</span></td><td><span class="status status-<%= finding.status === 'closed' ? 'good' : finding.status === 'ready_for_validation' ? 'warn' : 'neutral' %>"><%= label(finding.status) %></span></td></tr><% }) %></tbody></table></div>
         <% } %>
       </div>
-    </details>
+    </details><% } %>
   </div>
 
   <p class="cp-gap-disclosure">The portal shows agreed client records and confirmed conclusions. Draft findings, provisional ratings, raw interview notes, named attribution and assessment working papers are not displayed.</p>

@@ -1,0 +1,86 @@
+<%- include('partials/header', { title: 'Concentration and exit readiness', user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-action:var(--text);--tprm-action-hover:var(--text-secondary);--tprm-action-contrast:var(--surface);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--border-strong);--tprm-neutral-status:var(--text-secondary);--tprm-neutral-status-bg:var(--bg-muted);--tprm-neutral-status-border:var(--border-strong);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<% if (tprmReadOnly) { %><div class="tprm-callout tprm-disclosure-warning" style="margin-bottom:16px"><strong>Retained history - read only.</strong> <%= tprmReadOnlyReason %></div><% } %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Portfolio resilience</div>
+    <h1>Concentration &amp; exit readiness</h1>
+    <p>Review shared provider, location and fourth-party dependencies with traceable service records.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/relationships">Service relationships</a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/monitoring">Monitoring &amp; renewals</a>
+  </div>
+</header>
+
+<div class="tprm-callout tprm-disclosure-warning" style="margin-bottom:16px"><strong>Evidence boundary:</strong> <%= projection.dataProvenance %> External intelligence applied: <strong><%= projection.externalIntelligenceApplied ? 'Yes' : 'No' %></strong>. Empty results mean not recorded, not no risk.</div>
+
+<section class="tprm-metrics" aria-label="Concentration summary">
+  <div class="tprm-metric"><span>Service relationships</span><strong><%= projection.totals.relationships %></strong><small><%= projection.totals.legalEntities %> exact provider identities</small></div>
+  <div class="tprm-metric <%= projection.totals.highOrCriticalRelationships ? 'needs-attention' : '' %>"><span>High or critical</span><strong><%= projection.totals.highOrCriticalRelationships %></strong><small>Relationship criticality</small></div>
+  <div class="tprm-metric <%= projection.totals.soleSourceRelationships ? 'needs-attention' : '' %>"><span>Sole-source services</span><strong><%= projection.totals.soleSourceRelationships %></strong><small>Declared provider reliance</small></div>
+  <div class="tprm-metric <%= exit.portfolioSummary.relationshipsWithBlockers ? 'needs-attention' : '' %>"><span>Exit blockers</span><strong><%= exit.portfolioSummary.relationshipsWithBlockers %></strong><small>Relationships with material blockers</small></div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Priority review</div><h2>Concentration flags</h2><p>Every result links to its supporting service or dependency record.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Exposure</th><th>Count</th><th>Supporting records</th></tr></thead><tbody>
+    <tr><td><strong>One provider, multiple services</strong></td><td><%= concentrationFlags.providersWithMultipleServices.length %></td><td><% concentrationFlags.providersWithMultipleServices.forEach(item => { %><a href="#provider-<%= item.legalEntityId %>"><%= item.legalName %> · <%= item.relationshipCount %> services</a><br><% }) %><% if (!concentrationFlags.providersWithMultipleServices.length) { %>None recorded<% } %></td></tr>
+    <tr><td><strong>Shared fourth parties</strong></td><td><%= concentrationFlags.fourthPartiesSharedAcrossServices.length %></td><td><% concentrationFlags.fourthPartiesSharedAcrossServices.forEach(item => { %><a href="#fourth-party-<%= item.dependency_entity_id %>"><%= item.name %> · <%= item.relationship_count %> services</a><br><% }) %><% if (!concentrationFlags.fourthPartiesSharedAcrossServices.length) { %>None recorded<% } %></td></tr>
+    <tr><td><strong>Business services with one provider</strong></td><td><%= concentrationFlags.businessServicesWithSingleProvider.length %></td><td><% concentrationFlags.businessServicesWithSingleProvider.forEach(item => { %><a href="#business-service-<%= item.business_service_id %>"><%= item.name %></a><br><% }) %><% if (!concentrationFlags.businessServicesWithSingleProvider.length) { %>None recorded<% } %></td></tr>
+    <tr><td><strong>Relationship single points of failure</strong></td><td><%= concentrationFlags.relationshipSinglePointsOfFailure.length %></td><td><% concentrationFlags.relationshipSinglePointsOfFailure.forEach(item => { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= item.relationshipId %>#exit-readiness"><%= item.relationshipName %> · <%= titleCase(item.criticality) %></a><br><% }) %><% if (!concentrationFlags.relationshipSinglePointsOfFailure.length) { %>None recorded<% } %></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Exact legal-entity concentration</div><h2>Providers and service relationships</h2><p>Spend shares are calculated within each currency only; currencies are never converted or combined by assumption.</p></div><form method="GET"><label><input type="checkbox" name="include" value="concluded" <%= includeConcluded ? 'checked' : '' %> onchange="this.form.submit()"> Include concluded relationships</label></form></div>
+  <div class="tprm-section-body tprm-record-list">
+    <% exact.providers.forEach(provider => { %><div id="provider-<%= provider.legalEntityId %>" class="tprm-record-row"><span><strong><%= provider.legalName %></strong><small><%= provider.relationshipCount %> relationship<%= provider.relationshipCount === 1 ? '' : 's' %> · <%= provider.criticalRelationshipCount %> high or critical</small><% provider.relationships.forEach(row => { %><small><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>"><%= row.relationship_name %> · <%= titleCase(row.criticality) %> · <%= formatMoney(row.annual_spend_minor, row.currency) %></a></small><% }) %></span><span><%= provider.relationshipSharePercent == null ? '-' : `${provider.relationshipSharePercent}%` %><small>Relationship share</small><% Object.entries(provider.spendShareByCurrency).forEach(([currency, share]) => { %><small><%= currency %>: <%= share %>% of recorded spend</small><% }) %></span></div><% }) %>
+    <% if (!exact.providers.length) { %><div class="tprm-empty"><strong>No service relationships recorded</strong><span>Create exact service relationships before interpreting provider concentration.</span></div><% } %>
+  </div>
+</section>
+
+<section class="tprm-grid-2">
+  <div class="tprm-section">
+    <div class="tprm-section-head"><div><div class="tprm-kicker">Service category</div><h2>Category concentration</h2><p>Count of separately governed relationships.</p></div></div>
+    <div class="tprm-section-body tprm-record-list"><% exact.categories.forEach(category => { %><div class="tprm-record-row"><span><strong><%= category.serviceCategory %></strong><small><% category.relationships.forEach(row => { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>"><%= row.legal_name %> - <%= row.relationship_name %></a><br><% }) %></small></span><span><%= category.relationshipCount %><small><%= category.relationshipSharePercent %>% of relationships</small></span></div><% }) %><% if (!exact.categories.length) { %><div class="tprm-empty"><strong>No categories recorded</strong></div><% } %></div>
+  </div>
+  <div class="tprm-section">
+    <div class="tprm-section-head"><div><div class="tprm-kicker">Geography</div><h2>Location concentration</h2><p>Current service-location assertions only.</p></div></div>
+    <div class="tprm-section-body tprm-record-list"><% exact.countries.forEach(country => { %><div class="tprm-record-row"><span><strong><%= country.countryCode %></strong><small><% country.relationships.forEach(row => { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>#locations"><%= row.legal_name %> - <%= row.relationship_name %></a><br><% }) %></small></span><span><%= country.relationshipCount %><small><%= country.dataHostingRelationshipCount %> processing/storage/backup</small></span></div><% }) %><% if (!exact.countries.length) { %><div class="tprm-empty"><strong>No current locations recorded</strong><span>This is a data gap, not proof of no geographic exposure.</span></div><% } %></div>
+  </div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Disclosed service chain</div><h2>Fourth-party concentration</h2><p>Only reviewed or open disclosed dependencies are counted. Undisclosed fourth parties are outside this result.</p></div></div>
+  <div class="tprm-section-body tprm-record-list"><% exact.fourthParties.forEach(entity => { %><div id="fourth-party-<%= entity.dependency_entity_id %>" class="tprm-record-row"><span><strong><%= entity.name %> · <%= titleCase(entity.entity_type) %></strong><small><% entity.relationships.forEach(row => { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>#dependencies"><%= row.legal_name %> - <%= row.relationship_name %> · <%= titleCase(row.dependency_type) %> · <%= titleCase(row.criticality) %></a><br><% }) %></small></span><span><%= entity.relationship_count %><small>Linked relationships<%= entity.single_point_of_failure ? ' · single point of failure' : '' %></small></span></div><% }) %><% if (!exact.fourthParties.length) { %><div class="tprm-empty"><strong>No active external dependencies recorded</strong><span>Confirm provider disclosure and contract terms before treating the chain as complete.</span></div><% } %></div>
+</section>
+
+<section id="business-services" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Client impact</div><h2>Business-service dependencies</h2><p>Use client-facing service names. A service with one provider is explicitly flagged; a service with none is a mapping gap.</p></div></div>
+  <div class="tprm-section-body">
+    <div class="tprm-record-list"><% exact.businessServices.forEach(service => { %><div id="business-service-<%= service.business_service_id %>" class="tprm-record-row"><span><strong><%= service.name %> · <%= titleCase(service.criticality) %></strong><small><% service.relationships.forEach(row => { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>#business-services"><%= row.legal_name %> - <%= row.relationship_name %> · <%= titleCase(row.dependency_type) %></a><br><% }) %><% if (!service.relationships.length) { %>No provider relationship mapped.<% } %></small></span><span><%= service.provider_relationship_count %><small>Provider relationship<%= service.provider_relationship_count === 1 ? ' · single-provider dependency' : 's' %></small></span></div><% }) %><% if (!exact.businessServices.length) { %><div class="tprm-empty"><strong>No business services recorded</strong><span>Create the first client capability below, then map provider relationships from their detail pages.</span></div><% } %></div>
+    <% if (canManage) { %><details class="tprm-conditions-editor" style="margin-top:12px"><summary>Create a business service <span>Then map the provider relationships it depends on.</span></summary><form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/business-services"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= businessServiceNonce %>"><div class="form-grid"><label class="form-field"><span>Business service name *</span><input class="input" name="name" minlength="2" maxlength="300" required placeholder="Online customer payments"></label><label class="form-field"><span>Accountable owner</span><input class="input" name="owner_name" maxlength="300"></label><label class="form-field"><span>Criticality *</span><select class="select" name="criticality" required><% ['low','moderate','high','critical'].forEach(option => { %><option value="<%= option %>" <%= option === 'moderate' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label><label class="form-field"><span>Impact tolerance (hours)</span><input class="input" type="number" min="0" name="impact_tolerance_hours"></label><label class="form-field"><span>RTO (hours)</span><input class="input" type="number" min="0" name="rto_hours"></label><label class="form-field"><span>RPO (hours)</span><input class="input" type="number" min="0" name="rpo_hours"></label><label class="form-field"><span>Regulatory designations</span><input class="input" name="regulatory_designations" placeholder="Critical function, material outsourcing"><small>Comma-separated.</small></label><label class="form-field" style="grid-column:1/-1"><span>Description</span><textarea class="textarea" name="description" rows="2" maxlength="5000"></textarea></label></div><button class="btn btn-primary" type="submit">Create business service</button></form></details><% } %>
+  </div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Portfolio preparedness</div><h2>Exit readiness</h2><p><%= exit.dataProvenance %></p></div><strong><%= exit.portfolioSummary.averageScore == null ? '-' : exit.portfolioSummary.averageScore %>/100 average</strong></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Provider and service</th><th>Status</th><th>Criticality</th><th>Readiness</th><th>Material blockers</th><th>Primary action</th></tr></thead><tbody><% exit.assessments.forEach(item => { %><tr><td><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= item.relationshipId %>#exit-readiness"><strong><%= item.legalName %></strong><small><%= item.relationshipName %></small></a></td><td><%= titleCase(item.status) %></td><td><%= titleCase(item.criticality) %></td><td><strong><%= item.score %>/100</strong><small><%= titleCase(item.readinessBand) %></small></td><td><strong><%= item.blockers.length %></strong><small><%= item.blockers[0] || 'No material blocker calculated' %></small></td><td><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= item.relationshipId %>#exit-readiness"><strong><%= item.missingActions[0] || 'Review readiness evidence' %></strong></a></td></tr><% }) %><% if (!exit.assessments.length) { %><tr><td colspan="6"><div class="tprm-empty"><strong>No open relationship to assess</strong></div></td></tr><% } %></tbody></table></div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Do not mistake missing data for low risk</div><h2>Data-quality actions</h2><p>Resolve these gaps before management or audit reporting.</p></div></div>
+  <div class="tprm-section-body tprm-record-list">
+    <div class="tprm-record-row"><span><strong>Relationships missing spend</strong><small><% projection.dataQuality.relationshipsMissingSpend.forEach(id => { const row = exact.providers.flatMap(provider => provider.relationships).find(item => item.id === id); if (row) { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>#relationship-editor"><%= row.legal_name %> - <%= row.relationship_name %></a><br><% } }) %></small></span><span><%= projection.dataQuality.relationshipsMissingSpend.length %></span></div>
+    <div class="tprm-record-row"><span><strong>Relationships with unknown criticality</strong><small><% projection.dataQuality.relationshipsWithUnknownCriticality.forEach(id => { const row = exact.providers.flatMap(provider => provider.relationships).find(item => item.id === id); if (row) { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>#relationship-editor"><%= row.legal_name %> - <%= row.relationship_name %></a><br><% } }) %></small></span><span><%= projection.dataQuality.relationshipsWithUnknownCriticality.length %></span></div>
+    <div class="tprm-record-row"><span><strong>Relationships missing a current location</strong><small><% projection.dataQuality.relationshipsMissingCurrentLocation.forEach(id => { const row = exact.providers.flatMap(provider => provider.relationships).find(item => item.id === id); if (row) { %><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>#locations"><%= row.legal_name %> - <%= row.relationship_name %></a><br><% } }) %></small></span><span><%= projection.dataQuality.relationshipsMissingCurrentLocation.length %></span></div>
+    <div class="tprm-record-row"><span><strong>Business services without a provider mapping</strong><small><% exact.businessServices.filter(service => service.noMappedProvider).forEach(service => { %><a href="#business-service-<%= service.business_service_id %>"><%= service.name %></a><br><% }) %></small></span><span><%= projection.dataQuality.businessServicesWithoutProviderMapping.length %></span></div>
+  </div>
+</section>
+
+</div>
+<%- include('partials/footer') %>

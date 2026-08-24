@@ -7,6 +7,7 @@ const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const ctlReads = require('../lib/control-reads');
 const csvImport = require('../lib/csv-import');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, extractMentions } = require('../lib/http-helpers');
 const delivery = require('../lib/engagement-delivery');
@@ -292,9 +293,85 @@ function register(app, deps) {
     { key: 'recertification', label: 'Recertification audit', desc: 'Full cycle reset (Year 3)' }
   ];
 
-  app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
+  const requireCertificationSupport = (req, res, next) => {
+    if (!outcomeScope.hasIso27001(req.workspace)) {
+      return res.status(409).render('error', {
+        user: req.user,
+        ws: req.workspace,
+        message: 'The certification cycle is available only when ISO 27001 is explicitly enabled for this client.'
+      });
+    }
+    if (!outcomeScope.isCertificationSupport(req.workspace)) {
+      return res.status(409).render('error', {
+        user: req.user,
+        ws: req.workspace,
+        message: 'Certification audits are outside this gap-assessment-only engagement. Continue the client to full certification support before opening the certification cycle.'
+      });
+    }
+    return next();
+  };
+  const contractedTaskMilestone = (workspace, milestoneId) => {
+    if (!outcomeScope.hasIso27001(workspace)) return null;
+    const id = Number(milestoneId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const row = db.prepare(`SELECT m.id,ph.phase_key
+      FROM engagement_delivery_milestones m
+      JOIN engagement_delivery_phases ph ON ph.id=m.phase_id AND ph.plan_id=m.plan_id
+      JOIN engagement_delivery_plans p ON p.id=m.plan_id
+      WHERE m.id=? AND p.workspace_id=?`).get(id, workspace.id);
+    return row && outcomeScope.isPhaseInContract(workspace, row.phase_key) ? row : null;
+  };
+  const contractedExistingTask = (workspace, taskId) => {
+    const id = Number(taskId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const row = db.prepare(`SELECT t.id,t.engagement_milestone_id,t.engagement_deliverable_id,
+        mph.phase_key milestone_phase_key,dph.phase_key deliverable_phase_key
+      FROM tasks t
+      LEFT JOIN engagement_delivery_milestones mm ON mm.id=t.engagement_milestone_id
+      LEFT JOIN engagement_delivery_phases mph ON mph.id=mm.phase_id AND mph.plan_id=mm.plan_id
+      LEFT JOIN engagement_delivery_deliverables dd ON dd.id=t.engagement_deliverable_id
+      LEFT JOIN engagement_delivery_milestones dm ON dm.id=dd.milestone_id AND dm.plan_id=dd.plan_id
+      LEFT JOIN engagement_delivery_phases dph ON dph.id=dm.phase_id AND dph.plan_id=dm.plan_id
+      WHERE t.id=? AND t.workspace_id=?`).get(id, workspace.id);
+    if (!row) return null;
+    if (!row.engagement_milestone_id && !row.engagement_deliverable_id) return row;
+    if (!outcomeScope.hasIso27001(workspace)) return null;
+    if (row.engagement_milestone_id
+        && (!row.milestone_phase_key || !outcomeScope.isPhaseInContract(workspace, row.milestone_phase_key))) return null;
+    if (row.engagement_deliverable_id
+        && (!row.deliverable_phase_key || !outcomeScope.isPhaseInContract(workspace, row.deliverable_phase_key))) return null;
+    return row;
+  };
+  const taskOutsideContract = (req, res) => res.status(409).render('error', {
+    user: req.user,
+    ws: req.workspace,
+    message: 'That task is linked to delivery work outside this client’s contracted service path.'
+  });
+  const syncCertificationCompletion = req => {
+    if (!db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) return;
+    delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
+    delivery.syncCertificationEngagementCompletion(db, req.workspace, req.user.id);
+  };
+
+  app.get('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, requireCertificationSupport, (req, res) => {
     const events = db.prepare(`SELECT * FROM cert_cycle_events
       WHERE workspace_id=? ORDER BY planned_date IS NULL, planned_date`).all(req.workspace.id);
+    const certificationFindings = db.prepare(`SELECT * FROM nonconformities
+      WHERE workspace_id=? AND lower(COALESCE(source,''))='external_audit'
+        AND source_ref IN (SELECT 'cert_cycle_event:' || id FROM cert_cycle_events WHERE workspace_id=? AND event_type IN ('stage_1','stage_2'))
+      ORDER BY created_at DESC,id DESC`).all(req.workspace.id, req.workspace.id);
+    events.forEach(event => {
+      event.findings = ['stage_1','stage_2'].includes(event.event_type)
+        ? certificationFindings.filter(finding => finding.source_ref === `cert_cycle_event:${event.id}`)
+        : [];
+      event.open_material_findings = event.findings.filter(finding =>
+        ['major','minor'].includes(String(finding.severity || '').toLowerCase())
+        && !['closed','verified'].includes(String(finding.status || '').toLowerCase())).length;
+      event.open_observations = event.findings.filter(finding =>
+        String(finding.severity || '').toLowerCase() === 'observation'
+        && !['closed','verified'].includes(String(finding.status || '').toLowerCase())).length;
+      event.open_findings = event.open_material_findings + event.open_observations;
+    });
     // Auto-suggest a default cycle if no events exist yet - Stage 1 in 60 days,
     // Stage 2 30 days after, surveillance year 1 = 12 months from Stage 2, etc.
     const today = new Date();
@@ -312,21 +389,33 @@ function register(app, deps) {
         { event_type: 'recertification',  planned_date: recert.toISOString().slice(0,10) }
       ];
     })();
-    res.render('cert_cycle', { user: req.user, ws: req.workspace, events, suggestions, eventTypes: CERT_EVENT_TYPES });
+    res.render('cert_cycle', {
+      user: req.user, ws: req.workspace, events, suggestions, eventTypes: CERT_EVENT_TYPES,
+      stage2State: delivery.stage2AssuranceState(db, req.workspace.id)
+    });
   });
 
-  app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/cert-cycle', requireAuth, requireWorkspace, requireCertificationSupport, requirePermission('control.update'), (req, res) => {
     const { event_type, planned_date, certification_body, notes } = req.body;
     if (!event_type || !CERT_EVENT_TYPES.find(t => t.key === event_type)) return redirectBack(req, res);
-    db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date, certification_body, notes)
+    const validation = delivery.validateCertificationEvent(db, req.workspace.id, {
+      event_type, planned_date: planned_date || null, actual_date: null, status: 'planned'
+    });
+    if (!validation.valid) return res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle`, validation.errors.join(' '), 'error'));
+    const id = db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date, certification_body, notes)
                 VALUES (?, ?, ?, ?, ?)`).run(
       req.workspace.id, event_type, planned_date || null, certification_body || null, notes || null
-    );
-    logAction(req.user.id, req.workspace.id, 'add_cert_event', 'cert_cycle', null, { event_type, planned_date }, auditCtx(req));
+    ).lastInsertRowid;
+    delivery.reconcileCompletionState(db, req.workspace, req.user.id, {
+      reason: 'The certification-cycle record changed after delivery completion.',
+      details: { certification_event_id: id, event_type, mutation: 'created' }
+    });
+    syncCertificationCompletion(req);
+    logAction(req.user.id, req.workspace.id, 'add_cert_event', 'cert_cycle', id, { event_type, planned_date }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
   });
 
-  app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/cert-cycle/seed', requireAuth, requireWorkspace, requireCertificationSupport, requirePermission('control.update'), (req, res) => {
     // Insert all five suggested events from the no-events fallback above.
     const today = new Date();
     const s1 = new Date(today); s1.setDate(s1.getDate() + 60);
@@ -334,34 +423,102 @@ function register(app, deps) {
     const sy1 = new Date(s2); sy1.setFullYear(sy1.getFullYear() + 1);
     const sy2 = new Date(sy1); sy2.setFullYear(sy2.getFullYear() + 1);
     const recert = new Date(s2); recert.setFullYear(recert.getFullYear() + 3);
-    const ins = db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date) VALUES (?, ?, ?)`);
+    const ins = db.prepare(`INSERT INTO cert_cycle_events (workspace_id, event_type, planned_date)
+      SELECT ?,?,? WHERE NOT EXISTS (
+        SELECT 1 FROM cert_cycle_events WHERE workspace_id=? AND event_type=?
+      )`);
     const tx = db.transaction(() => {
-      ins.run(req.workspace.id, 'stage_1',          s1.toISOString().slice(0,10));
-      ins.run(req.workspace.id, 'stage_2',          s2.toISOString().slice(0,10));
-      ins.run(req.workspace.id, 'surveillance_y1',  sy1.toISOString().slice(0,10));
-      ins.run(req.workspace.id, 'surveillance_y2',  sy2.toISOString().slice(0,10));
-      ins.run(req.workspace.id, 'recertification',  recert.toISOString().slice(0,10));
+      let inserted = 0;
+      const add = (type, date) => { inserted += ins.run(req.workspace.id, type, date, req.workspace.id, type).changes; };
+      add('stage_1', s1.toISOString().slice(0,10));
+      add('stage_2', s2.toISOString().slice(0,10));
+      add('surveillance_y1', sy1.toISOString().slice(0,10));
+      add('surveillance_y2', sy2.toISOString().slice(0,10));
+      add('recertification', recert.toISOString().slice(0,10));
+      return inserted;
     });
-    tx();
-    logAction(req.user.id, req.workspace.id, 'seed_cert_cycle', 'cert_cycle', null, null, auditCtx(req));
+    const inserted = tx();
+    delivery.reconcileCompletionState(db, req.workspace, req.user.id, {
+      reason: 'The certification-cycle record changed after delivery completion.',
+      details: { mutation: 'seeded', inserted_events: inserted }
+    });
+    syncCertificationCompletion(req);
+    logAction(req.user.id, req.workspace.id, 'seed_cert_cycle', 'cert_cycle', null, { inserted }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
   });
 
-  app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+  app.post('/workspaces/:wsId/cert-cycle/:id', requireAuth, requireWorkspace, requireCertificationSupport, requirePermission('control.update'), (req, res) => {
     const { planned_date, actual_date, status, certification_body, notes } = req.body;
+    const event = db.prepare(`SELECT * FROM cert_cycle_events WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    if (!event) return res.status(404).render('error', { user: req.user, message: 'Certification event not found.' });
+    const nextStatus = ['planned','in_progress','closed','rescheduled'].includes(status) ? status : 'planned';
+    const candidate = {
+      ...event,
+      planned_date: planned_date || null,
+      actual_date: actual_date || null,
+      status: nextStatus
+    };
+    const validation = delivery.validateCertificationEvent(db, req.workspace.id, candidate, { excludeEventId: event.id });
+    if (!validation.valid) return res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle#cert-event-${event.id}`,
+      validation.errors.join(' '), 'error'));
     db.prepare(`UPDATE cert_cycle_events SET
       planned_date=?, actual_date=?, status=?, certification_body=?, notes=?
       WHERE id=? AND workspace_id=?`).run(
-      planned_date || null, actual_date || null, status || 'planned',
+      planned_date || null, actual_date || null, nextStatus,
       certification_body || null, notes || null,
       req.params.id, req.workspace.id
     );
-    res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+    delivery.reconcileCompletionState(db, req.workspace, req.user.id, {
+      reason: 'A certification audit event was reopened or no longer satisfies completion.',
+      details: { certification_event_id: event.id, event_type: event.event_type, from_status: event.status, to_status: nextStatus }
+    });
+    syncCertificationCompletion(req);
+    logAction(req.user.id, req.workspace.id, 'update_cert_event', 'cert_cycle', event.id, {
+      event_type: event.event_type, from_status: event.status, to_status: nextStatus, actual_date: actual_date || null
+    }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle#cert-event-${event.id}`, 'Certification event saved.'));
   });
 
-  app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    db.prepare(`DELETE FROM cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
-    res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+  app.post('/workspaces/:wsId/cert-cycle/:id/findings', requireAuth, requireWorkspace, requireCertificationSupport, requirePermission('nc.manage'), (req, res) => {
+    const event = db.prepare(`SELECT * FROM cert_cycle_events
+      WHERE id=? AND workspace_id=? AND event_type IN ('stage_1','stage_2')`).get(req.params.id, req.workspace.id);
+    if (!event) return res.status(404).render('error', { user: req.user, message: 'Certification audit event not found.' });
+    const title = String(req.body.title || '').trim().slice(0, 300);
+    const description = String(req.body.description || '').trim().slice(0, 5000) || null;
+    const severity = ['major','minor','observation'].includes(req.body.severity) ? req.body.severity : 'observation';
+    if (!title) return res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle#cert-event-${event.id}`,
+      'Finding title is required.', 'error'));
+    const id = db.prepare(`INSERT INTO nonconformities
+      (workspace_id,title,source,source_ref,description,severity,status)
+      VALUES (?,?, 'external_audit', ?, ?, ?, 'open')`).run(
+        req.workspace.id, title, `cert_cycle_event:${event.id}`, description, severity
+      ).lastInsertRowid;
+    delivery.reopenForCertificationFinding(db, req.workspace, req.user.id, id);
+    syncCertificationCompletion(req);
+    fts.refresh(req.workspace.id, 'nc', id);
+    logAction(req.user.id, req.workspace.id, 'create_certification_finding', 'nonconformity', id, {
+      cert_cycle_event_id: event.id, event_type: event.event_type, severity, title
+    }, auditCtx(req));
+    const stageLabel = event.event_type === 'stage_1' ? 'Stage 1' : 'Stage 2';
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle#cert-event-${event.id}`,
+      `${severity === 'observation' ? 'Observation' : `${severity[0].toUpperCase()}${severity.slice(1)} finding`} recorded for ${stageLabel}.`));
+  });
+
+  app.post('/workspaces/:wsId/cert-cycle/:id/delete', requireAuth, requireWorkspace, requireCertificationSupport, requirePermission('control.update'), (req, res) => {
+    const event = db.prepare(`SELECT * FROM cert_cycle_events WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+    if (!event) return res.redirect(`/workspaces/${req.workspace.id}/cert-cycle`);
+    const linkedFindings = db.prepare(`SELECT COUNT(*) c FROM nonconformities
+      WHERE workspace_id=? AND source_ref=?`).get(req.workspace.id, `cert_cycle_event:${event.id}`).c;
+    if (linkedFindings) return res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle#cert-event-${event.id}`,
+      'This certification event has linked findings. Retain the event for audit traceability.', 'error'));
+    db.prepare(`DELETE FROM cert_cycle_events WHERE id=? AND workspace_id=?`).run(event.id, req.workspace.id);
+    delivery.reconcileCompletionState(db, req.workspace, req.user.id, {
+      reason: 'A retained certification-cycle event was removed.',
+      details: { certification_event_id: event.id, event_type: event.event_type, mutation: 'deleted' }
+    });
+    syncCertificationCompletion(req);
+    logAction(req.user.id, req.workspace.id, 'delete_cert_event', 'cert_cycle', event.id, { event_type: event.event_type }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/cert-cycle`, 'Certification event deleted.'));
   });
 
   // ==================== TIER 2.7 - GAP ASSESSMENT REPORT (DOCX) ====================
@@ -533,7 +690,10 @@ function register(app, deps) {
 
   // ==================== TASKS ====================
   app.get('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, (req, res) => {
-    delivery.ensurePlan(db, req.workspace, req.user.id);
+    const isoContract = outcomeScope.hasIso27001(req.workspace);
+    const projection = isoContract
+      ? delivery.getProjection(db, req.workspace, req.user.id, { ensure: false })
+      : null;
     const filter = req.query.filter || 'open';
     let q = `SELECT t.*, u.name AS assignee_name, c.name AS creator_name, i.title AS iso_title,
                     em.title AS milestone_title, ed.title AS deliverable_title
@@ -544,21 +704,46 @@ function register(app, deps) {
              LEFT JOIN engagement_delivery_milestones em ON em.id=t.engagement_milestone_id
              LEFT JOIN engagement_delivery_deliverables ed ON ed.id=t.engagement_deliverable_id
              WHERE t.workspace_id = ?`;
+    const params = [req.workspace.id];
+    if (!isoContract) {
+      q += ` AND t.engagement_milestone_id IS NULL AND t.engagement_deliverable_id IS NULL`;
+    } else if (outcomeScope.isGapAssessmentOnly(req.workspace)) {
+      q += ` AND (
+        (t.engagement_milestone_id IS NULL AND t.engagement_deliverable_id IS NULL)
+        OR t.engagement_milestone_id IN (
+          SELECT m.id FROM engagement_delivery_milestones m
+          JOIN engagement_delivery_phases ph ON ph.id=m.phase_id AND ph.plan_id=m.plan_id
+          JOIN engagement_delivery_plans p ON p.id=m.plan_id
+          WHERE p.workspace_id=? AND ph.phase_key='gap_assessment'
+        )
+        OR t.engagement_deliverable_id IN (
+          SELECT d.id FROM engagement_delivery_deliverables d
+          JOIN engagement_delivery_milestones m ON m.id=d.milestone_id AND m.plan_id=d.plan_id
+          JOIN engagement_delivery_phases ph ON ph.id=m.phase_id AND ph.plan_id=m.plan_id
+          JOIN engagement_delivery_plans p ON p.id=d.plan_id
+          WHERE p.workspace_id=? AND ph.phase_key='gap_assessment'
+        )
+      )`;
+      params.push(req.workspace.id, req.workspace.id);
+    }
     if (filter === 'mine') q += ` AND t.assignee_id = ${req.user.id}`;
     if (filter === 'open') q += ` AND t.status NOT IN ('done')`;
     const pgT = paginate(db, req, {
       count: q.replace(/SELECT t\.\*.*?FROM tasks t/s, 'SELECT COUNT(*) c FROM tasks t'),
       rows: q + ` ORDER BY t.due_date IS NULL, t.due_date ASC, t.created_at DESC`,
-      params: [req.workspace.id], perPage: 100,
+      params, perPage: 100,
     });
     const tasks = pgT.rows;
     const wsUsers = db.prepare(`SELECT u.id, u.name FROM users u
       INNER JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = ?
       UNION SELECT id, name FROM users WHERE firm_id = ? AND user_type = 'firm' AND active = 1`)
       .all(req.workspace.id, req.workspace.firm_id);
-    const planMilestones = db.prepare(`SELECT m.id,m.title,p.name phase_name FROM engagement_delivery_milestones m
-      JOIN engagement_delivery_phases p ON p.id=m.phase_id JOIN engagement_delivery_plans ep ON ep.id=m.plan_id
-      WHERE ep.workspace_id=? ORDER BY p.sort_order,m.id`).all(req.workspace.id);
+    const phaseNames = new Map((projection?.phases || []).map(phase => [phase.id, phase.name]));
+    const planMilestones = (projection?.milestones || []).map(milestone => ({
+      id: milestone.id,
+      title: milestone.title,
+      phase_name: phaseNames.get(milestone.phase_id) || null
+    }));
     res.render('tasks', { user: req.user, ws: req.workspace, tasks, filter, wsUsers,
       planMilestones, pg: pgT, pagerHref: p => pageHref(req, p) });
   });
@@ -566,8 +751,14 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     const { title, description, iso_item_id, assignee_id, due_date, engagement_milestone_id } = req.body;
     if (!title) return redirectBack(req, res);
-    const milestone = engagement_milestone_id ? db.prepare(`SELECT m.id FROM engagement_delivery_milestones m
-      JOIN engagement_delivery_plans p ON p.id=m.plan_id WHERE m.id=? AND p.workspace_id=?`).get(engagement_milestone_id, req.workspace.id) : null;
+    const milestone = engagement_milestone_id ? contractedTaskMilestone(req.workspace, engagement_milestone_id) : null;
+    if (engagement_milestone_id && !milestone) {
+      return res.status(409).render('error', {
+        user: req.user,
+        ws: req.workspace,
+        message: 'That delivery milestone is outside this client’s contracted service path.'
+      });
+    }
     const id = db.prepare(`INSERT INTO tasks (workspace_id, title, description, iso_item_id, assignee_id, due_date, created_by, engagement_milestone_id)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, title.trim(), description || null, iso_item_id || null,
@@ -577,6 +768,7 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/tasks/:id', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    if (!contractedExistingTask(req.workspace, req.params.id)) return taskOutsideContract(req, res);
     const { status, assignee_id, due_date, title, description, engagement_milestone_id } = req.body;
     const sets = []; const vals = [];
     if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
@@ -585,8 +777,14 @@ function register(app, deps) {
     if (title !== undefined) { sets.push('title = ?'); vals.push(title); }
     if (description !== undefined) { sets.push('description = ?'); vals.push(description || null); }
     if (engagement_milestone_id !== undefined) {
-      const milestone = engagement_milestone_id ? db.prepare(`SELECT m.id FROM engagement_delivery_milestones m
-        JOIN engagement_delivery_plans p ON p.id=m.plan_id WHERE m.id=? AND p.workspace_id=?`).get(engagement_milestone_id, req.workspace.id) : null;
+      const milestone = engagement_milestone_id ? contractedTaskMilestone(req.workspace, engagement_milestone_id) : null;
+      if (engagement_milestone_id && !milestone) {
+        return res.status(409).render('error', {
+          user: req.user,
+          ws: req.workspace,
+          message: 'That delivery milestone is outside this client’s contracted service path.'
+        });
+      }
       sets.push('engagement_milestone_id = ?'); vals.push(milestone ? milestone.id : null);
     }
     if (sets.length) {
@@ -598,6 +796,7 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/tasks/:id/delete', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
+    if (!contractedExistingTask(req.workspace, req.params.id)) return taskOutsideContract(req, res);
     db.prepare('DELETE FROM tasks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
     res.redirect('/workspaces/' + req.workspace.id + '/tasks');
   });

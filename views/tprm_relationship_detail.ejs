@@ -1,0 +1,217 @@
+<%- include('partials/header', { title: relationship.relationship_name, user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-action:var(--text);--tprm-action-hover:var(--text-secondary);--tprm-action-contrast:var(--surface);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--border-strong);--tprm-neutral-status:var(--text-secondary);--tprm-neutral-status-bg:var(--bg-muted);--tprm-neutral-status-border:var(--border-strong);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<% if (tprmReadOnly) { %><div class="tprm-callout tprm-disclosure-warning" style="margin-bottom:16px"><strong>Retained history - read only.</strong> <%= tprmReadOnlyReason %></div><% } %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Exact provider identity · <%= relationship.legal_name %></div>
+    <h1><%= relationship.relationship_name %></h1>
+    <p><%= relationship.service_description %></p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn btn-primary" href="<%= relationship.nextAction.href %>"><%= relationship.nextAction.label %></a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/relationships">All service relationships</a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/concentration">Concentration &amp; exit</a>
+  </div>
+</header>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <div class="tprm-kicker">Provider record</div>
+      <h2><%= relationship.legal_name %></h2>
+      <p><%= relationship.registration_country_code || 'Registration country unverified' %><%= relationship.registration_number ? ` · ${relationship.registration_number}` : ' · Registration number unverified' %>. Client-workspace identity; names do not merge records.</p>
+    </div>
+    <div><div class="tprm-kicker">Primary next action</div><strong><%= relationship.nextAction.label %></strong><small>Owner: <%= relationship.nextAction.owner %></small></div>
+  </div>
+  <div class="tprm-section-body">
+    <dl class="tprm-facts">
+      <div><dt>Operating status</dt><dd><%= titleCase(relationship.status) %></dd></div>
+      <div><dt>Criticality</dt><dd><%= titleCase(relationship.criticality) %></dd></div>
+      <div><dt>Data access</dt><dd><%= titleCase(relationship.data_access) %></dd></div>
+      <div><dt>Annual spend</dt><dd><%= formatMoney(relationship.annual_spend_minor, relationship.currency) %></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="service-status" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Governed operating state</div><h2>Service status</h2><p>Service status does not replace assessment stages and does not record or change the client onboarding decision.</p></div><span class="tprm-status tprm-status-<%= relationship.status %>"><%= titleCase(relationship.status) %></span></div>
+  <div class="tprm-section-body">
+    <% if (canMonitor && allowedRelationshipTransitions.length) { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/status">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="expected_row_version" value="<%= relationship.row_version %>"><input type="hidden" name="idempotency_key" value="<%= statusNonce %>">
+      <div class="form-grid">
+        <label class="form-field"><span>Valid next status *</span><select class="select" name="status" required><option value="">Choose a governed transition</option><% allowedRelationshipTransitions.forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label>
+        <label class="form-field"><span>Transition reason *</span><input class="input" name="reason" minlength="5" maxlength="2000" required placeholder="Operational trigger and supporting reference"><small>This reason is retained in the relationship audit history.</small></label>
+      </div>
+      <p class="tprm-action-note"><strong>Scope:</strong> service operating status only. The client onboarding decision is unchanged.</p>
+      <button class="btn" type="submit">Record service status change</button>
+    </form>
+    <% } else if (activationBlocker) { %><div class="tprm-callout tprm-disclosure-warning"><strong>Client authorization required.</strong> <%= activationBlocker %></div><% } else if (!allowedRelationshipTransitions.length) { %><div class="tprm-callout"><strong>Concluded record.</strong> No further service-status transition is permitted. Its history remains available below.</div><% } else { %><div class="tprm-callout">You can view this status but your role cannot manage monitoring or offboarding transitions.</div><% } %>
+  </div>
+</section>
+
+<section id="relationship-editor" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Service facts and accountability</div><h2>Relationship record</h2><p>Version checks prevent one reviewer from overwriting another.</p></div></div>
+  <div class="tprm-section-body">
+    <% if (canManage && relationship.status !== 'terminated') { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/update">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="expected_row_version" value="<%= relationship.row_version %>"><input type="hidden" name="idempotency_key" value="<%= relationshipNonce %>">
+      <div class="form-grid">
+        <label class="form-field"><span>Service relationship name *</span><input class="input" name="relationship_name" value="<%= relationship.relationship_name %>" maxlength="300" required></label>
+        <label class="form-field"><span>Service category</span><input class="input" name="service_category" value="<%= relationship.service_category || '' %>" maxlength="200"></label>
+        <label class="form-field"><span>Provision model *</span><select class="select" name="provision_model" required><% provisionModels.forEach(option => { %><option value="<%= option %>" <%= relationship.provision_model === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+        <label class="form-field"><span>Criticality *</span><select class="select" name="criticality" required><% criticalities.forEach(option => { %><option value="<%= option %>" <%= relationship.criticality === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+        <label class="form-field"><span>Data access *</span><select class="select" name="data_access" required><% dataAccessLevels.forEach(option => { %><option value="<%= option %>" <%= relationship.data_access === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+        <label class="form-field"><span>Substitutability *</span><select class="select" name="substitutability" required><% substitutabilityOptions.forEach(option => { %><option value="<%= option %>" <%= relationship.substitutability === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+        <label class="form-field"><span>Annual spend</span><input class="input" name="annual_spend" inputmode="decimal" value="<%= minorToMajor(relationship.annual_spend_minor, relationship.currency) %>"><small>Major currency units.</small></label>
+        <label class="form-field"><span>Currency</span><input class="input" name="currency" maxlength="3" pattern="[A-Za-z]{3}" value="<%= relationship.currency || '' %>"></label>
+        <label class="form-field"><span>Consultancy relationship owner</span><input class="input" name="relationship_owner" maxlength="300" value="<%= relationship.relationship_owner || '' %>"></label>
+        <label class="form-field"><span>Client business owner</span><input class="input" name="business_owner" maxlength="300" value="<%= relationship.business_owner || '' %>"></label>
+        <label class="form-field"><span>Security owner</span><input class="input" name="security_owner" maxlength="300" value="<%= relationship.security_owner || '' %>"></label>
+        <label class="form-field"><span>Procurement owner</span><input class="input" name="procurement_owner" maxlength="300" value="<%= relationship.procurement_owner || '' %>"></label>
+        <label class="form-field"><span>Service start date</span><input class="input" type="date" name="start_date" value="<%= dateOnly(relationship.start_date) || '' %>"></label>
+        <label class="form-field"><span>Target end date</span><input class="input" type="date" name="target_end_date" value="<%= dateOnly(relationship.target_end_date) || '' %>"></label>
+        <label class="form-field"><span>RTO (hours)</span><input class="input" type="number" min="0" name="rto_hours" value="<%= relationship.rto_hours == null ? '' : relationship.rto_hours %>"></label>
+        <label class="form-field"><span>RPO (hours)</span><input class="input" type="number" min="0" name="rpo_hours" value="<%= relationship.rpo_hours == null ? '' : relationship.rpo_hours %>"></label>
+        <label class="form-field"><span>Maximum tolerable disruption (hours)</span><input class="input" type="number" min="0" name="maximum_tolerable_disruption_hours" value="<%= relationship.max_tolerable_disruption_hours == null ? '' : relationship.max_tolerable_disruption_hours %>"></label>
+        <label class="form-field"><span>Estimated exit duration (days)</span><input class="input" type="number" min="0" name="estimated_exit_days" value="<%= relationship.estimated_exit_days == null ? '' : relationship.estimated_exit_days %>"></label>
+        <label class="form-field"><span>Exit plan status *</span><select class="select" name="exit_plan_status" required><% ['not_started','documented','tested','needs_update','not_applicable'].forEach(option => { %><option value="<%= option %>" <%= relationship.exit_plan_status === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+        <label class="form-field"><span>Last exit test</span><input class="input" type="date" name="last_exit_tested_at" value="<%= dateOnly(relationship.last_exit_tested_at) || '' %>"></label>
+        <label class="form-field"><span>Exit owner</span><input class="input" name="exit_owner" maxlength="300" value="<%= relationship.exit_owner || '' %>"></label>
+        <label class="form-field"><span>Validated alternate service</span><select class="select" name="alternate_provider_relationship_id"><option value="">No alternate recorded</option><% otherRelationships.forEach(option => { %><option value="<%= option.id %>" <%= relationship.alternate_provider_relationship_id === option.id ? 'selected' : '' %>><%= option.legal_name %> - <%= option.relationship_name %></option><% }) %></select></label>
+        <label class="form-field" style="grid-column:1/-1"><span>Service description *</span><textarea class="textarea" name="service_description" rows="3" maxlength="5000" required><%= relationship.service_description %></textarea></label>
+        <label class="form-field" style="grid-column:1/-1"><span>Exit strategy</span><textarea class="textarea" name="exit_strategy" rows="3" maxlength="5000"><%= relationship.exit_strategy || '' %></textarea></label>
+        <label class="form-field" style="grid-column:1/-1"><span>Transition assistance requirements</span><textarea class="textarea" name="transition_assistance" rows="2" maxlength="5000"><%= relationship.transition_assistance || '' %></textarea></label>
+        <label class="form-field" style="grid-column:1/-1"><span>Data return and deletion requirements</span><textarea class="textarea" name="data_return_deletion_requirements" rows="2" maxlength="5000"><%= relationship.data_return_deletion_requirements || '' %></textarea></label>
+        <label class="form-field" style="grid-column:1/-1"><span>Change reason *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required placeholder="What changed, why and the source used."></textarea><small>This reason is retained in the relationship audit history.</small></label>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 14px">
+        <label><input type="checkbox" name="privileged_access" value="1" <%= relationship.privileged_access ? 'checked' : '' %>> Privileged access</label>
+        <label><input type="checkbox" name="sole_source" value="1" <%= relationship.sole_source ? 'checked' : '' %>> Sole source</label>
+        <label><input type="checkbox" name="material_outsourcing" value="1" <%= relationship.material_outsourcing ? 'checked' : '' %>> Material outsourcing</label>
+        <label><input type="checkbox" name="regulated_service" value="1" <%= relationship.regulated_service ? 'checked' : '' %>> Regulated service</label>
+      </div>
+      <button class="btn" type="submit">Save service relationship changes</button>
+    </form>
+    <% } else { %><div class="tprm-record-list"><div class="tprm-record-row"><span><strong>Consultancy owner</strong><small><%= relationship.relationship_owner || 'Not recorded' %></small></span><span><strong>Client business owner</strong><small><%= relationship.business_owner || 'Not recorded' %></small></span></div><div class="tprm-record-row"><span><strong>Security owner</strong><small><%= relationship.security_owner || 'Not recorded' %></small></span><span><strong>Procurement owner</strong><small><%= relationship.procurement_owner || 'Not recorded' %></small></span></div></div><% } %>
+  </div>
+</section>
+
+<section id="exit-readiness" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Governed record calculation</div><h2>Exit readiness · <%= bundle.exitReadiness.score %>/100</h2><p><%= bundle.exitReadiness.readinessBand === 'ready' ? 'Ready' : titleCase(bundle.exitReadiness.readinessBand) %>. Preparedness measure, not an external assurance opinion.</p></div><span class="tprm-status tprm-status-<%= bundle.exitReadiness.readinessBand %>"><%= titleCase(bundle.exitReadiness.readinessBand) %></span></div>
+  <div class="tprm-section-body">
+    <% if (bundle.exitReadiness.blockers.length) { %><div class="tprm-callout tprm-disclosure-warning" style="margin-bottom:12px"><strong>Material blockers:</strong> <%= bundle.exitReadiness.blockers.join(' ') %></div><% } %>
+    <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Criterion</th><th>Evidence or gap</th><th>Score</th><th>Status</th></tr></thead><tbody><% bundle.exitReadiness.criteria.forEach(item => { %><tr><td><strong><%= item.label %></strong></td><td><%= item.met ? (item.evidence || 'Complete') : item.missing %></td><td><%= item.earned %>/<%= item.weight %></td><td><%= item.met ? 'Complete' : 'Action needed' %></td></tr><% }) %></tbody></table></div>
+  </div>
+</section>
+
+<section id="contracts" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Immutable version history</div><h2>Contracts</h2><p>Renewal, correction or termination creates a successor; prior snapshots remain unchanged.</p></div></div>
+  <div class="tprm-section-body">
+    <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Contract</th><th>Version</th><th>Type</th><th>Status and reference</th><th>Term</th></tr></thead><tbody><% currentContracts.forEach(contract => { %><tr><td><strong><%= contract.title %></strong></td><td><%= contract.version %></td><td><%= titleCase(contract.contract_type) %></td><td><%= titleCase(contract.status) %><small><%= contract.reference || 'Reference not recorded' %></small></td><td><%= dateOnly(contract.effective_date) || 'No effective date' %><small><%= dateOnly(contract.end_date) ? `Ends ${dateOnly(contract.end_date)}` : 'No end date' %></small></td></tr><% }) %><% if (!currentContracts.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No current contract baseline</strong><span>Record the first immutable version below.</span></div></td></tr><% } %></tbody></table></div>
+    <% if (canManage && relationship.status !== 'terminated') { const contractForms = [{ id: null, contract_family_key: '', contract_type: 'msa', status: 'under_review', title: '', reference: '', effective_date: '', end_date: '', renewal_date: '', notice_deadline: '', auto_renew: 0, committed_spend_minor: null, currency: '', termination_rights: '', transition_assistance: '', data_return_deletion_terms: '', audit_rights: '', incident_notification_hours: '', subprocessor_controls: '', governing_law_country_code: '', document_sha256: '', version: 0 }].concat(currentContracts); %>
+      <% contractForms.forEach(contract => { %><details class="tprm-conditions-editor" style="margin-top:12px"><summary><%= contract.id ? `Add version ${contract.version + 1} to ${contract.title}` : 'Record a new contract family' %> <span>All material terms are captured in the new snapshot.</span></summary>
+      <form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/contracts">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="expected_current_contract_id" value="<%= contract.id || '' %>"><input type="hidden" name="idempotency_key" value="<%= contractNonce %>-<%= contract.id || 'new' %>">
+        <div class="form-grid">
+          <label class="form-field"><span>Contract family key *</span><input class="input" name="contract_family_key" minlength="3" maxlength="100" required value="<%= contract.contract_family_key %>" <%= contract.id ? 'readonly' : '' %> placeholder="hosting-msa"><small>Stable key for this contract and its successors.</small></label>
+          <label class="form-field"><span>Title *</span><input class="input" name="title" minlength="2" maxlength="300" required value="<%= contract.title %>"></label>
+          <label class="form-field"><span>Contract type *</span><select class="select" name="contract_type" required><% contractTypes.forEach(option => { %><option value="<%= option %>" <%= contract.contract_type === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field"><span>Status *</span><select class="select" name="status" required><% contractStatuses.forEach(option => { %><option value="<%= option %>" <%= contract.status === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field"><span>Contract reference</span><input class="input" name="reference" maxlength="300" value="<%= contract.reference || '' %>"><small>Required for executed, expired or terminated versions.</small></label>
+          <label class="form-field"><span>Effective date</span><input class="input" type="date" name="effective_date" value="<%= dateOnly(contract.effective_date) || '' %>"></label>
+          <label class="form-field"><span>End date</span><input class="input" type="date" name="end_date" value="<%= dateOnly(contract.end_date) || '' %>"></label>
+          <label class="form-field"><span>Renewal date</span><input class="input" type="date" name="renewal_date" value="<%= dateOnly(contract.renewal_date) || '' %>"></label>
+          <label class="form-field"><span>Notice deadline</span><input class="input" type="date" name="notice_deadline" value="<%= dateOnly(contract.notice_deadline) || '' %>"></label>
+          <label class="form-field"><span>Committed spend</span><input class="input" name="committed_spend" inputmode="decimal" value="<%= minorToMajor(contract.committed_spend_minor, contract.currency) %>"></label>
+          <label class="form-field"><span>Currency</span><input class="input" name="currency" maxlength="3" pattern="[A-Za-z]{3}" value="<%= contract.currency || '' %>"></label>
+          <label class="form-field"><span>Incident notification (hours)</span><input class="input" type="number" min="0" name="incident_notification_hours" value="<%= contract.incident_notification_hours == null ? '' : contract.incident_notification_hours %>"></label>
+          <label class="form-field"><span>Governing-law country</span><input class="input" name="governing_law_country_code" maxlength="2" pattern="[A-Za-z]{2}" value="<%= contract.governing_law_country_code || '' %>"></label>
+          <label class="form-field"><span>Document SHA-256</span><input class="input" name="document_sha256" minlength="64" maxlength="64" pattern="[0-9a-f]{64}" value="<%= contract.document_sha256 || '' %>" placeholder="Optional integrity hash"></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Termination rights</span><textarea class="textarea" name="termination_rights" rows="2" maxlength="5000"><%= contract.termination_rights || '' %></textarea></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Transition assistance</span><textarea class="textarea" name="transition_assistance" rows="2" maxlength="5000"><%= contract.transition_assistance || '' %></textarea></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Data return and deletion terms</span><textarea class="textarea" name="data_return_deletion_terms" rows="2" maxlength="5000"><%= contract.data_return_deletion_terms || '' %></textarea></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Audit rights</span><textarea class="textarea" name="audit_rights" rows="2" maxlength="5000"><%= contract.audit_rights || '' %></textarea></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Subprocessor controls</span><textarea class="textarea" name="subprocessor_controls" rows="2" maxlength="5000"><%= contract.subprocessor_controls || '' %></textarea></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Version reason *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required placeholder="New baseline, renewal, correction or conclusion and its source."></textarea></label>
+        </div>
+        <label style="display:block;margin:8px 0 14px"><input type="checkbox" name="auto_renew" value="1" <%= contract.auto_renew ? 'checked' : '' %>> Auto-renews</label>
+        <button class="btn" type="submit"><%= contract.id ? 'Record successor version' : 'Record first version' %></button>
+      </form></details><% }) %>
+    <% } %>
+  </div>
+</section>
+
+<section id="locations" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Geographic and data exposure</div><h2>Service locations</h2><p>Record a successor when a delivery, processing, storage or support location changes.</p></div></div>
+  <div class="tprm-section-body">
+    <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Exposure</th><th>Country and region</th><th>Data categories</th><th>Source</th><th>Version and status</th></tr></thead><tbody><% currentLocations.forEach(location => { %><tr><td><strong><%= titleCase(location.exposure_type) %></strong></td><td><%= location.country_code %><%= location.region ? ` · ${location.region}` : '' %></td><td><%= location.dataCategories.length ? location.dataCategories.join(', ') : 'No data categories recorded' %></td><td><%= titleCase(location.assertion_source) %></td><td>Version <%= location.version %><small><%= titleCase(location.status) %></small></td></tr><% }) %><% if (!currentLocations.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No current service location</strong><span>Record delivery and data locations so geographic concentration is measurable.</span></div></td></tr><% } %></tbody></table></div>
+    <% if (canManage && relationship.status !== 'terminated') { const locationForms = [{ id: null, location_key: '', exposure_type: 'service_delivery', country_code: '', region: '', site_reference: '', dataCategories: [], transfer_mechanism: 'unknown', criticality: relationship.criticality === 'unknown' ? 'moderate' : relationship.criticality, status: 'current', effective_from: '', effective_to: '', assertion_source: 'user_maintained', version: 0 }].concat(currentLocations); %>
+      <% locationForms.forEach(location => { %><details class="tprm-conditions-editor" style="margin-top:12px"><summary><%= location.id ? `Add version ${location.version + 1} to ${titleCase(location.exposure_type)} · ${location.country_code}` : 'Record a new service location' %> <span>Earlier assertions remain retained.</span></summary>
+      <form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/locations">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="expected_current_location_id" value="<%= location.id || '' %>"><input type="hidden" name="idempotency_key" value="<%= locationNonce %>-<%= location.id || 'new' %>">
+        <div class="form-grid">
+          <label class="form-field"><span>Location family key *</span><input class="input" name="location_key" minlength="3" maxlength="100" required value="<%= location.location_key %>" <%= location.id ? 'readonly' : '' %> placeholder="production-data-us-east"><small>Stable key for this location and its successors.</small></label>
+          <label class="form-field"><span>Exposure type *</span><select class="select" name="exposure_type" required><% locationTypes.forEach(option => { %><option value="<%= option %>" <%= location.exposure_type === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field"><span>Country *</span><input class="input" name="country_code" maxlength="2" pattern="[A-Za-z]{2}" required value="<%= location.country_code || '' %>" placeholder="US"></label>
+          <label class="form-field"><span>Region</span><input class="input" name="region" maxlength="300" value="<%= location.region || '' %>"></label>
+          <label class="form-field"><span>Site or facility reference</span><input class="input" name="site_reference" maxlength="300" value="<%= location.site_reference || '' %>"></label>
+          <label class="form-field"><span>Data categories</span><input class="input" name="data_categories" value="<%= location.dataCategories.join(', ') %>" placeholder="Customer data, authentication data"></label>
+          <label class="form-field"><span>Transfer mechanism *</span><select class="select" name="transfer_mechanism" required><% ['adequacy','scc','bcr','derogation','local_only','not_applicable','unknown'].forEach(option => { %><option value="<%= option %>" <%= location.transfer_mechanism === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field"><span>Criticality *</span><select class="select" name="criticality" required><% ['low','moderate','high','critical'].forEach(option => { %><option value="<%= option %>" <%= location.criticality === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field"><span>Assertion status *</span><select class="select" name="status" required><% ['planned','current','exited'].forEach(option => { %><option value="<%= option %>" <%= location.status === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field"><span>Effective from</span><input class="input" type="date" name="effective_from" value="<%= dateOnly(location.effective_from) || '' %>"></label>
+          <label class="form-field"><span>Effective to</span><input class="input" type="date" name="effective_to" value="<%= dateOnly(location.effective_to) || '' %>"><small>Required when status is Exited.</small></label>
+          <label class="form-field"><span>Assertion source *</span><select class="select" name="assertion_source" required><% ['user_maintained','contract','provider_disclosure','evidence','import'].forEach(option => { %><option value="<%= option %>" <%= location.assertion_source === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+          <label class="form-field" style="grid-column:1/-1"><span>Version reason *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required placeholder="Source and reason for this location assertion."></textarea></label>
+        </div><button class="btn" type="submit"><%= location.id ? 'Record successor location' : 'Record location' %></button>
+      </form></details><% }) %>
+    <% } %>
+  </div>
+</section>
+
+<section id="business-services" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Business impact mapping</div><h2>Affected business services</h2><p>These links drive single-provider concentration analysis.</p></div></div>
+  <div class="tprm-section-body">
+    <div class="tprm-record-list"><% bundle.businessDependencies.forEach(dependency => { %><div class="tprm-record-row"><span><strong><%= dependency.business_service_name %></strong><small><%= titleCase(dependency.dependency_type) %> · <%= titleCase(dependency.criticality) %> · <%= titleCase(dependency.status) %></small></span><span><% if (canMonitor && dependency.status === 'active') { %><details class="tprm-withdraw"><summary>End mapping</summary><form method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/business-services/<%= dependency.id %>/end"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="expected_row_version" value="<%= dependency.row_version %>"><label class="form-field"><span>Reason *</span><input class="input" name="reason" minlength="5" maxlength="2000" required></label><button class="btn btn-danger btn-xs" type="submit">End mapping</button></form></details><% } else { %><%= dateOnly(dependency.effective_from) || '' %><% } %></span></div><% }) %><% if (!bundle.businessDependencies.length) { %><div class="tprm-empty"><strong>No business service mapped</strong><span>Add the client capability affected by this relationship.</span></div><% } %></div>
+    <% if (canManage && businessServices.length && relationship.status !== 'terminated') { %><details class="tprm-conditions-editor" style="margin-top:12px"><summary>Map a business service <span>Use the client’s named operational capability.</span></summary><form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/business-services"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= businessDependencyNonce %>"><div class="form-grid"><label class="form-field"><span>Business service *</span><select class="select" name="business_service_id" required><option value="">Choose a business service</option><% businessServices.forEach(service => { %><option value="<%= service.id %>"><%= service.name %> · <%= titleCase(service.criticality) %></option><% }) %></select></label><label class="form-field"><span>Dependency type *</span><select class="select" name="dependency_type" required><% ['essential','significant','supporting'].forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label><label class="form-field"><span>Criticality *</span><select class="select" name="criticality" required><% ['low','moderate','high','critical'].forEach(option => { %><option value="<%= option %>" <%= option === 'moderate' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label><label class="form-field"><span>Minimum capacity (%)</span><input class="input" type="number" min="0" max="100" name="minimum_capacity_percent"></label><label class="form-field"><span>Maximum outage (hours)</span><input class="input" type="number" min="0" name="maximum_outage_hours"></label><label class="form-field"><span>Manual workaround</span><input class="input" name="manual_workaround" maxlength="5000"></label><label class="form-field" style="grid-column:1/-1"><span>Mapping rationale *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required></textarea></label></div><button class="btn" type="submit">Map business service</button></form></details><% } else if (canManage && !businessServices.length) { %><div class="tprm-callout" style="margin-top:12px">Create the client’s business service from <a href="/workspaces/<%= ws.id %>/tprm/concentration#business-services">Concentration &amp; exit readiness</a>, then return here to map it.</div><% } %>
+  </div>
+</section>
+
+<section id="dependencies" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Fourth parties and service chain</div><h2>Dependencies</h2><p>Use exact identities. Names do not merge records; new disclosures remain Disclosed until reviewed.</p></div></div>
+  <div class="tprm-section-body">
+    <div class="tprm-record-list"><% bundle.dependencies.forEach(edge => { const targetName = edge.target_relationship_name ? edge.target_relationship_name : edge.dependency_entity_name; %><div class="tprm-record-row"><span><strong><%= targetName || 'Unresolved dependency identity' %> · <%= titleCase(edge.dependency_type) %></strong><small><%= edge.service_description %> · <%= titleCase(edge.criticality) %><%= edge.countries.length ? ` · ${edge.countries.join(', ')}` : '' %><%= edge.single_point_of_failure ? ' · Single point of failure' : '' %></small><small><%= edge.evidence_summary || 'No review evidence summary recorded' %></small></span><span><span class="tprm-status tprm-status-<%= edge.status %>"><%= titleCase(edge.status) %></span><% if (canMonitor && edge.allowedTransitions.length) { %><details class="tprm-withdraw" style="margin-top:6px"><summary>Review status</summary><form method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/dependencies/<%= edge.id %>/status"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="expected_row_version" value="<%= edge.row_version %>"><label class="form-field"><span>Next status *</span><select class="select" name="status" required><% edge.allowedTransitions.forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label><label class="form-field"><span>Evidence summary</span><textarea class="textarea" name="evidence_summary" rows="2" maxlength="5000"><%= edge.evidence_summary || '' %></textarea></label><label class="form-field"><span>Review reason *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required></textarea></label><button class="btn btn-xs" type="submit">Record review</button></form></details><% } %></span></div><% }) %><% if (!bundle.dependencies.length) { %><div class="tprm-empty"><strong>No fourth-party or service dependency disclosed</strong><span>Confirm this with the provider and the contract before treating the chain as complete.</span></div><% } %></div>
+    <% if (canMonitor && relationship.status !== 'terminated') { %><details class="tprm-conditions-editor" style="margin-top:12px"><summary>Disclose a dependency <span>Choose one exact target identity.</span></summary><form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships/<%= relationship.id %>/dependencies"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotency_key" value="<%= dependencyNonce %>"><input type="hidden" name="dependency_entity_key" value="external-<%= dependencyNonce %>"><div class="tprm-callout" style="margin-bottom:12px"><strong>Do not merge by name.</strong> Reuse an existing external identity only when you have confirmed it is the same organisation. Otherwise create a new identity, even when the names look identical.</div><div class="form-grid">
+      <label class="form-field"><span>Target type *</span><select class="select" name="target_kind" required><option value="new_entity">New external fourth-party identity</option><option value="existing_entity">Confirmed existing external identity</option><option value="relationship">Existing portfolio service relationship</option></select></label>
+      <label class="form-field"><span>Existing portfolio service</span><select class="select" name="target_relationship_id"><option value="">Choose only for a portfolio service target</option><% otherRelationships.forEach(option => { %><option value="<%= option.id %>"><%= option.legal_name %> - <%= option.relationship_name %></option><% }) %></select></label>
+      <label class="form-field"><span>Existing external identity</span><select class="select" name="dependency_entity_id"><option value="">Choose only after confirming identity</option><% dependencyEntities.forEach(entity => { %><option value="<%= entity.id %>"><%= entity.name %> - <%= entity.legal_country_code || 'country unverified' %><%= entity.registration_number ? ` · ${entity.registration_number}` : '' %> · <%= entity.active_edge_count %> active link<%= entity.active_edge_count === 1 ? '' : 's' %></option><% }) %></select></label>
+      <label class="form-field"><span>New external legal name</span><input class="input" name="dependency_entity_name" maxlength="300"></label>
+      <label class="form-field"><span>New identity type</span><select class="select" name="dependency_entity_type"><% ['subprocessor','fourth_party','infrastructure_provider','other'].forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>New identity country</span><input class="input" name="dependency_country_code" maxlength="2" pattern="[A-Za-z]{2}"></label>
+      <label class="form-field"><span>New identity registration number</span><input class="input" name="dependency_registration_number" maxlength="200"></label>
+      <label class="form-field"><span>New identity parent</span><input class="input" name="dependency_parent_name" maxlength="300"></label>
+      <label class="form-field"><span>Identity source *</span><select class="select" name="dependency_source"><% ['provider_disclosed','contractual','user_disclosed','import'].forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Dependency type *</span><select class="select" name="dependency_type" required><% dependencyTypes.forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Criticality *</span><select class="select" name="criticality" required><% ['low','moderate','high','critical'].forEach(option => { %><option value="<%= option %>" <%= option === 'moderate' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Data access *</span><select class="select" name="data_access" required><% dataAccessLevels.forEach(option => { %><option value="<%= option %>" <%= option === 'unknown' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Substitutability *</span><select class="select" name="substitutability" required><% substitutabilityOptions.forEach(option => { %><option value="<%= option %>" <%= option === 'unknown' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Countries</span><input class="input" name="countries" placeholder="US, IE"><small>Comma-separated two-letter country codes.</small></label>
+      <label class="form-field"><span>Concentration grouping</span><input class="input" name="concentration_key" maxlength="200" placeholder="Shared cloud platform or region"></label>
+      <label class="form-field" style="grid-column:1/-1"><span>Dependency service description *</span><textarea class="textarea" name="service_description" rows="2" minlength="2" maxlength="5000" required></textarea></label>
+      <label class="form-field" style="grid-column:1/-1"><span>Evidence summary</span><textarea class="textarea" name="evidence_summary" rows="2" maxlength="5000"></textarea></label>
+      <label class="form-field" style="grid-column:1/-1"><span>Disclosure rationale *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required></textarea></label>
+    </div><div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 14px"><label><input type="checkbox" name="single_point_of_failure" value="1"> Single point of failure</label><label><input type="checkbox" name="due_diligence_required" value="1" checked> Due diligence required</label></div><button class="btn" type="submit">Record as disclosed</button></form></details><% } %>
+  </div>
+</section>
+
+<section id="history" class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Append-only audit history</div><h2>Relationship events</h2><p>Status changes, versions and dependency actions remain attributable.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Event</th><th>Reason</th><th>Actor</th><th>Recorded</th></tr></thead><tbody><% bundle.events.forEach(event => { %><tr><td><strong><%= titleCase(event.event_type) %></strong></td><td><%= event.reason || 'No narrative recorded' %></td><td><%= event.actor_name %></td><td><%= String(event.occurred_at).replace('T', ' ').slice(0, 19) %></td></tr><% }) %><% if (!bundle.events.length) { %><tr><td colspan="4"><div class="tprm-empty"><strong>No relationship events recorded</strong><span>Governed changes will appear here.</span></div></td></tr><% } %></tbody></table></div>
+</section>
+
+</div>
+<%- include('partials/footer') %>

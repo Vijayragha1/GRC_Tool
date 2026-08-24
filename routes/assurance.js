@@ -19,12 +19,15 @@ function register(app, deps) {
         (SELECT ia.assigned_tier FROM supplier_inherent_assessments ia
           WHERE ia.supplier_id=s.id AND ia.workspace_id=s.workspace_id AND ia.status='approved'
           ORDER BY ia.approved_at DESC,ia.id DESC LIMIT 1) tier,
-        (SELECT d.residual_risk_score FROM supplier_decisions d
-          WHERE d.supplier_id=s.id AND d.workspace_id=s.workspace_id AND d.superseded_at IS NULL
-          ORDER BY d.id DESC LIMIT 1) residual_risk_score,
-        (SELECT d.residual_risk_band FROM supplier_decisions d
-          WHERE d.supplier_id=s.id AND d.workspace_id=s.workspace_id AND d.superseded_at IS NULL
-          ORDER BY d.id DESC LIMIT 1) residual_risk_band
+        (SELECT r.residual_risk_score FROM tprm_recommendations r
+          WHERE r.supplier_id=s.id AND r.workspace_id=s.workspace_id
+          ORDER BY r.issued_at DESC,r.version DESC,r.id DESC LIMIT 1) residual_risk_score,
+        (SELECT r.residual_risk_band FROM tprm_recommendations r
+          WHERE r.supplier_id=s.id AND r.workspace_id=s.workspace_id
+          ORDER BY r.issued_at DESC,r.version DESC,r.id DESC LIMIT 1) residual_risk_band,
+        (SELECT d.decision FROM tprm_client_decisions d
+          WHERE d.supplier_id=s.id AND d.workspace_id=s.workspace_id
+          ORDER BY d.decided_at DESC,d.version DESC,d.id DESC LIMIT 1) client_decision
       FROM suppliers s WHERE s.workspace_id=? AND s.archived_at IS NULL ORDER BY s.name`).all(workspaceId);
   }
 
@@ -50,7 +53,10 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/assurance/new', requireAuth, requireWorkspace, requirePermission('report.generate'), (req, res) => {
     const key = reports.REPORTS[req.query.type] ? req.query.type : 'executive_posture';
     const suppliers = supplierOptions(req.workspace.id);
-    res.render('assurance_new', { user:req.user, ws:req.workspace, definitions:Object.values(reports.REPORTS), definition:reports.REPORTS[key], suppliers, preview:null, form:{}, caps:capabilities(req) });
+    const selectedSupplierId = key === 'supplier_due_diligence' && suppliers.some(row => row.id === Number(req.query.supplier_id))
+      ? Number(req.query.supplier_id)
+      : null;
+    res.render('assurance_new', { user:req.user, ws:req.workspace, definitions:Object.values(reports.REPORTS), definition:reports.REPORTS[key], suppliers, preview:null, form:{ supplier_id:selectedSupplierId }, caps:capabilities(req) });
   });
 
   // A quality-gate response is rendered at the POST URL. Keep a refresh or

@@ -1,0 +1,87 @@
+<%- include('partials/header', { title: 'Third-party risk reports', user, ws, active }) %>
+<div class="tprm-neutral-page" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--bg-muted);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border-strong)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<header class="tprm-page-head">
+  <div>
+    <h1>Reports</h1>
+    <p>Governed management, assurance and operational outputs.</p>
+  </div>
+</header>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <h2>Report library</h2>
+      <p>Live views and frozen outputs retain their source records and approval history.</p>
+    </div>
+  </div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Output</th><th>Purpose</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Third-party risk register</strong><small>Operational export</small></td>
+          <td>Ownership, tier, assessment status, residual risk, client decision and review dates.</td>
+          <td><% if (canExport) { %><a href="/workspaces/<%= ws.id %>/vendors/export.csv">Download CSV</a><% } else { %><span>Export permission required</span><% } %></td>
+        </tr>
+        <tr>
+          <td><strong>Individual due-diligence report</strong><small>Immutable decision record</small></td>
+          <td>Frozen assessment, recommendation, client decision, conditions, monitoring and source lineage in PDF, DOCX or JSON.</td>
+          <td><% if (canGenerateReport) { %><a href="/workspaces/<%= ws.id %>/assurance/new?type=supplier_due_diligence">Build report</a><% } else { %><span>Report-generation permission required</span><% } %></td>
+        </tr>
+        <tr>
+          <td><strong>Governed report centre</strong><small>Published versions</small></td>
+          <td>Review, approve, publish and retrieve frozen report versions without overwriting history.</td>
+          <td><% if (canViewReports) { %><a class="btn btn-xs" href="/workspaces/<%= ws.id %>/assurance">Open report centre</a><% } else { %><span>Report-view permission required</span><% } %></td>
+        </tr>
+        <tr>
+          <td><strong>Assurance view</strong><small>Expert review</small></td>
+          <td>Read-only method governance, assessment coverage, exceptions, decision separation and audit lineage.</td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/assurance">Open assurance view</a></td>
+        </tr>
+        <tr>
+          <td><strong>Portfolio action queue</strong><small>Management view</small></td>
+          <td>Live leadership queue with each metric and count linked to its supporting records.</td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm">Open overview</a></td>
+        </tr>
+        <tr>
+          <td><strong>Audit-ready print</strong><small>Evidence package</small></td>
+          <td>Print view without navigation, edit actions or internal shortcuts.</td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/assurance?print=1">Prepare evidence view</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <h2>Data quality</h2>
+      <p>Completeness measures for active third-party records.</p>
+    </div>
+  </div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Measure</th><th>Result</th><th>Basis</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Register completeness</strong></td>
+          <td><strong><%= reportQuality.registerCompleteness %>%</strong></td>
+          <td>Active records with service, consultancy owner, client business owner and scheduled review.</td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/third-parties">Improve records</a></td>
+        </tr>
+        <tr>
+          <td><strong>Client decision coverage</strong></td>
+          <td><strong><%= reportQuality.decisionCoverage %>%</strong></td>
+          <td>Active records with a traceable client onboarding decision distinct from consultancy advice.</td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/assessments">Review gaps</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+<%- include('partials/footer') %>

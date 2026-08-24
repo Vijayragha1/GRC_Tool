@@ -63,6 +63,19 @@ module.exports = {
     notes: 'First edition of the standard. Any errata or amendments will trigger re-review.'
   },
 
+  'dpdpa-catalog.js': {
+    description: 'Atomic, assessable obligations for the India Digital Personal Data Protection Act 2023 and final Rules 2025',
+    last_reviewed: '2026-08-21',
+    reviewed_against: [
+      'Digital Personal Data Protection Act 2023 (Act 22 of 2023)',
+      'G.S.R. 843(E), 13 November 2025 (phased commencement)',
+      'Digital Personal Data Protection Rules 2025, G.S.R. 846(E)',
+      'G.S.R. 892(E), December 2025 corrigendum'
+    ],
+    next_review_due: '2026-11-13',
+    notes: 'Re-review on the one-year commencement phase and immediately after any Board, Significant Data Fiduciary, transfer-restriction, exemption, or localisation notification.'
+  },
+
   'risk-library.js': {
     description: 'Starter risk catalogue covering ISO 27001 + AI/ML + supply chain + cloud + regulatory change',
     last_reviewed: '2026-05-25',

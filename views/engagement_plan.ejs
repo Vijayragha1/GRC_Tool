@@ -16,9 +16,9 @@
 
 <div class="page-head">
   <div>
-    <div class="sec-label">Adaptive delivery</div>
+    <div class="sec-label">Adaptive delivery · <%= outcome.label %></div>
     <h1 class="page-title"><%= plan.name %></h1>
-    <div class="page-subtitle">No fixed programme length. Phases move with accepted deliverables, dependencies, forecast dates and authorised gate decisions.</div>
+    <div class="page-subtitle"><%= outcome.subtitle %></div>
   </div>
   <div class="row-center delivery-head-actions">
     <% if (user.user_type === 'firm') { %><a class="btn btn-primary btn-xs" href="/workspaces/<%= ws.id %>/client-portal?preview=client">Client view</a><% } %>
@@ -51,18 +51,31 @@
   </div>
 </div>
 
+<div class="panel" style="padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;background:var(--bg-subtle);">
+  <div>
+    <span class="tag <%= outcome.gapOnly ? 'tag-info' : 'tag-success' %>"><%= outcome.label %></span>
+    <span class="text-sm" style="margin-left:8px;"><%= outcome.gapOnly ? 'Contract endpoint: independently approved report and formal engagement closure.' : 'Contract endpoint: Stage 2 representation and closure of every nonconformity and observation.' %></span>
+  </div>
+  <% if (outcome.gapOnly) { %><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/gap-assessment/fieldwork">Open governed gap delivery</a><% } %>
+</div>
+
 <div class="delivery-summary-grid">
   <div class="panel kpi"><div class="kpi-num" style="font-size:19px;"><%= currentPhase ? currentPhase.name : 'Complete' %></div><div class="kpi-label">Current phase</div><div class="kpi-meta"><%= summary.phaseGatesPassed %>/<%= summary.phaseGatesTotal %> gates decided</div></div>
   <div class="panel kpi"><div class="kpi-label">Schedule</div><div class="delivery-date-pair"><span><small>Target</small><strong><%= fmtDate(plan.target_completion_date) %></strong></span><span><small>Forecast</small><strong><%= fmtDate(plan.forecast_completion_date) %></strong></span></div><div class="kpi-meta"><%= baseline ? `${varianceLabel} · baseline ${baseline.version_number}` : 'Not baselined' %></div></div>
-  <div class="panel kpi"><div class="kpi-num"><%= summary.acceptedDeliverables %>/<%= summary.requiredDeliverables %></div><div class="kpi-label">Deliverables accepted</div><div class="kpi-meta"><%= summary.verifiedMilestones %> workspace-verified milestones</div></div>
-  <div class="panel kpi"><div class="kpi-num <%= summary.openBlockers ? 'text-danger' : 'text-success' %>"><%= summary.openBlockers %></div><div class="kpi-label">Dependency blockers</div><div class="kpi-meta"><%= summary.completionReady ? 'completion criteria met' : `${summary.progressPct}% weighted progress` %></div></div>
+  <% if (outcome.gapOnly) { %>
+    <div class="panel kpi"><div class="kpi-num <%= summary.reportPublished ? 'text-success' : '' %>"><%= summary.reportPublished ? 'Published' : 'Pending' %></div><div class="kpi-label">Controlled report</div><div class="kpi-meta">Independent approval required</div></div>
+    <div class="panel kpi"><div class="kpi-num <%= summary.gapClosureComplete ? 'text-success' : summary.gapClosureReady ? '' : 'text-danger' %>"><%= summary.gapClosureComplete ? 'Closed' : summary.gapClosureReady ? 'Ready to close' : 'Locked' %></div><div class="kpi-label">Contract endpoint</div><div class="kpi-meta"><%= summary.completionBlockers[0] || 'Completion criteria met' %></div></div>
+  <% } else { %>
+    <div class="panel kpi"><div class="kpi-num"><%= summary.acceptedDeliverables %>/<%= summary.requiredDeliverables %></div><div class="kpi-label">Deliverables accepted</div><div class="kpi-meta"><%= summary.verifiedMilestones %> workspace-verified milestones</div></div>
+    <div class="panel kpi"><div class="kpi-num <%= summary.openBlockers ? 'text-danger' : 'text-success' %>"><%= summary.openBlockers %></div><div class="kpi-label">Dependency blockers</div><div class="kpi-meta"><%= summary.completionReady ? 'completion criteria met' : `${summary.progressPct}% weighted progress` %></div></div>
+  <% } %>
 </div>
 
 <div class="row" style="gap:6px;margin-bottom:14px;">
   <a href="?view=plan" class="btn btn-<%= view==='plan'?'primary':'secondary' %> btn-xs">Plan</a>
   <a href="?view=timeline" class="btn btn-<%= view==='timeline'?'primary':'secondary' %> btn-xs">Timeline</a>
   <a href="?view=gates" class="btn btn-<%= view==='gates'?'primary':'secondary' %> btn-xs">Phase gates</a>
-  <span class="meta text-sm" style="margin-left:auto;">Workspace verified means a supporting record exists. Acceptance still requires sign-off.</span>
+  <span class="meta text-sm" style="margin-left:auto;">Governed gap records come directly from fieldwork and report controls. Other workspace-verified items still require acceptance.</span>
 </div>
 
 <div class="panel" style="padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
@@ -78,7 +91,7 @@
 <% if (view === 'plan') { %>
   <% phases.forEach((phase, phaseIndex) => { %>
     <details class="panel delivery-phase" style="margin-bottom:14px;overflow:hidden;" <%= phase.id === currentPhase?.id ? 'open' : '' %>>
-      <summary class="panel-head" style="display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;cursor:pointer;list-style:none;">
+      <summary class="panel-head phase-summary" style="--cols:36px 1fr auto;gap:12px;align-items:center;cursor:pointer;list-style:none;">
         <div class="num" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--bg-subtle);font-weight:500;"><%= phaseIndex + 1 %></div>
         <div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;"><%= phase.name %></h2><span class="tag <%= statusClass(phase.effective_status) %> text-xxs"><%= statusLabel(phase.effective_status) %></span><% if (phase.is_continuous) { %><span class="tag tag-info text-xxs">ONGOING</span><% } %></div>
@@ -86,14 +99,14 @@
         </div>
         <div style="text-align:right;min-width:210px;">
           <div class="num text-sm"><%= fmtDate(phase.planned_start_date) %> → <%= fmtDate(phase.forecast_end_date || phase.planned_end_date) %></div>
-          <div class="meta text-xs"><%= phase.complete_count %> accepted · <%= phase.verified_count %> verified · <%= phase.progress_pct %>%</div>
+          <div class="meta text-xs"><%= phase.complete_count %> complete · <%= phase.verified_count %> verified · <%= phase.progress_pct %>%</div>
         </div>
       </summary>
       <div style="height:4px;background:var(--bg-muted);"><div style="height:100%;width:<%= phase.progress_pct %>%;background:var(--accent);"></div></div>
 
       <% phase.milestones.forEach(m => { %>
         <article class="delivery-milestone" data-owner="<%= m.owner_id || '' %>" data-approver="<%= m.deliverables.map(d=>d.approver_id||'').join(',') %>" data-overdue="<%= m.deliverables.some(d=>d.due_date && d.due_date < new Date().toISOString().slice(0,10) && !['accepted','superseded'].includes(d.status)) ? '1' : '0' %>" data-critical="<%= m.critical_path ? '1' : '0' %>" data-search="<%= (m.title+' '+m.description+' '+phase.name).toLowerCase() %>" style="padding:14px 18px;border-top:1px solid var(--border);">
-          <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;">
+          <div class="stack-grid" style="--cols:1fr auto;gap:16px;align-items:start;">
             <div>
               <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
                 <span class="tag <%= statusClass(m.effective_status) %> text-xxs"><%= statusLabel(m.effective_status) %></span>
@@ -108,8 +121,8 @@
             <div style="text-align:right;">
               <div class="num text-sm"><%= fmtDate(m.forecast_end_date || m.planned_end_date) %></div>
               <div class="meta text-xs"><%= m.owner_name || 'No owner' %><% if (m.task_total) { %> · <%= m.task_done %>/<%= m.task_total %> tasks<% } %></div>
-              <details style="margin-top:5px;position:relative;"><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Edit</summary>
-                <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/milestones/<%= m.id %>" class="panel" style="position:absolute;right:0;top:30px;width:440px;z-index:30;padding:14px;text-align:left;box-shadow:var(--shadow-xl);">
+              <% if (!m.governed) { %><details style="margin-top:5px;position:relative;"><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Edit</summary>
+                <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/milestones/<%= m.id %>" class="panel popover-panel" style="position:absolute;right:0;top:30px;--popover-w:440px;z-index:30;padding:14px;text-align:left;box-shadow:var(--shadow-xl);">
                   <input type="hidden" name="row_version" value="<%= m.row_version %>">
                   <label class="label">Title</label><input class="input" name="title" value="<%= m.title %>" required>
                   <label class="label" style="margin-top:8px;">Description</label><textarea class="textarea" name="description" rows="2"><%= m.description || '' %></textarea>
@@ -125,13 +138,13 @@
                   </div>
                   <button class="btn btn-primary" style="margin-top:10px;width:100%;">Save milestone</button>
                 </form>
-              </details>
+              </details><% } else { %><span class="tag tag-info text-xxs">GOVERNED RECORD</span><% } %>
             </div>
           </div>
 
           <div style="margin-top:10px;display:grid;gap:6px;">
             <% m.deliverables.forEach(d => { %>
-              <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;padding:9px 11px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;">
+              <div class="stack-grid" style="--cols:1fr auto;gap:12px;align-items:start;padding:9px 11px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;">
                 <div>
                   <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;"><span class="tag <%= statusClass(d.effective_status) %> text-xxs"><%= statusLabel(d.effective_status) %></span><strong class="text-sm"><%= d.title %></strong><span class="meta text-xxs">REV <%= d.revision_number %></span><% if (d.is_required) { %><span class="meta text-xxs">REQUIRED</span><% } %><% if (d.client_visible) { %><span class="tag tag-info text-xxs">CLIENT VISIBLE</span><% } %></div>
                   <div class="meta text-xs" style="margin-top:3px;"><%= d.acceptance_criteria || 'Acceptance criteria not set' %> · due <%= fmtDate(d.due_date) %> · owner <%= d.owner_name || 'unassigned' %> · approver <%= d.approver_name || 'unassigned' %> · <%= d.evidence_count %> evidence file<%= d.evidence_count===1?'':'s' %></div>
@@ -140,7 +153,7 @@
                   <% commentsFor(d.id).slice(-2).forEach(c => { %><div class="meta text-xs" style="margin-top:4px;"><strong><%= c.user_name %>:</strong> <%= c.body %><%= c.internal_only ? ' · internal' : '' %></div><% }) %>
                 </div>
                 <div class="row-center" style="justify-content:flex-end;">
-                  <details style="position:relative;"><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Manage</summary><div class="panel" style="position:absolute;right:0;top:30px;width:430px;padding:12px;z-index:35;box-shadow:var(--shadow-xl);text-align:left;">
+                  <details style="position:relative;"><summary class="btn btn-ghost btn-xs" style="list-style:none;cursor:pointer;">Manage</summary><div class="panel popover-panel" style="position:absolute;right:0;top:30px;--popover-w:430px;padding:12px;z-index:35;box-shadow:var(--shadow-xl);text-align:left;">
                     <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>"><input type="hidden" name="row_version" value="<%= d.row_version %>"><label class="label">Internal title</label><input class="input" name="title" value="<%= d.title %>" required><label class="label" style="margin-top:6px;">Acceptance criteria</label><textarea class="textarea" name="acceptance_criteria" rows="2"><%= d.acceptance_criteria || '' %></textarea><label class="label" style="margin-top:6px;">Client-facing title</label><input class="input" name="client_title" value="<%= d.client_title || '' %>"><label class="label" style="margin-top:6px;">Client instructions</label><textarea class="textarea" name="client_description" rows="2"><%= d.client_description || '' %></textarea><div class="grid-2" style="margin-top:6px;"><div><label class="label">Framework</label><select class="select" name="framework_code"><option value="iso27001" <%= d.framework_code==='iso27001'?'selected':'' %>>ISO 27001</option><% if ((ws.frameworks || []).includes('iso42001')) { %><option value="iso42001" <%= d.framework_code==='iso42001'?'selected':'' %>>ISO 42001</option><% } %><% if ((ws.frameworks || []).includes('csf')) { %><option value="csf" <%= d.framework_code==='csf'?'selected':'' %>>NIST CSF 2.0</option><% } %></select></div><div><label class="label">Requirement references</label><input class="input" name="requirement_refs" value="<%= d.requirement_refs || '' %>" placeholder="5.1, 5.3"></div><div><label class="label">Owner</label><select class="select" name="owner_id"><option value="">Unassigned</option><% users.forEach(u=>{ %><option value="<%= u.id %>" <%= d.owner_id==u.id?'selected':'' %>><%= u.name %></option><% }) %></select></div><div><label class="label">Approver</label><select class="select" name="approver_id"><option value="">Unassigned</option><% users.forEach(u=>{ %><option value="<%= u.id %>" <%= d.approver_id==u.id?'selected':'' %>><%= u.name %></option><% }) %></select></div><div><label class="label">Due</label><input class="input" type="date" name="due_date" value="<%= d.due_date || '' %>"></div><div style="padding-top:22px;"><label><input type="checkbox" name="is_required" value="1" <%= d.is_required?'checked':'' %>> Required</label><br><label><input type="checkbox" name="requires_evidence" value="1" <%= d.requires_evidence?'checked':'' %>> Evidence required</label><br><label><input type="checkbox" name="client_visible" value="1" <%= d.client_visible?'checked':'' %>> Client visible</label></div></div><button class="btn btn-primary" style="width:100%;margin-top:8px;">Save</button></form>
                     <form method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"><label class="label">Link evidence file</label><input class="input" type="file" name="file" required><input class="input" name="description" placeholder="Evidence description" style="margin-top:5px;"><button class="btn btn-secondary" style="width:100%;margin-top:5px;">Upload evidence</button></form>
                     <% if (evidenceCatalog.length) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/evidence/link" style="margin-top:7px;"><label class="label">Or select retained evidence</label><select class="select" name="evidence_id" required><option value="">Choose evidence</option><% evidenceCatalog.forEach(e=>{ %><option value="<%= e.id %>"><%= e.filename %><%= e.description?' · '+e.description:'' %></option><% }) %></select><button class="btn btn-secondary btn-xs" style="width:100%;margin-top:5px;">Link selected evidence</button></form><% } %>
@@ -150,7 +163,7 @@
                   <% if (d.effective_status === 'workspace_verified' && d.approver_id === user.id) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/accept"><input type="hidden" name="note" value="Accepted against verified workspace record"><button class="btn btn-primary btn-xs">Accept verified record</button></form><% } %>
                   <% if (d.status === 'submitted' && d.approver_id === user.id) { %>
                     <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/accept"><input type="hidden" name="note" value="Accepted against stated criteria"><button class="btn btn-primary btn-xs">Accept</button></form>
-                    <details style="position:relative;"><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Decision</summary><div class="panel" style="position:absolute;right:0;top:30px;width:300px;padding:12px;z-index:30;box-shadow:var(--shadow-lg);"><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/changes"><label class="label">Required changes</label><textarea class="textarea" name="note" rows="2" required></textarea><button class="btn btn-secondary" style="margin-top:8px;width:100%;">Request changes</button></form><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/reject" style="margin-top:8px;"><input class="input" name="note" required placeholder="Reason for rejection"><button class="btn btn-danger" style="margin-top:5px;width:100%;">Reject deliverable</button></form></div></details>
+                    <details style="position:relative;"><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Decision</summary><div class="panel popover-panel" style="position:absolute;right:0;top:30px;--popover-w:300px;padding:12px;z-index:30;box-shadow:var(--shadow-lg);"><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/changes"><label class="label">Required changes</label><textarea class="textarea" name="note" rows="2" required></textarea><button class="btn btn-secondary" style="margin-top:8px;width:100%;">Request changes</button></form><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables/<%= d.id %>/reject" style="margin-top:8px;"><input class="input" name="note" required placeholder="Reason for rejection"><button class="btn btn-danger" style="margin-top:5px;width:100%;">Reject deliverable</button></form></div></details>
                   <% } %>
                   <% if (['submitted','workspace_verified'].includes(d.effective_status) && d.approver_id && d.approver_id !== user.id) { %><span class="meta text-xs">Awaiting <%= d.approver_name %></span><% } %>
                   <% if (d.status === 'accepted') { %><span class="meta text-xs">accepted <%= fmtDate(d.accepted_at) %></span><% } %>
@@ -158,7 +171,7 @@
                 </div>
               </div>
             <% }) %>
-            <details>
+            <% if (!m.governed) { %><details>
               <summary class="text-xs" style="cursor:pointer;color:var(--accent);">+ Add deliverable</summary>
               <form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/deliverables" class="grid-2" style="gap:7px;margin-top:8px;align-items:end;">
                 <input type="hidden" name="milestone_id" value="<%= m.id %>">
@@ -166,13 +179,13 @@
                 <div><label class="label">Acceptance criteria</label><input class="input" name="acceptance_criteria" required></div>
                 <div><label class="label">Client-facing title</label><input class="input" name="client_title" required></div>
                 <div><label class="label">Client instructions</label><input class="input" name="client_description" value="Provide this item for review and approval." required></div>
-                <div><label class="label">Framework</label><select class="select" name="framework_code"><option value="iso27001">ISO 27001</option><% if ((ws.frameworks || []).includes('iso42001')) { %><option value="iso42001">ISO 42001</option><% } %><% if ((ws.frameworks || []).includes('csf')) { %><option value="csf">NIST CSF 2.0</option><% } %></select></div>
+                <div><label class="label">Framework</label><select class="select" name="framework_code"><%# Options come from the registry, filtered to the programmes this client actually has. ISO 27001 stays available as the default deliverable framework. %><% frameworkList.filter(fw => fw.code === 'iso27001' || (ws.frameworks || []).includes(fw.code)).forEach(fw => { %><option value="<%= fw.code %>"><%= fw.shortLabel %></option><% }) %></select></div>
                 <div><label class="label">Requirement references</label><input class="input" name="requirement_refs" placeholder="5.1, 5.3"></div>
                 <div><label class="label">Approver</label><select class="select" name="approver_id"><option value="">Unassigned</option><% users.forEach(u => { %><option value="<%= u.id %>"><%= u.name %></option><% }) %></select><label class="text-xs"><input type="checkbox" name="requires_evidence" value="1" checked> Evidence</label> <label class="text-xs"><input type="checkbox" name="client_visible" value="1" checked> Client</label></div>
                 <div><label class="label">Due</label><input class="input" type="date" name="due_date"></div>
                 <div class="col-full" style="text-align:right;"><label style="margin-right:12px;"><input type="checkbox" name="is_required" value="1" checked> Required</label><button class="btn btn-secondary btn-xs">Add</button></div>
               </form>
-            </details>
+            </details><% } %>
           </div>
         </article>
       <% }) %>
@@ -325,7 +338,19 @@
 <% if (view === 'gates') { %>
   <div class="panel" style="padding:14px 18px;margin-bottom:14px;background:var(--bg-subtle);">
     <div class="sec-label">Engagement completion criteria</div><div class="text-md" style="margin-top:5px;line-height:1.55;"><%= plan.completion_criteria || 'Completion criteria not configured.' %></div>
-    <div class="row" style="gap:7px;margin-top:10px;"><span class="tag <%= summary.readinessReady?'tag-success':'tag-danger' %>">Stage 2 readiness <%= summary.readinessReady?'passes':'not ready' %></span><span class="tag <%= summary.openBlockers===0?'tag-success':'tag-danger' %>"><%= summary.openBlockers %> critical blockers</span><span class="tag <%= summary.completionReady?'tag-success':'tag-neutral' %>">Completion <%= summary.completionReady?'permitted':'locked' %></span></div>
+    <div class="row" style="gap:7px;margin-top:10px;">
+      <% if (outcome.gapOnly) { %>
+        <span class="tag <%= summary.reportPublished?'tag-success':'tag-danger' %>">Controlled report <%= summary.reportPublished?'published':'pending' %></span>
+        <span class="tag <%= summary.gapClosureReady||summary.gapClosureComplete?'tag-success':'tag-danger' %>">Governed closure <%= summary.gapClosureComplete?'complete':summary.gapClosureReady?'ready':'locked' %></span>
+      <% } else { %>
+        <span class="tag <%= summary.readinessReady?'tag-success':'tag-danger' %>">Stage 2 readiness <%= summary.readinessReady?'passes':'not ready' %></span>
+        <span class="tag <%= summary.stage1AuditComplete&&summary.openStage1Findings===0?'tag-success':'tag-danger' %>">Stage 1 <%= summary.stage1AuditComplete ? `${summary.openStage1Findings} open findings` : 'audit pending' %></span>
+        <span class="tag <%= summary.stage2AuditComplete&&summary.openStage2Findings===0?'tag-success':'tag-danger' %>">Stage 2 <%= summary.stage2AuditComplete ? `${summary.openStage2Findings} open findings` : 'audit pending' %></span>
+        <span class="tag <%= summary.openBlockers===0?'tag-success':'tag-danger' %>"><%= summary.openBlockers %> critical blockers</span>
+      <% } %>
+      <span class="tag <%= summary.completionReady?'tag-success':'tag-neutral' %>">Completion <%= summary.completionReady?'permitted':'locked' %></span>
+    </div>
+    <% if (summary.completionBlockers.length) { %><div class="meta text-xs" style="margin-top:8px;"><strong>Still required:</strong> <%= summary.completionBlockers.join(' ') %></div><% } %>
   </div>
   <% phases.forEach((phase, i) => { %>
     <div class="panel" style="margin-bottom:12px;overflow:hidden;">
@@ -337,11 +362,13 @@
         <% phase.criteria.forEach(c => { %><div style="display:grid;grid-template-columns:22px 1fr auto;gap:8px;padding:9px 18px;align-items:center;"><span style="color:<%= c.pass ? '#15803d' : '#b91c1c' %>;font-weight:700;"><%= c.pass ? '✓' : '○' %></span><span class="text-sm"><%= c.label %></span><span class="tag <%= statusClass(c.status) %> text-xxs"><%= statusLabel(c.status) %></span></div><% }) %>
       </div>
       <div style="padding:11px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--bg-subtle);">
-        <div class="meta text-xs"><% if (phase.gate_decision) { %>Latest decision: <strong><%= statusLabel(phase.gate_decision.decision) %></strong> on <%= fmtDate(phase.gate_decision.decided_at) %><% if (phase.gate_decision.waiver_expires_at) { %> · expires <%= phase.gate_decision.waiver_expires_at %><% } %><% } else { %>No gate decision recorded<% } %></div>
+        <div class="meta text-xs"><% if (phase.governed) { %>Controlled by the assessment pass, formal fieldwork decisions and independently published report.<% } else if (phase.gate_decision) { %>Latest decision: <strong><%= statusLabel(phase.gate_decision.decision) %></strong> on <%= fmtDate(phase.gate_decision.decided_at) %><% if (phase.gate_decision.waiver_expires_at) { %> · expires <%= phase.gate_decision.waiver_expires_at %><% } %><% } else { %>No gate decision recorded<% } %></div>
         <div class="row-center">
+          <% if (phase.governed) { %><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/gap-assessment/fieldwork">Open governed record</a><% } else { %>
           <% if (phase.gate_ready && !['complete','waived'].includes(phase.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate"><input type="hidden" name="decision" value="passed"><input type="hidden" name="note" value="All mandatory criteria satisfied"><button class="btn btn-primary btn-xs">Pass gate</button></form><% } %>
           <% if (['complete','waived'].includes(phase.effective_status)) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate"><input type="hidden" name="decision" value="reopened"><input type="hidden" name="note" value="Gate reopened for further work"><button class="btn btn-secondary btn-xs">Reopen</button></form><% } else { %>
-            <details style="position:relative;"><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Authorised waiver</summary><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate" class="panel" style="position:absolute;right:0;top:30px;width:340px;padding:12px;z-index:30;box-shadow:var(--shadow-xl);"><input type="hidden" name="decision" value="waived"><label class="label">Reason</label><textarea class="textarea" name="note" rows="3" required></textarea><label class="label" style="margin-top:8px;">Expires</label><input class="input" type="date" name="waiver_expires_at" required><button class="btn btn-secondary" style="margin-top:8px;width:100%;">Record waiver</button></form></details>
+            <details style="position:relative;"><summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Authorised waiver</summary><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/phases/<%= phase.id %>/gate" class="panel popover-panel" style="position:absolute;right:0;top:30px;--popover-w:340px;padding:12px;z-index:30;box-shadow:var(--shadow-xl);"><input type="hidden" name="decision" value="waived"><label class="label">Reason</label><textarea class="textarea" name="note" rows="3" required></textarea><label class="label" style="margin-top:8px;">Expires</label><input class="input" type="date" name="waiver_expires_at" required><button class="btn btn-secondary" style="margin-top:8px;width:100%;">Record waiver</button></form></details>
+          <% } %>
           <% } %>
         </div>
       </div>

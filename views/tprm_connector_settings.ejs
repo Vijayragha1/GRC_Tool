@@ -1,0 +1,259 @@
+<%- include('partials/header', { title: 'Third-party monitoring connectors', user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:transparent;--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-subtle);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Monitoring</div>
+    <h1>Connectors &amp; signal triage</h1>
+    <p>Configure governed intake, third-party mappings, signal rules and reassessment queues.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/monitoring">Monitoring</a>
+    <% if (canManage) { %><a class="btn" href="#new-connector">Add connector</a><% } %>
+  </div>
+</header>
+
+<div class="tprm-metrics">
+  <div class="tprm-metric"><span>Configured</span><strong><%= summary.configured %></strong><small>All states</small></div>
+  <div class="tprm-metric"><span>Connected</span><strong><%= summary.connected %></strong><small>Verified intake</small></div>
+  <div class="tprm-metric <%= summary.attention ? 'needs-attention' : '' %>"><span>Attention</span><strong><%= summary.attention %></strong><small>Degraded or unhealthy</small></div>
+  <a class="tprm-metric <%= summary.queued ? 'needs-attention' : '' %>" href="#reassessment"><span>Reassessment</span><strong><%= summary.queued %></strong><small>Open queue</small></a>
+</div>
+
+<div class="tprm-callout" style="margin-bottom:18px">
+  <strong>Connection status is evidence based.</strong> A connector is never presented as connected until successful intake. SecurityScorecard, BitSight and RiskRecon are interface contracts only unless provider transport is provisioned and attested.
+</div>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div><div class="tprm-kicker">Capability register</div><h2>Adapter support</h2><p>Implemented intake paths are distinguished from interfaces requiring provider transport.</p></div>
+  </div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Adapter</th><th>Modes</th><th>Nimbus state</th><th>Outbound calls</th></tr></thead><tbody>
+    <% adapters.forEach(adapter => { %>
+      <tr>
+        <td><strong><%= adapter.label %></strong><small><%= adapter.providerType %></small></td>
+        <td><%= adapter.supportedModes.map(titleCase).join(', ') %></td>
+        <td><%= adapter.availabilityLabel %></td>
+        <td><%= adapter.liveOutbound ? 'Enabled' : 'Disabled' %></td>
+      </tr>
+    <% }) %>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section" id="new-connector">
+  <div class="tprm-section-head">
+    <div><div class="tprm-kicker">Configuration</div><h2>Add connector</h2><p>Store an external secret reference only. Do not enter keys, secrets or passwords.</p></div>
+  </div>
+  <% if (canManage) { %>
+    <form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="form-grid">
+        <label class="form-field"><span>Connector name *</span><input class="input" name="name" minlength="3" maxlength="120" required placeholder="e.g. Production security events"></label>
+        <label class="form-field"><span>Adapter *</span><select class="select" id="connectorProviderType" name="provider_type" required>
+          <option value="generic_webhook">Generic signed webhook · implemented</option>
+          <option value="csv_import">Governed CSV import · implemented</option>
+          <option value="securityscorecard">SecurityScorecard · transport required</option>
+          <option value="bitsight">BitSight · transport required</option>
+          <option value="riskrecon">RiskRecon · transport required</option>
+        </select></label>
+        <label class="form-field" data-connector-field="paid" hidden><span>Paid-adapter capability</span><select class="select" name="capability_mode" disabled><option value="webhook">Webhook intake</option><option value="poll">Provider polling</option></select><small>Used only after the provider transport is separately provisioned.</small></label>
+        <label class="form-field" data-connector-field="webhook"><span>Secret-store reference *</span><input class="input" name="secret_reference" maxlength="512" required placeholder="env://NIMBUS_TPRM_CLIENT_FEED"><small>Use env://, vault:// or a cloud secret-manager reference. Do not enter the secret.</small></label>
+        <label class="form-field" data-connector-field="webhook"><span>Accepted schema</span><input class="input" name="accepted_schema" maxlength="200" value="nimbus.monitoring.v1"><small>Documentation metadata; it does not bypass field validation.</small></label>
+        <label class="form-field"><span>Source environment</span><input class="input" name="source_environment" maxlength="120" placeholder="production"></label>
+        <label class="form-field" data-connector-field="paid" hidden><span>Provider account reference</span><input class="input" name="provider_account_reference" maxlength="240" disabled placeholder="Non-secret tenant/account identifier"></label>
+        <label class="form-field"><span>Initial state</span><span style="display:flex;gap:8px;align-items:flex-start"><input id="connectorStartActive" type="checkbox" name="start_active" value="1"><span><strong>Activate now</strong><small id="connectorActivationHelp" style="display:block">A successful signed intake is still required before Nimbus calls it connected.</small></span></span></label>
+        <label class="form-field" data-connector-field="paid" hidden><span>Paid-provider attestation</span><span style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="external_provisioning_confirmed" value="1" disabled><span><strong>Contract and provisioning confirmed</strong><small style="display:block">This declaration cannot substitute for Nimbus runtime transport verification.</small></span></span></label>
+      </div>
+      <div class="tprm-callout" id="connectorProviderGuidance" style="margin-top:12px"><strong>Generic signed webhook:</strong> implemented. Add the external secret reference, create the mapping and rule, then send one signed event to verify the connection.</div>
+      <div class="tprm-callout" id="webhookSignatureGuidance" style="margin-top:12px"><strong>Webhook signature:</strong> HMAC-SHA256 over <code>timestamp.raw_body</code>, sent in <code>X-Nimbus-Signature</code> and <code>X-Nimbus-Timestamp</code>. Requests outside the replay window fail closed.</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-primary" type="submit">Create connector</button></div>
+    </form>
+  <% } else { %>
+    <div class="tprm-section-body"><div class="tprm-callout"><strong>Read-only access.</strong> Monitoring management permission is required to create or change connectors.</div></div>
+  <% } %>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Client workspace</div><h2>Configured connectors</h2><p>Configurations and received data remain workspace scoped.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Connector</th><th>Adapter</th><th>State</th><th>Connection truth</th><th>Latest successful intake</th></tr></thead><tbody>
+    <% connectors.forEach(connector => { %>
+      <tr>
+        <td><a href="/workspaces/<%= ws.id %>/tprm/monitoring/connectors?connector=<%= connector.id %>"><strong><%= connector.name %></strong><small>#<%= connector.id %></small></a></td>
+        <td><%= connector.adapter.label %><small><%= titleCase(connector.capability_mode) %></small></td>
+        <td><span class="tprm-status tprm-status-<%= connector.status %>"><%= titleCase(connector.status) %></span></td>
+        <td><strong><%= connector.connected ? 'Connected' : 'Not connected' %></strong><small><%= connector.connectionLabel %></small></td>
+        <td><%= connector.health.state && dateOnly(connector.health.state.last_success_at) || 'Never' %></td>
+      </tr>
+    <% }) %>
+    <% if (!connectors.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No connectors</strong><span>Add a signed webhook or CSV intake.</span></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<% if (selected) { %>
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div><div class="tprm-kicker">Selected connector #<%= selected.id %></div><h2><%= selected.name %></h2><p><%= selected.connectionLabel %></p></div>
+    <div><span class="tprm-status tprm-status-<%= selected.status %>"><%= titleCase(selected.status) %></span></div>
+  </div>
+  <div class="tprm-section-body">
+    <div class="tprm-record-list">
+      <div class="tprm-record-row"><span><strong>Provider</strong><small><%= selected.adapter.label %> · <%= titleCase(selected.adapter.integrationState) %></small></span><span><%= selected.transport.provisioned ? 'Transport available' : 'Transport unavailable' %></span></div>
+      <div class="tprm-record-row"><span><strong>Connection</strong><small><%= selected.transport.label %></small></span><span><%= selected.connected ? 'Verified connected' : 'Not connected' %></span></div>
+      <div class="tprm-record-row"><span><strong>Runtime health</strong><small><%= selected.health.state ? `${selected.health.state.consecutive_failures} consecutive failures` : 'No completed run' %></small></span><span><%= titleCase(selected.health.health) %></span></div>
+      <div class="tprm-record-row"><span><strong>Last success</strong><small>Circuit: <%= titleCase(selected.health.state && selected.health.state.circuit_state, 'Closed') %></small></span><span><%= selected.health.state && selected.health.state.last_success_at || 'Never' %></span></div>
+      <div class="tprm-record-row"><span><strong>Secret reference</strong><small>Masked external reference</small></span><span><%= selected.secretReferenceDisplay || 'Not applicable' %></span></div>
+    </div>
+
+    <% if (selected.webhookPath) { %>
+      <div class="tprm-callout" style="margin-top:14px">
+        <strong>Signed webhook endpoint</strong><br><code><%= selected.webhookPath %></code><br>
+        Send <code>Content-Type: application/json</code>, <code>X-Nimbus-Timestamp</code> and <code>X-Nimbus-Signature</code>. Exact request bytes are verified before parsing. The endpoint is not a credential.
+      </div>
+    <% } %>
+
+    <% if (canManage) { %>
+      <div class="tprm-grid-2" style="margin-top:14px">
+        <div>
+          <h3 style="font-size:13px;margin:0 0 8px">Lifecycle action</h3>
+          <% if (selected.status === 'draft' || selected.status === 'paused') { %>
+            <% if (selected.canActivate) { %><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/status"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="active"><label class="form-field"><span>Activation reason</span><input class="input" name="reason" maxlength="500" required placeholder="Transport and mapping readiness confirmed"></label><% if (selected.adapter.integrationState !== 'implemented') { %><label class="form-field"><span style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="external_provisioning_confirmed" value="1" required><span><strong>Provider contract and provisioning confirmed</strong><small style="display:block">Nimbus also verifies the registered runtime transport.</small></span></span></label><% } %><button class="btn" type="submit"><%= selected.status === 'paused' ? 'Resume connector' : 'Activate connector' %></button></form>
+            <% } else { %><div class="tprm-callout"><strong>Activation unavailable.</strong> This paid adapter has no attested transport on this deployment.</div><% } %>
+          <% } else if (selected.status === 'active') { %>
+            <form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/status"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="paused"><label class="form-field"><span>Pause reason</span><input class="input" name="reason" maxlength="500" required placeholder="Temporary operational reason"></label><button class="btn" type="submit">Pause connector</button></form>
+          <% } else { %><div class="tprm-callout">Disabled connectors are retained as immutable history and cannot be reactivated.</div><% } %>
+          <% if (selected.status !== 'disabled') { %><details class="tprm-withdraw" style="margin-top:10px"><summary>Disable permanently</summary><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/status"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="disabled"><label class="form-field"><span>Disable reason *</span><input class="input" name="reason" minlength="5" maxlength="500" required></label><button class="btn btn-danger btn-xs" type="submit">Disable connector</button></form></details><% } %>
+        </div>
+        <div>
+          <h3 style="font-size:13px;margin:0 0 8px">Rotate secret-store reference</h3>
+          <% if (selected.provider_type !== 'csv_import') { %><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/secret-reference"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><label class="form-field"><span>New reference *</span><input class="input" name="secret_reference" maxlength="512" required placeholder="env://NIMBUS_TPRM_CLIENT_FEED_V2"><small>The secret itself must already exist in the external store.</small></label><button class="btn" type="submit">Rotate reference</button></form>
+          <% } else { %><div class="tprm-callout">CSV imports do not use a webhook secret.</div><% } %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+</section>
+
+<section class="tprm-section" id="mappings">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Identity control</div><h2>Provider mappings</h2><p>Unmapped events are quarantined. Mapping changes apply only to future events.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Provider entity ID</th><th>Third party</th><th>State</th><th>Basis</th><th></th></tr></thead><tbody>
+    <% detail.mappings.forEach(mapping => { %><tr><td><code><%= mapping.provider_entity_id %></code></td><td><strong><%= mapping.supplier_name %></strong></td><td><%= mapping.active ? 'Active' : 'Retired' %></td><td><%= mapping.mapping_note || 'No note' %></td><td><% if (canManage && mapping.active) { %><details class="tprm-withdraw"><summary>Retire</summary><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/mappings/<%= mapping.id %>/retire"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><label class="form-field"><span>Reason *</span><input class="input" name="reason" minlength="5" maxlength="500" required></label><button class="btn btn-danger btn-xs" type="submit">Retire mapping</button></form></details><% } %></td></tr><% }) %>
+    <% if (!detail.mappings.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No mappings</strong><span>Add the provider entity identifier before processing events.</span></div></td></tr><% } %>
+  </tbody></table></div>
+  <% if (canManage) { %><form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/mappings"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="form-grid"><label class="form-field"><span>Monitoring-provider entity ID *</span><input class="input" name="provider_entity_id" maxlength="240" required><small>Use the identifier sent by the monitoring provider. This is not the Nimbus third-party record ID.</small></label><label class="form-field"><span>Third party *</span><select class="select" name="supplier_id" required><option value="">Choose one client third party</option><% suppliers.forEach(supplier => { %><option value="<%= supplier.id %>"><%= supplier.name %> · <%= supplier.service_provided || 'service not recorded' %></option><% }) %></select></label><label class="form-field" style="grid-column:1/-1"><span>Verification note</span><input class="input" name="mapping_note" maxlength="1000" placeholder="How this provider identifier was matched to the legal/service record"><small>Record the source used to confirm that this external identifier belongs to the selected third party.</small></label></div><button class="btn" type="submit">Create verified mapping</button></form><% } %>
+</section>
+
+<section class="tprm-section" id="rules">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Decision logic</div><h2>Monitoring rules</h2><p>Rules are versioned and immutable. Missing required data is quarantined by default.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Rule</th><th>Condition</th><th>Signal</th><th>Reassessment</th><th>State</th></tr></thead><tbody>
+    <% detail.rules.forEach(rule => { %><tr><td><strong><%= rule.title %></strong><small><%= rule.rule_key %> · v<%= rule.version %></small></td><td><code><%= rule.metric_path %> <%= rule.operator %> <%= rule.operator === 'exists' ? '' : rule.threshold_json %></code><small>Missing: <%= titleCase(rule.missing_behavior) %></small></td><td><%= titleCase(rule.signal_type) %><small><%= titleCase(rule.severity) %></small></td><td><%= rule.requires_reassessment ? 'Required' : 'No' %></td><td><%= rule.enabled ? 'Current' : 'Superseded' %></td></tr><% }) %>
+    <% if (!detail.rules.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No monitoring rule</strong><span>Events still produce their normalized signal, but no governed threshold can automatically require reassessment.</span></div></td></tr><% } %>
+  </tbody></table></div>
+  <% if (canManage) { %><form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/rules"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="form-grid">
+    <label class="form-field"><span>Stable rule key *</span><input class="input" name="rule_key" minlength="2" maxlength="100" pattern="[A-Za-z0-9_.-]+" required placeholder="security-score-critical"></label>
+    <label class="form-field"><span>Rule title *</span><input class="input" name="title" minlength="3" maxlength="240" required placeholder="Security score requires reassessment"></label>
+    <label class="form-field"><span>Normalized metric path *</span><input class="input" name="metric_path" maxlength="240" pattern="[A-Za-z0-9_.-]+" required value="metrics.score"></label>
+    <label class="form-field"><span>Operator *</span><select class="select" name="operator" required><option value="lte">Less than or equal</option><option value="lt">Less than</option><option value="gte">Greater than or equal</option><option value="gt">Greater than</option><option value="eq">Equals</option><option value="neq">Does not equal</option><option value="contains">Contains</option><option value="exists">Exists</option></select></label>
+    <label class="form-field"><span>Threshold type *</span><select class="select" name="threshold_type"><option value="number">Number</option><option value="string">Text</option><option value="boolean">True/false</option></select></label>
+    <label class="form-field"><span>Threshold</span><input class="input" name="threshold" placeholder="60"></label>
+    <label class="form-field"><span>Signal type *</span><select class="select" name="signal_type"><% ['security_incident','breach','financial','regulatory','availability','control_change','contract','concentration','news','other'].forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label>
+    <label class="form-field"><span>Severity *</span><select class="select" name="severity"><% ['info','low','moderate','high','critical'].forEach(option => { %><option value="<%= option %>" <%= option === 'moderate' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+    <label class="form-field"><span>Missing field *</span><select class="select" name="missing_behavior"><option value="quarantine">Quarantine (recommended)</option><option value="ignore">Ignore for this rule</option></select></label>
+    <label class="form-field"><span>Triggered action</span><span style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="requires_reassessment" value="1"><span><strong>Queue reassessment</strong><small style="display:block">Nimbus starts a governed, service-scoped reassessment. It never decides whether to onboard.</small></span></span></label>
+  </div><button class="btn" type="submit">Publish rule version</button></form><% } %>
+</section>
+
+<% if (selected.provider_type === 'csv_import') { %>
+<section class="tprm-section" id="csv-import">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Controlled intake</div><h2>CSV import</h2><p>5 MB and 10,000 rows maximum. Source files are parsed in memory and not retained.</p></div></div>
+  <% if (selected.status !== 'active') { %><div class="tprm-section-body"><div class="tprm-callout"><strong>Activate this connector first.</strong> Draft, paused and disabled connectors cannot create monitoring signals.</div></div>
+  <% } else if (canManage) { %><form class="tprm-section-body" method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/tprm/monitoring/connectors/<%= selected.id %>/import"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><label class="form-field"><span>CSV file *</span><input class="input" type="file" name="file" accept=".csv,text/csv" required><small>Required columns map to the normalized event contract: event_id, provider_entity_id, observed_at, signal_type, severity and title. Optional metric columns can be referenced by rules when the adapter maps them.</small></label><button class="btn" type="submit">Import and show row outcomes</button></form><% } %>
+  <% if (importResult) { %><div class="tprm-section-body" style="border-top:1px solid var(--border)"><div class="tprm-callout"><strong>Import <%= titleCase(importResult.status) %>.</strong> <%= importResult.counts.received %> received, <%= importResult.counts.processed %> processed, <%= importResult.counts.duplicate %> duplicate and <%= importResult.counts.quarantined %> quarantined or rejected.</div><div class="tprm-table-wrap" style="margin-top:12px"><table class="tprm-table"><thead><tr><th>CSV row</th><th>Outcome</th><th>Provider event</th><th>Reason</th></tr></thead><tbody><% importResult.results.forEach((row, index) => { %><tr><td><%= index + 2 %></td><td><span class="tprm-status"><%= titleCase(row.status) %></span></td><td><%= row.receivedEvent ? row.receivedEvent.provider_event_id : 'Not accepted' %></td><td><%= row.errorRedacted || (row.attempt && row.attempt.error_redacted) || 'Processed without an error' %></td></tr><% }) %></tbody></table></div></div><% } %>
+</section>
+<% } %>
+
+<section class="tprm-section" id="triage">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Human review</div><h2>Signal triage</h2><p>Record the disposition of each signal. Source facts remain immutable.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Signal</th><th>Third party</th><th>Observed</th><th>Status</th><th>Action</th></tr></thead><tbody>
+    <% detail.signals.forEach(signal => { %><tr><td><strong><%= signal.title %></strong><small><%= titleCase(signal.signal_type) %> · <%= titleCase(signal.severity) %><%= signal.requires_reassessment ? ' · Reassessment requested' : '' %></small></td><td><%= signal.supplier_name %></td><td><%= signal.observed_at %></td><td><span class="tprm-status tprm-status-<%= signal.severity %>"><%= titleCase(signal.status) %></span><% if (signal.triage_note) { %><small><%= signal.triage_note %> · <%= signal.triaged_by_name || 'Consultancy' %></small><% } %></td><td>
+      <% if (canManage && signal.status === 'new') { %><details class="tprm-withdraw"><summary>Triage signal</summary><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/signals/<%= signal.id %>/triage"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="connector_id" value="<%= selected.id %>"><input type="hidden" name="idempotency_key" value="<%= nonce() %>"><label class="form-field"><span>Outcome *</span><select class="select" name="status" required><option value="triaged">Reviewed, no further escalation</option><option value="escalated">Escalated for action</option><option value="dismissed">Dismissed as non-actionable</option></select></label><label class="form-field"><span>Review note *</span><textarea class="textarea" name="note" rows="3" minlength="5" maxlength="1000" required></textarea></label><button class="btn btn-xs" type="submit">Record triage</button></form></details><% } else { %><span class="tprm-muted"><%= signal.status === 'new' ? 'Review permission required' : 'Recorded' %></span><% } %>
+    </td></tr><% }) %>
+    <% if (!detail.signals.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No signals</strong><span>Complete mapping and rule setup, then submit an event.</span></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section" id="received-events">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Fail-closed intake</div><h2>Event receipts</h2><p>Raw payloads are not stored. Normalized summaries and integrity hashes are retained.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Event</th><th>Third party</th><th>Observed</th><th>Processing</th><th>Integrity</th></tr></thead><tbody>
+    <% detail.receivedEvents.forEach(event => { %><tr><td><strong><%= event.provider_event_id %></strong><small><%= event.provider_entity_id || 'No provider entity' %></small></td><td><%= event.supplier_name || 'Unmapped' %></td><td><%= event.observed_at || event.received_at %></td><td><span class="tprm-status tprm-status-<%= event.latest_status %>"><%= titleCase(event.latest_status) %></span><small><%= event.error_redacted || 'No processing error' %></small></td><td><code><%= event.event_hash.slice(0, 12) %></code></td></tr><% }) %>
+    <% if (!detail.receivedEvents.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No events</strong><span>No delivery has been accepted for this connector.</span></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section" id="reassessment">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Governed escalation</div><h2>Reassessment queue</h2><p>Eligible requests create cycles for affected active services. The client decision remains untouched.</p></div></div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Third party</th><th>Reason</th><th>Priority</th><th>Status</th><th>Attempts</th><th>Action</th></tr></thead><tbody>
+    <% detail.queue.forEach(item => { %><tr><td><strong><%= item.supplier_name %></strong><small>#<%= item.id %></small></td><td><%= item.reason %><% if (item.last_error_redacted) { %><small><%= item.last_error_redacted %></small><% } %></td><td><span class="tprm-status tprm-status-<%= item.priority %>"><%= titleCase(item.priority) %></span></td><td><%= titleCase(item.status) %><small><%= item.resulting_cycle_id ? `Cycle #${item.resulting_cycle_id}` : '' %></small></td><td><%= item.attempt_count %> / <%= item.max_attempts %></td><td>
+      <% if (canManage && item.status === 'pending') { %><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/reassessment/<%= item.id %>/process"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-xs" type="submit">Start now</button></form>
+      <% } else if (canManage && item.status === 'manual_review') { %><details class="tprm-withdraw"><summary>Resolve review</summary><form method="POST" action="/workspaces/<%= ws.id %>/tprm/monitoring/reassessment/<%= item.id %>/retry"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><label class="form-field"><span>Resolution and retry basis *</span><textarea class="textarea" name="reason" rows="3" minlength="10" maxlength="1000" required></textarea></label><button class="btn btn-xs" type="submit">Return to queue</button></form></details>
+      <% } else { %><span class="tprm-muted"><%= item.status === 'completed' ? 'Completed' : 'No action available' %></span><% } %>
+    </td></tr><% }) %>
+    <% if (!detail.queue.length) { %><tr><td colspan="6"><div class="tprm-empty"><strong>No reassessment requests</strong><span>A matched rule configured to queue reassessment creates work here.</span></div></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Operations</div><h2>Runs and integrity</h2></div></div>
+  <div class="tprm-section-body">
+    <h3 style="font-size:13px;margin:0 0 8px">Recent runs</h3>
+    <div class="tprm-record-list"><% detail.runs.forEach(run => { %><div class="tprm-record-row"><span><strong><%= titleCase(run.status) %> · <%= titleCase(run.run_type) %></strong><small><%= run.received_count %> received · <%= run.processed_count %> processed · <%= run.quarantined_count %> quarantined</small></span><span><%= run.completed_at %><% if (run.error_redacted) { %><small><%= run.error_redacted %></small><% } %></span></div><% }) %><% if (!detail.runs.length) { %><div class="tprm-empty"><strong>No connector runs</strong><span>Connection remains unverified until successful intake.</span></div><% } %></div>
+    <h3 style="font-size:13px;margin:18px 0 8px">Integrity checks</h3>
+    <div class="tprm-record-list"><div class="tprm-record-row"><span><strong>Received-event chain</strong><small><%= detail.eventChain.checked %> event facts checked</small></span><span><%= detail.eventChain.valid ? 'Valid' : 'Integrity failure' %></span></div><div class="tprm-record-row"><span><strong>Configuration audit chain</strong><small><%= detail.auditChain.checked %> changes checked</small></span><span><%= detail.auditChain.valid ? 'Valid' : 'Integrity failure' %></span></div><div class="tprm-record-row"><span><strong>Failure policy</strong><small><%= failurePolicy.summary %></small></span><span><%= titleCase(failurePolicy.mode) %></span></div></div>
+  </div>
+</section>
+<% } %>
+
+<script>
+(function configureConnectorForm() {
+  const provider = document.getElementById('connectorProviderType');
+  if (!provider) return;
+  const startActive = document.getElementById('connectorStartActive');
+  const activationHelp = document.getElementById('connectorActivationHelp');
+  const guidance = document.getElementById('connectorProviderGuidance');
+  const signatureGuidance = document.getElementById('webhookSignatureGuidance');
+  const paidTypes = new Set(['securityscorecard', 'bitsight', 'riskrecon']);
+  function setGroup(group, visible) {
+    document.querySelectorAll(`[data-connector-field="${group}"]`).forEach(element => {
+      element.hidden = !visible;
+      element.querySelectorAll('input,select,textarea').forEach(control => { control.disabled = !visible; });
+    });
+  }
+  function refresh() {
+    const type = provider.value;
+    const paid = paidTypes.has(type);
+    const csv = type === 'csv_import';
+    setGroup('paid', paid);
+    setGroup('webhook', !csv);
+    if (startActive) {
+      startActive.disabled = paid;
+      if (paid) startActive.checked = false;
+    }
+    if (activationHelp) activationHelp.textContent = paid
+      ? 'Paid adapters are created as drafts until a verified provider transport exists.'
+      : csv
+        ? 'Activate to import. A successful import is still required before Nimbus calls it connected.'
+        : 'A successful signed intake is still required before Nimbus calls it connected.';
+    if (guidance) guidance.innerHTML = paid
+      ? '<strong>Paid-provider adapter:</strong> this deployment has an interface contract only. Creating the draft does not connect, subscribe to or call the provider.'
+      : csv
+        ? '<strong>Governed CSV import:</strong> implemented. Create and activate the connector, map provider entity IDs, then upload a CSV to see a result for every row.'
+        : '<strong>Generic signed webhook:</strong> implemented. Add the external secret reference, create the mapping and rule, then send one signed event to verify the connection.';
+    if (signatureGuidance) signatureGuidance.hidden = csv;
+  }
+  provider.addEventListener('change', refresh);
+  refresh();
+})();
+</script>
+
+</div>
+<%- include('partials/footer') %>

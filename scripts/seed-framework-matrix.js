@@ -1146,7 +1146,11 @@ const created = db.transaction(() => {
     const stableId = removePriorDemo(scenario);
     const clientUserId = ensureClientUser(scenario);
     const wsId = createWorkspace(scenario, clientUserId, stableId);
-    seedIntake(wsId, scenario);
+    // The engagement intake is the ISO 27001 scoping surface, not a universal
+    // one. Seeding it for every scenario gave the ISO 42001, CSF and CSF+42001
+    // demo clients a full 27-answer questionnaire for a standard they are not
+    // assessed against, and a clause 4.3 scope sign-off nobody gave.
+    if (scenario.frameworks.includes('iso27001')) seedIntake(wsId, scenario);
     seedOperatingRegisters(wsId, scenario);
     for (const framework of scenario.frameworks) {
       if (framework === 'iso27001' || framework === 'iso42001') {

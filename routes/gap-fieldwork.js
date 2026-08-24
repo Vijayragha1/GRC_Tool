@@ -17,6 +17,14 @@ function register(app, deps) {
   const scheduledAt = value => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(value || '')) ? String(value) : null;
   const visible = value => value === '1' ? 1 : 0;
   const redirectError = (req, res, message) => res.redirect(withToast(base(req.workspace.id), message, 'error'));
+  const requireOpenGapEngagement = (req, res, next) => {
+    const context = fieldwork.assessmentContext(db, req.workspace);
+    if (context.gapOnly && context.closure.complete) {
+      return redirectError(req, res,
+        'This gap-assessment engagement is formally closed. Retained fieldwork cannot be changed; start a new governed engagement and assessment pass for further work.');
+    }
+    next();
+  };
 
   function currentPassOrError(req) {
     return fieldwork.latestPass(db, req.workspace.id);
@@ -44,7 +52,7 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/interviews', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('control.update'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('control.update'), (req, res) => {
       const pass = currentPassOrError(req);
       if (!pass) return redirectError(req, res, 'Start an assessment pass before scheduling interviews.');
       const title = clean(req.body.title, 220);
@@ -65,7 +73,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/interviews/:id/status', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('control.update'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('control.update'), (req, res) => {
       const status = String(req.body.status || '');
       const version = Number(req.body.row_version);
       if (!INTERVIEW_STATUSES.has(status)) return redirectError(req, res, 'Choose a valid interview status.');
@@ -82,7 +90,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/blockers', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('control.update'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('control.update'), (req, res) => {
       const pass = currentPassOrError(req);
       if (!pass) return redirectError(req, res, 'Start an assessment pass before recording blockers.');
       const title = clean(req.body.title, 220);
@@ -101,7 +109,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/blockers/:id/status', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('control.update'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('control.update'), (req, res) => {
       const status = String(req.body.status || '');
       const version = Number(req.body.row_version);
       const note = clean(req.body.resolution_note, 5000);
@@ -118,7 +126,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/defaults', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('control.update'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('control.update'), (req, res) => {
       const pass = currentPassOrError(req);
       if (!pass) return redirectError(req, res, 'Start an assessment pass before recording declared defaults.');
       const requirement = db.prepare(`SELECT r.id FROM requirements r JOIN frameworks f ON f.id=r.framework_id
@@ -141,7 +149,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/defaults/:id/:action(confirm|withdraw)', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('assessment.signoff'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('assessment.signoff'), (req, res) => {
       const action = req.params.action;
       const version = Number(req.body.row_version);
       const result = db.prepare(`UPDATE gap_declared_defaults SET status=?,confirmed_by=?,
@@ -156,7 +164,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/snapshots', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('assessment.signoff'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('assessment.signoff'), (req, res) => {
       try {
         const id = fieldwork.snapshotFieldwork(db, req.workspace, req.user.id, date(req.body.week_ending));
         logAction(req.user.id, req.workspace.id, 'freeze_gap_weekly_snapshot', 'gap_fieldwork_snapshot', id,
@@ -169,7 +177,7 @@ function register(app, deps) {
     });
 
   app.post('/workspaces/:wsId/gap-assessment/fieldwork/phases/:phase', requireAuth, requireWorkspace, firmOnly,
-    requirePermission('assessment.signoff'), (req, res) => {
+    requireOpenGapEngagement, requirePermission('assessment.signoff'), (req, res) => {
       const phase = String(req.params.phase || '');
       const decision = String(req.body.decision || '');
       const rationale = clean(req.body.rationale, 5000);
@@ -179,6 +187,9 @@ function register(app, deps) {
       }
       const context = fieldwork.assessmentContext(db, req.workspace);
       if (!context.pass) return redirectError(req, res, 'Start an assessment pass before recording phase decisions.');
+      if (phase === 'post_report' && context.gapOnly) {
+        return redirectError(req, res, 'Post-report remediation is outside this gap-assessment-only engagement. Close the engagement at the published report instead.');
+      }
       if (decision !== 'reopened') {
         if (phase === 'validation' && decision === 'not_required') {
           if (!context.completed.fieldwork || context.findings.length) return redirectError(req, res, 'Validation can be marked not required only after fieldwork sign-off when there are no confirmed client findings.');

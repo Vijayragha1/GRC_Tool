@@ -12,8 +12,11 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const puppeteer = require('puppeteer-core');
+const bcrypt = require('bcrypt');
+const Database = require('better-sqlite3');
 
 const ROOT = path.join(__dirname, '..');
 const REPORT_DIR = path.join(__dirname, 'browser-report');
@@ -22,6 +25,7 @@ const TMP_DB = path.join('/tmp', `iso27001-uitest-${Date.now()}.db`);
 const PORT = 3099;
 const BASE = `http://localhost:${PORT}`;
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const TEST_PASSWORD = crypto.randomBytes(32).toString('base64url');
 
 const liveDb = path.join(ROOT, 'iso27001.db');
 if (!fs.existsSync(liveDb)) {
@@ -30,6 +34,24 @@ if (!fs.existsSync(liveDb)) {
 }
 fs.copyFileSync(liveDb, TMP_DB);
 fs.mkdirSync(SHOT_DIR, { recursive: true });
+
+function prepareTestManager() {
+  const db = new Database(TMP_DB);
+  const manager = db.prepare(`SELECT u.id, u.email, u.firm_id
+    FROM users u
+    JOIN workspaces w ON w.firm_id=u.firm_id
+    WHERE u.active=1 AND u.user_type='firm' AND u.firm_role='manager'
+    GROUP BY u.id, u.email, u.firm_id
+    ORDER BY u.id LIMIT 1`).get();
+  if (!manager) {
+    db.close();
+    throw new Error('No active Manager with a workspace exists in the snapshot DB.');
+  }
+  db.prepare('UPDATE users SET password_hash=? WHERE id=?')
+    .run(bcrypt.hashSync(TEST_PASSWORD, 10), manager.id);
+  db.close();
+  return manager;
+}
 
 const findings = {
   startedAt: new Date().toISOString(),
@@ -70,26 +92,43 @@ async function startServer() {
   return proc;
 }
 
-async function pickWorkspaceId() {
-  // Match server's getActiveFirmId fallback: lowest-id firm. Then pick lowest-id
-  // workspace within that firm. Otherwise auth fails with 403.
-  const Database = require('better-sqlite3');
+async function pickWorkspaceId(firmId) {
   const db = new Database(TMP_DB, { readonly: true });
-  const firm = db.prepare('SELECT id FROM firms ORDER BY id LIMIT 1').get();
-  if (!firm) { db.close(); return null; }
-  let ws = db.prepare('SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1').get(firm.id);
-  // If active firm has no workspaces, fall back to any workspace and switch to its firm.
-  let switchToFirm = null;
-  if (!ws) {
-    ws = db.prepare('SELECT id, firm_id FROM workspaces ORDER BY id LIMIT 1').get();
-    if (ws) switchToFirm = ws.firm_id;
-  }
+  const ws = db.prepare('SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1').get(firmId);
   db.close();
   if (!ws) {
-    log('No workspace in snapshot DB. Cannot run workspace-scoped tests.');
+    log('The test Manager has no workspace in the snapshot DB.');
     return null;
   }
-  return { wsId: ws.id, switchToFirm };
+  return { wsId: ws.id };
+}
+
+async function authenticate(page, manager) {
+  await page.goto(BASE + '/login', { waitUntil: 'domcontentloaded' });
+  await page.type('input[name="email"]', manager.email);
+  await page.type('input[name="password"]', TEST_PASSWORD);
+  await page.$eval('form.auth-form', form => form.requestSubmit());
+  // Cross-document view transitions can make Puppeteer's lifecycle-based
+  // waitForNavigation outlive an otherwise successful redirect. The sign-out
+  // form is the authenticated shell's stable readiness marker.
+  try {
+    await page.waitForSelector('form[action="/logout"], button[aria-label="Sign out"]', { timeout: 20000 });
+  } catch (error) {
+    const failure = await page.evaluate(() => ({
+      path: location.pathname,
+      message: document.querySelector('.alert-err')?.textContent?.trim() || '',
+    }));
+    throw new Error(`Browser crawler login failed on ${failure.path}: ${failure.message || error.message}`);
+  }
+  const state = await page.evaluate(() => ({
+    path: location.pathname,
+    hasFirmNavigation: !!document.querySelector('a[href="/dashboard"]'),
+    hasSignOut: !!document.querySelector('form[action="/logout"], button[aria-label="Sign out"]'),
+  }));
+  if (state.path === '/login' || !state.hasFirmNavigation || !state.hasSignOut) {
+    throw new Error(`Browser crawler failed to authenticate as a Manager (landed on ${state.path}).`);
+  }
+  return state;
 }
 
 function safeName(p) {
@@ -285,8 +324,9 @@ async function visit(page, urlPath, opts = {}) {
 }
 
 (async () => {
+  const manager = prepareTestManager();
   const server = await startServer();
-  const wsPick = await pickWorkspaceId();
+  const wsPick = await pickWorkspaceId(manager.firm_id);
   const wsId = wsPick && wsPick.wsId;
 
   const browser = await puppeteer.launch({
@@ -296,6 +336,7 @@ async function visit(page, urlPath, opts = {}) {
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
+  findings.authentication = await authenticate(page, manager);
 
   // Suppress native dialogs at the puppeteer level - if any leak through, we
   // dismiss them and record it as a finding.
@@ -303,17 +344,6 @@ async function visit(page, urlPath, opts = {}) {
     findings.consoleErrors.push({ url: page.url(), text: 'native dialog leaked: ' + dialog.type() + ' - ' + dialog.message() });
     await dialog.dismiss();
   });
-
-  // If the chosen workspace lives in a non-default firm, flip the active tenant
-  // so requireWorkspace doesn't 403.
-  if (wsPick && wsPick.switchToFirm) {
-    log('Switching active tenant to firm', wsPick.switchToFirm);
-    await page.goto(BASE + '/tenants', { waitUntil: 'domcontentloaded' });
-    await page.evaluate(async fid => {
-      const fd = new FormData();
-      await fetch('/tenants/' + fid + '/switch', { method: 'POST', body: fd });
-    }, wsPick.switchToFirm);
-  }
 
   // Top-level pages
   const topRoutes = [
@@ -334,7 +364,6 @@ async function visit(page, urlPath, opts = {}) {
     `/workspaces/${wsId}/assets`,
     `/workspaces/${wsId}/risks`,
     `/workspaces/${wsId}/risk-methodology`,
-    `/workspaces/${wsId}/interested-parties`,
     `/workspaces/${wsId}/objectives`,
     `/workspaces/${wsId}/soa`,
     `/workspaces/${wsId}/documents`,
@@ -478,9 +507,18 @@ async function visit(page, urlPath, opts = {}) {
     modalChecks: findings.modalChecks,
   };
 
+  const failedModalCheck = findings.modalChecks.some(check => check.ok === false || check.modalOpened === false);
+  findings.summary.passed = findings.summary.pagesWith4xx5xx === 0
+    && findings.summary.consoleErrors === 0
+    && findings.summary.networkErrors === 0
+    && findings.summary.pageErrors === 0
+    && findings.summary.nativeDialogLeaks === 0
+    && !failedModalCheck;
+
   fs.writeFileSync(path.join(REPORT_DIR, 'report.json'), JSON.stringify(findings, null, 2));
   log('Report written to', path.join(REPORT_DIR, 'report.json'));
   log('Summary:', JSON.stringify(findings.summary, null, 2));
+  if (!findings.summary.passed) process.exitCode = 1;
 })().catch(e => {
   console.error('UI test crashed:', e);
   process.exit(1);

@@ -39,11 +39,98 @@ test.after(async()=>{if(db)db.close();if(client)await client.close();if(reviewer
 test('delivery cockpit seeds one consulting engagement and governed methodology',async()=>{
   const page=await client.get(`/workspaces/${wsId}/delivery`);
   assert.equal(page.status,200);assert.match(page.text,/Consultant delivery operating system/);assert.match(page.text,/four-layer|professional work/i);
+  assert.match(page.text,/Contracted service path/);assert.match(page.text,/Full certification support/);
   const engagement=db.prepare('SELECT * FROM consulting_engagements WHERE workspace_id=?').get(wsId);assert.ok(engagement);engagementId=engagement.id;
+  assert.equal(engagement.engagement_type,'implementation');
   assert.deepEqual(JSON.parse(engagement.framework_scope_json),['iso27001']);
   const method=db.prepare(`SELECT m.*,v.snapshot_hash FROM firm_methodologies m JOIN firm_methodology_versions v ON v.methodology_id=m.id WHERE m.firm_id=?`).get(db.prepare('SELECT firm_id FROM workspaces WHERE id=?').get(wsId).firm_id);
   assert.equal(method.snapshot_hash.length,64);
   assert.equal(db.prepare('SELECT consulting_engagement_id FROM engagement_delivery_plans WHERE workspace_id=?').get(wsId).consulting_engagement_id,engagementId);
+});
+
+test('certification-support engagement cannot close before the adaptive delivery plan and Stage 2 remediation are complete',async()=>{
+  const engagement=db.prepare('SELECT * FROM consulting_engagements WHERE id=?').get(engagementId);
+  const response=await client.post(`/workspaces/${wsId}/delivery/engagements/${engagementId}`,{
+    row_version:String(engagement.row_version),name:engagement.name,status:'complete'
+  });
+  assert.equal(response.status,302);assert.match(response.location,/toastKind=error/);
+  assert.match(decodeURIComponent(response.location),/certification-support delivery plan is not complete/i);
+  assert.equal(db.prepare('SELECT status FROM consulting_engagements WHERE id=?').get(engagementId).status,'active');
+});
+
+test('deliberately reopening full certification support clears stale completion and reopens its plan',async()=>{
+  const plan=db.prepare('SELECT * FROM engagement_delivery_plans WHERE workspace_id=?').get(wsId);
+  db.prepare(`UPDATE consulting_engagements SET status='complete',completed_at=datetime('now'),row_version=row_version+1 WHERE id=?`).run(engagementId);
+  db.prepare(`UPDATE engagement_delivery_plans SET status='completed',consulting_engagement_id=? WHERE id=?`).run(engagementId,plan.id);
+  const completed=db.prepare('SELECT * FROM consulting_engagements WHERE id=?').get(engagementId);
+  const response=await client.post(`/workspaces/${wsId}/delivery/engagements/${engagementId}`,{
+    row_version:String(completed.row_version),name:completed.name,status:'active'
+  });
+  assert.equal(response.status,302);assert.doesNotMatch(response.location,/toastKind=error/);
+  const reopened=db.prepare('SELECT status,completed_at FROM consulting_engagements WHERE id=?').get(engagementId);
+  assert.equal(reopened.status,'active');assert.equal(reopened.completed_at,null);
+  assert.equal(db.prepare('SELECT status FROM engagement_delivery_plans WHERE id=?').get(plan.id).status,'active');
+  assert.ok(db.prepare(`SELECT 1 FROM engagement_delivery_events
+    WHERE plan_id=? AND action='reopened_with_consulting_engagement'`).get(plan.id));
+});
+
+test('gap-only cockpit shows the report endpoint and rejects certification-only engagement types',async()=>{
+  const firmId=db.prepare('SELECT firm_id FROM workspaces WHERE id=?').get(wsId).firm_id;
+  const gapWorkspaceId=Number(db.prepare(`INSERT INTO workspaces
+    (firm_id,client_name,stage,frameworks,engagement_outcome,lead_consultant_id,created_at)
+    VALUES (?,'Report Only Client','gap_assessment','["iso27001"]','gap_assessment_only',?,'2026-08-20')`).run(firmId,managerId).lastInsertRowid);
+  const page=await client.get(`/workspaces/${gapWorkspaceId}/delivery`);
+  assert.equal(page.status,200);assert.match(page.text,/Contracted service path/);assert.match(page.text,/Gap assessment only/);
+  assert.match(page.text,/Contract endpoint: independently approved and published gap-assessment report/);
+  assert.match(page.text,/Implementation, readiness, internal audit and surveillance engagements are locked/);
+  assert.doesNotMatch(page.text,/<option value="implementation">/);
+  assert.doesNotMatch(page.text,/<option value="readiness">/);
+  assert.doesNotMatch(page.text,/<option value="internal_audit">/);
+  assert.doesNotMatch(page.text,/<option value="surveillance">/);
+  const seeded=db.prepare('SELECT * FROM consulting_engagements WHERE workspace_id=? ORDER BY id LIMIT 1').get(gapWorkspaceId);
+  assert.equal(seeded.engagement_type,'gap_assessment');
+
+  db.prepare(`UPDATE consulting_engagements SET status='complete',completed_at=datetime('now'),row_version=row_version+1 WHERE id=?`).run(seeded.id);
+  const closedGap=db.prepare('SELECT * FROM consulting_engagements WHERE id=?').get(seeded.id);
+  const blockedReopen=await client.post(`/workspaces/${gapWorkspaceId}/delivery/engagements/${seeded.id}`,{
+    row_version:String(closedGap.row_version),name:closedGap.name,status:'active'
+  });
+  assert.equal(blockedReopen.status,302);assert.match(blockedReopen.location,/toastKind=error/);
+  assert.match(decodeURIComponent(blockedReopen.location),/formally closed at the controlled report/i);
+  const retainedGap=db.prepare('SELECT status,completed_at FROM consulting_engagements WHERE id=?').get(seeded.id);
+  assert.equal(retainedGap.status,'complete');assert.ok(retainedGap.completed_at);
+  const blockedClosedEdit=await client.post(`/workspaces/${gapWorkspaceId}/delivery/engagements/${seeded.id}`,{
+    row_version:String(closedGap.row_version),name:'Rewritten closed engagement',scope_statement:'Rewritten closed scope',status:'complete'
+  });
+  assert.equal(blockedClosedEdit.status,302);assert.match(blockedClosedEdit.location,/toastKind=error/);
+  const immutableGap=db.prepare('SELECT name,scope_statement,completed_at FROM consulting_engagements WHERE id=?').get(seeded.id);
+  assert.equal(immutableGap.name,closedGap.name);assert.equal(immutableGap.scope_statement,closedGap.scope_statement);
+  assert.equal(immutableGap.completed_at,closedGap.completed_at,'generic settings save cannot refresh the controlled closure timestamp');
+
+  const blocked=await client.post(`/workspaces/${gapWorkspaceId}/delivery/engagements`,{
+    name:'Out-of-contract implementation',engagement_type:'implementation',frameworks:'iso27001'
+  });
+  assert.equal(blocked.status,302);assert.match(blocked.location,/toastKind=error/);
+  assert.match(decodeURIComponent(blocked.location),/Convert the service path to Full certification support/);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM consulting_engagements WHERE workspace_id=? AND name='Out-of-contract implementation'").get(gapWorkspaceId).c,0);
+
+  const advisory=await client.post(`/workspaces/${gapWorkspaceId}/delivery/engagements`,{
+    name:'Report clarification advisory',engagement_type:'advisory',frameworks:'iso27001'
+  });
+  assert.equal(advisory.status,302);assert.doesNotMatch(advisory.location,/toastKind=error/);
+  const advisoryEngagement=db.prepare("SELECT * FROM consulting_engagements WHERE workspace_id=? AND name='Report clarification advisory'").get(gapWorkspaceId);
+  assert.equal(advisoryEngagement.engagement_type,'advisory');
+  const advisoryComplete=await client.post(`/workspaces/${gapWorkspaceId}/delivery/engagements/${advisoryEngagement.id}`,{
+    row_version:String(advisoryEngagement.row_version),name:advisoryEngagement.name,status:'complete'
+  });
+  assert.equal(advisoryComplete.status,302);assert.doesNotMatch(advisoryComplete.location,/toastKind=error/);
+  assert.equal(db.prepare('SELECT status FROM consulting_engagements WHERE id=?').get(advisoryEngagement.id).status,'complete');
+
+  const portfolio=await client.get('/delivery-portfolio');
+  assert.equal(portfolio.status,200);assert.match(portfolio.text,/Service path/);
+  assert.match(portfolio.text,/Gap assessment only/);assert.match(portfolio.text,/Full certification support/);
+  const dashboard=await client.get('/dashboard');
+  assert.equal(dashboard.status,200);assert.match(dashboard.text,/Report Only Client/);assert.match(dashboard.text,/Gap assessment only/);
 });
 
 test('workpaper separates management, design, implementation and operating conclusions',async()=>{

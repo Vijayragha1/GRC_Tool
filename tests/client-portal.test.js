@@ -88,6 +88,35 @@ test('request creation records scope, event history, and audit entry', () => {
   assert.ok(db.prepare(`SELECT 1 FROM audit_log WHERE workspace_id=? AND entity_type='client_request' AND entity_id=? AND action='create_client_request'`).get(workspaceId, String(requestId)));
 });
 
+test('invalid request creation preserves input and identifies the exact fields to fix', async () => {
+  const invalid = await manager.post(`/workspaces/${workspaceId}/client-portal/requests`, {
+    request_type: 'policy', priority: 'high', assignee_id: String(contributorId),
+    title: 'Preserve this carefully written request',
+    description: 'The acceptance criteria must still be here after a validation error.',
+    document_id: '', due_date: '2026-02-30'
+  });
+  assert.equal(invalid.status, 422);
+  const page = invalid;
+  assert.match(page.text, /id="new-request"[^>]*open/);
+  assert.match(page.text, /Check the highlighted fields/);
+  assert.match(page.text, /Choose the policy this request concerns/);
+  assert.match(page.text, /Enter a valid calendar date/);
+  assert.match(page.text, /value="Preserve this carefully written request"/);
+  assert.match(page.text, /The acceptance criteria must still be here after a validation error/);
+  assert.match(page.text, /id="request-document"[^>]*aria-invalid="true"[^>]*aria-describedby="request-document-error"/);
+  assert.match(page.text, /id="request-due-date"[^>]*aria-invalid="true"[^>]*aria-describedby="request-due-date-error"/);
+});
+
+test('NIST CSF distinguishes unassessed outcomes from confirmed findings', async () => {
+  db.prepare(`UPDATE workspaces SET frameworks='["csf"]' WHERE id=?`).run(workspaceId);
+  const page = await manager.get(`/workspaces/${workspaceId}/client-portal?view=progress`);
+  assert.equal(page.status, 200, page.text.slice(0, 500));
+  assert.match(page.text, /Outcomes to assess[\s\S]*?<dd>106<\/dd>/);
+  assert.match(page.text, /0 confirmed findings/);
+  assert.doesNotMatch(page.text, /Open items<\/dt><dd>106<\/dd>/);
+  db.prepare(`UPDATE workspaces SET frameworks='["iso27001","iso42001","csf"]' WHERE id=?`).run(workspaceId);
+});
+
 test('consultant workspace navigation exposes the integrated overview and separates framework programmes without a duplicate audit-pack entry', async () => {
   const page = await manager.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(page.status, 200);
@@ -416,6 +445,30 @@ test('client portal excludes unassigned delivery work and blocks evidence-free s
   assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'submitted', 'non-approver cannot accept');
   await manager.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/accept`, { note: 'Accepted against the linked evidence.' });
   assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'accepted');
+});
+
+test('gap-only client cannot replay a direct link to retained implementation work', async () => {
+  db.prepare(`UPDATE workspaces SET frameworks='["iso27001"]',engagement_outcome='gap_assessment_only' WHERE id=?`).run(workspaceId);
+  const hidden = db.prepare(`SELECT d.id,d.status FROM engagement_delivery_deliverables d
+    JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
+    JOIN engagement_delivery_phases p ON p.id=m.phase_id
+    WHERE d.workspace_id=? AND p.phase_key='implementation' ORDER BY d.id LIMIT 1`).get(workspaceId);
+  assert.ok(hidden, 'full-path implementation row is retained for an additive future conversion');
+  db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=?,client_visible=1 WHERE id=?`)
+    .run(contributorId, managerId, hidden.id);
+
+  const comment = await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${hidden.id}/comments`, {
+    body: 'A replayed hidden-row comment must be rejected.'
+  });
+  assert.equal(comment.status, 400);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM comments WHERE workspace_id=? AND parent_type='engagement_deliverable' AND parent_id=?`)
+    .get(workspaceId, String(hidden.id)).c, 0);
+
+  const submit = await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${hidden.id}/submit`, {
+    note: 'A replayed hidden-row transition must be rejected.'
+  });
+  assert.equal(submit.status, 400);
+  assert.equal(db.prepare('SELECT status FROM engagement_delivery_deliverables WHERE id=?').get(hidden.id).status, hidden.status);
 });
 
 test('portal POST routes remain CSRF protected', async () => {

@@ -223,6 +223,8 @@ CREATE TABLE auditor_shares (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id INTEGER NOT NULL,
     token TEXT NOT NULL UNIQUE,
+    token_hash TEXT,
+    token_last4 TEXT,
     label TEXT,
     expires_at DATETIME,
     created_by INTEGER NOT NULL,
@@ -2431,7 +2433,7 @@ CREATE TABLE users (
   firm_id INTEGER,
   firm_role TEXT,
   active INTEGER DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP, last_active_at DATETIME, locale TEXT DEFAULT 'en', idp_subject TEXT, idp_kind TEXT, email_notify TEXT DEFAULT 'immediate',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP, auth_epoch INTEGER NOT NULL DEFAULT 0, last_active_at DATETIME, locale TEXT DEFAULT 'en', idp_subject TEXT, idp_kind TEXT, email_notify TEXT DEFAULT 'immediate',
   FOREIGN KEY (firm_id) REFERENCES firms(id)
 );
 
@@ -2495,6 +2497,8 @@ CREATE INDEX idx_audit_user_action ON audit_log(user_id, action);
 CREATE INDEX idx_audit_workspace ON audit_log(workspace_id);
 
 CREATE INDEX idx_auditor_shares_token ON auditor_shares(token);
+
+CREATE UNIQUE INDEX idx_auditor_shares_token_hash ON auditor_shares(token_hash) WHERE token_hash IS NOT NULL;
 
 CREATE INDEX idx_auditor_shares_ws ON auditor_shares(workspace_id);
 

@@ -1,0 +1,72 @@
+<%- include('partials/header', { title, user, ws, active, clientPreview, clientPreviewUser, portalView, tprmPortalEnabled }) %>
+
+<%
+  const label = value => String(value || 'Not set').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  const assessed = value => !value || value === 'not_assessed' ? 'Not assessed' : label(value);
+  const date = value => value ? new Intl.DateTimeFormat(ws.locale || 'en-GB', { day:'numeric', month:'short', year:'numeric' }).format(new Date(`${String(value).slice(0,10)}T12:00:00`)) : 'Not scheduled';
+  const previewSuffix = clientPreview ? '?preview=client' : '';
+%>
+
+<style>
+  .ctp-wrap{max-width:1180px;margin:0 auto;padding:30px 28px 64px}.ctp-kicker{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.07em;color:var(--text-tertiary)}
+  .ctp-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin:6px 0 24px;padding-bottom:20px;border-bottom:1px solid var(--border)}.ctp-hero h1{font-size:27px;letter-spacing:-.025em;margin:0 0 6px}.ctp-hero p{max-width:680px;margin:0;color:var(--text-secondary);line-height:1.5;font-size:13px}
+  .ctp-preview{margin-bottom:18px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-size:12px;color:var(--text-secondary)}
+  .ctp-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:0 0 30px;border-block:1px solid var(--border)}.ctp-metric{padding:14px 16px;border-right:1px solid var(--border);background:transparent}.ctp-metric:last-child{border-right:0}.ctp-metric span{display:block;color:var(--text-secondary);font-size:11px;line-height:1.3}.ctp-metric strong{display:block;font-size:22px;margin-top:7px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .ctp-section{margin-top:30px}.ctp-heading{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px}.ctp-heading h2{font-size:17px;margin:0}.ctp-heading p{font-size:12px;color:var(--text-secondary);margin:4px 0 0}
+  .ctp-table{width:100%;border-collapse:collapse}.ctp-table th{text-align:left;padding:10px 13px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-tertiary)}.ctp-table td{padding:13px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:top}.ctp-table tr:last-child td{border-bottom:0}.ctp-table small{display:block;color:var(--text-secondary);margin-top:3px}.ctp-table a{color:var(--text);font-weight:650;text-decoration:none}.ctp-table a:hover{text-decoration:underline}
+  .ctp-pill{display:inline-flex;padding:3px 7px;border:1px solid var(--border);border-radius:4px;background:transparent;font-size:11px;white-space:nowrap}.ctp-pill.high,.ctp-pill.critical{border-color:rgba(168,54,54,.28);color:#8f2f2f}.ctp-pill.medium,.ctp-pill.conditional{border-color:rgba(150,103,0,.3);color:#725000}.ctp-empty{padding:28px;color:var(--text-secondary);font-size:13px}
+  @media(max-width:900px){.ctp-metrics{grid-template-columns:repeat(2,1fr)}.ctp-metric{border-bottom:1px solid var(--border)}.ctp-metric:nth-child(2n){border-right:0}.ctp-hero{align-items:flex-start;flex-direction:column}.ctp-table-wrap{overflow:auto}}
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .ctp-table th
+    { font-size: 11px; }
+  }
+</style>
+
+<main id="mainContent" class="ctp-wrap">
+  <% if (clientPreview) { %><div class="ctp-preview"><strong>Read-only client preview.</strong> No client decision or comment can be submitted from a consulting-firm account.</div><% } %>
+  <% if (tprmRetainedReadOnly) { %><div class="ctp-preview"><strong>Closed TPRM service period - retained read-only.</strong> Issued recommendations, client decisions, conditions and released assurance history remain available. New decisions, comments and condition actions are disabled.</div><% } %>
+  <header class="ctp-hero">
+    <div><h1>Third-party risk</h1><p>Issued recommendations, client decisions and assigned conditions; other client reviewers remain read only.</p></div>
+  </header>
+
+  <section class="ctp-metrics" aria-label="Third-party risk summary">
+    <div class="ctp-metric"><span>Third parties in scope</span><strong><%= metrics.total %></strong></div>
+    <div class="ctp-metric"><span>Awaiting your decision</span><strong><%= metrics.awaitingDecision %></strong></div>
+    <div class="ctp-metric"><span>Open conditions</span><strong><%= metrics.conditional %></strong></div>
+    <div class="ctp-metric"><span>High or critical residual risk</span><strong><%= metrics.highRisk %></strong></div>
+    <div class="ctp-metric"><span>Assigned actions</span><strong><%= metrics.assignedActions %></strong></div>
+  </section>
+
+  <section class="ctp-section">
+    <div class="ctp-heading"><div><h2>Assigned actions</h2><p>Items awaiting client action.</p></div></div>
+    <div class="panel ctp-table-wrap">
+      <% if (!portfolio.actions.length) { %><div class="ctp-empty">There are no open TPRM actions assigned to you.</div><% } else { %>
+      <table class="ctp-table"><thead><tr><th>Action</th><th>Third party</th><th>Due</th><th>Status</th></tr></thead><tbody>
+        <% portfolio.actions.forEach(action => { %><tr><td><strong><%= action.title %></strong></td><td><% if (action.supplierId) { %><a href="/workspaces/<%= ws.id %>/client-portal/tprm/<%= action.supplierId %><%= previewSuffix %>"><%= action.thirdPartyName || 'Open record' %></a><% } else { %><%= action.thirdPartyName || '-' %><% } %></td><td><%= date(action.dueDate) %></td><td><span class="ctp-pill <%= action.priority %>"><%= label(action.status) %></span></td></tr><% }) %>
+      </tbody></table><% } %>
+    </div>
+  </section>
+
+  <section class="ctp-section">
+    <div class="ctp-heading"><div><h2>Third parties</h2><p>Current recommendation, decision and review status.</p></div></div>
+    <div class="panel ctp-table-wrap">
+      <% if (!portfolio.thirdParties.length) { %><div class="ctp-empty"><strong>No third parties are available yet.</strong><br>The engagement team will release records here when their assurance review is ready.</div><% } else { %>
+      <table class="ctp-table"><thead><tr><th>Third party</th><th>Stage</th><th>Consultancy recommendation</th><th>Client decision</th><th>Residual risk</th><th>Next review</th></tr></thead><tbody>
+        <% portfolio.thirdParties.forEach(record => { %><tr>
+          <td><a href="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %><%= previewSuffix %>"><%= record.name %></a><small><%= record.service || 'Service details not published' %></small></td>
+          <td><span class="ctp-pill"><%= label(record.lifecycleStage) %></span></td>
+          <td><%= record.recommendation ? label(record.recommendation.outcome) : 'Not issued' %></td>
+          <td><%= record.clientDecision ? label(record.clientDecision.decision) : (record.recommendation ? 'Awaiting client decision' : 'Not available') %></td>
+          <td><span class="ctp-pill <%= String(record.residualRiskBand || '').toLowerCase() %>"><%= assessed(record.residualRiskBand) %></span></td>
+          <td><%= date(record.nextReviewDate) %></td>
+        </tr><% }) %>
+      </tbody></table><% } %>
+    </div>
+  </section>
+</main>
+
+<%- include('partials/footer') %>
