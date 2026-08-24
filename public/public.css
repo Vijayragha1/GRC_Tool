@@ -1,12 +1,22 @@
 :root {
   color-scheme: light;
-  --ink: #172021;
-  --muted: #586263;
-  --line: #d8dcda;
-  --surface: #fbfbf8;
+  /* These are app.css's tokens, not a second palette. The public pages used to
+     define their own teal accent and cool grey rules, which made the marketing
+     site look like a different product from the application behind it. Values
+     are duplicated rather than imported because app.css is 180KB of application
+     chrome that a four-section public page has no use for. */
+  --ink: #1a1a1a;            /* app --text */
+  --muted: #6b6b66;          /* app --text-secondary */
+  --faint: #73736f;          /* app --text-tertiary */
+  --line: #ecebe5;           /* app --border */
+  --line-strong: #d8d6cf;    /* app --border-strong */
+  --surface: #fbfbf8;        /* app --bg */
+  --subtle: #f6f5ef;         /* app --bg-subtle */
+  --sunk: #f0eee7;           /* app --bg-muted */
   --paper: #ffffff;
-  --accent: #1f4b4f;
-  --accent-dark: #15373a;
+  --accent: #1a1a1a;         /* app --accent: charcoal, not a brand colour */
+  --accent-dark: #000000;
+  --display: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -31,7 +41,7 @@ a:focus-visible, button:focus-visible { outline: 3px solid #d6922e; outline-offs
 .site-header .nav-sign-in { color: var(--ink); border: 1px solid var(--ink); border-radius: 6px; padding: 7px 14px; text-decoration: none; }
 main { width: min(1120px, calc(100% - 40px)); margin-inline: auto; }
 .hero { max-width: 860px; padding: 112px 0 92px; }
-.eyebrow { margin: 0 0 14px; color: var(--accent); font-size: .75rem; font-weight: 750; letter-spacing: .11em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 14px; color: var(--faint); font-size: .72rem; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
 h1, h2, h3 { line-height: 1.16; letter-spacing: -.035em; }
 h1 { max-width: 840px; margin: 0; font-size: clamp(2.5rem, 6vw, 4.8rem); font-weight: 650; }
 h2 { margin: 0 0 18px; font-size: clamp(1.75rem, 3vw, 2.5rem); font-weight: 620; }
@@ -57,6 +67,65 @@ h3 { margin: 0 0 10px; font-size: 1.05rem; }
 .steps li > span { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; text-align: center; line-height: 26px; font-size: .8rem; }
 .steps p { margin: 3px 0 0; }
 .text-link { font-weight: 650; }
+/* ---- Home page ------------------------------------------------------
+   Replaces a hero, a three-card triptych and a numbered 1-2-3 list. Those
+   are the shapes every generated SaaS page reaches for, and next to the
+   application (dense tables, quiet status text, figures set in the display
+   face) they read as a different and less serious product. What follows
+   borrows the application's own density instead. */
+
+/* Lead statement. Figures are set in the display face, as they are in the app. */
+.lead-figures { display: flex; flex-wrap: wrap; gap: 0; margin: 40px 0 0; border-top: 1px solid var(--line); }
+.lead-figures > div { flex: 1 1 150px; padding: 18px 22px 0 0; }
+.lead-figures dt { color: var(--faint); font-size: .74rem; letter-spacing: .07em; text-transform: uppercase; }
+.lead-figures dd { margin: 7px 0 0; font-family: var(--display); font-size: 2rem; font-weight: 500; letter-spacing: -.03em; }
+.lead-figures p { margin: 3px 0 0; color: var(--muted); font-size: .84rem; }
+
+/* Programme register. Deliberately a table: this is a catalogue, and the
+   application shows catalogues as tables rather than as cards. */
+.register { width: 100%; border-collapse: collapse; margin-top: 30px; }
+.register caption { text-align: left; padding-bottom: 12px; color: var(--faint); font-size: .74rem; letter-spacing: .07em; text-transform: uppercase; }
+.register th { padding: 9px 14px 9px 0; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); color: var(--faint); font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; text-align: left; }
+.register td { padding: 17px 14px 17px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+/* The longest programme name runs close to the count column. Reserve the gap
+   so a future catalogue with a longer designation cannot collide with it. */
+.register td:first-child { padding-right: 30px; }
+.register td:last-child { width: 1%; text-align: left; }
+.register tr:last-child td { border-bottom: 1px solid var(--line-strong); }
+.register .code { display: inline-grid; place-items: center; min-width: 62px; padding: 5px 8px; border-radius: 5px; background: var(--sunk); color: #35383a; font-size: .7rem; font-weight: 700; letter-spacing: .05em; }
+.register .name { font-weight: 620; font-size: .97rem; }
+.register .desc { display: block; margin-top: 3px; color: var(--muted); font-size: .85rem; }
+.register .count { font-family: var(--display); font-size: 1.35rem; font-weight: 500; white-space: nowrap; }
+.register .unit { display: block; margin-top: 2px; color: var(--faint); font-size: .76rem; }
+
+/* The mechanisms. Numbered, because they are a claim list that should be
+   countable, but without the circled-step decoration. */
+.mechanisms { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 34px; border-top: 1px solid var(--line-strong); }
+.mechanisms > div { padding: 24px 34px 24px 0; border-bottom: 1px solid var(--line); }
+.mechanisms > div:nth-child(odd) { padding-right: 44px; }
+.mechanisms h3 { margin: 0 0 8px; font-size: .98rem; font-weight: 620; letter-spacing: -.01em; }
+.mechanisms p { margin: 0; color: var(--muted); font-size: .89rem; line-height: 1.55; }
+.mechanisms .ref { display: block; margin-top: 9px; color: var(--faint); font-size: .78rem; }
+
+/* Roles: one row per role, not three equal cards. */
+.roles { margin-top: 30px; border-top: 1px solid var(--line-strong); }
+.roles > div { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 26px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.roles strong { font-size: .95rem; font-weight: 620; }
+.roles span { color: var(--muted); font-size: .89rem; }
+
+.claim { max-width: 760px; margin: 0; color: var(--muted); font-size: 1.02rem; line-height: 1.6; }
+.section-note { margin: 26px 0 0; padding-left: 15px; border-left: 2px solid var(--line-strong); color: var(--faint); font-size: .86rem; line-height: 1.55; max-width: 640px; }
+
+@media (max-width: 760px) {
+  .mechanisms { grid-template-columns: 1fr; }
+  .mechanisms > div, .mechanisms > div:nth-child(odd) { padding-right: 0; }
+  .roles > div { grid-template-columns: 1fr; gap: 5px; }
+  .lead-figures > div { flex-basis: 45%; }
+  .register thead { display: none; }
+  .register td { display: block; padding: 3px 0; border-bottom: 0; }
+  .register tr { display: block; padding: 16px 0; border-bottom: 1px solid var(--line); }
+}
+
 .prose-page { max-width: 860px; min-height: 65vh; padding: 84px 0 110px; }
 .prose-page h1 { font-size: clamp(2.35rem, 5vw, 4rem); }
 .prose-page h2 { margin-top: 48px; font-size: 1.35rem; letter-spacing: -.02em; }

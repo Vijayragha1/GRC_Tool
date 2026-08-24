@@ -49,6 +49,9 @@ function register(app, deps) {
     res.render('intake', {
       user: req.user, ws: req.workspace,
       sections: INTAKE.SECTIONS, answers, total, answered, draftScope, summary,
+      // The view needs the module's own parser to split a stored answer back
+      // into chips plus leftover text; it must not reimplement that split.
+      intakeQuestions: INTAKE,
       crownJewelQuestions, crownJewelAssets, maxCrownJewels: INTAKE.MAX_CROWN_JEWELS,
       requiredAnswered, requiredTotal, readyToConfirm,
       scopeConfirmedAt, scopeConfirmedBy
@@ -176,6 +179,17 @@ function register(app, deps) {
     return { assetSync };
   }
 
+  // A multiselect posts its chosen options as <id>__opt and any uncovered text
+  // as <id>__other. Both collapse back into the single string the answer has
+  // always been stored as, so the scope-statement and effort generators keep
+  // reading the same shape they always did.
+  function readAnswer(body, q) {
+    if (q.type !== 'multiselect') return String(body[q.id] || '').trim();
+    const raw = body[`${q.id}__opt`];
+    const chosen = raw === undefined ? [] : (Array.isArray(raw) ? raw : [raw]);
+    return INTAKE.serializeMultiselect(q, chosen.map(String), body[`${q.id}__other`]);
+  }
+
   app.post('/workspaces/:wsId/intake', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const flat = INTAKE.flatten();
     const insert = db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
@@ -184,8 +198,7 @@ function register(app, deps) {
         answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`);
     const tx = db.transaction(() => {
       for (const q of flat) {
-        const v = (req.body[q.id] || '').trim();
-        insert.run(req.workspace.id, q.id, v, req.user.id);
+        insert.run(req.workspace.id, q.id, readAnswer(req.body, q), req.user.id);
       }
       for (const [id, rawValue] of Object.entries(req.body)) {
         const number = INTAKE.crownJewelNumber(id);

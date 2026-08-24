@@ -440,11 +440,14 @@ function register(app, deps) {
 
     // Diagnostic answers - persist as JSON keyed by question index (questions vary per item).
     const answers = {};
+    let sawDiagnosticField = false;
     Object.keys(req.body).forEach(k => {
       const m = k.match(/^q_(\d+)$/);
-      if (m && ['yes','partial','no'].includes(req.body[k])) answers[m[1]] = req.body[k];
+      if (!m) return;
+      sawDiagnosticField = true;
+      if (['yes','partial','no'].includes(req.body[k])) answers[m[1]] = req.body[k];
     });
-    if (Object.keys(answers).length) { sets.push('assessment_answers=?'); vals.push(JSON.stringify(answers)); }
+    if (sawDiagnosticField) { sets.push('assessment_answers=?'); vals.push(JSON.stringify(answers)); }
 
     sets.push('last_updated=CURRENT_TIMESTAMP');
     // Stamp last_verified_at when the consultant explicitly assesses a control

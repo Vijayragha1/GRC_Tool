@@ -19,6 +19,9 @@ test('every registry entry carries the fields its consumers read', () => {
   const required = [
     'code', 'label', 'shortLabel', 'tagLabel', 'systemCode',
     'descriptor', 'pickerLabel', 'pickerNote', 'order',
+    // The public programme register renders this one. A framework without it
+    // would appear on the marketing site with an empty name.
+    'formalName',
   ];
   for (const code of ALLOWED_FRAMEWORKS) {
     const entry = FRAMEWORK_REGISTRY[code];

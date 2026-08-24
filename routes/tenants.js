@@ -13,68 +13,54 @@
 //   POST /tenants/:id/switch       set active firm in session
 //   POST /tenants/:id/rename
 //   POST /tenants/:id/delete       destructive, type-the-name confirm
-//   GET  /onboarding               6-step setup wizard
+//   GET  /onboarding               firm onboarding and client setup guidance
 //   POST /onboarding/skip
 //   POST /onboarding/complete
 
 const path = require('path');
 const fs = require('fs');
+const { confirmationMatchesRenderedName } = require('../lib/typography');
+const { clientSetup } = require('../lib/client-setup');
+const { parseWorkspaceFrameworks } = require('../lib/frameworks');
+const rbac = require('../lib/rbac');
+const { auditCtx } = require('../lib/http-helpers');
 
 function buildOnboardingSteps(db) {
   return [
-    { num: 1, title: 'Create your first workspace',
-      desc: 'A workspace is one client engagement. You\'ll do most of your work inside one.',
-      cta: 'Create workspace',
+    { num: 1, key: 'first-client', title: 'Create your first client',
+      desc: 'Record the client and choose only the assessment programmes and operational services in the engagement.',
+      cta: 'Create first client',
       isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=?`).get(firmId).c > 0,
       href: '/workspaces/new'
-    },
-    { num: 2, title: 'Define ISMS scope',
-      desc: 'What products, locations, and systems are in scope of the ISMS? This decision drives everything else (clause 4.3).',
-      cta: 'Set scope',
-      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM workspaces WHERE firm_id=? AND scope IS NOT NULL AND length(scope) > 10`).get(firmId).c > 0,
-      href: 'first-ws'
-    },
-    { num: 3, title: 'Build the asset register',
-      desc: 'Identify the information and supporting assets in scope. Five to ten entries is enough to start.',
-      cta: 'Add assets',
-      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM assets a INNER JOIN workspaces w ON w.id=a.workspace_id WHERE w.firm_id=?`).get(firmId).c >= 3,
-      href: 'first-ws-assets'
-    },
-    { num: 4, title: 'Document the risk-assessment methodology',
-      desc: 'Define your likelihood and impact scales, and your risk-acceptance criteria. Required by clause 6.1.2.',
-      cta: 'Configure methodology',
-      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM risk_methodologies m INNER JOIN workspaces w ON w.id=m.workspace_id WHERE w.firm_id=? AND m.is_active=1`).get(firmId).c > 0,
-      href: 'first-ws-methodology'
-    },
-    { num: 5, title: 'Run the gap assessment',
-      desc: 'Walk every clause and Annex A control, scoring current state. The wizard takes you through all 118 items.',
-      cta: 'Open wizard',
-      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM v_control_states cs INNER JOIN workspaces w ON w.id=cs.workspace_id WHERE w.firm_id=? AND cs.status != 'Not Assessed'`).get(firmId).c >= 20,
-      href: 'first-ws-assess'
-    },
-    { num: 6, title: 'Plan the certification cycle',
-      desc: 'Lay out Stage 1 → Stage 2 → annual surveillance → recertification dates so you\'re working backwards from a real target.',
-      cta: 'Plan cycle',
-      isDone: (firmId) => db.prepare(`SELECT COUNT(*) c FROM cert_cycle_events e INNER JOIN workspaces w ON w.id=e.workspace_id WHERE w.firm_id=?`).get(firmId).c > 0,
-      href: 'first-ws-cert-cycle'
     }
   ];
 }
 
-function resolveOnboardingHref(db, href, firmId) {
-  if (!href.startsWith('first-ws')) return href;
-  const ws = db.prepare(`SELECT id FROM workspaces WHERE firm_id=? ORDER BY id LIMIT 1`).get(firmId);
-  if (!ws) return '/dashboard';
-  const subpath = href.replace('first-ws', '').replace(/^-/, '/');
-  if (!subpath || subpath === '') return `/workspaces/${ws.id}#workspace-settings`;
-  return `/workspaces/${ws.id}/${subpath.replace(/^\//, '')}`.replace(/\/$/, '');
+function onboardingManager(user) {
+  if (!user || user.user_type !== 'firm') return false;
+  return rbac.rolePermissions(rbac.normalizeRole(user.firm_role) || 'consultant').includes('firm.manage');
 }
 
-const rbac = require('../lib/rbac');
-const { auditCtx } = require('../lib/http-helpers');
+function workspaceCreator(user) {
+  if (!user || user.user_type !== 'firm') return false;
+  return rbac.rolePermissions(rbac.normalizeRole(user.firm_role) || 'consultant').includes('workspace.create');
+}
+
+function clientSummary(db, workspace) {
+  const ws = { ...workspace, frameworks: parseWorkspaceFrameworks(workspace.frameworks) };
+  const setup = clientSetup(db, ws);
+  const serviceNames = [...new Set(setup.steps.map(step => step.programme))];
+  return {
+    workspace: ws,
+    setup,
+    serviceNames,
+    setupHref: setup.total ? `/workspaces/${ws.id}/setup` : `/workspaces/${ws.id}#programme-enable-form`,
+  };
+}
 
 function register(app, deps) {
   const { db, bcrypt, requireAuth, isFirmUser, getActiveFirmId, listUserFirms, withToast, projectRoot } = deps;
+  const { listWorkspaces } = deps;
 
   // ---------- TENANTS ----------
   app.get('/tenants', requireAuth, (req, res) => {
@@ -176,7 +162,7 @@ function register(app, deps) {
     if (!firm) return res.redirect(withToast('/tenants', 'Tenant not found', 'error'));
 
     const confirm = (req.body.confirm_name || '').trim();
-    if (confirm !== firm.name) {
+    if (!confirmationMatchesRenderedName(confirm, firm.name)) {
       return res.redirect(withToast('/tenants', 'Confirmation name did not match - nothing deleted', 'error'));
     }
 
@@ -239,32 +225,64 @@ function register(app, deps) {
     }
     const firmId = getActiveFirmId(req);
     if (!firmId) return res.redirect('/tenants');
-    let onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
-    if (!onb) {
-      db.prepare(`INSERT INTO tenant_onboarding (firm_id) VALUES (?)`).run(firmId);
-      onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId);
-    }
-    const stepStates = ONBOARDING_STEPS.map(s => ({
-      ...s,
-      done: !!s.isDone(firmId),
-      href: resolveOnboardingHref(db, s.href, firmId)
-    }));
+    const onb = db.prepare(`SELECT * FROM tenant_onboarding WHERE firm_id=?`).get(firmId) || {
+      firm_id: firmId,
+      started_at: null,
+      completed_at: null,
+      current_step: 1,
+      skipped: 0,
+    };
+    const stepStates = ONBOARDING_STEPS.map(s => ({ ...s, done: !!s.isDone(firmId) }));
     const completedCount = stepStates.filter(s => s.done).length;
+    const accessible = (typeof listWorkspaces === 'function' ? listWorkspaces(req.user) : [])
+      .filter(workspace => Number(workspace.firm_id) === Number(firmId));
+    const clientSummaries = accessible.slice(0, 6).map(workspace => clientSummary(db, workspace));
+    const firmUserCount = db.prepare(`SELECT COUNT(*) c FROM users
+      WHERE firm_id=? AND user_type='firm' AND active=1`).get(firmId).c;
+    const pendingFirmInvites = db.prepare(`SELECT COUNT(*) c FROM user_invitations
+      WHERE firm_id=? AND user_type='firm' AND accepted_at IS NULL AND revoked_at IS NULL
+        AND expires_at>CURRENT_TIMESTAMP`).get(firmId).c;
+    const emailIdentity = db.prepare(`SELECT from_name,from_email,reply_to
+      FROM firm_email_settings WHERE firm_id=?`).get(firmId) || null;
     res.render('onboarding', {
       user: req.user, ws: null, steps: stepStates, completedCount,
-      totalSteps: ONBOARDING_STEPS.length, onb
+      totalSteps: ONBOARDING_STEPS.length, onb,
+      clientSummaries,
+      accessibleClientCount: accessible.length,
+      canCreateClients: workspaceCreator(req.user),
+      canManageOnboarding: onboardingManager(req.user),
+      firmRecommendations: {
+        teamReady: Number(firmUserCount) > 1 || Number(pendingFirmInvites) > 0,
+        emailReady: !!(emailIdentity && (emailIdentity.from_name || emailIdentity.from_email || emailIdentity.reply_to)),
+      },
     });
   });
 
   app.post('/onboarding/skip', requireAuth, (req, res) => {
+    if (!onboardingManager(req.user)) return res.status(403).send('Forbidden');
     const firmId = getActiveFirmId(req);
-    if (firmId) db.prepare(`UPDATE tenant_onboarding SET skipped=1, completed_at=CURRENT_TIMESTAMP WHERE firm_id=?`).run(firmId);
+    if (firmId) {
+      db.prepare(`INSERT INTO tenant_onboarding (firm_id,current_step,skipped,completed_at)
+        VALUES (?,1,1,NULL)
+        ON CONFLICT(firm_id) DO UPDATE SET
+          skipped=CASE WHEN tenant_onboarding.completed_at IS NULL THEN 1 ELSE tenant_onboarding.skipped END`).run(firmId);
+    }
     res.redirect('/dashboard');
   });
 
   app.post('/onboarding/complete', requireAuth, (req, res) => {
+    if (!onboardingManager(req.user)) return res.status(403).send('Forbidden');
     const firmId = getActiveFirmId(req);
-    if (firmId) db.prepare(`UPDATE tenant_onboarding SET completed_at=CURRENT_TIMESTAMP WHERE firm_id=?`).run(firmId);
+    if (!firmId) return res.redirect('/tenants');
+    const hasClient = db.prepare('SELECT 1 FROM workspaces WHERE firm_id=? LIMIT 1').get(firmId);
+    if (!hasClient) {
+      return res.redirect(withToast('/onboarding', 'Create the first client before completing firm onboarding.', 'error'));
+    }
+    db.prepare(`INSERT INTO tenant_onboarding (firm_id,current_step,skipped,completed_at)
+      VALUES (?,1,0,CURRENT_TIMESTAMP)
+      ON CONFLICT(firm_id) DO UPDATE SET
+        skipped=0,
+        completed_at=COALESCE(tenant_onboarding.completed_at,CURRENT_TIMESTAMP)`).run(firmId);
     res.redirect('/dashboard');
   });
 }

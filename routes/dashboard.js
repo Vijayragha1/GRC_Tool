@@ -328,7 +328,7 @@ function register(app, deps) {
     //   - all steps are done,
     //   - the firm has 2+ workspaces (they're past first-engagement setup;
     //     wizard nags an established firm forever otherwise),
-    //   - the wizard was explicitly skipped or completed (tenant_onboarding flags).
+    //   - the guide was explicitly skipped or is complete against live state.
     // The /onboarding page itself stays reachable for those who want to find it.
     let onboarding = null;
     try {
@@ -336,11 +336,10 @@ function register(app, deps) {
       onboarding = tenantsModule.getOnboardingProgress(db, req.user.firm_id);
       if (onboarding) {
         const wsCount = db.prepare('SELECT COUNT(*) AS c FROM workspaces WHERE firm_id=?').get(req.user.firm_id).c;
-        const onb = db.prepare('SELECT skipped, completed_at FROM tenant_onboarding WHERE firm_id=?').get(req.user.firm_id);
-        const skipped = !!(onb && (onb.skipped || onb.completed_at));
+        const dismissed = onboarding.skipped || onboarding.completed;
         const stillFirstTime = wsCount < 2;
         if (onboarding.done >= onboarding.total) onboarding = null;
-        else if (!stillFirstTime || skipped) onboarding = null;
+        else if (!stillFirstTime || dismissed) onboarding = null;
       }
     } catch (_) {}
 

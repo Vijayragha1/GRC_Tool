@@ -6,7 +6,7 @@
     <h1 class="page-title"><%= ws.client_name %></h1>
     <p class="page-subtitle"><%= ws.industry || 'Industry not set' %> · No assessment programme has been assigned.</p>
   </div>
-  <a class="btn" href="/workspaces/<%= ws.id %>/intake">Client setup</a>
+  <a class="btn" href="#programme-enable-form">Choose services</a>
 </div>
 
 <section class="panel" style="padding:28px;margin-bottom:18px;">
@@ -91,7 +91,7 @@
 <% if (typeof setupIncomplete !== 'undefined' && setupIncomplete) { %>
   <div class="panel panel-pad" style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
     <div><strong>Client setup is in progress</strong><div class="meta"><%= intakeAnswered %> of 25 scoping questions answered.</div></div>
-    <a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/intake">Continue setup →</a>
+    <a class="btn btn-secondary btn-xs" href="#programme-enable-form">Continue setup →</a>
   </div>
 <% } %>
 

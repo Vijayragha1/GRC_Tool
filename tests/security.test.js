@@ -198,8 +198,11 @@ test('Workspace deletion removes a populated client while restoring immutable-hi
   const { client, dbPath } = await bootClient();
   t.after(() => client.close());
 
+  const storedClientName = `Deletion Regression ${String.fromCodePoint(0x2014)} Client`;
+  const renderedClientName = 'Deletion Regression - Client';
+
   const created = await client.post('/workspaces', {
-    client_name: 'Deletion Regression Client',
+    client_name: storedClientName,
     industry: 'Technology',
     scope: 'A disposable workspace containing governed history.',
     frameworks: 'iso27001',
@@ -208,7 +211,7 @@ test('Workspace deletion removes a populated client while restoring immutable-hi
   assert.equal(created.status, 302);
 
   const conn = new Database(dbPath);
-  const workspace = conn.prepare(`SELECT id FROM workspaces WHERE client_name=?`).get('Deletion Regression Client');
+  const workspace = conn.prepare(`SELECT id FROM workspaces WHERE client_name=?`).get(storedClientName);
   const user = conn.prepare(`SELECT id FROM users WHERE email=?`).get('sec-test@example.com');
   const snapshot = JSON.stringify({ workspaceId: workspace.id, covered: 1 });
   conn.prepare(`INSERT INTO gap_fieldwork_snapshots
@@ -226,8 +229,26 @@ test('Workspace deletion removes a populated client while restoring immutable-hi
   );
   conn.close();
 
-  const deleted = await client.post(`/workspaces/${workspace.id}/delete`, {
+  const dashboard = await client.get('/dashboard');
+  assert.equal(dashboard.status, 200);
+  assert.match(dashboard.text, /Deletion Regression - Client/,
+    'the confirmation dialog must show the globally normalized display name');
+
+  const rejected = await client.post(`/workspaces/${workspace.id}/delete`, {
     confirm_name: 'Deletion Regression Client',
+  });
+  assert.equal(rejected.status, 302);
+  const rejectedLocation = new URL(rejected.location, 'http://localhost');
+  assert.equal(rejectedLocation.pathname, `/workspaces/${workspace.id}`);
+  assert.equal(rejectedLocation.hash, '#workspace-settings');
+  assert.equal(rejectedLocation.searchParams.get('toastKind'), 'error');
+  const afterRejected = new Database(dbPath);
+  assert.equal(afterRejected.prepare(`SELECT COUNT(*) c FROM workspaces WHERE id=?`).get(workspace.id).c, 1,
+    'a genuinely different visible name must not delete the client');
+  afterRejected.close();
+
+  const deleted = await client.post(`/workspaces/${workspace.id}/delete`, {
+    confirm_name: renderedClientName,
   });
   assert.equal(deleted.status, 302, deleted.text.slice(0, 500));
   assert.match(deleted.location, /^\/dashboard\?/);
