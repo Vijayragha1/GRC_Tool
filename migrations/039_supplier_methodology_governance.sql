@@ -36,4 +36,3 @@ WHEN OLD.status='published'
 BEGIN
   SELECT RAISE(ABORT,'published supplier methodology is immutable');
 END;
-
