@@ -2,6 +2,7 @@
 <%
   const currentDecision = decisions.find(decision => !decision.superseded_at);
   const humanise = value => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  const canApproveSupplier = typeof userPerms !== 'undefined' && userPerms.has && userPerms.has('supplier.approve');
   const inherentApproved = Boolean(programme.inherentAssessment && programme.inherentAssessment.approved_at);
   const ddqStatus = programme.ddqAssessment && programme.ddqAssessment.status;
   const ddqPrepared = Boolean(programme.ddqAssessment);
@@ -101,9 +102,46 @@
 
 <div class="panel" id="decision" style="margin-bottom:24px">
   <div class="panel-head"><div><h2>Residual-risk decision</h2><div class="meta">A human conclusion supported by the approved scope, reviewed DDQ, contract position and findings.</div></div></div>
-  <% if (!programme.decisionReadiness.ready) { %><div class="panel-pad"><strong>Approval controls are locked.</strong><div class="meta">Resolve the blockers above before approving or renewing. A rejection or offboarding decision can still be recorded because it does not assert that due diligence passed.</div><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" style="display:grid;grid-template-columns:220px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px"><div><label class="label">Negative decision</label><select class="select" name="decision"><option value="rejected">Reject supplier</option><option value="offboard">Offboard supplier</option></select></div><div><label class="label">Decision rationale</label><input class="input" name="rationale" minlength="10" required placeholder="State why the supplier cannot proceed or must be exited"></div><button class="btn btn-primary">Record decision</button></form></div><% } else { %>
-  <% if (currentDecision) { %><div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px"><div><div class="sec-label">Decision</div><strong><%= humanise(currentDecision.decision) %></strong></div><div><div class="sec-label">Residual risk</div><strong><%= currentDecision.residual_risk_band ? humanise(currentDecision.residual_risk_band) : 'Not recorded' %></strong></div><div><div class="sec-label">Decision owner</div><strong><%= currentDecision.decider_name || currentDecision.decided_by_name || 'Not recorded' %></strong></div><div><div class="sec-label">Valid until</div><strong><%= currentDecision.valid_until || 'No fixed expiry' %></strong></div><div style="grid-column:1/-1"><div class="sec-label">Residual-risk rationale</div><div><%= currentDecision.residual_risk_rationale || currentDecision.rationale %></div></div></div><% } %>
-  <details <%= currentDecision ? '' : 'open' %>><summary class="panel-head" style="cursor:pointer;border-top:<%= currentDecision?'0':'1px solid var(--border)' %>"><strong><%= currentDecision ? 'Record a superseding decision' : 'Record the decision' %></strong><span class="meta">Creates an immutable decision-history entry</span></summary><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><label class="label">Decision</label><select class="select" name="decision"><option value="approved">Approve</option><option value="conditional">Approve with conditions</option><option value="renewed" <%= currentDecision?'selected':'' %>>Renew</option><option value="rejected">Reject</option><option value="offboard">Offboard</option></select></div><div><label class="label">Residual-risk band</label><select class="select" name="residual_risk_band" required><option value="">Select</option><% ['low','moderate','high','critical'].forEach(band=>{ %><option <%= currentDecision&&currentDecision.residual_risk_band===band?'selected':'' %>><%= band %></option><% }) %></select></div><div><label class="label">Valid until</label><input class="input" type="date" name="valid_until"></div><div><label class="label">Conditions</label><input class="input" name="conditions" placeholder="Required for conditional approval"></div><div class="col-full"><label class="label">Decision rationale</label><textarea class="textarea" rows="3" name="rationale" required></textarea></div><div class="col-full"><label class="label">Residual-risk rationale</label><textarea class="textarea" rows="3" name="residual_risk_rationale" required placeholder="State the remaining exposure, relied-upon controls/evidence, accepted uncertainty and review trigger."></textarea></div><div class="col-full"><button class="btn btn-primary">Record governed decision</button></div></form></details><% } %>
+  <% if (!programme.decisionReadiness.ready) { %>
+    <div class="panel-pad">
+      <strong>Approval controls are locked.</strong>
+      <div class="meta">Resolve the blockers above before approving or renewing. A rejection or offboarding decision can still be recorded because it does not assert that due diligence passed.</div>
+      <% if (canApproveSupplier) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" style="display:grid;grid-template-columns:220px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px">
+        <input type="hidden" name="decision_nonce" value="<%= decisionNonce %>">
+        <input type="hidden" name="expected_current_decision_id" value="<%= currentDecision ? currentDecision.id : 0 %>">
+        <div><label class="label">Negative decision</label><select class="select" name="decision"><option value="rejected">Reject supplier</option><option value="offboard">Offboard supplier</option></select></div>
+        <div><label class="label">Decision rationale</label><input class="input" name="rationale" minlength="10" required placeholder="State why the supplier cannot proceed or must be exited"></div>
+        <button class="btn btn-primary">Record decision</button>
+      </form>
+      <% } else { %>
+        <div class="meta" style="margin-top:16px">You can review the decision position, but supplier approval permission is required to record a decision.</div>
+      <% } %>
+    </div>
+  <% } else { %>
+    <% if (currentDecision) { %><div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px"><div><div class="sec-label">Decision</div><strong><%= humanise(currentDecision.decision) %> · #<%= currentDecision.id %></strong></div><div><div class="sec-label">Residual risk</div><strong><%= currentDecision.residual_risk_band ? humanise(currentDecision.residual_risk_band) : 'Not recorded' %></strong></div><div><div class="sec-label">Decision owner</div><strong><%= currentDecision.decider_name || currentDecision.decided_by_name || 'Not recorded' %></strong></div><div><div class="sec-label">Valid until</div><strong><%= currentDecision.valid_until || 'No fixed expiry' %></strong></div><div style="grid-column:1/-1"><div class="sec-label">Residual-risk rationale</div><div><%= currentDecision.residual_risk_rationale || currentDecision.rationale %></div><% if (currentDecision.supersedes_id) { %><div class="meta" style="margin-top:6px">Supersedes decision #<%= currentDecision.supersedes_id %>.</div><% } %></div></div><% } %>
+    <% if (canApproveSupplier) { %><details <%= currentDecision ? '' : 'open' %>>
+      <summary class="panel-head" style="cursor:pointer;border-top:<%= currentDecision?'0':'1px solid var(--border)' %>"><strong><%= currentDecision ? 'Record a superseding decision' : 'Record the decision' %></strong><span class="meta">Creates one immutable, replay-safe decision-history entry</span></summary>
+      <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/decisions" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <input type="hidden" name="decision_nonce" value="<%= decisionNonce %>">
+        <input type="hidden" name="expected_current_decision_id" value="<%= currentDecision ? currentDecision.id : 0 %>">
+        <div><label class="label">Decision</label><select class="select" name="decision"><option value="approved">Approve</option><option value="conditional">Approve with conditions</option><option value="renewed" <%= currentDecision?'selected':'' %>>Renew</option><option value="rejected">Reject</option><option value="offboard">Offboard</option></select></div>
+        <div><label class="label">Residual-risk band</label><select class="select" name="residual_risk_band" required><option value="">Select</option><% ['low','moderate','high','critical'].forEach(band=>{ %><option value="<%= band %>" <%= currentDecision&&currentDecision.residual_risk_band===band?'selected':'' %>><%= band %></option><% }) %></select></div>
+        <div><label class="label">Valid until</label><input class="input" type="date" name="valid_until"></div><div><label class="label">Conditions</label><input class="input" name="conditions" placeholder="Required for conditional approval"></div>
+        <div class="col-full"><label class="label">Decision rationale</label><textarea class="textarea" rows="3" name="rationale" required></textarea></div>
+        <div class="col-full"><label class="label">Residual-risk rationale</label><textarea class="textarea" rows="3" name="residual_risk_rationale" required placeholder="State the remaining exposure, relied-upon controls/evidence, accepted uncertainty and review trigger."></textarea></div>
+        <div class="col-full"><button class="btn btn-primary">Record governed decision</button></div>
+      </form>
+    </details><% } else { %>
+      <div class="panel-pad meta">You can review the decision position, but supplier approval permission is required to record or supersede a decision.</div>
+    <% } %>
+  <% } %>
+  <% if (decisions.length) { %>
+    <details style="border-top:1px solid var(--border)">
+      <summary class="panel-head" style="cursor:pointer"><strong>Immutable decision history</strong><span class="meta"><%= decisions.length %> entr<%= decisions.length === 1 ? 'y' : 'ies' %></span></summary>
+      <div style="overflow-x:auto"><table class="data-table"><thead><tr><th>ID</th><th>Decision</th><th>Actor</th><th>Recorded</th><th>Lineage</th><th>State</th></tr></thead><tbody><% decisions.forEach(item=>{ %><tr><td>#<%= item.id %></td><td><%= humanise(item.decision) %></td><td><%= item.decider_name || item.decided_by_name || 'Not recorded' %></td><td><%= item.decided_at || 'Not recorded' %></td><td><%= item.supersedes_id ? 'Supersedes #' + item.supersedes_id : 'Initial decision' %></td><td><%= item.superseded_at ? 'Superseded' : 'Current' %></td></tr><% }) %></tbody></table></div>
+    </details>
+  <% } %>
 </div>
 
 <%- include('partials/footer') %>

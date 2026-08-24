@@ -47,6 +47,14 @@
   .mrm-record-link.attendees { color: var(--text-secondary); line-height: 1.45; }
   .mrm-record-link.action { justify-content: flex-end; font-weight: 500; white-space: nowrap; }
   .mrm-register tbody tr:focus-within { background: var(--bg-subtle); outline: 2px solid var(--border-strong); outline-offset: -2px; }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .pre932-label .clause
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head">

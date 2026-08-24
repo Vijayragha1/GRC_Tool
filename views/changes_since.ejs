@@ -29,6 +29,15 @@
   .cs-change-applicability { background: rgba(37,99,235,0.10); color: #1d4ed8; }
   .cs-change-status      { background: rgba(202,138,4,0.10); color: #b45309; }
   .cs-change-justification { background: rgba(113,113,122,0.10); color: #52525b; }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .cs-stat-label,
+    .cs-stat-meta
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head">

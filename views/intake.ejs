@@ -12,7 +12,7 @@
 </div>
 
 <% if (answered === 0) { %>
-  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+  <div class="panel stack-grid" style="margin-bottom:14px;background:var(--accent-soft);padding:14px 18px;--cols:24px 1fr auto;--cols-sm:24px minmax(0,1fr);gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight: 500;color:var(--accent-deep);margin-bottom:3px;">New client - let's size it</div>
@@ -26,7 +26,7 @@
     scope, swap the "ready to confirm" banner for a "scope is locked"
     badge that links into the gap assessment as the obvious next step. %>
 <% if (typeof scopeConfirmedAt !== 'undefined' && scopeConfirmedAt) { %>
-  <div class="panel" style="margin-bottom:14px;background:rgba(22,128,61,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto auto;gap:12px;align-items:center;">
+  <div class="panel stack-grid" style="margin-bottom:14px;background:rgba(22,128,61,0.06);padding:14px 18px;--cols:24px 1fr auto auto;--cols-sm:24px minmax(0,1fr);gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight: 500;color:#15803d;margin-bottom:3px;">Scope confirmed</div>
@@ -42,7 +42,7 @@
   <%# Ready-to-confirm banner: all required intake questions answered.
       Drives the consultant from setup → scope sign-off → gap assessment
       explicitly rather than leaving the page hanging. %>
-  <div class="panel" style="margin-bottom:14px;background:var(--accent-soft);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+  <div class="panel stack-grid" style="margin-bottom:14px;background:var(--accent-soft);padding:14px 18px;--cols:24px 1fr auto;--cols-sm:24px minmax(0,1fr);gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight: 500;color:var(--accent-deep);margin-bottom:3px;">All required scoping answered (<%= requiredAnswered %>/<%= requiredTotal %>)</div>
@@ -56,7 +56,7 @@
 <% } else if (answered > 0) { %>
   <%# Partial-progress nudge: setup started but required questions
       still missing. Shows what's left. %>
-  <div class="panel" style="margin-bottom:14px;background:rgba(180,83,9,0.06);padding:14px 18px;display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:center;">
+  <div class="panel stack-grid" style="margin-bottom:14px;background:rgba(180,83,9,0.06);padding:14px 18px;--cols:24px 1fr;--cols-sm:24px minmax(0,1fr);gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight: 500;color:#9a3412;margin-bottom:3px;"><%= requiredAnswered %> of <%= requiredTotal %> required questions answered</div>
@@ -90,7 +90,7 @@
   const readinessDone = summary.readinessMarkers.filter(m => m.got).length;
   const readinessTotal = summary.readinessMarkers.length;
 %>
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--border);background:var(--bg);margin-bottom:18px;">
+<div class="stack-grid" style="--cols:1fr 1fr 1fr;gap:0;border:1px solid var(--border);background:var(--bg);margin-bottom:18px;">
   <div style="padding:18px 22px;border-right:1px solid var(--border);">
     <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Complexity tier</div>
     <div style="display:flex;align-items:baseline;gap:10px;font-family:var(--font-display);">
@@ -120,7 +120,7 @@
 </div>
 
 <%# Two-column layout: form on the left, summary aside on the right %>
-<div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start;">
+<div class="stack-grid" style="--cols:minmax(0,1fr) 320px;gap:18px;align-items:start;">
   <div>
     <%# Show / hide clause tags - managers don't need them; implementer flips them on later %>
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">

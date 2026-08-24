@@ -1,0 +1,119 @@
+<%- include('partials/header', { title: 'Bulk third-party intake', user, ws, active }) %>
+<link rel="stylesheet" href="/tprm.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:transparent;--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-subtle);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">All-or-nothing commit</div>
+    <h1>Bulk third-party intake</h1>
+    <p>Validate the complete file before commit. Stable references, not names, establish identity.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn" href="<%= templateUrl %>">Download template</a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/third-parties">Back to register</a>
+  </div>
+</header>
+
+<% if (message) { %>
+  <div class="tprm-callout tprm-import-error" role="alert"><strong>Nothing was imported.</strong> <%= message %></div>
+<% } %>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div><div class="tprm-kicker">Import controls</div><h2>Commit rules</h2></div>
+  </div>
+  <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Control</th><th>Rule</th></tr></thead><tbody>
+    <tr><td><strong>Service identity</strong></td><td>One service per row. Reuse a provider reference, with a distinct relationship reference for each service.</td></tr>
+    <tr><td><strong>Entity matching</strong></td><td>A matching name never merges records. Names are never auto-merged; a same-named entity requires explicit confirmation that it is legally distinct.</td></tr>
+    <tr><td><strong>Atomic commit</strong></td><td>Any invalid or conflicting row blocks the file. Unchanged references can be re-imported safely.</td></tr>
+    <tr><td><strong>Decision boundary</strong></td><td>The import cannot create a consultancy recommendation or client onboarding decision.</td></tr>
+  </tbody></table></div>
+</section>
+
+<% if (mode === 'upload') { %>
+  <section class="tprm-section">
+    <div class="tprm-section-head"><div><div class="tprm-kicker">Step 1 of 2</div><h2>Select CSV</h2><p>UTF-8 only · <%= limits.maxRows %> rows maximum · <%= Math.round(limits.maxBytes / 1024 / 1024) %> MB maximum.</p></div></div>
+    <div class="tprm-section-body">
+      <form method="POST" action="<%= previewUrl %>" id="tprmImportForm">
+        <label class="tprm-file-zone" for="tprmCsvFile">
+          <strong>Choose completed template</strong>
+          <span id="tprmFileStatus">The file is read locally and submitted through the protected form.</span>
+        </label>
+        <input id="tprmCsvFile" type="file" accept=".csv,text/csv" class="tprm-hidden-file">
+        <input id="tprmFilename" type="hidden" name="filename" value="<%= filename %>">
+        <textarea id="tprmCsv" name="csv" class="textarea tprm-csv-fallback" rows="8" placeholder="Or paste CSV content here"><%= csv %></textarea>
+        <div class="tprm-form-actions"><a class="btn" href="<%= templateUrl %>">Download template</a><button class="btn btn-primary" type="submit">Validate file</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="tprm-section">
+    <div class="tprm-section-head"><div><div class="tprm-kicker">Column reference</div><h2>Accepted fields</h2><p>Unknown columns are rejected.</p></div></div>
+    <div class="tprm-table-wrap"><table class="tprm-table tprm-import-columns"><thead><tr><th>Column</th><th>Requirement</th><th>Purpose</th></tr></thead><tbody>
+      <% fields.forEach(field => { %><tr><td><strong><%= field.label %></strong><small><%= field.aliases && field.aliases.length ? `Also accepts: ${field.aliases.join(', ')}` : field.key %></small></td><td><%= field.required ? 'Required' : 'Optional' %></td><td><%= field.key === 'provider_reference' ? 'Stable identity across rows and repeat imports.' : field.key === 'relationship_reference' ? 'Stable identity for this exact service.' : field.key === 'distinct_legal_entity_confirmed' ? 'Required as yes only when creating a genuinely distinct same-named entity.' : 'Governed relationship or legal-entity fact.' %></td></tr><% }) %>
+    </tbody></table></div>
+  </section>
+
+  <script>
+    (function () {
+      const file = document.getElementById('tprmCsvFile');
+      const csv = document.getElementById('tprmCsv');
+      const filename = document.getElementById('tprmFilename');
+      const status = document.getElementById('tprmFileStatus');
+      file.addEventListener('change', function () {
+        const selected = file.files && file.files[0];
+        if (!selected) return;
+        if (selected.size > <%= limits.maxBytes %>) {
+          status.textContent = 'This file exceeds the <%= Math.round(limits.maxBytes / 1024 / 1024) %> MB limit.';
+          csv.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = function () {
+          csv.value = String(reader.result || '');
+          filename.value = selected.name;
+          status.textContent = selected.name + ' · ' + Math.ceil(selected.size / 1024) + ' KB · ready to preview';
+        };
+        reader.onerror = function () { status.textContent = 'The browser could not read this file. Choose it again.'; };
+        reader.readAsText(selected, 'UTF-8');
+      });
+    })();
+  </script>
+<% } else if (mode === 'preview' && result) { %>
+  <section class="tprm-section">
+    <div class="tprm-section-head">
+      <div><div class="tprm-kicker">Step 2 of 2</div><h2>Validation results</h2><p><%= filename %> · SHA-256 <span class="mono"><%= result.digest.slice(0, 16) %>…</span></p></div>
+      <div class="tprm-head-actions">
+        <a class="btn" href="<%= importUrl %>">Choose another file</a>
+        <form method="POST" action="<%= errorsUrl %>"><input type="hidden" name="csv" value="<%= csv %>"><button class="btn" type="submit">Download validation CSV</button></form>
+      </div>
+    </div>
+    <div class="tprm-section-body">
+      <div class="tprm-table-wrap"><table class="tprm-table"><thead><tr><th>Rows checked</th><th>New third parties</th><th>New services</th><th>Already imported</th><th>Rows to fix</th></tr></thead><tbody><tr><td><strong><%= result.summary.total %></strong></td><td><%= result.summary.createProviders %></td><td><%= result.summary.createRelationships + result.summary.createProviders %></td><td><%= result.summary.alreadyImported %></td><td><strong><%= result.summary.invalid %></strong></td></tr></tbody></table></div>
+      <% if (result.allValid) { %>
+        <div class="tprm-callout"><strong>Ready to commit.</strong> The file is revalidated in one transaction. Any intervening conflict rolls back the complete intake.</div>
+        <form method="POST" action="<%= commitUrl %>" class="tprm-import-commit" onsubmit="return appConfirmForm(event, 'Commit this complete validated intake?');">
+          <input type="hidden" name="csv" value="<%= csv %>">
+          <input type="hidden" name="filename" value="<%= filename %>">
+          <input type="hidden" name="preview_digest" value="<%= result.digest %>">
+          <button class="btn btn-primary" type="submit">Commit all <%= result.summary.total %> rows</button>
+        </form>
+      <% } else { %>
+        <div class="tprm-callout tprm-import-error"><strong>Commit blocked.</strong> Correct every red row and preview the whole file again. No partial import is available.</div>
+      <% } %>
+    </div>
+    <div class="tprm-table-wrap"><table class="tprm-table tprm-import-preview"><thead><tr><th>Line</th><th>Provider</th><th>Exact service</th><th>Outcome</th><th>Validation guidance</th></tr></thead><tbody>
+      <% result.rows.forEach(row => { %><tr>
+        <td class="mono"><%= row.line %></td>
+        <td><strong><%= row.parsed.legal_name || 'Missing' %></strong><small><%= row.parsed.provider_reference || 'No provider reference' %></small></td>
+        <td><strong><%= row.parsed.relationship_name || 'Missing' %></strong><small><%= row.parsed.relationship_reference || 'No relationship reference' %></small></td>
+        <td><span class="tprm-status <%= row.valid ? (row.outcome === 'already_imported' ? 'tprm-status-waiting' : 'tprm-status-complete') : 'tprm-status-high' %>"><%= titleCase(row.outcome, 'Pending') %></span></td>
+        <td><% if (!row.errors.length && !row.warnings.length) { %><span class="tprm-muted">No issues</span><% } %><% row.errors.forEach(error => { %><div class="tprm-row-error"><%= error %></div><% }) %><% row.warnings.forEach(warning => { %><div class="tprm-row-warning"><%= warning %></div><% }) %></td>
+      </tr><% }) %>
+    </tbody></table></div>
+  </section>
+<% } %>
+
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,332 @@
+<%- include('partials/header', { title: 'Frozen DPDPA readiness report', user, ws, active: 'dpdpa-report' }) %>
+<%- include('dpdpa_styles') %>
+<%
+  const base = `/workspaces/${ws.id}/dpdpa`;
+  const url = `${base}/assessments/${assessment.id}`;
+  const frozen = payload.assessment || {};
+  const frozenWorkspace = payload.workspace || {};
+  const frozenReviews = Array.isArray(payload.reviews) ? payload.reviews : [];
+  const slug = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const status = frozen.status || snapshot.status_at_capture || 'Snapshot';
+  const approved = status === 'Approved';
+  const relianceLabel = approved ? 'Approved frozen readiness snapshot' : 'Internal frozen progress snapshot';
+  const asOf = frozen.as_of_date || assessment.as_of_date;
+  const client = frozenWorkspace.client_name || frozen.client_name || ws.client_name;
+  const r = readiness;
+  const pct = value => (r.total ? (value * 100 / r.total) : 0).toFixed(2);
+  const comparison = payload.baseline_comparison || {};
+  const delta = comparison.summary || {};
+
+  let profile = frozen.applicability_profile || payload.applicability_profile || {};
+  if (typeof profile === 'string') { try { profile = JSON.parse(profile); } catch (_) { profile = {}; } }
+  const roles = Array.isArray(profile.organisation_roles) ? profile.organisation_roles.join(', ') : (profile.organisation_roles || 'Not recorded');
+
+  const timing = key => {
+    const rows = frozenItems.filter(item => (item.legal_effective_status || 'Effective Date Not Set') === key);
+    const count = value => rows.filter(item => (item.status || 'Not Assessed') === value).length;
+    return {
+      total: rows.length,
+      implemented: count('Implemented'),
+      partial: count('Partially Implemented'),
+      notImplemented: count('Not Implemented'),
+      na: count('Not Applicable'),
+      notAssessed: count('Not Assessed'),
+    };
+  };
+  const currentTiming = timing('Effective');
+  const futureTiming = timing('Future Effective');
+  const unsetTiming = timing('Effective Date Not Set');
+
+  const exclusions = frozenItems.filter(item => item.status === 'Not Applicable');
+  const immediate = gaps.filter(gap => gap.priority.band === 'Immediate');
+  const criticalGaps = gaps.filter(gap => gap.content && gap.content.severity === 'critical');
+%>
+
+<div class="dp dp-doc">
+
+<div class="dp-doc-toolbar">
+  <div class="row">
+    <a class="btn btn-secondary" href="<%= url %>/review">Back to review</a>
+    <% if (snapshots.length > 1) { %>
+      <form method="GET" action="<%= url %>/report" class="row">
+        <label class="sr-only" for="snapshotChoice">Frozen snapshot</label>
+        <select class="select" id="snapshotChoice" name="snapshot">
+          <% snapshots.forEach(row => { %>
+            <option value="<%= row.id %>" <%= Number(row.id) === Number(snapshot.id) ? 'selected' : '' %>>Snapshot <%= row.sequence_number %> · <%= String(row.created_at || '').slice(0, 10) %></option>
+          <% }) %>
+        </select>
+        <button class="btn btn-secondary" type="submit">Open</button>
+      </form>
+    <% } %>
+  </div>
+  <div class="row">
+    <a class="btn btn-primary" href="<%= url %>/exports/report.pdf?snapshot=<%= snapshot.id %>">Download PDF</a>
+    <a class="btn btn-secondary" href="<%= url %>/exports/report.docx?snapshot=<%= snapshot.id %>">Download DOCX</a>
+    <a class="btn btn-secondary" href="<%= url %>/exports/data.csv?snapshot=<%= snapshot.id %>">Download CSV</a>
+    <button class="btn btn-ghost" type="button" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+<div class="dp-sheet">
+  <section class="dp-cover">
+    <div class="eyebrow">Digital Personal Data Protection Act, 2023 readiness</div>
+    <h1><%= frozen.title || assessment.title %></h1>
+    <p>
+      Evidence-backed implementation gap assessment for <%= client %>, frozen as of <%= asOf %>.
+      <%= approved
+        ? 'Independently reviewed and approved, then written to an immutable hash-addressed snapshot.'
+        : 'Captured before independent approval. It is an internal working record and is not for external reliance.' %>
+    </p>
+    <dl class="dp-cover-facts">
+      <div><dt>Reliance</dt><dd><%= relianceLabel %></dd></div>
+      <div><dt>Snapshot</dt><dd>Sequence <%= snapshot.sequence_number %> · payload v<%= snapshot.payload_version || payload.payload_version || '1' %></dd></div>
+      <div><dt>Captured</dt><dd><%= payload.captured_at || snapshot.created_at %></dd></div>
+      <div><dt>Catalogue</dt><dd><%= snapshot.catalog_version || frozen.catalog_version || '-' %></dd></div>
+      <div><dt>Prepared by</dt><dd><%= frozen.created_by_name || 'Not recorded' %></dd></div>
+      <div><dt>Approved by</dt><dd><%= frozen.approved_by_name || 'Not approved' %></dd></div>
+      <div class="wide"><dt>Snapshot hash</dt><dd class="dp-hash"><%= snapshot.snapshot_hash %></dd></div>
+    </dl>
+  </section>
+
+  <section class="dp-doc-section">
+    <span class="dp-doc-num">01 · Basis and intended use</span>
+    <h2>What this report is</h2>
+    <p class="dp-prose">
+      This is an implementation readiness and gap assessment against a controlled catalogue of <%= r.total %> obligations
+      drawn from the Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025. Each conclusion states what was
+      examined for a defined boundary at a single date and the evidence retained for it.
+    </p>
+    <p class="dp-prose">
+      <b>It is not legal certification, a legal opinion, or an automated compliance determination.</b>
+      An implemented conclusion means the evidence available inside this boundary supported the conclusion at the as-of date;
+      it does not assert that every statutory duty has been satisfied. Read every conclusion together with the boundary, the
+      applicability profile, the commencement date of the obligation and the limitations recorded below.
+      <%= approved ? '' : 'This snapshot was taken before independent approval.' %>
+    </p>
+
+    <h3>Assessment boundary</h3>
+    <p class="dp-prose" style="white-space:pre-wrap;"><%= frozen.scope_statement || assessment.scope_statement || 'No scope statement retained.' %></p>
+
+    <h3>Applicability profile</h3>
+    <p class="dp-prose" style="margin-bottom:12px;">Recorded at creation and frozen with the assessment. These answers produce review hints only; no obligation was ever excluded automatically by them.</p>
+    <dl class="dp-kv">
+      <div><dt>Organisation roles</dt><dd><%= roles %></dd></div>
+      <div><dt>Digital personal data in scope</dt><dd><%= profile.digital_personal_data_in_scope || 'Unknown' %></dd></div>
+      <div><dt>Children or guardian processing</dt><dd><%= profile.children_or_guardian_processing || 'Unknown' %></dd></div>
+      <div><dt>Significant Data Fiduciary designation</dt><dd><%= profile.sdf_designation_state || 'Unknown' %></dd></div>
+      <div><dt>Statutory Consent Manager activity</dt><dd><%= profile.statutory_consent_manager_activity || 'Unknown' %></dd></div>
+      <div><dt>Cross-border processing or transfers</dt><dd><%= profile.cross_border_processing_or_transfers || 'Unknown' %></dd></div>
+      <div><dt>Legacy consent cohort</dt><dd><%= profile.legacy_consent_cohort || 'Unknown' %></dd></div>
+      <div><dt>Exemptions and public-data assumptions</dt><dd><%= profile.exemptions_or_public_data_assumptions || 'None recorded' %></dd></div>
+      <div><dt>Scope limitations</dt><dd><%= profile.scope_limitations || 'None recorded' %></dd></div>
+    </dl>
+  </section>
+
+  <section class="dp-doc-section">
+    <span class="dp-doc-num">02 · Position</span>
+    <h2>Readiness at <%= asOf %></h2>
+    <p class="dp-prose" style="margin-bottom:18px;">
+      Of <%= r.total %> catalogue obligations, <%= r.notApplicable %> were concluded not applicable to this boundary, leaving
+      <%= r.inScope %> in scope. <b><%= r.implemented %> are implemented</b> and <%= r.partial %> are partially implemented,
+      giving a readiness position of <b><%= r.readinessPct %>%</b> when partial implementation is credited at half weight.
+      <%= r.notImplemented %> obligation<%= r.notImplemented === 1 ? ' has' : 's have' %> no implementation at all<% if (criticalGaps.length) { %>,
+      <%= criticalGaps.length %> of which the catalogue rates critical<% } %>.
+      <% if (r.notAssessed) { %> <%= r.notAssessed %> obligation<%= r.notAssessed === 1 ? ' was' : 's were' %> not concluded in this snapshot.<% } %>
+    </p>
+
+    <div class="dp-bar" role="img" aria-label="<%= r.implemented %> implemented, <%= r.partial %> partially implemented, <%= r.notImplemented %> not implemented, <%= r.notApplicable %> not applicable, <%= r.notAssessed %> not assessed">
+      <% if (r.implemented) { %><span class="dp-bar-implemented" style="width:<%= pct(r.implemented) %>%"></span><% } %>
+      <% if (r.partial) { %><span class="dp-bar-partial" style="width:<%= pct(r.partial) %>%"></span><% } %>
+      <% if (r.notImplemented) { %><span class="dp-bar-gap" style="width:<%= pct(r.notImplemented) %>%"></span><% } %>
+      <% if (r.notApplicable) { %><span class="dp-bar-na" style="width:<%= pct(r.notApplicable) %>%"></span><% } %>
+      <% if (r.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= pct(r.notAssessed) %>%"></span><% } %>
+    </div>
+    <div class="dp-legend">
+      <span><i class="k-implemented"></i><strong><%= r.implemented %></strong> implemented</span>
+      <span><i class="k-partial"></i><strong><%= r.partial %></strong> partially implemented</span>
+      <span><i class="k-gap"></i><strong><%= r.notImplemented %></strong> not implemented</span>
+      <span><i class="k-na"></i><strong><%= r.notApplicable %></strong> not applicable</span>
+      <span><i class="k-unassessed"></i><strong><%= r.notAssessed %></strong> not assessed</span>
+    </div>
+
+    <h3>Position by commencement timing</h3>
+    <p class="dp-prose" style="margin-bottom:10px;">Currently effective and future-effective duties are counted separately so forward-readiness work does not inflate the present position.</p>
+    <table class="t">
+      <thead>
+        <tr><th>Legal timing</th><th style="text-align:right;">Total</th><th style="text-align:right;">Implemented</th><th style="text-align:right;">Partial</th><th style="text-align:right;">Not implemented</th><th style="text-align:right;">Not applicable</th><th style="text-align:right;">Not assessed</th></tr>
+      </thead>
+      <tbody>
+        <% [['Currently effective', currentTiming, 'Enforceable at the as-of date'],
+            ['Future effective', futureTiming, 'Forward-readiness position only'],
+            ['Effective date not set', unsetTiming, 'Legal timing needs catalogue review']].forEach(([label, row, note]) => { %>
+          <tr>
+            <td><strong style="font-weight:500;"><%= label %></strong><div class="meta text-xs"><%= note %></div></td>
+            <td class="num" style="text-align:right;"><%= row.total %></td>
+            <td class="num" style="text-align:right;"><%= row.implemented %></td>
+            <td class="num" style="text-align:right;"><%= row.partial %></td>
+            <td class="num" style="text-align:right;"><%= row.notImplemented %></td>
+            <td class="num" style="text-align:right;"><%= row.na %></td>
+            <td class="num" style="text-align:right;"><%= row.notAssessed %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+
+    <h3>Position by obligation domain</h3>
+    <table class="t">
+      <thead>
+        <tr><th>Domain</th><th style="width:120px;">Readiness</th><th style="text-align:right;">Implemented</th><th style="text-align:right;">Partial</th><th style="text-align:right;">Not implemented</th><th style="text-align:right;">In scope</th></tr>
+      </thead>
+      <tbody>
+        <% matrix.forEach(row => { %>
+          <tr>
+            <td><%= row.domain %><% if (row.criticalGaps) { %><div class="meta text-xs text-danger"><%= row.criticalGaps %> critical gap<%= row.criticalGaps === 1 ? '' : 's' %></div><% } %></td>
+            <td>
+              <div class="num" style="font-size:12.5px;"><%= row.readinessPct %>%</div>
+              <div class="dp-bar dp-bar-sm" style="margin-top:5px;">
+                <% if (row.implemented) { %><span class="dp-bar-implemented" style="width:<%= (row.implemented * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                <% if (row.partial) { %><span class="dp-bar-partial" style="width:<%= (row.partial * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                <% if (row.notImplemented) { %><span class="dp-bar-gap" style="width:<%= (row.notImplemented * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                <% if (row.notApplicable) { %><span class="dp-bar-na" style="width:<%= (row.notApplicable * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                <% if (row.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= (row.notAssessed * 100 / row.total).toFixed(2) %>%"></span><% } %>
+              </div>
+            </td>
+            <td class="num" style="text-align:right;"><%= row.implemented %></td>
+            <td class="num" style="text-align:right;"><%= row.partial %></td>
+            <td class="num" style="text-align:right;"><%= row.notImplemented %></td>
+            <td class="num meta" style="text-align:right;"><%= row.inScope %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+
+    <% if (comparison.baseline_assessment_id) { %>
+      <h3>Movement from the approved baseline</h3>
+      <p class="dp-prose">
+        Compared with assessment #<%= comparison.baseline_assessment_id %>, snapshot #<%= comparison.baseline_snapshot_id %>:
+        <b><%= delta.improved || 0 %> improved</b>, <b><%= delta.regressed || 0 %> regressed</b>, <%= delta.unchanged || 0 %> unchanged,
+        <%= delta.newly_na || 0 %> newly concluded not applicable and <%= delta.new || 0 %> new catalogue rows.
+      </p>
+    <% } %>
+  </section>
+
+  <% if (gaps.length) { %>
+    <%# Ranked remediation. The previous report ended at counts and a flat
+        register, leaving the reader to work out what to do first. %>
+    <section class="dp-doc-section">
+      <span class="dp-doc-num">03 · Remediation priorities</span>
+      <h2><%= gaps.length %> open gap<%= gaps.length === 1 ? '' : 's' %>, worst first</h2>
+      <p class="dp-prose" style="margin-bottom:16px;">
+        <%= priorityRule %>
+        <% if (immediate.length) { %> <b><%= immediate.length %></b> gap<%= immediate.length === 1 ? '' : 's' %> rank immediate.<% } %>
+      </p>
+      <% gaps.forEach(gap => { const c = gap.content; %>
+        <article class="dp-entry">
+          <div class="dp-gate-head">
+            <span class="mono text-xs" style="color:var(--text-tertiary);"><%= gap.ref %></span>
+            <span class="tag dp-band dp-band-<%= String(gap.priority.band).toLowerCase() %>" style="margin-left:auto;"><%= gap.priority.band %></span>
+          </div>
+          <h3><%= gap.title %></h3>
+          <p class="meta text-xs">
+            <%= c ? c.domain : gap.domain %> · <%= c ? c.sourceSectionRule : (gap.source_section || '') %> ·
+            <%= c ? c.severityLabel : 'Severity not recorded' %> severity ·
+            <span class="status s-<%= slug(gap.status) %>"><%= gap.status %></span>
+            <% if (c) { %> · commences <%= c.effectiveDateLong %><% } %> ·
+            <%= gap.owner_name || 'No owner assigned' %><%= gap.due_date ? ` · target ${gap.due_date}` : ' · no target date' %>
+          </p>
+          <% if (gap.gap_description) { %><p><b>Gap.</b> <%= gap.gap_description %></p><% } %>
+          <% if (gap.recommendation) { %><p><b>Recommended action.</b> <%= gap.recommendation %></p><% } %>
+        </article>
+      <% }) %>
+    </section>
+  <% } %>
+
+  <% if (exclusions.length) { %>
+    <%# The exclusion register. Every Not Applicable conclusion in one place is
+        the first thing a reviewer or a regulator asks to see. %>
+    <section class="dp-doc-section">
+      <span class="dp-doc-num">04 · Exclusions</span>
+      <h2><%= exclusions.length %> obligation<%= exclusions.length === 1 ? '' : 's' %> concluded not applicable</h2>
+      <p class="dp-prose" style="margin-bottom:16px;">
+        Each exclusion below was recorded by a named assessor with a specific rationale and accepted by the independent
+        approver against that exact conclusion version. No obligation was excluded by an automated applicability rule.
+      </p>
+      <% exclusions.forEach(item => { const c = item.content; %>
+        <article class="dp-entry">
+          <span class="mono text-xs" style="color:var(--text-tertiary);"><%= item.ref %></span>
+          <h3><%= item.title %></h3>
+          <p class="meta text-xs"><%= c ? c.domain : item.domain %> · <%= c ? c.sourceSectionRule : (item.source_section || '') %></p>
+          <p><%= item.na_rationale || 'No rationale retained.' %></p>
+        </article>
+      <% }) %>
+    </section>
+  <% } %>
+
+  <section class="dp-doc-section">
+    <span class="dp-doc-num">05 · Register</span>
+    <h2>Frozen obligation register</h2>
+    <p class="dp-prose" style="margin-bottom:16px;">
+      Every obligation as it stood in this snapshot. Evidence added, replaced, expired or superseded after capture is
+      deliberately not reflected here.
+    </p>
+    <% matrix.slice().sort((a, b) => a.order - b.order).forEach(domainRow => { %>
+      <h3><%= domainRow.domain %></h3>
+      <% frozenItems.filter(item => (item.content ? item.content.domain : item.domain) === domainRow.domain).forEach(item => { const c = item.content; %>
+        <article class="dp-entry">
+          <div class="dp-gate-head">
+            <span class="mono text-xs" style="color:var(--text-tertiary);"><%= item.ref %></span>
+            <span class="status s-<%= slug(item.status) %>" style="margin-left:auto;"><%= item.status %></span>
+          </div>
+          <h3 style="margin-top:4px;"><%= item.title %></h3>
+          <p class="meta text-xs">
+            <%= c ? c.sourceSectionRule : (item.source_section || '') %> ·
+            <%= item.legal_effective_status || 'Effective Date Not Set' %><% if (item.effective_date) { %> from <%= item.effective_date %><% } %> ·
+            <%= Number(item.evidence_current_count || 0) %> current evidence, <%= Number(item.evidence_stale_count || 0) %> stale ·
+            <%= item.owner_name || 'No owner assigned' %>
+          </p>
+          <% if (c) { %><p><b>Obligation.</b> <%= c.requirement %></p><% } %>
+          <% if (item.assessment_note) { %><p><b>Conclusion.</b> <%= item.assessment_note %></p><% } %>
+          <% if (item.gap_description) { %><p><b>Gap.</b> <%= item.gap_description %></p><% } %>
+          <% if (item.recommendation) { %><p><b>Recommended action.</b> <%= item.recommendation %></p><% } %>
+          <% if (item.status === 'Not Applicable') { %><p><b>Exclusion rationale.</b> <%= item.na_rationale || 'No rationale retained.' %></p><% } %>
+        </article>
+      <% }) %>
+    <% }) %>
+  </section>
+
+  <section class="dp-doc-section">
+    <span class="dp-doc-num">06 · Integrity</span>
+    <h2>Review history and record integrity</h2>
+    <% if (frozenReviews.length) { %>
+      <table class="t">
+        <thead><tr><th>Action</th><th>Actor</th><th>Time</th><th>Note</th></tr></thead>
+        <tbody>
+          <% frozenReviews.forEach(review => { %>
+            <tr>
+              <td><%= review.action || review.event_type || 'Review' %></td>
+              <td><%= review.actor_name || review.created_by_name || review.actor_id || '-' %></td>
+              <td class="meta num"><%= String(review.created_at || review.occurred_at || '-').slice(0, 19) %></td>
+              <td class="text-sm"><%= review.note || review.reason || '-' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } else { %>
+      <p class="dp-prose">No separate review-event rows were retained in this snapshot payload.</p>
+    <% } %>
+
+    <h3>Lineage</h3>
+    <dl class="dp-kv">
+      <div><dt>Snapshot reason</dt><dd><%= snapshot.reason || 'Approval or controlled reporting snapshot' %></dd></div>
+      <div><dt>Assessment row version</dt><dd><%= snapshot.assessment_row_version %></dd></div>
+      <div><dt>Reassessment baseline</dt><dd><%= frozen.baseline_assessment_id ? `Assessment #${frozen.baseline_assessment_id}, snapshot #${frozen.baseline_snapshot_id}` : 'Initial baseline' %></dd></div>
+      <div><dt>Catalogue hash</dt><dd class="dp-hash"><%= snapshot.catalog_hash || '-' %></dd></div>
+      <div><dt>Applicability profile hash</dt><dd class="dp-hash"><%= frozen.applicability_profile_hash || '-' %></dd></div>
+      <div><dt>Snapshot hash</dt><dd class="dp-hash"><%= snapshot.snapshot_hash %></dd></div>
+    </dl>
+  </section>
+</div>
+
+</div>
+
+<%- include('partials/footer') %>

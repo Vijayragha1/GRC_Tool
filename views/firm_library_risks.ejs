@@ -6,12 +6,12 @@
     <h1 class="page-title" style="margin-top:6px;">Firm risk library <span class="meta text-xl" style="font-weight:400;">(<%= rows.length %>)</span></h1>
     <div class="page-subtitle">Curate the risks your firm uses on every client. Each entry can be cloned into a client risk register with the "Clone firm library" button on the risks page.</div>
   </div>
-  <div style="display:flex;gap:8px;">
+  <% if (canManage) { %><div style="display:flex;gap:8px;">
     <form method="POST" action="/firm/library/risks/reseed" style="display:inline;">
       <button class="btn btn-ghost btn-xs" title="Re-add any starter risks not already in the library" onclick="return appConfirmClick(event, 'Re-seed missing starter risks? Existing entries with the same title are kept untouched.');">Re-seed starter set</button>
     </form>
     <button onclick="document.getElementById('addRisk').classList.toggle('hidden')" class="btn btn-primary btn-xs">New risk</button>
-  </div>
+  </div><% } else { %><div class="meta text-sm">Read-only · a Manager or Senior consultant curates this library.</div><% } %>
 </div>
 
 <form method="GET" action="/firm/library/risks" class="panel panel-pad" style="display:grid;grid-template-columns:1fr 200px 200px auto;gap:8px;align-items:end;margin-bottom:14px;">
@@ -31,7 +31,7 @@
   <div><button class="btn btn-secondary btn-xs">Filter</button></div>
 </form>
 
-<div id="addRisk" class="panel hidden" style="margin-bottom:14px;">
+<% if (canManage) { %><div id="addRisk" class="panel hidden" style="margin-bottom:14px;">
   <div class="panel-head"><h2 style="margin:0;">Add risk to firm library</h2></div>
   <form method="POST" action="/firm/library/risks" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <div class="col-full"><label class="label">Title *</label><input class="input" name="title" required></div>
@@ -52,7 +52,7 @@
     <div class="col-full"><label class="label">Tags</label><input class="input" name="tags" placeholder="cloud, byod, fintech-only"></div>
     <div class="col-full"><button class="btn btn-primary">Save</button></div>
   </form>
-</div>
+</div><% } %>
 
 <% if (rows.length === 0) { %>
   <div class="panel"><div class="t-empty">No risks match. Adjust the filters or add one.</div></div>
@@ -88,9 +88,11 @@
             <td class="num meta"><%= r.suggested_likelihood || '-' %></td>
             <td class="num meta"><%= r.suggested_impact || '-' %></td>
             <td>
+              <% if (canManage) { %>
               <form method="POST" action="/firm/library/risks/<%= r.id %>/delete" style="display:inline;" onsubmit="return appConfirmForm(event, 'Delete this firm-library risk?');">
                 <button class="btn btn-ghost btn-xs text-danger text-xs">Delete</button>
               </form>
+              <% } %>
             </td>
           </tr>
         <% }) %>

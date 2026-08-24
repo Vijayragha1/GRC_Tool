@@ -2,10 +2,12 @@
   const iso27001Catalog = (typeof allIsoItems !== 'undefined' && allIsoItems) ? allIsoItems : [];
   const iso42001Catalog = (typeof allIso42001Items !== 'undefined' && allIso42001Items) ? allIso42001Items : [];
   const csfCatalog = (typeof allCsfSubcats !== 'undefined' && allCsfSubcats) ? allCsfSubcats : [];
+  const dpdpaCatalog = (typeof allDpdpaItems !== 'undefined' && allDpdpaItems) ? allDpdpaItems : [];
   const enabledCatalogs = [
     { key: 'iso27001', label: 'ISO 27001', count: iso27001Catalog.length },
     { key: 'iso42001', label: 'ISO 42001', count: iso42001Catalog.length },
-    { key: 'csf', label: 'NIST CSF 2.0', count: csfCatalog.length }
+    { key: 'csf', label: 'NIST CSF 2.0', count: csfCatalog.length },
+    { key: 'dpdpa', label: 'India DPDPA', count: dpdpaCatalog.length }
   ].filter(catalog => catalog.count > 0);
   const initialFramework = enabledCatalogs.length ? enabledCatalogs[0].key : '';
 %>
@@ -62,6 +64,18 @@
             <input type="checkbox" name="csf_item_ref" value="<%= item.code %>" onchange="updatePickCount(this.closest('form'))">
             <span class="ev-pick-code"><%= item.code %></span>
             <span class="ev-pick-label"><%= item.description %></span>
+          </label>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (dpdpaCatalog.length) { %>
+      <div class="upload-list" data-picker-panel="dpdpa" <%= initialFramework === 'dpdpa' ? '' : 'hidden' %>>
+        <% dpdpaCatalog.forEach(item => { %>
+          <label class="ev-pick" data-search="<%= (item.ref + ' ' + item.title + ' ' + (item.summary || '')).toLowerCase().replace(/"/g,'') %>">
+            <input type="checkbox" name="dpdpa_item_ref" value="<%= item.ref %>" onchange="updatePickCount(this.closest('form'))">
+            <span class="ev-pick-code"><%= item.ref %></span>
+            <span class="ev-pick-label"><%= item.title %></span>
           </label>
         <% }) %>
       </div>

@@ -4,14 +4,26 @@
 // nonconformities/CAPA.
 
 const fts = require('../lib/fts');
+const ctlWrites = require('../lib/control-writes');
+const delivery = require('../lib/engagement-delivery');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, workspaceProgress } = deps;
+  const requireInternalAuditService = outcomeScope.requirePostGapService(
+    'Internal audit delivery is outside this gap-assessment-only engagement. Assessment findings and client-owned recommendations remain available.');
+  const requireManagementReviewService = outcomeScope.requirePostGapService(
+    'Management review delivery is outside this gap-assessment-only engagement. Use the controlled gap-assessment report for the contracted outcome.');
+  const syncCertificationCompletion = req => {
+    if (!db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) return;
+    delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
+    delivery.syncCertificationEngagementCompletion(db, req.workspace, req.user.id);
+  };
 
   // ==================== INTERNAL AUDITS ====================
-  app.get('/workspaces/:wsId/audits', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/audits', requireAuth, requireWorkspace, requireInternalAuditService, (req, res) => {
     const audits = db.prepare(`SELECT a.*,
       (SELECT COUNT(*) FROM audit_findings WHERE audit_id = a.id) AS finding_count,
       (SELECT COUNT(*) FROM audit_findings WHERE audit_id = a.id AND status = 'open') AS open_findings
@@ -19,7 +31,7 @@ function register(app, deps) {
     res.render('audits', { user: req.user, ws: req.workspace, audits });
   });
 
-  app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const { title, scope, audit_date, auditor_name } = req.body;
     if (!title) return redirectBack(req, res);
     const id = db.prepare(`INSERT INTO audits (workspace_id, title, scope, audit_date, auditor_name, created_by)
@@ -29,7 +41,7 @@ function register(app, deps) {
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/audits/' + id, 'Audit created'));
   });
 
-  app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requireInternalAuditService, (req, res) => {
     const audit = db.prepare('SELECT * FROM audits WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
@@ -47,7 +59,7 @@ function register(app, deps) {
     res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples, observations });
   });
 
-  app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const { title, scope, audit_date, auditor_name, status, summary } = req.body;
     db.prepare(`UPDATE audits SET title=?, scope=?, audit_date=?, auditor_name=?, status=?, summary=?
                 WHERE id=? AND workspace_id=?`)
@@ -114,7 +126,7 @@ function register(app, deps) {
   // Clause 9.2 expects sampling decisions to be defensible. The audit detail
   // gets two new bits: (1) a sampling-justification narrative, and (2) a
   // table of per-control samples taken with population/sample sizes and findings.
-  app.post('/workspaces/:wsId/audits/:id/sampling', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/sampling', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const { sampling_justification, sample_size, population_size } = req.body;
     db.prepare(`UPDATE audits SET sampling_justification=?, sample_size=?, population_size=?
                 WHERE id=? AND workspace_id=?`).run(
@@ -126,7 +138,7 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
   });
 
-  app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
     const { iso_item_id, description, sample_taken_at, population_size, sample_size, finding } = req.body;
@@ -143,7 +155,7 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
   });
 
-  app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/samples/:sid/delete', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
     db.prepare(`DELETE FROM audit_samples WHERE id=? AND audit_id=?`).run(req.params.sid, audit.id);
@@ -153,7 +165,7 @@ function register(app, deps) {
   // Tier 1.4 - Audit lifecycle stage transitions (planned → fieldwork →
   // findings_review → report → follow_up → closed). Transitions auto-timestamp
   // the milestone columns so the engagement timeline is reconstructable.
-  app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/lifecycle', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const { stage } = req.body;
     const allowed = ['planned','fieldwork','findings_review','report','follow_up','closed'];
     if (!allowed.includes(stage)) return redirectBack(req, res);
@@ -168,7 +180,7 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
   });
 
-  app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
     const { iso_item_id, finding_type, description, severity } = req.body;
@@ -180,7 +192,7 @@ function register(app, deps) {
     res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
   });
 
-  app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/findings/:fId/promote', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
     const f = db.prepare('SELECT * FROM audit_findings WHERE id = ? AND audit_id = ?')
@@ -197,13 +209,13 @@ function register(app, deps) {
     res.redirect('/workspaces/' + req.workspace.id + '/nonconformities/' + ncId);
   });
 
-  app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, requirePermission('audit.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/audits/:id/delete', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     db.prepare('DELETE FROM audits WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
     res.redirect('/workspaces/' + req.workspace.id + '/audits');
   });
 
   // ==================== MANAGEMENT REVIEW ====================
-  app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requireManagementReviewService, (req, res) => {
     const mrms = db.prepare(`SELECT * FROM mrms WHERE workspace_id = ?
                              ORDER BY meeting_date DESC, created_at DESC`).all(req.workspace.id);
     // Preview the 9.3.2 input pack so the consultant sees what will be auto-
@@ -307,7 +319,7 @@ function register(app, deps) {
     };
   }
 
-  app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     const { meeting_date, attendees } = req.body;
     const pack = compute932InputPack(req.workspace.id);
     const id = db.prepare(`INSERT INTO mrms
@@ -328,7 +340,7 @@ function register(app, deps) {
   // Useful when a saved MRM has gone stale (e.g., NCs closed since the meeting
   // was scheduled, new audit findings recorded). Re-saves the three auto-pack
   // fields from a fresh compute.
-  app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     const mrm = db.prepare('SELECT id, status FROM mrms WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!mrm) return res.status(404).send('Not found');
     const pack = compute932InputPack(req.workspace.id);
@@ -343,7 +355,7 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/mrms/${mrm.id}`, 'MRM inputs refreshed from current data'));
   });
 
-  app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requireManagementReviewService, (req, res) => {
     const mrm = db.prepare('SELECT * FROM mrms WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspace.id);
     if (!mrm) return res.status(404).send('Not found');
 
@@ -390,7 +402,7 @@ function register(app, deps) {
     });
   });
 
-  app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     const f = ['meeting_date','attendees','status','context_changes','prior_actions_status',
                'performance_review','feedback_interested_parties','risk_treatment_status',
                'improvement_opportunities','decisions','action_items'];
@@ -404,7 +416,7 @@ function register(app, deps) {
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/mrms/' + req.params.id, 'Management review saved'));
   });
 
-  app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/mrms/:id/delete', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     db.prepare('DELETE FROM mrms WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
     res.redirect('/workspaces/' + req.workspace.id + '/mrms');
   });
@@ -441,27 +453,119 @@ function register(app, deps) {
     const nc = db.prepare('SELECT * FROM nonconformities WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (!nc) return res.status(404).send('Not found');
+    const certificationLineage = delivery.certificationFindingLineage(db, req.workspace.id, nc.id);
+    const findingEvidence = db.prepare(`SELECT l.*,e.filename,e.sha256,e.uploaded_at,u.name AS linked_by_name
+      FROM nonconformity_evidence_links l
+      JOIN evidence e ON e.id=l.evidence_id AND e.workspace_id=l.workspace_id
+      LEFT JOIN users u ON u.id=l.linked_by
+      WHERE l.workspace_id=? AND l.nonconformity_id=?
+      ORDER BY CASE l.evidence_role WHEN 'validation' THEN 0 ELSE 1 END,l.linked_at,l.id`)
+      .all(req.workspace.id, nc.id);
+    const evidenceCatalog = db.prepare(`SELECT id,filename,sha256,uploaded_at
+      FROM evidence WHERE workspace_id=? AND superseded_at IS NULL
+      ORDER BY uploaded_at DESC,id DESC LIMIT 250`).all(req.workspace.id);
     const allItems = db.prepare(`SELECT id, title FROM iso_items ORDER BY sort_order`).all();
     // Phase C: corrective tasks spawned from this NC
     const correctiveTasks = db.prepare(`SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id
       WHERE t.workspace_id=? AND t.nonconformity_id=? ORDER BY t.created_at DESC`).all(req.workspace.id, nc.id);
-    res.render('nonconformity_detail', { user: req.user, ws: req.workspace, nc, allItems, correctiveTasks });
+    res.render('nonconformity_detail', {
+      user: req.user, ws: req.workspace, nc, allItems, correctiveTasks,
+      certificationLineage, findingEvidence, evidenceCatalog,
+    });
+  });
+
+  app.post('/workspaces/:wsId/nonconformities/:id/evidence', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
+    const nc = db.prepare('SELECT id FROM nonconformities WHERE id=? AND workspace_id=?')
+      .get(req.params.id, req.workspace.id);
+    if (!nc) return res.status(404).send('Not found');
+    const evidence = db.prepare(`SELECT id FROM evidence
+      WHERE id=? AND workspace_id=? AND superseded_at IS NULL`)
+      .get(Number(req.body.evidence_id), req.workspace.id);
+    if (!evidence) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/nonconformities/${nc.id}`,
+        'Choose current evidence from this client workspace.', 'error'));
+    }
+    const role = String(req.body.evidence_role || 'remediation').toLowerCase();
+    if (!['remediation', 'validation'].includes(role)) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/nonconformities/${nc.id}`,
+        'Choose whether the evidence proves remediation or independent validation.', 'error'));
+    }
+    const result = db.prepare(`INSERT OR IGNORE INTO nonconformity_evidence_links
+      (workspace_id,nonconformity_id,evidence_id,evidence_role,linked_by)
+      VALUES (?,?,?,?,?)`).run(req.workspace.id, nc.id, evidence.id, role, req.user.id);
+    if (result.changes) {
+      logAction(req.user.id, req.workspace.id, 'link_nonconformity_evidence', 'nonconformity', nc.id, {
+        evidence_id: evidence.id, evidence_role: role,
+      }, auditCtx(req));
+    }
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/nonconformities/${nc.id}`,
+      result.changes ? 'Evidence linked into the retained CAPA record.' : 'That evidence and role are already linked.'));
   });
 
   app.post('/workspaces/:wsId/nonconformities/:id', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
+    const before = db.prepare('SELECT * FROM nonconformities WHERE id=? AND workspace_id=?')
+      .get(req.params.id, req.workspace.id);
+    if (!before) return res.status(404).send('Not found');
+    const retainedLineage = delivery.certificationFindingLineage(db, req.workspace.id, before.id);
+    const requestedSource = req.body.source === undefined ? before.source : (req.body.source || null);
+    const requestedSourceRef = req.body.source_ref === undefined ? before.source_ref : (req.body.source_ref || null);
+    const requestedCertEvent = delivery.certificationEventForSourceRef(db, req.workspace.id, requestedSourceRef);
+    const mutatesRetainedLineage = retainedLineage
+      && (String(requestedSource || '').toLowerCase() !== 'external_audit'
+        || String(requestedSourceRef || '') !== String(before.source_ref || ''));
+    const forgesCertificationLineage = !retainedLineage && !!requestedCertEvent;
+    if (mutatesRetainedLineage || forgesCertificationLineage) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/nonconformities/${before.id}`,
+        'Certification finding lineage is immutable. Record Stage 1 and Stage 2 findings from the certification-cycle event.', 'error'));
+    }
     const f = ['title','source','source_ref','description','severity','iso_item_id',
                'root_cause','corrective_action','responsible','due_date','effectiveness_check','status'];
     const set = []; const vals = [];
     f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
-    const closing = (req.body.status === 'closed' || req.body.status === 'verified');
+    const requestedStatus = req.body.status === undefined ? before.status : req.body.status;
+    const closing = (requestedStatus === 'closed' || requestedStatus === 'verified');
+    if (retainedLineage && closing) {
+      const finalValue = key => String(req.body[key] === undefined ? (before[key] || '') : (req.body[key] || '')).trim();
+      const finalSeverity = finalValue('severity').toLowerCase();
+      const missing = [];
+      if (['major', 'minor'].includes(finalSeverity) && !finalValue('root_cause')) missing.push('root-cause analysis');
+      if (!finalValue('corrective_action')) missing.push('corrective action');
+      if (!finalValue('effectiveness_check')) missing.push('effectiveness conclusion');
+      const validationEvidence = db.prepare(`SELECT COUNT(*) c FROM nonconformity_evidence_links
+        WHERE workspace_id=? AND nonconformity_id=? AND evidence_role='validation'`)
+        .get(req.workspace.id, before.id).c;
+      if (!validationEvidence) missing.push('independent validation evidence');
+      if (missing.length) {
+        return res.redirect(withToast(`/workspaces/${req.workspace.id}/nonconformities/${before.id}`,
+          `Certification finding cannot be ${requestedStatus}. Add ${missing.join(', ')} first.`, 'error'));
+      }
+    }
     if (closing) {
       set.push('closed_at=CURRENT_TIMESTAMP');
+    } else if (req.body.status !== undefined
+      && ['closed', 'verified'].includes(String(before.status || '').toLowerCase())
+      && ['open', 'in_progress'].includes(String(requestedStatus || '').toLowerCase())) {
+      set.push('closed_at=NULL');
     }
     if (set.length) {
       vals.push(req.params.id, req.workspace.id);
       db.prepare(`UPDATE nonconformities SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
       fts.refresh(req.workspace.id, 'nc', req.params.id);
       logAction(req.user.id, req.workspace.id, 'update_nc', 'nonconformity', req.params.id, null);
+
+      if (req.body.status !== undefined && String(req.body.status) !== String(before.status)) {
+        delivery.reconcileCompletionState(db, req.workspace, req.user.id, {
+          reason: 'A nonconformity or observation status changed after delivery completion.',
+          details: {
+            finding_id: before.id,
+            certification_event_id: retainedLineage?.cert_event_id || null,
+            audit_stage: retainedLineage?.event_type || null,
+            from_status: before.status,
+            to_status: req.body.status
+          }
+        });
+        syncCertificationCompletion(req);
+      }
 
       // Phase C: closing an NC bumps the linked control's last_verified_at - feeds SoA freshness view
       if (closing) {
@@ -501,6 +605,12 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/nonconformities/:id/delete', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
+    const finding = db.prepare('SELECT * FROM nonconformities WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!finding) return res.redirect(`/workspaces/${req.workspace.id}/nonconformities`);
+    if (delivery.certificationFindingLineage(db, req.workspace.id, finding.id)) {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/nonconformities/${finding.id}`,
+        'Certification findings cannot be deleted. Close or verify the retained record so its audit lineage remains available.', 'error'));
+    }
     db.prepare('DELETE FROM nonconformities WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
     fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'nc', entityId: req.params.id });
     res.redirect('/workspaces/' + req.workspace.id + '/nonconformities');

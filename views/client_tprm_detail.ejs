@@ -1,0 +1,182 @@
+<%- include('partials/header', { title, user, ws, active, clientPreview, clientPreviewUser, portalView, tprmPortalEnabled }) %>
+
+<%
+  const label = value => String(value || 'Not set').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  const assessed = value => !value || value === 'not_assessed' ? 'Not assessed' : label(value);
+  const date = value => value ? new Intl.DateTimeFormat(ws.locale || 'en-GB', { day:'numeric', month:'short', year:'numeric' }).format(new Date(`${String(value).slice(0,10)}T12:00:00`)) : 'Not set';
+  const values = form.values || {};
+  const errors = form.errors || {};
+  const recommendation = detail.recommendation;
+  const decision = detail.clientDecision;
+  const record = detail.thirdParty;
+  const scopedServices = Array.isArray(detail.serviceRelationships) ? detail.serviceRelationships : [];
+  const selected = choice => String(values.decision || '') === choice ? 'selected' : '';
+%>
+
+<style>
+  .ctd-wrap{max-width:1140px;margin:0 auto;padding:28px 28px 64px}.ctd-back{font-size:12px;color:var(--text-secondary);text-decoration:none}.ctd-back:hover{text-decoration:underline}.ctd-preview{margin:16px 0;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-size:12px;color:var(--text-secondary)}
+  .ctd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin:20px 0 24px;padding-bottom:18px;border-bottom:1px solid var(--border)}.ctd-head h1{font-size:27px;letter-spacing:-.025em;margin:0 0 5px}.ctd-head p{margin:0;color:var(--text-secondary);line-height:1.5;font-size:13px}.ctd-pills{display:flex;gap:6px;flex-wrap:wrap}.ctd-pill{display:inline-flex;padding:3px 7px;border:1px solid var(--border);border-radius:4px;background:transparent;font-size:11px;white-space:nowrap}.ctd-pill.high,.ctd-pill.critical,.ctd-pill.do_not_recommend{border-color:rgba(168,54,54,.28);color:#8f2f2f}.ctd-pill.recommend_with_conditions,.ctd-pill.onboard_with_conditions,.ctd-pill.medium{border-color:rgba(150,103,0,.3);color:#725000}.ctd-pill.recommend_onboard,.ctd-pill.onboard,.ctd-pill.verified,.ctd-pill.closed{border-color:rgba(30,126,79,.3);color:#176a42}
+  .ctd-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,.8fr);gap:20px;align-items:start}.ctd-stack{display:grid;gap:20px}.ctd-panel{border:1px solid var(--border);border-radius:5px;background:var(--surface);overflow:hidden}.ctd-panel-head{padding:14px 16px;border-bottom:1px solid var(--border);background:var(--bg-subtle)}.ctd-panel-head span{display:block;font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.07em;color:var(--text-tertiary);margin-bottom:3px}.ctd-panel-head h2{font-size:16px;margin:0}.ctd-body{padding:16px}.ctd-body p{line-height:1.55;margin:0 0 12px}.ctd-body p:last-child{margin-bottom:0}
+  .ctd-summary{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--border);border-left:1px solid var(--border)}.ctd-summary div{padding:10px 11px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}.ctd-summary span{display:block;color:var(--text-tertiary);font-size:10px;text-transform:uppercase;letter-spacing:.05em}.ctd-summary strong{display:block;margin-top:4px;font-size:13px}
+  .ctd-callout{padding:13px 14px;border-left:3px solid #737373;background:var(--bg-subtle);font-size:13px;line-height:1.55}.ctd-callout.warn{border-color:#a36b00}.ctd-callout.danger{border-color:#9b3030}.ctd-list{display:grid;gap:9px}.ctd-row{padding:11px 0;border-bottom:1px solid var(--border);font-size:13px}.ctd-row:last-child{border:0}.ctd-row header{display:flex;justify-content:space-between;gap:12px;margin-bottom:5px}.ctd-row p{color:var(--text-secondary);font-size:12px;margin:0}.ctd-meta{display:flex;gap:12px;flex-wrap:wrap;color:var(--text-tertiary);font-size:11px;margin-top:6px}
+  .ctd-form{display:grid;gap:13px}.ctd-form label{display:block;font-size:12px;font-weight:650;margin-bottom:5px}.ctd-form input,.ctd-form select,.ctd-form textarea{width:100%;box-sizing:border-box}.ctd-form textarea{min-height:92px;resize:vertical}.ctd-form .field-error{font-size:11px;color:#9b3030;margin-top:4px}.ctd-form .invalid{border-color:#9b3030}.ctd-form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}.ctd-check{display:flex;gap:9px;align-items:flex-start;padding:10px;border:1px solid var(--border);border-radius:4px;font-size:12px;line-height:1.45}.ctd-check input{width:auto;margin-top:2px}.ctd-actions{display:flex;justify-content:flex-end;padding-top:3px}.ctd-empty{color:var(--text-secondary);font-size:13px}
+  .ctd-downloads{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ctd-downloads .btn{text-decoration:none}.ctd-file-note{margin-top:8px;color:var(--text-secondary);font-size:11px;line-height:1.5}
+  @media(max-width:850px){.ctd-grid{grid-template-columns:1fr}.ctd-head{flex-direction:column}.ctd-summary,.ctd-form-grid{grid-template-columns:1fr}}
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .ctd-panel-head span,
+    .ctd-summary span
+    { font-size: 11px; }
+  }
+</style>
+
+<main id="mainContent" class="ctd-wrap">
+  <a class="ctd-back" href="/workspaces/<%= ws.id %>/client-portal/tprm<%= clientPreview ? '?preview=client' : '' %>">← Third-party risk portfolio</a>
+  <% if (clientPreview) { %><div class="ctd-preview"><strong>Read-only client preview.</strong> This shows the released client record only. A consulting-firm account cannot make or simulate the client's decision.</div><% } %>
+  <% if (tprmRetainedReadOnly) { %><div class="ctd-preview"><strong>Closed TPRM service period - retained read-only.</strong> This assurance record and its released history remain available, but no new decisions, comments or condition actions can be submitted.</div><% } %>
+  <header class="ctd-head"><div><h1><%= record.name %></h1><p><%= record.service || 'Service details have not been published.' %></p></div><div class="ctd-pills"><span class="ctd-pill"><%= label(record.lifecycleStage) %></span><span class="ctd-pill <%= String(record.residualRiskBand || '').toLowerCase() %>"><%= assessed(record.residualRiskBand) %> residual risk</span></div></header>
+
+  <div class="ctd-grid">
+    <div class="ctd-stack">
+      <section class="ctd-panel">
+        <header class="ctd-panel-head"><span>Issued assurance</span><h2>Consultancy recommendation</h2></header>
+        <div class="ctd-body">
+          <% if (!recommendation) { %><div class="ctd-empty">No consultancy recommendation has been issued. Draft assessments and internal workpapers remain private.</div><% } else { %>
+            <div class="ctd-pills" style="margin-bottom:13px"><span class="ctd-pill <%= recommendation.outcome %>"><%= label(recommendation.outcome) %></span><% if (recommendation.residualRiskBand) { %><span class="ctd-pill <%= String(recommendation.residualRiskBand).toLowerCase() %>"><%= label(recommendation.residualRiskBand) %> residual risk</span><% } %></div>
+            <p><%= recommendation.summary || 'The issued recommendation contains no additional client-facing summary.' %></p>
+            <div class="ctd-meta"><span>Issued by <strong><%= recommendation.issuedByName || 'Engagement quality reviewer' %></strong></span><span>Issued <strong><%= date(recommendation.issuedAt) %></strong></span><% if (recommendation.version) { %><span>Version <strong><%= recommendation.version %></strong></span><% } %><% if (recommendation.validUntil) { %><span>Valid until <strong><%= date(recommendation.validUntil) %></strong></span><% } %></div>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="ctd-panel">
+        <header class="ctd-panel-head"><span>Decision boundary</span><h2>Exact assessed service relationships</h2></header>
+        <div class="ctd-body">
+          <div class="ctd-callout" style="margin-bottom:13px">The recommendation and client decision apply only to the services listed below. Other services from the same third party are not automatically covered.</div>
+          <% if (!scopedServices.length) { %>
+            <div class="ctd-callout danger"><strong>No assessed service relationship is declared.</strong><br>Do not make an onboarding decision until the consultancy defines the service scope.</div>
+          <% } else { %>
+            <div class="ctd-list"><% scopedServices.forEach(service => { %>
+              <article class="ctd-row">
+                <header><strong><%= service.name %></strong><span class="ctd-pill"><%= label(service.scopeRole) %></span></header>
+                <p><%= service.serviceDescription || 'No additional service description was recorded.' %></p>
+                <div class="ctd-meta"><span>Legal entity: <strong><%= service.legalName || 'Not recorded' %></strong></span><span>Category: <strong><%= label(service.serviceCategory) %></strong></span><span>Criticality: <strong><%= label(service.criticality) %></strong></span><span>Data access: <strong><%= label(service.dataAccess) %></strong></span></div>
+                <% if (service.scopeRationale) { %><div class="ctd-callout" style="margin-top:10px"><strong>Why it is in scope</strong><br><%= service.scopeRationale %></div><% } %>
+              </article>
+            <% }) %></div>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="ctd-panel">
+        <header class="ctd-panel-head"><span>Accountability</span><h2>Client onboarding decision</h2></header>
+        <div class="ctd-body">
+          <% if (decision) { %>
+            <div class="ctd-callout"><strong>Immutable client decision</strong><br>This decision is retained exactly as recorded. A later reassessment creates a new cycle; it does not edit this record.</div>
+            <div class="ctd-pills" style="margin:15px 0"><span class="ctd-pill <%= decision.decision %>"><%= label(decision.decision) %></span><% if (decision.differsFromRecommendation) { %><span class="ctd-pill do_not_recommend">Differs from consultancy recommendation</span><% } %></div>
+            <p><%= decision.rationale %></p>
+            <div class="ctd-meta"><span>Decided by <strong><%= decision.decidedByName || 'Client decision authority' %></strong></span><span>Recorded <strong><%= date(decision.decidedAt) %></strong></span><% if (decision.validUntil) { %><span>Review by <strong><%= date(decision.validUntil) %></strong></span><% } %></div>
+            <% if (decision.riskAccepted) { %><div class="ctd-callout warn" style="margin-top:14px"><strong>Residual risk accepted by the client</strong><br><%= decision.riskAcceptanceRationale || 'Acceptance rationale is retained in the governed decision record.' %><% if (decision.riskAcceptanceExpiresAt) { %><br>Expires <%= date(decision.riskAcceptanceExpiresAt) %>.<% } %></div><% } %>
+          <% } %>
+          <% if (!decision || decision.decision === 'defer_request_information') { %>
+          <% if (!recommendation) { %>
+            <div class="ctd-empty">A client decision becomes available only after the consultancy recommendation has been quality-reviewed and issued.</div>
+          <% } else if (decisionBlocker) { %>
+            <div class="ctd-callout danger" style="margin-top:14px"><strong>A new consultancy recommendation is required.</strong><br><%= decisionBlocker %></div>
+          <% } else if (!canDecide) { %>
+            <div class="ctd-callout"><strong>Waiting for the client decision authority.</strong><br>You can review and comment on the assessment, but only the assigned client sponsor can record the onboarding decision or accept residual risk.</div>
+          <% } else { %>
+            <% if (decision?.decision === 'defer_request_information') { %><div class="ctd-callout" style="margin:14px 0"><strong>Successor recommendation issued.</strong><br>Your earlier deferral remains immutable. Review the new recommendation and record the next client decision below.</div><% } %>
+            <% if (errors.form) { %><div class="ctd-callout danger" style="margin-bottom:13px"><%= errors.form %></div><% } %>
+            <form class="ctd-form" method="POST" action="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %>/decision" novalidate>
+              <input type="hidden" name="expected_recommendation_id" value="<%= recommendation.id %>">
+              <input type="hidden" name="expected_current_decision_id" value="<%= detail.latestClientDecisionId || 0 %>">
+              <input type="hidden" name="idempotency_nonce" value="<%= decisionNonce %>">
+              <div><label for="client-decision">Final onboarding decision</label><select id="client-decision" name="decision" class="select <%= errors.decision ? 'invalid' : '' %>" required><option value="">Choose a decision</option><option value="onboard" <%= selected('onboard') %>>Onboard</option><option value="onboard_with_conditions" <%= selected('onboard_with_conditions') %>>Onboard with conditions</option><option value="do_not_onboard" <%= selected('do_not_onboard') %>>Do not onboard</option><option value="defer_request_information" <%= selected('defer_request_information') %>>Defer and request more information</option></select><% if (errors.decision) { %><div class="field-error"><%= errors.decision %></div><% } %></div>
+              <div><label for="decision-rationale">Business rationale</label><textarea id="decision-rationale" name="rationale" class="textarea <%= errors.rationale ? 'invalid' : '' %>" maxlength="12000" required><%= values.rationale || '' %></textarea><% if (errors.rationale) { %><div class="field-error"><%= errors.rationale %></div><% } %></div>
+              <div><label for="decision-review-date">Decision review date</label><input id="decision-review-date" type="date" name="valid_until" class="input <%= errors.valid_until ? 'invalid' : '' %>" value="<%= values.valid_until || '' %>"><% if (errors.valid_until) { %><div class="field-error"><%= errors.valid_until %></div><% } %></div>
+
+              <details <%= values.condition_title || errors.condition_title ? 'open' : '' %>><summary>Add an owned onboarding condition</summary><div class="ctd-form" style="margin-top:12px">
+                <div><label for="condition-title">Condition</label><input id="condition-title" class="input <%= errors.condition_title ? 'invalid' : '' %>" name="condition_title" maxlength="240" value="<%= values.condition_title || '' %>" placeholder="For example: Complete SSO deployment before production access"><% if (errors.condition_title) { %><div class="field-error"><%= errors.condition_title %></div><% } %></div>
+                <div class="ctd-form-grid"><div><label for="condition-owner">Client owner</label><select id="condition-owner" class="select <%= errors.condition_owner_id ? 'invalid' : '' %>" name="condition_owner_id"><option value="">Choose owner</option><% clientParticipants.forEach(person => { %><option value="<%= person.id %>" <%= String(values.condition_owner_id || '') === String(person.id) ? 'selected' : '' %>><%= person.name %></option><% }) %></select><% if (errors.condition_owner_id) { %><div class="field-error"><%= errors.condition_owner_id %></div><% } %></div><div><label for="condition-due">Due date</label><input id="condition-due" type="date" class="input <%= errors.condition_due_date ? 'invalid' : '' %>" name="condition_due_date" value="<%= values.condition_due_date || '' %>"><% if (errors.condition_due_date) { %><div class="field-error"><%= errors.condition_due_date %></div><% } %></div></div>
+              </div></details>
+
+              <details <%= values.risk_acceptance_rationale || errors.accept_residual_risk || ['high','critical'].includes(String(record.residualRiskBand || '').toLowerCase()) ? 'open' : '' %>><summary>Residual-risk acceptance</summary><div class="ctd-form" style="margin-top:12px">
+                <div class="ctd-callout warn">Required when a positive onboarding decision overrides a negative recommendation, removes recommended conditions, or accepts high/critical residual risk.</div>
+                <label class="ctd-check"><input type="checkbox" name="accept_residual_risk" value="1" <%= values.risk_acceptance_rationale ? 'checked' : '' %>><span>I explicitly accept the residual third-party risk on behalf of the client.</span></label><% if (errors.accept_residual_risk) { %><div class="field-error"><%= errors.accept_residual_risk %></div><% } %>
+                <div><label for="risk-rationale">Risk-acceptance rationale</label><textarea id="risk-rationale" name="risk_acceptance_rationale" class="textarea <%= errors.risk_acceptance_rationale ? 'invalid' : '' %>" maxlength="12000"><%= values.risk_acceptance_rationale || '' %></textarea><% if (errors.risk_acceptance_rationale) { %><div class="field-error"><%= errors.risk_acceptance_rationale %></div><% } %></div>
+                <div><label for="risk-expiry">Acceptance expiry</label><input id="risk-expiry" type="date" name="risk_acceptance_expires_at" class="input <%= errors.risk_acceptance_expires_at ? 'invalid' : '' %>" value="<%= values.risk_acceptance_expires_at || '' %>"><% if (errors.risk_acceptance_expires_at) { %><div class="field-error"><%= errors.risk_acceptance_expires_at %></div><% } %></div>
+              </div></details>
+
+              <label class="ctd-check"><input type="checkbox" name="acknowledge_authority" value="1" required><span>I confirm that I am authorised to make this onboarding decision for the client and understand that it will be recorded immutably.</span></label><% if (errors.acknowledge_authority) { %><div class="field-error"><%= errors.acknowledge_authority %></div><% } %>
+              <div class="ctd-actions"><button class="btn btn-primary" type="submit">Record final client decision</button></div>
+            </form>
+          <% } %>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="ctd-panel" id="conditions">
+        <header class="ctd-panel-head"><span>Follow-through</span><h2>Conditions and actions</h2></header>
+        <div class="ctd-body">
+          <div class="ctd-callout" style="margin-bottom:13px"><strong>Accountability:</strong> the assigned client owner submits completion evidence; the consultancy independently verifies it. Client users cannot self-verify or waive conditions.</div>
+          <% if (!detail.conditions.length) { %><div class="ctd-empty">No onboarding conditions are recorded.</div><% } else { %>
+            <div class="ctd-list"><% detail.conditions.forEach(condition => {
+              const assignedToViewer = !clientPreview
+                && !(typeof tprmRetainedReadOnly !== 'undefined' && tprmRetainedReadOnly)
+                && condition.sourceType === 'client_decision'
+                && condition.ownerType === 'client' && Number(condition.ownerUserId || 0) === Number(user.id);
+            %><article class="ctd-row">
+              <header><strong><%= condition.title || condition.description %></strong><span class="ctd-pill <%= condition.status %>"><%= condition.waiverExpired ? 'Waiver expired' : label(condition.status) %></span></header>
+              <% if (condition.title && condition.description) { %><p><%= condition.description %></p><% } %>
+              <div class="ctd-meta"><span>Owner: <strong><%= condition.ownerName || 'To be assigned' %></strong></span><span>Due: <strong><%= date(condition.dueDate) %></strong></span><span>Verification: <strong>Consultancy review</strong></span></div>
+              <% if (condition.waiverExpired) { %><div class="ctd-callout warn" style="margin-top:10px"><strong>The time-limited waiver expired <%= date(condition.waiverExpiresAt) %>.</strong><br>This obligation is operative again. The consultancy must open a governed reassessment or issue a new decision record; the expired waiver cannot be silently extended or treated as completion.</div><% } %>
+              <% if (condition.verificationCriteria) { %><div class="ctd-callout" style="margin-top:10px"><strong>What the consultancy will verify</strong><br><%= condition.verificationCriteria %></div><% } %>
+              <% if (Array.isArray(condition.evidenceDownloads) && condition.evidenceDownloads.length) { %>
+                <div class="ctd-callout" style="margin-top:10px"><strong>Submitted condition evidence</strong><br>Available only to the assigned client owner and the client security coordinator. The consultancy reviews this evidence independently.
+                  <div class="ctd-downloads"><% condition.evidenceDownloads.forEach((evidence, evidenceIndex) => { %><a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %>/conditions/<%= condition.id %>/evidence/<%= evidence.id %>/download">Download submitted evidence <%= evidenceIndex + 1 %></a><% }) %></div>
+                  <div class="ctd-file-note"><%= condition.evidenceDownloads.length %> protected submission<%= condition.evidenceDownloads.length === 1 ? '' : 's' %>. File storage names are not displayed.</div>
+                </div>
+              <% } %>
+              <% if (assignedToViewer && condition.status === 'open') { %>
+                <form class="ctd-actions" method="POST" action="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %>/conditions/<%= condition.id %>/start" style="margin-top:10px">
+                  <input type="hidden" name="expected_status" value="<%= condition.storedStatus %>">
+                  <button class="btn btn-primary" type="submit">Start this condition</button>
+                </form>
+              <% } else if (assignedToViewer && condition.status === 'in_progress') { %>
+                <form class="ctd-form" method="POST" enctype="multipart/form-data" action="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %>/conditions/<%= condition.id %>/submit" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+                  <input type="hidden" name="expected_status" value="in_progress">
+                  <div><label for="condition-statement-<%= condition.id %>">Completion statement</label><textarea id="condition-statement-<%= condition.id %>" name="completion_statement" minlength="20" maxlength="12000" required placeholder="State exactly what was completed, when it became effective, and how it meets the verification criteria."></textarea></div>
+                  <div><label for="condition-file-<%= condition.id %>">Supporting evidence (optional)</label><input id="condition-file-<%= condition.id %>" class="input" type="file" name="evidence_file"><div class="ctd-meta">Maximum 50 MB. Nimbus inspects the file contents and malware-scans it before retention.</div></div>
+                  <label class="ctd-check"><input type="checkbox" required><span>I confirm this statement is accurate and understand the consultancy must independently verify it.</span></label>
+                  <div class="ctd-actions"><button class="btn btn-primary" type="submit">Submit for consultancy review</button></div>
+                </form>
+              <% } else if (assignedToViewer && condition.status === 'evidence_submitted') { %>
+                <div class="ctd-callout" style="margin-top:10px"><strong>Submitted for independent review.</strong><br>The consultancy will verify the evidence or return the condition with a specific change request.</div>
+              <% } else if (!assignedToViewer && ['open','in_progress'].includes(condition.status)) { %>
+                <div class="ctd-meta"><span>Action is restricted to the assigned client owner.</span></div>
+              <% } else if (condition.waiverExpired) { %>
+                <div class="ctd-meta"><span>Waiting on the consultancy to govern the reassessment; the client cannot renew its own waiver.</span></div>
+              <% } %>
+            </article><% }) %></div>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="ctd-panel" id="discussion">
+        <header class="ctd-panel-head"><span>Client-visible collaboration</span><h2>Questions and comments</h2></header><div class="ctd-body"><div class="ctd-list"><% detail.comments.forEach(comment => { %><article class="ctd-row"><header><strong><%= comment.actorName || comment.actor_name || 'Participant' %></strong><span><%= date(comment.createdAt || comment.created_at) %></span></header><p><%= comment.body %></p></article><% }) %><% if (!detail.comments.length) { %><div class="ctd-empty">No client-visible comments yet.</div><% } %></div><% if (canComment) { %><form class="ctd-form" method="POST" action="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %>/comments" style="margin-top:15px"><div><label for="client-comment">Add a comment</label><textarea id="client-comment" name="body" maxlength="8000" required></textarea></div><div class="ctd-actions"><button class="btn btn-secondary" type="submit">Post comment</button></div></form><% } %></div>
+      </section>
+    </div>
+
+    <aside class="ctd-stack">
+      <section class="ctd-panel"><header class="ctd-panel-head"><span>Relationship</span><h2>Assurance scope</h2></header><div class="ctd-body"><div class="ctd-summary"><div><span>Approved tier</span><strong><%= assessed(record.tier) %></strong></div><div><span>Cycle</span><strong><%= label(record.cycle?.type) %></strong></div><div><span>Business owner</span><strong><%= record.businessOwner || 'Not published' %></strong></div><div><span>Next review</span><strong><%= date(record.nextReviewDate) %></strong></div></div></div></section>
+      <section class="ctd-panel"><header class="ctd-panel-head"><span>Evidence assurance</span><h2>Reviewed evidence</h2></header><div class="ctd-body"><% if (!detail.evidence.length) { %><p class="ctd-empty"><%= Number(detail.evidenceSummary?.reviewedItems || 0) %> evidence item<%= Number(detail.evidenceSummary?.reviewedItems || 0) === 1 ? '' : 's' %> reviewed. Detailed files are withheld unless explicitly released by the engagement team.</p><% } else { %><div class="ctd-list"><% detail.evidence.forEach(item => { %><article class="ctd-row"><header><strong><%= item.filename || 'Released evidence' %></strong><span class="ctd-pill"><%= item.downloadAvailable ? (clientPreview ? 'Client download enabled' : 'Download available') : (item.allowDownload ? 'Download unavailable' : 'Metadata only') %></span></header><p><%= item.description || label(item.category) %></p><div class="ctd-meta"><span>Released <%= date(item.releasedAt) %></span><% if (item.sourceExpiry) { %><span>Source document valid until <%= date(item.sourceExpiry) %></span><% } %><% if (item.accessExpiresAt) { %><span>Portal access available until <%= date(item.accessExpiresAt) %></span><% } %></div><% if (item.downloadAvailable && !clientPreview) { %><div class="ctd-downloads"><a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/client-portal/tprm/<%= record.id %>/evidence-releases/<%= item.releaseId %>/download">Download client-released file</a></div><div class="ctd-file-note">The downloaded file uses this client-safe release label. Internal filenames and storage locations remain private.</div><% } else if (!item.allowDownload) { %><div class="ctd-file-note">Metadata released only. The underlying file has not been shared for download.</div><% } else if (!item.downloadAvailable) { %><div class="ctd-file-note">The released metadata remains visible, but the source file is expired or unavailable and cannot be downloaded.</div><% } %></article><% }) %></div><% } %></div></section>
+      <section class="ctd-panel"><header class="ctd-panel-head"><span>Audit trail</span><h2>Decision history</h2></header><div class="ctd-body"><% if (!detail.decisionHistory.length && !detail.events.length) { %><div class="ctd-empty">Governed history will appear as recommendations and decisions are issued.</div><% } else { %><div class="ctd-list"><% detail.decisionHistory.forEach(item => { %><article class="ctd-row"><header><strong><%= label(item.decision) %></strong><span><%= date(item.decidedAt) %></span></header><p><%= item.rationale %></p></article><% }); detail.events.forEach(event => { %><article class="ctd-row"><header><strong><%= label(event.type) %></strong><span><%= date(event.createdAt) %></span></header><p><%= event.summary || event.actorName || 'Governed lifecycle event' %></p></article><% }) %></div><% } %></div></section>
+    </aside>
+  </div>
+</main>
+
+<%- include('partials/footer') %>

@@ -15,8 +15,13 @@
 'use strict';
 const crypto = require('crypto');
 const fs = require('fs');
+const rbac = require('../lib/rbac');
 const ctlReads = require('../lib/control-reads');
 const docLinks = require('../lib/doc-links');
+const documentHtml = require('../lib/document-html');
+const outcomeScope = require('../lib/engagement-outcome-scope');
+
+const hashAuditorToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
 
 function register(app, deps) {
   const {
@@ -26,6 +31,8 @@ function register(app, deps) {
     resolveUploadPath,
     fs, path
   } = deps;
+  const requireAuditorService = outcomeScope.requirePostGapService(
+    'External certification-auditor access is outside this gap-assessment-only engagement. Use the controlled assessment report for client delivery.');
 
   // ---- token middleware ----
   // Validates :token, enforces expiry + revocation, loads workspace, logs the
@@ -33,7 +40,23 @@ function register(app, deps) {
   function requireAuditorToken(req, res, next) {
     const token = req.params.token;
     if (!token) return res.status(404).render('error', { user: null, message: 'Auditor link missing token.' });
-    const share = db.prepare(`SELECT * FROM auditor_shares WHERE token=?`).get(token);
+    if (typeof token !== 'string' || token.length < 16 || token.length > 256 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+      return res.status(404).render('error', { user: null, message: 'This auditor link is not valid. It may have been revoked or the URL is wrong.' });
+    }
+    const tokenHash = hashAuditorToken(token);
+    let share = db.prepare(`SELECT * FROM auditor_shares WHERE token_hash=?`).get(tokenHash);
+    // Upgrade safety for a database migrated by the SQL runner without a full
+    // application boot. Legacy rows may briefly have a raw token and no hash;
+    // accept that credential once, hash it, and scrub the raw value immediately.
+    if (!share) {
+      share = db.prepare(`SELECT * FROM auditor_shares WHERE token_hash IS NULL AND token=?`).get(token);
+      if (share) {
+        db.prepare(`UPDATE auditor_shares
+          SET token_hash=?, token_last4=?, token='migrated:' || id
+          WHERE id=? AND token_hash IS NULL`).run(tokenHash, token.slice(-4), share.id);
+        share = db.prepare(`SELECT * FROM auditor_shares WHERE id=?`).get(share.id);
+      }
+    }
     if (!share) {
       return res.status(404).render('error', { user: null, message: 'This auditor link is not valid. It may have been revoked or the URL is wrong.' });
     }
@@ -59,6 +82,9 @@ function register(app, deps) {
 
     req.share = share;
     req.workspace = workspace;
+    // The raw credential exists only for this request. It is never copied onto
+    // the database row or logged, but downstream links still need the URL token.
+    res.locals.auditorToken = token;
     next();
   }
 
@@ -72,11 +98,11 @@ function register(app, deps) {
   }
 
   function renderAuditorView(res, view, locals) {
-    res.render(view, Object.assign({ token: locals.share.token, share: locals.share, ws: locals.workspace, fmtDate, bytes }, locals));
+    res.render(view, Object.assign({ token: res.locals.auditorToken, share: locals.share, ws: locals.workspace, fmtDate, bytes }, locals));
   }
 
   // ---- LANDING ----
-  app.get('/auditor/:token', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token', requireAuditorToken, requireAuditorService, (req, res) => {
     // Roll-up counts for the section tiles so the auditor sees scope at a
     // glance before clicking through.
     const counts = {
@@ -85,7 +111,8 @@ function register(app, deps) {
       risks: db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(req.workspace.id).c,
       risks_open: db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status='open'`).get(req.workspace.id).c,
       evidence: db.prepare(`SELECT COUNT(*) c FROM evidence WHERE workspace_id=?`).get(req.workspace.id).c,
-      documents: db.prepare(`SELECT COUNT(*) c FROM generated_docs WHERE workspace_id=? AND retired_at IS NULL`).get(req.workspace.id).c,
+      documents: db.prepare(`SELECT COUNT(*) c FROM generated_docs
+        WHERE workspace_id=? AND status IN ('approved','published') AND retired_at IS NULL`).get(req.workspace.id).c,
       ncs_open: db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status='open'`).get(req.workspace.id).c,
       ncs_total: db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=?`).get(req.workspace.id).c,
       audits: db.prepare(`SELECT COUNT(*) c FROM audits WHERE workspace_id=?`).get(req.workspace.id).c,
@@ -96,7 +123,7 @@ function register(app, deps) {
   });
 
   // ---- SoA ----
-  app.get('/auditor/:token/soa', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/soa', requireAuditorToken, requireAuditorService, (req, res) => {
     // Prefer the most recent snapshot if there is one - that's the version
     // the auditor should see. Live state is a fallback for never-snapshotted
     // workspaces, clearly flagged.
@@ -126,7 +153,7 @@ function register(app, deps) {
     renderAuditorView(res, 'auditor_soa', { share: req.share, workspace: req.workspace, rows, from, snapshot, counts, allSnaps });
   });
 
-  app.get('/auditor/:token/soa/snapshots/:id(\\d+)', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/soa/snapshots/:id(\\d+)', requireAuditorToken, requireAuditorService, (req, res) => {
     const snapshot = db.prepare(`SELECT * FROM soa_snapshots WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!snapshot) return res.status(404).render('error', { user: null, message: 'Snapshot not found.' });
     let rows = [];
@@ -142,7 +169,7 @@ function register(app, deps) {
   });
 
   // ---- RISKS ----
-  app.get('/auditor/:token/risks', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/risks', requireAuditorToken, requireAuditorService, (req, res) => {
     const methodology = getActiveMethodology(req.workspace.id);
     const risks = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r
       LEFT JOIN assets a ON a.id = r.asset_id
@@ -153,7 +180,7 @@ function register(app, deps) {
   });
 
   // ---- EVIDENCE ----
-  app.get('/auditor/:token/evidence', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/evidence', requireAuditorToken, requireAuditorService, (req, res) => {
     const evidence = db.prepare(`SELECT e.id, e.filename, e.sha256, e.size_bytes, e.iso_item_id,
         e.uploaded_at, e.description, u.name AS uploader
       FROM evidence e
@@ -163,7 +190,7 @@ function register(app, deps) {
     renderAuditorView(res, 'auditor_evidence', { share: req.share, workspace: req.workspace, evidence });
   });
 
-  app.get('/auditor/:token/evidence/:id(\\d+)/download', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/evidence/:id(\\d+)/download', requireAuditorToken, requireAuditorService, (req, res) => {
     const ev = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).render('error', { user: null, message: 'Evidence file not found.' });
     const filepath = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
@@ -175,24 +202,26 @@ function register(app, deps) {
   });
 
   // ---- DOCUMENTS (policies + procedures) ----
-  app.get('/auditor/:token/documents', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/documents', requireAuditorToken, requireAuditorService, (req, res) => {
     const docs = db.prepare(`SELECT d.id, d.name, d.category, d.status, d.version, d.next_review_date,
         d.published_at, d.approved_at, u.name AS approver,
         (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc WHERE dc.document_id = d.id) AS control_count
       FROM generated_docs d
       LEFT JOIN users u ON u.id = d.approved_by
-      WHERE d.workspace_id = ? AND d.retired_at IS NULL
+      WHERE d.workspace_id = ? AND d.status IN ('approved','published') AND d.retired_at IS NULL
       ORDER BY d.category, d.name`).all(req.workspace.id);
     renderAuditorView(res, 'auditor_documents', { share: req.share, workspace: req.workspace, docs });
   });
 
-  app.get('/auditor/:token/documents/:id(\\d+)', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/documents/:id(\\d+)', requireAuditorToken, requireAuditorService, (req, res) => {
     const doc = db.prepare(`SELECT d.*, u.name AS approver FROM generated_docs d
       LEFT JOIN users u ON u.id = d.approved_by
-      WHERE d.id = ? AND d.workspace_id = ?`).get(req.params.id, req.workspace.id);
+      WHERE d.id = ? AND d.workspace_id = ?
+        AND d.status IN ('approved','published') AND d.retired_at IS NULL`).get(req.params.id, req.workspace.id);
     if (!doc) return res.status(404).render('error', { user: null, message: 'Document not found.' });
     const body = enc.decryptIfNeeded(doc.content || '', req.workspace.id);
-    const html = body && /^<[a-z]/i.test(body.trim()) ? body : mdRenderer.render(body || '');
+    const rendered = body && /^<[a-z]/i.test(body.trim()) ? body : mdRenderer.render(body || '');
+    const html = documentHtml.sanitizeDocumentHtml(rendered);
     const links = db.prepare(`SELECT dc.iso_item_id, i.title FROM ${docLinks.docControlsExpr('iso27001')} dc
       INNER JOIN iso_items i ON i.id = dc.iso_item_id WHERE dc.document_id=?
       ORDER BY i.sort_order`).all(doc.id);
@@ -200,7 +229,7 @@ function register(app, deps) {
   });
 
   // ---- AUDITS + FINDINGS + NCS ----
-  app.get('/auditor/:token/audits', requireAuditorToken, (req, res) => {
+  app.get('/auditor/:token/audits', requireAuditorToken, requireAuditorService, (req, res) => {
     const audits = db.prepare(`SELECT * FROM audits WHERE workspace_id=? ORDER BY audit_date DESC, id DESC`).all(req.workspace.id);
     const findingsByAudit = {};
     if (audits.length) {
@@ -219,7 +248,7 @@ function register(app, deps) {
   });
 
   // ---- AUDIT-PACK PDF (regenerated on demand for the auditor) ----
-  app.get('/auditor/:token/audit-pack', requireAuditorToken, async (req, res) => {
+  app.get('/auditor/:token/audit-pack', requireAuditorToken, requireAuditorService, async (req, res) => {
     try {
       const data = auditPack.gatherAuditPackData(
         { db, enc, methodologyBand, getActiveMethodology },
@@ -254,8 +283,14 @@ function register(app, deps) {
   // public token routes above are separate and unauthenticated.
   const { requireAuth, requireWorkspace, requirePermission } = deps;
 
-  app.get('/workspaces/:wsId/auditor-access', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-    const shares = db.prepare(`SELECT s.*, u.name AS creator FROM auditor_shares s
+  function renderAuditorConsole(req, res, newShare = null) {
+    // Never select either stored token column into a console view. Metadata is
+    // enough for existing shares; the raw credential is supplied separately,
+    // exactly once, only on the successful create response.
+    const shares = db.prepare(`SELECT s.id, s.workspace_id, s.label, s.expires_at,
+        s.created_by, s.created_at, s.last_accessed_at, s.access_count,
+        s.revoked_at, s.token_last4, u.name AS creator
+      FROM auditor_shares s
       LEFT JOIN users u ON u.id = s.created_by
       WHERE s.workspace_id = ? ORDER BY (s.revoked_at IS NULL) DESC, s.created_at DESC`).all(req.workspace.id);
     // Recent access log for the right-hand pane: every auditor hit across all
@@ -265,25 +300,41 @@ function register(app, deps) {
       WHERE al.workspace_id = ? AND al.action LIKE 'auditor_%'
       ORDER BY al.created_at DESC LIMIT 50`).all(req.workspace.id);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const newShareId = req.query.new ? parseInt(req.query.new, 10) || null : null;
-    res.render('auditor_access', { user: req.user, ws: req.workspace, shares, recentLog, baseUrl, newShareId });
+    const canManage = rbac.hasPermission(req.userPerms, 'auditor_share.manage');
+    res.render('auditor_access', {
+      user: req.user, ws: req.workspace, shares, recentLog, baseUrl,
+      canManage, newShare
+    });
+  }
+
+  app.get('/workspaces/:wsId/auditor-access', requireAuth, requireWorkspace, requireAuditorService, requirePermission('auditor_share.view'), (req, res) => {
+    renderAuditorConsole(req, res);
   });
 
-  app.post('/workspaces/:wsId/auditor-access', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.post('/workspaces/:wsId/auditor-access', requireAuth, requireWorkspace, requireAuditorService, requirePermission('auditor_share.manage'), (req, res) => {
     const label = (req.body.label || '').toString().trim() || 'Auditor share';
     const days = Math.max(1, Math.min(365, parseInt(req.body.expires_days || '30', 10)));
     const token = crypto.randomBytes(24).toString('base64url');
+    const tokenHash = hashAuditorToken(token);
     const expiresAt = new Date(Date.now() + days * 86400000).toISOString().replace('T', ' ').slice(0, 19);
-    const id = db.prepare(`INSERT INTO auditor_shares (workspace_id, token, label, expires_at, created_by) VALUES (?, ?, ?, ?, ?)`)
-      .run(req.workspace.id, token, label, expiresAt, req.user.id).lastInsertRowid;
+    // The legacy `token` column remains NOT NULL during the rolling migration;
+    // store a non-credential marker there. Only the SHA-256 digest is durable.
+    const id = db.prepare(`INSERT INTO auditor_shares
+      (workspace_id, token, token_hash, token_last4, label, expires_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(req.workspace.id, `sha256:${tokenHash}`, tokenHash, token.slice(-4), label, expiresAt, req.user.id).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'create_auditor_share', 'auditor_share', id,
       { label, expires_at: expiresAt, days },
       { ip: req.ip || '', userAgent: (req.get('user-agent') || '').slice(0, 200) });
-    res.redirect(`/workspaces/${req.workspace.id}/auditor-access?new=${id}`);
+    // Render the raw link directly from memory. A later GET has no way to
+    // reconstruct it, so the console enforces a real show-once contract.
+    renderAuditorConsole(req, res, {
+      id: Number(id), token, url: `${req.protocol}://${req.get('host')}/auditor/${token}`
+    });
   });
 
-  app.post('/workspaces/:wsId/auditor-access/:id(\\d+)/revoke', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
-    const share = db.prepare(`SELECT * FROM auditor_shares WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
+  app.post('/workspaces/:wsId/auditor-access/:id(\\d+)/revoke', requireAuth, requireWorkspace, requireAuditorService, requirePermission('auditor_share.manage'), (req, res) => {
+    const share = db.prepare(`SELECT id, label, revoked_at FROM auditor_shares WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!share) return res.redirect(`/workspaces/${req.workspace.id}/auditor-access`);
     db.prepare(`UPDATE auditor_shares SET revoked_at = CURRENT_TIMESTAMP WHERE id=?`).run(share.id);
     logAction(req.user.id, req.workspace.id, 'revoke_auditor_share', 'auditor_share', share.id,

@@ -29,6 +29,14 @@
   .log-time { font-size: 10.5px; color: var(--text-tertiary); font-family: ui-monospace, monospace; }
   .log-action { font-size: 12px; color: var(--text); margin-top: 2px; }
   .log-detail { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .log-time
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head">
@@ -37,6 +45,20 @@
     <div class="page-subtitle">Time-bound read-only links for external auditors. Every access is logged.</div>
   </div>
 </div>
+
+<% if (newShare) { %>
+  <div class="panel" style="margin-bottom:16px;border-color:rgba(22,163,74,.35);">
+    <div class="panel-head"><h2>Auditor link created · copy it now</h2></div>
+    <div class="panel-pad">
+      <div class="share-url-row" style="margin-top:0;">
+        <input type="text" readonly class="share-url-input" value="<%= newShare.url %>" onclick="this.select()">
+        <button class="btn btn-primary btn-xs copy-btn" type="button" data-clip="<%= newShare.url %>">Copy link</button>
+        <a href="<%= newShare.url %>" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-xs">Open</a>
+      </div>
+      <div class="text-success fw-bold text-sm" style="margin-top:8px;">This is the only time the full link is shown. Nimbus stores only its cryptographic hash.</div>
+    </div>
+  </div>
+<% } %>
 
 <div class="share-grid">
   <%# ===== left: active + revoked shares ===== %>
@@ -56,8 +78,6 @@
         </div>
       <% } else { %>
         <% shares.forEach(s => {
-             const url = `${baseUrl}/auditor/${s.token}`;
-             const isNew = typeof newShareId !== 'undefined' && Number(newShareId) === s.id;
              const expired = !s.revoked_at && s.expires_at && new Date(s.expires_at) < new Date();
         %>
           <div class="share-row <%= s.revoked_at ? 'revoked' : '' %>" id="share-<%= s.id %>">
@@ -71,21 +91,13 @@
                 <% } %>
                 · <strong><%= s.access_count %></strong> access<%= s.access_count === 1 ? '' : 'es' %>
                 <% if (s.last_accessed_at) { %> · last <%= String(s.last_accessed_at).slice(0,16).replace('T',' ') %><% } %>
+                <% if (s.token_last4) { %> · credential ending <strong>••••<%= s.token_last4 %></strong><% } %>
               </div>
               <% if (!s.revoked_at && !expired) { %>
-                <div class="share-url-row">
-                  <input type="text" readonly class="share-url-input" value="<%= url %>" onclick="this.select()">
-                  <button class="btn btn-secondary btn-xs copy-btn" type="button" data-clip="<%= url %>">Copy</button>
-                  <a href="<%= url %>" target="_blank" class="btn btn-secondary btn-xs">Open</a>
-                </div>
-                <% if (isNew) { %>
-                  <div class="text-success fw-bold text-sm" style="margin-top:6px;">
-                    ✓ Link created. Copy it and send to the auditor.
-                  </div>
-                <% } %>
+                <div class="meta text-xs" style="margin-top:6px;">The full link is hidden after creation. Generate a replacement if it was not retained securely.</div>
               <% } %>
             </div>
-            <% if (!s.revoked_at) { %>
+            <% if (canManage && !s.revoked_at) { %>
               <form method="POST" action="/workspaces/<%= ws.id %>/auditor-access/<%= s.id %>/revoke" onsubmit="return appConfirmForm(event, 'Revoke this auditor link? They will lose access immediately. The link cannot be unrevoked - mint a new one if you need to share again.');">
                 <button class="btn btn-ghost btn-xs text-danger">Revoke</button>
               </form>
@@ -136,7 +148,8 @@
 
   <%# ===== right: create share form ===== %>
   <div style="position:sticky;top:20px;">
-    <div class="panel">
+    <% if (canManage) { %>
+      <div class="panel">
       <div class="panel-head"><h2>Create new auditor link</h2></div>
       <form method="POST" action="/workspaces/<%= ws.id %>/auditor-access" class="panel-pad">
         <div style="margin-bottom:12px;">
@@ -160,7 +173,13 @@
           Generate link
         </button>
       </form>
-    </div>
+      </div>
+    <% } else { %>
+      <div class="panel panel-pad">
+        <h2 style="margin-top:0;">Read-only access</h2>
+        <div class="meta text-sm">You can review auditor-share status and access history. Only a Manager can generate or revoke an external auditor credential.</div>
+      </div>
+    <% } %>
 
     <div class="meta text-sm" style="margin-top:14px;line-height:1.55;padding:0 4px;">
       <strong>What auditors see:</strong> SoA (current or any snapshot), risk register + heatmap, evidence index with SHA-256 hashes (and downloads), policies/procedures, internal audit findings, nonconformities, and the full PDF audit pack. They cannot edit anything.

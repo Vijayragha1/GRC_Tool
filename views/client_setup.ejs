@@ -1,0 +1,110 @@
+<%- include('partials/header', { title: 'Client setup', user, ws, active: 'setup' }) %>
+
+<%# Every programme and module this client was sold, each with its own scoping
+    step and a status computed live from that programme's own signal. Before
+    this page existed, creating a client with four programmes sent the
+    consultant to one scoping surface and nothing told them the other three
+    were still untouched. %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Client setup</h1>
+    <div class="page-subtitle">
+      <% if (setup.done) { %>
+        Every programme and module on this engagement is scoped.
+      <% } else { %>
+        <%= setup.outstanding %> of <%= setup.total %> step<%= setup.total === 1 ? '' : 's' %> still to complete. Each programme is scoped on its own terms, in any order.
+      <% } %>
+    </div>
+  </div>
+  <div class="row">
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>?skipSetupRedirect=1">Open the client overview</a>
+    <% if (setup.nextStep) { %>
+      <a class="btn btn-primary" href="<%= setup.nextStep.href %>">Start with <%= setup.nextStep.programme %></a>
+    <% } %>
+  </div>
+</div>
+
+<% if (!setup.total) { %>
+  <div class="panel empty-state">
+    <div class="empty-title">No programme assigned yet</div>
+    <div class="empty-sub">This client has no assessment programme or operational module enabled. Assign one in client setup to begin.</div>
+    <a class="btn btn-primary" href="/workspaces/<%= ws.id %>/setup-client">Assign programmes</a>
+  </div>
+<% } else { %>
+
+  <section class="panel panel-pad" style="margin-bottom:18px;">
+    <div class="setup-progress-head">
+      <b><%= setup.complete %>/<%= setup.total %></b>
+      <span><%= setup.done ? 'Setup complete' : 'scoping steps complete' %></span>
+    </div>
+    <div class="setup-bar" role="img" aria-label="<%= setup.pct %>% of setup complete">
+      <span style="width:<%= setup.pct %>%"></span>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-bottom:18px;">
+    <div class="panel-head">
+      <h2>Scoping steps</h2>
+      <span class="meta">Programmes first, then operational modules</span>
+    </div>
+    <% setup.steps.forEach(step => {
+         const isNext = setup.nextStep && setup.nextStep.key === step.key;
+         const label = step.status === 'complete' ? 'Done'
+           : step.status === 'in_progress' ? 'In progress' : 'Not started'; %>
+      <div class="setup-step setup-step-<%= step.status %><%= isNext ? ' is-next' : '' %>">
+        <div class="setup-step-mark" aria-hidden="true"></div>
+        <div class="setup-step-body">
+          <div class="setup-step-title">
+            <strong><%= step.programme %></strong>
+            <span class="meta text-xs"><%= step.kind === 'module' ? 'Module' : 'Programme' %></span>
+            <% if (isNext && !setup.done) { %><span class="tag tag-accent text-xxs">Start here</span><% } %>
+          </div>
+          <div class="setup-step-label"><%= step.label %></div>
+          <div class="meta text-sm"><%= step.detail %></div>
+          <% if (step.note) { %><div class="meta text-xs" style="margin-top:3px;font-style:italic;"><%= step.note %></div><% } %>
+        </div>
+        <div class="setup-step-state">
+          <span class="status s-<%= step.status === 'complete' ? 'implemented' : step.status === 'in_progress' ? 'partial' : 'not-assessed' %>"><%= label %></span>
+          <a class="btn <%= isNext && !setup.done ? 'btn-primary' : 'btn-secondary' %> btn-xs" href="<%= step.href %>">
+            <%= step.status === 'complete' ? 'Review' : step.status === 'in_progress' ? 'Continue' : 'Start' %>
+          </a>
+        </div>
+      </div>
+    <% }) %>
+  </section>
+
+  <%# Third-party risk could only ever be enabled from the create form or from
+      the unassigned-client screen, so a client that already had a programme
+      could never add it. The form lives here now. %>
+  <% if (canEnableTprm && !hasTprm) { %>
+    <section class="panel" style="margin-bottom:18px;">
+      <div class="panel-head">
+        <h2>Add third-party risk</h2>
+        <span class="meta">Independent of the assessment programmes</span>
+      </div>
+      <div class="panel-pad">
+        <form method="POST" action="/workspaces/<%= ws.id %>/modules/tprm">
+          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
+            <% [['assessment_only', 'One-off assessment', 'Assess selected third parties and issue recommendations.'],
+                ['programme_setup', 'Programme setup', 'Establish inventory, methodology and governance.'],
+                ['managed_lifecycle', 'Managed lifecycle', 'Run the provider lifecycle on the client\'s behalf.']].forEach(option => { %>
+              <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;border:1px solid var(--border);border-radius:7px;">
+                <input type="radio" name="service_model" value="<%= option[0] %>" required style="margin-top:3px;">
+                <span class="text-sm"><strong style="display:block;"><%= option[1] %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option[2] %></span></span>
+              </label>
+            <% }) %>
+          </div>
+          <div class="row" style="margin-top:14px;align-items:center;">
+            <button class="btn btn-primary" type="submit">Enable third-party risk</button>
+            <span class="meta text-xs">The contracted service model decides what the module permits.</span>
+          </div>
+        </form>
+      </div>
+    </section>
+  <% } %>
+
+<% } %>
+
+<%- include('partials/footer') %>

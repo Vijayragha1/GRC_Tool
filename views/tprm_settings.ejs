@@ -1,0 +1,141 @@
+<%
+  const settingsPolicy = typeof tprmPolicy !== 'undefined' && tprmPolicy ? tprmPolicy : null;
+  const canEditMethodology = !settingsPolicy || Boolean(settingsPolicy.capabilities && settingsPolicy.capabilities.methodology_governance && settingsPolicy.capabilities.methodology_governance.allowed);
+  const canConfigureMonitoring = !settingsPolicy || Boolean(settingsPolicy.capabilities && settingsPolicy.capabilities.monitoring_connectors && settingsPolicy.capabilities.monitoring_connectors.allowed);
+  const currentServicePeriod = typeof tprmModule !== 'undefined' && tprmModule ? (tprmModule.row || tprmModule) : null;
+%>
+<%- include('partials/header', { title: 'Third-party risk methodology and settings', user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:transparent;--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-subtle);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Third-party risk governance</div>
+    <h1>Methodology and settings</h1>
+    <p>Manage the assessment method, contracted service period and monitoring configuration.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <% if (canEditMethodology) { %>
+      <a class="btn btn-primary" href="/workspaces/<%= ws.id %>/supplier-methodology">Open methodology</a>
+    <% } else { %>
+      <span class="btn" aria-disabled="true" title="<%= settingsPolicy.capabilities.methodology_governance.reason %>" style="cursor:not-allowed;opacity:.58">Methodology unavailable</span>
+    <% } %>
+  </div>
+</header>
+
+<% if (!canEditMethodology) { %>
+  <div class="tprm-callout" style="margin-bottom:16px">
+    <strong>Methodology editing is not included.</strong> <%= settingsPolicy.capabilities.methodology_governance.reason %> Published versions remain available below.
+  </div>
+<% } %>
+
+<div class="tprm-callout" style="margin-bottom:16px">
+  <strong>Published versions are immutable.</strong> Changes begin in a new draft. Assessments, questionnaires, contract reviews and recommendations retain their methodology version and content hash.
+</div>
+
+<% if (currentServicePeriod && currentServicePeriod.status === 'active') { %>
+  <section class="tprm-section">
+    <div class="tprm-section-head">
+      <div>
+        <div class="tprm-kicker">Contracted service period</div>
+        <h2>Active service</h2>
+        <p><strong><%= titleCase(currentServicePeriod.service_model) %></strong> from <%= dateOnly(currentServicePeriod.effective_from) %>.</p>
+      </div>
+      <span class="tprm-status tprm-status-complete">Active</span>
+    </div>
+    <div class="tprm-section-body">
+      <details>
+        <summary style="cursor:pointer;font-weight:650">Close service period</summary>
+        <p class="tprm-muted">Closure is blocked while an assessment cycle or operative condition remains open. Records remain available as read-only history.</p>
+        <form method="POST" action="/workspaces/<%= ws.id %>/tprm/settings/close" style="margin-top:14px">
+          <input type="hidden" name="expected_module_id" value="<%= currentServicePeriod.id %>">
+          <div class="form-grid">
+            <label class="form-field" style="grid-column:1/-1">
+              <span>Closure reason *</span>
+              <textarea class="textarea" name="closure_reason" minlength="10" maxlength="4000" rows="3" required placeholder="Contractual or operational basis for closure"></textarea>
+            </label>
+            <label class="form-field">
+              <span>Retain records until</span>
+              <input class="input" type="date" name="retention_until">
+              <small>Leave blank for the default seven-year retention period.</small>
+            </label>
+            <label class="form-field">
+              <span>Retention policy *</span>
+              <input class="input" name="retention_policy" minlength="10" maxlength="500" required value="Retain governed TPRM records for seven years after service-period closure.">
+            </label>
+          </div>
+          <label class="tprm-confirm"><input type="checkbox" name="legal_hold" value="1"><span>Legal hold applies. Retain records until an authorized records-governance process releases the hold.</span></label>
+          <label class="tprm-confirm"><input type="checkbox" required><span>I understand that closure is permanent, is not deletion and makes this service period read only.</span></label>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn" type="submit">Close service period</button></div>
+        </form>
+      </details>
+    </div>
+  </section>
+<% } %>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div>
+      <div class="tprm-kicker">Continuous monitoring</div>
+      <h2>Connector governance</h2>
+      <p>Control event intake, identity mappings, thresholds and reassessment queues.</p>
+    </div>
+    <% if (canConfigureMonitoring) { %>
+      <a class="btn" href="/workspaces/<%= ws.id %>/tprm/monitoring/connectors">Connector settings</a>
+    <% } else { %>
+      <span class="btn" aria-disabled="true" title="<%= settingsPolicy.capabilities.monitoring_connectors.reason %>" style="cursor:not-allowed;opacity:.58">Not included</span>
+    <% } %>
+  </div>
+  <div class="tprm-section-body tprm-record-list">
+    <div class="tprm-record-row"><span><strong>Service capability</strong><small><%= canConfigureMonitoring ? 'Connector management is available for this service period.' : settingsPolicy.capabilities.monitoring_connectors.reason %></small></span><span><%= canConfigureMonitoring ? 'Included' : 'Unavailable' %></span></div>
+    <div class="tprm-record-row"><span><strong>Secret handling</strong><small>Only external secret references are stored.</small></span><span>External store</span></div>
+    <div class="tprm-record-row"><span><strong>Connection status</strong><small>A successful intake is required before a connector is reported as connected.</small></span><span>Evidence based</span></div>
+  </div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head">
+    <div><div class="tprm-kicker">Version history</div><h2>Methodology releases</h2><p>One published version is active for new assessment cycles.</p></div>
+  </div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Version</th><th>Name</th><th>Status</th><th>Published by</th><th>Published</th><th>Content identity</th></tr></thead>
+      <tbody>
+        <% methodologies.forEach(method => { %>
+          <tr>
+            <td><strong>v<%= method.version %></strong><small><%= method.is_active ? 'Active for new cycles' : 'Historic' %></small></td>
+            <td><%= method.name %></td>
+            <td><span class="tprm-status tprm-status-<%= method.status %>"><%= titleCase(method.status) %></span></td>
+            <td><%= method.published_by_name || 'System migration' %></td>
+            <td><%= dateOnly(method.published_at || method.created_at) %></td>
+            <td><code><%= method.content_hash ? method.content_hash.slice(0, 12) : 'Legacy version' %></code></td>
+          </tr>
+        <% }) %>
+        <% if (!methodologies.length) { %>
+          <tr><td colspan="6"><div class="tprm-empty"><strong>No methodology version</strong><span>Open the methodology workbench to initialize the production method.</span></div></td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="tprm-section">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Operating model</div><h2>Governance controls and terminology</h2></div></div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Area</th><th>Control</th><th>Required position</th></tr></thead>
+      <tbody>
+        <tr><td>Decision control</td><td>Maker-checker recommendation</td><td>Consultant drafts; authorized senior reviewer issues.</td></tr>
+        <tr><td>Decision control</td><td>Client-owned decision</td><td>Firm users cannot record the final onboarding decision.</td></tr>
+        <tr><td>Lineage</td><td>Versioned assessment record</td><td>Method and evidence baselines remain reproducible.</td></tr>
+        <tr><td>Terminology</td><td>Module</td><td>Third-party risk</td></tr>
+        <tr><td>Terminology</td><td>Organisation record</td><td>Third party</td></tr>
+        <tr><td>Terminology</td><td>External respondent</td><td>Provider contact</td></tr>
+        <tr><td>Terminology</td><td>Evidence workflow</td><td>Due diligence</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+<%- include('partials/footer') %>

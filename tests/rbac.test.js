@@ -27,6 +27,9 @@ test('rbac - senior_consultant has broad perms but not firm.manage, firm.users.m
   assert.ok(!perms.includes('firm.manage'), 'senior_consultant must not manage firm');
   assert.ok(!perms.includes('firm.users.manage'), 'senior_consultant must not manage firm users');
   assert.ok(!perms.includes('workspace.delete'), 'senior_consultant must not delete workspace');
+  assert.ok(perms.includes('firm.library.manage'), 'senior_consultant needs governed firm-library management');
+  assert.ok(perms.includes('auditor_share.view'), 'senior_consultant needs auditor-share visibility');
+  assert.ok(!perms.includes('auditor_share.manage'), 'senior_consultant must not mint external credentials by default');
   // Should have workspace.create, members.override_perms, assessment.signoff
   assert.ok(perms.includes('workspace.create'), 'senior_consultant needs workspace.create');
   assert.ok(perms.includes('members.override_perms'), 'senior_consultant needs members.override_perms');
@@ -54,6 +57,9 @@ test('rbac - consultant has working-level perms but no member management or docu
   assert.ok(!perms.includes('members.override_perms'), 'consultant must not override perms');
   // Should NOT delete workspace
   assert.ok(!perms.includes('workspace.delete'), 'consultant must not delete workspace');
+  assert.ok(!perms.includes('firm.library.manage'), 'consultant must not mutate the firm risk library');
+  assert.ok(perms.includes('auditor_share.view'), 'consultant may review auditor access history');
+  assert.ok(!perms.includes('auditor_share.manage'), 'consultant must not mint external credentials');
 });
 
 test('rbac - client_owner is a portal sponsor, never a workspace administrator', () => {
@@ -201,7 +207,14 @@ test('rbac - every permission listed in PERMISSIONS is referenced by at least on
   // manager '*' implicitly covers all, so this test asserts that at least
   // one *non-manager* role uses each permission OR it's clearly a restricted
   // gate (firm.manage, firm.users.manage are manager-only).
-  const managerOnly = new Set(['firm.manage', 'firm.users.manage', 'workspace.delete', 'report.approve']);
+  // auditor_share.manage mints an external credential; AUTHZ-004 requires it
+  // to stay manager-only unless management explicitly delegates it.
+  // TPRM methodology publication changes the scoring and scope used for
+  // future client recommendations, so it remains a manager-only governance
+  // control rather than a normal senior-consultant operation.
+  const managerOnly = new Set(['firm.manage', 'firm.users.manage', 'workspace.delete', 'report.approve',
+                              'auditor_share.manage', 'supplier.risk_accept', 'tprm.methodology.manage',
+                              'dpdpa.approve']);
   const allRoles = Object.keys(rbac.ROLE_PERMS).filter(r => r !== 'manager');
   for (const perm of Object.keys(rbac.PERMISSIONS)) {
     if (managerOnly.has(perm)) continue;

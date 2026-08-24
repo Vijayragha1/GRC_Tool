@@ -16,7 +16,7 @@ test.before(async () => {
   workspaceId = Number(db.prepare(`INSERT INTO workspaces
     (firm_id, client_name, industry, scope, lead_consultant_id, frameworks)
     VALUES (?, 'Framework Evidence Test', 'Technology', 'Integrated assurance scope', ?, ?)`)
-    .run(manager.firm_id, managerId, JSON.stringify(['iso27001', 'iso42001', 'csf'])).lastInsertRowid);
+    .run(manager.firm_id, managerId, JSON.stringify(['iso27001', 'iso42001', 'csf', 'dpdpa'])).lastInsertRowid);
   db.prepare(`INSERT INTO workspace_members (workspace_id,user_id,role) VALUES (?,?,'firm_owner')`)
     .run(workspaceId, managerId);
 });
@@ -32,17 +32,20 @@ test('evidence upload renders every enabled framework catalog', async () => {
   assert.match(page.text, />ISO 27001</);
   assert.match(page.text, />ISO 42001</);
   assert.match(page.text, />NIST CSF 2\.0</);
+  assert.match(page.text, />India DPDPA</);
   assert.match(page.text, /name="iso_item_id" value="clause-4\.1"/);
   assert.match(page.text, /name="iso42001_item_ref" value="ai-clause-4\.1"/);
   assert.match(page.text, /name="csf_item_ref" value="GV\.OC-01"/);
+  assert.match(page.text, /name="dpdpa_item_ref" value="DPDPA-APP-01"/);
 });
 
-test('one upload links to ISO 27001, ISO 42001 and NIST CSF through canonical requirements', async () => {
+test('one upload links to every enabled framework through canonical requirements', async () => {
   const form = new FormData();
   form.set('_csrf', client.getCsrfToken());
   form.set('iso_item_id', 'clause-4.1');
   form.set('iso42001_item_ref', 'ai-clause-4.1');
   form.set('csf_item_ref', 'GV.OC-01');
+  form.set('dpdpa_item_ref', 'DPDPA-APP-01');
   form.set('description', 'Cross-framework governance evidence');
   form.append('file', new Blob(['approved governance record\n'], { type: 'text/plain' }), 'cross-framework-evidence.txt');
   const response = await fetch(`${await client.baseUrl()}/workspaces/${workspaceId}/evidence`, {
@@ -68,6 +71,7 @@ test('one upload links to ISO 27001, ISO 42001 and NIST CSF through canonical re
     WHERE erl.evidence_id=? ORDER BY f.code`).all(evidence.id);
   assert.deepEqual(links, [
     { framework: 'csf', ref: 'GV.OC-01' },
+    { framework: 'dpdpa', ref: 'DPDPA-APP-01' },
     { framework: 'iso27001', ref: 'clause-4.1' },
     { framework: 'iso42001', ref: 'ai-clause-4.1' }
   ]);
@@ -80,8 +84,10 @@ test('the picker and write routes reject frameworks not enabled for the client',
   assert.match(page.text, /data-picker-tab="csf"/);
   assert.doesNotMatch(page.text, /data-picker-tab="iso27001"/);
   assert.doesNotMatch(page.text, /data-picker-tab="iso42001"/);
+  assert.doesNotMatch(page.text, /data-picker-tab="dpdpa"/);
   assert.doesNotMatch(page.text, /name="iso_item_id"/);
   assert.doesNotMatch(page.text, /name="iso42001_item_ref"/);
+  assert.doesNotMatch(page.text, /name="dpdpa_item_ref"/);
 
   const evidenceId = db.prepare(`SELECT id FROM evidence WHERE workspace_id=? ORDER BY id DESC LIMIT 1`).get(workspaceId).id;
   const rejected = await client.post(`/workspaces/${workspaceId}/evidence/${evidenceId}/links`, {

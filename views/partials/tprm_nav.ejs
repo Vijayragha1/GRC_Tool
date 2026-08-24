@@ -1,0 +1,34 @@
+<link rel="stylesheet" href="/tprm.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<%
+  const servicePolicy = typeof tprmPolicy !== 'undefined' && tprmPolicy ? tprmPolicy : null;
+  const policyCapability = key => !servicePolicy || Boolean(servicePolicy.capabilities && servicePolicy.capabilities[key] && servicePolicy.capabilities[key].allowed);
+  const policyReason = key => servicePolicy && servicePolicy.capabilities && servicePolicy.capabilities[key]
+    ? servicePolicy.capabilities[key].reason : 'This action is outside the active service model.';
+  const canAssessmentNav = policyCapability('bounded_assessment');
+  const canFindingsNav = policyCapability('bounded_assessment');
+  const canMonitoringNav = policyCapability('operational_lifecycle');
+  const canReportsNav = policyCapability('client_decision_report');
+%>
+<nav class="tprm-module-nav" aria-label="Third-party risk module">
+  <a href="/workspaces/<%= ws.id %>/tprm" class="<%= active === 'tprm-overview' ? 'active' : '' %>" <%= active === 'tprm-overview' ? 'aria-current="page"' : '' %>>Overview</a>
+  <a href="/workspaces/<%= ws.id %>/tprm/third-parties" class="<%= active === 'tprm-third-parties' ? 'active' : '' %>" <%= active === 'tprm-third-parties' ? 'aria-current="page"' : '' %>>Third parties</a>
+  <% if (canAssessmentNav) { %><a href="/workspaces/<%= ws.id %>/tprm/assessments" class="<%= active === 'tprm-assessments' ? 'active' : '' %>" <%= active === 'tprm-assessments' ? 'aria-current="page"' : '' %>>Assessments</a><% } else { %><span class="tprm-nav-disabled" aria-disabled="true" title="<%= policyReason('bounded_assessment') %>">Assessments</span><% } %>
+  <% if (canFindingsNav) { %><a href="/workspaces/<%= ws.id %>/tprm/findings" class="<%= active === 'tprm-findings' ? 'active' : '' %>" <%= active === 'tprm-findings' ? 'aria-current="page"' : '' %>>Findings</a><% } else { %><span class="tprm-nav-disabled" aria-disabled="true" title="<%= policyReason('bounded_assessment') %>">Findings</span><% } %>
+  <% if (canMonitoringNav) { %><a href="/workspaces/<%= ws.id %>/tprm/monitoring" class="<%= active === 'tprm-monitoring' ? 'active' : '' %>" <%= active === 'tprm-monitoring' ? 'aria-current="page"' : '' %>>Monitoring</a><% } else { %><span class="tprm-nav-disabled" aria-disabled="true" title="<%= policyReason('operational_lifecycle') %>">Monitoring</span><% } %>
+  <% if (canReportsNav) { %><a href="/workspaces/<%= ws.id %>/tprm/reports" class="<%= active === 'tprm-reports' ? 'active' : '' %>" <%= active === 'tprm-reports' ? 'aria-current="page"' : '' %>>Reports</a><% } else { %><span class="tprm-nav-disabled" aria-disabled="true" title="<%= policyReason('client_decision_report') %>">Reports</span><% } %>
+  <% if (canSettings) { %><a href="/workspaces/<%= ws.id %>/tprm/settings" class="<%= active === 'tprm-settings' ? 'active' : '' %>" <%= active === 'tprm-settings' ? 'aria-current="page"' : '' %>>Settings</a><% } %>
+</nav>
+<% if (servicePolicy && servicePolicy.active) { %>
+  <div class="tprm-callout tprm-service-model-banner" data-service-model="<%= servicePolicy.serviceModel %>" style="margin:-10px 0 18px">
+    <strong><%= servicePolicy.serviceModelLabel %> service period.</strong>
+    <%= servicePolicy.summary %>
+    <% if (servicePolicy.exclusion) { %><span> <%= servicePolicy.exclusion %></span><% } %>
+    <small><%= servicePolicy.modelChangeRule %></small>
+  </div>
+<% } %>
+<% if (typeof tprmModule !== 'undefined' && tprmModule && tprmModule.activationRequired) { %>
+  <div class="tprm-callout" style="margin:-10px 0 18px;border-color:rgba(217,119,6,.35);background:rgba(217,119,6,.06)"><strong>Legacy records need classification.</strong> This module is read-only until a firm manager classifies the retained records and confirms decision ownership.<% if (canSettings) { %> <a href="/workspaces/<%= ws.id %>/tprm/settings">Open settings</a><% } %></div>
+<% } %>
+<% if (typeof tprmModule !== 'undefined' && tprmModule && tprmModule.closed) { %>
+  <div class="tprm-callout" style="margin:-10px 0 18px"><strong>Service period closed.</strong> Records are retained as read only. Start a new service period in settings to resume work.</div>
+<% } %>

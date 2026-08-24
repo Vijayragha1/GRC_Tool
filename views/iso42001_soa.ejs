@@ -34,7 +34,7 @@
       <span class="tag tag-warn text-eyebrow">missing - auditors expect this</span>
     <% } %>
   </summary>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/metadata" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/metadata" class="panel-pad stack-grid" style="--cols:1fr 1fr 1fr 1fr;border-top:1px solid var(--border);background:var(--bg-subtle);gap:10px;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <div><label class="label">Version</label><input class="input" name="version" value="<%= soaMeta.version || '' %>" placeholder="e.g., 1.2"></div>
     <div><label class="label">Owner</label><input class="input" name="owner" value="<%= soaMeta.owner || '' %>" placeholder="e.g., AI Risk Lead"></div>
@@ -178,7 +178,7 @@
   <% } %>
   <details style="border-top:1px solid var(--border);">
     <summary class="panel-pad text-md" style="cursor:pointer;color:var(--accent);">+ Add custom control</summary>
-    <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/custom-controls" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:120px 1fr 160px 140px;gap:8px;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/custom-controls" class="panel-pad stack-grid" style="--cols:120px 1fr 160px 140px;background:var(--bg-subtle);gap:8px;">
       <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
       <input class="input mono text-md" name="code" placeholder="C-001" required>
       <input class="input text-md" name="title" placeholder="Control title" required>

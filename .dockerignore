@@ -1,9 +1,51 @@
-node_modules
-iso27001.db*
-uploads
-data/iso27001.db*
+# SEC-001: the build context must never carry secrets, data, or local state.
+# Deny broadly first, then re-include only the runtime source tree. Both the
+# directory and its descendants must be negated: re-including a directory does
+# not automatically re-include children that were excluded by `*`.
+*
+
+# --- runtime source (allowlist) ---
+!package.json
+!package-lock.json
+!server.js
+!db.js
+!routes/
+!routes/**
+!lib/
+!lib/**
+!views/
+!views/**
+!public/
+!public/**
+!data/
+!data/**
+!migrations/
+!migrations/**
+!scripts/
+!scripts/**
+
+# --- re-deny anything sensitive that the allowlist above would otherwise pull in ---
+.env
+.env.*
+!.env.example
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
 data/master.key
-data/backups
-.git
-*.log
+data/backups/
+data/email-dev-outbox.log
+uploads/
+backups/
+.demo-backup/
+output/
+tmp/
+node_modules/
+.git/
+.github/
+tests/
+**/*.log
+**/*.key
+**/*.pem
+**/*.enc
 .DS_Store

@@ -61,7 +61,12 @@ function makeClient(app) {
         headers['content-type'] = 'application/x-www-form-urlencoded';
         // Auto-attach CSRF token unless caller explicitly disabled it.
         if (csrfToken && opts.csrf !== false && !body._csrf) body._csrf = csrfToken;
-        payload = new URLSearchParams(body).toString();
+        const form = new URLSearchParams();
+        Object.entries(body).forEach(([key, value]) => {
+          if (Array.isArray(value)) value.forEach(item => form.append(key, item));
+          else form.append(key, value);
+        });
+        payload = form.toString();
       }
     } else if (typeof body === 'string') {
       payload = body;

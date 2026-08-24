@@ -1,4 +1,7 @@
 <%- include('partials/header', { title: 'Supplier inherent risk', user, ws, active: 'vendors' }) %>
+<% const retainedReadOnly = typeof tprmReadOnly !== 'undefined' && tprmReadOnly; %>
+
+<% if (retainedReadOnly) { %><div class="panel" style="margin-bottom:16px"><div class="panel-pad"><strong>Retained history - read only.</strong><div class="meta"><%= tprmReadOnlyReason %></div></div></div><% } %>
 
 <div class="page-head">
   <div>
@@ -11,15 +14,18 @@
 
 <% if (!assessment) { %>
   <div class="panel" style="max-width:720px">
-    <div class="panel-head"><h2>Start the assessment</h2></div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk/start" class="panel-pad grid-2">
+    <div class="panel-head"><h2><%= retainedReadOnly ? 'No retained inherent-risk assessment' : activeCycle && scopedServiceCount ? 'Start inherent-risk fieldwork' : 'Define the assessment scope first' %></h2></div>
+    <% if (retainedReadOnly) { %><div class="panel-pad"><p class="meta" style="margin:0">No assessment was recorded in this concluded service period. Start a new governed service period to perform fieldwork.</p></div>
+    <% } else if (!activeCycle || !scopedServiceCount) { %>
+      <div class="panel-pad"><p class="meta" style="line-height:1.55;margin:0 0 12px">Choose the exact service relationship(s), cycle type and client decision authority before beginning fieldwork. This prevents one supplier-level answer from being applied to the wrong service.</p><a class="btn btn-primary" href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= v.id %>#cycle-governance">Define service scope →</a></div>
+    <% } else { %><form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk/start" class="panel-pad grid-2">
       <div><label class="label">Assessment type</label><select class="select" name="assessment_type"><option value="onboarding">Onboarding</option><option value="periodic">Periodic</option><option value="triggered">Triggered</option></select></div>
       <div><label class="label">Due date</label><input class="input" type="date" name="due_date"></div>
-      <div class="col-full"><button class="btn btn-primary">Start assessment</button></div>
-    </form>
+      <div class="col-full"><div class="meta" style="margin-bottom:9px">Cycle <%= activeCycle.cycle_number %> covers <%= scopedServiceCount %> service relationship<%= scopedServiceCount === 1 ? '' : 's' %>.</div><button class="btn btn-primary">Start fieldwork</button></div>
+    </form><% } %>
   </div>
 <% } else { %>
-  <% const locked = assessment.status !== 'draft'; %>
+  <% const locked = retainedReadOnly || assessment.status !== 'draft'; %>
   <div class="panel" style="margin-bottom:16px">
     <div class="panel-pad" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:0">
       <div class="kpi" style="border-right:1px solid var(--border)"><div class="sec-label">Weighted inherent risk</div><div class="kpi-num"><%= result ? result.weightedScore.toFixed(2) : '-' %><span class="meta"> / 100</span></div></div>
@@ -71,7 +77,7 @@
     <% if (!locked) { %><div class="row" style="margin-bottom:20px"><button class="btn btn-secondary" name="action" value="save">Save draft</button><button class="btn btn-primary" name="action" value="submit">Submit for approval</button></div><% } %>
   </form>
 
-  <% if (assessment.status === 'submitted') { %>
+  <% if (!retainedReadOnly && assessment.status === 'submitted') { %>
     <div class="panel" style="max-width:760px">
       <div class="panel-head"><h2>Approve calculated scope</h2><span class="meta">Requires supplier approval permission</span></div>
       <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk/approve" class="panel-pad">

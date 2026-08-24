@@ -9,14 +9,15 @@ module.exports = [
   },
   {
     name: 'Privacy officer / DPO',
-    description: 'Data protection officer: view + manage privacy-related areas (DPIAs, supplier DPAs, incidents involving PII).',
+    description: 'Data protection officer: assess DPDPA readiness, review evidence, and manage privacy-related records.',
     permissions: [
       'entity.view','entity.create','entity.update',
       'control.view','control.update',
       'risk.view','risk.create','risk.update',
       'asset.view','asset.update',
       'document.view','document.create','document.edit','document.submit_review','document.review','document.sign',
-      'incident.manage','supplier.manage','training.manage',
+      'incident.manage','supplier.manage',
+      'dpdpa.view','dpdpa.assess','dpdpa.review','dpdpa.export',
       'audit_log.view','audit_log.export','comment.create','evidence.upload'
     ]
   },

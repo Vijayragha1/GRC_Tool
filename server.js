@@ -1,3 +1,8 @@
+// HARD-001: make every file or directory created by this process private by
+// default. This must run before loading configuration, opening SQLite, creating
+// the encryption key, staging uploads, or writing backups.
+process.umask(0o077);
+
 // Load .env before anything reads process.env. Ambient environment variables
 // take precedence over the file, so deploys that inject real env still win.
 try { process.loadEnvFile(); } catch (_) { /* no .env present */ }
@@ -43,7 +48,6 @@ const generateDocxBuffer = require('./lib/workers').generateDocx;
 const jobs = require('./lib/jobs');
 const fts = require('./lib/fts');
 const reports = require('./lib/reports');
-const backup = require('./lib/backup');
 const keyrotation = require('./lib/keyrotation');
 const csvImport = require('./lib/csv-import');
 const auditPack = require('./lib/audit-pack');
@@ -55,6 +59,45 @@ const ctlReads = require('./lib/control-reads');
 const ctlWrites = require('./lib/control-writes');
 const docLinks = require('./lib/doc-links');
 const evWrites = require('./lib/evidence-writes');
+const tprmMonitoringRoutes = require('./routes/tprm-monitoring');
+const { resolveRuntimeSecret } = require('./lib/runtime-secret-resolver');
+
+// Remediate permissions on artifacts created by releases that pre-date the
+// restrictive umask. New files are already private; this one-time-compatible
+// pass also covers the configured database, WAL/SHM files, key, uploads and
+// encrypted backups without logging their names or contents.
+(function hardenRuntimePermissions() {
+  const dataDir = path.join(__dirname, 'data');
+  const backupDir = path.resolve(process.env.ISMS_BACKUP_DIR || path.join(dataDir, 'backups'));
+  const uploadsDir = path.join(__dirname, 'uploads');
+  const localSnapshotDir = path.join(__dirname, '.demo-backup');
+  const configuredDb = path.resolve(process.env.DB_PATH || path.join(__dirname, 'iso27001.db'));
+  const keyFile = path.resolve(process.env.ISMS_KEY_FILE || path.join(dataDir, 'master.key'));
+  const directories = [dataDir, backupDir, uploadsDir, localSnapshotDir];
+  const files = [path.join(__dirname, '.env'), configuredDb, `${configuredDb}-wal`, `${configuredDb}-shm`, keyFile];
+  try {
+    for (const dir of directories) if (fs.existsSync(dir)) fs.chmodSync(dir, 0o700);
+    if (fs.existsSync(dataDir)) {
+      for (const name of fs.readdirSync(dataDir)) {
+        if (/\.(?:db|sqlite)(?:-(?:wal|shm))?$/i.test(name)) files.push(path.join(dataDir, name));
+      }
+    }
+    for (const dir of [__dirname, localSnapshotDir]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const name of fs.readdirSync(dir)) {
+        if (/\.(?:db|sqlite)(?:-(?:wal|shm))?$/i.test(name)) files.push(path.join(dir, name));
+      }
+    }
+    if (fs.existsSync(backupDir)) {
+      for (const name of fs.readdirSync(backupDir)) {
+        if (/\.(?:enc|json)$/.test(name) || name === '.backup.lock') files.push(path.join(backupDir, name));
+      }
+    }
+    for (const file of new Set(files)) if (fs.existsSync(file)) fs.chmodSync(file, 0o600);
+  } catch (error) {
+    console.warn('WARNING: could not enforce private runtime file permissions:', error.message);
+  }
+})();
 
 init();
 
@@ -66,9 +109,14 @@ init();
 // client-side; that is strictly better than a full crash. Individual handlers
 // should still try/catch - this is the last line, not the pattern.
 // ---------------------------------------------------------------------------
-process.on('unhandledRejection', (err) => {
+const UNHANDLED_REJECTION_HANDLER = Symbol.for('complianceSphere.unhandledRejectionHandler');
+if (process[UNHANDLED_REJECTION_HANDLER]) {
+  process.off('unhandledRejection', process[UNHANDLED_REJECTION_HANDLER]);
+}
+process[UNHANDLED_REJECTION_HANDLER] = (err) => {
   console.error('[unhandledRejection]', err && err.stack ? err.stack : err);
-});
+};
+process.on('unhandledRejection', process[UNHANDLED_REJECTION_HANDLER]);
 
 // ---------------------------------------------------------------------------
 // Startup secret validation
@@ -108,8 +156,8 @@ process.on('unhandledRejection', (err) => {
 enc.masterKey();
 // Start scheduled job runner - every 60 minutes by default.
 jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
-// Start daily backup runner.
-backup.start(parseInt(process.env.ISMS_BACKUP_HOURS || '24', 10));
+// Production backups are scheduled once by the host cron installed by
+// deploy/lightsail-setup.sh. Manual backups remain available in System.
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -159,6 +207,12 @@ app.use(helmet({
   hsts: process.env.NODE_ENV === 'production' ? undefined : false,
 }));
 app.use(compression());
+
+// Public continuous-monitoring ingress owns a strict 1 MiB raw parser and is
+// registered before the application's larger general JSON parser. It is HMAC
+// authenticated, creates no browser session and exposes no tenant information.
+tprmMonitoringRoutes.registerPublic(app, { db, secretResolver: resolveRuntimeSecret });
+
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 
@@ -167,7 +221,7 @@ app.use(express.json({ limit: '10mb' }));
 // serve a stale stylesheet or favicon after a change.
 app.locals.assetVersion = (() => {
   const h = crypto.createHash('md5');
-  for (const f of ['public/app.css', 'public/auditor.css', 'public/page-loader.css', 'public/page-loader.js', 'public/site-enhancements.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
+  for (const f of ['public/app.css', 'public/tprm.css', 'public/dpdpa.css', 'public/auditor.css', 'public/public.css', 'public/page-loader.css', 'public/page-loader.js', 'public/site-enhancements.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
     try { h.update(fs.readFileSync(path.join(__dirname, f))); } catch (_) {}
   }
   return h.digest('hex').slice(0, 8);
@@ -263,7 +317,7 @@ app.use((_req, res, next) => {
 // res.locals.csrfToken - partials/header.ejs renders it in a <meta> tag,
 // and partials/footer.ejs has a load-time form walker that injects a hidden
 // _csrf input into every form. Tests can disable via DISABLE_CSRF=1.
-const { csrfMiddleware } = require('./lib/csrf');
+const { csrfMiddleware, csrfAfterMultipart } = require('./lib/csrf');
 if (process.env.DISABLE_CSRF !== '1') {
   app.use(csrfMiddleware);
 } else {
@@ -287,7 +341,10 @@ const rawUpload = multer({
     destination: function (req, _file, cb) {
       const firmId = (req.workspace && req.workspace.firm_id) || (req.user && req.user.firm_id) || 0;
       const dir = path.join(__dirname, 'uploads', `firm_${firmId}`);
-      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+      try {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        fs.chmodSync(dir, 0o700);
+      } catch (_) {}
       cb(null, dir);
     },
     filename: function (_req, file, cb) {
@@ -329,7 +386,8 @@ function inspectedUpload(middleware, allowedExtensions = GENERAL_UPLOAD_EXTENSIO
           });
         }
       }
-      next();
+      if (process.env.DISABLE_CSRF === '1') return next();
+      csrfAfterMultipart(req, res, next, () => removeStagedFiles(files));
     });
   };
 }
@@ -370,7 +428,10 @@ const questionnaireUpload = multer({
     destination: function (req, _file, cb) {
       const firmId = (req.workspace && req.workspace.firm_id) || (req.user && req.user.firm_id) || 0;
       const dir = path.join(__dirname, 'uploads', `firm_${firmId}`);
-      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+      try {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        fs.chmodSync(dir, 0o700);
+      } catch (_) {}
       cb(null, dir);
     },
     filename: function (_req, file, cb) {
@@ -406,7 +467,8 @@ function qUploadAny(req, res, next) {
         }
       }
     }
-    next();
+    if (process.env.DISABLE_CSRF === '1') return next();
+    csrfAfterMultipart(req, res, next, () => removeStagedFiles(stagedFiles(req)));
   });
 }
 
@@ -517,10 +579,53 @@ function currentUser(req) {
   // was the no-auth stub; once email/password login was enabled, this must
   // return null for any unauthenticated request so requireAuth can challenge.
   if (req.session && req.session.userId) {
-    const u = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(req.session.userId);
-    if (u) return u;
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
+    if (!u || !u.active) {
+      // Do not leave a stale userId in the session. Apart from being misleading,
+      // /login would otherwise see it and redirect straight back to /dashboard.
+      delete req.session.userId;
+      delete req.session.authEpoch;
+      return null;
+    }
+    // SESS-001: a session is only valid while it carries the user's current
+    // authorization epoch. Password reset and deactivation bump the epoch, so
+    // sessions minted before that moment stop resolving here even though their
+    // cookie is still well-formed and their session row still exists.
+    const epoch = Number(u.auth_epoch || 0);
+    const claimed = Number(req.session.authEpoch || 0);
+    if (claimed !== epoch) {
+      delete req.session.userId;
+      delete req.session.authEpoch;
+      return null;
+    }
+    return u;
   }
   return null;
+}
+
+// SESS-001: bump the epoch and drop persisted session rows for one user.
+// Callers must run this inside their own transaction where atomicity matters.
+function revokeUserSessions(userId) {
+  db.prepare('UPDATE users SET auth_epoch = COALESCE(auth_epoch,0) + 1 WHERE id = ?').run(userId);
+  // better-sqlite3-session-store keeps JSON in `sess`. Use JSON extraction so
+  // revoking user 1 cannot accidentally delete sessions for users 10 or 100.
+  try {
+    db.prepare(`DELETE FROM sessions
+      WHERE CAST(json_extract(sess, '$.userId') AS INTEGER) = ?`).run(Number(userId));
+  } catch (_) {
+    // The store may not be initialised yet, or SQLite may have been built
+    // without JSON1. Fall back to exact application-side JSON parsing.
+    try {
+      const rows = db.prepare('SELECT sid, sess FROM sessions').all();
+      const del = db.prepare('DELETE FROM sessions WHERE sid = ?');
+      for (const row of rows) {
+        try {
+          if (Number(JSON.parse(row.sess).userId) === Number(userId)) del.run(row.sid);
+        } catch (_) { /* ignore malformed/foreign session rows */ }
+      }
+    } catch (_) { /* store may not be initialised yet */ }
+  }
+  return db.prepare('SELECT auth_epoch FROM users WHERE id = ?').get(userId)?.auth_epoch ?? 0;
 }
 
 function listAllFirms() {
@@ -603,13 +708,33 @@ function getWorkspace(workspaceId, user) {
 
 // Framework whitelist + parser live in lib/frameworks.js (shared with the
 // workspaces and evidence modules).
-const { ALLOWED_FRAMEWORKS, parseWorkspaceFrameworks } = require('./lib/frameworks');
+const { ALLOWED_FRAMEWORKS, FRAMEWORK_LIST, parseWorkspaceFrameworks } = require('./lib/frameworks');
 
 function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
   ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
   ws.effective_timezone = workspaceTimeZone(ws);
+  // Operational modules are independent of assessment frameworks. Attach the
+  // authoritative TPRM service period once so navigation and every workspace
+  // view use the same enablement truth. Historic rows awaiting classification
+  // stay visible, but route-level mutation guards keep them read-only.
+  try {
+    ws.tprm_module = db.prepare(`SELECT * FROM tprm_modules
+      WHERE workspace_id=? ORDER BY id DESC LIMIT 1`).get(ws.id) || null;
+  } catch (_) {
+    ws.tprm_module = null;
+  }
+  ws.tprm_enabled = ws.tprm_module ? 1 : 0;
+  ws.tprm_active = ws.tprm_module && ws.tprm_module.status === 'active' ? 1 : 0;
+  ws.tprm_closed = ws.tprm_module && ws.tprm_module.status === 'closed' ? 1 : 0;
+  try {
+    ws.vciso_service = db.prepare(`SELECT * FROM vciso_services
+      WHERE workspace_id=? AND status IN ('active','on_hold') ORDER BY id DESC LIMIT 1`).get(ws.id) || null;
+  } catch (_) {
+    ws.vciso_service = null;
+  }
+  ws.vciso_enabled = ws.vciso_service ? 1 : 0;
   req.workspace = ws;
   // Every client-side account is confined to the collaboration boundary.
   // Client owners/coordinators see all client-visible work; contributors see
@@ -644,6 +769,7 @@ function requireWorkspace(req, res, next) {
   // Multi-entity scoping was removed - keep the locals as empty stubs so views that
   // still reference them degrade gracefully without re-rendering work.
   res.locals.entitySelectorWs = ws;
+  res.locals.tprmModule = ws.tprm_module;
   res.locals.workspaceEntities = [];
   res.locals.userPerms = permissionsFor(req.user, ws);
   // Ensure default risk methodology exists.
@@ -659,7 +785,9 @@ function requireWorkspace(req, res, next) {
     const T = ctlReads.tables(db, ws.id);
     const a = db.prepare(`SELECT COUNT(*) c FROM ${T.cs} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
     const b = db.prepare(`SELECT COUNT(*) c FROM ${T.cs42} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
-    res.locals.openReviewCount = a + b;
+    const d = db.prepare(`SELECT COUNT(*) c FROM dpdpa_gap_assessments
+      WHERE workspace_id=? AND status='Under Review'`).get(ws.id).c;
+    res.locals.openReviewCount = a + b + d;
   } catch (_) { res.locals.openReviewCount = 0; }
   next();
 }
@@ -674,16 +802,19 @@ function listWorkspaces(user) {
     const role = rbac.normalizeRole(user.firm_role) || 'consultant';
     if (!rbac.isManager(role) && !rbac.rolePermissions(role).includes('firm.cross_view')) {
       return db.prepare(`SELECT w.*,m.role AS my_role,
+          EXISTS(SELECT 1 FROM vciso_services v WHERE v.workspace_id=w.id AND v.status IN ('active','on_hold')) AS vciso_enabled,
           (SELECT name FROM users WHERE id = w.lead_consultant_id) AS lead_name
           FROM workspaces w
           INNER JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=?
           WHERE w.firm_id=? ORDER BY w.created_at DESC`).all(user.id,user.firm_id);
     }
     return db.prepare(`SELECT w.*,
+        EXISTS(SELECT 1 FROM vciso_services v WHERE v.workspace_id=w.id AND v.status IN ('active','on_hold')) AS vciso_enabled,
         (SELECT name FROM users WHERE id = w.lead_consultant_id) AS lead_name
         FROM workspaces w WHERE w.firm_id = ? ORDER BY w.created_at DESC`).all(user.firm_id);
   }
   return db.prepare(`SELECT w.*,
+      EXISTS(SELECT 1 FROM vciso_services v WHERE v.workspace_id=w.id AND v.status IN ('active','on_hold')) AS vciso_enabled,
       (SELECT name FROM users WHERE id = w.lead_consultant_id) AS lead_name,
       m.role AS my_role
       FROM workspaces w
@@ -749,6 +880,9 @@ app.locals.tierIcon = (tier, size = 12) => {
   return open + '<circle cx="12" cy="12" r="4"/></svg>';
 };
 app.locals.rbac = rbac;
+// Programme pickers render from the registry so adding a framework never means
+// hand-editing a checkbox list in a view.
+app.locals.frameworkList = FRAMEWORK_LIST;
 
 // ==================== RBAC + AUDIT CONTEXT ====================
 // Resolve a user's effective permissions in a workspace, including overrides.
@@ -879,7 +1013,7 @@ app.use((req, res, next) => {
 // accept, /admin/users. Its hashToken/INVITE_TTL_MS are reused by the
 // team-setup invite flow below.
 const authRoutes = require('./routes/auth');
-authRoutes.register(app, { db, requireAuth, logAction });
+authRoutes.register(app, { db, requireAuth, logAction, revokeUserSessions });
 
 // ==================== TENANTS + ONBOARDING ====================
 // Extracted to routes/tenants.js - first slice of server.js modularization.
@@ -1016,6 +1150,20 @@ require('./routes/supplier-programme').register(app, {
   db, requireAuth, requireWorkspace, requirePermission, logAction, qUploadAny,
   resolveUploadPath, questionnaireFileExtensions: QFILE_ALLOWED_EXT
 });
+require('./routes/tprm').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction
+});
+require('./routes/tprm-relationships').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction
+});
+require('./routes/tprm-governance').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction,
+  upload, resolveUploadPath
+});
+tprmMonitoringRoutes.register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction,
+  csvUpload, secretResolver: resolveRuntimeSecret
+});
 
 // ==================== PERFORMANCE + PEOPLE ====================
 // Lives in routes/performance.js (slice 11): ISMS metrics + 27004 library,
@@ -1069,6 +1217,14 @@ require('./routes/consulting-delivery').register(app, {
 require('./routes/csf-policy-practice').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, upload });
 
 
+// ==================== INDIA DPDPA GAP ASSESSMENT ====================
+// Controlled, evidence-gated readiness assessments against the versioned
+// DPDPA obligation catalogue. This intentionally excludes privacy operations.
+require('./routes/dpdpa').register(app, {
+  db, requireAuth, requireWorkspace, requirePermission, logAction
+});
+
+
 // ==================== ISO/IEC 42001:2023 (AI MS) ====================
 // Lives in routes/iso42001.js (slice 13): catalog, intake, gap assessment,
 // SoA + snapshots, roadmap, readiness, engagement plan, exec brief.
@@ -1097,6 +1253,6 @@ if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`\nCompliance Sphere running at http://localhost:${PORT}`);
-    console.log(`First time? Visit /register to create your firm account.\n`);
+    console.log(`Need access? Visit /register for the controlled evaluation path.\n`);
   });
 }

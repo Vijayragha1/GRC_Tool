@@ -7,9 +7,11 @@
 // both an append-only request event stream and the global hash-chained audit log.
 
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
-const sanitizeHtml = require('sanitize-html');
+const rbac = require('../lib/rbac');
 const enc = require('../lib/encryption');
+const documentHtml = require('../lib/document-html');
 const evWrites = require('../lib/evidence-writes');
 const docApprovals = require('../lib/doc-approvals');
 const delivery = require('../lib/engagement-delivery');
@@ -30,30 +32,25 @@ const MAX_TITLE = 180;
 const MAX_DESCRIPTION = 12000;
 const MAX_NOTE = 8000;
 const MAX_COMMENT = 8000;
+const TPRM_CLIENT_DECISIONS = new Set(['onboard', 'onboard_with_conditions', 'do_not_onboard', 'defer_request_information']);
+const TPRM_POSITIVE_DECISIONS = new Set(['onboard', 'onboard_with_conditions']);
+const TPRM_NEGATIVE_RECOMMENDATIONS = new Set(['do_not_recommend', 'insufficient_information']);
+
+let tprmDomainCache;
+function tprmDomain() {
+  if (tprmDomainCache !== undefined) return tprmDomainCache;
+  try { tprmDomainCache = require('../lib/tprm-domain'); }
+  catch (error) {
+    if (error && error.code !== 'MODULE_NOT_FOUND') throw error;
+    tprmDomainCache = null;
+  }
+  return tprmDomainCache;
+}
 const clientStatus = value => ({
   draft: 'in preparation', workspace_verified: 'ready for approval', submitted: 'under review',
   changes_requested: 'changes requested', accepted: 'approved', rejected: 'not approved',
   superseded: 'replaced', open: 'open', in_progress: 'in progress', cancelled: 'cancelled'
 }[String(value || '').toLowerCase()] || String(value || '').replace(/_/g, ' '));
-
-function sanitizePolicyHtml(content) {
-  return sanitizeHtml(content || '', {
-    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1', 'h2', 'img']),
-    allowedAttributes: {
-      a: ['href', 'name', 'target', 'rel'],
-      img: ['src', 'alt', 'title', 'width', 'height'],
-      table: ['border', 'cellpadding', 'cellspacing'],
-      th: ['colspan', 'rowspan'],
-      td: ['colspan', 'rowspan'],
-      '*': ['class']
-    },
-    allowedSchemes: ['http', 'https', 'mailto'],
-    allowedSchemesByTag: { img: ['http', 'https', 'data'] },
-    transformTags: {
-      a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer' }, true)
-    }
-  });
-}
 
 const RESPONDER_TRANSITIONS = {
   open: new Set(['in_progress', 'submitted']),
@@ -82,6 +79,568 @@ function register(app, deps) {
     return require('../lib/rbac').hasPermission(permissionsFor(req.user, req.workspace), permission);
   }
 
+  function tableExists(name) {
+    return !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(name);
+  }
+
+  function clientDownloadSourceAvailable(storedPath, firmId) {
+    const token = String(storedPath || '');
+    if (!token || path.basename(token) !== token) return false;
+    try {
+      const filePath = resolveUploadPath(token, firmId);
+      if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
+      const uploadsRoot = fs.realpathSync(path.join(__dirname, '..', 'uploads'));
+      const realFile = fs.realpathSync(filePath);
+      return realFile !== uploadsRoot && realFile.startsWith(`${uploadsRoot}${path.sep}`);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function activeClientMember(req) {
+    if (req.user.user_type !== 'client') return null;
+    const member = db.prepare(`SELECT wm.user_id,wm.role,u.name,u.email
+      FROM workspace_members wm INNER JOIN users u ON u.id=wm.user_id
+      WHERE wm.workspace_id=? AND wm.user_id=? AND u.user_type='client' AND u.active=1`).get(
+      req.workspace.id, req.user.id);
+    return member ? { ...member, role: rbac.normalizeRole(member.role) } : null;
+  }
+
+  function clientTprmModule(workspaceId) {
+    const domain = tprmDomain();
+    if (domain) {
+      if (typeof domain.moduleForWorkspace === 'function') {
+        return domain.moduleForWorkspace(db, workspaceId, { includeClosed: true });
+      }
+      return null;
+    }
+    return tableExists('tprm_modules')
+      ? db.prepare(`SELECT * FROM tprm_modules WHERE workspace_id=? ORDER BY id DESC LIMIT 1`).get(workspaceId) || null
+      : null;
+  }
+
+  function tprmModuleReadable(workspaceId) {
+    const module = clientTprmModule(workspaceId);
+    return Boolean(module && ['active', 'closed'].includes(module.status));
+  }
+
+  function tprmModuleEnabled(workspaceId) {
+    return clientTprmModule(workspaceId)?.status === 'active';
+  }
+
+  function requireClientTprmActor(req, res, next) {
+    if (req.user.user_type === 'client' && !activeClientMember(req)) {
+      return res.status(403).render('error', {
+        user: req.user, ws: req.workspace,
+        message: 'Your active client membership is required to use third-party risk.'
+      });
+    }
+    const module = clientTprmModule(req.workspace.id);
+    if (!module || !['active', 'closed'].includes(module.status)) {
+      return res.status(404).render('error', {
+        user: req.user, ws: req.workspace,
+        message: 'Third-party risk assurance is not available for this client.'
+      });
+    }
+    req.clientTprmModule = module;
+    next();
+  }
+
+  function requireActiveClientTprm(req, res, next) {
+    const module = req.clientTprmModule || clientTprmModule(req.workspace.id);
+    if (!module || module.status !== 'active') {
+      return res.status(409).render('error', {
+        user: req.user, ws: req.workspace,
+        message: 'This TPRM service period is closed and retained read-only. No new client action was recorded.'
+      });
+    }
+    next();
+  }
+
+  const first = (...values) => values.find(value => value !== undefined && value !== null);
+  const safeText = (value, max = 12000) => value == null ? null : String(value).slice(0, max);
+  const safeArray = value => Array.isArray(value) ? value : [];
+  function parsedConditions(value) {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [{ description: safeText(value) }];
+    } catch (_) {
+      return String(value).split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+        .map(description => ({ description }));
+    }
+  }
+
+  function clientSafeRecommendation(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'string') return { outcome: raw, status: 'issued' };
+    return {
+      id: first(raw.id, raw.recommendation_id),
+      cycleId: first(raw.cycle_id, raw.assessment_cycle_id),
+      version: first(raw.version, raw.version_number, raw.recommendation_version),
+      status: safeText(first(raw.status, raw.state, 'issued'), 40),
+      outcome: safeText(first(raw.outcome, raw.recommendation, raw.decision), 80),
+      summary: safeText(first(raw.client_summary, raw.executive_summary, raw.summary, raw.rationale, raw.recommendation_rationale)),
+      residualRiskBand: safeText(first(raw.residual_risk_band, raw.residualRiskBand), 40),
+      conditions: parsedConditions(first(raw.conditions, raw.conditions_json)),
+      issuedByName: safeText(first(raw.issued_by_name, raw.issuer_name, raw.quality_reviewer_name, raw.reviewer_name, raw.decider_name), 180),
+      issuedAt: safeText(first(raw.issued_at, raw.published_at, raw.decided_at), 40),
+      validUntil: safeText(first(raw.valid_until, raw.expires_at), 40)
+    };
+  }
+
+  function clientSafeDecision(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'string') return { decision: raw };
+    return {
+      id: first(raw.id, raw.decision_id),
+      cycleId: first(raw.cycle_id, raw.assessment_cycle_id),
+      recommendationId: first(raw.recommendation_id, raw.consultancy_recommendation_id),
+      recommendationVersion: first(raw.recommendation_version, raw.consultancy_recommendation_version),
+      decision: safeText(first(raw.decision, raw.outcome), 80),
+      rationale: safeText(first(raw.rationale, raw.business_rationale)),
+      conditions: parsedConditions(first(raw.conditions, raw.conditions_json)),
+      decidedByName: safeText(first(raw.decided_by_name, raw.client_actor_name, raw.decision_authority_name, raw.actor_name), 180),
+      decidedAt: safeText(first(raw.decided_at, raw.created_at), 40),
+      validUntil: safeText(first(raw.valid_until, raw.expires_at, raw.review_date), 40),
+      differsFromRecommendation: !!first(raw.differs_from_recommendation, raw.diverges_from_recommendation, raw.is_override, false),
+      riskAccepted: !!first(raw.risk_accepted, raw.accepted_residual_risk, raw.risk_acceptance_statement, false),
+      riskAcceptanceRationale: safeText(first(raw.risk_acceptance_rationale, raw.risk_acceptance_statement, raw.acceptance_rationale)),
+      riskAcceptanceExpiresAt: safeText(first(raw.risk_acceptance_expires_at, raw.acceptance_expires_at), 40)
+    };
+  }
+
+  function clientSafeCondition(raw, index) {
+    if (typeof raw === 'string') raw = { description: raw };
+    raw = raw || {};
+    return {
+      id: first(raw.id, `condition-${index + 1}`),
+      title: safeText(first(raw.title, raw.name), 180),
+      description: safeText(first(raw.description, raw.condition, raw.text), 4000),
+      status: safeText(first(raw.effective_status, raw.status, 'open'), 40),
+      storedStatus: safeText(first(raw.stored_status, raw.status, 'open'), 40),
+      waiverExpired: raw.waiver_expired === true || raw.waiver_expired === 1,
+      waiverExpiresAt: safeText(first(raw.waiver_expires_at, raw.waiverExpiresAt), 40),
+      ownerName: safeText(first(raw.owner_name, raw.ownerName), 180),
+      ownerUserId: first(raw.owner_user_id, raw.ownerUserId),
+      dueDate: safeText(first(raw.due_date, raw.dueDate), 40),
+      verifiedAt: safeText(first(raw.verified_at, raw.closed_at), 40),
+      sourceType: safeText(first(raw.source_type, raw.sourceType), 40),
+      conditionType: safeText(first(raw.condition_type, raw.conditionType, 'other'), 40),
+      severity: safeText(first(raw.severity, 'moderate'), 40),
+      ownerType: safeText(first(raw.owner_type, raw.ownerType, 'client'), 40),
+      verificationCriteria: safeText(first(raw.verification_criteria, raw.verificationCriteria,
+        'The client owner confirms completion and the consultancy verifies suitable evidence.'), 4000),
+      findingId: first(raw.finding_id, raw.findingId)
+    };
+  }
+
+  function clientSafeServiceRelationship(raw, index) {
+    raw = raw || {};
+    return {
+      id: Number(first(raw.relationship_id, raw.id, index + 1)),
+      name: safeText(first(raw.relationship_name, raw.name), 300),
+      legalName: safeText(first(raw.legal_name, raw.legalName), 300),
+      scopeRole: safeText(first(raw.scope_role, raw.role, 'in_scope'), 40),
+      scopeRationale: safeText(first(raw.scope_rationale, raw.scopeRationale), 2000),
+      serviceCategory: safeText(first(raw.service_category, raw.category), 200),
+      serviceDescription: safeText(first(raw.service_description, raw.description), 4000),
+      criticality: safeText(first(raw.criticality, 'unknown'), 40),
+      dataAccess: safeText(first(raw.data_access, raw.dataAccess, 'unknown'), 40),
+      status: safeText(first(raw.status, raw.relationship_status), 40),
+      linkedAt: safeText(first(raw.linked_at, raw.linkedAt), 40),
+    };
+  }
+
+  function clientSafeThirdParty(raw) {
+    const supplier = raw?.thirdParty || raw?.third_party || raw?.supplier || raw || {};
+    const cycle = raw?.cycle || raw?.currentCycle || raw?.current_cycle || null;
+    const recommendation = clientSafeRecommendation(raw?.recommendation || raw?.consultancyRecommendation || raw?.current_recommendation);
+    const decision = clientSafeDecision(raw?.clientDecision || raw?.client_decision || raw?.current_client_decision);
+    const governedTier = first(
+      supplier.governed_tier, raw?.governed_tier, raw?.approved_tier,
+      raw?.approved_inherent_tier
+    );
+    return {
+      id: Number(first(supplier.id, raw?.supplier_id, 0)),
+      workspaceId: Number(first(supplier.workspace_id, raw?.workspace_id, 0)),
+      name: safeText(first(supplier.name, raw?.supplier_name), 240),
+      service: safeText(first(supplier.service_provided, supplier.service, supplier.service_name), 1000),
+      businessOwner: safeText(first(supplier.business_owner, supplier.businessOwner), 240),
+      relationshipOwner: safeText(first(supplier.relationship_owner, supplier.relationshipOwner), 240),
+      tier: safeText(governedTier, 40) || 'not_assessed',
+      lifecycleStage: safeText(first(raw?.stage, raw?.lifecycle?.stage, raw?.lifecycle_stage, supplier.lifecycle_stage, 'assessment'), 80),
+      residualRiskBand: safeText(first(
+        raw?.residual_risk_band, raw?.residualRiskBand, recommendation?.residualRiskBand
+      ), 40),
+      nextReviewDate: safeText(first(raw?.next_review_date, raw?.nextReviewDate, raw?.lifecycle?.nextReviewDate, supplier.next_review_date), 40),
+      cycle: cycle ? {
+        id: first(cycle.id, cycle.cycle_id),
+        reference: safeText(first(cycle.reference, cycle.cycle_reference), 120),
+        type: safeText(first(cycle.cycle_type, cycle.assessment_type, cycle.type), 60),
+        status: safeText(first(cycle.status, cycle.stage), 60),
+        decisionAuthorityId: first(cycle.client_decision_authority_id, cycle.decision_authority_id),
+        startedAt: safeText(first(cycle.started_at, cycle.created_at), 40)
+      } : null,
+      recommendation,
+      clientDecision: decision,
+      openConditionCount: Number(first(raw?.open_condition_count, raw?.openConditionCount, 0)),
+      nextAction: safeText(first(raw?.next_action_label, raw?.nextAction?.label, raw?.lifecycle?.nextAction?.label,
+        raw?.next_action?.label, raw?.next_action), 240)
+    };
+  }
+
+  function legacyClientTprmPortfolio(req) {
+    const rows = db.prepare(`SELECT s.id,s.name,s.service_provided,s.business_owner,s.relationship_owner,
+        s.tier,s.lifecycle_stage,s.next_review_date,
+        d.id AS recommendation_id,d.decision AS recommendation_outcome,d.rationale AS recommendation_summary,
+        d.conditions AS recommendation_conditions,d.residual_risk_band,d.decider_name AS recommendation_issued_by,
+        d.decided_at AS recommendation_issued_at,d.valid_until AS recommendation_valid_until
+      FROM suppliers s LEFT JOIN supplier_decisions d ON d.id=(SELECT d2.id FROM supplier_decisions d2
+        WHERE d2.workspace_id=s.workspace_id AND d2.supplier_id=s.id AND d2.superseded_at IS NULL ORDER BY d2.id DESC LIMIT 1)
+      WHERE s.workspace_id=? AND s.archived_at IS NULL ORDER BY s.name`).all(req.workspace.id);
+    const thirdParties = rows.map(row => clientSafeThirdParty({
+      supplier: row,
+      recommendation: row.recommendation_id ? {
+        id: row.recommendation_id,
+        outcome: 'historical_assessment_outcome',
+        summary: 'A historical supplier outcome exists, but it is quarantined from the governed consultancy-recommendation and client-decision workflow.',
+        conditions: [],
+        residual_risk_band: row.residual_risk_band,
+        issued_by_name: row.recommendation_issued_by,
+        issued_at: row.recommendation_issued_at,
+        valid_until: row.recommendation_valid_until,
+        status: 'historical'
+      } : null
+    }));
+    return { thirdParties, actions: [], source: 'legacy-read-only' };
+  }
+
+  function clientTprmPortfolio(req) {
+    const domain = tprmDomain();
+    let raw = null;
+    if (domain) {
+      const fn = domain.clientPortfolioProjection || domain.clientPortalPortfolio || domain.clientPortfolio;
+      if (typeof fn === 'function') raw = fn(db, req.workspace.id, req.user.id);
+    }
+    if (!raw) return legacyClientTprmPortfolio(req);
+    const rows = safeArray(raw.thirdParties || raw.third_parties || raw.records || raw.items);
+    const thirdParties = rows.map(clientSafeThirdParty).filter(row => row.id);
+    const actions = safeArray(raw.actions || raw.assignedActions || raw.assigned_actions).map((action, index) => ({
+      id: first(action.id, index + 1),
+      supplierId: Number(first(action.supplier_id, action.third_party_id, action.supplierId, 0)),
+      thirdPartyName: safeText(first(action.supplier_name, action.third_party_name, action.thirdPartyName), 240),
+      title: safeText(first(action.title, action.label, action.action?.label, action.action), 240),
+      dueDate: safeText(first(action.due_date, action.dueDate), 40),
+      status: safeText(first(action.status, 'open'), 40),
+      priority: safeText(first(action.priority, action.severity, 'normal'), 40)
+    }));
+    return {
+      thirdParties,
+      actions,
+      source: 'governed',
+      metrics: raw.metrics || {},
+      retainedReadOnly: raw.retainedReadOnly === true || raw.retained_read_only === true,
+    };
+  }
+
+  function clientTprmMetrics(portfolio) {
+    const records = portfolio.thirdParties;
+    const workspaceId = records[0]?.workspaceId || null;
+    const openConditions = tableExists('tprm_conditions') && workspaceId
+      ? Number(db.prepare(`SELECT COUNT(*) AS c FROM tprm_conditions
+          WHERE workspace_id=?
+            AND (status IN ('open','in_progress','evidence_submitted')
+              OR (status='waived' AND waiver_expires_at < date('now')))`).get(workspaceId)?.c || 0)
+      : records.reduce((sum, row) => sum + Number(row.openConditionCount || 0), 0);
+    return {
+      total: records.length,
+      awaitingDecision: records.filter(row => row.recommendation &&
+        ['issued', 'published', 'final', 'approved'].includes(String(row.recommendation.status || '').toLowerCase()) && !row.clientDecision).length,
+      conditional: openConditions,
+      highRisk: records.filter(row => ['high', 'critical'].includes(String(row.residualRiskBand || '').toLowerCase())).length,
+      assignedActions: portfolio.actions.filter(action => !['closed', 'complete', 'verified'].includes(String(action.status).toLowerCase())).length
+    };
+  }
+
+  function legacyClientTprmDetail(req, supplierId) {
+    const supplier = db.prepare(`SELECT id,name,service_provided,business_owner,relationship_owner,tier,lifecycle_stage,next_review_date
+      FROM suppliers WHERE id=? AND workspace_id=? AND archived_at IS NULL`).get(supplierId, req.workspace.id);
+    if (!supplier) return null;
+    const recommendation = db.prepare(`SELECT d.id,d.decision,d.rationale,d.conditions,d.residual_risk_band,
+        d.decider_name,d.decided_at,d.valid_until
+      FROM supplier_decisions d WHERE d.workspace_id=? AND d.supplier_id=? AND d.superseded_at IS NULL
+      ORDER BY d.id DESC LIMIT 1`).get(req.workspace.id, supplierId);
+    const ddq = db.prepare(`SELECT id,assessment_type,status,created_at FROM supplier_ddq_assessments
+      WHERE workspace_id=? AND supplier_id=? AND status!='superseded' ORDER BY id DESC LIMIT 1`).get(req.workspace.id, supplierId);
+    const inherent = db.prepare(`SELECT id,assessment_type,status,created_at FROM supplier_inherent_assessments
+      WHERE workspace_id=? AND supplier_id=? AND status!='superseded' ORDER BY id DESC LIMIT 1`).get(req.workspace.id, supplierId);
+    const evidenceCount = ddq ? Number(db.prepare(`SELECT COUNT(*) AS c FROM supplier_ddq_evidence
+      WHERE workspace_id=? AND assessment_id=?`).get(req.workspace.id, ddq.id)?.c || 0) : 0;
+    const comments = db.prepare(`SELECT c.id,c.body,c.created_at,u.name AS actor_name
+      FROM comments c INNER JOIN users u ON u.id=c.user_id
+      WHERE c.workspace_id=? AND c.parent_type='tprm_third_party' AND c.parent_id=? AND c.internal_only=0
+      ORDER BY c.id`).all(req.workspace.id, String(supplierId)).map(comment => ({
+        ...comment, body: enc.decryptIfNeeded(comment.body, req.workspace.id)
+      }));
+    const mappedRecommendation = recommendation ? {
+      id: recommendation.id,
+      outcome: 'historical_assessment_outcome',
+      summary: 'A historical supplier outcome exists, but it is quarantined from the governed consultancy-recommendation and client-decision workflow.',
+      conditions: [],
+      residual_risk_band: recommendation.residual_risk_band,
+      issued_by_name: recommendation.decider_name,
+      issued_at: recommendation.decided_at,
+      valid_until: recommendation.valid_until,
+      status: 'historical'
+    } : null;
+    const thirdParty = clientSafeThirdParty({
+      supplier,
+      cycle: ddq || inherent ? {
+        id: `legacy-${ddq?.id || inherent.id}`,
+        assessment_type: ddq?.assessment_type || inherent?.assessment_type,
+        status: ddq?.status || inherent?.status,
+        created_at: ddq?.created_at || inherent?.created_at
+      } : null,
+      recommendation: mappedRecommendation
+    });
+    return {
+      thirdParty,
+      recommendation: thirdParty.recommendation,
+      clientDecision: null,
+      serviceRelationships: [],
+      conditions: (thirdParty.recommendation?.conditions || []).map(clientSafeCondition),
+      evidence: [],
+      evidenceSummary: { reviewedItems: evidenceCount, disclosure: 'summary_only' },
+      decisionHistory: [],
+      events: [],
+      comments,
+      clientDecisionAuthorityId: null,
+      source: 'legacy-read-only'
+    };
+  }
+
+  function clientTprmDetail(req, supplierId) {
+    const domain = tprmDomain();
+    let raw = null;
+    if (domain) {
+      const fn = domain.clientThirdPartyProjection || domain.clientPortalDetail || domain.clientThirdParty;
+      if (typeof fn === 'function') {
+        try { raw = fn(db, req.workspace.id, supplierId, req.user.id); }
+        catch (error) {
+          if (Number(error.status || error.statusCode) === 404) return null;
+          throw error;
+        }
+      }
+    }
+    if (!raw) return legacyClientTprmDetail(req, supplierId);
+    const thirdParty = clientSafeThirdParty(raw);
+    if (!thirdParty.id || thirdParty.id !== Number(supplierId)) return null;
+    const recommendation = thirdParty.recommendation;
+    const clientDecision = thirdParty.clientDecision;
+    const serviceRelationships = safeArray(raw.serviceRelationships || raw.service_relationships || raw.relationshipScopes)
+      .map(clientSafeServiceRelationship).filter(relationship => relationship.id && relationship.name);
+    const conditionsRaw = safeArray(raw.conditions || raw.currentConditions || raw.current_conditions);
+    const conditions = (conditionsRaw.length ? conditionsRaw : [
+      ...(recommendation?.conditions || []), ...(clientDecision?.conditions || [])
+    ]).map(clientSafeCondition);
+    const evidenceRoot = raw.evidence || raw.clientEvidence || raw.client_evidence || [];
+    const evidenceRows = Array.isArray(evidenceRoot) ? evidenceRoot
+      : [...safeArray(evidenceRoot.supplierDocuments || evidenceRoot.supplier_documents),
+        ...safeArray(evidenceRoot.ddqEvidence || evidenceRoot.ddq_evidence)];
+    // Evidence metadata is itself sensitive. Only explicitly released rows are
+    // named in the client portal; the aggregate reviewed count can still be
+    // shown without exposing filenames from internal workpapers.
+    const cycleId = thirdParty.cycle?.id;
+    const releasedEvidenceRows = tableExists('tprm_evidence_releases') && cycleId
+      ? db.prepare(`SELECT r.id,r.id AS release_id,r.client_label AS filename,
+          r.client_description,r.source_type AS category,
+          r.allow_download,r.released_at,r.expires_at AS access_expires_at,
+          sd.effective_date AS source_issued_at,sd.expiry_date AS source_expiry,
+          COALESCE(sd.sha256,de.sha256) AS sha256,
+          COALESCE(sd.stored_path,de.stored_path) AS source_stored_path,
+          CASE
+            WHEN r.source_type='supplier_document' AND sd.id IS NOT NULL
+              AND sd.stored_path IS NOT NULL
+              AND (sd.expiry_date IS NULL OR date(sd.expiry_date)>=date('now')) THEN 1
+            WHEN r.source_type='ddq_evidence' AND de.id IS NOT NULL
+              AND de.stored_path IS NOT NULL AND da.supplier_id=r.supplier_id
+              AND release_cycle.ddq_assessment_id=da.id THEN 1
+            ELSE 0
+          END AS source_download_eligible
+        FROM tprm_evidence_releases r
+        LEFT JOIN tprm_evidence_release_withdrawals w ON w.release_id=r.id
+          AND w.workspace_id=r.workspace_id AND w.supplier_id=r.supplier_id
+        LEFT JOIN supplier_documents sd ON r.source_type='supplier_document' AND sd.id=r.supplier_document_id
+          AND sd.workspace_id=r.workspace_id AND sd.supplier_id=r.supplier_id
+        LEFT JOIN supplier_ddq_evidence de ON r.source_type='ddq_evidence' AND de.id=r.ddq_evidence_id
+          AND de.workspace_id=r.workspace_id
+        LEFT JOIN supplier_ddq_assessments da ON da.id=de.assessment_id
+          AND da.workspace_id=r.workspace_id
+        LEFT JOIN tprm_assessment_cycles release_cycle ON release_cycle.id=r.cycle_id
+          AND release_cycle.workspace_id=r.workspace_id
+          AND release_cycle.supplier_id=r.supplier_id
+        WHERE r.workspace_id=? AND r.supplier_id=? AND r.cycle_id=? AND w.id IS NULL
+          AND (r.expires_at IS NULL OR r.expires_at>=date('now'))
+        ORDER BY r.released_at DESC,r.id DESC`).all(req.workspace.id, supplierId, cycleId)
+      : evidenceRows.filter(item => item.client_visible === 1 || item.client_visible === true
+        || item.released_at || item.client_released_at);
+    const evidence = releasedEvidenceRows.map(item => {
+      let sourceFileAvailable = false;
+      if (item.source_download_eligible === 1 && item.source_stored_path) {
+        sourceFileAvailable = clientDownloadSourceAvailable(
+          item.source_stored_path, req.workspace.firm_id
+        );
+      }
+      const allowDownload = item.allow_download === 1 || item.allow_download === true;
+      return {
+        id: first(item.release_id, item.id, item.evidence_id),
+        releaseId: first(item.release_id, item.id),
+        filename: safeText(first(item.client_label, item.filename, item.name), 260),
+        description: safeText(first(item.client_description, item.description), 1000),
+        category: safeText(first(item.category, item.doc_type, item.evidence_type), 120),
+        status: safeText(first(item.status, item.review_status, 'released'), 80),
+        releasedAt: safeText(first(item.released_at, item.releasedAt), 40),
+        issuedAt: safeText(first(item.source_issued_at, item.issued_at, item.issuedAt,
+          item.released_at, item.releasedAt, item.uploaded_at, item.created_at), 40),
+        sourceExpiry: safeText(first(item.source_expiry, item.sourceExpiry), 40),
+        accessExpiresAt: safeText(first(item.access_expires_at, item.accessExpiresAt,
+          item.release_expires_at), 40),
+        allowDownload,
+        downloadAvailable: allowDownload && sourceFileAvailable && Boolean(item.release_id || item.id),
+        sha256: safeText(item.sha256, 64)
+      };
+    });
+    const clientMember = activeClientMember(req);
+    if (clientMember && tableExists('tprm_condition_evidence_links')) {
+      const conditionEvidence = db.prepare(`SELECT id,condition_id,mime_type,size_bytes,uploaded_at,stored_path
+        FROM tprm_condition_evidence_links
+        WHERE workspace_id=? AND supplier_id=? ORDER BY condition_id,uploaded_at DESC,id DESC`)
+        .all(req.workspace.id, supplierId);
+      const evidenceByCondition = new Map();
+      for (const item of conditionEvidence) {
+        const rows = evidenceByCondition.get(Number(item.condition_id)) || [];
+        if (clientDownloadSourceAvailable(item.stored_path, req.workspace.firm_id)) {
+          rows.push({
+            id: Number(item.id),
+            uploadedAt: safeText(item.uploaded_at, 40),
+            sizeBytes: Number(item.size_bytes || 0),
+            mediaType: safeText(item.mime_type, 120),
+          });
+        }
+        evidenceByCondition.set(Number(item.condition_id), rows);
+      }
+      for (const condition of conditions) {
+        const mayInspect = condition.sourceType === 'client_decision'
+          && condition.ownerType === 'client'
+          && (clientMember.role === 'isms_manager'
+            || Number(condition.ownerUserId || 0) === Number(req.user.id));
+        condition.evidenceDownloads = mayInspect
+          ? (evidenceByCondition.get(Number(condition.id)) || []) : [];
+      }
+    } else {
+      for (const condition of conditions) condition.evidenceDownloads = [];
+    }
+    const decisionHistory = safeArray(raw.decisionHistory || raw.decision_history)
+      .map(clientSafeDecision).filter(Boolean);
+    const events = safeArray(raw.events || raw.history || raw.lifecycleEvents || raw.lifecycle_events).map(event => ({
+      id: first(event.id, event.event_id),
+      type: safeText(first(event.client_label, event.event_type, event.type), 120),
+      summary: safeText(first(event.client_summary, event.summary), 1000),
+      actorName: safeText(first(event.actor_name, event.created_by_name), 180),
+      createdAt: safeText(first(event.created_at, event.recorded_at), 40)
+    }));
+    // Collaboration comments are reloaded from the workspace-qualified source
+    // of truth on every request. This avoids stale projection caches and keeps
+    // encrypted-at-rest bodies out of generic domain serialization.
+    const comments = db.prepare(`SELECT c.id,c.body,c.created_at,u.name AS actor_name
+      FROM comments c INNER JOIN users u ON u.id=c.user_id
+      WHERE c.workspace_id=? AND c.parent_type='tprm_third_party' AND c.parent_id=? AND c.internal_only=0
+      ORDER BY c.id`).all(req.workspace.id, String(supplierId)).map(comment => ({
+        id:comment.id,
+        body:enc.decryptIfNeeded(comment.body, req.workspace.id),
+        actorName:comment.actor_name,
+        createdAt:comment.created_at,
+      }));
+    return {
+      thirdParty, recommendation, clientDecision, serviceRelationships, conditions, evidence,
+      evidenceSummary: raw.evidenceSummary || raw.evidence_summary || {
+        reviewedItems: evidenceRows.length, releasedItems: evidence.length
+      },
+      decisionHistory, events, comments,
+      clientDecisionAuthorityId: first(thirdParty.cycle?.decisionAuthorityId,
+        raw.clientDecisionAuthorityId, raw.client_decision_authority_id),
+      latestClientDecisionId: first(raw.latestClientDecisionId, raw.latest_client_decision_id,
+        safeArray(raw.decisionHistory || raw.decision_history)[0]?.id),
+      recommendationDecisionBlocker: safeText(first(raw.recommendationDecisionBlocker,
+        raw.recommendation_decision_blocker), 500),
+      domainCanRecordClientDecision: raw.canRecordClientDecision === true,
+      retainedReadOnly: raw.retainedReadOnly === true || raw.retained_read_only === true
+        || raw.lifecycle?.module?.status === 'closed',
+      source: 'governed'
+    };
+  }
+
+  function clientDecisionContradicts(recommendationOutcome, decision) {
+    const recommendation = String(recommendationOutcome || '').toLowerCase();
+    if (!TPRM_POSITIVE_DECISIONS.has(decision)) return false;
+    if (TPRM_NEGATIVE_RECOMMENDATIONS.has(recommendation)) return true;
+    return recommendation === 'recommend_with_conditions' && decision === 'onboard';
+  }
+
+  function tprmDecisionAuthority(req, detail) {
+    const member = activeClientMember(req);
+    if (!member || member.role !== 'client_owner') return false;
+    const assignedId = Number(detail.clientDecisionAuthorityId || 0);
+    return !assignedId || assignedId === req.user.id;
+  }
+
+  function renderClientTprmPortfolio(req, res) {
+    const portfolio = clientTprmPortfolio(req);
+    const retainedReadOnly = req.clientTprmModule?.status === 'closed' || portfolio.retainedReadOnly === true;
+    return res.render('client_tprm_portfolio', {
+      user: req.user, ws: req.workspace, active: 'client-portal', title: 'Third-party risk',
+      portalView: 'tprm', tprmPortalEnabled: true,
+      clientPreview: req.user.user_type === 'firm', clientPreviewUser: null,
+      portfolio, metrics: clientTprmMetrics(portfolio), tprmRetainedReadOnly: retainedReadOnly,
+    });
+  }
+
+  function renderClientTprmDetail(req, res, detail, form = { values: {}, errors: {} }) {
+    const isPreview = req.user.user_type === 'firm';
+    const retainedReadOnly = req.clientTprmModule?.status === 'closed' || detail.retainedReadOnly === true;
+    const deferredAwaitingSuccessorDecision = detail.clientDecision?.decision === 'defer_request_information'
+      && Number(detail.recommendation?.id || 0) !== Number(detail.clientDecision?.recommendationId || 0);
+    const cycleDecisionSlotOpen = !detail.clientDecision || deferredAwaitingSuccessorDecision;
+    return res.render('client_tprm_detail', {
+      user: req.user, ws: req.workspace, active: 'client-portal',
+      title: detail.thirdParty.name || 'Third-party assurance', portalView: 'tprm',
+      tprmPortalEnabled: true, clientPreview: isPreview, clientPreviewUser: null,
+      detail, canDecide: !retainedReadOnly && !isPreview && cycleDecisionSlotOpen
+        && Array.isArray(detail.serviceRelationships) && detail.serviceRelationships.length > 0
+        && !detail.recommendationDecisionBlocker
+        && detail.domainCanRecordClientDecision
+        && tprmDecisionAuthority(req, detail),
+      decisionBlocker: detail.recommendationDecisionBlocker,
+      canComment: !retainedReadOnly && !isPreview && req.user.user_type === 'client' && can(req, 'tprm.client_comment'),
+      tprmRetainedReadOnly: retainedReadOnly,
+      clientParticipants: clientMembers(req).filter(member =>
+        ['client_owner', 'client_admin'].includes(String(member.role || '').toLowerCase())),
+      requiresRiskAcceptance: clientDecisionContradicts(detail.recommendation?.outcome, String(form.values.decision || '')),
+      decisionNonce: crypto.randomBytes(24).toString('hex'), form
+    });
+  }
+
+  function reconcileDeliveryCompletion(req, context = {}) {
+    const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
+    if (!frameworks.includes('iso27001')) return;
+    if (!db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) return;
+    delivery.reconcileCompletionState(db, req.workspace, req.user.id, context);
+    delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
+    delivery.syncCertificationEngagementCompletion(db, req.workspace, req.user.id);
+  }
+
   function clean(value, max) {
     const v = value == null ? '' : String(value).trim();
     return v.length > max ? null : v;
@@ -97,6 +656,28 @@ function register(app, deps) {
 
   function badRequest(req, res, message) {
     return res.status(400).render('error', { user: req.user, ws: req.workspace, message });
+  }
+
+  function requestFormFailure(req, res, errors) {
+    // Render the complete portal view model in place with HTTP 422. Keep only
+    // fields this form owns and cap every reflected value. Users retain their
+    // work, the browser stays in context, and no sensitive draft is persisted
+    // in the session merely because validation failed.
+    const raw = req.body || {};
+    return renderClientPortal(req, res.status(422), {
+      values: {
+        request_type: String(raw.request_type || '').slice(0, 24),
+        priority: String(raw.priority || '').slice(0, 24),
+        assignee_id: String(raw.assignee_id || '').slice(0, 24),
+        due_date: String(raw.due_date || '').slice(0, 32),
+        control_id: String(raw.control_id || '').slice(0, 120),
+        document_id: String(raw.document_id || '').slice(0, 24),
+        title: String(raw.title || '').slice(0, MAX_TITLE),
+        description: String(raw.description || '').slice(0, MAX_DESCRIPTION)
+      },
+      errors,
+      hasErrors: true
+    });
   }
 
   function decryptRequest(row, wsId) {
@@ -184,13 +765,15 @@ function register(app, deps) {
 
   function documentCatalog(req) {
     return db.prepare(`SELECT id, name, status, version FROM generated_docs
-      WHERE workspace_id=? AND status!='retired' ORDER BY name`).all(req.workspace.id);
+      WHERE workspace_id=? AND status NOT IN ('retired','withdrawn') ORDER BY name`).all(req.workspace.id);
   }
 
-  app.get('/workspaces/:wsId/client-portal', requireAuth, requireWorkspace,
-    requirePermission('client_portal.view'), (req, res) => {
+  function renderClientPortal(req, res, suppliedRequestForm = null) {
       const allowedPortalViews = new Set(['home', 'actions', 'progress', 'findings', 'reports']);
-      const portalView = allowedPortalViews.has(String(req.query.view || '')) ? String(req.query.view) : 'home';
+      const portalView = suppliedRequestForm
+        ? 'actions'
+        : (allowedPortalViews.has(String(req.query.view || '')) ? String(req.query.view) : 'home');
+      const requestForm = suppliedRequestForm || { values: {}, errors: {}, hasErrors: false };
       const clientPreview = req.user.user_type === 'firm' && req.query.preview === 'client';
       const members = clientMembers(req);
       const clientPreviewUser = clientPreview
@@ -257,7 +840,10 @@ function register(app, deps) {
           .map(e => ({ ...e, note: enc.decryptIfNeeded(e.note, req.workspace.id) }));
       }
 
-      const deliveryProjection = delivery.getProjection(db, req.workspace, portalActorId, { ensure: false });
+      const workspaceFrameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
+      const deliveryProjection = workspaceFrameworks.includes('iso27001')
+        ? delivery.getProjection(db, req.workspace, portalActorId, { ensure: false })
+        : null;
       let deliveryWork = [];
       if (deliveryProjection) {
         deliveryWork = deliveryProjection.deliverables.filter(d => d.client_visible &&
@@ -389,6 +975,8 @@ function register(app, deps) {
         currentLabel: programme.currentLabel,
         currentDetail: programme.currentDetail,
         openItems: programme.openItems,
+        unassessedOutcomes: programme.unassessedOutcomes,
+        openConfirmedFindings: programme.openConfirmedFindings,
         unsupportedImplemented: programme.unsupportedImplemented || 0
       }));
       const actionCount = programmeTruth.client.actionCount + pendingApprovals.length +
@@ -408,7 +996,7 @@ function register(app, deps) {
             : 'There is nothing your team needs to do right now.'
       };
 
-      res.render('client_portal', {
+      return res.render('client_portal', {
         user: req.user, ws: req.workspace, active: 'client-portal', title: 'Client portal',
         requests, metrics, pendingApprovals, recentEvents, status,
         canManage: clientPreview ? false : can(req, 'client_request.manage'), members,
@@ -417,11 +1005,251 @@ function register(app, deps) {
         documents: can(req, 'client_request.manage') ? documentCatalog(req) : [],
         deliveryPlan: deliveryProjection?.plan || null, deliveryWork, deliveryEvidence, deliveryComments, clientValidations, publishedReports,
         csfValidations, csfPublishedReports, consultantContact, deliverySummary, clientDeliveryActions, gapAssessment,
-        portalView, clientProgrammes, clientStatusSummary
+        portalView, clientProgrammes, clientStatusSummary, requestForm,
+        tprmPortalEnabled: tprmModuleReadable(req.workspace.id) && can(req, 'tprm.client_portal.view')
       });
+  }
+
+  app.get('/workspaces/:wsId/client-portal', requireAuth, requireWorkspace,
+    requirePermission('client_portal.view'), (req, res) => renderClientPortal(req, res));
+
+  app.get('/workspaces/:wsId/client-portal/tprm', requireAuth, requireWorkspace,
+    requirePermission('tprm.client_portal.view'), requireClientTprmActor,
+    (req, res) => renderClientTprmPortfolio(req, res));
+
+  app.get('/workspaces/:wsId/client-portal/tprm/:supplierId(\\d+)', requireAuth, requireWorkspace,
+    requirePermission('tprm.client_portal.view'), requireClientTprmActor, (req, res) => {
+      const detail = clientTprmDetail(req, Number(req.params.supplierId));
+      if (!detail) return res.status(404).render('error', {
+        user: req.user, ws: req.workspace,
+        message: 'This third party is unavailable or does not belong to this client.'
+      });
+      return renderClientTprmDetail(req, res, detail);
+    });
+
+  app.post('/workspaces/:wsId/client-portal/tprm/:supplierId(\\d+)/decision', requireAuth, requireWorkspace,
+    requirePermission('tprm.client_decide'), requireClientTprmActor, requireActiveClientTprm, (req, res) => {
+      const supplierId = Number(req.params.supplierId);
+      const detail = clientTprmDetail(req, supplierId);
+      if (!detail) return res.status(404).render('error', {
+        user: req.user, ws: req.workspace,
+        message: 'This third party is unavailable or does not belong to this client.'
+      });
+      // Permission overrides and the firm-manager wildcard can never convert a
+      // consultancy user into the client's decision authority.
+      if (req.user.user_type !== 'client' || !tprmDecisionAuthority(req, detail)) {
+        return res.status(403).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'Only the assigned client decision authority can record the final onboarding decision.'
+        });
+      }
+      if (!detail.recommendation || !['issued', 'published', 'final', 'approved'].includes(String(detail.recommendation.status || '').toLowerCase())) {
+        return res.status(409).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'The consultancy recommendation must be issued before the client decision can be recorded.'
+        });
+      }
+      const deferredAwaitingSuccessorDecision = detail.clientDecision?.decision === 'defer_request_information'
+        && Number(detail.recommendation?.id || 0) !== Number(detail.clientDecision?.recommendationId || 0);
+      if (detail.clientDecision && !deferredAwaitingSuccessorDecision) {
+        return res.status(409).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'The client decision is immutable. Start a governed reassessment cycle to record a new decision.'
+        });
+      }
+      if (detail.recommendationDecisionBlocker) {
+        return res.status(409).render('error', {
+          user: req.user, ws: req.workspace,
+          message: detail.recommendationDecisionBlocker
+        });
+      }
+
+      const values = {
+        decision: clean(req.body.decision, 80),
+        rationale: clean(req.body.rationale, MAX_NOTE),
+        valid_until: clean(req.body.valid_until, 40),
+        condition_title: clean(req.body.condition_title, 240),
+        condition_owner_id: clean(req.body.condition_owner_id, 40),
+        condition_due_date: clean(req.body.condition_due_date, 40),
+        risk_acceptance_rationale: clean(req.body.risk_acceptance_rationale, MAX_NOTE),
+        risk_acceptance_expires_at: clean(req.body.risk_acceptance_expires_at, 40)
+      };
+      const errors = {};
+      if (!TPRM_CLIENT_DECISIONS.has(values.decision)) errors.decision = 'Choose a valid onboarding decision.';
+      if (!values.rationale || values.rationale.length < 20) errors.rationale = 'Explain the business decision in at least 20 characters.';
+      const today = todayFor(req.workspace);
+      const validUntil = validDate(values.valid_until);
+      if (values.valid_until && !validUntil) errors.valid_until = 'Enter a valid decision review date.';
+      else if (validUntil && validUntil <= today) errors.valid_until = 'Decision review date must be in the future.';
+      if (req.body.acknowledge_authority !== '1') errors.acknowledge_authority = 'Confirm that you are authorised to make this decision for the client.';
+
+      const expectedRecommendationId = Number(req.body.expected_recommendation_id || 0);
+      if (!expectedRecommendationId || expectedRecommendationId !== Number(detail.recommendation.id)) {
+        return res.status(409).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'The consultancy recommendation changed while this page was open. Review the latest issued recommendation before deciding.'
+        });
+      }
+      const idempotencyNonce = String(req.body.idempotency_nonce || '').trim();
+      if (!/^[a-f0-9]{48}$/.test(idempotencyNonce)) errors.form = 'The decision form expired. Reload the page and submit again.';
+
+      const conditions = [];
+      if (values.condition_title) {
+        if (values.condition_title.length < 10) errors.condition_title = 'Describe the condition in at least 10 characters.';
+        const dueDate = validDate(values.condition_due_date);
+        if (!dueDate) errors.condition_due_date = 'A valid due date is required for every new condition.';
+        const ownerId = Number(values.condition_owner_id || 0);
+        const owner = ownerId ? db.prepare(`SELECT u.id,u.name FROM workspace_members wm INNER JOIN users u ON u.id=wm.user_id
+          WHERE wm.workspace_id=? AND wm.user_id=? AND u.user_type='client' AND u.active=1
+            AND wm.role IN ('client_owner','client_admin')`).get(req.workspace.id, ownerId) : null;
+        if (!owner) errors.condition_owner_id = 'Assign the condition to an active client sponsor or administrator.';
+        if (dueDate && owner) conditions.push({
+          conditionType: 'other', title: values.condition_title, description: values.condition_title,
+          severity: 'moderate', ownerType: 'client', ownerUserId: owner.id, ownerName: owner.name,
+          dueDate, verificationCriteria: 'The client owner confirms completion and the consultancy verifies suitable evidence.'
+        });
+      }
+      const issuedConditions = detail.conditions.filter(condition => condition.sourceType === 'recommendation').map(condition => ({
+        findingId: condition.findingId || null,
+        conditionType: condition.conditionType || 'other', title: condition.title || condition.description,
+        description: condition.description || condition.title,
+        severity: condition.severity || 'moderate', ownerType: condition.ownerType || 'client',
+        ownerUserId: condition.ownerUserId || null, ownerName: condition.ownerName || 'Client owner',
+        dueDate: condition.dueDate,
+        verificationCriteria: condition.verificationCriteria || 'The client owner confirms completion and the consultancy verifies suitable evidence.'
+      }));
+      if (values.decision === 'onboard_with_conditions' && !conditions.length && !issuedConditions.length) {
+        errors.condition_title = 'Add an owned, dated condition or ask the consultancy to issue conditions first.';
+      }
+
+      const highResidualRisk = ['high', 'critical'].includes(String(detail.thirdParty.residualRiskBand || '').toLowerCase());
+      const riskAcceptanceRequired = TPRM_POSITIVE_DECISIONS.has(values.decision) &&
+        (highResidualRisk || clientDecisionContradicts(detail.recommendation.outcome, values.decision));
+      const riskAcceptanceExpiresAt = validDate(values.risk_acceptance_expires_at);
+      if (riskAcceptanceRequired) {
+        if (req.body.accept_residual_risk !== '1') errors.accept_residual_risk = 'Explicit residual-risk acceptance is required for this decision.';
+        if (!values.risk_acceptance_rationale || values.risk_acceptance_rationale.length < 20) {
+          errors.risk_acceptance_rationale = 'Explain why the residual risk is being accepted.';
+        }
+        if (!riskAcceptanceExpiresAt) errors.risk_acceptance_expires_at = 'Set a valid expiry date for the risk acceptance.';
+        else if (riskAcceptanceExpiresAt <= today) errors.risk_acceptance_expires_at = 'Risk acceptance must expire on a future date.';
+      } else if (values.risk_acceptance_expires_at && !riskAcceptanceExpiresAt) {
+        errors.risk_acceptance_expires_at = 'Enter a valid risk-acceptance expiry date.';
+      } else if (riskAcceptanceExpiresAt && riskAcceptanceExpiresAt <= today) {
+        errors.risk_acceptance_expires_at = 'Risk acceptance must expire on a future date.';
+      }
+
+      if (Object.keys(errors).length) {
+        return renderClientTprmDetail(req, res.status(422), detail, { values, errors });
+      }
+
+      const domain = tprmDomain();
+      const recordDecision = domain && (domain.recordClientDecision || domain.captureClientDecision);
+      if (typeof recordDecision !== 'function') {
+        return res.status(503).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'The governed client-decision service is temporarily unavailable. No decision was recorded.'
+        });
+      }
+      const submittedExpectedDecisionId = Number(req.body.expected_current_decision_id || 0) || null;
+      const latestDecisionId = Number(detail.latestClientDecisionId || 0) || null;
+      if (submittedExpectedDecisionId !== latestDecisionId) {
+        return res.status(409).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'The client decision history changed while this page was open. Review the latest record before deciding.'
+        });
+      }
+      let result;
+      try {
+        result = recordDecision(db, {
+          workspaceId: req.workspace.id,
+          supplierId,
+          cycleId: detail.thirdParty.cycle?.id,
+          recommendationId: detail.recommendation.id,
+          actorId: req.user.id,
+          decision: values.decision,
+          rationale: values.rationale,
+          validUntil,
+          conditions: values.decision === 'onboard_with_conditions' ? [...issuedConditions, ...conditions] : [],
+          riskAcceptance: {
+            accepted: riskAcceptanceRequired || req.body.accept_residual_risk === '1',
+            rationale: values.risk_acceptance_rationale || null,
+            expiresAt: riskAcceptanceExpiresAt || null
+          },
+          idempotencyNonce,
+          expectedCurrentDecisionId: latestDecisionId,
+          recommendationOutcome: detail.recommendation.outcome
+        });
+      } catch (error) {
+        const status = Number(error.status || error.statusCode || (error.code === 'CONFLICT' ? 409 : 422));
+        return res.status([400, 403, 404, 409, 422].includes(status) ? status : 422).render('error', {
+          user: req.user, ws: req.workspace,
+          message: safeText(error.message, 500) || 'The governed client decision could not be recorded.'
+        });
+      }
+      if (result && result.ok === false) {
+        const status = Number(result.status || 422);
+        return res.status([400, 403, 404, 409, 422].includes(status) ? status : 422).render('error', {
+          user: req.user, ws: req.workspace,
+          message: safeText(result.message, 500) || 'The governed client decision could not be recorded.'
+        });
+      }
+      const decisionRecord = result?.decision || result?.record || result;
+      logAction(req.user.id, req.workspace.id, 'tprm_client_decision_recorded', 'tprm_client_decision',
+        decisionRecord?.id || supplierId, {
+          supplier_id: supplierId, assessment_cycle_id: detail.thirdParty.cycle?.id || null,
+          recommendation_id: detail.recommendation.id, decision: values.decision,
+          differs_from_recommendation: clientDecisionContradicts(detail.recommendation.outcome, values.decision),
+          risk_accepted: riskAcceptanceRequired || req.body.accept_residual_risk === '1'
+        }, auditCtx(req));
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal/tprm/${supplierId}`, 'Client onboarding decision recorded.'));
+    });
+
+  app.post('/workspaces/:wsId/client-portal/tprm/:supplierId(\\d+)/comments', requireAuth, requireWorkspace,
+    requirePermission('tprm.client_comment'), requireClientTprmActor, requireActiveClientTprm, (req, res) => {
+      const supplierId = Number(req.params.supplierId);
+      const detail = clientTprmDetail(req, supplierId);
+      if (!detail) return res.status(404).render('error', {
+        user: req.user, ws: req.workspace,
+        message: 'This third party is unavailable or does not belong to this client.'
+      });
+      const member = activeClientMember(req);
+      if (!member || !['client_owner', 'isms_manager'].includes(member.role)) {
+        return res.status(403).render('error', {
+          user: req.user, ws: req.workspace,
+          message: 'Only the client decision authority or security reviewer can comment here.'
+        });
+      }
+      const body = clean(req.body.body, MAX_COMMENT);
+      if (!body || body === null) return badRequest(req, res, `Comment is required and must be under ${MAX_COMMENT} characters.`);
+      const domain = tprmDomain();
+      const addComment = domain && (domain.addClientComment || domain.recordClientComment);
+      if (typeof addComment === 'function') {
+        addComment(db, {
+          workspaceId: req.workspace.id, supplierId,
+          cycleId: detail.thirdParty.cycle?.id || null,
+          actorId: req.user.id, body
+        });
+      } else {
+        const storedBody = enc.encryptIfNeeded(body, req.workspace.id, !!req.workspace.encryption_enabled);
+        db.prepare(`INSERT INTO comments (workspace_id,parent_type,parent_id,user_id,body,internal_only)
+          VALUES (?,'tprm_third_party',?,?,?,0)`).run(
+          req.workspace.id, String(supplierId), req.user.id,
+          storedBody);
+      }
+      logAction(req.user.id, req.workspace.id, 'tprm_client_comment', 'supplier', supplierId,
+        { assessment_cycle_id: detail.thirdParty.cycle?.id || null }, auditCtx(req));
+      return res.redirect(`/workspaces/${req.workspace.id}/client-portal/tprm/${supplierId}#discussion`);
     });
 
   function loadVisibleDelivery(req, id) {
+    const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
+    if (!frameworks.includes('iso27001')) return null;
+    // `client_visible` is only the authoring flag.  The contracted lifecycle
+    // projection is the authoritative boundary: a gap-assessment-only client
+    // must not be able to act on retained implementation/certification rows by
+    // guessing a deliverable id or replaying an old link.
+    if (!delivery.isDeliverableInOutcomeScope(db, req.workspace, id)) return null;
     const row = db.prepare(`SELECT d.*,m.title milestone_title,p.name phase_name,m.source_rule
       FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
       JOIN engagement_delivery_phases p ON p.id=m.phase_id WHERE d.id=? AND d.workspace_id=? AND d.client_visible=1`).get(id, req.workspace.id);
@@ -519,23 +1347,32 @@ function register(app, deps) {
       const assigneeId = req.body.assignee_id ? parseInt(req.body.assignee_id, 10) : null;
       const controlId = req.body.control_id ? String(req.body.control_id) : null;
       const documentId = req.body.document_id ? parseInt(req.body.document_id, 10) : null;
-      if (!REQUEST_TYPES.has(type)) return badRequest(req, res, 'Choose a valid request type.');
-      if (!PRIORITIES.has(priority)) return badRequest(req, res, 'Choose a valid priority.');
-      if (!title || title === null) return badRequest(req, res, `Title is required and must be under ${MAX_TITLE} characters.`);
-      if (description === null) return badRequest(req, res, `Description must be under ${MAX_DESCRIPTION} characters.`);
-      if (dueDate === false) return badRequest(req, res, 'Due date is invalid.');
-      if (type === 'control' && !controlId) return badRequest(req, res, 'A control request must reference a control or clause.');
-      if (type === 'policy' && !documentId) return badRequest(req, res, 'A policy request must reference a document.');
-      if (assigneeId && !db.prepare(`SELECT 1 FROM workspace_members wm INNER JOIN users u ON u.id=wm.user_id
+      const errors = {};
+      if (!REQUEST_TYPES.has(type)) errors.request_type = 'Choose a valid request type.';
+      if (!PRIORITIES.has(priority)) errors.priority = 'Choose a valid priority.';
+      if (!title || title === null) errors.title = `Enter a title of ${MAX_TITLE} characters or fewer.`;
+      if (description === null) errors.description = `Keep the context to ${MAX_DESCRIPTION} characters or fewer.`;
+      if (dueDate === false) errors.due_date = 'Enter a valid calendar date.';
+      if (req.body.assignee_id && (!Number.isInteger(assigneeId) || assigneeId <= 0)) {
+        errors.assignee_id = 'Choose an assignee from this workspace.';
+      }
+      if (req.body.document_id && (!Number.isInteger(documentId) || documentId <= 0)) {
+        errors.document_id = 'Choose a policy from this workspace.';
+      }
+      if (type === 'control' && !controlId) errors.control_id = 'Choose the control or clause this request concerns.';
+      if (type === 'policy' && !documentId) errors.document_id = 'Choose the policy this request concerns.';
+      if (!errors.assignee_id && assigneeId && !db.prepare(`SELECT 1 FROM workspace_members wm INNER JOIN users u ON u.id=wm.user_id
           WHERE wm.workspace_id=? AND wm.user_id=? AND u.active=1 AND u.user_type='client'`).get(req.workspace.id, assigneeId)) {
-        return badRequest(req, res, 'The assignee is not an active client member of this workspace.');
+        errors.assignee_id = 'Choose an active client member of this workspace.';
       }
       if (controlId && !db.prepare(`SELECT 1 FROM iso_items WHERE id=? AND type IN ('clause','control')`).get(controlId)) {
-        return badRequest(req, res, 'The selected control does not exist.');
+        errors.control_id = 'Choose a control or clause from the list.';
       }
-      if (documentId && !db.prepare('SELECT 1 FROM generated_docs WHERE id=? AND workspace_id=?').get(documentId, req.workspace.id)) {
-        return badRequest(req, res, 'The selected document does not belong to this workspace.');
+      if (!errors.document_id && documentId && !db.prepare(`SELECT 1 FROM generated_docs
+          WHERE id=? AND workspace_id=? AND status NOT IN ('retired','withdrawn')`).get(documentId, req.workspace.id)) {
+        errors.document_id = 'Choose an active policy from this workspace.';
       }
+      if (Object.keys(errors).length) return requestFormFailure(req, res, errors);
 
       let id;
       db.transaction(() => {
@@ -626,6 +1463,12 @@ function register(app, deps) {
       );
       if (!result.changes) return res.status(409).render('error', { user: req.user, ws: req.workspace, message: 'This request changed in another session. Refresh it before applying your decision.' });
       insertEvent(req, request.id, 'status_changed', { fromStatus: request.status, toStatus: target, note: note || null });
+      if (request.engagement_id) {
+        reconcileDeliveryCompletion(req, {
+          reason: `A linked client RFI moved from ${request.status} to ${target}.`,
+          details: { request_id: request.id, engagement_id: request.engagement_id }
+        });
+      }
       logAction(req.user.id, req.workspace.id, 'transition_client_request', 'client_request', request.id,
         { from: request.status, to: target }, auditCtx(req));
       const notifyUser = target === 'submitted' ? request.created_by : request.assignee_id;
@@ -780,7 +1623,7 @@ function register(app, deps) {
       const raw = db.prepare(`SELECT d.*, u.name AS creator_name FROM generated_docs d LEFT JOIN users u ON u.id=d.created_by
         WHERE d.id=? AND d.workspace_id=?`).get(documentId, req.workspace.id);
       if (!raw) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Policy not found.' });
-      const doc = { ...raw, content: sanitizePolicyHtml(enc.decryptIfNeeded(raw.content, req.workspace.id)) };
+      const doc = { ...raw, content: documentHtml.sanitizeDocumentHtml(enc.decryptIfNeeded(raw.content, req.workspace.id)) };
       const currentVersion = doc.current_version_id ? db.prepare('SELECT * FROM doc_versions WHERE id=? AND workspace_id=?').get(doc.current_version_id, req.workspace.id) : null;
       const approvers = currentVersion ? docApprovals.listChain(db, currentVersion.id) : [];
       const comments = db.prepare(`SELECT c.*, u.name AS user_name FROM comments c INNER JOIN users u ON u.id=c.user_id

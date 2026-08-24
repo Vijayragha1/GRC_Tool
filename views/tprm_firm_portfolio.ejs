@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'Third-party risk portfolio', user, active }) %>
+<link rel="stylesheet" href="/tprm.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+
+<%# The page opened with four number cards of which three read zero for most
+    firms, so three quarters of the header carried no information and the one
+    figure that mattered sat in a tinted box. One line states the position and
+    every figure that is non-zero is a link into the list that explains it. %>
+<header class="tprm-page-head">
+  <div>
+    <h1>Third-party risk</h1>
+    <p><%= crossView ? 'Authorized client workload, decisions, reviews and exposure.' : 'Workload for clients assigned to you.' %> Same-named providers remain separate client records.</p>
+    <div class="tprm-summary">
+      <span><strong><%= queuePg.total %></strong> provider record<%= queuePg.total === 1 ? '' : 's' %></span>
+      <span><strong><%= clientPg.total %></strong> client<%= clientPg.total === 1 ? '' : 's' %></span>
+      <span><a href="#action-queue"><strong class="<%= portfolio.metrics.actionRequired ? 'tprm-figure-attention' : '' %>"><%= portfolio.metrics.actionRequired %></strong> need action</a></span>
+      <span><strong><%= portfolio.metrics.waitingProvider %></strong> waiting on provider</span>
+      <span><a href="#clients"><strong class="<%= portfolio.metrics.highResidual ? 'tprm-figure-attention' : '' %>"><%= portfolio.metrics.highResidual %></strong> high or critical risk</a></span>
+      <span><a href="#clients"><strong class="<%= portfolio.metrics.overdueExpiring ? 'tprm-figure-attention' : '' %>"><%= portfolio.metrics.overdueExpiring %></strong> overdue or expiring</a></span>
+    </div>
+  </div>
+</header>
+
+<form class="tprm-filters" method="GET" action="/tprm">
+  <input class="input" type="search" name="q" value="<%= filters.q %>" placeholder="Search client, third party, service or owner" aria-label="Search authorized portfolio">
+  <select class="select" name="status" aria-label="Lifecycle status"><option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active records</option><option value="all" <%= filters.status === 'all' ? 'selected' : '' %>>All records</option><option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>>Closed and retained</option></select>
+  <select class="select" name="risk" aria-label="Residual risk"><option value="">All residual risk</option><option value="high_critical" <%= filters.risk === 'high_critical' ? 'selected' : '' %>>High or critical</option><option value="critical" <%= filters.risk === 'critical' ? 'selected' : '' %>>Critical</option><option value="high" <%= filters.risk === 'high' ? 'selected' : '' %>>High</option><option value="moderate" <%= filters.risk === 'moderate' ? 'selected' : '' %>>Moderate</option><option value="low" <%= filters.risk === 'low' ? 'selected' : '' %>>Low</option></select>
+  <button class="btn" type="submit">Apply filters</button>
+</form>
+
+<section class="tprm-section" id="action-queue">
+  <div class="tprm-section-head"><div><h2>Work queue</h2><p>Showing <%= queuePg.total ? ((queuePg.page - 1) * queuePg.perPage + 1) : 0 %> to <%= Math.min(queuePg.page * queuePg.perPage, queuePg.total) %> of <%= queuePg.total %> matching records</p></div></div>
+  <%- include('partials/tprm_queue', { queueRows: portfolio.queue, showClient: true, titleCase, dateOnly }) %>
+  <div class="tprm-pager-shell"><%- include('partials/pager', { pg: queuePg, pagerHref: queuePagerHref }) %></div>
+</section>
+
+<section class="tprm-section" id="clients">
+  <div class="tprm-section-head"><div><h2>Client portfolio</h2><p><%= clientPg.total ? ((clientPg.page - 1) * clientPg.perPage + 1) : 0 %> to <%= Math.min(clientPg.page * clientPg.perPage, clientPg.total) %> of <%= clientPg.total %> authorized programmes</p></div></div>
+  <div class="tprm-table-wrap">
+    <table class="tprm-table">
+      <thead><tr><th>Client</th><th>Lead consultant</th><th class="tprm-num">Third parties</th><th class="tprm-num">Open actions</th><th class="tprm-num">High or critical</th><th class="tprm-num">Overdue reviews</th><th></th></tr></thead>
+      <tbody>
+        <% perClient.forEach(client => { %>
+          <tr>
+            <td><strong><%= client.client_name %></strong><small><%= client.sector || client.industry || 'Sector not recorded' %></small></td>
+            <td><%= client.lead_consultant_name || 'Not assigned' %></td>
+            <%# A column of zeros reads as noise. Nothing to report renders as
+                nothing, so the eye lands only on the counts that exist. %>
+            <td class="tprm-num"><%= client.thirdPartyCount || '-' %></td>
+            <td class="tprm-num <%= client.actionCount ? 'tprm-figure-attention' : '' %>"><%= client.actionCount || '-' %></td>
+            <td class="tprm-num <%= client.criticalExposure ? 'tprm-figure-attention' : '' %>"><%= client.criticalExposure || '-' %></td>
+            <td class="tprm-num <%= client.overdueReviews ? 'tprm-figure-attention' : '' %>"><%= client.overdueReviews || '-' %></td>
+            <td><a href="/workspaces/<%= client.id %>/tprm">Open</a></td>
+          </tr>
+        <% }) %>
+        <% if (!perClient.length) { %><tr><td colspan="7"><div class="tprm-empty"><strong>No TPRM programmes in scope</strong><span>Enable TPRM for a client or request assignment.</span></div></td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+  <div class="tprm-pager-shell"><%- include('partials/pager', { pg: clientPg, pagerHref: clientPagerHref }) %></div>
+</section>
+<%- include('partials/footer') %>

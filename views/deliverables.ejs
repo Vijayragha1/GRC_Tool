@@ -44,6 +44,14 @@
   .deliv-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
 
   .deliv-actions { display: flex; gap: 6px; align-items: center; }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .deliv-fmt
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head">
@@ -89,6 +97,15 @@
       ]
     }
   ];
+
+  // A Stage 1/2 readiness pack is a certification-support deliverable, not a
+  // report-only assessment output.  Keep it out of the catalogue as well as
+  // enforcing the same boundary on the server route.
+  if (ws.engagement_outcome === 'gap_assessment_only') {
+    sections[0].items = sections[0].items.filter(item => item.name !== 'Readiness pack');
+    sections[0].title = 'Controlled assurance outputs';
+    sections[0].sub = 'Evidence and assessment records within the agreed report-only scope';
+  }
 
   // ISO 42001 frameworks bring their own SoA. Surface only if the client
   // has the framework enabled.

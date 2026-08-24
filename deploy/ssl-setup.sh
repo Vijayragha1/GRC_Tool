@@ -15,10 +15,15 @@ if [ -z "$DOMAIN" ]; then
 fi
 
 echo "==> Updating Nginx config for domain: $DOMAIN"
+cat > /etc/nginx/conf.d/grc-log-format.conf <<'LOGEOF'
+log_format grc_no_query '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" '
+                        '$status $body_bytes_sent "$http_user_agent"';
+LOGEOF
 cat > /etc/nginx/sites-available/grc-tool <<NGINXEOF
 server {
     listen 80;
     server_name ${DOMAIN};
+    access_log /var/log/nginx/grc-tool.access.log grc_no_query;
 
     client_max_body_size 50M;
 
@@ -56,6 +61,8 @@ elif grep -q "^# APP_BASE_URL=" "$ENV_FILE" 2>/dev/null; then
 else
   echo "APP_BASE_URL=https://${DOMAIN}" >> "$ENV_FILE"
 fi
+chown root:root "$ENV_FILE"
+chmod 0600 "$ENV_FILE"
 
 echo "==> Restarting app with new config..."
 cd /opt/grc-tool && docker compose up -d

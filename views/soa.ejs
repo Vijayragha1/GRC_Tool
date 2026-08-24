@@ -12,7 +12,7 @@
     <form method="POST" action="/workspaces/<%= ws.id %>/soa/snapshot" style="display:inline"><input type="hidden" name="label" value="Manual snapshot"><button class="btn btn-secondary btn-xs" title="Capture an immutable, hashed copy of the current SoA state. Auditors compare snapshots over time - capture before each MRM and before each audit.">Capture snapshot</button></form>
     <a href="/workspaces/<%= ws.id %>/export/soa.csv" class="btn btn-secondary btn-xs">Export CSV</a>
     <a href="/workspaces/<%= ws.id %>/export/rtp.docx" class="btn btn-secondary btn-xs">RTP ↓</a>
-    <a href="/workspaces/<%= ws.id %>/export/readiness-pack.zip?stage=1" class="btn btn-primary btn-xs">Readiness pack ↓</a>
+    <% if (ws.engagement_outcome !== 'gap_assessment_only') { %><a href="/workspaces/<%= ws.id %>/export/readiness-pack.zip?stage=1" class="btn btn-primary btn-xs">Readiness pack ↓</a><% } %>
   </div>
 </div>
 
@@ -30,7 +30,7 @@
       <span class="tag tag-warn text-eyebrow">missing - auditors expect this on arrival</span>
     <% } %>
   </summary>
-  <form method="POST" action="/workspaces/<%= ws.id %>/soa/metadata" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/soa/metadata" class="panel-pad stack-grid" style="--cols:1fr 1fr 1fr 1fr;border-top:1px solid var(--border);background:var(--bg-subtle);gap:10px;">
     <div><label class="label">Version</label><input class="input" name="version" value="<%= soaMeta.version || '' %>" placeholder="e.g., 1.2"></div>
     <div><label class="label">Owner</label><input class="input" name="owner" value="<%= soaMeta.owner || '' %>" placeholder="e.g., CISO"></div>
     <div><label class="label">Approved by</label><input class="input" name="approved_by" value="<%= soaMeta.approved_by || '' %>" placeholder="e.g., CEO"></div>
@@ -183,7 +183,7 @@
   <% } %>
   <details style="border-top:1px solid var(--border);">
     <summary class="panel-pad text-md" style="cursor:pointer;color:var(--accent);">+ Add custom control</summary>
-    <form method="POST" action="/workspaces/<%= ws.id %>/soa/custom-controls" class="panel-pad" style="background:var(--bg-subtle);display:grid;grid-template-columns:120px 1fr 160px 140px;gap:8px;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/soa/custom-controls" class="panel-pad stack-grid" style="--cols:120px 1fr 160px 140px;background:var(--bg-subtle);gap:8px;">
       <input class="input mono text-md" name="code" placeholder="C-001" required>
       <input class="input text-md" name="title" placeholder="Control title" required>
       <input class="input text-md" name="source_framework" placeholder="NIST CSF / Internal">

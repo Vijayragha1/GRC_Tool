@@ -9,20 +9,29 @@
   <% } %>
 </div>
 
-<%# Compact portfolio strip - dropped the 5-card grid (the Avg Stage 1
-    average across heterogeneous engagements was meaningless; the rest
-    of the KPIs are simple counts that don't need card chrome). One
-    typographic data line instead, scanning friendly. Click-through to
-    the relevant cohort on the table below. %>
+<%# One line, one arithmetic. The strip previously carried four counts from
+    three different formulas: "needing attention" came from its own red-flag
+    rule, the at-risk panel below it computed high/medium separately, and that
+    panel then listed every client anyway. Everything here now reads off the
+    same per-client verdict the table uses. %>
 <% if (workspaces.length > 0) { %>
-<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 16px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
-  <span><strong style="color:var(--text);font-weight: 500;font-size:14px;"><%= totals.total %></strong> active client<%= totals.total === 1 ? '' : 's' %></span>
-  <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= totals.nearCert > 0 ? '#b45309' : 'var(--text-secondary)' %>;font-weight: 500;"><%= totals.nearCert %></strong> near cert <span class="text-xs" style="color:var(--text-tertiary);">(&lt; 90d)</span></span>
-  <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= totals.redFlags > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight: 500;"><%= totals.redFlags %></strong> needing attention</span>
-  <span style="color:var(--text-tertiary);">·</span>
-  <span><strong style="color:<%= totals.totalOpenNCs > 0 ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight: 500;"><%= totals.totalOpenNCs %></strong> open NC<%= totals.totalOpenNCs === 1 ? '' : 's' %> across the firm</span>
+<div class="dash-line">
+  <span><strong><%= totals.total %></strong> active client<%= totals.total === 1 ? '' : 's' %></span>
+  <% if (totals.needsAttention > 0) { %>
+    <span><a class="link-muted" href="#clients" data-dash-filter="attention"><strong class="text-danger"><%= totals.needsAttention %></strong> need attention</a></span>
+  <% } %>
+  <% if (totals.watch > 0) { %>
+    <span><strong class="text-warn"><%= totals.watch %></strong> to watch</span>
+  <% } %>
+  <% if (typeof thisWeek !== 'undefined' && thisWeek.overdue.length) { %>
+    <span><a class="link-muted" href="#work"><strong class="text-danger"><%= thisWeek.overdue.length %></strong> overdue item<%= thisWeek.overdue.length === 1 ? '' : 's' %></a></span>
+  <% } %>
+  <% if (totals.gapOnly > 0) { %>
+    <span><strong><%= totals.gapOnly %></strong> gap-assessment-only</span>
+  <% } %>
+  <% if (totals.nearCert > 0) { %>
+    <span><strong class="text-warn"><%= totals.nearCert %></strong> within 90 days of certification</span>
+  <% } %>
 </div>
 <% } %>
 
@@ -49,156 +58,61 @@
   </div>
 <% } %>
 
-<!-- This week across the portfolio - what to touch today, this week, what's late.
-     The MSSP consultant's morning standup view: aggregates tasks, NCs, audits,
-     and MRMs across every client in the active firm. -->
+<%# Work due across the portfolio, grouped by the work itself.
+    The previous list printed one row per client per item, so a quarterly
+    assurance review running across eight engagements filled eight rows that
+    differed only in the client name, and the ten-row cap then hid genuinely
+    distinct work behind "+15 more". Grouping by title collapses that to one
+    row naming its clients, and nothing is truncated. %>
 <% if (typeof thisWeek !== 'undefined' && thisWeek.totalActionable > 0) { %>
-  <div class="panel" style="margin-bottom:24px;">
+  <section class="panel" id="work" style="margin-bottom:20px;">
     <div class="panel-head">
-      <h2>This week <span class="meta text-lg" style="font-weight:400;">- what's due across all clients</span></h2>
+      <h2>Work due across clients</h2>
       <span class="meta">
-        <% if (thisWeek.overdue.length) { %><strong class="text-danger"><%= thisWeek.overdue.length %></strong> overdue · <% } %>
+        <% if (thisWeek.overdue.length) { %><strong class="text-danger"><%= thisWeek.overdue.length %></strong> overdue<% } %>
+        <% if (thisWeek.overdue.length && thisWeek.dueThisWeek.length) { %> · <% } %>
         <% if (thisWeek.dueThisWeek.length) { %><strong class="text-warn"><%= thisWeek.dueThisWeek.length %></strong> due this week<% } %>
       </span>
     </div>
 
-    <% if (thisWeek.overdue.length) { %>
-      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(220,38,38,0.03);">
-        <div class="text-xs text-danger" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Overdue (<%= thisWeek.overdue.length %>)</div>
-        <div style="display:grid;gap:6px;">
-          <% thisWeek.overdue.slice(0, 10).forEach(it => { %>
-            <a href="<%= it.href %>" class="link-muted text-md" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;align-items:center;">
-              <span class="tag tag-danger text-xxs" style="justify-self:start;"><%= it.kind %></span>
-              <span class="meta text-xs text-danger" style="font-weight:500;"><%= it.due_date %></span>
-              <span><%= it.title %></span>
-              <span class="meta text-xs" style="text-align:right;"><%= it.client %></span>
-            </a>
-          <% }) %>
-          <% if (thisWeek.overdue.length > 10) { %>
-            <div class="meta text-xs" style="padding:4px 8px;">+ <%= thisWeek.overdue.length - 10 %> more</div>
-          <% } %>
-        </div>
-      </div>
-    <% } %>
-
-    <% if (thisWeek.dueThisWeek.length) { %>
-      <div class="panel-pad">
-        <div class="text-xs text-warn" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Due this week (<%= thisWeek.dueThisWeek.length %>)</div>
-        <div style="display:grid;gap:6px;">
-          <% thisWeek.dueThisWeek.slice(0, 10).forEach(it => { %>
-            <a href="<%= it.href %>" class="link-muted text-md" style="display:grid;grid-template-columns:80px 100px 1fr 90px;gap:10px;padding:6px 8px;border-radius:4px;align-items:center;">
-              <span class="tag tag-warn text-xxs" style="justify-self:start;"><%= it.kind %></span>
-              <span class="meta num text-xs"><%= it.due_date %></span>
-              <span><%= it.title %></span>
-              <span class="meta text-xs" style="text-align:right;"><%= it.client %></span>
-            </a>
-          <% }) %>
-          <% if (thisWeek.dueThisWeek.length > 10) { %>
-            <div class="meta text-xs" style="padding:4px 8px;">+ <%= thisWeek.dueThisWeek.length - 10 %> more</div>
-          <% } %>
-        </div>
-      </div>
-    <% } %>
-
     <%
-      const byClient = Object.values(thisWeek.byClient || {}).sort((a,b) => (b.overdue - a.overdue) || (b.thisWeek - a.thisWeek));
-    %>
-    <% if (byClient.length > 1) { %>
-      <div class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
-        <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">By client</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
-          <% byClient.forEach(c => { %>
-            <a href="/workspaces/<%= c.ws_id %>" class="link-muted text-base" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
-              <span style="font-weight:500;"><%= c.name %></span>
-              <span style="display:flex;gap:4px;">
-                <% if (c.overdue) { %><span class="tag tag-danger text-xxs"><%= c.overdue %> late</span><% } %>
-                <% if (c.thisWeek) { %><span class="tag tag-warn text-xxs"><%= c.thisWeek %> wk</span><% } %>
-              </span>
-            </a>
-          <% }) %>
+      const KIND_LABEL = { task: 'Task', nc: 'Nonconformity', audit: 'Audit', mrm: 'Management review' };
+      function renderGroups(groups, tone) { %>
+      <% groups.forEach(group => { %>
+        <div class="dash-work">
+          <div class="dash-work-head">
+            <span class="dash-work-when <%= tone %>"><%= group.earliest %><%= group.latest !== group.earliest ? ` to ${group.latest}` : '' %></span>
+            <span class="dash-work-title"><%= group.title %></span>
+            <span class="meta text-xs"><%= KIND_LABEL[group.kind] || group.kind %><%= group.clients.length > 1 ? ` · ${group.clients.length} clients` : '' %></span>
+            <%# One client needs no list of its own; it goes on the same line. %>
+            <% if (group.clients.length === 1) { %>
+              <a class="dash-work-one" href="<%= group.clients[0].href %>"><%= group.clients[0].client %><%= group.clients[0].count > 1 ? ` ×${group.clients[0].count}` : '' %></a>
+            <% } %>
+          </div>
+          <% if (group.clients.length > 1) { %>
+            <div class="dash-work-clients">
+              <% group.clients.forEach(entry => { %>
+                <a href="<%= entry.href %>"><%= entry.client %><%= entry.count > 1 ? ` ×${entry.count}` : '' %></a>
+              <% }) %>
+            </div>
+          <% } %>
         </div>
+      <% }) %>
+    <% } %>
+
+    <% if (thisWeek.overdueGroups && thisWeek.overdueGroups.length) { %>
+      <div class="dash-work-group">
+        <div class="sec-label text-danger" style="margin:0;">Overdue</div>
+        <% renderGroups(thisWeek.overdueGroups, 'is-overdue') %>
       </div>
     <% } %>
-  </div>
-<% } %>
-
-<!-- At-risk clients - one row per client flagged across multiple signals -->
-<% if (typeof atRisk !== 'undefined' && atRisk.length > 0) { %>
-  <div class="panel" style="margin-bottom:24px;">
-    <div class="panel-head">
-      <h2>At-risk clients <span class="meta text-lg" style="font-weight:400;">- overdue NCs · stale controls · cert deadlines · missed reviews</span></h2>
-      <span class="meta">
-        <% const high = atRisk.filter(r => r.severity === 'high').length; const med = atRisk.filter(r => r.severity === 'medium').length; %>
-        <% if (high) { %><strong class="text-danger"><%= high %></strong> high · <% } %>
-        <% if (med) { %><strong class="text-warn"><%= med %></strong> medium<% } %>
-      </span>
-    </div>
-    <table class="t">
-      <thead><tr>
-        <th>Client</th>
-        <th style="width:130px;">Last pass</th>
-        <th style="width:140px;">Readiness</th>
-        <th style="width:140px;">Cert target</th>
-        <th>Why flagged</th>
-        <th style="width:80px;"></th>
-      </tr></thead>
-      <tbody>
-        <% atRisk.forEach(r => {
-             const sevColor = r.severity === 'high' ? '#b91c1c' : '#a16207';
-        %>
-          <tr>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span style="width:8px;height:8px;border-radius:50%;background:<%= sevColor %>;flex-shrink:0;"></span>
-                <strong class="text-lg"><%= r.client_name %></strong>
-                <% if (r.industry) { %><span class="meta text-xs"><%= r.industry %></span><% } %>
-              </div>
-            </td>
-            <td class="text-sm">
-              <% if (r.lastPass) { %>
-                Pass <%= r.lastPass.pass_number %><br>
-                <span class="meta text-eyebrow">
-                  <%= r.lastPass.status === 'in_progress' ? 'in progress' : ('done ' + (r.lastPass.completed_at || '').slice(0,10)) %>
-                </span>
-              <% } else { %>
-                <span class="meta">none</span>
-              <% } %>
-            </td>
-            <td>
-              <span class="status s-<%= r.truth.verdict.tone === 'success' ? 'done' : r.truth.verdict.tone === 'danger' ? 'blocked' : 'in_progress' %>"><%= r.truth.verdict.label %></span>
-              <div class="meta text-xs" style="margin-top:3px;"><%= r.readiness.stage1 %>% maturity</div>
-            </td>
-            <td class="text-sm">
-              <% if (r.target_cert_date) { %>
-                <%= r.target_cert_date %><br>
-                <span class="meta text-xs <%= r.readiness.daysToTarget !== null && r.readiness.daysToTarget < 30 ? 'text-danger fw-bold' : '' %>">
-                  <% if (r.readiness.daysToTarget !== null) { %><%= r.readiness.daysToTarget %> days<% } else { %>-<% } %>
-                </span>
-              <% } else { %><span class="meta">no target</span><% } %>
-            </td>
-            <td class="text-sm" style="line-height:1.5;">
-              <%
-                // Each reason chip links to the most relevant sub-page so a
-                // consultant can drill straight in instead of bouncing through
-                // the client overview.
-                function reasonLink(reason, wsId) {
-                  if (/NC/i.test(reason)) return `/workspaces/${wsId}/nonconformities`;
-                  if (/cert target/i.test(reason)) return `/workspaces/${wsId}/cert-cycle`;
-                  if (/objective/i.test(reason)) return `/workspaces/${wsId}/objectives`;
-                  if (/stale controls/i.test(reason)) return `/workspaces/${wsId}/notifications?filter=unread`;
-                  if (/truth conflict|readiness gap/i.test(reason)) return `/workspaces/${wsId}/data-quality`;
-                  if (/pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
-                  return `/workspaces/${wsId}`;
-                }
-              %>
-              <% r.reasons.forEach(reason => { %><a href="<%= reasonLink(reason, r.id) %>" class="tag tag-neutral text-eyebrow" style="margin:1px 2px 1px 0;text-decoration:none;cursor:pointer;"><%= reason %></a><% }) %>
-            </td>
-            <td><a href="/workspaces/<%= r.id %>" class="btn btn-secondary btn-xs">Open</a></td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
+    <% if (thisWeek.dueThisWeekGroups && thisWeek.dueThisWeekGroups.length) { %>
+      <div class="dash-work-group">
+        <div class="sec-label text-warn" style="margin:0;">Due this week</div>
+        <% renderGroups(thisWeek.dueThisWeekGroups, 'is-soon') %>
+      </div>
+    <% } %>
+  </section>
 <% } %>
 
 <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.create')) { %>
@@ -220,19 +134,52 @@
     <div class="grid-2" style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div><label class="label">Client name <span class="meta">required</span></label><input class="input" name="client_name" required autofocus placeholder="e.g. Northwind Financial Services"></div>
       <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
-      <div class="col-full"><label class="label">Target certification date</label><input class="input" name="target_cert_date" type="date" style="max-width:240px;"></div>
+      <div class="col-full" id="dashboard-certification-target-field" hidden><label class="label">Target certification date</label><input class="input" id="dashboard-target-cert-date" name="target_cert_date" type="date" disabled style="max-width:240px;"><div class="meta text-xs" id="dashboard-target-cert-help" style="margin-top:4px;">Choose the ISO 27001 service path first.</div></div>
+      <fieldset id="dashboard-iso27001-outcome-fieldset" class="col-full" hidden style="border:1px solid var(--border);border-radius:7px;padding:11px;margin:0;">
+        <legend class="label" style="padding:0 4px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+          <% outcomeOptions.forEach(option => { %>
+            <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+              <input type="radio" name="engagement_outcome" value="<%= option.value %>" style="margin-top:3px;">
+              <span class="text-sm"><strong style="display:block;"><%= option.label %></strong><span class="meta" style="display:block;line-height:1.35;"><%= option.description %></span></span>
+            </label>
+          <% }) %>
+        </div>
+      </fieldset>
       <%# Scope intentionally NOT here - the next-step intake page auto-
           drafts the full clause 4.3 scope statement from the 25 questions
           and applies it on save. Asking for it twice meant people typed
           a placeholder once and never came back to fix it. %>
       <div class="col-full">
         <div class="label">Assessment programmes <span class="meta">optional · choose any combination</span></div>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:7px;">
-          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input type="checkbox" name="frameworks" value="iso27001" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">ISO 27001:2022</strong><span class="meta">Information security</span></span></label>
-          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input type="checkbox" name="frameworks" value="iso42001" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">ISO 42001:2023</strong><span class="meta">AI management</span></span></label>
-          <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input type="checkbox" name="frameworks" value="csf" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;">NIST CSF 2.0</strong><span class="meta">Cyber maturity</span></span></label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px;">
+          <%# Rendered from the framework registry (lib/frameworks.js). The markup is
+              unchanged from the four hand-written labels this replaced, including the
+              dashboard-<code>-programme id that the quick-create tests assert on. %>
+          <% frameworkList.forEach(fw => { %>
+            <label style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);"><input id="dashboard-<%= fw.code %>-programme" type="checkbox" name="frameworks" value="<%= fw.code %>" style="margin-top:2px;"><span class="text-sm"><strong style="display:block;"><%= fw.pickerLabel %></strong><span class="meta"><%= fw.pickerNote %></span></span></label>
+          <% }) %>
         </div>
         <div class="meta text-xs" style="margin-top:7px;">You can create the client now and assign programmes later.</div>
+      </div>
+      <div class="col-full" style="padding-top:4px;border-top:1px solid var(--border);">
+        <div class="label">Operational modules <span class="meta">optional · independent of frameworks</span></div>
+        <label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);margin-top:7px;">
+          <input id="dashboard-tprm-module" type="checkbox" name="tprm_enabled" value="1" style="margin-top:3px;">
+          <span class="text-sm"><strong style="display:block;">Third-party risk</strong><span class="meta" style="display:block;line-height:1.4;">Provider intake, due diligence, consultancy recommendations, client decisions, monitoring, renewal and offboarding.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);margin-top:7px;">
+          <input id="dashboard-vciso-module" type="checkbox" name="vciso_enabled" value="1" style="margin-top:3px;">
+          <span class="text-sm"><strong style="display:block;">vCISO advisory</strong><span class="meta" style="display:block;line-height:1.4;">Virtual security leadership, governance cadence, risk oversight, executive reporting and tracked advisory delivery.</span></span>
+        </label>
+        <fieldset id="dashboard-tprm-service-fieldset" hidden style="border:1px solid var(--border);border-radius:7px;padding:11px;margin:10px 0 0;">
+          <legend class="label" style="padding:0 4px;">TPRM service model <span class="meta">required</span></legend>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+            <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="assessment_only" style="margin-top:3px;"><span class="text-sm"><strong style="display:block;">One-off assessment</strong><span class="meta">Assess selected third parties and issue recommendations.</span></span></label>
+            <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="programme_setup" style="margin-top:3px;"><span class="text-sm"><strong style="display:block;">Programme setup</strong><span class="meta">Establish inventory, methodology and governance.</span></span></label>
+            <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="managed_lifecycle" style="margin-top:3px;"><span class="text-sm"><strong style="display:block;">Managed lifecycle</strong><span class="meta">Operate onboarding through monitoring and offboarding.</span></span></label>
+          </div>
+        </fieldset>
       </div>
     </div>
     <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
@@ -248,6 +195,40 @@
 (function () {
   const dlg = document.getElementById('newWs');
   if (!dlg) return;
+  const target = document.getElementById('dashboard-target-cert-date');
+  const targetField = document.getElementById('dashboard-certification-target-field');
+  const targetHelp = document.getElementById('dashboard-target-cert-help');
+  const isoProgramme = document.getElementById('dashboard-iso27001-programme');
+  const outcomeFieldset = document.getElementById('dashboard-iso27001-outcome-fieldset');
+  const outcomeChoices = dlg.querySelectorAll('input[name="engagement_outcome"]');
+  const tprmModule = document.getElementById('dashboard-tprm-module');
+  const tprmServiceFieldset = document.getElementById('dashboard-tprm-service-fieldset');
+  const tprmServiceChoices = dlg.querySelectorAll('input[name="tprm_service_model"]');
+  function refreshCertificationTarget() {
+    const selected = dlg.querySelector('input[name="engagement_outcome"]:checked');
+    const hasIso27001 = !!isoProgramme.checked;
+    const gapOnly = hasIso27001 && selected && selected.value === 'gap_assessment_only';
+    const fullSupport = hasIso27001 && selected && selected.value === 'certification_support';
+    outcomeFieldset.hidden = !hasIso27001;
+    targetField.hidden = !hasIso27001;
+    outcomeChoices.forEach(choice => { choice.required = hasIso27001; });
+    target.disabled = !fullSupport;
+    targetField.style.opacity = fullSupport ? '1' : '.55';
+    targetHelp.textContent = gapOnly
+      ? 'Not applicable to a gap-assessment-only contract.'
+      : fullSupport ? 'Optional target for Full certification support.' : 'Choose the ISO 27001 service path first.';
+    if (!fullSupport) target.value = '';
+  }
+  outcomeChoices.forEach(choice => choice.addEventListener('change', refreshCertificationTarget));
+  isoProgramme.addEventListener('change', refreshCertificationTarget);
+  function refreshTprmService() {
+    const enabled = !!tprmModule.checked;
+    tprmServiceFieldset.hidden = !enabled;
+    tprmServiceChoices.forEach(choice => { choice.required = enabled; });
+  }
+  tprmModule.addEventListener('change', refreshTprmService);
+  refreshCertificationTarget();
+  refreshTprmService();
   dlg.addEventListener('click', e => {
     const r = dlg.getBoundingClientRect();
     const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
@@ -257,43 +238,85 @@
 </script>
 <% } %>
 
-<div class="panel" style="overflow:hidden">
-  <table class="t">
+<%# One client table. The dashboard used to render this list twice: an
+    "At-risk clients" table above it and this one below, sharing four of six
+    columns, with the at-risk table listing every client because a
+    low-signal reason fires on nearly all of them. The verdict now travels in
+    the row, worst first, and the scored triage board keeps living at
+    /portfolio where it belongs. %>
+<%
+  // Each reason links to the page that can settle it, so a consultant drills
+  // in rather than bouncing through the client overview.
+  function reasonLink(reason, wsId) {
+    if (/NC/i.test(reason)) return `/workspaces/${wsId}/nonconformities`;
+    if (/cert target/i.test(reason)) return `/workspaces/${wsId}/cert-cycle`;
+    if (/objective/i.test(reason)) return `/workspaces/${wsId}/objectives`;
+    if (/stale controls/i.test(reason)) return `/workspaces/${wsId}/notifications?filter=unread`;
+    if (/gap-assessment blocker/i.test(reason)) return `/workspaces/${wsId}/gap-assessment/fieldwork`;
+    if (/truth conflict|readiness gap/i.test(reason)) return `/workspaces/${wsId}/data-quality`;
+    if (/pass/i.test(reason)) return `/workspaces/${wsId}/gap-assessment`;
+    return `/workspaces/${wsId}`;
+  }
+%>
+<section class="panel" id="clients" style="overflow:hidden">
+  <div class="panel-head">
+    <h2>Clients</h2>
+    <% if (totals.needsAttention > 0 || totals.watch > 0) { %>
+      <div class="dash-filter" role="group" aria-label="Filter clients">
+        <button type="button" class="dash-filter-btn is-active" data-filter="all">All <span class="meta num"><%= totals.total %></span></button>
+        <button type="button" class="dash-filter-btn" data-filter="attention">Needs attention <span class="meta num"><%= totals.needsAttention + totals.watch %></span></button>
+      </div>
+    <% } %>
+  </div>
+  <div class="dash-table-wrap">
+  <table class="t" id="clientTable">
     <thead><tr>
-      <th>Client</th><th style="width:150px">Certification</th>
-      <th style="width:90px">Maturity</th><th style="width:90px">Days</th>
-      <th style="width:80px">NCs</th><th style="width:200px">Progress</th>
-      <% if (user.user_type === 'firm') { %><th style="width:40px"></th><% } %>
+      <th style="min-width:170px">Client</th>
+      <th style="width:186px">Engagement</th>
+      <th style="width:150px">Progress</th>
+      <th style="width:116px">Next milestone</th>
+      <th style="width:250px">Attention</th>
+      <% if (user.user_type === 'firm') { %><th style="width:34px"></th><% } %>
     </tr></thead>
     <tbody>
       <% workspaces.forEach(w => { %>
-        <tr style="cursor:pointer" onclick="location='/workspaces/<%= w.id %>'">
+        <%
+          const serviceClass = w.service.tone === 'success' ? 'done' : w.service.tone === 'danger' ? 'blocked' : w.service.tone === 'warning' ? 'in_progress' : 'not_started';
+          const att = w.attention || { severity: 'ok', reasons: [], primary: null, more: 0, rest: [] };
+        %>
+        <tr class="dash-row" data-attention="<%= att.severity %>" style="cursor:pointer" onclick="location='/workspaces/<%= w.id %>'">
           <td>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <% if (w.brand_primary_color && /^#[0-9a-fA-F]{6}$/.test(w.brand_primary_color)) { %>
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<%= w.brand_primary_color %>;flex-shrink:0;"></span>
-              <% } %>
+            <div class="dash-client">
+              <span class="dash-dot dash-dot-<%= att.severity %>" title="<%= att.severity === 'high' ? 'Needs attention' : att.severity === 'medium' ? 'Watch' : 'No open signal' %>"></span>
               <span style="font-weight:500"><%= w.brand_display_name || w.client_name %></span>
-              <% if (w.sector) { %><span class="tag tag-info text-xxs"><%= w.sector %></span><% } %>
+              <% if (w.sector) { %><span class="meta text-xs"><%= w.sector %></span><% } %>
             </div>
-            <% if (w.industry) { %><div class="meta" style="margin-top:2px"><%= w.industry %></div><% } %>
+            <% if (w.industry) { %><div class="meta text-xs" style="margin-left:16px;"><%= w.industry %></div><% } %>
           </td>
           <td>
-            <span class="status s-<%= w.truth.verdict.tone === 'success' ? 'done' : w.truth.verdict.tone === 'danger' ? 'blocked' : 'in_progress' %>"><%= w.truth.verdict.label %></span>
-            <div class="meta text-xs" style="margin-top:3px;"><%= w.truth.lifecycle.label %></div>
-          </td>
-          <td><span class="num" style="font-weight:500;color:<%= w.readiness.stage1 >= 80 ? '#15803d' : w.readiness.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= w.readiness.stage1 %>%</span></td>
-          <td class="num meta" style="color:<%= w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 30 ? '#b91c1c' : w.readiness.daysToTarget !== null && w.readiness.daysToTarget < 90 ? '#a16207' : '' %>"><%= w.readiness.daysToTarget !== null ? w.readiness.daysToTarget + 'd' : '-' %></td>
-          <td>
-            <% if (w.openMajorNCs > 0 || w.overdueNCs > 0) { %>
-              <span class="tag tag-danger num"><%= w.openMajorNCs + w.overdueNCs %></span>
-            <% } else { %><span class="meta">-</span><% } %>
+            <span class="status s-<%= serviceClass %>"><%= w.service.path %></span>
+            <div class="meta text-xs" style="margin-top:3px;"><%= w.service.detail %></div>
           </td>
           <td>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div style="width:120px;height:4px;background:var(--bg-muted);border-radius:2px;overflow:hidden;"><div style="height:100%;background:var(--accent);width:<%= w.progress.percent %>%;"></div></div>
-              <span class="num text-xs text-tertiary" style="min-width:42px;"><%= w.progress.assessed %>/<%= w.progress.total %></span>
+            <div style="font-weight:500;font-size:12.5px;"><%= w.service.position %></div>
+            <div class="dash-progress" title="<%= w.progress.assessed %> of <%= w.progress.total %> assessed">
+              <span style="width:<%= w.progress.percent %>%"></span>
             </div>
+            <div class="meta text-xs num"><%= w.service.metric %></div>
+          </td>
+          <td class="text-sm">
+            <%= w.service.target %>
+            <% if (w.service.targetDetail) { %><div class="meta text-xs num"><%= w.service.targetDetail %></div><% } %>
+          </td>
+          <td onclick="event.stopPropagation()" style="cursor:default;">
+            <% if (att.primary) { %>
+              <a class="dash-reason dash-reason-<%= att.severity %>" href="<%= reasonLink(att.primary, w.id) %>"><%= att.primary %></a>
+              <% if (att.more) { %>
+                <span class="meta text-xs" title="<%= att.rest.join(' · ') %>">+ <%= att.more %> more</span>
+              <% } %>
+            <% } else { %>
+              <span class="meta">-</span>
+            <% } %>
           </td>
           <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.delete')) { %>
           <td onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
@@ -303,7 +326,7 @@
                     class="btn btn-ghost btn-xs"
                     style="color:var(--danger,#b91c1c);padding:4px 8px;">×</button>
           </td>
-          <% } %>
+          <% } else if (user.user_type === 'firm') { %><td></td><% } %>
         </tr>
       <% }) %>
       <% if (workspaces.length === 0) { %>
@@ -320,45 +343,50 @@
           </div>
         </td></tr>
       <% } %>
+      <tr id="clientTableEmpty" hidden><td colspan="6" class="t-empty">No client currently carries an open signal.</td></tr>
     </tbody>
   </table>
-</div>
+  </div>
+</section>
 
+<script>
+  // Attention filter. Plain row hiding: the table is the whole dataset, so
+  // there is nothing to fetch and no state worth putting in the URL.
+  (function () {
+    var buttons = document.querySelectorAll('.dash-filter-btn');
+    var table = document.getElementById('clientTable');
+    if (!buttons.length || !table) return;
+    var empty = document.getElementById('clientTableEmpty');
+    function apply(filter) {
+      var shown = 0;
+      table.querySelectorAll('tr.dash-row').forEach(function (row) {
+        var keep = filter === 'all' || row.getAttribute('data-attention') !== 'ok';
+        row.hidden = !keep;
+        if (keep) shown++;
+      });
+      if (empty) empty.hidden = shown > 0;
+      buttons.forEach(function (button) {
+        button.classList.toggle('is-active', button.getAttribute('data-filter') === filter);
+      });
+    }
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () { apply(button.getAttribute('data-filter')); });
+    });
+    document.querySelectorAll('[data-dash-filter]').forEach(function (link) {
+      link.addEventListener('click', function () { apply(link.getAttribute('data-dash-filter')); });
+    });
+  })();
+</script>
+
+<%# The firm-team table lived here in full: names, emails, roles, an inline
+    create form and a deactivate action, all of which /admin/users already
+    owns and the sidebar already links. A dashboard is not the place to
+    administer accounts. One line, and the count is still visible. %>
 <% if (user.user_type === 'firm' && rbac.isManager(user.firm_role)) { %>
-<div class="panel" style="margin-top:32px;overflow:hidden">
-  <div class="panel-head">
-    <h2>Firm team</h2>
-    <button onclick="document.getElementById('newUser').classList.toggle('hidden')" class="btn btn-secondary btn-xs">Add consultant</button>
+  <div class="dash-line" style="margin-top:20px;">
+    <span><strong><%= firmUsers.length %></strong> consultant<%= firmUsers.length === 1 ? '' : 's' %> on the firm</span>
+    <span><a class="link" href="/admin/users">Manage users and access</a></span>
   </div>
-  <div id="newUser" class="hidden panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
-    <form method="POST" action="/firm/users" style="display:grid;grid-template-columns:1fr 1fr 1fr 140px auto;gap:8px;align-items:end;">
-      <div><label class="label">Name</label><input class="input" name="name" required></div>
-      <div><label class="label">Email</label><input class="input" name="email" type="email" required></div>
-      <div><label class="label">Initial password</label><input class="input" name="password" type="password" minlength="8" required></div>
-      <div><label class="label">Role</label><select class="select" name="firm_role"><option value="consultant">Consultant</option><option value="senior_consultant">Senior consultant</option><option value="manager">Manager</option></select></div>
-      <button class="btn btn-primary">Create</button>
-    </form>
-  </div>
-  <table class="t">
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
-    <tbody>
-      <% firmUsers.forEach(u => { %>
-        <tr>
-          <td><%= u.name %></td>
-          <td class="text-secondary"><%= u.email %></td>
-          <td><span class="tag tag-neutral"><%= rbac.ROLE_LABELS[rbac.normalizeRole(u.firm_role)] || u.firm_role %></span></td>
-          <td style="text-align:right">
-            <% if (u.id !== user.id) { %>
-              <form method="POST" action="/firm/users/<%= u.id %>/deactivate" onsubmit="return appConfirmForm(event, 'Deactivate this user?')">
-                <button class="btn btn-ghost btn-xs text-danger">Deactivate</button>
-              </form>
-            <% } %>
-          </td>
-        </tr>
-      <% }) %>
-    </tbody>
-  </table>
-</div>
 <% } %>
 
 <div id="deleteClientModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;align-items:center;justify-content:center;">
@@ -372,7 +400,10 @@
         <div class="meta text-md" style="line-height:1.5;margin-bottom:14px;">
           Permanently removes this client and everything inside it: controls, gap-assessment passes, risks, evidence files (DB and disk), audits, MRMs, NCs, incidents, suppliers, documents, registers. <strong>Cannot be undone.</strong>
         </div>
-        <label class="label text-base">Type <strong id="dcmExpected"></strong> to confirm</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;">
+          <label for="dcmInput" class="label text-base" style="margin:0;">Type <strong id="dcmExpected"></strong> to confirm</label>
+          <button type="button" id="dcmCopyName" class="btn btn-ghost btn-xs" data-copy-target="#dcmExpected" aria-label="Copy client name" aria-live="polite" style="flex:none;">Copy name</button>
+        </div>
         <input id="dcmInput" class="input" name="confirm_name" autocomplete="off" required>
         <div class="text-sm" id="dcmError" style="color:var(--danger,#b91c1c);margin-top:6px;display:none;">Name did not match.</div>
       </div>
@@ -391,6 +422,7 @@
     const title = document.getElementById('dcmTitle');
     const expected = document.getElementById('dcmExpected');
     const input = document.getElementById('dcmInput');
+    const copyName = document.getElementById('dcmCopyName');
     const error = document.getElementById('dcmError');
     let currentName = '';
 
@@ -399,6 +431,8 @@
       title.textContent = clientName;
       expected.textContent = clientName;
       input.value = '';
+      copyName.textContent = 'Copy name';
+      copyName.classList.remove('is-copied');
       error.style.display = 'none';
       form.action = '/workspaces/' + wsId + '/delete';
       modal.style.display = 'flex';
@@ -407,6 +441,7 @@
     function close() { modal.style.display = 'none'; }
 
     document.getElementById('dcmCancel').addEventListener('click', close);
+    copyName.addEventListener('click', () => setTimeout(() => input.focus(), 0));
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.style.display === 'flex') close(); });
     form.addEventListener('submit', (e) => {

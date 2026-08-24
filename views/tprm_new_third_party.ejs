@@ -1,0 +1,24 @@
+<%- include('partials/header', { title: 'Add third party', user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:transparent;--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-subtle);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+<header class="tprm-page-head"><div><div class="tprm-kicker">Third-party register</div><h1>Add a third party</h1><p>Record the organisation, service and accountable owners.</p></div></header>
+<form class="tprm-section" method="POST" action="/workspaces/<%= ws.id %>/vendors">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="tprm-section-head"><div><div class="tprm-kicker">Required record</div><h2>Organisation and service</h2><p>Create one clear service relationship. Additional services can be added separately.</p></div></div>
+  <div class="tprm-section-body"><div class="form-grid">
+    <label class="form-field"><span>Third-party organisation name *</span><input class="input" name="name" required maxlength="200" autocomplete="organization"><small>Use the client-recognized name. Confirm legal identity in the relationship record.</small></label>
+    <label class="form-field"><span>Service provided *</span><input class="input" name="service_provided" required maxlength="500" placeholder="Payroll processing platform"></label>
+    <label class="form-field"><span>Business owner *</span><input class="input" name="business_owner" required maxlength="160"></label>
+    <label class="form-field"><span>Consultancy relationship owner *</span><input class="input" name="relationship_owner" required maxlength="160"></label>
+    <label class="form-field"><span>Security reviewer</span><input class="input" name="security_reviewer" maxlength="160"></label>
+    <label class="form-field"><span>Provider contact email</span><input class="input" type="email" name="contact" maxlength="254" autocomplete="email"></label>
+    <label class="form-field"><span>Business criticality</span><select class="select" name="business_criticality"><option value="medium">Medium</option><option value="critical">Critical</option><option value="high">High</option><option value="low">Low</option></select></label>
+    <label class="form-field"><span>Data access</span><select class="select" name="data_access"><option value="none">None</option><option value="metadata">Metadata</option><option value="confidential">Confidential data</option><option value="personal">Personal data</option><option value="sensitive">Sensitive or regulated data</option></select></label>
+    <label class="form-field"><span>Dependency</span><select class="select" name="dependency_type"><option value="multi_source">Alternatives available</option><option value="single_source">Single source</option></select></label>
+    <label class="form-field"><span>Location</span><input class="input" name="location" maxlength="160"></label>
+    <label class="form-field" style="grid-column:1/-1"><span>Processing purpose and scope</span><textarea class="textarea" name="processing_purpose" rows="3" maxlength="2000"></textarea></label>
+  </div><p class="tprm-muted" style="margin:14px 0 0">Assessment type, service scope and client decision authority are set when the assessment cycle is created.</p></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 16px;border-top:1px solid var(--border)"><a class="btn" href="/workspaces/<%= ws.id %>/tprm/third-parties">Cancel</a><button class="btn btn-primary" type="submit">Create third party</button></div>
+</form>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,90 @@
+<%- include('partials/header', { title: 'Create or link finding', user, ws, active: 'vendors' }) %>
+<div class="tprm-neutral-page" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--bg-muted);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border-strong)">
+
+<header class="page-head">
+  <div>
+    <a class="link-muted text-xs" href="<%= context.returnBase %><%= context.returnAnchor %>">← Return to <%= context.contextLabel %></a>
+    <h1 class="page-title" style="margin-top:8px">Assessment finding</h1>
+    <div class="page-subtitle">Create, link and return to this assessment row.</div>
+  </div>
+</header>
+
+<% if (error) { %>
+  <div class="panel" role="alert" style="margin-bottom:16px;border-color:var(--danger)">
+    <div class="panel-pad"><strong style="color:var(--danger)">Nothing was changed</strong><div class="meta" style="margin-top:4px"><%= error %></div></div>
+  </div>
+<% } %>
+
+<div class="panel" data-assessment-finding-context="<%= context.source %>:<%= context.assessmentId %>:<%= context.itemKey %>" style="margin-bottom:16px">
+  <div class="panel-head">
+    <div>
+      <h2><%= context.contextLabel %></h2>
+      <div class="meta"><%= v.name %> · <%= context.domain %> · <%= context.source === 'ddq' ? 'Due diligence' : 'Contract review' %></div>
+    </div>
+  </div>
+  <div class="panel-pad">
+    <strong><%= context.contextTitle %></strong>
+    <p class="text-base" style="margin-bottom:0"><%= context.contextDescription %></p>
+    <% if (currentFinding) { %>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="sec-label">Linked finding</div>
+        <strong>#<%= currentFinding.id %> · <%= currentFinding.title %></strong>
+        <div class="meta" style="margin-top:4px"><%= currentFinding.severity %> · <%= currentFinding.status.replaceAll('_',' ') %><%= currentFinding.owner_name ? ' · Owner: '+currentFinding.owner_name : '' %><%= currentFinding.due_date ? ' · Due: '+currentFinding.due_date : '' %></div>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head">
+    <div>
+      <h2>Link an existing finding</h2>
+      <div class="meta">Only non-closed findings governed for <%= v.name %> are available.</div>
+    </div>
+  </div>
+  <% if (findings.length) { %>
+    <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/assessment-findings/link" class="panel-pad" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <input type="hidden" name="source" value="<%= context.source %>">
+      <input type="hidden" name="assessment_id" value="<%= context.assessmentId %>">
+      <input type="hidden" name="item_key" value="<%= context.itemKey %>">
+      <div style="flex:1 1 320px">
+        <label class="label" for="existingFinding">Open finding</label>
+        <select class="select" id="existingFinding" name="finding_id" required>
+          <option value="">Choose one finding</option>
+          <% findings.forEach(finding => { %><option value="<%= finding.id %>" <%= Number(values.finding_id)===finding.id?'selected':'' %>>#<%= finding.id %> · <%= finding.severity %> · <%= finding.title %></option><% }) %>
+        </select>
+      </div>
+      <button class="btn" type="submit">Link finding</button>
+    </form>
+  <% } else { %>
+    <div class="panel-pad"><strong>No open findings are available</strong><div class="meta" style="margin-top:4px">Create a finding below to link it to this row.</div></div>
+  <% } %>
+
+  <div class="panel-head">
+    <div>
+      <h2>Create a new finding</h2>
+      <div class="meta">Accountable owner and target resolution date are required.</div>
+    </div>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/assessment-findings/create" class="panel-pad">
+    <input type="hidden" name="source" value="<%= context.source %>">
+    <input type="hidden" name="assessment_id" value="<%= context.assessmentId %>">
+    <input type="hidden" name="item_key" value="<%= context.itemKey %>">
+    <label class="label" for="findingTitle">Finding title</label>
+    <input class="input" id="findingTitle" name="title" value="<%= values.title %>" minlength="3" maxlength="240" required>
+    <label class="label" for="findingDescription" style="margin-top:10px">Describe the verified gap</label>
+    <textarea class="textarea" id="findingDescription" name="description" rows="3" minlength="10" maxlength="4000" required placeholder="State what is missing or ineffective and the evidence reviewed."><%= values.description %></textarea>
+    <div class="grid-2" style="margin-top:10px">
+      <div><label class="label" for="findingSeverity">Severity</label><select class="select" id="findingSeverity" name="severity" required><% ['low','medium','high','critical'].forEach(level => { %><option value="<%= level %>" <%= values.severity===level?'selected':'' %>><%= level[0].toUpperCase()+level.slice(1) %></option><% }) %></select></div>
+      <div><label class="label">Assessment domain</label><input class="input" value="<%= context.domain %>" readonly aria-describedby="domainHelp"><div class="meta" id="domainHelp">Set by the assessment row.</div></div>
+      <div><label class="label" for="findingOwner">Accountable owner</label><input class="input" id="findingOwner" name="owner_name" value="<%= values.owner_name %>" minlength="2" maxlength="160" required placeholder="Named person or role"></div>
+      <div><label class="label" for="findingDueDate">Target resolution date</label><input class="input" id="findingDueDate" type="date" name="due_date" value="<%= values.due_date %>" min="<%= today %>" required></div>
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:14px">Create and link finding</button>
+  </form>
+</div>
+
+<div style="margin:16px 0 28px"><a class="link-muted text-xs" href="<%= context.returnBase %><%= context.returnAnchor %>">Cancel and return to <%= context.contextLabel %></a></div>
+
+</div>
+<%- include('partials/footer') %>

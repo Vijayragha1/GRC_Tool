@@ -105,6 +105,10 @@ function register(app, deps) {
       ? db.prepare(`SELECT id, type, title FROM iso42001_items ORDER BY sort_order ASC`).all() : [];
     const allCsfSubcats = req.workspace.frameworks.includes('csf')
       ? db.prepare(`SELECT code, description FROM csf_subcategories ORDER BY code ASC`).all() : [];
+    const allDpdpaItems = req.workspace.frameworks.includes('dpdpa')
+      ? db.prepare(`SELECT r.ref, r.title, r.summary
+          FROM requirements r JOIN frameworks f ON f.id=r.framework_id
+          WHERE f.code='dpdpa' AND f.status='active' ORDER BY r.sort_order,r.ref`).all() : [];
 
     res.render('evidence_library', {
       user: req.user, ws: req.workspace,
@@ -112,7 +116,7 @@ function register(app, deps) {
       active: 'evidence',
       evidenceList, linksByEvidence, counters,
       crossLinksByEvidence,
-      allIsoItems, allIso42001Items, allCsfSubcats,
+      allIsoItems, allIso42001Items, allCsfSubcats, allDpdpaItems,
       q, filter, tag, today, expSoon,
       tagList,
       pg: pgEv, pagerHref: p => pageHref(req, p)
@@ -134,7 +138,7 @@ function register(app, deps) {
   // requirement references are valid.
   function selectedEvidenceRefs(workspace, body) {
     const enabled = new Set(Array.isArray(workspace.frameworks) ? workspace.frameworks : []);
-    const selected = { iso27001: [], iso42001: [], csf: [] };
+    const selected = { iso27001: [], iso42001: [], csf: [], dpdpa: [] };
     const unique = values => [...new Set(parseFormArray(values).map(value => String(value).trim()).filter(Boolean))];
 
     if (enabled.has('iso27001')) {
@@ -161,17 +165,28 @@ function register(app, deps) {
         selected.csf = refs.filter(ref => valid.has(ref));
       }
     }
+    if (enabled.has('dpdpa')) {
+      const refs = unique(body.dpdpa_item_ref);
+      if (refs.length) {
+        const placeholders = refs.map(() => '?').join(',');
+        const valid = new Set(db.prepare(`SELECT r.ref FROM requirements r
+          JOIN frameworks f ON f.id=r.framework_id
+          WHERE f.code='dpdpa' AND f.status='active' AND r.ref IN (${placeholders})`).all(...refs).map(row => row.ref));
+        selected.dpdpa = refs.filter(ref => valid.has(ref));
+      }
+    }
     return selected;
   }
 
   function selectedEvidenceRefCount(selected) {
-    return selected.iso27001.length + selected.iso42001.length + selected.csf.length;
+    return Object.values(selected).reduce((count, refs) => count + refs.length, 0);
   }
 
   function attachSelectedEvidenceRefs(evidenceId, selected, sectionRef) {
     for (const ref of selected.iso27001) evWrites.attachIsoControl(db, evidenceId, ref, sectionRef || null);
     for (const ref of selected.iso42001) evWrites.attachCrossLink(db, evidenceId, 'iso42001', ref, sectionRef || null);
     for (const ref of selected.csf) evWrites.attachCrossLink(db, evidenceId, 'csf', ref, sectionRef || null);
+    for (const ref of selected.dpdpa) evWrites.attachCrossLink(db, evidenceId, 'dpdpa', ref, sectionRef || null);
   }
 
   app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
@@ -364,7 +379,7 @@ function register(app, deps) {
   // Tier A.1 - Add/remove additional control links on an evidence file.
   // section_ref may be either a single shared value (form: section_ref=...) or
   // per-link via a parallel array section_ref_for_<isoId>=... - the latter wins.
-  // Cross-framework link route. Accepts framework=iso42001|csf and one or more
+  // Cross-framework link route. Accepts any enabled non-ISO-27001 framework and one or more
   // item_ref values, writing them to evidence_requirement_links. The /controls
   // endpoint is the ISO 27001 equivalent; both resolve their ref to a requirement.
   app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
@@ -387,9 +402,14 @@ function register(app, deps) {
     if (framework === 'iso42001') {
       const ph = refs.map(() => '?').join(',');
       valid = new Set(db.prepare(`SELECT id FROM iso42001_items WHERE id IN (${ph})`).all(...refs).map(r => r.id));
-    } else { // csf
+    } else if (framework === 'csf') {
       const ph = refs.map(() => '?').join(',');
       valid = new Set(db.prepare(`SELECT code FROM csf_subcategories WHERE code IN (${ph})`).all(...refs).map(r => r.code));
+    } else { // governed requirement catalog (currently DPDPA)
+      const ph = refs.map(() => '?').join(',');
+      valid = new Set(db.prepare(`SELECT rq.ref FROM requirements rq
+        JOIN frameworks f ON f.id=rq.framework_id
+        WHERE f.code=? AND f.status='active' AND rq.ref IN (${ph})`).all(framework, ...refs).map(r => r.ref));
     }
     const filtered = refs.filter(r => valid.has(r));
     if (!filtered.length) return redirectBack(req, res);
@@ -471,6 +491,12 @@ function register(app, deps) {
     const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (ev) {
+      const retainedCapaLink = db.prepare(`SELECT 1 FROM nonconformity_evidence_links
+        WHERE workspace_id=? AND evidence_id=? LIMIT 1`).get(req.workspace.id, ev.id);
+      if (retainedCapaLink) {
+        return redirectBack(req, res,
+          'This file is retained as CAPA evidence and cannot be hard-deleted. Supersede it with a new evidence version instead.', 'error');
+      }
       const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
       if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
       db.prepare('DELETE FROM evidence WHERE id = ?').run(ev.id);

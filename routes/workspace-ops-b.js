@@ -291,6 +291,21 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/access/role', requireAuth, requireWorkspace, requirePermission('members.assign_role'), (req, res) => {
     const { user_id, role } = req.body;
     if (!user_id || !rbac.ROLE_PERMS[role]) return redirectBack(req, res);
+    const target = db.prepare(`SELECT id,user_type,firm_id,active FROM users WHERE id=?`).get(user_id);
+    if (!target || !target.active) {
+      return res.status(403).render('error', { user: req.user, message: 'That user is not eligible for this workspace.' });
+    }
+    if (target.user_type === 'firm') {
+      if (target.firm_id !== req.workspace.firm_id || !['senior_consultant','consultant'].includes(role)) {
+        return res.status(403).render('error', { user: req.user, message: 'Firm roles can only be assigned to active consultants in this firm.' });
+      }
+    } else {
+      const existingClientMember = db.prepare(`SELECT 1 FROM workspace_members
+        WHERE workspace_id=? AND user_id=?`).get(req.workspace.id, target.id);
+      if (!existingClientMember || !rbac.CLIENT_ROLES.includes(role)) {
+        return res.status(403).render('error', { user: req.user, message: 'Client roles can only be changed for existing members of this workspace.' });
+      }
+    }
     const before = db.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').get(req.workspace.id, user_id);
     if (before) {
       db.prepare(`UPDATE workspace_members SET role=? WHERE workspace_id=? AND user_id=?`).run(role, req.workspace.id, user_id);
@@ -718,10 +733,26 @@ function register(app, deps) {
     // Distinct values for the filter dropdowns.
     const sectors = [...new Set(db.prepare('SELECT DISTINCT sector FROM firm_risk_library WHERE firm_id=? AND sector IS NOT NULL').all(firmId).map(r => r.sector))];
     const domains = [...new Set(db.prepare('SELECT DISTINCT domain FROM firm_risk_library WHERE firm_id=? AND domain IS NOT NULL').all(firmId).map(r => r.domain))];
-    res.render('firm_library_risks', { user: req.user, ws: null, rows, sectors, domains, filterSector, filterDomain, search }); // firm-level page - firm sidebar
+    const canManage = rbac.rolePermissions(req.user.firm_role).includes('firm.library.manage');
+    res.render('firm_library_risks', { user: req.user, ws: null, rows, sectors, domains, filterSector, filterDomain, search, canManage }); // firm-level page - firm sidebar
   });
 
+  // AUTHZ-002: the firm risk library is firm-owned content. GET was already
+  // gated, but every mutator ran on bare requireAuth, so a client or prospect
+  // could create, edit, delete and reseed rows they were not allowed to read.
+  // getActiveFirmId resolves a real firm for portal users via workspace
+  // membership, so these writes landed on genuine firm data.
+  function requireFirmLibraryManage(req, res) {
+    if (!isFirmUser(req.user) || !rbac.rolePermissions(req.user.firm_role).includes('firm.library.manage')) {
+      res.status(403).render('error', {
+        user: req.user, message: 'Managing the firm risk library requires a firm manager or senior consultant.' });
+      return false;
+    }
+    return true;
+  }
+
   app.post('/firm/library/risks', requireAuth, (req, res) => {
+    if (!requireFirmLibraryManage(req, res)) return;
     const firmId = getActiveFirmId(req);
     if (!firmId) return res.redirect('/tenants');
     const { title, description, threat, vulnerability, domain, sector, tags,
@@ -739,6 +770,7 @@ function register(app, deps) {
   });
 
   app.post('/firm/library/risks/:id/update', requireAuth, (req, res) => {
+    if (!requireFirmLibraryManage(req, res)) return;
     const firmId = getActiveFirmId(req);
     const id = parseInt(req.params.id, 10);
     const { title, description, threat, vulnerability, domain, sector, tags,
@@ -755,6 +787,7 @@ function register(app, deps) {
   });
 
   app.post('/firm/library/risks/:id/delete', requireAuth, (req, res) => {
+    if (!requireFirmLibraryManage(req, res)) return;
     const firmId = getActiveFirmId(req);
     const id = parseInt(req.params.id, 10);
     db.prepare('DELETE FROM firm_risk_library WHERE id=? AND firm_id=?').run(id, firmId);
@@ -764,6 +797,7 @@ function register(app, deps) {
   // Re-seed the shipped starter library on top of the existing firm content.
   // Skips entries the firm already has by title (idempotent for the starter set).
   app.post('/firm/library/risks/reseed', requireAuth, (req, res) => {
+    if (!requireFirmLibraryManage(req, res)) return;
     const firmId = getActiveFirmId(req);
     if (!firmId) return res.redirect('/tenants');
     const SHIPPED = require('../data/risk-library');

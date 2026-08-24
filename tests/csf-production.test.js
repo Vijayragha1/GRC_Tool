@@ -83,7 +83,11 @@ test('a CSF-only client root resolves to its programme with no duplicate overvie
   assert.equal((sidebarNav.match(/class="nav-domain-summary"/g)||[]).length,3);
   for(const label of ['Delivery','Cybersecurity maturity','Settings']) assert.match(sidebarNav,new RegExp(label));
   for(const label of ['Business profile','Maturity workbench','Quality review','Priorities &amp; roadmap','Executive reporting']) assert.match(sidebarNav,new RegExp(label));
-  assert.doesNotMatch(sidebarNav,/nav-item-text">Overview|Review queue|Plan &amp; roadmap|Compliance calendar|Risks &amp; context|Suppliers|Incidents|Business continuity|Evidence coverage|Policy templates|Management reviews|Reports &amp; assurance|Assurance &amp; certification|Internal audits|Auditor access|Client setup/);
+  // "Client setup" is the programme-agnostic setup hub and belongs on every
+  // client. The ISO 27001-specific surface it used to point at is now listed
+  // separately as "ISO 27001 intake", and that is what a CSF-only client
+  // must never see.
+  assert.doesNotMatch(sidebarNav,/nav-item-text">Overview|Review queue|Plan &amp; roadmap|Compliance calendar|Risks &amp; context|Suppliers|Incidents|Business continuity|Evidence coverage|Policy templates|Management reviews|Reports &amp; assurance|Assurance &amp; certification|Internal audits|Auditor access|ISO 27001 intake/);
   const evidenceCoverage=await client.get(`/workspaces/${workspaceId}/evidence-coverage`);
   assert.equal(evidenceCoverage.status,302);
   assert.equal(evidenceCoverage.location,`/workspaces/${workspaceId}/csf/current/assessment?view=outcomes&gap=evidence`);

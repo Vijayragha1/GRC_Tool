@@ -1,0 +1,94 @@
+<%- include('partials/header', { title: 'Service relationships', user, ws, active }) %>
+<div class="tprm-neutral-shell" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-action:var(--text);--tprm-action-hover:var(--text-secondary);--tprm-action-contrast:var(--surface);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--border-strong);--tprm-neutral-status:var(--text-secondary);--tprm-neutral-status-bg:var(--bg-muted);--tprm-neutral-status-border:var(--border-strong);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+
+<% if (tprmReadOnly) { %><div class="tprm-callout tprm-disclosure-warning" style="margin-bottom:16px"><strong>Retained history - read only.</strong> <%= tprmReadOnlyReason %></div><% } %>
+
+<header class="tprm-page-head">
+  <div>
+    <div class="tprm-kicker">Third-party inventory</div>
+    <h1>Service relationships</h1>
+    <p>Govern each service separately from provider identity. Two providers with the same name are never combined.</p>
+  </div>
+  <div class="tprm-head-actions">
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/third-parties">Provider register</a>
+    <a class="btn" href="/workspaces/<%= ws.id %>/tprm/concentration">Concentration &amp; exit</a>
+  </div>
+</header>
+
+<section class="tprm-metrics" aria-label="Service relationship summary">
+  <div class="tprm-metric"><span>Relationships shown</span><strong><%= summary.total %></strong><small>After current filters</small></div>
+  <div class="tprm-metric <%= summary.highCritical ? 'needs-attention' : '' %>"><span>High or critical</span><strong><%= summary.highCritical %></strong><small>Service criticality</small></div>
+  <div class="tprm-metric <%= summary.soleSource ? 'needs-attention' : '' %>"><span>Sole source</span><strong><%= summary.soleSource %></strong><small>Declared single-provider reliance</small></div>
+  <div class="tprm-metric <%= summary.incomplete ? 'needs-attention' : '' %>"><span>Core data incomplete</span><strong><%= summary.incomplete %></strong><small>Criticality or owner missing</small></div>
+</section>
+
+<% if (canManage) { %>
+<details class="tprm-conditions-editor" <%= rows.length ? '' : 'open' %> style="margin-bottom:16px">
+  <summary>Add service relationship <span>Select the exact provider identity.</span></summary>
+  <form class="tprm-section-body" method="POST" action="/workspaces/<%= ws.id %>/tprm/relationships">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="idempotency_key" value="<%= createNonce %>">
+    <div class="tprm-callout" style="margin-bottom:14px"><strong>Identity control:</strong> country and registration details distinguish same-named organisations. Verify the identity before assessment or contracting.</div>
+    <div class="form-grid">
+      <label class="form-field"><span>Provider legal identity *</span><select class="select" name="supplier_id" required><option value="">Choose the exact provider record</option><% providers.forEach(provider => { %><option value="<%= provider.id %>"><%= provider.legal_name || provider.provider_record_name %> - <%= provider.registration_country_code || 'country unverified' %><%= provider.registration_number ? ` · ${provider.registration_number}` : '' %> · <%= provider.relationship_count %> service<%= provider.relationship_count === 1 ? '' : 's' %></option><% }) %></select><small>A similar name never links or merges records automatically.</small></label>
+      <label class="form-field"><span>Exact legal name</span><input class="input" name="legal_name" maxlength="300" placeholder="Used only when this provider has no legal-identity record"><small>Leave blank to use the selected provider record.</small></label>
+      <label class="form-field"><span>Registration country</span><input class="input" name="registration_country_code" maxlength="2" pattern="[A-Za-z]{2}" placeholder="US"><small>Two-letter country code.</small></label>
+      <label class="form-field"><span>Registration number</span><input class="input" name="registration_number" maxlength="200" autocomplete="off"></label>
+      <label class="form-field"><span>Service relationship name *</span><input class="input" name="relationship_name" maxlength="300" required placeholder="Production cloud hosting"><small>Name the distinct service or contract scope, not just the provider.</small></label>
+      <label class="form-field"><span>Service category</span><input class="input" name="service_category" maxlength="200" placeholder="Cloud infrastructure"></label>
+      <label class="form-field"><span>Provision model *</span><select class="select" name="provision_model" required><% provisionModels.forEach(option => { %><option value="<%= option %>"><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Criticality *</span><select class="select" name="criticality" required><% criticalities.forEach(option => { %><option value="<%= option %>" <%= option === 'unknown' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Data access *</span><select class="select" name="data_access" required><% dataAccessLevels.forEach(option => { %><option value="<%= option %>" <%= option === 'unknown' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Substitutability *</span><select class="select" name="substitutability" required><% substitutabilityOptions.forEach(option => { %><option value="<%= option %>" <%= option === 'unknown' ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select></label>
+      <label class="form-field"><span>Annual spend</span><input class="input" name="annual_spend" inputmode="decimal" placeholder="125000.00"><small>Major currency units; stored using the currency’s standard precision.</small></label>
+      <label class="form-field"><span>Currency</span><input class="input" name="currency" maxlength="3" pattern="[A-Za-z]{3}" placeholder="USD"><small>Three-letter currency code.</small></label>
+      <label class="form-field"><span>Consultancy relationship owner</span><input class="input" name="relationship_owner" maxlength="300"></label>
+      <label class="form-field"><span>Client business owner</span><input class="input" name="business_owner" maxlength="300"></label>
+      <label class="form-field"><span>Security owner</span><input class="input" name="security_owner" maxlength="300"></label>
+      <label class="form-field"><span>Procurement owner</span><input class="input" name="procurement_owner" maxlength="300"></label>
+      <label class="form-field" style="grid-column:1/-1"><span>Service description *</span><textarea class="textarea" name="service_description" rows="3" maxlength="5000" required placeholder="Describe the business capability, users, data and boundaries in scope."></textarea></label>
+      <label class="form-field" style="grid-column:1/-1"><span>Creation rationale *</span><textarea class="textarea" name="reason" rows="2" minlength="5" maxlength="2000" required placeholder="Why this distinct service relationship is being recorded."></textarea><small>This reason is retained in the relationship audit history.</small></label>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 14px">
+      <label><input type="checkbox" name="privileged_access" value="1"> Privileged access</label>
+      <label><input type="checkbox" name="sole_source" value="1"> Sole source</label>
+      <label><input type="checkbox" name="material_outsourcing" value="1"> Material outsourcing</label>
+      <label><input type="checkbox" name="regulated_service" value="1"> Regulated service</label>
+    </div>
+    <button class="btn btn-primary" type="submit">Create in intake</button>
+  </form>
+</details>
+<% } %>
+
+<form class="tprm-filters" method="GET" action="/workspaces/<%= ws.id %>/tprm/relationships">
+  <input class="input" type="search" name="q" value="<%= filters.q %>" placeholder="Search legal entity, service or owner" aria-label="Search service relationships">
+  <select class="select" name="status" aria-label="Service operating status">
+    <option value="open" <%= filters.status === 'open' ? 'selected' : '' %>>Open relationships</option>
+    <option value="all" <%= filters.status === 'all' ? 'selected' : '' %>>All statuses</option>
+    <% ['intake','active','suspended','offboarding','terminated','rejected'].forEach(option => { %><option value="<%= option %>" <%= filters.status === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %>
+  </select>
+  <select class="select" name="criticality" aria-label="Service criticality"><option value="">All criticalities</option><% criticalities.forEach(option => { %><option value="<%= option %>" <%= filters.criticality === option ? 'selected' : '' %>><%= titleCase(option) %></option><% }) %></select>
+  <button class="btn" type="submit">Apply filters</button>
+</form>
+
+<section class="tprm-section tprm-table-wrap">
+  <table class="tprm-table">
+    <thead><tr><th>Provider and service</th><th>Operating status</th><th>Exposure</th><th>Accountability</th><th>Next action</th></tr></thead>
+    <tbody>
+      <% rows.forEach(row => { %>
+      <tr data-relationship-record="true">
+        <td><a href="/workspaces/<%= ws.id %>/tprm/relationships/<%= row.id %>"><strong><%= row.legal_name %></strong><small><%= row.registration_country_code || 'Country unverified' %><%= row.registration_number ? ` · ${row.registration_number}` : ' · Registration unverified' %></small><small><%= row.relationship_name %> · <%= row.service_category || 'Category not recorded' %> · <%= titleCase(row.provision_model) %></small></a></td>
+        <td><span class="tprm-status tprm-status-<%= row.status %>"><%= titleCase(row.status) %></span><small>Service operating status</small></td>
+        <td><strong><%= titleCase(row.criticality) %></strong><small><%= titleCase(row.data_access) %> data · <%= row.active_dependency_count %> active dependenc<%= row.active_dependency_count === 1 ? 'y' : 'ies' %></small></td>
+        <td><strong><%= row.business_owner || 'Client owner unset' %></strong><small><%= row.relationship_owner || 'Consultancy owner unset' %></small></td>
+        <td><a data-primary-action="true" href="<%= row.nextAction.href %>"><strong><%= row.nextAction.label %></strong><small><%= row.nextAction.owner %></small></a></td>
+      </tr>
+      <% }) %>
+      <% if (!rows.length) { %><tr><td colspan="5"><div class="tprm-empty"><strong>No service relationships match these filters</strong><span>Clear the filters or create a relationship from an exact provider record.</span></div></td></tr><% } %>
+    </tbody>
+  </table>
+</section>
+
+</div>
+<%- include('partials/footer') %>

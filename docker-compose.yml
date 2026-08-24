@@ -4,6 +4,7 @@ services:
     image: iso27001-tool:latest
     container_name: iso27001-tool
     restart: unless-stopped
+    init: true
     ports:
       - "3000:3000"
     env_file:
@@ -11,6 +12,12 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DB_PATH=/app/data/iso27001.db
+      - ISMS_BACKUP_DIR=/app/data/backups
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

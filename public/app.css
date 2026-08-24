@@ -497,6 +497,23 @@
   .grid-2         { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .grid-4         { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 
+  /* A grid that collapses to one column on a phone. The desktop track list is
+     passed in as --cols rather than written as grid-template-columns directly,
+     because an inline grid-template-columns outranks any media query and
+     cannot be undone from a stylesheet. Setting a variable inline keeps the
+     property itself here, where the breakpoint can reach it. Use this for a
+     row of form fields or a main/sidebar split; a grid whose columns are an
+     icon and its label should stay as it is. */
+  .stack-grid     { display: grid; grid-template-columns: var(--cols, 1fr); gap: 12px; }
+
+  /* An absolutely positioned dropdown anchored to the right of its trigger.
+     The desktop width comes in as --popover-w for the same reason .stack-grid
+     takes --cols: an inline width outranks the breakpoint below. */
+  .popover-panel  { width: var(--popover-w, 320px); }
+
+  /* Phase header: badge, title, then a right-aligned date and progress block. */
+  .phase-summary  { display: grid; grid-template-columns: var(--cols, 36px 1fr auto); }
+
   /* Client-collaboration semantic states. Kept as quiet text to match the
      application-wide status language rather than introducing filled pills. */
   .status-good    { color: #15803d; }
@@ -512,6 +529,11 @@
   }
   @media (max-width: 700px) {
     .grid-2, .grid-4 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    /* --cols-sm is for the cases where one column is the wrong answer: a strip
+       of five counters reads better as two columns than as five tall cards. */
+    .stack-grid { grid-template-columns: var(--cols-sm, 1fr); }
   }
 
   /* Type scale - eight named sizes covering every pixel value in actual
@@ -641,7 +663,7 @@
 @media(max-width:760px){.cp-gap-overview-metrics{grid-template-columns:repeat(3,1fr)}.cp-gap-overview-metrics>div{padding:12px}.cp-gap-overview-metrics strong{font-size:21px}.cp-gap-rail{grid-template-columns:1fr 1fr}.cp-gap-rail-item:nth-child(3),.cp-gap-rail-item:nth-child(5){border-left:0}.cp-gap-rail-item:nth-child(n+3){border-top:1px solid var(--border)}.cp-gap-stage>summary{grid-template-columns:31px minmax(0,1fr) 18px}.cp-gap-stage-state{display:none}.cp-gap-scope-grid,.cp-gap-method-grid,.cp-gap-two-col,.cp-gap-report-grid{grid-template-columns:1fr}.cp-gap-method-grid>.cp-gap-card-wide{grid-column:auto}.cp-gap-scale{grid-template-columns:1fr}.cp-gap-scale>div{border-left:0}.cp-gap-scale>div:nth-child(n+2){border-top:1px solid var(--border)}.cp-gap-facts,.cp-gap-finding-grid{grid-template-columns:1fr}.cp-gap-facts>div,.cp-gap-facts>div:nth-child(even),.cp-gap-finding-grid>div,.cp-gap-finding-grid>div:nth-child(odd){border-left:0}.cp-gap-facts>div:nth-child(2),.cp-gap-finding-grid>div:nth-child(2){border-top:1px solid var(--border)}.cp-gap-weekly{grid-template-columns:1fr 1fr}.cp-gap-weekly>div:nth-child(3){border-left:0}.cp-gap-weekly>div:nth-child(n+3){border-top:1px solid var(--border)}.cp-gap-validation-note{align-items:flex-start;flex-direction:column}.cp-gap-coverage-list>div{grid-template-columns:45px minmax(0,1fr)}.cp-gap-coverage-list small{grid-column:2}}
 
 /* Adaptive delivery: one primary action, one overflow menu and four decision cards. */
-.delivery-head-actions{gap:6px}.delivery-more-actions{position:relative}.delivery-more-actions>summary{cursor:pointer;list-style:none}.delivery-more-actions>summary::-webkit-details-marker{display:none}.delivery-more-menu{position:absolute;right:0;top:36px;z-index:50;width:290px;padding:7px;box-shadow:var(--shadow-xl)}.delivery-more-menu>a,.delivery-more-menu>form>button,.delivery-more-menu>details>summary{display:block;width:100%;padding:9px 10px;border:0;border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11.5px;text-align:left;text-decoration:none;cursor:pointer}.delivery-more-menu>a:hover,.delivery-more-menu>form>button:hover,.delivery-more-menu>details>summary:hover{background:var(--bg-subtle)}.delivery-more-menu>details{border-top:1px solid var(--border)}.delivery-more-form{display:grid;gap:8px;padding:10px}.delivery-more-form .label{margin-top:2px}.delivery-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.delivery-date-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0}.delivery-date-pair span,.delivery-date-pair small,.delivery-date-pair strong{display:block}.delivery-date-pair small{color:var(--text-tertiary);font-size:9px}.delivery-date-pair strong{margin-top:2px;font-size:13px;font-weight:600}@media(max-width:900px){.delivery-summary-grid{grid-template-columns:1fr 1fr}}@media(max-width:600px){.delivery-summary-grid{grid-template-columns:1fr}.delivery-head-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}.delivery-more-menu{position:fixed;inset:auto 12px 12px;width:auto}}
+.delivery-head-actions{gap:6px}.delivery-more-actions{position:relative}.delivery-more-actions>summary{cursor:pointer;list-style:none}.delivery-more-actions>summary::-webkit-details-marker{display:none}.delivery-more-menu{position:absolute;right:0;top:36px;z-index:50;width:290px;padding:7px;box-shadow:var(--shadow-xl)}.delivery-more-menu>a,.delivery-more-menu>form>button,.delivery-more-menu>details>summary{display:block;width:100%;padding:9px 10px;border:0;border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11.5px;text-align:left;text-decoration:none;cursor:pointer}.delivery-more-menu>a:hover,.delivery-more-menu>form>button:hover,.delivery-more-menu>details>summary:hover{background:var(--bg-subtle)}.delivery-more-menu>details{border-top:1px solid var(--border)}.delivery-more-form{display:grid;gap:8px;padding:10px}.delivery-more-form .label{margin-top:2px}.delivery-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.delivery-date-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0}.delivery-date-pair span,.delivery-date-pair small,.delivery-date-pair strong{display:block}.delivery-date-pair small{color:var(--text-tertiary);font-size:9px}.delivery-date-pair strong{margin-top:2px;font-size:13px;font-weight:600}@media(max-width:900px){.delivery-summary-grid{grid-template-columns:1fr 1fr}}@media(max-width:600px){.delivery-summary-grid{grid-template-columns:1fr}.delivery-head-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}.delivery-more-menu{position:absolute;inset:36px 0 auto auto;width:min(290px,calc(100vw - 24px))}}
 
 /* Engagement Gantt. Calendar scale, schedule constraints and dependency order
    are shown as data, without decorative colour rails or compressed markers. */
@@ -922,4 +944,478 @@
   a{color:#000!important;text-decoration:underline}
   a[href^="http"]::after{content:" (" attr(href) ")";font-size:8pt;font-weight:400}
   .app-page-meta{text-align:left;color:#444!important}
+}
+
+/* Firm dashboard. The portfolio home listed the same clients three times over
+   (a by-client chip row, an at-risk table and the client table) and repeated
+   one shared task once per client. These components exist so the page can
+   carry one list, one verdict per client and one row per piece of work. */
+.dash-line {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px;
+  margin: 0 0 18px; padding: 9px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 13px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.dash-line > span:not(:last-child)::after { content: "·"; color: var(--text-tertiary); margin-left: 8px; }
+.dash-line strong { font-weight: 500; color: var(--text); }
+.dash-line a { text-decoration: none; }
+
+/* Work grouped by the item, with its clients named underneath. */
+.dash-work-group { padding: 12px 16px; border-top: 1px solid var(--border); }
+.dash-work-group:first-of-type { border-top: 0; }
+.dash-work { padding: 8px 0; }
+.dash-work + .dash-work { border-top: 1px dashed var(--border); }
+.dash-work-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.dash-work-when {
+  flex: 0 0 auto; min-width: 88px;
+  font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.dash-work-when.is-overdue { color: #b91c1c; }
+.dash-work-when.is-soon { color: #b45309; }
+.dash-work-title { font-size: 13px; color: var(--text); min-width: 0; }
+.dash-work-clients { display: flex; flex-wrap: wrap; gap: 3px 6px; margin: 5px 0 0 98px; }
+.dash-work-clients a {
+  font-size: 12px; color: var(--text-secondary); text-decoration: none;
+  padding: 1px 7px; border: 1px solid var(--border); border-radius: 3px;
+}
+.dash-work-clients a:hover { color: var(--text); border-color: var(--text-tertiary); }
+
+/* Client rows carry their own verdict instead of a second table. */
+.dash-client { display: flex; align-items: center; gap: 8px; }
+.dash-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--border-strong); }
+.dash-dot-high { background: #b91c1c; }
+.dash-dot-medium { background: #b45309; }
+.dash-progress { height: 4px; margin: 5px 0 4px; border-radius: 2px; background: var(--bg-muted); overflow: hidden; }
+.dash-progress > span { display: block; height: 100%; background: var(--accent); }
+/* A reason reads as a sentence, not as one more uppercase chip. */
+.dash-reason { font-size: 12px; line-height: 1.45; text-decoration: none; border-bottom: 1px solid transparent; }
+.dash-reason-high { color: #b91c1c; }
+.dash-reason-medium { color: #b45309; }
+.dash-reason:hover { border-bottom-color: currentColor; }
+
+.dash-filter { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.dash-filter-btn {
+  padding: 4px 11px; border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--text-secondary);
+}
+.dash-filter-btn + .dash-filter-btn { border-left: 1px solid var(--border); }
+.dash-filter-btn:hover { background: var(--bg-subtle); color: var(--text); }
+.dash-filter-btn.is-active { background: var(--bg-muted); color: var(--ink); font-weight: 500; }
+
+[data-theme="dark"] .dash-work-when.is-overdue,
+[data-theme="dark"] .dash-reason-high { color: #ef9189; }
+[data-theme="dark"] .dash-work-when.is-soon,
+[data-theme="dark"] .dash-reason-medium { color: #e4ad69; }
+[data-theme="dark"] .dash-dot-high { background: #ef9189; }
+[data-theme="dark"] .dash-dot-medium { background: #e4ad69; }
+/* The client table has a floor below which its columns stop being readable.
+   Scroll it rather than wrapping every cell into four lines. */
+.dash-table-wrap { overflow-x: auto; }
+.dash-table-wrap > table { min-width: 900px; }
+.dash-table-wrap td { vertical-align: top; }
+.dash-work-one { margin-left: auto; font-size: 12px; color: var(--text-secondary); text-decoration: none; white-space: nowrap; }
+.dash-work-one:hover { color: var(--text); }
+
+/* Client setup hub. A client can be sold four programmes and two modules at
+   once; each is scoped on its own surface, and before this page nothing
+   enumerated them. */
+.setup-progress-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 11px; }
+.setup-progress-head b { font-size: 26px; font-weight: 500; letter-spacing: -0.4px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.setup-progress-head span { font-size: 13px; color: var(--text-secondary); }
+.setup-bar { height: 6px; border-radius: 999px; background: var(--bg-muted); overflow: hidden; }
+.setup-bar > span { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+
+.setup-step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 15px 16px;
+  border-top: 1px solid var(--border);
+}
+.setup-step:first-of-type { border-top: 0; }
+.setup-step.is-next { background: var(--bg-subtle); }
+/* State reads from the marker as well as the word, so the list scans without
+   being read. */
+.setup-step-mark {
+  width: 14px; height: 14px; margin-top: 2px;
+  border-radius: 50%; border: 2px solid var(--border-strong);
+}
+/* Part-filled ring, not a gradient: the visual-system lint bans gradients on
+   core product surfaces, and an inset ring reads as partial just as well. */
+.setup-step-in_progress .setup-step-mark { border-color: #b45309; box-shadow: inset 0 0 0 3px #b45309; }
+.setup-step-complete .setup-step-mark { border-color: #15803d; background: #15803d; }
+.setup-step-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.setup-step-title strong { font-size: 14px; font-weight: 500; color: var(--ink); }
+.setup-step-label { font-size: 13px; color: var(--text); margin: 2px 0 3px; }
+.setup-step-state { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+
+[data-theme="dark"] .setup-step-in_progress .setup-step-mark { border-color: #e4ad69; box-shadow: inset 0 0 0 3px #e4ad69; }
+[data-theme="dark"] .setup-step-complete .setup-step-mark { border-color: #77c995; background: #77c995; }
+
+@media (max-width: 620px) {
+  .setup-step { grid-template-columns: 20px minmax(0, 1fr); }
+  .setup-step-state { grid-column: 2; margin-top: 8px; }
+}
+
+/* ==================== PHONE LAYOUT ====================
+   Measured at 375px across 37 representative pages. The shell already worked -
+   no page overflowed the document - but wide tables were being amputated
+   rather than scrolled, and the sidebar's rows were below a comfortable touch
+   size. Everything here is scoped to narrow viewports; desktop density is
+   deliberately untouched. */
+@media (max-width: 760px) {
+  /* Wide tables must stay reachable. Panels set overflow:hidden inline to clip
+     their rounded corners, and .main sets overflow-x:hidden, so an 687px
+     Statement of Applicability row lost every column past the viewport edge
+     with no scrollbar and no indication it had been cut. Making the table its
+     own scroll container fixes both cases without touching either ancestor. */
+  table.t, table.tprm-table, table.wp {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  /* A table in block flow no longer sizes its own columns, so give the row
+     groups the table layout back and let the natural width drive the scroll. */
+  table.t > thead, table.t > tbody, table.tprm-table > thead, table.tprm-table > tbody,
+  table.wp > thead, table.wp > tbody {
+    display: table;
+    width: 100%;
+    min-width: max-content;
+    table-layout: auto;
+  }
+  table.t th, table.t td, table.wp th, table.wp td { white-space: normal; }
+  /* The first column is the row's identity; keep it readable rather than
+     letting it collapse to a two-character column. */
+  table.t td:first-child, table.t th:first-child { min-width: 9rem; }
+
+  /* Touch targets. Every sidebar row was under 36px, which is below what a
+     thumb reliably hits. */
+  .nav-item, .nav-subitem { min-height: 40px; padding-top: 9px; padding-bottom: 9px; }
+  .sidebar-brand { min-height: 40px; }
+  .sidebar-foot-action, .sidebar-foot-action > button,
+  .icon-btn, .palette-trigger { min-height: 40px; min-width: 40px; }
+  /* 44px is the accepted floor for a primary touch target. .btn-xs is the
+     compact in-row action (an "Open" beside a table row); holding it to 36px
+     keeps dense lists usable without making every row a button bar. */
+  .btn { min-height: 44px; }
+  .btn-xs { min-height: 36px; }
+  /* .btn is nowrap so labels stay on one line in a dense desktop toolbar. On a
+     phone a long label has nowhere to go and runs off the edge, so let it wrap. */
+  .btn { white-space: normal; }
+  /* Segmented filters and the absolutely positioned copy affordance sit below
+     the floor on their own; they are buttons, not in-row text actions. */
+  .dash-filter-btn { min-height: 38px; }
+  /* .copy-button sets its size through the font shorthand, so it needs its own
+     line rather than the floor list above. */
+  .copy-button { min-height: 32px; padding: 6px 10px; font-size: 11px; }
+  .password-toggle { font-size: 11px; }
+
+
+
+  /* Microtype floor. Applies to the shared scale and the module families in this file.
+     The desktop scale uses 8-10px for eyebrows, table heads and secondary
+     labels, which reads at arm's length on a monitor and not in a hand.
+     Only selectors that declared below 11px are listed, so nothing that was
+     already at a readable size gets shrunk. */
+  .nav-domain-badge, .nav-subitem-badge,
+  .palette-trigger .kbd,
+  table.t thead th,
+  .kpi-delta,
+  .eyebrow,
+  .text-xxs,
+  .text-eyebrow,
+  .sec-label,
+  .cp-search .kbd,
+  .cp-type,
+  .cp-foot .kbd,
+  .cp-framework-chips span,
+  .cp-contact-summary span,
+  .cp-contact-summary a,
+  .cp-section-heading>div:first-child>span,
+  .cp-engagement-progress span,
+  .cp-engagement-facts span,
+  .cp-programme-card>span,
+  .cp-programme-card-action,
+  .cp-programme-detail .cp-programme-heading>span,
+  .cp-programme-detail-facts dt,
+  .cp-programme-detail-facts small,
+  .cp-report-list span,
+  .cp-lead-card>span,
+  .cp-client-checkpoint dt,
+  .cp-home-decision>span,
+  .cp-programme-grid-client .cp-programme-heading>span,
+  .cp-programme-measure span,
+  .cp-programme-grid-client dt,
+  .cp-home-week li small,
+  .cp-finding-card header span,
+  .cp-finding-card-body span,
+  .cp-finding-card footer,
+  .cp-portal-view table.t td:not(:first-child):before,
+  .cp-gap-overview-copy>span,.cp-gap-card>span,
+  .cp-gap-overview-metrics span,
+  .cp-gap-rail-item small,
+  .cp-gap-rail-item.is-complete:after,
+  .cp-gap-stage-state,
+  .cp-gap-facts dt,
+  .cp-gap-coverage-pair small,
+  .cp-gap-coverage-list h4,
+  .cp-gap-coverage-list>div,
+  .cp-gap-coverage-list code,
+  .cp-gap-scale strong,
+  .cp-gap-scale p,
+  .cp-gap-tiers>div>b,
+  .cp-gap-tiers strong,
+  .cp-gap-tiers span,
+  .cp-gap-sample span,
+  .cp-gap-compact-list small,
+  .cp-gap-compact-list>div>span,
+  .cp-gap-empty p,
+  .cp-gap-subhead>span,
+  .cp-gap-subhead p,
+  .cp-gap-weekly span,
+  .cp-gap-weekly small,
+  .cp-gap-table,
+  .cp-gap-table th,
+  .cp-gap-table td code,
+  .cp-gap-blockers p,
+  .cp-gap-validation-note p,
+  .cp-gap-finding>header span,
+  .cp-gap-finding-grid span,.cp-gap-risk-rationale span,
+  .cp-gap-finding-grid p,.cp-gap-risk-rationale p,
+  .cp-gap-severity-summary span,
+  .cp-gap-disclosure,
+  .delivery-date-pair small,
+  .ep-timeline-facts span,
+  .ep-timeline-legend,
+  .ep-gantt-phase>.ep-gantt-label>b,
+  .ep-gantt-phase>.ep-gantt-label strong,
+  .ep-gantt-phase>.ep-gantt-label small,
+  .ep-task-title strong,
+  .ep-task-title em,
+  .ep-gantt-task>.ep-gantt-label small,
+  .gap-lineage-note,
+  .supplier-exception>span,
+  .supplier-exception p,
+  .supplier-exception b,
+  .cp-action-summary span,
+  .cp-action-summary small,
+  .gfw-position span,
+  .gfw-position small,
+  .gfw-section-head>div>span,
+  .gfw-section-head p,
+  .gfw-gate header span,
+  .gfw-checks>div,
+  .gfw-decision,
+  .gfw-decision-form>summary,
+  .gfw-inline-form label,
+  .gfw-live-metrics span,
+  .gfw-snapshot-list>div,
+  .gfw-snapshot-list>.gfw-table-head,
+  .gfw-snapshot-list code,
+  .gfw-form-grid label,
+  .gfw-check,
+  .gfw-register>article>div:first-child span,
+  .gfw-register>article>div:first-child small,
+  .gfw-register details>summary,
+  .gfw-derived>div:not(.panel-head),
+  .gfw-workflow-link,
+  .csf2-tabs a span,
+  .csf2-integrity-grid span,
+  .csf2-kpis span,
+  .csf2-kpis small,
+  .csf2-table-head,
+  .csf2-outcome-row small,
+  .csf2-level-options small,
+  .csf2-evidence-row small,
+  .csf2-history-row span,
+  .csf2-pair span,
+  .csf2-recommendations span,
+  .cm-kicker,
+  .cm-decision-metrics span,.cm-decision-metrics small,
+  .cm-function-code,
+  .cm-function-name small,.cm-score-pair small,
+  .cm-legend,
+  .cm-gate-list>div>span,
+  .cm-gate-list small,
+  .cm-priority-list small,
+  .cm-roadmap-bars span,
+  .cm-roadmap-summary span,
+  .cm-cycle-list>a>div small,.cm-cycle-list>a>span small,
+  .cm-cycle-list>a>em,
+  .cm-workbench-summary span,
+  .cm-workbench-summary small,
+  .cm-function-selector span,
+  .cm-function-selector small,
+  .cm-function-selector em,
+  .cm-category-top span,
+  .cm-category-top em,
+  .cm-category-score>span,
+  .cm-category-score>b small,
+  .cm-category-foot,
+  .cm-register-intro>strong small,
+  .cm-back-link,
+  .cm-category-hero>div:last-child span,
+  .cm-outcome-code span,
+  .cm-outcome-main>p,
+  .cm-outcome-main>div span,
+  .cm-outcome-main>div b,
+  .cm-outcome-assurance small,
+  .cm-outcome-assurance em,
+  .cm-baseline-heading>.status-pill,
+  .cm-baseline-progress span,.cm-baseline-progress small,
+  .cm-baseline-facts dt,
+  .cm-baseline-facts dd small,
+  .cm-function-table-head,
+  .cm-function-name small,.cm-function-coverage small,.cm-function-value small,.cm-function-gap small,
+  .cm-function-name small,.cm-function-value small,.cm-function-coverage small,
+  .ifw-setup-alert span,
+  .ifw-principle strong,
+  .ifw-principle span,
+  .ifw-kicker,
+  .ifw-section-head>span,.ifw-section-head>a,
+  .ifw-programme-head,
+  .ifw-framework-code,
+  .ifw-framework-cell small,.ifw-position-cell small,.ifw-number-cell small,.ifw-number-cell span,.ifw-assessment-cell small,
+  .ifw-assessment-cell>div:first-child span,
+  .ifw-assessment-cell>div:first-child strong,
+  .ifw-csf-functions b,
+  .ifw-csf-functions small,
+  .ifw-signals span,
+  .ifw-signals small,
+  .ifw-action-list strong,.ifw-risk-list strong,
+  .ifw-action-list small,.ifw-risk-list small,
+  .ifw-action-list em,
+  .ifw-priority,
+  .ifw-reuse-panel p,
+  .ifw-reuse-panel dt,
+  .iso-command-kicker,.iso-section-kicker,
+  .iso-command-score small,
+  .iso-command-facts span,
+  .iso-command-priority-foot>span,
+  .iso-progress-copy>small,
+  .iso-workstream span,
+  .iso-workstream small,
+  .iso-assurance-list small,
+  .iso-operating-signals span,
+  .iso-operating-signals small,
+  .supplier-questionnaire-step>span,
+  .supplier-questionnaire-step strong,
+  .supplier-questionnaire-step small,
+  .supplier-questionnaire-step.is-complete>span:after,
+  .perf-kpis span,
+  .perf-kpis small,
+  .perf-create>summary small,
+  .perf-objective-main>p,
+  .perf-status,
+  .perf-source>span,
+  .perf-source>a,.perf-source>b,
+  .perf-source>small,
+  .perf-objective-values dt,
+  .perf-objective-values dd,
+  .field-error-message,
+  .app-page-meta,
+  .evidence-framework-count,
+  .evidence-framework-picker .ev-pick-code
+  { font-size: 11px; }
+
+  /* A 440px dropdown anchored right:0 hangs off the side of a 375px screen,
+     and the panel that clips it means the far edge is simply unreachable.
+     Bound it to the viewport instead of the designed width. The min-width
+     keeps it from collapsing to its content inside a narrow container. */
+  .popover-panel {
+    width: auto;
+    min-width: min(300px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
+  /* The same shape, written with min-width instead of width. */
+  [style*="position:absolute"][style*="min-width:340px"],
+  [style*="position:absolute"][style*="min-width:380px"] {
+    min-width: min(300px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  /* A bare <small> is 0.83x its parent, so flooring a container at 11px above
+     leaves its <small> children at 9.2px. max() sets a floor without shrinking
+     a <small> that sits inside larger text. */
+  small { font-size: max(11px, 0.8333em); }
+
+  /* The same floor for sizes written inline in a view. An inline style outranks
+     a stylesheet, so this is the one case where !important is the mechanism
+     rather than a shortcut. Only the sub-floor values are listed, so nothing
+     already readable is touched. */
+  [style*="font-size:9px"], [style*="font-size: 9px"],
+  [style*="font-size:9.5px"], [style*="font-size: 9.5px"],
+  [style*="font-size:10px"], [style*="font-size: 10px"],
+  [style*="font-size:10.5px"], [style*="font-size: 10.5px"] {
+    font-size: 11px !important;
+  }
+
+  /* The date block carries an inline min-width:210px, which on a phone left the
+     title about 100px and broke it to one word per line while the dates ran off
+     the right edge. Keep the badge and title together and move the dates to
+     their own row. The inline min-width and text-align are why this needs
+     !important rather than ordinary cascade order. */
+  /* Two-up rows that read as side-by-side copy on a desktop and as two narrow
+     columns on a phone. */
+  .cm-empty-programme, .cm-register-intro { flex-direction: column; align-items: flex-start; gap: 14px; }
+
+  .phase-summary { grid-template-columns: 36px minmax(0, 1fr); }
+  .phase-summary > :last-child {
+    grid-column: 1 / -1;
+    min-width: 0 !important;
+    text-align: left !important;
+  }
+
+  /* Full-width controls: a half-width input beside a half-width select is two
+     unusable controls on a 375px screen. */
+  .row, .row-center { flex-wrap: wrap; }
+  .row > .btn, .row-center > .btn { flex: 1 1 auto; }
+  .input, .select, .textarea { max-width: 100%; }
+
+  /* Form controls were as short as 25px, and iOS zooms the whole page when a
+     field smaller than 16px takes focus - which throws the layout off and the
+     user has to pinch back out on every single field. 16px stops the zoom;
+     40px makes the control tappable. */
+  .input, .select, .textarea,
+  input[type="text"], input[type="search"], input[type="email"], input[type="password"],
+  input[type="number"], input[type="date"], input[type="url"], input[type="tel"], select, textarea {
+    min-height: 40px;
+    font-size: 16px;
+  }
+  textarea, .textarea { min-height: 76px; line-height: 1.5; }
+  /* Checkboxes and radios are hit directly, not through a label box. */
+  /* 24px is the accessibility floor for a discrete control. Row checkboxes were
+     20px, which is a miss as often as a hit on a bulk-select column. */
+  input[type="checkbox"], input[type="radio"] { min-width: 24px; min-height: 24px; }
+
+  /* Dialogs become sheets rather than floating boxes clipped by the viewport. */
+  dialog { width: 100% !important; max-width: 100% !important; margin: 0; border-radius: 10px 10px 0 0; }
+}
+
+@media (max-width: 760px) {
+  /* Components added in this session, held to the same rules. */
+  .dash-line, .tprm-summary, .dp-facts { font-size: 12.5px; }
+  .dash-table-wrap > table { min-width: 0; }
+  .dash-work-clients { margin-left: 0; }
+  .dash-work-when { min-width: 0; }
+  .setup-step { grid-template-columns: 18px minmax(0, 1fr); }
+  .setup-step-state { grid-column: 2; justify-content: flex-start; margin-top: 9px; }
+  .dp-doc-toolbar .row { width: 100%; }
+  .dp-cover-facts > div { flex-basis: 100%; }
+  .tprm-queue-row { grid-template-columns: 4px minmax(0, 1fr); row-gap: 6px; }
+  .tprm-queue-row > .tprm-row-arrow { display: none; }
+  .tprm-queue-action, .tprm-queue-owner, .tprm-queue-due { grid-column: 2; }
+}
+
+/* Grid and flex children default to min-width:auto, so a wide child refuses to
+   shrink and silently pushes past the viewport where an ancestor clips it.
+   The audit found this on the readiness appendix; these are the shared
+   containers where the same trap applies. */
+@media (max-width: 760px) {
+  .grid-2 > *, .grid-4 > *, .grid-list > *, .dash-split > *, .dp-split > * { min-width: 0; }
+  .page-head > div { min-width: 0; }
 }

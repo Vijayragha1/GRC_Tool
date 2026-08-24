@@ -13,6 +13,8 @@ set -euo pipefail
 
 APP_DIR="/opt/grc-tool"
 REPO_URL="https://github.com/vijayragha1/grc_tool.git"
+APP_UID="1000"
+APP_GID="1000"
 
 echo "==> Updating system packages..."
 apt-get update && apt-get upgrade -y
@@ -57,8 +59,8 @@ fi
 
 cd "$APP_DIR"
 
-echo "==> Creating data and upload directories..."
-mkdir -p data uploads
+echo "==> Creating private data, backup and upload directories..."
+install -d -m 0700 -o "$APP_UID" -g "$APP_GID" data data/backups uploads
 
 echo "==> Generating secrets..."
 ENV_FILE="$APP_DIR/.env"
@@ -82,6 +84,9 @@ if [ ! -f "$ENV_FILE" ]; then
 # GRC Tool — production environment
 NODE_ENV=production
 PORT=3000
+DB_PATH=/app/data/iso27001.db
+ISMS_BACKUP_DIR=/app/data/backups
+ISMS_BACKUP_RETAIN=14
 
 # Required secrets (auto-generated — keep safe, back up separately)
 SESSION_SECRET=${SESSION_SECRET}
@@ -106,14 +111,33 @@ else
   echo "    .env already exists, skipping secret generation"
 fi
 
+echo "==> Checking and enforcing private runtime permissions..."
+# Report mismatches before remediation so upgrades leave a useful operations
+# trail. The container runs as node (UID/GID 1000), not root.
+find data uploads -xdev \( ! -user "$APP_UID" -o ! -group "$APP_GID" \) -print 2>/dev/null || true
+find data uploads -xdev -type d ! -perm 0700 -print 2>/dev/null || true
+find data uploads -xdev -type f ! -perm 0600 -print 2>/dev/null || true
+chown -R "$APP_UID:$APP_GID" data uploads
+find data uploads -xdev -type d -exec chmod 0700 {} +
+find data uploads -xdev -type f -exec chmod 0600 {} +
+chown root:root "$ENV_FILE"
+chmod 0600 "$ENV_FILE"
+
 echo "==> Building and starting containers..."
 docker compose up -d --build
 
 echo "==> Setting up Nginx reverse proxy..."
+cat > /etc/nginx/conf.d/grc-log-format.conf <<'LOGEOF'
+# Deliberately log the normalized path, not the query string. Filters and old
+# bookmarked URLs must never put session/CSRF material into access logs.
+log_format grc_no_query '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" '
+                        '$status $body_bytes_sent "$http_user_agent"';
+LOGEOF
 cat > /etc/nginx/sites-available/grc-tool <<'NGINXEOF'
 server {
     listen 80;
     server_name _;
+    access_log /var/log/nginx/grc-tool.access.log grc_no_query;
 
     client_max_body_size 50M;
 
@@ -138,18 +162,21 @@ nginx -t && systemctl reload nginx
 
 echo "==> Setting up automatic backups (daily at 2am)..."
 cat > /etc/cron.d/grc-backup <<'CRONEOF'
-0 2 * * * root cd /opt/grc-tool && docker compose exec -T isms node scripts/backup.js >> /var/log/grc-backup.log 2>&1
+0 2 * * * root flock -n /var/lock/grc-backup-cron.lock sh -c 'cd /opt/grc-tool && docker compose exec -T isms node scripts/backup.js' >> /var/log/grc-backup.log 2>&1
 CRONEOF
+chmod 0644 /etc/cron.d/grc-backup
 
 echo "==> Setting up automatic Docker container restart monitoring..."
 cat > /etc/cron.d/grc-healthcheck <<'CRONEOF'
 */5 * * * * root docker inspect --format='{{.State.Running}}' iso27001-tool 2>/dev/null | grep -q true || (cd /opt/grc-tool && docker compose up -d)
 CRONEOF
+chmod 0644 /etc/cron.d/grc-healthcheck
 
 echo "==> Setting up daily malware-definition updates..."
 cat > /etc/cron.d/grc-clamav <<'CRONEOF'
-35 1 * * * root cd /opt/grc-tool && docker compose exec -T isms freshclam >> /var/log/grc-clamav.log 2>&1
+35 1 * * * root cd /opt/grc-tool && docker compose exec -T -u 0 isms freshclam >> /var/log/grc-clamav.log 2>&1
 CRONEOF
+chmod 0644 /etc/cron.d/grc-clamav
 
 echo ""
 echo "============================================"

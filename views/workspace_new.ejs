@@ -1,5 +1,16 @@
 <%- include('partials/header', { title: 'New client', user, ws, active: 'dashboard' }) %>
 
+<%
+  const savedForm = (typeof form !== 'undefined' && form) ? form : {};
+  const selectedFrameworks = Array.isArray(savedForm.frameworks)
+    ? savedForm.frameworks
+    : (savedForm.frameworks ? [savedForm.frameworks] : []);
+  const selectedOutcome = savedForm.engagement_outcome || '';
+  const tprmEnabled = String(savedForm.tprm_enabled || '') === '1';
+  const selectedTprmService = savedForm.tprm_service_model || '';
+  const vcisoEnabled = String(savedForm.vciso_enabled || '') === '1';
+%>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Create client</h1>
@@ -10,29 +21,58 @@
 
 <div class="panel">
   <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <% if (typeof formError !== 'undefined' && formError) { %>
+      <div class="col-full" role="alert" style="padding:11px 13px;border:1px solid var(--danger,#b91c1c);border-radius:7px;background:rgba(185,28,28,.05);color:var(--danger,#b91c1c);"><%= formError %></div>
+    <% } %>
     <div class="col-full">
       <label class="label">Client name <span class="meta">required</span></label>
-      <input class="input" name="client_name" required autofocus placeholder="e.g., Acme HealthTech">
+      <input class="input" name="client_name" required autofocus value="<%= savedForm.client_name || '' %>" placeholder="e.g., Acme HealthTech">
     </div>
     <div>
       <label class="label">Industry <span class="meta">optional</span></label>
-      <input class="input" name="industry" placeholder="e.g., HealthTech SaaS, Fintech, Manufacturing">
+      <input class="input" name="industry" value="<%= savedForm.industry || '' %>" placeholder="e.g., HealthTech SaaS, Fintech, Manufacturing">
     </div>
-    <div>
-      <label class="label">Target certification date <span class="meta">optional</span></label>
-      <input class="input" type="date" name="target_cert_date">
+    <div id="certification-target-field" <%= selectedFrameworks.includes('iso27001') ? '' : 'hidden' %> style="opacity:<%= selectedOutcome === 'certification_support' ? '1' : '.55' %>;">
+      <label class="label">Target certification date <span class="meta">optional · full support only</span></label>
+      <input class="input" id="target-cert-date" type="date" name="target_cert_date" value="<%= savedForm.target_cert_date || '' %>" <%= selectedFrameworks.includes('iso27001') && selectedOutcome === 'certification_support' ? '' : 'disabled' %>>
     </div>
     <div class="col-full">
       <label class="label">ISMS scope statement <span class="meta">can be edited later</span></label>
-      <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units, technology are in scope of the ISMS? What's explicitly excluded and why?"></textarea>
+      <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units, technology are in scope of the ISMS? What's explicitly excluded and why?"><%= savedForm.scope || '' %></textarea>
+    </div>
+    <fieldset id="iso27001-outcome-fieldset" class="col-full" <%= selectedFrameworks.includes('iso27001') ? '' : 'hidden' %> style="border:1px solid var(--border);border-radius:8px;padding:14px;margin:0;">
+      <legend class="label" style="padding:0 5px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
+      <div class="meta text-sm" style="margin-bottom:10px;line-height:1.5;">Choose where this engagement is contracted to end. This controls the delivery journey and its completion gate.</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+        <% outcomeOptions.forEach(option => { %>
+          <label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;">
+            <input type="radio" name="engagement_outcome" value="<%= option.value %>" <%= selectedFrameworks.includes('iso27001') ? 'required' : '' %> <%= selectedOutcome === option.value ? 'checked' : '' %> style="margin-top:3px;">
+            <span><strong style="display:block;margin-bottom:3px;"><%= option.label %></strong><span class="meta" style="display:block;line-height:1.45;"><%= option.description %></span></span>
+          </label>
+        <% }) %>
+      </div>
     </div>
     <div class="col-full">
       <div class="label">Assessment programmes <span class="meta">optional · choose any combination</span></div>
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:7px;">
-        <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso27001"><span><strong>ISO 27001:2022</strong><span class="meta" style="display:block;">Information security</span></span></label>
-        <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso42001"><span><strong>ISO 42001:2023</strong><span class="meta" style="display:block;">AI management</span></span></label>
-        <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input type="checkbox" name="frameworks" value="csf"><span><strong>NIST CSF 2.0</strong><span class="meta" style="display:block;">Cyber maturity</span></span></label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px;">
+        <%# Rendered from the framework registry (lib/frameworks.js). %>
+        <% frameworkList.forEach(fw => { %>
+          <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input id="<%= fw.code %>-programme" type="checkbox" name="frameworks" value="<%= fw.code %>" <%= selectedFrameworks.includes(fw.code)?'checked':'' %>><span><strong><%= fw.pickerLabel %></strong><span class="meta" style="display:block;"><%= fw.pickerNote %></span></span></label>
+        <% }) %>
       </div>
+    </div>
+    <div class="col-full" style="padding-top:4px;border-top:1px solid var(--border);">
+      <div class="label">Operational modules <span class="meta">optional · independent of frameworks</span></div>
+      <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:7px;"><input id="tprm-module" type="checkbox" name="tprm_enabled" value="1" <%= tprmEnabled?'checked':'' %> style="margin-top:3px;"><span><strong>Third-party risk</strong><span class="meta" style="display:block;line-height:1.4;">Provider intake, due diligence, consultancy recommendations, client decisions, monitoring, renewal and offboarding.</span></span></label>
+      <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:7px;"><input id="vciso-module" type="checkbox" name="vciso_enabled" value="1" <%= vcisoEnabled?'checked':'' %> style="margin-top:3px;"><span><strong>vCISO advisory</strong><span class="meta" style="display:block;line-height:1.4;">Virtual security leadership, governance cadence, risk oversight, executive reporting and tracked advisory delivery.</span></span></label>
+      <fieldset id="tprm-service-fieldset" <%= tprmEnabled?'':'hidden' %> style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:10px 0 0;">
+        <legend class="label" style="padding:0 5px;">TPRM service model <span class="meta">required</span></legend>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+          <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['programme_setup','Programme setup','Establish inventory, methodology and governance.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
+            <label class="panel-pad" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="<%= option[0] %>" <%= selectedTprmService===option[0]?'checked':'' %> <%= tprmEnabled?'required':'' %> style="margin-top:3px;"><span><strong style="display:block;"><%= option[1] %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option[2] %></span></span></label>
+          <% }) %>
+        </div>
+      </fieldset>
     </div>
     <div class="col-full" style="display:flex;gap:8px;">
       <button class="btn btn-primary">Create client</button>
@@ -40,5 +80,39 @@
     </div>
   </form>
 </div>
+
+<script>
+  (function () {
+    const target = document.getElementById('target-cert-date');
+    const wrapper = document.getElementById('certification-target-field');
+    const isoProgramme = document.getElementById('iso27001-programme');
+    const outcomeFieldset = document.getElementById('iso27001-outcome-fieldset');
+    const choices = document.querySelectorAll('input[name="engagement_outcome"]');
+    const tprmModule = document.getElementById('tprm-module');
+    const tprmServiceFieldset = document.getElementById('tprm-service-fieldset');
+    const tprmServiceChoices = document.querySelectorAll('input[name="tprm_service_model"]');
+    function refreshTarget() {
+      const selected = document.querySelector('input[name="engagement_outcome"]:checked');
+      const hasIso27001 = !!isoProgramme.checked;
+      const fullSupport = hasIso27001 && selected && selected.value === 'certification_support';
+      outcomeFieldset.hidden = !hasIso27001;
+      wrapper.hidden = !hasIso27001;
+      choices.forEach(choice => { choice.required = hasIso27001; });
+      target.disabled = !fullSupport;
+      wrapper.style.opacity = fullSupport ? '1' : '.55';
+      if (!fullSupport) target.value = '';
+    }
+    choices.forEach(choice => choice.addEventListener('change', refreshTarget));
+    isoProgramme.addEventListener('change', refreshTarget);
+    function refreshTprmService() {
+      const enabled = !!tprmModule.checked;
+      tprmServiceFieldset.hidden = !enabled;
+      tprmServiceChoices.forEach(choice => { choice.required = enabled; });
+    }
+    tprmModule.addEventListener('change', refreshTprmService);
+    refreshTarget();
+    refreshTprmService();
+  })();
+</script>
 
 <%- include('partials/footer') %>

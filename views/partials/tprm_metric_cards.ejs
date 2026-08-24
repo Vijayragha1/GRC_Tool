@@ -1,0 +1,14 @@
+<section class="tprm-metrics" aria-label="Third-party risk portfolio summary">
+  <a href="<%= basePath %>/assessments?attention=1" class="tprm-metric <%= portfolio.metrics.actionRequired ? 'needs-attention' : '' %>">
+    <span>Action required</span><strong><%= portfolio.metrics.actionRequired %></strong><small>Open items</small>
+  </a>
+  <a href="<%= basePath %>/assessments?waiting=provider" class="tprm-metric">
+    <span>Waiting on provider</span><strong><%= portfolio.metrics.waitingProvider %></strong><small>Issued questionnaires</small>
+  </a>
+  <a href="<%= basePath %>/third-parties?risk=high_critical" class="tprm-metric <%= portfolio.metrics.highResidual ? 'needs-attention' : '' %>">
+    <span>High or critical risk</span><strong><%= portfolio.metrics.highResidual %></strong><small>Residual exposure</small>
+  </a>
+  <a href="<%= basePath %>/monitoring?attention=1" class="tprm-metric <%= portfolio.metrics.overdueExpiring ? 'needs-attention' : '' %>">
+    <span>Overdue or expiring</span><strong><%= portfolio.metrics.overdueExpiring %></strong><small>Reviews and records</small>
+  </a>
+</section>

@@ -1774,7 +1774,9 @@ function init() {
   // RBAC overrides - expiry support
   addColumnIfMissing('workspace_role_overrides', 'expires_at', 'DATETIME');
 
-  // Users - last_active for member profile, locale + IdP linkage
+  // Users - last_active for member profile, locale + IdP linkage. The
+  // authorization epoch is added by migration 041 so the standalone migration
+  // runner and application startup have identical schema behavior.
   addColumnIfMissing('users', 'last_active_at', 'DATETIME');
   addColumnIfMissing('users', 'locale', "TEXT DEFAULT 'en'");
   addColumnIfMissing('users', 'idp_subject', 'TEXT');
@@ -3375,6 +3377,38 @@ function init() {
   // database refuses to start serving rather than coming up in a broken state.
   require('./migrations/run').applyPending(db);
 
+  // The hand-written bootstrap still creates these two tables as temporary
+  // scaffolding for historic migrations 013/017 on a pristine database.
+  // Migration 019 removes them, but on a warm database there are no pending
+  // migrations, so bootstrap used to resurrect an empty second source of
+  // truth on every restart. Reconcile after the full chain on every boot:
+  // control_instances and its compatibility views remain authoritative.
+  db.exec(`
+    DROP TABLE IF EXISTS control_states;
+    DROP TABLE IF EXISTS iso42001_control_states;
+  `);
+
+  // Migration 041 adds the digest columns without rebuilding the legacy table,
+  // which keeps upgrades safe while active auditor links exist. Hash every
+  // legacy credential synchronously before the server accepts traffic, then
+  // replace the raw value with a non-credential marker. routes/auditor.js also
+  // has a dual-read, lazy-upgrade path for databases migrated independently by
+  // the SQL CLI and opened before this boot hook runs.
+  const legacyAuditorShares = db.prepare(`SELECT id, token FROM auditor_shares
+    WHERE token_hash IS NULL AND token IS NOT NULL`).all();
+  if (legacyAuditorShares.length) {
+    const migrateAuditorToken = db.prepare(`UPDATE auditor_shares
+      SET token_hash=?, token_last4=?, token='migrated:' || id
+      WHERE id=? AND token_hash IS NULL`);
+    db.transaction(() => {
+      for (const share of legacyAuditorShares) {
+        const raw = String(share.token);
+        const digest = crypto.createHash('sha256').update(raw).digest('hex');
+        migrateAuditorToken.run(digest, raw.slice(-4), share.id);
+      }
+    })();
+  }
+
   // Seed the governed CSF Policy/Practice methodology after the converged
   // schema exists. Canonical outcome text remains in nist-csf.js; these rows
   // are immutable assessment instructions pinned to a methodology version.
@@ -3466,8 +3500,14 @@ function logAction(userId, workspaceId, action, entityType, entityId, details, c
     if (userId) {
       try { db.prepare('UPDATE users SET last_active_at=CURRENT_TIMESTAMP WHERE id=?').run(userId); } catch(_){}
     }
+    return info;
   } catch (e) {
     console.error('[audit] failed:', e.message);
+    // Governed destructive/withdrawal operations call with strict=true from
+    // inside their transaction. An audit failure must then roll the business
+    // mutation back instead of creating an unexplained disappearance.
+    if (ctx && ctx.strict) throw e;
+    return null;
   }
 }
 

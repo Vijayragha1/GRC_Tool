@@ -1,0 +1,435 @@
+<%- include('partials/header', { title: 'DPDPA readiness', user, ws, active: 'dpdpa' }) %>
+<%- include('dpdpa_styles') %>
+<%
+  const base = `/workspaces/${ws.id}/dpdpa`;
+  const r = position.readiness;
+  const gateCount = gates.reduce((sum, group) => sum + group.items.length, 0);
+  const pct = value => (r.total ? (value * 100 / r.total) : 0).toFixed(2);
+  const statusLink = status => current
+    ? `${base}/assessments/${current.id}?status=${encodeURIComponent(status)}`
+    : base;
+
+  // What the module wants from you next. Derived from lifecycle state and the
+  // domain's own submission gates, so the page opens with a decision instead
+  // of a create form that is only ever used once.
+  const nextStep = (() => {
+    if (!current) return {
+      title: 'No assessment has been created yet',
+      body: 'An assessment fixes the boundary, the as-of date and the applicability profile, then opens all 55 catalogue obligations for conclusion. Everything else in this module hangs off that record.',
+      action: caps.assess ? { label: 'Create the first assessment', dialog: true } : null,
+    };
+    if (['Draft', 'In Progress'].includes(current.status) && r.notAssessed > 0) return {
+      title: `${r.notAssessed} obligation${r.notAssessed === 1 ? '' : 's'} still need a conclusion`,
+      body: 'Every catalogue obligation has to carry a result before the assessment can be submitted. Not Applicable is a conclusion too, and needs its own recorded rationale.',
+      action: { label: 'Continue in the workbench', href: `${base}/assessments/${current.id}?status=Not%20Assessed` },
+    };
+    if (['Draft', 'In Progress'].includes(current.status) && gateCount > 0) return {
+      title: `${gateCount} submission gate${gateCount === 1 ? '' : 's'} block independent review`,
+      body: 'Conclusions are recorded but some are missing the note, gap statement, recommendation, rationale or current evidence that the submission check requires.',
+      action: { label: 'Resolve the gates', href: `${base}/assessments/${current.id}#gates` },
+    };
+    if (['Draft', 'In Progress'].includes(current.status)) return {
+      title: 'Ready to submit for independent review',
+      body: 'All conclusions carry the evidence and rationale the submission check requires. Submission freezes the current row versions and routes the record to a reviewer who did not prepare it.',
+      action: { label: 'Open the workbench', href: `${base}/assessments/${current.id}` },
+    };
+    if (current.status === 'Under Review') return {
+      title: 'Awaiting independent review',
+      body: `Submitted${current.submitted_at ? ` on ${String(current.submitted_at).slice(0, 10)}` : ''}. The assessment is read-only until the reviewer returns it for changes or approves it. Maker-checker separation means the preparer cannot approve their own work.`,
+      action: caps.review ? { label: 'Open the review', href: `${base}/assessments/${current.id}/review` } : null,
+    };
+    return {
+      title: 'Approved baseline in force',
+      body: `This position was approved${current.approved_by_name ? ` by ${current.approved_by_name}` : ''} and frozen as a hash-addressed snapshot. Reassess when the boundary, the processing or the catalogue changes; the approved record stays untouched.`,
+      action: caps.export && current.latest_snapshot
+        ? { label: 'Open the frozen report', href: `${base}/assessments/${current.id}/report` }
+        : (caps.assess ? { label: 'Start a reassessment', dialog: true } : null),
+    };
+  })();
+%>
+
+<div class="dp">
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">DPDPA readiness</h1>
+    <div class="page-subtitle">Evidence-backed gap assessment against the Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025. A readiness conclusion for a stated boundary and date, not legal certification.</div>
+    <div class="dp-facts">
+      <span>Catalogue <strong><%= catalog.catalog_version %></strong></span>
+      <span><strong><%= catalog.requirement_count %></strong> obligations</span>
+      <span><strong><%= assessments.length %></strong> assessment<%= assessments.length === 1 ? '' : 's' %> on record</span>
+      <% if (current) { %>
+        <span>Current as of <strong><%= current.as_of_date %></strong></span>
+        <span class="status s-<%= String(current.status).toLowerCase().replace(/[^a-z0-9]+/g, '-') %>"><%= current.status %></span>
+      <% } %>
+    </div>
+  </div>
+  <% if (caps.assess) { %>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('dpNewAssessment').showModal()">New assessment</button>
+  <% } %>
+</div>
+
+<%# Commencement runway. The Act commences in three tranches and almost every
+    assessable duty lands in the last one, so a countdown to that date is the
+    only headline that means anything before May 2027. The page used to lead
+    with "current-effective readiness", which is structurally near zero for
+    every organisation until then and taught the reader nothing. %>
+<section class="panel">
+  <div class="panel-head">
+    <h2>Commencement runway</h2>
+    <span class="meta">G.S.R. 843(E), 13 November 2025</span>
+  </div>
+  <div class="dp-runway">
+    <% runway.forEach(phase => {
+         const state = phase.inForce ? 'is-inforce' : (phase.daysRemaining !== null && phase.daysRemaining <= 400 ? 'is-next' : 'is-later'); %>
+      <div class="dp-phase <%= state %>">
+        <span class="dp-phase-state"><%= phase.inForce ? 'In force' : `${phase.daysRemaining} days` %></span>
+        <span class="dp-phase-date"><%= phase.effectiveDateLong %></span>
+        <span class="dp-phase-label"><%= phase.label %></span>
+        <span class="dp-phase-count">
+          <%= phase.obligationCount %> <small>assessable obligation<%= phase.obligationCount === 1 ? '' : 's' %></small>
+        </span>
+        <span class="dp-phase-note"><%= phase.summary %></span>
+        <% if (phase.computedDate) { %>
+          <%# The notification sets a relative period, so this date is derived.
+              Saying so keeps a computed date from being read as a printed one. %>
+          <span class="dp-phase-note" style="font-style:italic;">Derived date: <%= phase.dateBasis.toLowerCase() %>.</span>
+        <% } %>
+      </div>
+    <% }) %>
+  </div>
+</section>
+
+<% if (current) { %>
+  <%# One bar, not five number cards. The old row asked the reader to hold five
+      figures in their head and add them up to find the position. %>
+  <section class="panel panel-pad">
+    <div class="dp-headline">
+      <b><%= r.readinessPct %>%</b>
+      <span>readiness across <%= r.inScope %> in-scope obligations, weighting partial implementation at half credit</span>
+    </div>
+    <div class="dp-bar" role="img" aria-label="<%= r.implemented %> implemented, <%= r.partial %> partially implemented, <%= r.notImplemented %> not implemented, <%= r.notApplicable %> not applicable, <%= r.notAssessed %> not assessed">
+      <% if (r.implemented) { %><span class="dp-bar-implemented" style="width:<%= pct(r.implemented) %>%"></span><% } %>
+      <% if (r.partial) { %><span class="dp-bar-partial" style="width:<%= pct(r.partial) %>%"></span><% } %>
+      <% if (r.notImplemented) { %><span class="dp-bar-gap" style="width:<%= pct(r.notImplemented) %>%"></span><% } %>
+      <% if (r.notApplicable) { %><span class="dp-bar-na" style="width:<%= pct(r.notApplicable) %>%"></span><% } %>
+      <% if (r.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= pct(r.notAssessed) %>%"></span><% } %>
+    </div>
+    <div class="dp-legend">
+      <a href="<%= statusLink('Implemented') %>"><i class="k-implemented"></i><strong><%= r.implemented %></strong> implemented</a>
+      <a href="<%= statusLink('Partially Implemented') %>"><i class="k-partial"></i><strong><%= r.partial %></strong> partially implemented</a>
+      <a href="<%= statusLink('Not Implemented') %>"><i class="k-gap"></i><strong><%= r.notImplemented %></strong> not implemented</a>
+      <a href="<%= statusLink('Not Applicable') %>"><i class="k-na"></i><strong><%= r.notApplicable %></strong> not applicable</a>
+      <a href="<%= statusLink('Not Assessed') %>"><i class="k-unassessed"></i><strong><%= r.notAssessed %></strong> not assessed</a>
+    </div>
+  </section>
+<% } %>
+
+<section class="panel dp-next">
+  <div>
+    <h2><%= nextStep.title %></h2>
+    <p><%= nextStep.body %></p>
+  </div>
+  <% if (nextStep.action) { %>
+    <div class="row">
+      <% if (nextStep.action.dialog) { %>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('dpNewAssessment').showModal()"><%= nextStep.action.label %></button>
+      <% } else { %>
+        <a class="btn btn-primary" href="<%= nextStep.action.href %>"><%= nextStep.action.label %></a>
+      <% } %>
+    </div>
+  <% } %>
+</section>
+
+<% if (current && position.matrix.length) { %>
+  <div class="dp-split">
+    <%# Ordered by open gaps, not alphabetically. The old chart drew thirteen
+        near-identical bars of assessment completion, which told you nothing
+        about where the work is. %>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Where the gaps are</h2>
+        <span class="meta">By obligation domain</span>
+      </div>
+      <table class="t">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th style="width:110px;">Readiness</th>
+            <th style="width:52px;text-align:right;">Gaps</th>
+            <th style="width:78px;text-align:right;">In scope</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% position.matrix.forEach(row => { %>
+            <tr>
+              <td>
+                <a class="link-muted" href="<%= base %>/assessments/<%= current.id %>?domain=<%= encodeURIComponent(row.domain) %>"><%= row.domain %></a>
+                <% if (row.criticalGaps) { %>
+                  <div class="meta text-xs"><span class="s-not-implemented status"><%= row.criticalGaps %> critical</span></div>
+                <% } %>
+              </td>
+              <td>
+                <div class="num" style="font-size:12.5px;"><%= row.readinessPct %>%</div>
+                <div class="dp-bar dp-bar-sm" style="margin-top:5px;" role="img" aria-label="<%= row.readinessPct %>% ready">
+                  <% if (row.implemented) { %><span class="dp-bar-implemented" style="width:<%= (row.implemented * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                  <% if (row.partial) { %><span class="dp-bar-partial" style="width:<%= (row.partial * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                  <% if (row.notImplemented) { %><span class="dp-bar-gap" style="width:<%= (row.notImplemented * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                  <% if (row.notApplicable) { %><span class="dp-bar-na" style="width:<%= (row.notApplicable * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                  <% if (row.notAssessed) { %><span class="dp-bar-unassessed" style="width:<%= (row.notAssessed * 100 / row.total).toFixed(2) %>%"></span><% } %>
+                </div>
+              </td>
+              <td class="num" style="text-align:right;"><%= row.openGaps || '-' %></td>
+              <td class="num meta" style="text-align:right;"><%= row.inScope %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Priority gaps</h2>
+        <span class="meta"><%= position.gaps.length %> open</span>
+      </div>
+      <% if (position.gaps.length) { %>
+        <div>
+          <% position.gaps.slice(0, 8).forEach(gap => { %>
+            <a class="dp-gate link-muted" style="display:block;" href="<%= base %>/assessments/<%= current.id %>#item-<%= gap.id %>">
+              <div class="dp-gate-head">
+                <strong><%= gap.title %></strong>
+                <span class="tag dp-band dp-band-<%= String(gap.priority.band).toLowerCase() %>" style="margin-left:auto;flex-shrink:0;"><%= gap.priority.band %></span>
+              </div>
+              <p>
+                <span class="mono text-xs"><%= gap.ref %></span> ·
+                <%= gap.content ? gap.content.severityLabel : 'Severity not recorded' %> severity ·
+                <span class="status s-<%= String(gap.status).toLowerCase().replace(/[^a-z0-9]+/g, '-') %>"><%= gap.status %></span>
+                <% if (gap.content) { %> · commences <%= gap.content.effectiveDateLong %><% } %>
+              </p>
+              <p>
+                <%= gap.owner_name || 'No owner assigned' %><% if (gap.due_date) { %> · target <%= gap.due_date %><% } %>
+              </p>
+            </a>
+          <% }) %>
+        </div>
+        <div class="panel-tight" style="border-top:1px solid var(--border);">
+          <div class="meta text-xs"><%= position.priorityRule %></div>
+          <% if (position.gaps.length > 8) { %>
+            <div style="margin-top:6px;"><a class="link" href="<%= base %>/assessments/<%= current.id %>?status=Not%20Implemented">See all <%= position.gaps.length %> open gaps</a></div>
+          <% } %>
+        </div>
+      <% } else { %>
+        <div class="t-empty">No open implementation gaps have been recorded.</div>
+      <% } %>
+    </section>
+  </div>
+<% } %>
+
+<% if (current && gates.length) { %>
+  <%# Grouped by cause, every affected obligation a link. The previous panel
+      printed the same sentence once per blocked item with nothing to act on. %>
+  <section class="panel" id="gates">
+    <div class="panel-head">
+      <h2>Submission gates</h2>
+      <span class="meta"><%= gateCount %> to resolve before independent review</span>
+    </div>
+    <% gates.forEach(group => { %>
+      <div class="dp-gate">
+        <div class="dp-gate-head">
+          <strong><%= group.label %></strong>
+          <span class="meta"><%= group.items.length %></span>
+        </div>
+        <p><%= group.fix %></p>
+        <div class="dp-refs">
+          <% group.items.slice(0, 24).forEach(entry => { %>
+            <a href="<%= base %>/assessments/<%= current.id %>#item-<%= entry.id %>" title="<%= entry.title %>"><%= entry.ref %></a>
+          <% }) %>
+          <% if (group.items.length > 24) { %><span class="meta text-xs">+ <%= group.items.length - 24 %> more</span><% } %>
+        </div>
+      </div>
+    <% }) %>
+  </section>
+<% } %>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Assessment record</h2>
+    <span class="meta">Approved versions stay frozen; reassessment opens a new record</span>
+  </div>
+  <% if (assessments.length) { %>
+    <table class="t">
+      <thead>
+        <tr>
+          <th>Assessment</th>
+          <th style="width:96px;">As of</th>
+          <th style="width:120px;">Concluded</th>
+          <th style="width:120px;">Status</th>
+          <th style="width:70px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% assessments.forEach(row => {
+             const s = row.summary || {};
+             const rowTotal = Number(s.total || row.total_items || 0);
+             const rowConcluded = Number(s.concluded || row.assessed_count || 0);
+             const bc = row.baseline_comparison && row.baseline_comparison.summary; %>
+          <tr>
+            <td>
+              <a class="link-muted" style="font-weight:500;" href="<%= base %>/assessments/<%= row.id %>"><%= row.title %></a>
+              <div class="meta text-xs" style="margin-top:2px;line-height:1.45;"><%= row.scope_statement %></div>
+              <% if (row.baseline_assessment_id) { %>
+                <div class="meta text-xs" style="margin-top:3px;">
+                  Reassessment of #<%= row.baseline_assessment_id %><% if (bc) { %> · <%= bc.improved || 0 %> improved, <%= bc.regressed || 0 %> regressed<% } %>
+                </div>
+              <% } %>
+            </td>
+            <td class="num meta"><%= row.as_of_date || '-' %></td>
+            <td class="num"><%= rowConcluded %>/<%= rowTotal %></td>
+            <td><span class="status s-<%= String(row.status).toLowerCase().replace(/[^a-z0-9]+/g, '-') %>"><%= row.status %></span></td>
+            <td><a class="btn btn-ghost btn-xs" href="<%= base %>/assessments/<%= row.id %>">Open</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <div class="empty-state">
+      <div class="empty-title">No assessment on record</div>
+      <div class="empty-sub">Define the boundary, the as-of date and the applicability profile to open the catalogue for conclusion.</div>
+      <% if (caps.assess) { %>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('dpNewAssessment').showModal()">Create the first assessment</button>
+      <% } %>
+    </div>
+  <% } %>
+</section>
+
+<%# Provenance. Every obligation in this module traces to one of these four
+    documents; the reader can open them. The catalogue hash is what a frozen
+    snapshot pins itself to, so it belongs here rather than in a headline. %>
+<section class="panel">
+  <div class="panel-head">
+    <h2>Controlled catalogue and sources</h2>
+    <span class="meta">Reviewed as of <%= catalog.catalog_version %></span>
+  </div>
+  <div class="panel-pad">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;">
+      <% sources.forEach(source => { %>
+        <div>
+          <div class="text-sm" style="font-weight:500;"><%= source.title %></div>
+          <div class="meta text-xs" style="margin-top:2px;"><%= source.identifier %> · published <%= source.publicationDate %></div>
+          <% if (source.url) { %>
+            <div style="margin-top:4px;"><a class="link text-sm" href="<%= source.url %>" target="_blank" rel="noopener noreferrer">Open the Gazette copy</a></div>
+          <% } %>
+        </div>
+      <% }) %>
+    </div>
+    <div class="meta text-xs" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+      Catalogue hash <span class="dp-hash"><%= catalog.catalog_hash %></span>
+    </div>
+  </div>
+</section>
+
+<% if (caps.assess) { %>
+  <%# The create form lives in a dialog. It used to occupy the entire right
+      rail of this page permanently: a twelve-field form as page furniture,
+      pushing the actual position into a narrow column beside it. %>
+  <dialog id="dpNewAssessment" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(720px,94vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
+    <form method="POST" action="<%= base %>/assessments">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <header style="padding:20px 24px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:500;letter-spacing:-0.01em;">New DPDPA assessment</h2>
+          <div class="meta text-sm" style="margin-top:3px;">The boundary and the profile below are frozen into every approved snapshot. Answers create review hints only; no obligation is ever excluded automatically.</div>
+        </div>
+        <button type="button" onclick="document.getElementById('dpNewAssessment').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">&times;</button>
+      </header>
+
+      <div style="padding:18px 24px;display:grid;gap:14px;max-height:66vh;overflow:auto;">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;">
+          <div>
+            <label class="label" for="dpTitle">Assessment title <span class="meta">required</span></label>
+            <input class="input" id="dpTitle" name="title" minlength="5" maxlength="240" required placeholder="DPDPA readiness baseline 2026">
+          </div>
+          <div>
+            <label class="label" for="dpAsOf">As-of date <span class="meta">required</span></label>
+            <input class="input" id="dpAsOf" type="date" name="as_of_date" value="<%= today %>" required>
+          </div>
+        </div>
+
+        <div>
+          <label class="label" for="dpScope">Scope statement <span class="meta">required</span></label>
+          <textarea class="textarea" id="dpScope" name="scope_statement" minlength="20" maxlength="12000" rows="3" required placeholder="Legal entities, products, locations, systems and processing boundaries inside this assessment"></textarea>
+          <div class="meta text-xs" style="margin-top:4px;">State exclusions and dependencies explicitly.</div>
+        </div>
+
+        <fieldset style="border:1px solid var(--border);border-radius:7px;padding:12px;margin:0;">
+          <legend class="label" style="padding:0 4px;margin:0;">Organisation role <span class="meta">required · select every role in scope</span></legend>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+            <% ['Data Fiduciary', 'Data Processor', 'Consent Manager', 'Other / To be confirmed'].forEach(role => { %>
+              <label style="display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+                <input type="checkbox" name="organisation_roles" value="<%= role %>">
+                <span class="text-sm"><%= role %></span>
+              </label>
+            <% }) %>
+          </div>
+        </fieldset>
+
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+          <div>
+            <label class="label" for="dpDigital">Digital personal data in scope <span class="meta">required</span></label>
+            <select class="select" id="dpDigital" name="digital_personal_data_in_scope" required><option value="">Choose</option><option>Yes</option><option>No</option><option>Unknown</option></select>
+          </div>
+          <div>
+            <label class="label" for="dpChildren">Children or guardian processing <span class="meta">required</span></label>
+            <select class="select" id="dpChildren" name="children_or_guardian_processing" required><option value="">Choose</option><option>Yes</option><option>No</option><option>Unknown</option></select>
+          </div>
+          <div>
+            <label class="label" for="dpSdf">Significant Data Fiduciary <span class="meta">required</span></label>
+            <select class="select" id="dpSdf" name="sdf_designation_state" required><option value="">Choose</option><option>Designated</option><option>Not Designated</option><option>Unknown</option></select>
+          </div>
+          <div>
+            <label class="label" for="dpCm">Statutory Consent Manager activity <span class="meta">required</span></label>
+            <select class="select" id="dpCm" name="statutory_consent_manager_activity" required><option value="">Choose</option><option>Yes</option><option>No</option><option>Unknown</option></select>
+          </div>
+          <div>
+            <label class="label" for="dpXb">Cross-border processing or transfers <span class="meta">required</span></label>
+            <select class="select" id="dpXb" name="cross_border_processing_or_transfers" required><option value="">Choose</option><option>Yes</option><option>No</option><option>Unknown</option></select>
+          </div>
+          <div>
+            <label class="label" for="dpLegacy">Legacy consent cohort <span class="meta">required</span></label>
+            <select class="select" id="dpLegacy" name="legacy_consent_cohort" required><option value="">Choose</option><option>Yes</option><option>No</option><option>Unknown</option></select>
+          </div>
+        </div>
+
+        <div>
+          <label class="label" for="dpExemptions">Exemptions or public-data assumptions <span class="meta">required · minimum 20 characters</span></label>
+          <textarea class="textarea" id="dpExemptions" name="exemptions_or_public_data_assumptions" minlength="20" maxlength="12000" rows="2" required placeholder="Asserted exemptions, public-data assumptions, their factual basis and anything needing legal review"></textarea>
+        </div>
+        <div>
+          <label class="label" for="dpLimits">Scope limitations <span class="meta">required · minimum 20 characters</span></label>
+          <textarea class="textarea" id="dpLimits" name="scope_limitations" minlength="20" maxlength="12000" rows="2" required placeholder="Unavailable systems, evidence limitations, excluded entities, reliance on management representations"></textarea>
+        </div>
+      </div>
+
+      <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bg-subtle);">
+        <span class="meta text-xs">Opens all <%= catalog.requirement_count %> obligations of catalogue <%= catalog.catalog_version %>.</span>
+        <span class="row">
+          <button type="button" onclick="document.getElementById('dpNewAssessment').close()" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create assessment</button>
+        </span>
+      </footer>
+    </form>
+  </dialog>
+  <script>
+    // Native dialogs do not dismiss on a backdrop click; match the pattern the
+    // rest of the product uses.
+    (function () {
+      var dlg = document.getElementById('dpNewAssessment');
+      if (!dlg) return;
+      dlg.addEventListener('click', function (event) { if (event.target === dlg) dlg.close(); });
+    })();
+  </script>
+<% } %>
+
+</div>
+
+<%- include('partials/footer') %>

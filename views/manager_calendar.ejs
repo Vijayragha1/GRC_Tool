@@ -89,6 +89,18 @@
   .mc-ctag { font-size:11px; color:var(--text-secondary); background:var(--bg-subtle); border:1px solid var(--border);
              border-radius:4px; padding:1px 7px; white-space:nowrap; flex-shrink:0; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
   .mc-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .mc-now-tag,
+    .mc-ybar,
+    .mc-kinds .k,
+    .mc-span,
+    .mc-chip
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head">

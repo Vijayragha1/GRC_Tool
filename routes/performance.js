@@ -12,9 +12,14 @@ const performanceObjectives = require('../lib/performance-objectives');
 const { todayFor, ymdInZone, workspaceTimeZone } = require('../lib/dates');
 const documentTruth = require('../lib/document-truth');
 const { computeReadiness } = require('../lib/readiness');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, upload } = deps;
+  const requireDocumentImplementation = outcomeScope.requirePostGapService(
+    'Policy adoption tracking is outside this gap-assessment-only engagement. Existing client documents remain available as assessment inputs.');
+  const requireManagementReviewService = outcomeScope.requirePostGapService(
+    'Management review delivery is outside this gap-assessment-only engagement. Use the controlled gap-assessment report for the contracted outcome.');
 
   // ==================== ISMS PERFORMANCE METRICS (Clause 9.1) ====================
   // Auto-computed KPIs from existing tables. The auditor's complaint was that
@@ -126,7 +131,7 @@ function register(app, deps) {
   });
 
   // Push current metrics into the chosen MRM's performance_review field.
-  app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWorkspace, requirePermission('mrm.manage'), (req, res) => {
+  app.post('/workspaces/:wsId/metrics/feed-to-mrm/:mrmId', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     const mrm = db.prepare(`SELECT id FROM mrms WHERE id=? AND workspace_id=?`).get(req.params.mrmId, req.workspace.id);
     if (!mrm) return res.status(404).send('MRM not found');
     const m = computeIsmsMetrics(req.workspace);
@@ -344,7 +349,7 @@ function register(app, deps) {
   // Closes the gap the auditor called out: "policies adopted but no dashboard
   // showing what's published, what's draft, what's stale." Joins generated_docs
   // with doc_templates.tier to surface mandatory-vs-recommended adoption.
-  app.get('/workspaces/:wsId/policy-adoption', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/policy-adoption', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('control.view'), (req, res) => {
     const wsId = req.workspace.id;
     const zone = workspaceTimeZone(req.workspace);
     const today = todayFor(req.workspace);

@@ -9,7 +9,7 @@
     <a href="/workspaces/<%= ws.id %>/controls/export.csv" class="btn btn-secondary btn-xs">Export CSV</a>
     <details style="position:relative;">
       <summary class="btn btn-secondary btn-xs">Import CSV</summary>
-      <form method="POST" action="/workspaces/<%= ws.id %>/controls/import" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;width:380px;z-index:5;box-shadow:var(--shadow-lg);">
+      <form method="POST" action="/workspaces/<%= ws.id %>/controls/import" class="popover-panel" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;--popover-w:380px;z-index:5;box-shadow:var(--shadow-lg);">
         <div class="meta" style="margin-bottom:6px;">CSV with headers: id,status,applicability,maturity,notes</div>
         <textarea class="textarea mono" name="csv" rows="6" required></textarea>
         <button class="btn btn-primary btn-xs" style="margin-top:8px;">Import</button>

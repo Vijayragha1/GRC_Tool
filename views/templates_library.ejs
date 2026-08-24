@@ -55,6 +55,16 @@
   /* Bulk-adopt CTA: prominent for kickoff, dims after all mandatory adopted. */
   .bulk-cta-btn .num { background: rgba(255,255,255,0.18); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 500; margin-left: 4px; }
   [data-theme="dark"] .bulk-cta-btn .num { background: rgba(0,0,0,0.18); }
+
+  /* Microtype floor for phones. This block is scoped to the view because a
+     view style tag loads after app.css and would otherwise win. Only the
+     selectors declared below 11px above are listed. */
+  @media (max-width: 760px) {
+    .tpl-card-cat,
+    .tpl-card-control,
+    .tpl-adopted-pill
+    { font-size: 11px; }
+  }
 </style>
 
 <div class="page-head">

@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: 'Third-party findings and actions', user, ws, active }) %>
+<div class="tprm-neutral-page" style="--tprm-ink:var(--text);--tprm-muted:var(--text-secondary);--tprm-faint:var(--text-tertiary);--tprm-navy:var(--text);--tprm-navy-hover:var(--text-secondary);--tprm-border:var(--border);--tprm-border-strong:var(--border-strong);--tprm-surface:var(--surface);--tprm-subtle:var(--bg-subtle);--tprm-row-hover:var(--bg-muted);--tprm-focus:var(--text);--tprm-focus-ring:var(--bg-muted);--tprm-info:var(--text-secondary);--tprm-info-bg:var(--bg-muted);--tprm-info-border:var(--border-strong)">
+<%- include('partials/tprm_nav', { ws, active, canSettings }) %>
+<header class="tprm-page-head">
+  <div>
+    <h1>Findings and actions</h1>
+    <p>Remediation, risk acceptance and onboarding conditions linked to their assessment records.</p>
+  </div>
+</header>
+<form class="tprm-filters" method="GET">
+  <select class="select" name="third_party" aria-label="Third party">
+    <option value="">All third parties</option>
+    <% portfolio.active.forEach(row => { %><option value="<%= row.id %>" <%= filters.thirdPartyId === row.id ? 'selected' : '' %>><%= row.name %></option><% }) %>
+  </select>
+  <select class="select" name="status" aria-label="Finding status">
+    <option value="open" <%= filters.status === 'open' ? 'selected' : '' %>>Open and accepted risk</option>
+    <option value="accepted" <%= filters.status === 'accepted' ? 'selected' : '' %>>Accepted risk only</option>
+    <option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>>Closed and verified</option>
+    <option value="all" <%= filters.status === 'all' ? 'selected' : '' %>>All statuses</option>
+  </select>
+  <button class="btn btn-primary" type="submit">Apply filters</button>
+</form>
+<section class="tprm-section tprm-table-wrap">
+  <table class="tprm-table">
+    <thead><tr><th>Finding</th><th>Third party</th><th>Severity</th><th>Status</th><th>Owner</th><th>Due or expiry</th><th>Record</th></tr></thead>
+    <tbody>
+      <% findings.forEach(finding => { %>
+        <tr>
+          <td><strong><%= finding.title %></strong><small><%= finding.description || 'No description recorded' %></small></td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= finding.supplier_id %>"><strong><%= finding.supplier_name %></strong><small><%= finding.domain || 'General' %></small></a></td>
+          <td><span class="tprm-status tprm-status-<%= finding.severity %>"><%= titleCase(finding.severity) %></span></td>
+          <td><strong><%= titleCase(finding.status) %></strong></td>
+          <td><strong><%= finding.owner_name || 'Owner unset' %></strong><small><%= finding.accepted_at ? 'Risk acceptance recorded' : 'Remediation owner' %></small></td>
+          <td><strong><%= dateOnly(finding.risk_acceptance_expires_at || finding.due_date) || 'Not set' %></strong><small><%= finding.risk_acceptance_expires_at ? 'Acceptance expiry' : 'Action due date' %></small></td>
+          <td><a href="/workspaces/<%= ws.id %>/tprm/third-parties/<%= finding.supplier_id %>#findings">Open record</a></td>
+        </tr>
+      <% }) %>
+      <% if (!findings.length) { %>
+        <tr><td colspan="7"><div class="tprm-empty"><strong>No findings match the selected filters</strong></div></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</section>
+</div>
+<%- include('partials/footer') %>

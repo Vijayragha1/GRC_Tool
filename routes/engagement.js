@@ -129,7 +129,7 @@ function register(app, deps) {
     return { status: 'retained', assetId: Number(asset.id) };
   }
 
-  function applyIntakeToClient(wsId) {
+  function applyIntakeToClient(wsId, actorId) {
     const rows = db.prepare(`SELECT question_id, answer FROM engagement_intake WHERE workspace_id=?`).all(wsId);
     const answers = {};
     for (const r of rows) answers[r.question_id] = r.answer || '';
@@ -139,8 +139,17 @@ function register(app, deps) {
     // The two used to drift apart silently - the create dialog set one,
     // the intake form set the other, neither knew about the other.
     const certDeadline = (answers['cert-deadline'] || '').trim();
-    if (certDeadline) {
-      db.prepare('UPDATE workspaces SET target_cert_date=? WHERE id=?').run(certDeadline, wsId);
+    const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(wsId);
+    let frameworks = workspace?.frameworks || [];
+    if (!Array.isArray(frameworks)) {
+      try { frameworks = JSON.parse(frameworks || '[]'); } catch (_) { frameworks = []; }
+    }
+    if (frameworks.includes('iso27001')) {
+      const targetDate = workspace.engagement_outcome === 'gap_assessment_only' ? null : (certDeadline || null);
+      db.prepare('UPDATE workspaces SET target_cert_date=? WHERE id=?').run(targetDate, wsId);
+      const updatedWorkspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(wsId);
+      updatedWorkspace.frameworks = frameworks;
+      delivery.syncCertificationTarget(db, updatedWorkspace, actorId);
     }
     // Interested-parties auto-seed removed: parties get identified during
     // the gap assessment / implementation work on clauses 4.2 + 9.3.2.d
@@ -190,7 +199,7 @@ function register(app, deps) {
     // Save now also applies - no more two-step UX. The "Apply to client"
     // button was non-obvious; consultants would save, leave the page, and
     // the scope field on the workspace stayed empty for weeks.
-    const applied = applyIntakeToClient(req.workspace.id);
+    const applied = applyIntakeToClient(req.workspace.id, req.user.id);
     logAction(req.user.id, req.workspace.id, 'intake_save_apply', 'intake', null, null, auditCtx(req));
     const changedAssets = applied.assetSync.created + applied.assetSync.updated + applied.assetSync.reused;
     const message = changedAssets
@@ -228,7 +237,7 @@ function register(app, deps) {
   // Legacy /apply route - keep for any old links / bookmarks; calls the
   // same helper as Save now. Redirects back to the intake page.
   app.post('/workspaces/:wsId/intake/apply', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    applyIntakeToClient(req.workspace.id);
+    applyIntakeToClient(req.workspace.id, req.user.id);
     logAction(req.user.id, req.workspace.id, 'intake_apply', 'intake', null, null, auditCtx(req));
     res.redirect(withToast(`/workspaces/${req.workspace.id}/intake`, 'Scope statement applied to client.'));
   });
@@ -242,7 +251,7 @@ function register(app, deps) {
     // Ensure the latest answers are baked into workspaces.scope before
     // we mark confirmed - otherwise the consultant could confirm an
     // empty scope statement if they hadn't hit Save first.
-    applyIntakeToClient(req.workspace.id);
+    applyIntakeToClient(req.workspace.id, req.user.id);
     db.prepare(`UPDATE workspaces SET scope_confirmed_at=CURRENT_TIMESTAMP, scope_confirmed_by=? WHERE id=?`)
       .run(req.user.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'confirm_scope', 'workspace', req.workspace.id, null, auditCtx(req));
@@ -287,6 +296,30 @@ function register(app, deps) {
       return res.redirect(withToast(planUrl(req.workspace.id), error.message || 'Could not update the delivery plan.', 'error'));
     }
   };
+  const requireIso27001Plan = (req, res, next) => {
+    const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
+    if (frameworks.includes('iso27001')) return next();
+    return res.status(409).render('error', {
+      user: req.user,
+      ws: req.workspace,
+      message: 'The ISO 27001 engagement plan is not enabled for this client. Open the selected framework programme instead.'
+    });
+  };
+  // This prefix guard runs before every plan read, mutation and export.  It
+  // also prevents a guessed URL from materialising an ISO plan for a NIST CSF
+  // or ISO 42001-only client.
+  app.use('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, requireIso27001Plan);
+  const contractedProjection = req => delivery.getProjection(db, req.workspace, req.user.id);
+  const requireContractedRow = (req, type, id) => {
+    const projection = contractedProjection(req);
+    const rows = type === 'phase' ? projection.phases
+      : type === 'milestone' ? projection.milestones
+        : type === 'deliverable' ? projection.deliverables
+          : type === 'dependency' ? projection.dependencies : [];
+    const row = rows.find(item => Number(item.id) === Number(id));
+    if (!row) throw new Error(`That ${type} is outside the contracted ${projection.outcome.label} journey.`);
+    return { projection, row };
+  };
 
   app.get('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, (req, res) => {
     const projection = delivery.getProjection(db, req.workspace, req.user.id);
@@ -325,7 +358,10 @@ function register(app, deps) {
       if (req.body.status === 'completed') {
         const projection = delivery.getProjection(db, req.workspace, req.user.id);
         if (!projection.summary.completionReady || projection.summary.openBlockers) {
-          throw new Error('The engagement cannot be completed until every required phase gate passes and all critical blockers are closed.');
+          const requirements = projection.summary.completionBlockers || [];
+          throw new Error(requirements.length
+            ? `The engagement cannot be completed yet. ${requirements.join(' ')}`
+            : 'The engagement cannot be completed until every contracted completion condition is satisfied.');
         }
       }
       const result = db.prepare(`UPDATE engagement_delivery_plans SET name=?,objective=?,status=?,target_start_date=?,
@@ -338,6 +374,13 @@ function register(app, deps) {
       if (!result.changes) throw new Error('The plan changed in another session. Reload and apply your update again.');
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'plan', plan.id, 'updated', null, req.body.status || 'active', null);
       logAction(req.user.id, req.workspace.id, 'update_delivery_plan', 'engagement_plan', plan.id, null, auditCtx(req));
+      if (req.body.status === 'completed') {
+        const synced = delivery.syncCertificationEngagementCompletion(db, req.workspace, req.user.id);
+        if (synced.changed) {
+          logAction(req.user.id, req.workspace.id, 'complete_consulting_engagement_from_delivery_plan',
+            'consulting_engagement', synced.engagementId, { plan_id: plan.id }, auditCtx(req));
+        }
+      }
     }, 'Plan settings updated.');
   });
 
@@ -351,6 +394,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/phases/:phaseId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      requireContractedRow(req, 'phase', req.params.phaseId);
       const result = db.prepare(`UPDATE engagement_delivery_phases SET owner_id=?,planned_start_date=?,planned_end_date=?,forecast_end_date=?,updated_at=datetime('now')
         WHERE id=? AND plan_id=?`).run(req.body.owner_id || null, req.body.planned_start_date || null,
           req.body.planned_end_date || null, req.body.forecast_end_date || null, req.params.phaseId, plan.id);
@@ -371,7 +415,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/milestones', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
-      const phase = db.prepare('SELECT id FROM engagement_delivery_phases WHERE id=? AND plan_id=?').get(req.body.phase_id, plan.id);
+      const phase = requireContractedRow(req, 'phase', req.body.phase_id).row;
       if (!phase || !String(req.body.title || '').trim()) throw new Error('A valid phase and milestone title are required.');
       const minimumDurationMonths = Number(req.body.minimum_duration_months || 0);
       if (!Number.isInteger(minimumDurationMonths) || minimumDurationMonths < 0 || minimumDurationMonths > 36) {
@@ -394,6 +438,8 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/milestones/:milestoneId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const scoped = requireContractedRow(req, 'milestone', req.params.milestoneId).row;
+      if (scoped.governed) throw new Error('Governed gap-assessment milestones are updated from their source records, not edited here.');
       const minimumDurationMonths = Number(req.body.minimum_duration_months || 0);
       if (!Number.isInteger(minimumDurationMonths) || minimumDurationMonths < 0 || minimumDurationMonths > 36) {
         throw new Error('Minimum duration must be a whole number from 0 to 36 months.');
@@ -413,7 +459,8 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/deliverables', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
-      const milestone = db.prepare('SELECT id FROM engagement_delivery_milestones WHERE id=? AND plan_id=?').get(req.body.milestone_id, plan.id);
+      const milestone = requireContractedRow(req, 'milestone', req.body.milestone_id).row;
+      if (milestone.governed) throw new Error('Governed gap-assessment milestones use the controlled fieldwork and report records; add work in that workflow instead.');
       if (!milestone || !String(req.body.title || '').trim()) throw new Error('A milestone and deliverable title are required.');
       if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
       const presentation = clientPresentation(req);
@@ -433,6 +480,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      requireContractedRow(req, 'deliverable', req.params.deliverableId);
       if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
       const presentation = clientPresentation(req);
       const result = db.prepare(`UPDATE engagement_delivery_deliverables SET title=?,description=?,acceptance_criteria=?,client_title=?,client_description=?,
@@ -451,6 +499,7 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/submit', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     runPlanAction(req, res, () => {
+      requireContractedRow(req, 'deliverable', req.params.deliverableId);
       delivery.transitionDeliverable(db, req.workspace, req.user.id, Number(req.params.deliverableId), 'submit', req.body.note);
       logAction(req.user.id, req.workspace.id, 'submit_delivery_deliverable', 'engagement_deliverable', req.params.deliverableId, null, auditCtx(req));
     }, 'Deliverable submitted for sign-off.');
@@ -459,6 +508,7 @@ function register(app, deps) {
   ['accept','changes','reject'].forEach(action => {
     app.post(`/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/${action}`, requireAuth, requireWorkspace, requirePermission('document.approve'), (req, res) => {
       runPlanAction(req, res, () => {
+        requireContractedRow(req, 'deliverable', req.params.deliverableId);
         delivery.transitionDeliverable(db, req.workspace, req.user.id, Number(req.params.deliverableId), action, req.body.note);
         logAction(req.user.id, req.workspace.id, `${action}_delivery_deliverable`, 'engagement_deliverable', req.params.deliverableId, { note: req.body.note }, auditCtx(req));
       }, action === 'accept' ? 'Deliverable accepted and milestone progress reconciled.' : 'Deliverable decision recorded.');
@@ -467,6 +517,7 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/revise', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     runPlanAction(req, res, () => {
+      requireContractedRow(req, 'deliverable', req.params.deliverableId);
       delivery.reviseDeliverable(db, req.workspace, req.user.id, Number(req.params.deliverableId), req.body.note);
       logAction(req.user.id, req.workspace.id, 'revise_delivery_deliverable', 'engagement_deliverable', req.params.deliverableId, { note: req.body.note }, auditCtx(req));
     }, 'A new deliverable revision is open.');
@@ -474,6 +525,7 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/comments', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     runPlanAction(req, res, () => {
+      requireContractedRow(req, 'deliverable', req.params.deliverableId);
       const row = db.prepare(`SELECT d.id,d.plan_id FROM engagement_delivery_deliverables d WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
       const body = String(req.body.body || '').trim();
       if (!row || !body || body.length > 8000) throw new Error('A comment under 8,000 characters is required.');
@@ -489,6 +541,7 @@ function register(app, deps) {
     requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
       const cleanup = () => { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {} };
       try {
+        requireContractedRow(req, 'deliverable', req.params.deliverableId);
         const row = db.prepare(`SELECT d.id,d.plan_id,d.title FROM engagement_delivery_deliverables d WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
         if (!row || !req.file) throw new Error(!row ? 'Deliverable not found.' : 'Choose a file to upload.');
         const sha = crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex');
@@ -514,6 +567,7 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/link', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
     runPlanAction(req, res, () => {
+      requireContractedRow(req, 'deliverable', req.params.deliverableId);
       const row = db.prepare(`SELECT id,plan_id FROM engagement_delivery_deliverables WHERE id=? AND workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
       const evidenceRow = db.prepare(`SELECT id,sha256 FROM evidence WHERE id=? AND workspace_id=? AND superseded_at IS NULL`).get(req.body.evidence_id, req.workspace.id);
       if (!row || !evidenceRow) throw new Error('Choose an evidence record from this workspace.');
@@ -524,6 +578,8 @@ function register(app, deps) {
   });
 
   app.get('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/:evidenceId/download', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+    try { requireContractedRow(req, 'deliverable', req.params.deliverableId); }
+    catch (_) { return res.status(404).send('Evidence not found'); }
     const row = db.prepare(`SELECT e.* FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
       WHERE de.deliverable_id=? AND de.evidence_id=? AND de.workspace_id=? AND e.workspace_id=?`).get(req.params.deliverableId, req.params.evidenceId, req.workspace.id, req.workspace.id);
     if (!row) return res.status(404).send('Evidence not found');
@@ -544,6 +600,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/engagement-plan/dependencies/:dependencyId/delete', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      requireContractedRow(req, 'dependency', req.params.dependencyId);
       const result = db.prepare('DELETE FROM engagement_delivery_dependencies WHERE id=? AND plan_id=?').run(req.params.dependencyId, plan.id);
       if (!result.changes) throw new Error('Dependency not found.');
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'dependency', req.params.dependencyId, 'deleted', 'active', null, null);
@@ -567,16 +624,27 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/engagement-plan/bulk-assign', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
-      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const projection = contractedProjection(req);
+      const plan = projection.plan;
       const ownerId = req.body.owner_id || null;
       const deliverableOwnerId = req.body.deliverable_owner_id || null;
       const approverId = req.body.approver_id || null;
       if (!planUser(req.workspace, ownerId) || !planUser(req.workspace, deliverableOwnerId) || !planUser(req.workspace, approverId)) throw new Error('Owners and approver must belong to this engagement.');
       const onlyUnassigned = req.body.only_unassigned ? 1 : 0;
-      const phases = ownerId ? db.prepare(`UPDATE engagement_delivery_phases SET owner_id=?,updated_at=datetime('now') WHERE plan_id=? ${onlyUnassigned ? 'AND owner_id IS NULL' : ''}`).run(ownerId, plan.id).changes : 0;
-      const milestones = ownerId ? db.prepare(`UPDATE engagement_delivery_milestones SET owner_id=?,updated_at=datetime('now'),row_version=row_version+1 WHERE plan_id=? ${onlyUnassigned ? 'AND owner_id IS NULL' : ''}`).run(ownerId, plan.id).changes : 0;
-      const deliverableOwners = deliverableOwnerId ? db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,updated_at=datetime('now'),row_version=row_version+1 WHERE plan_id=? ${onlyUnassigned ? 'AND owner_id IS NULL' : ''}`).run(deliverableOwnerId, plan.id).changes : 0;
-      const deliverableApprovers = approverId ? db.prepare(`UPDATE engagement_delivery_deliverables SET approver_id=?,updated_at=datetime('now'),row_version=row_version+1 WHERE plan_id=? ${onlyUnassigned ? 'AND approver_id IS NULL' : ''}`).run(approverId, plan.id).changes : 0;
+      const phaseIds = projection.phases.map(row => row.id);
+      const milestoneIds = projection.milestones.map(row => row.id);
+      const deliverableIds = projection.deliverables.map(row => row.id);
+      const scopedUpdate = (table, setSql, value, ids, unassignedColumn, versioned = false) => {
+        if (!value || !ids.length) return 0;
+        const placeholders = ids.map(() => '?').join(',');
+        return db.prepare(`UPDATE ${table} SET ${setSql},updated_at=datetime('now')${versioned ? ',row_version=row_version+1' : ''}
+          WHERE plan_id=? AND id IN (${placeholders}) ${onlyUnassigned ? `AND ${unassignedColumn} IS NULL` : ''}`)
+          .run(value, plan.id, ...ids).changes;
+      };
+      const phases = scopedUpdate('engagement_delivery_phases', 'owner_id=?', ownerId, phaseIds, 'owner_id');
+      const milestones = scopedUpdate('engagement_delivery_milestones', 'owner_id=?', ownerId, milestoneIds, 'owner_id', true);
+      const deliverableOwners = scopedUpdate('engagement_delivery_deliverables', 'owner_id=?', deliverableOwnerId, deliverableIds, 'owner_id', true);
+      const deliverableApprovers = scopedUpdate('engagement_delivery_deliverables', 'approver_id=?', approverId, deliverableIds, 'approver_id', true);
       delivery.event(db, req.workspace.id, plan.id, req.user.id, 'plan', plan.id, 'bulk_assigned', null, null, { phases, milestones, deliverableOwners, deliverableApprovers, ownerId, deliverableOwnerId, approverId, onlyUnassigned: !!onlyUnassigned });
       logAction(req.user.id, req.workspace.id, 'bulk_assign_delivery_plan', 'engagement_plan', plan.id, { phases, milestones, deliverable_owners: deliverableOwners, deliverable_approvers: deliverableApprovers, owner_id: ownerId, deliverable_owner_id: deliverableOwnerId, approver_id: approverId }, auditCtx(req));
     }, 'Plan assignments updated.');
@@ -584,9 +652,13 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/engagement-plan/create-tasks', requireAuth, requireWorkspace, requirePermission('task.manage'), (req, res) => {
     runPlanAction(req, res, () => {
-      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
-      const milestones = db.prepare(`SELECT m.* FROM engagement_delivery_milestones m WHERE m.plan_id=? AND m.status NOT IN ('complete','waived')
-        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.workspace_id=? AND t.engagement_milestone_id=m.id AND t.status NOT IN ('done','closed','cancelled'))`).all(plan.id, req.workspace.id);
+      const projection = contractedProjection(req);
+      const plan = projection.plan;
+      const hasOpenTask = db.prepare(`SELECT 1 FROM tasks WHERE workspace_id=? AND engagement_milestone_id=?
+        AND status NOT IN ('done','closed','cancelled') LIMIT 1`);
+      const milestones = projection.milestones.filter(m => !m.governed
+        && !['complete','waived'].includes(m.effective_status)
+        && !hasOpenTask.get(req.workspace.id, m.id));
       const insert = db.prepare(`INSERT INTO tasks (workspace_id,title,description,assignee_id,due_date,status,created_by,priority,engagement_milestone_id)
         VALUES (?,?,?,?,?,'todo',?,?,?)`);
       const tx = db.transaction(() => milestones.forEach(m => insert.run(req.workspace.id, m.title,

@@ -131,7 +131,7 @@
 
   <%# ----- Invite form ----- %>
   <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
-    <form method="POST" action="/workspaces/<%= ws.id %>/team/invite-client" style="display:grid;grid-template-columns:1fr 1fr 200px auto;gap:10px;align-items:end;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/team/invite-client" class="stack-grid" style="--cols:1fr 1fr 200px auto;gap:10px;align-items:end;">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <div>
         <label class="label">Name (optional)</label>

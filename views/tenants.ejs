@@ -78,7 +78,7 @@
               <% if (firms.length > 1) { %>
                 <details style="display:inline-block;">
                   <summary class="btn btn-ghost btn-xs" style="color:var(--danger,#b91c1c);cursor:pointer;list-style:none;">Delete</summary>
-                  <div style="position:absolute;right:24px;margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:10;width:340px;text-align:left;">
+                  <div class="popover-panel" style="position:absolute;right:24px;margin-top:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:10;--popover-w:340px;text-align:left;">
                     <div class="text-base" style="font-weight: 500;margin-bottom:6px;color:var(--danger,#b91c1c);">Permanently delete "<%= f.name %>"</div>
                     <div class="meta text-xs" style="line-height:1.45;margin-bottom:8px;">Removes all clients, evidence files, users, audit log, and the <code>uploads/firm_<%= f.id %>/</code> directory. Cannot be undone.</div>
                     <form method="POST" action="/tenants/<%= f.id %>/delete" onsubmit="return appConfirmForm(event, 'Final check: delete tenant &quot;<%= f.name %>&quot; and everything under it?');">

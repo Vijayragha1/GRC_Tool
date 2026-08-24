@@ -8,7 +8,7 @@
   <a href="/workspaces/<%= ws.id %>/evidence-coverage.csv" class="btn btn-secondary btn-xs">Export CSV</a>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px;">
+<div class="stack-grid" style="--cols:repeat(5,1fr);--cols-sm:1fr 1fr;gap:10px;margin-bottom:16px;">
   <div class="panel kpi">
     <div class="kpi-num"><%= kpis.linkedPct %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-label">Evidence linked</div>
