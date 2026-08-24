@@ -1025,6 +1025,7 @@ require('./routes/tenants').register(app, {
   isFirmUser,
   getActiveFirmId,
   listUserFirms,
+  listWorkspaces,
   withToast,
   projectRoot: __dirname,
 });

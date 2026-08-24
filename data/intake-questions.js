@@ -37,14 +37,24 @@ const SECTIONS = [
         hint: 'Drives which Annex A controls dominate the SoA and the effort estimate. Cloud-heavy engagements lean on A.5 (suppliers, identity); on-prem leans on A.7 (physical) and hardware lifecycle.' },
       { id: 'physical-locations', text: 'Physical locations in scope (offices, data centres, manufacturing, server rooms)', clause: '4.3', type: 'textarea',
         hint: 'One per line. Include addresses if known. List EACH data centre or server room separately - they each need their own A.7 physical controls evidence.' },
-      { id: 'onprem-footprint', text: 'On-prem infrastructure summary (only if hybrid / on-prem)', clause: '4.3', type: 'textarea',
-        hint: 'Number of data centres + server rooms, approximate rack / server count, key on-prem applications, network segments / VLANs. Leave blank if cloud-only.' },
-      { id: 'remote-workers', text: 'How many employees work remotely / hybrid?', clause: '4.3', type: 'text',
+      { id: 'onprem-footprint', text: 'On-prem infrastructure summary', clause: '4.3', type: 'textarea',
+        showIf: { question: 'infra-model', notOneOf: ['Cloud-only'] },
+        hint: 'Number of data centres + server rooms, approximate rack / server count, key on-prem applications, network segments / VLANs.' },
+      { id: 'remote-workers', text: 'How many employees work remotely / hybrid?', clause: '4.3', type: 'number',
         hint: 'Affects whether home-office is "in scope" for physical security.' },
-      { id: 'cloud-providers', text: 'Cloud providers and services in scope (AWS, Azure, GCP, M365, Google Workspace, etc.)', clause: '4.3', type: 'textarea',
-        hint: 'List one per line if multiple. Leave blank if on-prem only.' },
-      { id: 'data-types', text: 'What types of data are processed? (PII, PCI, PHI, IP, internal, public)', clause: '4.3', type: 'textarea', required: true },
-      { id: 'customer-geography', text: 'Where are your customers based? (UK, EU, US, APAC...)', clause: '4.3', type: 'textarea',
+      { id: 'cloud-providers', text: 'Cloud providers and services in scope', clause: '4.3', type: 'multiselect',
+        options: ['AWS', 'Microsoft Azure', 'Google Cloud', 'Microsoft 365', 'Google Workspace', 'Salesforce'],
+        otherLabel: 'Other providers or named services',
+        showIf: { question: 'infra-model', notOneOf: ['On-prem only', 'Air-gapped / isolated'] },
+        hint: 'Each provider becomes a supplier record and an A.5 control conversation.' },
+      { id: 'data-types', text: 'What types of data are processed?', clause: '4.3', type: 'multiselect', required: true,
+        options: ['Personal data (PII)', 'Special category / health (PHI)', 'Cardholder data (PCI)',
+                  'Intellectual property', 'Internal business data', 'Public data'],
+        otherLabel: 'Anything else',
+        hint: 'Drives the risk assessment and which regulations apply. Pick every type that is in scope.' },
+      { id: 'customer-geography', text: 'Where are your customers based?', clause: '4.3', type: 'multiselect',
+        options: ['UK', 'EU / EEA', 'United States', 'Canada', 'LATAM', 'APAC', 'Middle East', 'Africa'],
+        otherLabel: 'Other regions',
         hint: 'Drives applicable regulations - UK GDPR, GDPR, CCPA, PIPEDA, etc.' },
     ]
   },
@@ -89,9 +99,12 @@ const SECTIONS = [
     title: 'Existing posture',
     blurb: 'What\'s already in place. Saves time identifying real gaps vs paper gaps.',
     questions: [
-      { id: 'existing-frameworks', text: 'Other frameworks or certifications you already hold or are pursuing (SOC 2, NIST CSF, Cyber Essentials Plus, HIPAA, PCI...)', clause: '4.1', type: 'textarea',
+      { id: 'existing-frameworks', text: 'Other frameworks or certifications held or being pursued', clause: '4.1', type: 'multiselect',
+        options: ['SOC 2', 'NIST CSF', 'Cyber Essentials', 'Cyber Essentials Plus', 'HIPAA', 'PCI DSS',
+                  'ISO 9001', 'ISO 27017 / 27018', 'ISO 42001', 'GDPR programme'],
+        otherLabel: 'Anything else',
         hint: 'Existing controls map across - saves remediation effort.' },
-      { id: 'existing-policies', text: 'Approximately how many security / privacy policies are already documented and signed off?', clause: '7.5', type: 'text' },
+      { id: 'existing-policies', text: 'Approximately how many security / privacy policies are already documented and signed off?', clause: '7.5', type: 'number' },
       { id: 'recent-incidents', text: 'Any security incidents or near-misses in the last 24 months we should know about?', clause: 'A.5.24', type: 'textarea',
         hint: 'Withholding hurts you - auditors find them anyway via the breach register.' },
     ]
@@ -338,7 +351,69 @@ function draftScopeStatement(answers) {
   return lines.join('\n');
 }
 
+// ---- multiselect storage -------------------------------------------------
+// A multiselect answer is stored as the same newline-joined string the field
+// used to hold as free text. That is deliberate: draftScopeStatement and
+// computeEngagementSummary read these answers as plain strings, and real
+// intakes already carry prose in them. Keeping the column format means no
+// migration, the generators are untouched, and an answer typed before this
+// field became a multiselect still reads back correctly.
+//
+// Anything that does not match a known option is preserved verbatim in the
+// "other" box rather than dropped.
+function parseMultiselect(question, stored) {
+  const options = question.options || [];
+  const raw = String(stored || '').trim();
+  if (!raw) return { selected: [], other: '' };
+  const norm = (v) => String(v).trim().toLowerCase();
+  const byNorm = new Map(options.map((o) => [norm(o), o]));
+  // The questions these fields replaced named their answers by abbreviation
+  // ("PII, PCI, PHI, IP, internal, public"), so a real intake answered before
+  // this change reads "PII" where the option now reads "Personal data (PII)".
+  // Match the parenthetical so those answers land on the right chip instead of
+  // being pushed into the other box.
+  for (const o of options) {
+    const abbr = /\(([^)]+)\)/.exec(o);
+    if (abbr && !byNorm.has(norm(abbr[1]))) byNorm.set(norm(abbr[1]), o);
+  }
+  const selected = [];
+  const leftovers = [];
+  for (const token of raw.split(/[\n,;]+/)) {
+    const t = token.trim();
+    if (!t) continue;
+    const hit = byNorm.get(norm(t));
+    if (hit && !selected.includes(hit)) selected.push(hit);
+    else if (!hit) leftovers.push(t);
+  }
+  return { selected, other: leftovers.join(', ') };
+}
+
+function serializeMultiselect(question, selected, other) {
+  const options = question.options || [];
+  // Keep the catalogue's order rather than click order, so the stored string is
+  // stable and two intakes with the same answers compare equal.
+  const chosen = options.filter((o) => (selected || []).includes(o));
+  const extra = String(other || '').trim();
+  if (extra) chosen.push(extra);
+  return chosen.join('\n');
+}
+
+// ---- conditional questions -----------------------------------------------
+// A question with showIf is only asked when its controlling answer warrants it.
+// Unknown or unanswered controllers show the question rather than hide it: a
+// hidden required question is worse than an unnecessary one.
+function isVisible(question, answers) {
+  const rule = question && question.showIf;
+  if (!rule) return true;
+  const current = String((answers || {})[rule.question] || '').trim();
+  if (!current) return true;
+  if (Array.isArray(rule.oneOf)) return rule.oneOf.includes(current);
+  if (Array.isArray(rule.notOneOf)) return !rule.notOneOf.includes(current);
+  return true;
+}
+
 module.exports = {
+  parseMultiselect, serializeMultiselect, isVisible,
   SECTIONS,
   MAX_CROWN_JEWELS,
   flatten,

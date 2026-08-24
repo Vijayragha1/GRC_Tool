@@ -10,6 +10,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const rbac = require('../lib/rbac');
+const frameworks = require('../lib/frameworks');
 const { auditCtx, withToast, escapeHtml } = require('../lib/http-helpers');
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -91,9 +92,31 @@ function register(app, deps) {
     });
   }
 
+  // The public programme register is built from the framework registry rather
+  // than typed into the view, which is how it fell three behind: the page still
+  // advertised three standards after DPDPA shipped. Counts are the size of each
+  // catalogue as loaded, so the page cannot claim a number the product does not
+  // hold.
+  const PROGRAMME_UNITS = Object.freeze({
+    iso27001: 'requirements',
+    iso42001: 'requirements',
+    csf: 'outcomes',
+    dpdpa: 'obligations',
+  });
+
+  function programmeRegister() {
+    return frameworks.FRAMEWORK_LIST.map((f) => ({
+      code: f.tagLabel,
+      formalName: f.formalName,
+      descriptor: f.descriptor,
+      count: frameworks.catalogueSize(f.code),
+      unit: PROGRAMME_UNITS[f.code] || 'requirements',
+    })).filter((p) => p.count > 0);
+  }
+
   app.get('/', (req, res) => {
     if (req.session && req.session.userId) return res.redirect('/dashboard');
-    return renderPublic(req, res, 'home');
+    return renderPublic(req, res, 'home', { programmes: programmeRegister() });
   });
 
   app.get('/security', (req, res) => renderPublic(req, res, 'security'));

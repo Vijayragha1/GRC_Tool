@@ -767,6 +767,68 @@
 /* ISO 27001 engagement overview - decision-led rather than metric-led. */
 .iso-command-hero{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(310px,.75fr);border-radius:14px;overflow:hidden;margin-bottom:16px;background:#171918;color:#fff;box-shadow:0 16px 34px rgba(20,22,21,.12)}
 .iso-command-position{padding:28px 30px}.iso-command-kicker,.iso-section-kicker{display:block;font-size:9.5px;font-weight:650;letter-spacing:.1em;text-transform:uppercase}.iso-command-kicker{color:#aeb4b0}.iso-command-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:28px;align-items:end;margin-top:19px}.iso-command-heading h2{font-family:var(--font-serif);font-size:31px;line-height:1.1;font-weight:500;color:#fff;margin:0}.iso-command-heading p{max-width:630px;color:#c4c9c6;font-size:12.5px;line-height:1.58;margin:10px 0 0}.iso-command-score{color:#fff;text-decoration:none;text-align:right}.iso-command-score strong{display:block;font-family:var(--font-serif);font-size:45px;line-height:.92;font-weight:500}.iso-command-score strong span{font-size:19px;color:#9ea5a1;margin-left:2px}.iso-command-score small{display:block;color:#aeb4b0;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;margin-top:8px}.iso-command-track{height:5px;border-radius:10px;background:rgba(255,255,255,.12);overflow:hidden;margin:22px 0}.iso-command-track span{display:block;height:100%;background:#fff;border-radius:10px}.iso-command-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid rgba(255,255,255,.14);padding-top:17px}.iso-command-facts>a,.iso-command-facts>div{display:block;color:inherit;text-decoration:none;padding:0 16px;border-right:1px solid rgba(255,255,255,.12)}.iso-command-facts>*:first-child{padding-left:0}.iso-command-facts>*:last-child{border-right:0}.iso-command-facts span,.iso-command-facts strong{display:block}.iso-command-facts span{color:#9ea5a1;font-size:9.5px;margin-bottom:5px}.iso-command-facts strong{color:#fff;font-size:13px;font-weight:600}
+
+/* ==================== ENGAGEMENT INTAKE ====================
+   27 questions over six sections. The form used to be a single 4,300px column
+   of identically sized boxes: a headcount got the same 640px textarea as a
+   two-paragraph scope description, and the tier/effort panel that updates as
+   you answer sat at the top where it scrolled away in the first screen. These
+   rules size a field to the answer it expects and keep the running summary in
+   view while the consultant is still typing. */
+.itk-rail { position: sticky; top: 14px; max-height: calc(100vh - 28px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.itk-rail::-webkit-scrollbar { width: 7px; }
+.itk-rail::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+/* Running position. Three figures, not three cards. */
+.itk-position { padding: 15px 17px; }
+.itk-position > div + div { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--border); }
+.itk-position dt { color: var(--text-tertiary); font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.itk-position dd { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 0; font-family: var(--font-display); font-size: 25px; font-weight: 500; letter-spacing: -.02em; }
+.itk-position dd small { font-family: var(--font-sans); font-size: 11.5px; font-weight: 400; color: var(--text-tertiary); letter-spacing: 0; }
+.itk-position p { margin: 5px 0 0; color: var(--text-tertiary); font-size: 11.5px; line-height: 1.45; }
+
+/* Section navigation with per-section progress. On a page this long the
+   consultant needs to know where they are and jump to what the client just
+   started talking about. */
+.itk-nav { padding: 6px 0; }
+.itk-nav a { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 8px 17px; color: inherit; text-decoration: none; font-size: 12px; border-left: 2px solid transparent; }
+.itk-nav a:hover { background: var(--bg-subtle); }
+.itk-nav a.is-current { border-left-color: var(--text); background: var(--bg-subtle); font-weight: 600; }
+.itk-nav a.is-done .itk-nav-count { color: #15803d; }
+.itk-nav-count { color: var(--text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* Field sizing. A question's input should be as wide as its answer, which is
+   the single clearest signal that a form was designed rather than generated. */
+.itk-field { display: grid; gap: 5px; }
+.itk-field .input, .itk-field .select, .itk-field .textarea { width: 100%; }
+.itk-w-xs .input { max-width: 130px; }
+.itk-w-sm .input, .itk-w-sm .select { max-width: 250px; }
+.itk-w-md .input, .itk-w-md .select { max-width: 420px; }
+.itk-hint { color: var(--text-tertiary); font-size: 12px; line-height: 1.5; margin-bottom: 2px; }
+
+/* Multiselect. Checkboxes styled as quiet selectable rows, not coloured pills:
+   the house rule is that colour carries meaning, and a chosen option is not a
+   status. */
+.itk-choices { display: flex; flex-wrap: wrap; gap: 7px; }
+.itk-choice { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); font-size: 12.5px; line-height: 1.2; cursor: pointer; user-select: none; }
+.itk-choice:hover { background: var(--bg-subtle); }
+.itk-choice input { margin: 0; width: 14px; height: 14px; flex: none; cursor: pointer; }
+.itk-choice.is-on { border-color: var(--text); background: var(--bg-muted); font-weight: 550; }
+.itk-other { margin-top: 9px; }
+.itk-other label { display: block; color: var(--text-tertiary); font-size: 11.5px; margin-bottom: 4px; }
+
+/* A question hidden by showIf. Animating it would draw the eye to a field that
+   is deliberately not being asked. */
+.itk-field[hidden] { display: none; }
+
+@media (max-width: 900px) {
+  .itk-rail { position: static; max-height: none; overflow: visible; }
+}
+@media (max-width: 760px) {
+  .itk-w-xs .input, .itk-w-sm .input, .itk-w-sm .select, .itk-w-md .input, .itk-w-md .select { max-width: 100%; }
+  .itk-choice { font-size: 13px; padding: 9px 13px; }
+}
+
 .iso-command-priority{display:flex;flex-direction:column;justify-content:space-between;padding:27px;background:#f0eee7;color:#202220}.iso-command-priority .iso-command-kicker{color:#777b77}.iso-command-priority h3{font-family:var(--font-serif);font-size:21px;line-height:1.25;font-weight:500;margin:19px 0 8px}.iso-command-priority p{color:#666a66;font-size:12px;line-height:1.55;margin:0}.iso-command-priority-foot{display:flex;flex-direction:column;align-items:stretch;gap:12px;margin-top:28px;min-width:0}.iso-command-priority-foot>span{font-size:10px;color:#777b77}.iso-command-priority-foot .btn{width:100%;max-width:100%;min-height:38px;justify-content:center;text-align:center;white-space:normal;overflow-wrap:anywhere;line-height:1.3;padding:9px 12px}
 .iso-overview-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(285px,.65fr);gap:16px;margin-bottom:16px}.iso-overview-grid>.panel{overflow:hidden}.iso-assessment-panel,.iso-assurance-panel{padding:21px}.iso-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.iso-section-kicker{color:var(--text-tertiary);margin-bottom:6px}.iso-section-head h2{font-family:var(--font-serif);font-size:19px;font-weight:500;margin:0}.iso-section-head>a{font-size:11px;white-space:nowrap}
 .iso-progress-row{display:grid;grid-template-columns:235px minmax(0,1fr);gap:18px;align-items:center;padding:14px 0;border-top:1px solid var(--border)}.iso-progress-copy{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:4px 10px}.iso-progress-copy>span{font-size:12px;font-weight:600}.iso-progress-copy>strong{font-family:var(--font-serif);font-size:20px;font-weight:500}.iso-progress-copy>small{grid-column:1/-1;color:var(--text-tertiary);font-size:9.5px}.iso-progress-track{height:7px;background:var(--bg-muted);border-radius:10px;overflow:hidden}.iso-progress-track span{display:block;height:100%;border-radius:10px;background:#282b29}.iso-workstreams{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--border);margin-top:5px;padding-top:16px}.iso-workstream{padding:0 12px;border-right:1px solid var(--border)}.iso-workstream:first-child{padding-left:0}.iso-workstream:last-child{border:0}.iso-workstream span,.iso-workstream strong,.iso-workstream small{display:block}.iso-workstream span{font-size:9.5px;color:var(--text-tertiary)}.iso-workstream strong{font-family:var(--font-serif);font-size:18px;font-weight:500;margin:5px 0 3px}.iso-workstream small{font-size:8.5px;line-height:1.35;color:var(--text-tertiary)}

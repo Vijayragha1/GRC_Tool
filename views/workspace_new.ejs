@@ -37,8 +37,8 @@
       <input class="input" id="target-cert-date" type="date" name="target_cert_date" value="<%= savedForm.target_cert_date || '' %>" <%= selectedFrameworks.includes('iso27001') && selectedOutcome === 'certification_support' ? '' : 'disabled' %>>
     </div>
     <div class="col-full">
-      <label class="label">ISMS scope statement <span class="meta">can be edited later</span></label>
-      <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units, technology are in scope of the ISMS? What's explicitly excluded and why?"><%= savedForm.scope || '' %></textarea>
+      <label class="label">Initial engagement scope <span class="meta">can be edited later</span></label>
+      <textarea class="textarea" name="scope" rows="4" placeholder="What products, locations, organizational units and technology are in scope? What is explicitly excluded, and why?"><%= savedForm.scope || '' %></textarea>
     </div>
     <fieldset id="iso27001-outcome-fieldset" class="col-full" <%= selectedFrameworks.includes('iso27001') ? '' : 'hidden' %> style="border:1px solid var(--border);border-radius:8px;padding:14px;margin:0;">
       <legend class="label" style="padding:0 5px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>

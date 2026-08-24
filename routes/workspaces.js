@@ -24,6 +24,7 @@ const gapFieldwork = require('../lib/gap-fieldwork');
 const { buildGapAssessmentOverview } = require('../lib/workspace-outcome-overview');
 const tprmDomain = require('../lib/tprm-domain');
 const vcisoService = require('../lib/vciso-service');
+const { confirmationMatchesRenderedName } = require('../lib/typography');
 
 function submittedFrameworks(value) {
   const values = Array.isArray(value) ? value : (typeof value === 'string' ? [value] : []);
@@ -754,7 +755,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/delete', requireAuth, requireWorkspace, requirePermission('workspace.delete'), (req, res) => {
     const ws = req.workspace;
     const confirm = (req.body.confirm_name || '').trim();
-    if (confirm !== ws.client_name) {
+    if (!confirmationMatchesRenderedName(confirm, ws.client_name)) {
       return res.redirect(withToast('/workspaces/' + ws.id + '#workspace-settings',
         'Confirmation name did not match - nothing deleted', 'error'));
     }

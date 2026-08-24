@@ -90,35 +90,6 @@
   const readinessDone = summary.readinessMarkers.filter(m => m.got).length;
   const readinessTotal = summary.readinessMarkers.length;
 %>
-<div class="stack-grid" style="--cols:1fr 1fr 1fr;gap:0;border:1px solid var(--border);background:var(--bg);margin-bottom:18px;">
-  <div style="padding:18px 22px;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Complexity tier</div>
-    <div style="display:flex;align-items:baseline;gap:10px;font-family:var(--font-display);">
-      <span style="font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:<%= tierColor %>;"><%= summary.tier %></span>
-      <span class="meta text-sm">score <%= summary.score.total.toFixed(1) %></span>
-    </div>
-    <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">
-      <%= summary.headcount %> headcount<% if (summary.cloudCount) { %> · <%= summary.cloudCount %> cloud provider<%= summary.cloudCount === 1 ? '' : 's' %><% } %><% if (summary.locCount) { %> · <%= summary.locCount %> location<%= summary.locCount === 1 ? '' : 's' %><% } %>
-      <% if (summary.infraModel) { %><br><span style="color:var(--text-tertiary);font-size:11.5px;">Infra: <%= summary.infraModel %></span><% } %>
-    </div>
-  </div>
-  <div style="padding:18px 22px;border-right:1px solid var(--border);">
-    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Estimated effort</div>
-    <div style="font-family:var(--font-display);font-size:34px;font-weight: 500;letter-spacing:-0.01em;color:var(--text);"><%= summary.effort.weeks %> <span style="font-size:18px;color:var(--text-tertiary);font-weight:400;">wks</span></div>
-    <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">to Stage 1 audit, based on firm benchmarks for <%= summary.tier.toLowerCase() %> clients</div>
-  </div>
-  <div style="padding:18px 22px;">
-    <div style="font-size:10px;font-weight: 500;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px;">Deadline pressure</div>
-    <% if (summary.pressure) { %>
-      <div style="font-family:var(--font-display);font-size:28px;font-weight: 500;letter-spacing:-0.01em;color:<%= pressureColor %>;"><%= summary.pressure.label %></div>
-      <div class="meta text-sm" style="margin-top:8px;line-height:1.5;"><%= summary.pressure.days %></div>
-    <% } else { %>
-      <div style="font-family:var(--font-display);font-size:24px;font-weight:500;color:var(--text-tertiary);font-style:italic;">No deadline set</div>
-      <div class="meta text-sm" style="margin-top:8px;line-height:1.5;">Add a target date in the form below to see pressure</div>
-    <% } %>
-  </div>
-</div>
-
 <%# Two-column layout: form on the left, summary aside on the right %>
 <div class="stack-grid" style="--cols:minmax(0,1fr) 320px;gap:18px;align-items:start;">
   <div>
@@ -132,7 +103,7 @@
 
     <form method="POST" action="/workspaces/<%= ws.id %>/intake" id="intakeForm" style="display:flex;flex-direction:column;gap:18px;">
       <% sections.forEach(sec => { %>
-        <div class="panel">
+        <div class="panel" id="sec-<%= sec.id %>" style="scroll-margin-top:14px;">
           <div class="panel-head" style="border-bottom:1px solid var(--border);">
             <div>
               <h2 style="margin:0;"><%= sec.title %></h2>
@@ -146,8 +117,22 @@
                 : sec.questions;
             %>
             <% sectionQuestions.forEach(q => { %>
-              <div <%- sec.id === 'crown-jewels' ? `class="crown-jewel-field" data-crown-number="${q.id.split('-').pop()}"` : '' %>>
-                <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
+              <%
+                // Width follows the answer, not the container. A headcount in a
+                // 640px box is the clearest sign nobody sized these fields.
+                const widthClass = q.type === 'number' ? 'itk-w-xs'
+                                 : q.type === 'date' ? 'itk-w-sm'
+                                 : q.type === 'select' ? 'itk-w-md'
+                                 : q.type === 'text' ? 'itk-w-md' : '';
+                const fieldClasses = ['itk-field', widthClass,
+                  sec.id === 'crown-jewels' ? 'crown-jewel-field' : ''].filter(Boolean).join(' ');
+                const hidden = !intakeQuestions.isVisible(q, answers);
+              %>
+              <div class="<%= fieldClasses %>"
+                   <%- sec.id === 'crown-jewels' ? `data-crown-number="${q.id.split('-').pop()}"` : '' %>
+                   <%- q.showIf ? `data-show-if="${encodeURIComponent(JSON.stringify(q.showIf))}"` : '' %>
+                   <%- hidden ? 'hidden' : '' %>>
+                <label class="label" id="lbl-<%= q.id %>" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
                   <span><%= q.text %><%= q.required ? ' *' : '' %></span>
                   <span class="clause-tag tag tag-neutral text-xxs" style="display:none;">clause <%= q.clause %></span>
                   <% if (sec.id === 'crown-jewels' && q.dynamic) { %>
@@ -162,7 +147,7 @@
                 <% } else if (q.type === 'date') { %>
                   <input class="input" type="date" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
                 <% } else if (q.type === 'number') { %>
-                  <input class="input" type="number" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
+                  <input class="input" type="number" min="0" inputmode="numeric" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
                 <% } else if (q.type === 'select') { %>
                   <select class="select" id="q-<%= q.id %>" name="<%= q.id %>" <%= q.required ? 'required' : '' %>>
                     <option value="">- Select -</option>
@@ -170,6 +155,27 @@
                       <option value="<%= opt %>" <%= (answers[q.id] === opt) ? 'selected' : '' %>><%= opt %></option>
                     <% }) %>
                   </select>
+                <% } else if (q.type === 'multiselect') {
+                     // Selections and any free text the option list does not cover are
+                     // recombined into one string on save, which is the format this
+                     // answer has always been stored in.
+                     const picked = intakeQuestions.parseMultiselect(q, answers[q.id]);
+                %>
+                  <div class="itk-choices" role="group" aria-labelledby="lbl-<%= q.id %>">
+                    <% (q.options || []).forEach((opt, i) => { %>
+                      <label class="itk-choice <%= picked.selected.includes(opt) ? 'is-on' : '' %>">
+                        <input type="checkbox" name="<%= q.id %>__opt" value="<%= opt %>"
+                               id="q-<%= q.id %>-<%= i %>" <%= picked.selected.includes(opt) ? 'checked' : '' %>>
+                        <span><%= opt %></span>
+                      </label>
+                    <% }) %>
+                  </div>
+                  <div class="itk-other">
+                    <label for="q-<%= q.id %>"><%= q.otherLabel || 'Anything else' %></label>
+                    <input class="input" type="text" id="q-<%= q.id %>" name="<%= q.id %>__other"
+                           value="<%= picked.other %>" placeholder="Not in the list above">
+                  </div>
+                  <input type="hidden" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" data-multiselect-for="<%= q.id %>">
                 <% } else { %>
                   <input class="input" type="text" id="q-<%= q.id %>" name="<%= q.id %>" value="<%= answers[q.id] || '' %>" <%= q.required ? 'required' : '' %>>
                 <% } %>
@@ -206,7 +212,53 @@
   </div>
 
   <%# Right column: scoping summary aside %>
-  <aside style="position:sticky;top:18px;display:flex;flex-direction:column;gap:14px;">
+  <aside class="itk-rail">
+    <%#
+      The running position used to sit above the form, where it scrolled out of
+      sight within the first screen. Its whole value is that it moves while you
+      answer, so it belongs in the rail that stays.
+    %>
+    <div class="panel itk-position">
+      <div>
+        <dt>Complexity tier</dt>
+        <dd style="color:<%= tierColor %>;"><%= summary.tier %> <small>score <%= summary.score.total.toFixed(1) %></small></dd>
+        <p><%= summary.headcount %> headcount<% if (summary.cloudCount) { %> &middot; <%= summary.cloudCount %> cloud provider<%= summary.cloudCount === 1 ? '' : 's' %><% } %><% if (summary.locCount) { %> &middot; <%= summary.locCount %> location<%= summary.locCount === 1 ? '' : 's' %><% } %><% if (summary.infraModel) { %><br><%= summary.infraModel %><% } %></p>
+      </div>
+      <div>
+        <dt>Estimated effort</dt>
+        <dd><%= summary.effort.weeks %> <small>wks to Stage 1</small></dd>
+        <p>Firm benchmark for <%= summary.tier.toLowerCase() %> clients</p>
+      </div>
+      <div>
+        <dt>Deadline pressure</dt>
+        <% if (summary.pressure) { %>
+          <dd style="color:<%= pressureColor %>;"><%= summary.pressure.label %></dd>
+          <p><%= summary.pressure.days %></p>
+        <% } else { %>
+          <dd style="color:var(--text-tertiary);font-size:17px;">Not set</dd>
+          <p>Add a target date to see pressure</p>
+        <% } %>
+      </div>
+    </div>
+
+    <%#
+      Section navigation. Six sections over roughly four thousand pixels: the
+      consultant needs to jump to whatever the client has just started talking
+      about, and to see at a glance which sections are still thin.
+    %>
+    <nav class="panel itk-nav" aria-label="Intake sections">
+      <% sections.forEach(sec => {
+           const qs = sec.id === 'crown-jewels' ? (locals.crownJewelQuestions || sec.questions) : sec.questions;
+           const asked = qs.filter(q => intakeQuestions.isVisible(q, answers));
+           const done = asked.filter(q => String(answers[q.id] || '').trim()).length;
+      %>
+        <a href="#sec-<%= sec.id %>" class="<%= done && done === asked.length ? 'is-done' : '' %>" data-section-link="<%= sec.id %>">
+          <span><%= sec.title %></span>
+          <span class="itk-nav-count"><%= done %>/<%= asked.length %></span>
+        </a>
+      <% }) %>
+    </nav>
+
     <%# Readiness markers - what's been captured that lets you proceed %>
     <div class="panel" style="padding:0;">
       <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
@@ -353,11 +405,79 @@
   function bindField(field) {
     // Skip the CSRF + sequencing-only hidden inputs
     if (field.name === '_csrf' || field.type === 'hidden') return;
+    // A multiselect's checkboxes and its other-box are not question ids. They
+    // are combined and saved under the real id by the block below; posting
+    // "data-types__opt" would be rejected as an unknown question.
+    if (/__(?:opt|other)$/.test(field.name)) return;
     field.addEventListener('input', () => scheduleSave(field));
     field.addEventListener('blur', () => flushSave(field));
   }
 
   form.querySelectorAll('input[name], textarea[name], select[name]').forEach(bindField);
+
+  // ---- multiselect --------------------------------------------------------
+  // Chips and the free-text box collapse into the single string this answer has
+  // always been stored as, so nothing downstream needs to know the input
+  // changed shape.
+  form.querySelectorAll('[data-multiselect-for]').forEach(store => {
+    const qid = store.getAttribute('data-multiselect-for');
+    const boxes = Array.from(form.querySelectorAll('input[name="' + qid + '__opt"]'));
+    const other = form.querySelector('input[name="' + qid + '__other"]');
+    function recompute() {
+      const parts = boxes.filter(b => b.checked).map(b => b.value);
+      const extra = other && other.value.trim();
+      if (extra) parts.push(extra);
+      store.value = parts.join('\n');
+      return store.value;
+    }
+    boxes.forEach(box => box.addEventListener('change', () => {
+      const label = box.closest('.itk-choice');
+      if (label) label.classList.toggle('is-on', box.checked);
+      saveField(qid, recompute());
+      refreshConditionals();
+    }));
+    if (other) {
+      other.addEventListener('input', () => {
+        recompute();
+        clearTimeout(timers.get(qid));
+        timers.set(qid, setTimeout(() => saveField(qid, store.value), 1500));
+      });
+      other.addEventListener('blur', () => {
+        recompute();
+        clearTimeout(timers.get(qid));
+        saveField(qid, store.value);
+      });
+    }
+  });
+
+  // ---- conditional questions ---------------------------------------------
+  // Mirrors isVisible() on the server. An unanswered controller shows the
+  // question: hiding a required field the consultant cannot find is worse than
+  // showing one that turns out not to apply.
+  const conditional = Array.from(form.querySelectorAll('[data-show-if]'));
+  function currentAnswer(id) {
+    const el = form.querySelector('[name="' + id + '"]');
+    return el ? String(el.value || '').trim() : '';
+  }
+  function refreshConditionals() {
+    conditional.forEach(field => {
+      let rule;
+      try { rule = JSON.parse(decodeURIComponent(field.getAttribute('data-show-if'))); }
+      catch (e) { return; }
+      const value = currentAnswer(rule.question);
+      let show = true;
+      if (value) {
+        if (Array.isArray(rule.oneOf)) show = rule.oneOf.indexOf(value) !== -1;
+        else if (Array.isArray(rule.notOneOf)) show = rule.notOneOf.indexOf(value) === -1;
+      }
+      field.hidden = !show;
+    });
+  }
+  form.addEventListener('change', event => {
+    if (event.target && event.target.name) refreshConditionals();
+  });
+  refreshConditionals();
+
 
   const crownFields = document.getElementById('crownJewelFields');
   const addButton = document.getElementById('addCrownJewel');

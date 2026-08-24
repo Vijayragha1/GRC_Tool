@@ -41,8 +41,18 @@ test('public buyer path is explicit, accessible, and avoids certification claims
   const css = read('public/public.css');
   const server = read('server.js');
   assert.match(page, /Request an evaluation/);
-  assert.match(page, /ISO\/IEC 27001:2022/);
-  assert.match(page, /NIST CSF 2\.0/);
+  // The programme names used to be typed into this view, which is how the page
+  // came to advertise three standards after a fourth had shipped. They now come
+  // from the framework registry, so the guarantee is checked where it lives:
+  // the view must render the registry's formal designation, and the registry
+  // must carry a proper external name for every framework it lists.
+  assert.match(page, /<%= p\.formalName %>/, 'the public register must render the registry name, not a typed literal');
+  const formalNames = require('../lib/frameworks').FRAMEWORK_LIST.map((f) => f.formalName);
+  assert.ok(formalNames.includes('ISO/IEC 27001:2022'), `expected the ISO 27001 designation, got ${formalNames.join(', ')}`);
+  assert.ok(formalNames.includes('NIST CSF 2.0'), `expected the CSF designation, got ${formalNames.join(', ')}`);
+  for (const name of formalNames) {
+    assert.ok(name && name.length > 3, `every framework needs an external name, got ${JSON.stringify(name)}`);
+  }
   assert.match(page, /No public contact has been configured/);
   assert.match(page, /does not itself certify conformity/);
   assert.match(page, /class="skip-link"[^>]*href="#mainContent"/);
@@ -84,9 +94,34 @@ test('client deletion confirmation offers an exact-name copy action without weak
   const dashboard = read('views/dashboard.ejs');
   assert.match(dashboard, /id="dcmCopyName"[^>]*data-copy-target="#dcmExpected"/);
   assert.match(dashboard, /aria-label="Copy client name"[^>]*aria-live="polite"/);
+  assert.match(dashboard, /data-delete-client-id="<%= w\.id %>"/);
+  assert.match(dashboard, /data-delete-client-name="<%= w\.client_name %>"/);
+  assert.match(dashboard, /querySelectorAll\('\[data-delete-client-id\]\[data-delete-client-name\]'\)/);
+  assert.doesNotMatch(dashboard, /onclick="deleteClient\(/,
+    'database-backed names must not be interpolated into executable JavaScript');
   assert.match(dashboard, /copyName\.addEventListener\('click',[\s\S]*input\.focus\(\)/);
   assert.match(dashboard, /input\.value\.trim\(\) !== currentName/,
     'copy assistance must not remove the exact-name confirmation check');
+});
+
+test('ISO 27001 diagnostic answers can return to an unanswered state', () => {
+  const view = read('views/controls_assess.ejs');
+  const route = read('routes/controls.js');
+
+  assert.match(view, /data-diagnostic-group[^>]*role="group"[^>]*aria-label=/);
+  assert.match(view, /type="hidden" data-diagnostic-value name="q_<%= i %>"/);
+  assert.match(view, /<button type="button" class="diag-pill/,
+    'diagnostic choices must be keyboard-operable toggle buttons, not one-way radios');
+  assert.match(view, /aria-pressed="<%= isOn \? 'true' : 'false' %>"/);
+  assert.doesNotMatch(view, /type="radio" name="q_<%= i %>"/);
+  assert.match(view, /field\.value = field\.value === selected \? '' : selected/,
+    'activating the selected answer must clear it');
+  assert.match(view, /window\.recomputeSuggested\(\)/,
+    'answer changes must immediately update the heuristic');
+  assert.match(view, /id="suggestedStatusText"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(route, /sawDiagnosticField = true/);
+  assert.match(route, /JSON\.stringify\(answers\)/,
+    'the legacy storage path must be able to replace the final answer with an empty object');
 });
 
 test('dashboard quick-create offers the governed DPDPA assessment programme', () => {

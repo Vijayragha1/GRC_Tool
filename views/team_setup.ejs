@@ -220,9 +220,14 @@
 </div>
 
 <%# ====================== CONTINUE ====================== %>
-<div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:18px;background:#fafaf8;">
+<div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:18px;background:var(--bg-subtle);">
   <div style="flex:1;">
-    <div style="font-family:Georgia,'Source Serif 4',serif;font-size:16px;font-weight: 500;color:var(--text);">Team set. Ready to start the gap assessment?</div>
+    <%#
+      This line used to hardcode Georgia. --font-serif in this app resolves to
+      the system display face, so a literal Georgia was the one string on the
+      page set in an actual serif, and it read as a different product.
+    %>
+    <div style="font-family:var(--font-display);font-size:16px;font-weight:500;color:var(--text);">Team set. Ready to start the gap assessment?</div>
     <div class="meta text-sm" style="margin-top:4px;line-height:1.5;">You can also come back later; this page lives under <strong>Setup → Team &amp; access</strong> in the sidebar.</div>
   </div>
   <a href="/workspaces/<%= ws.id %>/gap-assessment" class="btn btn-primary">Start gap assessment →</a>

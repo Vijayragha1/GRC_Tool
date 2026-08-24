@@ -35,9 +35,7 @@
 </div>
 <% } %>
 
-<!-- Onboarding nudge - surface unfinished setup even if the user skipped the
-     wizard once. Reviewer feedback: the wizard disappeared after skip with
-     no way back. Now persistent until all 6 steps are done. -->
+<!-- First-client nudge. Programme-specific setup stays inside each client. -->
 <% if (typeof onboarding !== 'undefined' && onboarding && onboarding.done < onboarding.total) { %>
   <div class="panel" style="margin-bottom:24px;background:var(--bg-subtle);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:16px 20px;">
     <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--accent-contrast);flex-shrink:0;">
@@ -321,7 +319,8 @@
           <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.delete')) { %>
           <td onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
             <button type="button"
-                    onclick="deleteClient(<%= w.id %>, '<%= w.client_name.replace(/'/g, "\\'") %>')"
+                    data-delete-client-id="<%= w.id %>"
+                    data-delete-client-name="<%= w.client_name %>"
                     title="Delete this client"
                     class="btn btn-ghost btn-xs"
                     style="color:var(--danger,#b91c1c);padding:4px 8px;">×</button>
@@ -441,6 +440,12 @@
     function close() { modal.style.display = 'none'; }
 
     document.getElementById('dcmCancel').addEventListener('click', close);
+    document.querySelectorAll('[data-delete-client-id][data-delete-client-name]').forEach((button) => {
+      button.addEventListener('click', () => open(
+        button.getAttribute('data-delete-client-id'),
+        button.getAttribute('data-delete-client-name')
+      ));
+    });
     copyName.addEventListener('click', () => setTimeout(() => input.focus(), 0));
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.style.display === 'flex') close(); });
@@ -451,8 +456,6 @@
         input.focus();
       }
     });
-
-    window.deleteClient = open;
   })();
 </script>
 
