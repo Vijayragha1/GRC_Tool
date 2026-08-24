@@ -28,6 +28,55 @@ function dropTriggers(db, names) {
   for (const name of names) db.exec(`DROP TRIGGER IF EXISTS ${name}`);
 }
 
+function foreignKeyViolationSignature(violation) {
+  return JSON.stringify([
+    String(violation.table || ''),
+    violation.rowid == null ? null : Number(violation.rowid),
+    String(violation.parent || ''),
+    violation.fkid == null ? null : Number(violation.fkid),
+  ]);
+}
+
+function isTprmForeignKeyViolation(violation) {
+  return String(violation.table || '').startsWith('tprm_')
+    || String(violation.parent || '').startsWith('tprm_');
+}
+
+function readForeignKeyViolations(db) {
+  return db.prepare('PRAGMA foreign_key_check').all();
+}
+
+function assertNoPreExistingTprmViolations(violations) {
+  const tprmViolations = violations.filter(isTprmForeignKeyViolation);
+  if (tprmViolations.length) {
+    throw new Error(`TPRM reconciliation refused ${tprmViolations.length} pre-existing TPRM foreign-key violation(s)`);
+  }
+}
+
+function assertNoForeignKeyRegression(db, before) {
+  const baseline = new Map();
+  for (const violation of before) {
+    const signature = foreignKeyViolationSignature(violation);
+    baseline.set(signature, (baseline.get(signature) || 0) + 1);
+  }
+  const after = readForeignKeyViolations(db);
+  const tprmViolations = after.filter(isTprmForeignKeyViolation);
+  if (tprmViolations.length) {
+    throw new Error(`TPRM reconciliation produced ${tprmViolations.length} TPRM foreign-key violation(s)`);
+  }
+
+  const introduced = after.filter(violation => {
+    const signature = foreignKeyViolationSignature(violation);
+    const remaining = baseline.get(signature) || 0;
+    if (!remaining) return true;
+    baseline.set(signature, remaining - 1);
+    return false;
+  });
+  if (introduced.length) {
+    throw new Error(`TPRM reconciliation produced ${introduced.length} new foreign-key violation(s) outside TPRM`);
+  }
+}
+
 function uniqueIngressKey(db) {
   for (;;) {
     const key = crypto.randomBytes(16).toString('hex');
@@ -536,6 +585,13 @@ function createMonitoringTriggers(db) {
 function up(db) {
   db.pragma('defer_foreign_keys = ON');
 
+  // Legacy installations can contain unrelated historic orphans. This
+  // migration must neither reinterpret nor delete those business records, but
+  // it still fails closed if TPRM is already inconsistent or if reconciliation
+  // introduces any new orphan anywhere in the database.
+  const existingForeignKeyErrors = readForeignKeyViolations(db);
+  assertNoPreExistingTprmViolations(existingForeignKeyErrors);
+
   addColumn(db, 'tprm_assessment_cycles', 'client_decision_authority_id', 'INTEGER REFERENCES users(id)');
   addColumn(db, 'tprm_conditions', 'finding_id', 'INTEGER REFERENCES findings(id)');
 
@@ -559,10 +615,7 @@ function up(db) {
   createCoreTriggers(db);
   createMonitoringTriggers(db);
 
-  const foreignKeyErrors = db.prepare('PRAGMA foreign_key_check').all();
-  if (foreignKeyErrors.length) {
-    throw new Error(`TPRM reconciliation produced ${foreignKeyErrors.length} foreign-key violation(s)`);
-  }
+  assertNoForeignKeyRegression(db, existingForeignKeyErrors);
   const quickCheck = db.pragma('quick_check', { simple: true });
   if (quickCheck !== 'ok') throw new Error(`TPRM reconciliation integrity check failed: ${quickCheck}`);
 }

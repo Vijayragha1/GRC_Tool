@@ -5,7 +5,9 @@ const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 const { bootApp } = require('./helpers');
 
+const UPGRADE_MIGRATION = '054_tprm_upgrade_reconciliation.js';
 const EXACT_MIGRATION = '055_tprm_exact_schema_reconciliation.js';
+const FK_SCOPE_MIGRATION = '060_tprm_foreign_key_scope_reconciliation.js';
 const TARGETS = [
   'tprm_legal_entities',
   'tprm_service_relationships',
@@ -229,6 +231,11 @@ function deleteExactMigrationLedger(db) {
   db.prepare('DELETE FROM schema_migrations WHERE id=?').run(EXACT_MIGRATION);
 }
 
+function deleteForeignKeyReconciliationLedger(db) {
+  db.prepare('DELETE FROM schema_migrations WHERE id IN (?,?,?)')
+    .run(UPGRADE_MIGRATION, EXACT_MIGRATION, FK_SCOPE_MIGRATION);
+}
+
 function assertCanonicalSchema(db) {
   const legal = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tprm_legal_entities'").get().sql;
   const relationships = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tprm_service_relationships'").get().sql;
@@ -381,6 +388,92 @@ test('055 rejects a condition finding from another client workspace', () => {
   db.close();
 });
 
+test('054/055 preserve unchanged production-like foreign-key orphans outside TPRM', () => {
+  const dbPath = bootClosedDatabase();
+  const db = new Database(dbPath);
+  db.pragma('foreign_keys = OFF');
+  const insertLegacyResponse = db.prepare(`INSERT INTO supplier_questionnaire_responses
+    (questionnaire_id,question_id,answer) VALUES (?,?,?)`);
+  for (let index = 0; index < 6; index++) {
+    insertLegacyResponse.run(900000 + index, index + 1, `Preserved legacy response ${index + 1}`);
+  }
+  db.pragma('foreign_keys = ON');
+
+  const before = db.prepare(`SELECT id,questionnaire_id,question_id,answer
+    FROM supplier_questionnaire_responses WHERE questionnaire_id>=900000 ORDER BY id`).all();
+  const violationsBefore = db.prepare('PRAGMA foreign_key_check').all()
+    .filter(row => row.table === 'supplier_questionnaire_responses');
+  assert.equal(violationsBefore.length, 6);
+
+  deleteForeignKeyReconciliationLedger(db);
+  const result = require('../migrations/run').applyPending(db);
+  assert.equal(result.applied, 3);
+  assert.deepEqual(
+    db.prepare(`SELECT id,questionnaire_id,question_id,answer
+      FROM supplier_questionnaire_responses WHERE questionnaire_id>=900000 ORDER BY id`).all(),
+    before,
+  );
+  assert.deepEqual(
+    db.prepare('PRAGMA foreign_key_check').all()
+      .filter(row => row.table === 'supplier_questionnaire_responses'),
+    violationsBefore,
+  );
+  assert.equal(
+    db.prepare(`SELECT COUNT(*) AS count FROM schema_migrations WHERE id IN (?,?,?)`)
+      .get(UPGRADE_MIGRATION, EXACT_MIGRATION, FK_SCOPE_MIGRATION).count,
+    3,
+  );
+  assert.equal(db.pragma('quick_check', { simple: true }), 'ok');
+  db.close();
+});
+
+test('054 still fails closed on a pre-existing TPRM foreign-key violation', () => {
+  const dbPath = bootClosedDatabase();
+  const db = new Database(dbPath);
+  db.pragma('foreign_keys = OFF');
+  db.prepare(`INSERT INTO tprm_modules
+    (workspace_id,service_model,status,activation_reason)
+    VALUES (987654321,NULL,'needs_classification','Intentional test-only orphan')`).run();
+  db.pragma('foreign_keys = ON');
+  deleteForeignKeyReconciliationLedger(db);
+
+  assert.throws(
+    () => require('../migrations/run').applyPending(db),
+    /refused 1 pre-existing TPRM foreign-key violation/,
+  );
+  assert.equal(Boolean(db.prepare('SELECT 1 FROM schema_migrations WHERE id=?').get(UPGRADE_MIGRATION)), false);
+  assert.equal(db.prepare('PRAGMA foreign_key_check').all().some(row => row.table === 'tprm_modules'), true);
+  db.close();
+});
+
+test('the runner accepts only audited 054/055 hashes through the 060 successor', () => {
+  const dbPath = bootClosedDatabase();
+  const db = new Database(dbPath);
+  const runner = require('../migrations/run');
+  const historicUpgradeHashes = [
+    '9ce929a79ea0d25ef9732ee3077199d3588ecaa09cc99e037be66f278e7229d5',
+    '40a05fbce451be761aaadd65d8a57513938d5113eaba179cec373a1daecc051a',
+  ];
+  const historicExactHash = '636205b23b077ee9e0899c5ab3b78853e38491b9649a4f1d14e9f188582f5ff6';
+
+  db.prepare('UPDATE schema_migrations SET checksum=? WHERE id=?')
+    .run(historicExactHash, EXACT_MIGRATION);
+  for (const historicUpgradeHash of historicUpgradeHashes) {
+    db.prepare('UPDATE schema_migrations SET checksum=? WHERE id=?')
+      .run(historicUpgradeHash, UPGRADE_MIGRATION);
+    db.prepare('DELETE FROM schema_migrations WHERE id=?').run(FK_SCOPE_MIGRATION);
+    assert.equal(runner.applyPending(db).applied, 1);
+    assert.ok(db.prepare('SELECT 1 FROM schema_migrations WHERE id=?').get(FK_SCOPE_MIGRATION));
+  }
+
+  db.prepare('UPDATE schema_migrations SET checksum=? WHERE id=?')
+    .run('f'.repeat(64), UPGRADE_MIGRATION);
+  db.prepare('DELETE FROM schema_migrations WHERE id=?').run(FK_SCOPE_MIGRATION);
+  assert.throws(() => runner.applyPending(db), /Migration checksum drift: 054_tprm_upgrade_reconciliation\.js/);
+  assert.equal(Boolean(db.prepare('SELECT 1 FROM schema_migrations WHERE id=?').get(FK_SCOPE_MIGRATION)), false);
+  db.close();
+});
+
 test('the runner records only exact audited pre-release checksum pairs as reconciled', () => {
   const { RECONCILED_DRIFTS } = require('../migrations/run');
   assert.deepEqual(Object.keys(RECONCILED_DRIFTS).sort(), [
@@ -389,14 +482,17 @@ test('the runner records only exact audited pre-release checksum pairs as reconc
     '048_tprm_monitoring_connectors.sql',
     '050_tprm_condition_governance.sql',
     '054_tprm_upgrade_reconciliation.js',
+    '055_tprm_exact_schema_reconciliation.js',
   ]);
   for (const [migration, entry] of Object.entries(RECONCILED_DRIFTS)) {
-    assert.match(entry.applied, /^[a-f0-9]{64}$/);
+    const appliedChecksums = Array.isArray(entry.applied) ? entry.applied : [entry.applied];
+    assert.ok(appliedChecksums.length >= 1);
+    for (const appliedChecksum of appliedChecksums) assert.match(appliedChecksum, /^[a-f0-9]{64}$/);
     assert.match(entry.current, /^[a-f0-9]{64}$/);
     assert.equal(
       entry.reconciledBy,
-      migration === '054_tprm_upgrade_reconciliation.js'
-        ? '055_tprm_exact_schema_reconciliation.js'
+      ['054_tprm_upgrade_reconciliation.js', '055_tprm_exact_schema_reconciliation.js'].includes(migration)
+        ? '060_tprm_foreign_key_scope_reconciliation.js'
         : '054_tprm_upgrade_reconciliation.js',
     );
   }
