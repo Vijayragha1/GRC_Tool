@@ -1,11 +1,24 @@
 <%- include('partials/header', { title: 'ISO 42001 Statement of Applicability', user, ws, active: 'iso42001-soa' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-soa-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+    .iso42-soa-actions>#soaAutosaveStatus{grid-column:1/-1;justify-self:start}
+    .iso42-soa-actions form,.iso42-soa-actions .btn{width:100%}
+    .iso42-soa-summary{align-items:flex-start!important;flex-wrap:wrap}
+    .iso42-soa-bulk{grid-template-columns:minmax(0,1fr)!important}
+    .iso42-soa-bulk .col-full{grid-column:1!important}
+    .iso42-soa-bulk .btn{width:100%}
+  }
+  @media(max-width:430px){.iso42-soa-actions{grid-template-columns:minmax(0,1fr)}}
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 Statement of Applicability</h1>
     <div class="page-subtitle">Mandatory ISO 42001 artefact (clause 6.1.3). Applicability and justification for all 38 Annex A controls plus any custom controls you add.</div>
   </div>
-  <div class="row-center">
+  <div class="row-center iso42-soa-actions">
     <span class="text-xs" id="soaAutosaveStatus" style="line-height:1;align-self:center;padding:5px 10px;border-radius:999px;background:var(--bg-subtle,#f3f4f6);border:1px solid var(--border,#e5e7eb);color:var(--text-secondary,#6b7280);white-space:nowrap;" data-state="idle">All changes saved</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/auto-justify" style="display:inline" onsubmit="return confirm('For every Annex A control treated by an open risk, mark it Included and pre-fill an inclusion justification of the form &quot;Treats R-X, R-Y&quot;. Existing justifications kept. Continue?')">
       <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
@@ -24,7 +37,7 @@
 
 <!-- SoA metadata header -->
 <details class="panel" style="margin-bottom:10px;<%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? '' : '' %>" <%= !soaMeta.version && !soaMeta.owner && !soaMeta.approved_by ? 'open' : '' %>>
-  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:8px;">
+  <summary class="panel-pad text-lg iso42-soa-summary" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:8px;">
     <span style="font-weight: 500;">SoA metadata</span>
     <% if (soaMeta.version || soaMeta.owner || soaMeta.approved_by) { %>
       <% if (soaMeta.version) { %><span class="tag tag-info text-eyebrow">v<%= soaMeta.version %></span><% } %>
@@ -53,7 +66,7 @@
   <div class="panel-pad text-base text-secondary" style="border-top:1px solid var(--border);background:var(--bg-subtle);line-height:1.55;">
     <strong>Use this for the first-pass sweep.</strong> "Include all" marks every Annex A control as <em>Included</em>. "Include undecided" only flips controls still marked <em>Undecided</em>. Per-row dropdowns below let you override afterwards.
   </div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/bulk" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/bulk" class="panel-pad iso42-soa-bulk" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <div class="col-full">
       <label class="label">Justification (optional, applied to every affected row)</label>

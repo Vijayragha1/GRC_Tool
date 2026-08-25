@@ -1,5 +1,13 @@
 <%- include('partials/header', { title: 'ISO 42001 certification cycle', user, ws, active: 'iso42001-cert-cycle' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-cycle-add{grid-template-columns:minmax(0,1fr)!important}
+    .iso42-cycle-add .btn{width:100%}
+    .iso42-cycle-seed .btn{width:100%}
+  }
+</style>
+
 <%
   const today = new Date().toISOString().slice(0,10);
   const daysUntil = (d) => {
@@ -40,7 +48,7 @@
       <div class="text-lg" style="line-height:1.55;margin-bottom:14px;">
         A typical first-cert path: Stage 1 in ~60 days, Stage 2 ~30 days after Stage 1, surveillance audits at year 1 and year 2, recertification at year 3. Seed these defaults to start, then edit the dates as the cert body confirms.
       </div>
-      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/seed" style="display:inline;">
+      <form class="iso42-cycle-seed" method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/seed" style="display:inline;">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
         <button class="btn btn-primary">Seed default cycle (5 events)</button>
       </form>
@@ -103,7 +111,7 @@
 
 <div class="panel">
   <div class="panel-head"><h2>Add ad-hoc event</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/add" class="panel-pad" style="display:grid;grid-template-columns:240px 130px 1fr auto;gap:8px;align-items:end;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/add" class="panel-pad iso42-cycle-add" style="display:grid;grid-template-columns:240px 130px 1fr auto;gap:8px;align-items:end;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <div>
       <label class="label">Event type</label>

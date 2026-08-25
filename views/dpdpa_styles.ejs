@@ -2,3 +2,34 @@
     DPDPA page render, carrying a private palette that matched nothing else in
     the product. Now a fingerprinted file built on the shared app.css tokens. %>
 <link rel="stylesheet" href="/dpdpa.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>">
+<style>
+  /* View-level phone refinements. The module stylesheet supplies the desktop
+     system; these overrides keep workbench actions and the assessment sheet
+     operable in the 320-430px range without changing the shared shell. */
+  @media (max-width:760px) {
+    .dp { min-width:0; }
+    .dp .page-head > .btn { width:100%; }
+    .dp-group-head { top:56px; }
+    .dp-form-foot { align-items:stretch;flex-direction:column; }
+    .dp-form-foot .btn { width:100%; }
+    .dp-filter .row { display:grid;grid-template-columns:1fr 1fr;width:100%; }
+    .dp-filter .row .btn { width:100%; }
+    .dp-doc-toolbar > .row { display:grid;grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .dp-doc-toolbar > .row > .btn,.dp-doc-toolbar > .row > form { width:100%; }
+    .dp-doc-toolbar form.row { display:grid;grid-template-columns:minmax(0,1fr); }
+    #dpNewAssessment header,#dpNewAssessment footer { padding-left:16px !important;padding-right:16px !important; }
+    #dpNewAssessment > form > div { padding-left:16px !important;padding-right:16px !important; }
+    #dpNewAssessment [style*="grid-template-columns"] { grid-template-columns:minmax(0,1fr) !important; }
+    #dpNewAssessment footer { align-items:stretch !important;flex-direction:column; }
+    #dpNewAssessment footer .row { display:grid;grid-template-columns:1fr 1fr;width:100%; }
+  }
+  @media (max-width:430px) {
+    .dp-ob-body { padding:13px 11px 15px; }
+    .dp-group-head { align-items:flex-start; }
+    .dp-group-head h3 { flex:1 1 100%;overflow-wrap:anywhere; }
+    .dp-gate-head { align-items:flex-start;flex-wrap:wrap; }
+    .dp-gate-head .meta { margin-left:0; }
+    .dp-doc-toolbar > .row,#dpNewAssessment footer .row { grid-template-columns:minmax(0,1fr); }
+    .dp-doc-toolbar .btn,.dp-doc-toolbar .select { width:100%; }
+  }
+</style>

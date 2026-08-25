@@ -1,11 +1,23 @@
 <%- include('partials/header', { title: 'ISO 42001 readiness', user, ws, active: 'iso42001-readiness' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-readiness-head{align-items:stretch!important;flex-direction:column;width:100%}
+    .iso42-readiness-head>a{width:100%}
+    .iso42-readiness-head>div{text-align:left!important}
+    .iso42-readiness-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+    .iso42-readiness-main{grid-template-columns:minmax(0,1fr)!important}
+    .iso42-readiness-status{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
+  }
+  @media(max-width:360px){.iso42-readiness-kpis{grid-template-columns:minmax(0,1fr)!important}}
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 certification readiness</h1>
     <div class="page-subtitle">Live assessment against ISO/IEC 42001:2023 Stage 1 (documentation) and Stage 2 (operational) audit requirements.</div>
   </div>
-  <div style="display:flex;align-items:center;gap:14px;">
+  <div class="iso42-readiness-head" style="display:flex;align-items:center;gap:14px;">
     <a href="/workspaces/<%= ws.id %>/iso42001/readiness/blockers" class="btn btn-primary btn-xs">Pre-cert blocker check →</a>
     <% if (r.daysToTarget !== null) { %>
       <div style="text-align:right">
@@ -18,7 +30,7 @@
 
 <div class="callout" style="margin-bottom:16px"><strong>Compliance Sphere ISO 42001 Readiness Method v2026.1.</strong> The readiness bands and 0 to 4 capability scale are proprietary consulting measures. They are not an ISO score and do not replace a certification body's audit decision.</div>
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+<div class="iso42-readiness-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
   <div class="panel kpi">
     <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
     <div class="kpi-label">Stage 1 readiness</div>
@@ -41,7 +53,7 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+<div class="iso42-readiness-main" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
   <div class="panel">
     <div class="panel-head"><h2>Detected gaps</h2><span class="meta"><%= r.flags.length %> total</span></div>
     <% if (r.flags.length === 0) { %>
@@ -110,7 +122,7 @@
 
 <div class="panel">
   <div class="panel-head"><h2>Control implementation status</h2></div>
-  <div class="panel-pad" style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
+  <div class="panel-pad iso42-readiness-status" style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
     <div><div class="kpi-num num text-success"><%= r.metrics.implemented %></div><div class="kpi-meta">Implemented</div></div>
     <div><div class="kpi-num num text-warn"><%= r.metrics.partial %></div><div class="kpi-meta">Partial</div></div>
     <div><div class="kpi-num num" style="color:#1d4ed8"><%= r.metrics.wip %></div><div class="kpi-meta">In progress</div></div>

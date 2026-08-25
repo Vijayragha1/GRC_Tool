@@ -1,5 +1,19 @@
 <%- include('partials/header', { title: 'ISO 42001 roadmap', user, ws, active: 'iso42001-roadmap' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-roadmap-attention{align-items:flex-start!important;display:grid!important;grid-template-columns:8px minmax(0,1fr) auto}
+    .iso42-roadmap-attention>.tag{grid-column:2}
+    .iso42-roadmap-attention>.btn{grid-column:3;grid-row:1/3}
+    .iso42-roadmap-phases{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+    .iso42-roadmap-milestone{grid-template-columns:30px minmax(0,1fr)!important}
+    .iso42-roadmap-milestone>.btn{grid-column:2;width:100%}
+    .iso42-treatment-board{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:min(84vw,320px);overflow-x:auto;scroll-snap-type:x proximity;overscroll-behavior-inline:contain}
+    .iso42-treatment-board>div{scroll-snap-align:start}
+  }
+  @media(max-width:430px){.iso42-roadmap-phases{grid-template-columns:minmax(0,1fr)!important}}
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 roadmap</h1>
@@ -23,7 +37,7 @@
     <% needsAttention.forEach(c => {
          const dotColor = c.severity === 'high' ? '#dc2626' : c.severity === 'medium' ? '#ca8a04' : 'var(--accent)';
     %>
-      <div style="padding:9px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+      <div class="iso42-roadmap-attention" style="padding:9px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
         <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:<%= dotColor %>;"></span>
         <div style="flex:1;min-width:0;">
           <div class="text-md" style="font-weight:500;"><%= c.title %></div>
@@ -53,7 +67,7 @@
     <span class="meta"><strong><%= completed %></strong> / <%= roadmap.length %> done<% if (partials) { %> &middot; <%= partials %> in progress<% } %></span>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border);">
+  <div class="iso42-roadmap-phases" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border);">
     <% phases.forEach((ph, idx) => {
          const items = roadmap.filter(r => r.phase === ph.key);
          const phDone = items.filter(r => r.done).length;
@@ -84,7 +98,7 @@
          const tickBg    = r.done ? 'rgba(22,163,74,0.10)' : r.partial ? 'rgba(234,88,12,0.10)' : 'var(--bg-subtle)';
          const tickGlyph = r.done ? '✓' : r.partial ? '·' : (i + 1);
     %>
-      <div style="display:grid;grid-template-columns:30px 1fr auto;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:start;">
+      <div class="iso42-roadmap-milestone" style="display:grid;grid-template-columns:30px 1fr auto;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:start;">
         <div style="width:26px;height:26px;border-radius:13px;background:<%= tickBg %>;color:<%= tickColor %>;display:flex;align-items:center;justify-content:center;font-weight: 500;font-size:12px;flex-shrink:0;"><%= tickGlyph %></div>
         <div style="min-width:0;">
           <div style="font-size:13.5px;font-weight:500;line-height:1.3;"><%= r.label %> <span class="meta" style="font-weight:400;">&middot; <%= r.clause %></span></div>
@@ -103,7 +117,7 @@
     <h2>Annex A treatment phasing</h2>
     <span class="meta">individual controls by planned treatment phase - drag-replace via the dropdown</span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid var(--border);">
+  <div class="iso42-treatment-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid var(--border);">
     <% grouped.forEach((g, idx) => { %>
       <div style="padding:10px;min-height:240px;<%= idx > 0 ? 'border-left:1px solid var(--border);' : '' %>">
         <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">

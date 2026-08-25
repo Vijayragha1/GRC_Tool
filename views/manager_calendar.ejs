@@ -100,6 +100,27 @@
     .mc-span,
     .mc-chip
     { font-size: 11px; }
+    .mc-year { overflow-x: auto; overscroll-behavior-inline: contain; }
+    .mc-year .mc-yrow { min-width: 720px; }
+    .mc-calendar-panel {
+      overflow-x: auto !important;
+      overscroll-behavior-inline: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .mc-calendar-panel > .mc-cal-head,
+    .mc-calendar-panel > .mc-week { min-width: 720px; }
+    .mc-od-row {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      gap: 5px 8px;
+      align-items: start;
+      padding: 11px 0;
+    }
+    .mc-od-row > .mc-dot { grid-column: 1; grid-row: 1; margin-top: 5px; }
+    .mc-od-row > :not(.mc-dot) { grid-column: 2; }
+    .mc-od-row .mc-ctag { max-width: 100%; width: max-content; }
+    .mc-od-row > a { white-space: normal !important; }
+    .mc-od-row > span:last-child { min-width: 0 !important; text-align: left !important; }
   }
 </style>
 
@@ -192,7 +213,7 @@
   </div>
 <% } else { %>
   <%# ===== Month detail: day grid with engagement span bars ===== %>
-  <div class="panel" style="overflow:hidden;">
+  <div class="panel mc-calendar-panel" style="overflow:hidden;">
     <div class="mc-cal-head">
       <% ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => { %><div class="mc-dow"><%= d %></div><% }) %>
     </div>

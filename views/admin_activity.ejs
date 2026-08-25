@@ -1,5 +1,18 @@
 <%- include('partials/header', { title: 'Activity', user: user, ws: ws, active: active }) %>
 
+<style>
+  @media (max-width: 600px) {
+    .admin-activity-row {
+      grid-template-columns: 1fr !important;
+      gap: 4px !important;
+      min-height: 44px;
+      padding: 11px 14px !important;
+    }
+    .admin-activity-row > span { min-width: 0; white-space: normal !important; }
+    .admin-activity-row > span:last-child { font-weight: 600 !important; }
+  }
+</style>
+
 <div class="page-head" style="margin-bottom:18px;">
   <div>
     <h1 class="page-title">Activity</h1>
@@ -25,7 +38,7 @@
     <% events.forEach(a => {
         const actionLabel = (a.action || '').replace(/_/g, ' ');
     %>
-      <a href="/workspaces/<%= a.workspace_id %>" style="display:grid;grid-template-columns:160px 1fr auto;gap:14px;padding:9px 18px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
+      <a class="admin-activity-row" href="/workspaces/<%= a.workspace_id %>" style="display:grid;grid-template-columns:160px 1fr auto;gap:14px;padding:9px 18px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;align-items:center;">
         <span class="num text-xs" style="font-family:'SF Mono',Menlo,monospace;color:var(--text-tertiary);"><%= a.created_at %></span>
         <span style="font-size:13px;color:var(--text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
           <strong style="font-weight: 500;color:var(--text);"><%= a.user_name || 'system' %></strong>

@@ -51,6 +51,20 @@
   @media (max-width: 760px) {
     .deliv-fmt
     { font-size: 11px; }
+    .deliv-section-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+    .deliv-card {
+      grid-template-columns: 48px minmax(0, 1fr);
+      gap: 10px;
+      padding: 14px;
+    }
+    .deliv-fmt { width: 44px; }
+    .deliv-actions {
+      grid-column: 1 / -1;
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+    .deliv-actions .btn { flex: 1 1 130px; justify-content: center; }
+    .deliv-card > div:empty { display: none; }
   }
 </style>
 

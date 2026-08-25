@@ -1,5 +1,18 @@
 <%- include('partials/header', { title: 'Gap assessment', user, ws, active: 'gap-assessment' }) %>
 
+<style>
+  @media (max-width:760px) {
+    .gap-status-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:12px 8px !important; }
+    .gap-pass-head { align-items:stretch !important;flex-direction:column; }
+    .gap-pass-actions { align-items:stretch !important;display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));width:100%; }
+    .gap-pass-actions form,.gap-pass-actions .btn { width:100%; }
+    .gap-trend-grid { grid-template-columns:minmax(0,1fr) !important; }
+  }
+  @media (max-width:430px) {
+    .gap-pass-actions { grid-template-columns:minmax(0,1fr); }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Gap assessment</h1>
@@ -49,7 +62,7 @@
       <div class="text-md" style="margin-top:4px;line-height:1.5;">
         Since <strong>Pass <%= orientation.priorPass.pass_number %><% if (orientation.priorPass.label) { %> · <%= orientation.priorPass.label %><% } %></strong> closed on <%= orientation.since.slice(0,10) %>:
       </div>
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;">
+      <div class="gap-status-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;">
         <% function chip(label, n, link) { %>
           <a href="<%= link %>" class="panel" style="padding:8px 10px;text-align:center;text-decoration:none;background:var(--bg);">
             <div class="num" style="font-size:18px;font-weight: 500;line-height:1.1;color:var(--accent-deep);"><%= n %></div>
@@ -174,7 +187,7 @@
     <div class="divide-row">
       <% passes.forEach(p => { %>
         <div style="padding:14px 18px;<%= p.status === 'in_progress' ? 'background:var(--accent-soft);' : '' %>">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div class="gap-pass-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
             <div style="flex:1;min-width:0;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <span class="text-xl text-ink" style="font-weight: 500;">Pass <%= p.pass_number %></span>
@@ -194,7 +207,7 @@
                 <div class="text-md" style="margin-top:5px;line-height:1.5;"><%= p.notes %></div>
               <% } %>
             </div>
-            <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+            <div class="gap-pass-actions" style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
               <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">PDF ↓</a>
               <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">Word ↓</a>
               <% if (p.status === 'completed') { %><a href="/workspaces/<%= ws.id %>/delivery?view=reports" class="btn btn-ghost btn-xs text-xs">Governed reports →</a><% } %>
@@ -238,7 +251,7 @@
   <div class="panel" style="margin-top:18px;">
     <div class="panel-head"><h3>Trend across passes <span class="meta text-base" style="font-weight:400;">- average maturity (0–4) per Annex A theme</span></h3></div>
     <div class="panel-pad">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+      <div class="gap-trend-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
         <% themeKeys.forEach(k => {
              const themeName = themeNames[k];
              const points = trend.map(t => ({ pass: t.pass, val: t.themes[k].avg, count: t.themes[k].count }));

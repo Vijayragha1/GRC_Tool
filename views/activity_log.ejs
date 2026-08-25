@@ -1,5 +1,12 @@
 <%- include('partials/header', { title: 'Activity log', user, ws, active: 'activity' }) %>
 
+<style>
+  @media (max-width: 600px) {
+    .activity-diff-grid { grid-template-columns: 1fr !important; }
+    .activity-diff-grid pre { overflow-wrap: anywhere; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Activity log</h1>
@@ -55,7 +62,7 @@
             <% if (l.before_state || l.after_state) { %>
               <details>
                 <summary class="text-sm" style="cursor:pointer;color:var(--accent);">show diff</summary>
-                <div class="text-sm" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;font-family:ui-monospace,monospace;">
+                <div class="text-sm activity-diff-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;font-family:ui-monospace,monospace;">
                   <div class="text-danger" style="background:rgba(220,38,38,0.06);padding:6px 8px;border-radius:4px;"><strong>Before</strong><pre style="white-space:pre-wrap;margin:4px 0 0;"><%= l.before_state || '{}' %></pre></div>
                   <div class="text-success" style="background:rgba(22,163,74,0.06);padding:6px 8px;border-radius:4px;"><strong>After</strong><pre style="white-space:pre-wrap;margin:4px 0 0;"><%= l.after_state || '{}' %></pre></div>
                 </div>

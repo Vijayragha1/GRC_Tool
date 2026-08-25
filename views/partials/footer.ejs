@@ -10,7 +10,7 @@
     <span class="sr-only" id="cpSearchLabel">Search <%= clientFooterMode ? 'this engagement' : 'Compliance Sphere' %></span>
     <div class="cp-search">
       <svg class="cp-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input id="cpInput" placeholder="<%= clientFooterMode ? 'Search pages in this engagement…' : 'Search controls, risks, documents, clients…' %>" autocomplete="off" spellcheck="false" aria-label="Search">
+      <input type="search" id="cpInput" placeholder="<%= clientFooterMode ? 'Search pages in this engagement…' : 'Search controls, risks, documents, clients…' %>" autocomplete="off" spellcheck="false" aria-label="Search">
       <button type="button" class="btn btn-ghost btn-xs" onclick="closePalette()" aria-label="Close search">Close</button>
     </div>
     <div class="cp-results" id="cpResults"><div class="cp-empty">Start typing to search</div></div>
@@ -70,14 +70,14 @@
 <div class="toast-stack" id="toastStack" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Global confirm/alert modal - replaces native window.confirm/alert across the app -->
-<div id="appConfirmModal" role="dialog" aria-modal="true" aria-labelledby="appConfirmKind" aria-describedby="appConfirmBody" aria-hidden="true" hidden style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
-  <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
+<div id="appConfirmModal" class="app-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="appConfirmKind" aria-describedby="appConfirmBody" aria-hidden="true" hidden style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1100;align-items:center;justify-content:center;">
+  <div class="app-confirm-sheet" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;width:440px;max-width:92vw;box-shadow:0 24px 48px rgba(0,0,0,0.25);overflow:hidden;">
     <div id="appConfirmHead" style="padding:14px 18px;border-bottom:1px solid var(--border);">
       <div class="text-xs text-tertiary" id="appConfirmKind" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;">Confirm</div>
       <div id="appConfirmTitle" style="font-size:15px;font-weight: 500;margin-top:4px;display:none;"></div>
     </div>
     <div class="text-lg" id="appConfirmBody" style="padding:16px 18px;line-height:1.55;"></div>
-    <div style="padding:12px 18px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:flex-end;gap:8px;">
+    <div class="app-confirm-actions" style="padding:12px 18px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;justify-content:flex-end;gap:8px;">
       <button type="button" id="appConfirmCancel" class="btn btn-ghost btn-xs">Cancel</button>
       <button type="button" id="appConfirmOk" class="btn btn-primary btn-xs">OK</button>
     </div>
@@ -364,6 +364,10 @@ window._unmarkBusy = function (form) {
       }
     }
 
+    // A full shell swap introduces a fresh drawer node. Reapply its mobile
+    // inert and ARIA state before focus can move into an off-canvas sidebar.
+    if (typeof syncMobileSidebar === 'function') syncMobileSidebar();
+
     // Re-run any inline scripts that arrived in the swapped subtree.
     document.querySelectorAll('.main script').forEach(old => {
       const s = document.createElement('script');
@@ -561,19 +565,100 @@ function toggleTheme() {
 }
 
 // ----- Sidebar -----
+let sidebarReturnFocus = null;
+const mobileSidebarMedia = window.matchMedia('(max-width: 900px)');
+
+function sidebarFocusableItems(sidebar) {
+  return Array.from(sidebar.querySelectorAll(
+    'a[href], button:not([disabled]), summary, input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter(el => !el.hidden && el.getClientRects().length > 0);
+}
+
+function syncMobileSidebar() {
+  const app = document.getElementById('app');
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const menuButton = document.getElementById('mobileMenuButton');
+  if (!sidebar) return;
+
+  const mobile = mobileSidebarMedia.matches;
+  const open = mobile && sidebar.classList.contains('open');
+  sidebar.toggleAttribute('inert', mobile && !open);
+  sidebar.setAttribute('aria-hidden', mobile && !open ? 'true' : 'false');
+  if (mobile) {
+    sidebar.setAttribute('role', 'dialog');
+    sidebar.setAttribute('aria-modal', 'true');
+  } else {
+    sidebar.removeAttribute('role');
+    sidebar.removeAttribute('aria-modal');
+  }
+  if (backdrop) backdrop.classList.toggle('open', open);
+  if (menuButton) menuButton.setAttribute('aria-expanded', String(open));
+  app?.classList.toggle('drawer-open', open);
+}
+
+function toggleSidebar(open) {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  const shouldOpen = Boolean(open) && mobileSidebarMedia.matches;
+  if (shouldOpen && !sidebar.classList.contains('open')) {
+    sidebarReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+  sidebar.classList.toggle('open', shouldOpen);
+  syncMobileSidebar();
+
+  if (shouldOpen) {
+    const closeButton = sidebar.querySelector('.sidebar-mobile-close');
+    window.requestAnimationFrame(() => closeButton?.focus({ preventScroll: true }));
+  } else if (sidebarReturnFocus?.isConnected) {
+    sidebarReturnFocus.focus({ preventScroll: true });
+    sidebarReturnFocus = null;
+  }
+}
+
 (function() {
   if (localStorage.getItem('isms-sidebar') === 'collapsed') {
     document.getElementById('app')?.classList.add('sidebar-collapsed');
   }
   syncSidebarCollapseButton();
+  syncMobileSidebar();
+
+  const handleSidebarBreakpoint = () => {
+    document.getElementById('sidebar')?.classList.remove('open');
+    sidebarReturnFocus = null;
+    syncMobileSidebar();
+  };
+  if (mobileSidebarMedia.addEventListener) mobileSidebarMedia.addEventListener('change', handleSidebarBreakpoint);
+  else mobileSidebarMedia.addListener(handleSidebarBreakpoint);
+
+  document.addEventListener('click', event => {
+    if (!mobileSidebarMedia.matches || !event.target.closest('#sidebar a[href]')) return;
+    toggleSidebar(false);
+  });
+
+  document.addEventListener('keydown', event => {
+    const sidebar = document.getElementById('sidebar');
+    if (!mobileSidebarMedia.matches || !sidebar?.classList.contains('open')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      toggleSidebar(false);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const items = sidebarFocusableItems(sidebar);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 })();
-function toggleSidebar(open) {
-  const sb = document.getElementById('sidebar');
-  const bd = document.getElementById('sidebarBackdrop');
-  if (!sb) return;
-  sb.classList.toggle('open', open);
-  if (bd) bd.classList.toggle('open', open);
-}
 function syncSidebarCollapseButton() {
   const app = document.getElementById('app');
   const button = document.getElementById('sidebarCollapseButton');

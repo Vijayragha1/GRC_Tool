@@ -1,11 +1,13 @@
 <%- include('partials/header', { title: 'ISO 42001 SoA snapshots', user, ws, active: 'iso42001-soa' }) %>
 
+<style>@media(max-width:760px){.iso42-snapshot-create,.iso42-snapshot-create .btn{width:100%}}</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 Statement of Applicability</h1>
     <div class="page-subtitle">Snapshots: immutable, hashed copies of the SoA at a point in time. Auditors compare across cycles to confirm the SoA has evolved deliberately.</div>
   </div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/snapshot" style="display:inline">
+  <form class="iso42-snapshot-create" method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/snapshot" style="display:inline">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <input type="hidden" name="label" value="Manual snapshot">
     <button class="btn btn-primary btn-xs">Capture snapshot now</button>

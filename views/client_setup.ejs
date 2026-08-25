@@ -1,5 +1,22 @@
 <%- include('partials/header', { title: 'Client setup', user, ws, active: 'setup' }) %>
 
+<style>
+  @media (max-width: 600px) {
+    .client-setup-head-actions {
+      align-items: stretch;
+      flex-direction: column;
+      width: 100%;
+    }
+    .client-setup-head-actions .btn { width: 100%; justify-content: center; }
+    .client-setup-module-options { grid-template-columns: 1fr !important; }
+    .client-setup-enable-row {
+      align-items: stretch !important;
+      flex-direction: column;
+    }
+    .client-setup-enable-row .btn { width: 100%; justify-content: center; }
+  }
+</style>
+
 <%# Every programme and module this client was sold, each with its own scoping
     step and a status computed live from that programme's own signal. Before
     this page existed, creating a client with four programmes sent the
@@ -17,7 +34,7 @@
       <% } %>
     </div>
   </div>
-  <div class="row">
+  <div class="row client-setup-head-actions">
     <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>?skipSetupRedirect=1">Open the client overview</a>
     <% if (setup.nextStep) { %>
       <a class="btn btn-primary" href="<%= setup.nextStep.href %>">Start with <%= setup.nextStep.programme %></a>
@@ -86,7 +103,7 @@
       <div class="panel-pad">
         <form method="POST" action="/workspaces/<%= ws.id %>/modules/tprm">
           <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
+          <div class="client-setup-module-options" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
             <% [['assessment_only', 'One-off assessment', 'Assess selected third parties and issue recommendations.'],
                 ['programme_setup', 'Programme setup', 'Establish inventory, methodology and governance.'],
                 ['managed_lifecycle', 'Managed lifecycle', 'Run the provider lifecycle on the client\'s behalf.']].forEach(option => { %>
@@ -96,7 +113,7 @@
               </label>
             <% }) %>
           </div>
-          <div class="row" style="margin-top:14px;align-items:center;">
+          <div class="row client-setup-enable-row" style="margin-top:14px;align-items:center;">
             <button class="btn btn-primary" type="submit">Enable third-party risk</button>
             <span class="meta text-xs">The contracted service model decides what the module permits.</span>
           </div>

@@ -9,6 +9,27 @@
   .diag-pill-yes:has(input:checked)     { background:#16a34a; color:#fff; border-color:#16a34a; font-weight: 500; }
   .diag-pill-partial:has(input:checked) { background:#a16207; color:#fff; border-color:#a16207; font-weight: 500; }
   .diag-pill-no:has(input:checked)      { background:#b91c1c; color:#fff; border-color:#b91c1c; font-weight: 500; }
+  @media (max-width: 760px) {
+    .iso42-assessment > .page-head > .row-center { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%; }
+    .iso42-assessment [style*="grid-template-columns:1fr 1fr"],
+    .iso42-assessment [style*="grid-template-columns:repeat(3,1fr)"],
+    .iso42-assessment [style*="grid-template-columns:1fr 220px"],
+    .iso42-assessment [style*="grid-template-columns:1fr 100px auto"] {
+      grid-template-columns:minmax(0,1fr) !important;
+    }
+    .iso42-assessment [data-diagnostic-group] { justify-content:flex-start !important;flex-wrap:wrap; }
+    .iso42-assessment .diag-pill { min-height:44px;flex:1 1 72px;justify-content:center; }
+    .iso42-form-actions { display:grid !important;grid-template-columns:1fr 1fr;align-items:stretch !important; }
+    .iso42-form-actions .btn { width:100%; }
+    .iso42-support-grid { grid-template-columns:minmax(0,1fr) !important; }
+    .iso42-upload-grid,.iso42-link-form { grid-template-columns:minmax(0,1fr) !important; }
+    .iso42-upload-grid .col-full { grid-column:1 !important; }
+    .iso42-upload-grid .col-full[style*="display:flex"] { align-items:stretch !important;flex-direction:column; }
+  }
+  @media (max-width: 430px) {
+    .iso42-assessment > .page-head > .row-center,.iso42-form-actions { grid-template-columns:minmax(0,1fr); }
+    .iso42-assessment [style*="grid-template-columns:140px 1fr"] { grid-template-columns:minmax(0,1fr) !important; }
+  }
 </style>
 
 <%
@@ -37,6 +58,7 @@
     : refCode + ' - ' + (categoryNames[item.category] || 'Annex A');
 %>
 
+<div class="iso42-assessment">
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 gap assessment</h1>
@@ -359,7 +381,7 @@
       <textarea class="textarea" name="notes" rows="3" placeholder="<%= priorPassNotes && priorPassNotes.length ? 'For this pass: verify what was implemented, what is still outstanding, what evidence you saw.' : 'Describe what is in place today, what is missing, and what you will do about it.' %>"><%= state.notes || '' %></textarea>
     </div>
 
-    <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;">
+    <div class="iso42-form-actions" style="display:flex;gap:6px;align-items:center;justify-content:flex-end;">
       <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
       <button name="action" value="save" class="btn btn-primary">Save &amp; next →</button>
     </div>
@@ -433,7 +455,7 @@
     <h2 class="text-xl">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
     <span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span>
   </div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
+  <form class="iso42-upload-grid" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <input type="hidden" name="iso_item_id" value="<%= item.id %>">
     <input type="hidden" name="redirect_to" value="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>">
@@ -483,7 +505,7 @@
 </div>
 
 <!-- Open NCs + Risks + Documents panels -->
-<div style="display:grid;grid-template-columns:<%= isClause ? '1fr 1fr' : '1fr 1fr 1fr' %>;gap:14px;margin-bottom:16px;">
+<div class="iso42-support-grid" style="display:grid;grid-template-columns:<%= isClause ? '1fr 1fr' : '1fr 1fr 1fr' %>;gap:14px;margin-bottom:16px;">
   <!-- Open NCs -->
   <div class="panel">
     <div class="panel-head">
@@ -534,7 +556,7 @@
       </div>
     <% } %>
     <% if (linkableRisks && linkableRisks.length > 0) { %>
-      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/risks" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end;">
+      <form class="iso42-link-form" method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/risks" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end;">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
         <div>
           <label class="label text-xxs">Link a risk</label>
@@ -575,7 +597,7 @@
       </div>
     <% } %>
     <% if (linkableDocs && linkableDocs.length > 0) { %>
-      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
+      <form class="iso42-link-form" method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
         <div>
           <label class="label text-xxs">Link a document</label>
@@ -594,6 +616,8 @@
       </form>
     <% } %>
   </div>
+</div>
+
 </div>
 
 <script>

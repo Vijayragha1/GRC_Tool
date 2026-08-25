@@ -41,7 +41,7 @@
       <label class="label">Client context</label>
       <textarea id="ctxBox" class="textarea" rows="10" style="font-family:inherit;line-height:1.5;"><%= prefillContext %></textarea>
 
-      <div class="row" style="margin-top:14px;align-items:flex-end;justify-content:space-between;">
+      <div class="row risk-guide-context-actions" style="margin-top:14px;align-items:flex-end;justify-content:space-between;">
         <div>
           <label class="label">How many risks to draft?</label>
           <select id="ctxCount" class="select" style="width:auto;">
@@ -84,7 +84,7 @@
   <!-- sticky commit bar -->
   <form id="commitForm" method="POST" action="/workspaces/<%= ws.id %>/risks/guided/commit" onsubmit="return buildPayload()">
     <input type="hidden" name="payload" id="commitPayload">
-    <div style="position:sticky;bottom:0;background:var(--bg-deep);border-top:1px solid var(--border);padding:12px 0;margin-top:8px;display:flex;align-items:center;justify-content:space-between;z-index:5;">
+    <div class="risk-guide-commit-bar" style="position:sticky;bottom:0;background:var(--bg-deep);border-top:1px solid var(--border);padding:12px 0;margin-top:8px;display:flex;align-items:center;justify-content:space-between;z-index:5;">
       <div class="meta"><span id="selCount">0</span> of <span id="totalCount">0</span> selected</div>
       <div class="row">
         <button type="button" class="btn btn-secondary btn-xs" onclick="setAllSelected(true)">Select all</button>
@@ -102,6 +102,23 @@
 .ctrl-chip { display:inline-flex;align-items:center;gap:5px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11.5px;margin:2px 4px 2px 0; }
 .ctrl-chip button { border:none;background:none;cursor:pointer;color:var(--text-tertiary);font-size:13px;line-height:1;padding:0; }
 .why-box { background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-top:10px; }
+@media (max-width: 600px) {
+  #gStepper { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
+  #gStepper .g-step { flex: 0 0 auto; }
+  .risk-guide-context-actions { align-items: stretch !important; flex-direction: column; }
+  .risk-guide-context-actions > div,
+  .risk-guide-context-actions select,
+  .risk-guide-context-actions .btn { width: 100% !important; }
+  .risk-guide-context-actions .btn { justify-content: center; }
+  .risk-guide-commit-bar {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0 max(10px, env(safe-area-inset-bottom)) !important;
+  }
+  .risk-guide-commit-bar > .row { display: grid; grid-template-columns: 1fr 1fr; }
+  .risk-guide-commit-bar #commitBtn { grid-column: 1 / -1; justify-content: center; }
+}
 </style>
 
 <script>

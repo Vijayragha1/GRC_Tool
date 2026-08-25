@@ -1,5 +1,12 @@
 <%- include('partials/header', { title: 'ISO 42001 SoA snapshot diff', user, ws, active: 'iso42001-soa' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-snapshot-compare{grid-template-columns:minmax(0,1fr)!important}
+    .iso42-snapshot-compare .btn{width:100%}
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 Statement of Applicability</h1>
@@ -15,7 +22,7 @@
     <a href="/workspaces/<%= ws.id %>/iso42001/soa/snapshots" class="btn btn-primary btn-xs" style="margin-top:10px;">Go to snapshots</a>
   </div>
 <% } else { %>
-  <form method="GET" class="panel" style="padding:14px;display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px;">
+  <form method="GET" class="panel iso42-snapshot-compare" style="padding:14px;display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px;">
     <div>
       <label class="label">Earlier snapshot (A)</label>
       <select class="select" name="a">

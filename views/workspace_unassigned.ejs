@@ -1,5 +1,23 @@
 <%- include('partials/header', { title: ws.client_name, user, ws, active: 'overview' }) %>
 
+<style>
+  .unassigned-option-grid > * { min-width: 0; }
+  @media (max-width: 600px) {
+    .unassigned-section { padding: 18px 14px !important; }
+    .unassigned-option-grid { grid-template-columns: 1fr !important; }
+    .unassigned-form-actions {
+      align-items: stretch !important;
+      flex-direction: column;
+    }
+    .unassigned-form-actions .btn { width: 100%; justify-content: center; }
+    .unassigned-setup-nudge {
+      align-items: stretch !important;
+      flex-direction: column;
+    }
+    .unassigned-setup-nudge .btn { width: 100%; justify-content: center; }
+  }
+</style>
+
 <div class="cm-programme-head">
   <div>
     <div class="eyebrow">Client overview · Programme setup</div>
@@ -9,14 +27,14 @@
   <a class="btn" href="#programme-enable-form">Choose services</a>
 </div>
 
-<section class="panel" style="padding:28px;margin-bottom:18px;">
+<section class="panel unassigned-section" style="padding:28px;margin-bottom:18px;">
   <div style="max-width:760px;">
     <span class="cm-kicker">Programme decision pending</span>
     <h2 style="font-family:var(--font-serif);font-size:25px;font-weight:500;margin:8px 0;">Choose the assessment programmes when the engagement is ready</h2>
     <p class="page-subtitle" style="max-width:680px;line-height:1.6;">The client can remain in planning without being treated as an ISO engagement. Select any combination below; programme-specific dashboards and navigation will appear only for what you enable.</p>
   </div>
   <form id="programme-enable-form" method="POST" action="/workspaces/<%= ws.id %>/frameworks" style="margin-top:22px;">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
+    <div class="unassigned-option-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
       <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input id="enable-iso27001-programme" type="checkbox" name="frameworks" value="iso27001" style="margin-top:3px;"><span><strong style="display:block;">ISO 27001:2022</strong><span class="meta">Information security management and certification readiness</span></span></label>
       <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="checkbox" name="frameworks" value="iso42001" style="margin-top:3px;"><span><strong style="display:block;">ISO 42001:2023</strong><span class="meta">AI management system governance and assurance</span></span></label>
       <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="checkbox" name="frameworks" value="csf" style="margin-top:3px;"><span><strong style="display:block;">NIST CSF 2.0</strong><span class="meta">Cybersecurity maturity and investment planning</span></span></label>
@@ -25,7 +43,7 @@
     <fieldset id="enable-iso27001-outcome" hidden style="border:1px solid var(--border);border-radius:8px;padding:14px;margin:16px 0 0;">
       <legend class="label" style="padding:0 5px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
       <p class="meta" style="margin:0 0 10px;line-height:1.5;">Choose the contracted endpoint before ISO 27001 is enabled. This creates the matching governed engagement and delivery plan.</p>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+      <div class="unassigned-option-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
         <% outcomeOptions.forEach(option => { %>
           <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;border:1px solid var(--border);border-radius:7px;">
             <input type="radio" name="engagement_outcome" value="<%= option.value %>" style="margin-top:3px;">
@@ -38,14 +56,14 @@
         <input class="input" id="enable-target-cert-date" type="date" name="target_cert_date" disabled>
       </div>
     </fieldset>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:16px;">
+    <div class="unassigned-form-actions" style="display:flex;align-items:center;gap:12px;margin-top:16px;">
       <button class="btn btn-primary">Enable selected programmes</button>
       <span class="meta">Leaving all unchecked keeps the client in planning.</span>
     </div>
   </form>
 </section>
 
-<section class="panel" style="padding:28px;margin-bottom:18px;">
+<section class="panel unassigned-section" style="padding:28px;margin-bottom:18px;">
   <div style="max-width:760px;">
     <span class="cm-kicker">Operational module</span>
     <h2 style="font-family:var(--font-serif);font-size:25px;font-weight:500;margin:8px 0;">Run third-party risk without enabling an assessment framework</h2>
@@ -53,12 +71,12 @@
   </div>
   <% if (typeof canEnableTprm !== 'undefined' && canEnableTprm) { %>
   <form method="POST" action="/workspaces/<%= ws.id %>/modules/tprm" style="margin-top:18px;">
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+    <div class="unassigned-option-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
       <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['programme_setup','Programme setup','Establish inventory, methodology and governance.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
         <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="radio" name="service_model" value="<%= option[0] %>" required style="margin-top:3px;"><span><strong style="display:block;"><%= option[1] %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option[2] %></span></span></label>
       <% }) %>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:16px;"><button class="btn btn-primary">Enable third-party risk</button><span class="meta">Frameworks can still be assigned later.</span></div>
+    <div class="unassigned-form-actions" style="display:flex;align-items:center;gap:12px;margin-top:16px;"><button class="btn btn-primary">Enable third-party risk</button><span class="meta">Frameworks can still be assigned later.</span></div>
   </form>
   <% } else { %>
     <div class="callout callout-info" style="margin-top:18px;">A firm manager must choose the contracted service model and enable this module.</div>
@@ -89,7 +107,7 @@
 </script>
 
 <% if (typeof setupIncomplete !== 'undefined' && setupIncomplete) { %>
-  <div class="panel panel-pad" style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
+  <div class="panel panel-pad unassigned-setup-nudge" style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
     <div><strong>Client setup is in progress</strong><div class="meta"><%= intakeAnswered %> of 25 scoping questions answered.</div></div>
     <a class="btn btn-secondary btn-xs" href="#programme-enable-form">Continue setup →</a>
   </div>

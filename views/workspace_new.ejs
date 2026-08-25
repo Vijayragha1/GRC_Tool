@@ -1,5 +1,17 @@
 <%- include('partials/header', { title: 'New client', user, ws, active: 'dashboard' }) %>
 
+<style>
+  .client-create-form > *,
+  .client-create-options > * { min-width: 0; }
+  @media (max-width: 600px) {
+    .client-create-form,
+    .client-create-options { grid-template-columns: 1fr !important; }
+    .client-create-form fieldset { padding: 11px !important; }
+    .client-create-actions { align-items: stretch; flex-direction: column; }
+    .client-create-actions .btn { width: 100%; justify-content: center; }
+  }
+</style>
+
 <%
   const savedForm = (typeof form !== 'undefined' && form) ? form : {};
   const selectedFrameworks = Array.isArray(savedForm.frameworks)
@@ -20,7 +32,7 @@
 </div>
 
 <div class="panel">
-  <form method="POST" action="/workspaces" class="panel-pad" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <form method="POST" action="/workspaces" class="panel-pad client-create-form" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
     <% if (typeof formError !== 'undefined' && formError) { %>
       <div class="col-full" role="alert" style="padding:11px 13px;border:1px solid var(--danger,#b91c1c);border-radius:7px;background:rgba(185,28,28,.05);color:var(--danger,#b91c1c);"><%= formError %></div>
     <% } %>
@@ -43,7 +55,7 @@
     <fieldset id="iso27001-outcome-fieldset" class="col-full" <%= selectedFrameworks.includes('iso27001') ? '' : 'hidden' %> style="border:1px solid var(--border);border-radius:8px;padding:14px;margin:0;">
       <legend class="label" style="padding:0 5px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
       <div class="meta text-sm" style="margin-bottom:10px;line-height:1.5;">Choose where this engagement is contracted to end. This controls the delivery journey and its completion gate.</div>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+      <div class="client-create-options" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
         <% outcomeOptions.forEach(option => { %>
           <label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;">
             <input type="radio" name="engagement_outcome" value="<%= option.value %>" <%= selectedFrameworks.includes('iso27001') ? 'required' : '' %> <%= selectedOutcome === option.value ? 'checked' : '' %> style="margin-top:3px;">
@@ -54,7 +66,7 @@
     </div>
     <div class="col-full">
       <div class="label">Assessment programmes <span class="meta">optional · choose any combination</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px;">
+      <div class="client-create-options" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px;">
         <%# Rendered from the framework registry (lib/frameworks.js). %>
         <% frameworkList.forEach(fw => { %>
           <label class="panel-pad" style="display:flex;gap:8px;cursor:pointer;"><input id="<%= fw.code %>-programme" type="checkbox" name="frameworks" value="<%= fw.code %>" <%= selectedFrameworks.includes(fw.code)?'checked':'' %>><span><strong><%= fw.pickerLabel %></strong><span class="meta" style="display:block;"><%= fw.pickerNote %></span></span></label>
@@ -67,14 +79,14 @@
       <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:7px;"><input id="vciso-module" type="checkbox" name="vciso_enabled" value="1" <%= vcisoEnabled?'checked':'' %> style="margin-top:3px;"><span><strong>vCISO advisory</strong><span class="meta" style="display:block;line-height:1.4;">Virtual security leadership, governance cadence, risk oversight, executive reporting and tracked advisory delivery.</span></span></label>
       <fieldset id="tprm-service-fieldset" <%= tprmEnabled?'':'hidden' %> style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:10px 0 0;">
         <legend class="label" style="padding:0 5px;">TPRM service model <span class="meta">required</span></legend>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+        <div class="client-create-options" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
           <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['programme_setup','Programme setup','Establish inventory, methodology and governance.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
             <label class="panel-pad" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="<%= option[0] %>" <%= selectedTprmService===option[0]?'checked':'' %> <%= tprmEnabled?'required':'' %> style="margin-top:3px;"><span><strong style="display:block;"><%= option[1] %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option[2] %></span></span></label>
           <% }) %>
         </div>
       </fieldset>
     </div>
-    <div class="col-full" style="display:flex;gap:8px;">
+    <div class="col-full client-create-actions" style="display:flex;gap:8px;">
       <button class="btn btn-primary">Create client</button>
       <a href="/dashboard" class="btn btn-secondary">Cancel</a>
     </div>

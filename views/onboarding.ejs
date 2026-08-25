@@ -1,5 +1,34 @@
 <%- include('partials/header', { title: 'Set up your firm', user, ws, active: 'onboarding' }) %>
 
+<style>
+  .onboarding-client-grid > *,
+  .onboarding-essentials-grid > * { min-width: 0; }
+  @media (max-width: 600px) {
+    .onboarding-required-row {
+      grid-template-columns: 40px minmax(0, 1fr) !important;
+      padding: 14px !important;
+    }
+    .onboarding-required-row > :last-child {
+      grid-column: 2;
+      justify-self: stretch;
+      max-width: none !important;
+      text-align: left !important;
+    }
+    .onboarding-required-row > .btn { justify-content: center; }
+    .onboarding-client-grid,
+    .onboarding-essentials-grid { grid-template-columns: minmax(0, 1fr) !important; }
+    .onboarding-card-action { justify-content: stretch !important; }
+    .onboarding-card-action .btn { width: 100%; justify-content: center; }
+    .onboarding-final-actions {
+      align-items: stretch !important;
+      flex-direction: column;
+    }
+    .onboarding-final-actions form,
+    .onboarding-final-actions .btn { width: 100%; }
+    .onboarding-final-actions .btn { justify-content: center; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Set up your firm</h1>
@@ -23,7 +52,7 @@
     <span class="status <%= completedCount === totalSteps ? 's-implemented' : 's-not-assessed' %>"><%= completedCount === totalSteps ? 'Done' : 'Not started' %></span>
   </div>
   <% steps.forEach(step => { %>
-    <div style="display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;padding:16px 18px;align-items:center;">
+    <div class="onboarding-required-row" style="display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;padding:16px 18px;align-items:center;">
       <div aria-hidden="true" style="width:32px;height:32px;border-radius:50%;background:<%= step.done ? 'rgba(22,128,61,0.10)' : 'var(--bg-subtle)' %>;color:<%= step.done ? '#15803d' : 'var(--text-tertiary)' %>;display:flex;align-items:center;justify-content:center;font-weight:600;"><%= step.done ? '✓' : step.num %></div>
       <div>
         <div style="font-size:14px;font-weight:600;"><%= step.title %></div>
@@ -63,7 +92,7 @@
       <a href="/dashboard" class="btn btn-secondary btn-xs">All clients</a>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px;">
+    <div class="onboarding-client-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:12px;">
       <% clientSummaries.forEach(row => { const setup = row.setup; %>
         <article class="panel" style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
           <div>
@@ -110,7 +139,7 @@
             <% } %>
           <% } %>
 
-          <div style="margin-top:auto;display:flex;justify-content:flex-end;">
+          <div class="onboarding-card-action" style="margin-top:auto;display:flex;justify-content:flex-end;">
             <a class="btn <%= setup.total && setup.nextStep ? 'btn-primary' : 'btn-secondary' %> btn-xs" href="<%= row.setupHref %>"><%= setup.total ? 'Open programme setup' : 'Assign services' %></a>
           </div>
         </article>
@@ -131,7 +160,7 @@
       </div>
       <span class="meta">Optional</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:var(--border);">
+    <div class="onboarding-essentials-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:1px;background:var(--border);">
       <a href="/admin/users" style="padding:16px 18px;text-decoration:none;color:inherit;background:var(--bg);">
         <div style="display:flex;justify-content:space-between;gap:12px;"><strong>Users and access</strong><span class="status <%= firmRecommendations.teamReady ? 's-implemented' : 's-not-assessed' %>"><%= firmRecommendations.teamReady ? 'Ready' : 'Review' %></span></div>
         <div class="meta text-sm" style="margin-top:5px;line-height:1.45;">Invite firm colleagues and confirm that each person has the right role.</div>
@@ -144,7 +173,7 @@
   </section>
 <% } %>
 
-<div style="margin-top:18px;display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+<div class="onboarding-final-actions" style="margin-top:18px;display:flex;align-items:center;justify-content:flex-end;gap:8px;">
   <% if (canManageOnboarding && completedCount === totalSteps && !onb.completed_at) { %>
     <form method="POST" action="/onboarding/complete"><button class="btn btn-primary">Finish firm onboarding</button></form>
   <% } else if (canManageOnboarding && completedCount < totalSteps) { %>

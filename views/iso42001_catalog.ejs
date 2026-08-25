@@ -1,11 +1,22 @@
 <%- include('partials/header', { title: 'ISO 42001 catalog', user, ws, active: 'iso42001-catalog' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-catalog-filter{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+    .iso42-catalog-filter .input,.iso42-catalog-filter .select{width:100%!important}
+    .iso42-catalog-actions{align-items:stretch!important;display:grid!important;gap:8px!important;grid-template-columns:1fr 1fr}
+    .iso42-catalog-actions>div:last-child{grid-column:1/-1;margin-left:0!important;text-align:left}
+    .iso42-catalog-actions .btn{width:100%}
+  }
+  @media(max-width:430px){.iso42-catalog-actions{grid-template-columns:minmax(0,1fr)}}
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO/IEC 42001:2023 catalog</h1>
     <div class="page-subtitle">27 clauses (4-10) and 38 Annex A reference controls for AI management systems.</div>
   </div>
-  <form class="row-center" method="GET">
+  <form class="row-center iso42-catalog-filter" method="GET">
     <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
     <select name="filter" class="select" style="width:240px" onchange="this.form.submit()">
       <option value="all" <%= filter==='all'?'selected':'' %>>All items</option>
@@ -27,7 +38,7 @@
 
 <div class="panel" style="overflow:hidden;margin-bottom:16px;">
   <div style="padding:12px 16px;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
-    <div class="text-lg" style="display:flex;gap:24px;">
+    <div class="text-lg iso42-catalog-actions" style="display:flex;gap:24px;">
       <div><a href="/workspaces/<%= ws.id %>/iso42001/controls" class="btn btn-primary btn-xs">Assess controls</a></div>
       <div><a href="/workspaces/<%= ws.id %>/iso42001/soa" class="btn btn-secondary btn-xs">Statement of Applicability</a></div>
       <div class="text-tertiary text-base" style="margin-left:auto;">Showing <%= rows.length %> item<%= rows.length===1?'':'s' %></div>

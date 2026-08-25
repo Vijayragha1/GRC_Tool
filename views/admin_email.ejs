@@ -1,5 +1,16 @@
 <%- include('partials/header', { title: 'Email settings', user, ws: null, active: 'admin-email' }) %>
 
+<style>
+  .admin-email-forms > * { min-width: 0; }
+  @media (max-width: 600px) {
+    .admin-email-provider { align-items: flex-start !important; flex-direction: column; }
+    .admin-email-provider > :last-child { min-width: 0 !important; text-align: left !important; }
+    .admin-email-forms { grid-template-columns: 1fr !important; }
+    .admin-email-card-head { align-items: flex-start !important; flex-direction: column; gap: 4px; }
+    .admin-email-forms .btn { width: 100%; justify-content: center; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Email</h1>
@@ -20,7 +31,7 @@
   const provInfo = PROVIDER_INFO[provider] || PROVIDER_INFO.devnull;
 %>
 <div class="panel" style="padding:14px 18px;margin-bottom:18px;">
-  <div style="display:flex;align-items:center;gap:12px;">
+  <div class="admin-email-provider" style="display:flex;align-items:center;gap:12px;">
     <div style="flex:1;">
       <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:4px;">Provider</div>
       <div style="font-size:14px;font-weight: 500;color:var(--text);"><%= provInfo.label %></div>
@@ -33,13 +44,13 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+<div class="admin-email-forms" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
   <%# Branded From + reply-to. Per-firm so a consulting practice can send
       under their own domain ("Acme GRC <approvals@acmegrc.com>") rather
       than the generic noreply@isms.local default. %>
   <form method="POST" action="/admin/email/settings" class="panel" style="padding:18px 20px;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+    <div class="admin-email-card-head" style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
       <div style="font-size:14px;font-weight: 500;">Branded sender</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Per firm</div>
     </div>
@@ -67,7 +78,7 @@
       kicking off a real approval flow. Lands in the outbox below either way. %>
   <form method="POST" action="/admin/email/test" class="panel" style="padding:18px 20px;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+    <div class="admin-email-card-head" style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
       <div style="font-size:14px;font-weight: 500;">Send a test</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Connectivity check</div>
     </div>

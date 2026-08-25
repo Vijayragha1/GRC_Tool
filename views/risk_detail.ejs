@@ -1,5 +1,41 @@
 <%- include('partials/header', { title: risk.title, user, ws, active: 'risks' }) %>
 
+<style>
+  .risk-delta-grid > *,
+  .risk-action-create > *,
+  .risk-accept-form > * { min-width: 0; }
+  @media (max-width: 600px) {
+    .risk-position-strip > :last-child {
+      margin-left: 0 !important;
+      width: 100%;
+    }
+    .risk-delta-grid { grid-template-columns: 1fr !important; }
+    .risk-delta-arrow { transform: rotate(90deg); text-align: center; }
+    .risk-linked-row { align-items: flex-start !important; flex-direction: column; }
+    .risk-linked-row form,
+    .risk-linked-row .btn { width: 100%; }
+    .risk-linked-row .btn { justify-content: center; }
+    .risk-link-form { align-items: stretch; flex-direction: column; }
+    .risk-link-form .btn { width: 100%; justify-content: center; }
+    .risk-action-create,
+    .risk-accept-form { grid-template-columns: 1fr !important; }
+    .risk-action-create .btn { width: 100%; justify-content: center; }
+    .risk-accept-attestation {
+      align-items: stretch !important;
+      flex-direction: column;
+    }
+    .risk-accept-attestation .btn {
+      margin-left: 0 !important;
+      width: 100%;
+      justify-content: center;
+    }
+    .risk-accept-actions { align-items: stretch; flex-direction: column; }
+    .risk-accept-actions form,
+    .risk-accept-actions .btn { width: 100%; }
+    .risk-accept-actions .btn { justify-content: center; }
+  }
+</style>
+
 <a href="/workspaces/<%= ws.id %>/risks" class="link-muted text-base">← All risks</a>
 
 <%
@@ -14,7 +50,7 @@
   <div class="panel-pad" style="border-bottom:1px solid var(--border)">
     <div class="mono meta" style="margin-bottom:4px;">R-<%= String(risk.id).padStart(3,'0') %><% if (risk.entity_name) { %> · entity: <%= risk.entity_name %><% } %></div>
     <h1 class="page-title"><%= risk.title %></h1>
-    <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+    <div class="risk-position-strip" style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
       <div>
         <span class="meta">Inherent</span>
         <span class="tag" style="background:<%= ihColor %>1a;color:<%= ihColor %>;border-color:<%= ihColor %>40;text-transform:uppercase;letter-spacing:0.04em;margin-left:4px;"><%= inherentBand %></span>
@@ -90,19 +126,19 @@
        const residualScore = risk.residual_likelihood * risk.residual_impact;
        const reduction = inherentScore - residualScore;
        const pctReduction = inherentScore ? Math.round(reduction / inherentScore * 100) : 0; %>
-    <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:14px;align-items:center;">
+    <div class="risk-delta-grid" style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:14px;align-items:center;">
       <div style="text-align:center;padding:14px;background:<%= ihColor %>1a;border-radius:8px;">
         <div class="meta">Inherent</div>
         <div style="font-size:28px;font-weight: 500;color:<%= ihColor %>;"><%= inherentScore %></div>
         <div class="meta">L<%= risk.likelihood %> · I<%= risk.impact %></div>
       </div>
-      <div class="text-tertiary" style="font-size:24px;">→</div>
+      <div class="text-tertiary risk-delta-arrow" style="font-size:24px;">→</div>
       <div style="text-align:center;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px dashed var(--accent);">
         <div class="meta">Controls applied</div>
         <div style="font-size:18px;font-weight: 500;color:var(--accent);"><%= reduction > 0 ? '−' : '+' %><%= Math.abs(reduction) %></div>
         <div class="meta"><%= pctReduction %>% reduction</div>
       </div>
-      <div class="text-tertiary" style="font-size:24px;">→</div>
+      <div class="text-tertiary risk-delta-arrow" style="font-size:24px;">→</div>
       <div style="text-align:center;padding:14px;background:<%= resColor %>1a;border-radius:8px;">
         <div class="meta">Residual</div>
         <div style="font-size:28px;font-weight: 500;color:<%= resColor %>;"><%= residualScore %></div>
@@ -118,7 +154,7 @@
   <% if (linked.length) { %>
     <div class="divide-row">
       <% linked.forEach(c => { %>
-        <div class="text-lg" style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
+        <div class="text-lg risk-linked-row" style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
           <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted"><%= c.title %></a>
           <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/unlink">
             <input type="hidden" name="iso_item_id" value="<%= c.id %>">
@@ -130,7 +166,7 @@
   <% } else { %>
     <div class="t-empty">No controls linked yet.</div>
   <% } %>
-  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/link" class="panel-pad" style="display:flex;gap:6px;border-top:1px solid var(--border);background:var(--bg-subtle);">
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/link" class="panel-pad risk-link-form" style="display:flex;gap:6px;border-top:1px solid var(--border);background:var(--bg-subtle);">
     <select name="iso_item_id" class="select" required>
       <option value="">- pick a control -</option>
       <% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %>
@@ -194,7 +230,7 @@
     </table>
   <% } %>
 
-  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/actions" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 140px 130px auto;gap:6px;align-items:end;">
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/actions" class="panel-pad risk-action-create" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 140px 130px auto;gap:6px;align-items:end;">
     <div><label class="label">Add action</label><input class="input" name="title" required placeholder="e.g., Implement MFA on admin accounts"></div>
     <div><label class="label">Owner</label><input class="input" name="owner_name" placeholder="Name"></div>
     <div><label class="label">Due</label><input class="input" type="date" name="due_date"></div>
@@ -233,7 +269,7 @@
       <% if (acc.accepter_role) { %><div class="meta text-base"><strong>Role:</strong> <%= acc.accepter_role %></div><% } %>
       <div class="meta text-md" style="margin-top:6px;line-height:1.55;"><strong>Rationale:</strong> <%= acc.rationale %></div>
       <div class="meta text-xs" style="margin-top:6px;font-family:monospace;">Residual score at acceptance: <%= acc.residual_score %> · Signature: <%= acc.signature.slice(0,20) %>…</div>
-      <div style="margin-top:10px;display:flex;gap:6px;">
+      <div class="risk-accept-actions" style="margin-top:10px;display:flex;gap:6px;">
         <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances" class="btn btn-secondary btn-xs">View acceptance history →</a>
         <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/acceptances/<%= acc.id %>/revoke" onsubmit="return appConfirmForm(event, 'Revoke this acceptance? Risk will return to open.')" style="display:inline;">
           <button class="btn btn-ghost btn-xs text-danger">Revoke</button>
@@ -243,7 +279,7 @@
   <% } %>
 
   <% if (!acc || accExpired) { %>
-    <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/accept" class="panel-pad" style="<%= acc ? 'border-top:1px solid var(--border);' : '' %>display:grid;grid-template-columns:1fr 1fr 140px;gap:10px;align-items:start;">
+    <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/accept" class="panel-pad risk-accept-form" style="<%= acc ? 'border-top:1px solid var(--border);' : '' %>display:grid;grid-template-columns:1fr 1fr 140px;gap:10px;align-items:start;">
       <div>
         <label class="label">Accepter name</label>
         <input class="input text-md" name="accepter_name" required placeholder="Person formally accepting">
@@ -260,7 +296,7 @@
         <label class="label">Rationale <span class="meta">why is this residual risk acceptable</span></label>
         <textarea class="textarea text-md" name="rationale" rows="3" required placeholder="Why is the residual risk acceptable to the business? What compensating factors? When and why will it be re-evaluated?"></textarea>
       </div>
-      <div class="col-full" style="display:flex;gap:8px;align-items:center;">
+      <div class="col-full risk-accept-attestation" style="display:flex;gap:8px;align-items:center;">
         <label class="text-base" style="display:flex;gap:6px;align-items:center;cursor:pointer;">
           <input type="checkbox" name="attestation" value="1" required>
           I attest that I am authorised to accept this risk on behalf of the organisation.
