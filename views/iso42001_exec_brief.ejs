@@ -16,6 +16,12 @@
   @media (max-width: 760px) {
     body
     { font-size: 11px; }
+    .iso42-exec-kpis { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+    .iso42-exec-pair { grid-template-columns:minmax(0,1fr) !important; }
+    .iso42-exec-pair .panel { min-width:0; }
+  }
+  @media (max-width:430px) {
+    .iso42-exec-kpis { grid-template-columns:minmax(0,1fr) !important; }
   }
 </style>
 
@@ -28,7 +34,7 @@
 </div>
 
 <!-- Top KPI band -->
-<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:14px;">
+<div class="iso42-exec-kpis" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:14px;">
   <%
     const s1Color = readiness.stage1 >= 80 ? '#15803d' : readiness.stage1 >= 50 ? '#a16207' : '#b91c1c';
     const s2Color = readiness.stage2 >= 80 ? '#15803d' : readiness.stage2 >= 50 ? '#a16207' : '#b91c1c';
@@ -60,7 +66,7 @@
 </div>
 
 <!-- Plan + days-to-target band -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+<div class="iso42-exec-pair" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
   <div class="panel" style="padding:12px 14px;">
     <div class="text-xs text-tertiary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Client plan</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
@@ -89,7 +95,7 @@
 </div>
 
 <!-- Top risks + top NCs -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+<div class="iso42-exec-pair" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
   <div class="panel">
     <div class="panel-head" style="padding:10px 14px;"><h2 class="text-lg" style="margin:0;">Top 5 open AI risks</h2></div>
     <% if (topRisks.length === 0) { %>

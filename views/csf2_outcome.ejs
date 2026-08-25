@@ -1,4 +1,15 @@
 <%- include('partials/header', { title: `${detail.code} assessment`, user, ws, active: 'csf' }) %>
+<style>
+  @media(max-width:760px){
+    .csf2-score-form .panel-foot{align-items:stretch;display:grid;grid-template-columns:minmax(0,1fr)}
+    .csf2-score-form .panel-foot .btn{width:100%}
+    .csf2-evidence-row,.csf2-exception-row,.csf2-finding-row,.csf2-history-row{align-items:flex-start;flex-direction:column}
+    .csf2-evidence-row>.tag{align-self:flex-start;white-space:normal}
+    .csf2-finding-row>div{width:100%}
+    .csf2-history-row{gap:5px}
+    .csf2-test-row .btn,.csf2-subform .btn{width:100%}
+  }
+</style>
 <div class="page-head"><div><a class="meta" href="/workspaces/<%= ws.id %>/csf/<%= engagement.id %>/assessment">← All 106 outcomes</a><div class="eyebrow" style="margin-top:10px;"><%= detail.function_name %> · <%= detail.category_name %></div><h1 class="page-title"><code><%= detail.code %></code> <%= detail.description %></h1><div class="page-subtitle">Outcome-focused assessment · <%= detail.methodology_version %></div></div><span class="status-pill"><%= detail.status %></span></div>
 <%- include('partials/csf2_nav', { section: 'assessment', ws, engagement }) %>
 

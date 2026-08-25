@@ -1,11 +1,25 @@
 <%- include('partials/header', { title: 'Controls', user, ws, active: 'controls' }) %>
 
+<style>
+  @media (max-width:760px) {
+    .iso-controls-filter { display:grid;grid-template-columns:minmax(0,1fr);width:100%; }
+    .iso-controls-filter .input,.iso-controls-filter .select { width:100% !important; }
+    .iso-controls-bulk { flex-wrap:wrap;top:56px !important; }
+    .iso-controls-bulk > span:first-child { flex:1 0 100%; }
+    .iso-controls-bulk .select { flex:1 1 180px;width:auto !important; }
+    .iso-controls-bulk .btn { flex:1 1 100px; }
+  }
+  @media (max-width:430px) {
+    .iso-controls-bulk .select,.iso-controls-bulk .btn { flex-basis:100%;width:100% !important; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Clauses & controls</h1>
     <div class="page-subtitle">25 ISMS clauses (4–10) and 93 Annex A controls. Bulk-edit with checkboxes, or run the guided gap assessment for a structured walk through Annex A.</div>
   </div>
-  <form class="row-center" method="GET">
+  <form class="row-center iso-controls-filter" method="GET">
     <a href="/workspaces/<%= ws.id %>/controls/assess" class="btn btn-primary btn-xs" title="Walk Annex A one control at a time with prompts">Start gap assessment</a>
     <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
     <select name="filter" class="select" style="width:200px" onchange="this.form.submit()">
@@ -23,7 +37,7 @@
 </div>
 
 <form method="POST" action="/workspaces/<%= ws.id %>/bulk-controls" id="bulkForm">
-  <div id="bulkBar" class="hidden panel text-lg" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
+  <div id="bulkBar" class="hidden panel text-lg iso-controls-bulk" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
     <span><span id="bulkCount">0</span> selected</span>
     <span class="text-tertiary">·</span>
     <select name="status" class="select text-base" style="width:200px;padding:4px 8px;">

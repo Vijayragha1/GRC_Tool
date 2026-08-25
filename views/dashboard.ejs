@@ -1,5 +1,95 @@
 <%- include('partials/header', { title: 'Clients', user, ws: null }) %>
 
+<style>
+  #newWs { max-height: min(90dvh, 860px); overflow-y: auto; overscroll-behavior: contain; }
+  #newWs > form { min-width: 0; }
+  .dashboard-dialog-grid > *,
+  .dashboard-dialog-options > * { min-width: 0; }
+  @media (max-width: 760px) {
+    .dashboard-onboarding-nudge {
+      grid-template-columns: 42px minmax(0, 1fr) !important;
+      padding: 14px !important;
+    }
+    .dashboard-onboarding-nudge > .btn {
+      grid-column: 1 / -1;
+      justify-content: center;
+    }
+    #newWs {
+      position: fixed;
+      inset: auto 0 0;
+      width: 100% !important;
+      max-height: 96dvh;
+    }
+    #newWs > form { display: flex; flex-direction: column; }
+    .dashboard-dialog-header { padding: 15px 14px 10px !important; }
+    .dashboard-dialog-header > button {
+      min-width: 44px;
+      min-height: 44px;
+      margin: -8px -8px -8px 4px;
+    }
+    .dashboard-dialog-grid {
+      grid-template-columns: 1fr !important;
+      padding: 14px !important;
+    }
+    .dashboard-dialog-options { grid-template-columns: 1fr !important; }
+    .dashboard-dialog-footer {
+      position: sticky;
+      bottom: 0;
+      padding: 10px 14px !important;
+    }
+    .dashboard-dialog-footer .btn { flex: 1; justify-content: center; }
+    #deleteClientModal { padding: 12px; }
+    #deleteClientModal > div { max-width: 100% !important; }
+    #deleteClientModal form > div:last-child .btn { flex: 1; justify-content: center; }
+    .dashboard-delete-client { min-width: 44px; }
+    .dash-table-wrap { overflow: visible; }
+    #clientTable,
+    #clientTable > tbody { display: block; width: 100%; }
+    #clientTable > thead { display: none; }
+    #clientTable tr.dash-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0 12px;
+      padding: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    #clientTable tr.dash-row:last-of-type { border-bottom: 0; }
+    #clientTable tr.dash-row > td {
+      display: block;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+    }
+    #clientTable tr.dash-row > td:first-child {
+      grid-column: 1;
+      min-width: 0;
+      padding-bottom: 10px;
+    }
+    #clientTable tr.dash-row > td[data-label] {
+      grid-column: 1 / -1;
+      padding: 9px 0;
+      border-top: 1px dashed var(--border);
+    }
+    #clientTable tr.dash-row > td[data-label]::before {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text-tertiary);
+      content: attr(data-label);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    #clientTable tr.dash-row > .dashboard-row-actions {
+      grid-column: 2;
+      grid-row: 1;
+      align-self: start;
+    }
+    #clientTable tr:not(.dash-row) { display: block; }
+    #clientTable tr:not(.dash-row) > td { display: block; min-width: 0; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title"><%= user.user_type === 'firm' ? 'Portfolio' : 'My clients' %></h1>
@@ -37,7 +127,7 @@
 
 <!-- First-client nudge. Programme-specific setup stays inside each client. -->
 <% if (typeof onboarding !== 'undefined' && onboarding && onboarding.done < onboarding.total) { %>
-  <div class="panel" style="margin-bottom:24px;background:var(--bg-subtle);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:16px 20px;">
+  <div class="panel dashboard-onboarding-nudge" style="margin-bottom:24px;background:var(--bg-subtle);display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;padding:16px 20px;">
     <div style="width:42px;height:42px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--accent-contrast);flex-shrink:0;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
@@ -122,20 +212,20 @@
     the backdrop closes it via the JS handler below. %>
 <dialog id="newWs" style="border:1px solid var(--border);border-radius:10px;padding:0;width:min(640px, 92vw);background:var(--bg);color:var(--text);box-shadow:var(--shadow-xl);">
   <form method="POST" action="/workspaces">
-    <header style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+    <header class="dashboard-dialog-header" style="padding:20px 24px 12px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
       <div>
         <h2 style="margin:0;font-size:20px;font-weight: 500;letter-spacing:-0.01em;">New client</h2>
         <div class="meta text-sm" style="margin-top:2px;">Just the basics here: scope, stakeholders, and the rest of the 25 scoping questions come on the next page.</div>
       </div>
       <button type="button" onclick="document.getElementById('newWs').close()" aria-label="Close" style="background:transparent;border:0;color:var(--text-tertiary);cursor:pointer;padding:4px;font-size:18px;line-height:1;">×</button>
     </header>
-    <div class="grid-2" style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div class="grid-2 dashboard-dialog-grid" style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div><label class="label">Client name <span class="meta">required</span></label><input class="input" name="client_name" required autofocus placeholder="e.g. Northwind Financial Services"></div>
       <div><label class="label">Industry</label><input class="input" name="industry" placeholder="SaaS, Fintech, Healthcare…"></div>
       <div class="col-full" id="dashboard-certification-target-field" hidden><label class="label">Target certification date</label><input class="input" id="dashboard-target-cert-date" name="target_cert_date" type="date" disabled style="max-width:240px;"><div class="meta text-xs" id="dashboard-target-cert-help" style="margin-top:4px;">Choose the ISO 27001 service path first.</div></div>
       <fieldset id="dashboard-iso27001-outcome-fieldset" class="col-full" hidden style="border:1px solid var(--border);border-radius:7px;padding:11px;margin:0;">
         <legend class="label" style="padding:0 4px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+        <div class="dashboard-dialog-options" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
           <% outcomeOptions.forEach(option => { %>
             <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
               <input type="radio" name="engagement_outcome" value="<%= option.value %>" style="margin-top:3px;">
@@ -150,7 +240,7 @@
           a placeholder once and never came back to fix it. %>
       <div class="col-full">
         <div class="label">Assessment programmes <span class="meta">optional · choose any combination</span></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px;">
+        <div class="dashboard-dialog-options" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:7px;">
           <%# Rendered from the framework registry (lib/frameworks.js). The markup is
               unchanged from the four hand-written labels this replaced, including the
               dashboard-<code>-programme id that the quick-create tests assert on. %>
@@ -172,7 +262,7 @@
         </label>
         <fieldset id="dashboard-tprm-service-fieldset" hidden style="border:1px solid var(--border);border-radius:7px;padding:11px;margin:10px 0 0;">
           <legend class="label" style="padding:0 4px;">TPRM service model <span class="meta">required</span></legend>
-          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+          <div class="dashboard-dialog-options" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
             <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="assessment_only" style="margin-top:3px;"><span class="text-sm"><strong style="display:block;">One-off assessment</strong><span class="meta">Assess selected third parties and issue recommendations.</span></span></label>
             <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="programme_setup" style="margin-top:3px;"><span class="text-sm"><strong style="display:block;">Programme setup</strong><span class="meta">Establish inventory, methodology and governance.</span></span></label>
             <label style="display:flex;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="managed_lifecycle" style="margin-top:3px;"><span class="text-sm"><strong style="display:block;">Managed lifecycle</strong><span class="meta">Operate onboarding through monitoring and offboarding.</span></span></label>
@@ -180,7 +270,7 @@
         </fieldset>
       </div>
     </div>
-    <footer style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
+    <footer class="dashboard-dialog-footer" style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--bg-subtle);">
       <button type="button" onclick="document.getElementById('newWs').close()" class="btn btn-ghost">Cancel</button>
       <button type="submit" class="btn btn-primary">Create client</button>
     </footer>
@@ -291,22 +381,22 @@
             </div>
             <% if (w.industry) { %><div class="meta text-xs" style="margin-left:16px;"><%= w.industry %></div><% } %>
           </td>
-          <td>
+          <td data-label="Engagement">
             <span class="status s-<%= serviceClass %>"><%= w.service.path %></span>
             <div class="meta text-xs" style="margin-top:3px;"><%= w.service.detail %></div>
           </td>
-          <td>
+          <td data-label="Progress">
             <div style="font-weight:500;font-size:12.5px;"><%= w.service.position %></div>
             <div class="dash-progress" title="<%= w.progress.assessed %> of <%= w.progress.total %> assessed">
               <span style="width:<%= w.progress.percent %>%"></span>
             </div>
             <div class="meta text-xs num"><%= w.service.metric %></div>
           </td>
-          <td class="text-sm">
+          <td class="text-sm" data-label="Next milestone">
             <%= w.service.target %>
             <% if (w.service.targetDetail) { %><div class="meta text-xs num"><%= w.service.targetDetail %></div><% } %>
           </td>
-          <td onclick="event.stopPropagation()" style="cursor:default;">
+          <td data-label="Attention" onclick="event.stopPropagation()" style="cursor:default;">
             <% if (att.primary) { %>
               <a class="dash-reason dash-reason-<%= att.severity %>" href="<%= reasonLink(att.primary, w.id) %>"><%= att.primary %></a>
               <% if (att.more) { %>
@@ -317,15 +407,16 @@
             <% } %>
           </td>
           <% if (user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('workspace.delete')) { %>
-          <td onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
+          <td class="dashboard-row-actions" onclick="event.stopPropagation()" style="text-align:right;cursor:default;">
             <button type="button"
                     data-delete-client-id="<%= w.id %>"
                     data-delete-client-name="<%= w.client_name %>"
                     title="Delete this client"
-                    class="btn btn-ghost btn-xs"
+                    aria-label="Delete <%= w.client_name %>"
+                    class="btn btn-ghost btn-xs dashboard-delete-client"
                     style="color:var(--danger,#b91c1c);padding:4px 8px;">×</button>
           </td>
-          <% } else if (user.user_type === 'firm') { %><td></td><% } %>
+          <% } else if (user.user_type === 'firm') { %><td class="dashboard-row-actions"></td><% } %>
         </tr>
       <% }) %>
       <% if (workspaces.length === 0) { %>

@@ -32,6 +32,37 @@
      118 items linearly is painful": consultants bounce between themes. */
   .assess-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
   @media (max-width: 1100px) { .assess-shell { grid-template-columns: 1fr; } .nav-jump { position: static !important; max-height: none !important; } }
+  @media (max-width: 760px) {
+    .assess-shell { gap: 14px; }
+    /* Keep the catalogue navigator useful without making the reader scroll
+       past a full open theme before reaching the current workpaper. */
+    .assess-shell .nav-jump {
+      max-height: min(240px, 38vh) !important;
+      overflow: auto !important;
+      overscroll-behavior: contain;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+    }
+    .assess-shell [style*="grid-template-columns:1fr 1fr"],
+    .assess-shell [style*="grid-template-columns:repeat(3,1fr)"],
+    .assess-shell [style*="grid-template-columns:1fr 220px"],
+    .assess-shell [style*="grid-template-columns:1fr 100px auto"] {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+    .assess-shell [data-diagnostic-group] { justify-content: flex-start !important; }
+    .assess-shell .diag-pill { min-height: 44px; flex: 1 1 72px; justify-content: center; }
+    .assessment-form-actions { align-items: stretch !important; flex-direction: column; }
+    .assessment-form-actions > .row { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+    .assessment-form-actions .btn { width: 100%; }
+    .assessment-support-grid { grid-template-columns: minmax(0, 1fr) !important; }
+    .assessment-upload-grid, .assessment-link-form { grid-template-columns: minmax(0, 1fr) !important; }
+    .assessment-upload-grid .col-full { grid-column: 1 !important; }
+  }
+  @media (max-width: 430px) {
+    .assess-shell [style*="grid-template-columns:140px 1fr"] { grid-template-columns: minmax(0, 1fr) !important; }
+    .assessment-form-actions > .row { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>
 
 <div class="page-head">
@@ -429,7 +460,7 @@
       <textarea class="textarea" name="notes" rows="3" placeholder="<%= priorPassNotes && priorPassNotes.length ? 'For this pass: verify what was implemented, what\'s still outstanding, what evidence you saw.' : 'Describe what\'s in place today, what\'s missing, and what you\'ll do about it.' %>"><%= currentPassNotes %></textarea>
     </div>
 
-    <div style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
+    <div class="assessment-form-actions" style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
       <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>/history" class="meta link-muted text-base">View change history →</a>
       <div class="row">
         <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
@@ -501,14 +532,14 @@
 <%- include('partials/comments_thread', { parent_type: 'iso_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
 
 <!-- Evidence + linked items panels (folded in from the deleted standalone control detail page) -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+<div class="assessment-support-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
   <!-- Evidence -->
   <div class="panel">
     <div class="panel-head">
       <h2 class="text-xl">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
       <span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span>
     </div>
-    <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
+    <form class="assessment-upload-grid" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
       <input type="hidden" name="iso_item_id" value="<%= item.id %>">
       <div class="col-full"><input class="text-base" type="file" name="file" required style="width:100%;"></div>
       <div><label class="label text-xxs">Period (e.g., Q1 2026) - optional</label><input type="text" name="period_label" class="input text-base" placeholder="Q1 2026"></div>
@@ -579,7 +610,7 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:<%= isClause ? '1fr' : '1fr 1fr' %>;gap:14px;margin-bottom:16px;">
+<div class="assessment-support-grid" style="display:grid;grid-template-columns:<%= isClause ? '1fr' : '1fr 1fr' %>;gap:14px;margin-bottom:16px;">
   <% if (!isClause) { %>
   <!-- Linked risks (controls only - clauses are mandatory and don't "treat" risks) -->
   <div class="panel">
@@ -624,7 +655,7 @@
       </div>
     <% } %>
     <% if (linkableDocs && linkableDocs.length > 0) { %>
-      <form method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
+      <form class="assessment-link-form" method="POST" action="/workspaces/<%= ws.id %>/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
         <div>
           <label class="label text-xxs">Link a document</label>
           <select class="select text-base" name="document_id" required>

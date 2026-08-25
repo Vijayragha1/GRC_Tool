@@ -1,5 +1,17 @@
 <%- include('partials/header', { title: 'Users & access', user, ws: null, active: 'admin-users' }) %>
 
+<style>
+  @media (max-width: 600px) {
+    .admin-users-error { align-items: stretch !important; flex-direction: column; }
+    .admin-users-error form,
+    .admin-users-error .btn { width: 100%; }
+    .admin-users-error .btn { justify-content: center; white-space: normal !important; }
+    .admin-users-form-head,
+    .admin-users-section-head { align-items: flex-start !important; flex-wrap: wrap; gap: 4px 10px; }
+    .admin-users-role-form .select { min-height: 44px; font-size: 16px !important; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Users &amp; access</h1>
@@ -11,7 +23,7 @@
   <div class="panel" style="padding:12px 16px;margin-bottom:16px;background:rgba(21,128,61,0.04);font-size:13px;color:#0f5132;line-height:1.5;"><%= notice %></div>
 <% } %>
 <% if (typeof error !== 'undefined' && error) { %>
-  <div class="panel" style="padding:12px 16px;margin-bottom:16px;background:rgba(185,28,28,0.04);font-size:13px;color:#7a1010;line-height:1.5;display:flex;align-items:center;gap:14px;">
+  <div class="panel admin-users-error" style="padding:12px 16px;margin-bottom:16px;background:rgba(185,28,28,0.04);font-size:13px;color:#7a1010;line-height:1.5;display:flex;align-items:center;gap:14px;">
     <div style="flex:1;"><%= error %></div>
     <% if (typeof errorAction !== 'undefined' && errorAction === 'offer_reset' && errorEmail) { %>
       <form method="POST" action="/admin/users/send-reset" style="margin:0;flex-shrink:0;">
@@ -33,7 +45,7 @@
   <%# ---------- Invite by email ---------- %>
   <form method="POST" action="/admin/users/invite" class="panel" style="padding:18px 20px;">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+    <div class="admin-users-form-head" style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
       <div style="font-size:14px;font-weight: 500;">Invite by email</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">Single-use, 7 days</div>
     </div>
@@ -83,7 +95,7 @@
   <%# ---------- Admin-creates (temp password) ---------- %>
   <form method="POST" action="/admin/users/create" class="panel" style="padding:18px 20px;">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
+    <div class="admin-users-form-head" style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;">
       <div style="font-size:14px;font-weight: 500;">Create with temp password</div>
       <div class="text-eyebrow" style="color:var(--text-tertiary);">For firm consultants</div>
     </div>
@@ -113,7 +125,7 @@
 <%# ---------- Outstanding invitations ---------- %>
 <% if (outstanding.length) { %>
 <div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
-  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+  <div class="admin-users-section-head" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
     <div style="font-size:14px;font-weight: 500;">Outstanding invitations</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= outstanding.length %> open</div>
   </div>
@@ -157,7 +169,7 @@
 
 <%# ---------- Firm users ---------- %>
 <div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
-  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+  <div class="admin-users-section-head" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
     <div style="font-size:14px;font-weight: 500;">Firm users</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= firmUsers.length %> total &middot; <%= firmUsers.filter(u => u.active).length %> active</div>
   </div>
@@ -186,7 +198,7 @@
             <td class="meta"><%= u.email %></td>
             <td>
               <% if (editable) { %>
-                <form method="POST" action="/admin/users/<%= u.id %>/firm-role" style="margin:0;display:flex;gap:6px;align-items:center;">
+                <form method="POST" action="/admin/users/<%= u.id %>/firm-role" class="admin-users-role-form" style="margin:0;display:flex;gap:6px;align-items:center;">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                   <select name="firm_role" class="select" style="font-size:12px;padding:4px 8px;min-width:150px;flex:1;">
                     <% rbac.FIRM_ROLES.forEach(r => { %>
@@ -223,7 +235,7 @@
 
 <%# ---------- Client users ---------- %>
 <div class="panel" style="padding:0;overflow:hidden;">
-  <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
+  <div class="admin-users-section-head" style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;">
     <div style="font-size:14px;font-weight: 500;">Client-side users</div>
     <div class="text-eyebrow" style="color:var(--text-tertiary);"><%= clientUsers.length %> total</div>
   </div>

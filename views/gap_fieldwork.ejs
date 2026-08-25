@@ -1,4 +1,12 @@
 <%- include('partials/header', { title, user, ws, active }) %>
+<style>
+  @media(max-width:430px){
+    .gfw-snapshot-list>div:not(.gfw-table-head){grid-template-columns:minmax(0,1fr)}
+    .gfw-snapshot-list>div:not(.gfw-table-head)>span,.gfw-snapshot-list>div:not(.gfw-table-head)>code{display:grid;grid-template-columns:92px minmax(0,1fr);gap:8px;align-items:baseline}
+    .gfw-snapshot-list [data-label]::before{content:attr(data-label);color:var(--text-tertiary);font-family:var(--font-sans);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+    .gfw-derived>div:not(.panel-head){align-items:flex-start;flex-direction:column;gap:4px}
+  }
+</style>
 <%
   const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
   const canSignoff = typeof userPerms !== 'undefined' && userPerms.has('assessment.signoff');
@@ -66,7 +74,7 @@
 <section class="gfw-section">
   <div class="gfw-section-head"><div><span>Weekly governance</span><h2>Fieldwork snapshots</h2><p>Freeze a point-in-time progress record for client reporting and engagement review.</p></div><% if (canSignoff) { %><form class="gfw-inline-form" method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/fieldwork/snapshots"><input type="hidden" name="_csrf" value="<%= csrf %>"><label>Week ending<input class="input" type="date" name="week_ending" required></label><button class="btn btn-primary btn-sm">Freeze snapshot</button></form><% } %></div>
   <div class="panel gfw-live-metrics"><div><span>Coverage</span><strong><%= context.live.requirementsCovered %>/<%= context.live.requirementsTotal %></strong></div><div><span>Interviews</span><strong><%= context.live.interviewsCompleted %>/<%= context.live.interviewsPlanned %></strong></div><div><span>RFIs received</span><strong><%= context.live.requestsReceived %>/<%= context.live.requestsTotal %></strong></div><div><span>Blockers</span><strong><%= context.live.activeBlockers %></strong></div><div><span>Defaults</span><strong><%= context.live.declaredDefaults %></strong></div></div>
-  <% if (context.snapshots.length) { %><div class="panel gfw-snapshot-list"><div class="gfw-table-head"><span>Week ending</span><span>Coverage</span><span>Interviews</span><span>RFIs</span><span>Blockers</span><span>Digest</span></div><% context.snapshots.forEach(s => { %><div><strong><%= fmt(s.week_ending) %></strong><span><%= s.requirements_covered %>/<%= s.requirements_total %></span><span><%= s.interviews_completed %>/<%= s.interviews_planned %></span><span><%= s.requests_received %>/<%= s.requests_total %></span><span><%= s.active_blockers %></span><code><%= s.snapshot_hash.slice(0,12) %>…</code></div><% }) %></div><% } %>
+  <% if (context.snapshots.length) { %><div class="panel gfw-snapshot-list"><div class="gfw-table-head"><span>Week ending</span><span>Coverage</span><span>Interviews</span><span>RFIs</span><span>Blockers</span><span>Digest</span></div><% context.snapshots.forEach(s => { %><div><strong><%= fmt(s.week_ending) %></strong><span data-label="Coverage"><%= s.requirements_covered %>/<%= s.requirements_total %></span><span data-label="Interviews"><%= s.interviews_completed %>/<%= s.interviews_planned %></span><span data-label="RFIs"><%= s.requests_received %>/<%= s.requests_total %></span><span data-label="Blockers"><%= s.active_blockers %></span><code data-label="Digest"><%= s.snapshot_hash.slice(0,12) %>…</code></div><% }) %></div><% } %>
 </section>
 
 <section class="gfw-section" id="interviews">

@@ -1720,4 +1720,18 @@
   .tprm-page-head h1 { font-size: 20px; }
   .tprm-head-actions { justify-content: flex-start; margin-top: 12px; }
   .tprm-section-head { display: block; }
+
+  /* tprm.css loads after the shared phone rules, so its desktop 12px field
+     size otherwise wins and makes iOS zoom the page whenever a field focuses. */
+  .tprm-section .input,
+  .tprm-section .select,
+  .tprm-section .textarea,
+  .tprm-filters .input,
+  .tprm-filters .select,
+  .tprm-workbench .input,
+  .tprm-workbench .select,
+  .tprm-workbench .textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
 }

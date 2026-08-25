@@ -1,5 +1,42 @@
 <%- include('partials/header', { title: 'Evidence library', user, ws, active: 'evidence' }) %>
 
+<style>
+  @media (max-width: 600px) {
+    .evidence-pack-dates,
+    .evidence-bulk-form,
+    .evidence-version-grid,
+    .ev-row-list { grid-template-columns: 1fr !important; }
+    .evidence-upload-summary { align-items: flex-start !important; flex-wrap: wrap; }
+    .evidence-filter-form { align-items: stretch !important; }
+    .evidence-filter-spacer { display: none; }
+    .evidence-filter-form > .input,
+    .evidence-filter-form > .btn { flex: 1 1 100%; max-width: none !important; }
+    .evidence-filter-form > .btn { justify-content: center; }
+    .evidence-record-head { align-items: stretch !important; flex-direction: column; }
+    .evidence-record-actions {
+      align-items: stretch !important;
+      flex-direction: row !important;
+      flex-wrap: wrap;
+    }
+    .evidence-record-actions > details {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+    .evidence-record-actions > form { flex: 1 1 120px; }
+    .evidence-record-actions .btn { width: 100%; justify-content: center; }
+    .evidence-record-actions > details .popover-panel {
+      box-sizing: border-box;
+      left: 0 !important;
+      right: auto !important;
+      width: 100% !important;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .evidence-link-actions { align-items: stretch !important; flex-direction: column; }
+    .evidence-link-actions .btn { width: 100%; justify-content: center; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Evidence library</h1>
@@ -15,7 +52,7 @@
   <form method="GET" action="/workspaces/<%= ws.id %>/evidence/pack.zip" style="padding:18px;">
     <h3 style="font-size:15px;font-weight: 500;margin:0 0 6px;">Export auditor evidence pack</h3>
     <div class="meta text-base" style="line-height:1.5;margin-bottom:12px;">A ZIP containing every active (non-superseded) evidence file in the client, plus a MANIFEST.csv with SHA-256, linked controls, periods, validity, and uploader info. The auditor's package, in one click.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div class="evidence-pack-dates" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div><label class="label">From (optional)</label><input type="date" name="from" class="input"></div>
       <div><label class="label">To (optional)</label><input type="date" name="to" class="input"></div>
     </div>
@@ -28,7 +65,7 @@
 
 <!-- Mode tabs: single upload vs bulk upload -->
 <details class="panel" style="margin-bottom:14px;" <%= (counters && counters.total === 0) ? 'open' : '' %>>
-  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
+  <summary class="panel-pad text-lg evidence-upload-summary" style="cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Upload evidence <span class="meta" style="font-weight:400;">- single or bulk; select every framework requirement the file supports.</span>
   </summary>
@@ -68,7 +105,7 @@
 
     <!-- Bulk upload - hidden by default -->
     <form id="bulkUploadForm" method="POST" action="/workspaces/<%= ws.id %>/evidence/bulk" enctype="multipart/form-data"
-          class="panel-pad" style="display:none;grid-template-columns:1fr 1fr;gap:12px;">
+          class="panel-pad evidence-bulk-form" style="display:none;grid-template-columns:1fr 1fr;gap:12px;">
       <div class="col-full">
         <label class="label">Files (up to 50) <span class="meta">required - every selected file gets the same metadata and links</span></label>
         <input class="text-lg" type="file" name="files" multiple required style="width:100%;">
@@ -92,7 +129,7 @@
 
 <!-- Filter chips + tag chips + search -->
 <div class="panel" style="margin-bottom:10px;">
-  <form method="GET" action="/workspaces/<%= ws.id %>/evidence" class="panel-pad" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+  <form method="GET" action="/workspaces/<%= ws.id %>/evidence" class="panel-pad evidence-filter-form" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
     <% function chip(key, label, count) { %>
       <a href="/workspaces/<%= ws.id %>/evidence?filter=<%= key %><%= q ? '&q=' + encodeURIComponent(q) : '' %><%= tag ? '&tag=' + encodeURIComponent(tag) : '' %>" class="<%= filter === key ? 'tag tag-accent' : 'tag tag-neutral' %> text-sm" style="text-decoration:none;cursor:pointer;padding:3px 9px;"><%= label %> <span class="num"><%= count %></span></a>
     <% } %>
@@ -101,7 +138,7 @@
     <% chip('expiring', 'Expiring soon', counters.expiring) %>
     <% chip('expired',  'Expired',       counters.expired) %>
     <% if (counters.superseded) { %><span class="meta text-eyebrow" style="margin-left:4px;"><%= counters.superseded %> superseded (audit trail)</span><% } %>
-    <div style="flex:1;"></div>
+    <div class="evidence-filter-spacer" style="flex:1;"></div>
     <input type="hidden" name="filter" value="<%= filter %>">
     <% if (tag) { %><input type="hidden" name="tag" value="<%= tag %>"><% } %>
     <input class="input text-md" name="q" value="<%= q %>" placeholder="Search filename, description, period, tags…" style="max-width:280px;">
@@ -152,7 +189,7 @@
            const fileTags = (e.tags || '').split(',').map(t => t.trim()).filter(Boolean);
       %>
         <div style="padding:14px 18px;<%= isExpired ? 'background:rgba(185,28,28,0.04);' : '' %>">
-          <div style="display:flex;align-items:flex-start;gap:10px;justify-content:space-between;">
+          <div class="evidence-record-head" style="display:flex;align-items:flex-start;gap:10px;justify-content:space-between;">
             <div style="flex:1;min-width:0;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <a class="text-xl text-ink" href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="font-weight: 500;text-decoration:none;border-bottom:1px solid var(--border-strong);">
@@ -197,14 +234,14 @@
                 </div>
               <% } %>
             </div>
-            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            <div class="evidence-record-actions" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
               <details style="position:relative;">
                 <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Replace…</summary>
                 <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/supersede" enctype="multipart/form-data"
                       class="popover-panel" style="position:absolute;right:0;top:100%;--popover-w:340px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;z-index:30;box-shadow:var(--shadow-lg);margin-top:4px;">
                   <div class="meta text-sm" style="line-height:1.4;margin-bottom:8px;">Upload a new version. The old file becomes superseded (kept for audit trail) and all links migrate to the new version.</div>
                   <input class="text-base" type="file" name="file" required style="width:100%;margin-bottom:8px;">
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+                  <div class="evidence-version-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
                     <input type="text" name="period_label" class="input text-base" placeholder="Period">
                     <input type="date" name="valid_until" class="input text-base">
                   </div>
@@ -323,7 +360,7 @@
                   </label>
                 <% }) %>
               </div>
-              <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+              <div class="evidence-link-actions" style="margin-top:6px;display:flex;gap:6px;align-items:center;">
                 <input type="text" name="section_ref" placeholder="Section ref (optional, applied to each new link)" class="input text-base" style="flex:1;">
                 <button class="btn btn-primary btn-xs">Add links</button>
               </div>
@@ -351,7 +388,7 @@
                     </label>
                   <% }) %>
                 </div>
-                <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+                <div class="evidence-link-actions" style="margin-top:6px;display:flex;gap:6px;align-items:center;">
                   <input type="text" name="section_ref" placeholder="Section ref (optional)" class="input text-base" style="flex:1;">
                   <button class="btn btn-primary btn-xs">Link to ISO 42001</button>
                 </div>
@@ -379,7 +416,7 @@
                     </label>
                   <% }) %>
                 </div>
-                <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+                <div class="evidence-link-actions" style="margin-top:6px;display:flex;gap:6px;align-items:center;">
                   <input type="text" name="section_ref" placeholder="Section ref (optional)" class="input text-base" style="flex:1;">
                   <button class="btn btn-primary btn-xs">Link to CSF</button>
                 </div>
@@ -403,7 +440,7 @@
                     </label>
                   <% }) %>
                 </div>
-                <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+                <div class="evidence-link-actions" style="margin-top:6px;display:flex;gap:6px;align-items:center;">
                   <input type="text" name="section_ref" placeholder="Section ref (optional)" class="input text-base" style="flex:1;">
                   <button class="btn btn-primary btn-xs">Link to DPDPA</button>
                 </div>

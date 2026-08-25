@@ -33,6 +33,11 @@
      view style tag loads after app.css and would otherwise win. Only the
      selectors declared below 11px above are listed. */
   @media (max-width: 760px) {
+    .dco,
+    .dco-grid,
+    .dco-grid > *,
+    .dco-main,
+    .dco-aside { min-width: 0; }
     .dco-eyebrow,
     .dco-state span,
     .dco-service-copy span,
@@ -58,6 +63,36 @@
     .dco-method-list span,
     .dco-method-step
     { font-size: 11px; }
+    .dco-form input,.dco-form select,.dco-form textarea {
+      min-height: 44px;
+      font-size: 16px;
+    }
+    .dco-formbar .btn { width: 100%; justify-content: center; }
+    .dco-table-wrap {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .dco-table { min-width: 620px; }
+    .dco-switch select { width: 100%; max-width: none; }
+    .dco-actions { width: 100%; }
+    .dco-actions > .btn { flex: 1 1 120px; justify-content: center; }
+    .dco-hero { padding: 20px 18px; }
+    .dco-head > div { min-width: 0; }
+    .dco-kv { align-items: flex-start; flex-direction: column; }
+  }
+  @media (max-width: 430px) {
+    .dco-actions > details { flex: 1 1 100%; }
+    .dco-actions > details > summary { justify-content: center; width: 100%; }
+    .dco-actions > details > .dco-panel {
+      position: fixed !important;
+      inset: auto 12px 12px !important;
+      width: auto !important;
+      max-height: 82dvh;
+      overflow-y: auto;
+    }
   }
 </style>
 

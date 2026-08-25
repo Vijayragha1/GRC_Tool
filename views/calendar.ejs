@@ -21,12 +21,51 @@
   };
 %>
 
+<style>
+  .calendar-mobile-agenda { display: none; }
+  .calendar-mobile-day + .calendar-mobile-day { border-top: 1px solid var(--border); }
+  .calendar-mobile-day { padding: 12px 14px; }
+  .calendar-mobile-date { display: block; margin-bottom: 8px; font-weight: 600; }
+  .calendar-mobile-event {
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: baseline;
+    min-height: 44px;
+    padding: 8px 0;
+    color: inherit;
+    text-decoration: none;
+  }
+  .calendar-mobile-event + .calendar-mobile-event { border-top: 1px dashed var(--border); }
+  .calendar-mobile-dot { width: 8px; height: 8px; border-radius: 2px; }
+  @media (max-width: 600px) {
+    .calendar-month-nav {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+    }
+    .calendar-month-nav > strong {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      min-width: 0 !important;
+    }
+    .calendar-month-nav > .btn { justify-content: center; }
+    .calendar-month-nav > .meta {
+      grid-column: 1 / -1;
+      margin: 2px 0 0 !important;
+      text-align: center;
+    }
+    .calendar-desktop-grid { display: none; }
+    .calendar-mobile-agenda { display: block; }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Calendar</h1>
     <div class="page-subtitle">Date projection of the delivery plan and operational registers: milestones, deliverables, tasks, audits, reviews, findings and recurring obligations.</div>
   </div>
-  <div class="row-center">
+  <div class="row-center calendar-month-nav">
     <a href="?month=<%= prevMo %>" class="btn btn-secondary btn-xs">← Prev</a>
     <strong class="text-xl" style="min-width:160px;text-align:center;"><%= monthLabel %></strong>
     <a href="?month=<%= nextMo %>" class="btn btn-secondary btn-xs">Next →</a>
@@ -44,7 +83,7 @@
   <% }) %>
 </div>
 
-<div class="panel" style="overflow:hidden;">
+<div class="panel calendar-desktop-grid" style="overflow:hidden;">
   <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;">
     <% ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => { %>
       <div class="text-xs text-secondary" style="padding:8px 10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);background:var(--bg-subtle);text-align:center;"><%= d %></div>
@@ -67,5 +106,27 @@
     <% }) %>
   </div>
 </div>
+
+<section class="panel calendar-mobile-agenda" aria-label="Events in <%= monthLabel %>">
+  <%
+    const agendaDays = cells.filter(c => c && c.events.length);
+  %>
+  <% if (!agendaDays.length) { %>
+    <div class="empty-state"><div class="empty-sub">No events this month.</div></div>
+  <% } else { %>
+    <% agendaDays.forEach(c => { %>
+      <div class="calendar-mobile-day">
+        <time class="calendar-mobile-date" datetime="<%= c.date %>"><%= new Date(c.date + 'T00:00:00').toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'short' }) %></time>
+        <% c.events.forEach(e => { %>
+          <a class="calendar-mobile-event" href="<%= e.link %>">
+            <span class="calendar-mobile-dot" style="background:<%= kindColor[e.kind] || '#666' %>;"></span>
+            <span><%= e.title %></span>
+            <span class="meta text-xs"><%= kindLabel[e.kind] || e.kind %></span>
+          </a>
+        <% }) %>
+      </div>
+    <% }) %>
+  <% } %>
+</section>
 
 <%- include('partials/footer') %>

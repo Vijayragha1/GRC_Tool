@@ -1,5 +1,15 @@
 <%- include('partials/header', { title: 'ISO 42001 client plan', user, ws, active: 'iso42001-engagement-plan' }) %>
 
+<style>
+  .iso42-plan-progress{width:min(300px,100%)!important}
+  @media(max-width:760px){
+    .iso42-plan-summary{align-items:flex-start!important}
+    .iso42-plan-summary>div:last-child{flex:1;min-width:0}
+    .iso42-plan-notes{align-items:stretch;flex-direction:column}
+    .iso42-plan-notes .btn{width:100%}
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 client plan</h1>
@@ -8,11 +18,11 @@
 </div>
 
 <% const done = phases.filter(p => progress[p.key] && progress[p.key].completed_at).length; %>
-<div class="panel" style="padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
+<div class="panel iso42-plan-summary" style="padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
   <div style="font-size:30px;font-weight: 500;"><%= done %>/<%= phases.length %></div>
   <div>
     <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.5px;">phases complete</div>
-    <div style="height:6px;width:300px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;margin-top:4px;">
+    <div class="iso42-plan-progress" style="height:6px;width:300px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;margin-top:4px;">
       <div style="height:100%;width:<%= Math.round((done/phases.length)*100) %>%;background:var(--accent);"></div>
     </div>
   </div>
@@ -40,7 +50,7 @@
             Completed <%= prog.completed_at %><% if (prog.completed_by_name) { %> by <%= prog.completed_by_name %><% } %>
           </div>
         <% } %>
-        <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/engagement-plan/<%= p.key %>/notes" style="margin-top:8px;display:flex;gap:6px;">
+        <form class="iso42-plan-notes" method="POST" action="/workspaces/<%= ws.id %>/iso42001/engagement-plan/<%= p.key %>/notes" style="margin-top:8px;display:flex;gap:6px;">
           <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
           <input type="text" name="notes" value="<%= prog.notes || '' %>" placeholder="Phase notes (decisions, owners, dates)…" class="input text-base" style="flex:1;">
           <button class="btn btn-ghost btn-xs">Save notes</button>

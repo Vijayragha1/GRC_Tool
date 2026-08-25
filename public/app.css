@@ -1481,3 +1481,211 @@
   .grid-2 > *, .grid-4 > *, .grid-list > *, .dash-split > *, .dp-split > * { min-width: 0; }
   .page-head > div { min-width: 0; }
 }
+
+/* ==================== SHARED MOBILE SHELL ====================
+   These rules cover the reusable frame and primitives. Module-specific
+   layouts stay with their modules, while every page inherits safe gutters,
+   reachable navigation, resilient action rows and viewport-bound overlays. */
+.sidebar-mobile-close { display: none; }
+img, video, canvas { max-width: 100%; height: auto; }
+pre { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+fieldset { min-width: 0; }
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: min(300px, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
+    height: 100dvh;
+    padding-left: env(safe-area-inset-left);
+    overscroll-behavior: contain;
+  }
+  .sidebar-section:first-child { position: relative; padding-right: 60px; }
+  .sidebar-mobile-close {
+    position: absolute; top: 8px; right: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; padding: 0;
+    border: 0; border-radius: 6px; background: transparent;
+    color: var(--text-secondary); cursor: pointer;
+  }
+  .sidebar-mobile-close:hover { background: var(--nav-hover); color: var(--text); }
+  .sidebar-mobile-close:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .sidebar-backdrop {
+    width: auto; height: auto; margin: 0; padding: 0;
+    border: 0; border-radius: 0;
+  }
+  .sidebar-nav { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .sidebar-foot { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .app.drawer-open .main { overflow: hidden; pointer-events: none; user-select: none; }
+
+  /* Mobile controls use a consistent 44px target. The visual glyphs stay
+     compact, but their hit areas no longer demand desktop precision. */
+  .nav-item, .nav-domain-summary, .nav-subitem { min-height: 44px; }
+  .sidebar-foot-action, .sidebar-foot-action > button,
+  .icon-btn, .palette-trigger { min-width: 44px; min-height: 44px; }
+  .sidebar-foot-action, .sidebar-foot-action > button { padding: 8px; }
+  .topbar-tenant-switcher { display: none; }
+
+  #app .main-inner {
+    padding-top: 0;
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(64px, calc(44px + env(safe-area-inset-bottom)));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+  #app .topbar {
+    top: 0; z-index: 40;
+    min-height: calc(60px + env(safe-area-inset-top));
+    margin-bottom: 18px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: 8px;
+    background: color-mix(in srgb, var(--bg-deep) 96%, transparent);
+  }
+  .topbar .palette-trigger { flex: 0 1 auto; }
+
+  .page-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .page-head > *, .panel-head > * { min-width: 0; max-width: 100%; }
+  .page-head > div:first-child { min-width: 0; }
+  .page-head > .row, .page-head > .row-center,
+  .page-head > form, .page-head > form > .row, .page-head > form > .row-center {
+    width: 100%; flex-wrap: wrap;
+  }
+  .page-title { font-size: clamp(20px, 6vw, 24px); overflow-wrap: anywhere; }
+  .page-subtitle { overflow-wrap: anywhere; }
+
+  .subtabs {
+    max-width: 100%; overflow-x: auto; overflow-y: hidden;
+    overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .subtabs::-webkit-scrollbar { display: none; }
+  .subtab {
+    display: inline-flex; align-items: center;
+    min-height: 44px; padding: 9px 14px; flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .panel-pad { padding: 14px; }
+  .panel-tight { padding: 11px 14px; }
+  .panel-head { min-height: 52px; padding: 10px 14px; flex-wrap: wrap; align-items: center; }
+  .panel-head > .row, .panel-head > .row-center { flex-wrap: wrap; }
+  .empty-state { padding: 32px 16px; }
+
+  .row, .row-center { min-width: 0; flex-wrap: wrap; }
+  .row > *, .row-center > * { min-width: 0; }
+  .btn, .btn-xs, input[type="file"]::file-selector-button {
+    min-height: 44px;
+    max-width: 100%;
+    justify-content: center;
+  }
+  .btn { padding: 9px 13px; }
+  .btn-xs { padding: 8px 11px; }
+  details > summary { min-height: 44px; }
+
+  /* Named and conventional table wrappers support page-owned tables without
+     forcing the document itself to become wider than the phone viewport. */
+  .table-scroll, .table-responsive, .dash-table-wrap,
+  [class$="-table-wrap"], [class$="-table-scroll"] {
+    max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch; scrollbar-gutter: stable;
+  }
+  table.t, table.tprm-table, table.wp {
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+    touch-action: pan-x pan-y;
+  }
+
+  /* Command palette, help and app confirmations become bottom sheets. Their
+     scrollable bodies remain inside the viewport, including device insets. */
+  .cp-backdrop {
+    align-items: flex-end;
+    padding: max(12px, env(safe-area-inset-top)) 0 0;
+  }
+  .cp-modal {
+    display: flex; flex-direction: column;
+    width: 100%; max-width: 100%;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    border-width: 1px 0 0;
+    border-radius: 12px 12px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .cp-search { flex: 0 0 auto; padding: 10px 12px; }
+  .cp-search input { min-width: 0; min-height: 44px; font-size: 16px; }
+  .cp-results, .help-shortcuts {
+    min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .cp-result { min-height: 44px; }
+  .cp-label { white-space: normal; overflow-wrap: anywhere; }
+  .cp-sub { max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .app-confirm-backdrop {
+    align-items: flex-end !important;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .app-confirm-sheet {
+    width: 100% !important; max-width: 100% !important;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    overflow-y: auto !important; overscroll-behavior: contain;
+    border-width: 1px 0 0 !important;
+    border-radius: 12px 12px 0 0 !important;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .app-confirm-actions { flex-wrap: wrap; }
+  .app-confirm-actions .btn { flex: 1 1 120px; }
+
+  dialog {
+    inset: auto 0 0 !important;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top))) !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: max(1em, env(safe-area-inset-bottom));
+  }
+  .toast-stack {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+  }
+  .toast { width: 100%; min-width: 0; overflow-wrap: anywhere; }
+  .back-to-top {
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    width: 44px; height: 44px;
+  }
+  .floating-contact {
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(70px, calc(52px + env(safe-area-inset-bottom)));
+    min-height: 44px;
+  }
+  .cookie-consent {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+  }
+}
+
+@media (max-width: 430px) {
+  .sidebar { width: min(292px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
+  #app .main-inner {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+  #app .topbar { gap: 6px; margin-bottom: 14px; }
+  .topbar .palette-trigger { padding-inline: 10px; }
+  .page-head > .row > .btn, .page-head > .row-center > .btn,
+  .page-head > form > .row > .btn, .page-head > form > .row-center > .btn {
+    flex: 1 1 100%; width: 100%;
+  }
+  .panel-pad { padding: 12px; }
+  .panel-tight { padding: 10px 12px; }
+  .panel-head { padding-inline: 12px; }
+  .cp-foot { display: none; }
+  .cp-type { width: 58px; }
+  .cp-sub { display: none; }
+  .app-confirm-actions { display: grid !important; grid-template-columns: 1fr 1fr; }
+  .app-confirm-actions .btn { width: 100%; }
+}

@@ -1,11 +1,23 @@
 <%- include('partials/header', { title: 'ISO 42001 intake', user, ws, active: 'iso42001-intake' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-intake-head-actions{align-items:stretch!important;display:grid!important;grid-template-columns:minmax(0,1fr);width:100%}
+    .iso42-intake-head-actions form,.iso42-intake-head-actions .btn{width:100%}
+    .iso42-intake-notice{grid-template-columns:24px minmax(0,1fr)!important}
+    .iso42-intake-notice>.btn{grid-column:1/-1;width:100%}
+    .iso42-intake-save{align-items:stretch!important;flex-direction:column}
+    .iso42-intake-save .btn{width:100%}
+    #intakeForm .label{align-items:flex-start!important;flex-wrap:wrap}
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 client setup</h1>
     <div class="page-subtitle">Capture AI context, role determination, AI footprint, regulatory obligations, and scope. Apply pushes the draft into the AIMS - clause 4.1, 4.2, 4.3 notes.</div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div class="iso42-intake-head-actions" style="display:flex;gap:8px;align-items:center;">
     <span class="meta text-base"><strong><%= answered %></strong> / <%= total %> answered</span>
     <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/intake/apply" onsubmit="return confirm('Apply the draft scope statement to clause 4.3 notes, seed clauses 4.1 / 4.2 from intake answers, and set the target cert date? Existing notes are not overwritten.');">
       <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
@@ -15,7 +27,7 @@
 </div>
 
 <% if (answered === 0) { %>
-  <div class="panel" style="margin-bottom:14px;background:var(--bg-subtle);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
+  <div class="panel iso42-intake-notice" style="margin-bottom:14px;background:var(--bg-subtle);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
     <div>
       <div style="font-size:13.5px;font-weight: 500;margin-bottom:3px;">New AIMS rollout - finish the intake first</div>
@@ -58,7 +70,7 @@
     </div>
   <% }) %>
 
-  <div style="display:flex;gap:10px;align-items:center;">
+  <div class="iso42-intake-save" style="display:flex;gap:10px;align-items:center;">
     <button type="submit" class="btn btn-primary">Save intake</button>
     <span class="meta text-sm">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to client</strong> at the top.</span>
   </div>

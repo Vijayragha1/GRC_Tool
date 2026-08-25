@@ -1,11 +1,23 @@
 <%- include('partials/header', { title: 'ISO 42001 controls', user, ws, active: 'iso42001-controls' }) %>
 
+<style>
+  @media(max-width:760px){
+    .iso42-controls-filter{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+    .iso42-controls-filter .input,.iso42-controls-filter .select,.iso42-controls-filter .btn{width:100%!important}
+    .iso42-controls-bulk{flex-wrap:wrap;top:56px!important}
+    .iso42-controls-bulk>span:first-child{flex:1 0 100%}
+    .iso42-controls-bulk .select{flex:1 1 180px;width:auto!important}
+    .iso42-controls-bulk .btn{flex:1 1 100px}
+  }
+  @media(max-width:430px){.iso42-controls-bulk .select,.iso42-controls-bulk .btn{flex-basis:100%;width:100%!important}}
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 controls & clauses</h1>
     <div class="page-subtitle">27 clauses (4-10) and 38 Annex A controls. Bulk-edit with checkboxes or click into a control to assess.</div>
   </div>
-  <form class="row-center" method="GET">
+  <form class="row-center iso42-controls-filter" method="GET">
     <a href="/workspaces/<%= ws.id %>/iso42001/gap" class="btn btn-primary btn-xs" title="Walk clauses + Annex A one item at a time with prompts">Start gap assessment</a>
     <input class="input" name="q" placeholder="Search…" value="<%= search %>" style="width:200px">
     <select name="filter" class="select" style="width:240px" onchange="this.form.submit()">
@@ -29,7 +41,7 @@
 
 <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/bulk-controls" id="bulkForm">
   <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-  <div id="bulkBar" class="hidden panel text-lg" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
+  <div id="bulkBar" class="hidden panel text-lg iso42-controls-bulk" style="padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg-subtle);position:sticky;top:0;z-index:10;">
     <span><span id="bulkCount">0</span> selected</span>
     <span class="text-tertiary">·</span>
     <select name="status" class="select text-base" style="width:200px;padding:4px 8px;">
