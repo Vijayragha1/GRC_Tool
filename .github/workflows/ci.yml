@@ -17,6 +17,9 @@ jobs:
       # compatible browser is installed explicitly and visibly below because
       # the route suite exercises production PDF generation.
       PUPPETEER_SKIP_DOWNLOAD: '1'
+      # Earlier suites can create an empty repo-root database as a side effect.
+      # Always make the standalone walkers build their own migrated seed data.
+      FORCE_BUILT_DB: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
