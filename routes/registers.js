@@ -21,6 +21,23 @@ function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           upload, resolveUploadPath, activeEntityFilter } = deps;
 
+  function requireExactPermission(permission) {
+    return (req, res, next) => {
+      const permissions = req.userPerms || new Set();
+      const allowed = permissions === '*' || (permissions?.has
+        ? (permissions.has('*') || permissions.has(permission))
+        : Array.isArray(permissions) && (permissions.includes('*') || permissions.includes(permission)));
+      if (allowed) return next();
+      logAction(req.user.id, req.workspace.id, 'permission_denied', 'permission', permission,
+        { route: `${req.method} ${req.path}` }, auditCtx(req));
+      return res.status(403).render('error', {
+        user: req.user,
+        ws: req.workspace,
+        message: `You don't have permission to do this (missing: ${permission}).`,
+      });
+    };
+  }
+
   // ==================== INCIDENTS ====================
   app.get('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, (req, res) => {
     const filter = req.query.filter || 'open';
@@ -483,6 +500,11 @@ function register(app, deps) {
     return serviceCapabilities.CAPABILITIES.OPERATIONAL_LIFECYCLE;
   }
 
+  // The legacy vendor service guard runs before the concrete export route.
+  // Put the export capability in front of it so a disabled service cannot turn
+  // a permission denial into a guessed-route/service-enumeration response.
+  app.use('/workspaces/:wsId/vendors/export.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'));
   app.use('/workspaces/:wsId/vendors', requireAuth, requireWorkspace, (req, res, next) => {
     // Always evaluate the latest service-period row. Looking only for an open
     // row can resurrect writes from an older period after the latest period
@@ -689,7 +711,10 @@ function register(app, deps) {
       pg: pgV, pagerHref: p => pageHref(req, p) });
   });
 
-  app.get('/workspaces/:wsId/vendors/export.csv', requireAuth, requireWorkspace, requirePermission('tprm.assurance.export'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/export.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('tprm.third_party.view'),
+    requirePermission('tprm.assurance.view'), requirePermission('tprm.assurance.export'),
+    requireExactPermission('tprm.assurance.export'), (req, res) => {
     const rows = db.prepare(`SELECT s.name,s.service_provided,s.lifecycle_stage,s.business_owner,s.relationship_owner,
       (SELECT ia.assigned_tier FROM supplier_inherent_assessments ia WHERE ia.supplier_id=s.id AND ia.status='approved' ORDER BY ia.id DESC LIMIT 1) governed_tier,
       (SELECT ia.weighted_score FROM supplier_inherent_assessments ia WHERE ia.supplier_id=s.id AND ia.status='approved' ORDER BY ia.id DESC LIMIT 1) inherent_score_100,
@@ -1139,7 +1164,8 @@ function register(app, deps) {
     res.redirect('/workspaces/' + req.workspace.id + '/vendors/' + req.params.id + '?view=support&tab=documents');
   });
 
-  app.get('/workspaces/:wsId/vendors/:id/documents/:docId/download', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/documents/:docId/download', requireAuth, requireWorkspace,
+    requirePermission('tprm.third_party.view'), requirePermission('evidence.download'), (req, res) => {
     const d = db.prepare(`SELECT * FROM supplier_documents WHERE id=? AND supplier_id=? AND workspace_id=?`)
       .get(req.params.docId, req.params.id, req.workspace.id);
     if (!d || !d.stored_path) return res.status(404).send('Not found');
@@ -1396,7 +1422,8 @@ function register(app, deps) {
 
   // Download a questionnaire attachment. Scoped by joining through the parent
   // questionnaire so a token from one workspace can't pull another's files.
-  app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId/attachments/:attId/download', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/questionnaires/:qId/attachments/:attId/download', requireAuth, requireWorkspace,
+    requirePermission('tprm.third_party.view'), requirePermission('evidence.download'), (req, res) => {
     const a = db.prepare(`SELECT a.* FROM questionnaire_attachments a
       INNER JOIN supplier_questionnaires q ON q.id=a.questionnaire_id
       WHERE a.id=? AND a.questionnaire_id=? AND q.supplier_id=? AND q.workspace_id=?`)

@@ -1,19 +1,27 @@
 services:
   isms:
     build: .
-    image: iso27001-tool:latest
+    image: "${ISMS_IMAGE:-iso27001-tool:local}"
     container_name: iso27001-tool
     restart: unless-stopped
     init: true
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - APP_VERSION=${APP_VERSION:-development}
       - DB_PATH=/app/data/iso27001.db
       - ISMS_BACKUP_DIR=/app/data/backups
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:http').get('http://127.0.0.1:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    stop_grace_period: 20s
     security_opt:
       - no-new-privileges:true
     cap_drop:

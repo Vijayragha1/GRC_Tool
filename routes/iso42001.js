@@ -334,7 +334,8 @@ function register(app, deps) {
   });
 
   // SoA CSV export
-  app.get('/workspaces/:wsId/iso42001/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/iso42001/export/soa.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'), (req, res) => {
     const T = ctlReads.tables(db, req.workspace.id);
     const rows = db.prepare(`SELECT i.id, i.title, i.category,
         COALESCE(cs.applicability,'undecided') AS applicability,

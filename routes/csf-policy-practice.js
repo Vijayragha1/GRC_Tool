@@ -42,7 +42,12 @@ function clean(value, max = 20000) {
 }
 
 function register(app, deps) {
-  const { db, requireAuth, requireWorkspace, logAction, upload } = deps;
+  const { db, requireAuth, requireWorkspace, requirePermission, logAction, upload } = deps;
+  const requireFirmWorkspaceExport = requirePermission('workspace.export');
+  function requireInternalExport(req, res, next) {
+    if (req.user?.user_type === 'client') return next();
+    return requireFirmWorkspaceExport(req, res, next);
+  }
 
   function renderError(req, res, status, message) {
     return res.status(status).render('error', { user:req.user, ws:req.workspace, message });
@@ -473,9 +478,9 @@ function register(app, deps) {
       const raw=await htmlToDocxPooled(html,null,{title:`${loaded.engagement.name} NIST CSF 2.0 ${reportSuffix.toLowerCase()} report`,creator:req.workspace.brand_display_name||req.workspace.client_name||'Compliance Sphere',pageNumber:true});const docx=reports.asBuffer(raw);res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');res.setHeader('Content-Disposition',`attachment; filename="${base}.docx"`);res.setHeader('Content-Length',docx.length);logAction(req.user.id,req.workspace.id,'csf_report_export_docx','csf_assessment_version_v2',version.id,{bytes:docx.length,complete:reportMeta.complete,published:reportMeta.published},auditCtx(req));return res.send(docx);
     }catch(err){console.error('[CSF export]',err);return res.status(500).render('error',{user:req.user,ws:req.workspace,message:req.user.user_type==='client'?'The report could not be generated. Please retry or contact support.':'The controlled report could not be generated. Please retry or contact support.'});}
   }
-  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.pdf',requireAuth,requireWorkspace,(req,res)=>exportVersion(req,res,'pdf'));
-  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx',requireAuth,requireWorkspace,(req,res)=>exportVersion(req,res,'docx'));
-  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/data.csv',requireAuth,requireWorkspace,(req,res)=>exportVersion(req,res,'csv'));
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.pdf',requireAuth,requireWorkspace,requireInternalExport,(req,res)=>exportVersion(req,res,'pdf'));
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx',requireAuth,requireWorkspace,requireInternalExport,(req,res)=>exportVersion(req,res,'docx'));
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/data.csv',requireAuth,requireWorkspace,requireInternalExport,(req,res)=>exportVersion(req,res,'csv'));
 
   // Historical deep links resolve to the corresponding replacement surface.
   for(const old of ['profile'])app.get(`/workspaces/:wsId/csf/:id(\\d+)/${old}`,requireAuth,requireWorkspace,(req,res)=>res.redirect(`/workspaces/${req.workspace.id}/csf/${req.params.id}/scope`));

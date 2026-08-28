@@ -454,9 +454,11 @@ function register(app, deps) {
     protectedReleasedEvidence);
   app.get('/workspaces/:wsId/tprm/third-parties/:supplierId/conditions/:conditionId/evidence/:evidenceId/download',
     requireAuth, requireWorkspace, firmOnly, requirePermission('tprm.conditions.manage'),
+    requirePermission('evidence.download'),
     (req, res) => protectedEvidence(req, res));
   app.get('/workspaces/:wsId/tprm/third-parties/:supplierId/conditions/:conditionId/evidence/latest/download',
     requireAuth, requireWorkspace, firmOnly, requirePermission('tprm.conditions.manage'),
+    requirePermission('evidence.download'),
     (req, res) => protectedEvidence(req, res));
 }
 

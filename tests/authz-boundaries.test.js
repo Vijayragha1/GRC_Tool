@@ -236,6 +236,117 @@ test('AUTHZ-004 - auditor credentials are Manager-only, hashed at rest, shown on
   assert.equal((await auditor.get(`/auditor/${raw}`)).status, 403);
 });
 
+test('AUTHZ-005/006 - evidence, internal exports and platform operations fail closed', async (t) => {
+  const { app, dbPath } = bootApp();
+  const ids = seedAuthorizationScenario(dbPath);
+  const manager = makeClient(app);
+  const consultant = makeClient(app);
+  const client = makeClient(app);
+  t.after(async () => { await Promise.all([manager.close(), consultant.close(), client.close()]); });
+  await login(manager, 'boundary-manager@test.local');
+  await login(consultant, 'boundary-consultant@test.local');
+  await login(client, 'boundary-client@test.local');
+
+  // Client-portal roles may upload evidence through scoped request flows, but
+  // cannot browse or export the firm's internal evidence library by guessing a
+  // workspace URL.
+  for (const route of [
+    `/workspaces/${ids.workspaceId}/evidence`,
+    `/workspaces/${ids.workspaceId}/evidence/999999/download`,
+    `/workspaces/${ids.workspaceId}/evidence/999999/preview`,
+    `/workspaces/${ids.workspaceId}/evidence/pack.zip`,
+  ]) {
+    const denied = await client.get(route);
+    assert.equal(denied.status, 403, `${route} must require an internal evidence permission`);
+  }
+
+  // Existing firm roles retain their intended evidence access.
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/evidence`)).status, 200);
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/evidence/999999/download`)).status, 404);
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/export/risks.csv`)).status, 200);
+
+  const overrides = new Database(dbPath);
+  const insertOverride = overrides.prepare(`INSERT INTO workspace_role_overrides
+    (workspace_id,user_id,permission,granted,granted_by,reason)
+    VALUES (?,?,?,?,?,'Phase 1 authorization regression')`);
+  for (const permission of ['evidence.view', 'evidence.download', 'evidence.export']) {
+    insertOverride.run(ids.workspaceId, ids.consultantId, permission, 0, ids.managerId);
+  }
+  overrides.close();
+
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/evidence`)).status, 403);
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/evidence/999999/download`)).status, 403);
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/evidence/999999/preview`)).status, 403);
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/evidence/pack.zip`)).status, 403);
+  for (const route of [
+    `/workspaces/${ids.workspaceId}/evidence-coverage`,
+    `/workspaces/${ids.workspaceId}/evidence-coverage.csv`,
+    `/workspaces/${ids.workspaceId}/export/readiness-pack.zip`,
+    `/workspaces/${ids.workspaceId}/audit-pack`,
+    `/workspaces/${ids.workspaceId}/audit-pack/preview`,
+    `/workspaces/${ids.workspaceId}/audit-pack/zip`,
+    `/workspaces/${ids.workspaceId}/handover`,
+  ]) {
+    assert.equal((await consultant.get(route)).status, 403, `${route} must require evidence.export`);
+  }
+  assert.equal((await consultant.post(`/workspaces/${ids.workspaceId}/audit-pack/pdf`, {})).status, 403);
+
+  const revokeExport = new Database(dbPath);
+  revokeExport.prepare(`DELETE FROM workspace_role_overrides
+    WHERE workspace_id=? AND user_id=? AND permission LIKE 'evidence.%'`).run(ids.workspaceId, ids.consultantId);
+  revokeExport.prepare(`INSERT INTO workspace_role_overrides
+    (workspace_id,user_id,permission,granted,granted_by,reason)
+    VALUES (?,?, 'workspace.export',0,?,'Phase 1 authorization regression')`)
+    .run(ids.workspaceId, ids.consultantId, ids.managerId);
+  revokeExport.close();
+
+  const internalExports = [
+    `/workspaces/${ids.workspaceId}/export/soa.csv`,
+    `/workspaces/${ids.workspaceId}/export/risks.csv`,
+    `/workspaces/${ids.workspaceId}/export/assets.csv`,
+    `/workspaces/${ids.workspaceId}/export/rtp.docx`,
+    `/workspaces/${ids.workspaceId}/export/gap-report.docx`,
+    `/workspaces/${ids.workspaceId}/export/gap-report.pdf`,
+    `/workspaces/${ids.workspaceId}/export/recommendations.docx`,
+    `/workspaces/${ids.workspaceId}/export/readiness-pack.zip`,
+    `/workspaces/${ids.workspaceId}/controls/export.csv`,
+    `/workspaces/${ids.workspaceId}/controls/assess/summary.docx`,
+    `/workspaces/${ids.workspaceId}/evidence/pack.zip`,
+    `/workspaces/${ids.workspaceId}/evidence-coverage.csv`,
+    `/workspaces/${ids.workspaceId}/audit-pack`,
+    `/workspaces/${ids.workspaceId}/audit-pack/preview`,
+    `/workspaces/${ids.workspaceId}/audit-pack/zip`,
+    `/workspaces/${ids.workspaceId}/iso42001/export/soa.csv`,
+    `/workspaces/${ids.workspaceId}/engagement-plan/export.csv`,
+    `/workspaces/${ids.workspaceId}/engagement-plan/report.pdf`,
+    `/workspaces/${ids.workspaceId}/activity-log.csv`,
+    `/workspaces/${ids.workspaceId}/assurance/runs/999999/pdf`,
+    `/workspaces/${ids.workspaceId}/vendors/export.csv`,
+    `/workspaces/${ids.workspaceId}/csf/999999/exports/data.csv`,
+    `/workspaces/${ids.workspaceId}/dpdpa/assessments/999999/exports/data.csv`,
+  ];
+  for (const route of internalExports) {
+    const denied = await consultant.get(route);
+    assert.equal(denied.status, 403, `${route} must require workspace.export`);
+  }
+  assert.equal((await consultant.post(`/workspaces/${ids.workspaceId}/audit-pack/pdf`, {})).status, 403);
+
+  const before = new Database(dbPath);
+  const beforeRotations = before.prepare('SELECT COUNT(*) count FROM key_rotations').get().count;
+  const beforeBackups = before.prepare('SELECT COUNT(*) count FROM backup_runs').get().count;
+  before.close();
+  const system = await manager.get(`/workspaces/${ids.workspaceId}/system`);
+  assert.equal(system.status, 200);
+  assert.doesNotMatch(system.text, /\/system\/(?:backup|rotate-key)/);
+  assert.doesNotMatch(system.text, /Master key fingerprint|Last restore drill|No rotations yet|Run backup now/);
+  assert.equal((await manager.post(`/workspaces/${ids.workspaceId}/system/backup`, {})).status, 404);
+  assert.equal((await manager.post(`/workspaces/${ids.workspaceId}/system/rotate-key`, { confirm: 'rotate' })).status, 404);
+  const after = new Database(dbPath);
+  assert.equal(after.prepare('SELECT COUNT(*) count FROM key_rotations').get().count, beforeRotations);
+  assert.equal(after.prepare('SELECT COUNT(*) count FROM backup_runs').get().count, beforeBackups);
+  after.close();
+});
+
 test('SESS-001 - password reset revokes every prior session and new logins bind to the incremented epoch', async (t) => {
   const { app, dbPath } = bootApp();
   const db = new Database(dbPath);

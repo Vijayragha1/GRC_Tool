@@ -1513,13 +1513,13 @@
 
 /* The persistent TPRM sidebar is the desktop navigation. The compact tab
    strip returns only when the sidebar becomes a drawer. */
-@media (min-width: 901px) {
+@media (min-width: 961px) {
   .tprm-module-nav {
     display: none;
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .tprm-module-nav {
     display: flex;
   }

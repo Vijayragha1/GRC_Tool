@@ -167,6 +167,14 @@ function register(app, deps) {
     requireDpdpaEnabled,
     requirePermission(permission),
   ];
+  const guardedExport = permission => [
+    requireAuth,
+    requireWorkspace,
+    firmOnly,
+    requirePermission('workspace.export'),
+    requireDpdpaEnabled,
+    requirePermission(permission),
+  ];
 
   function loadAssessment(req, res) {
     const assessmentId = positiveInteger(req.params.assessmentId);
@@ -551,7 +559,8 @@ function register(app, deps) {
     }
   });
 
-  app.post('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/snapshots', ...guarded('dpdpa.export'), (req, res) => {
+  app.post('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/snapshots', ...guarded('dpdpa.export'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'), (req, res) => {
     const assessmentId = positiveInteger(req.params.assessmentId);
     const backUrl = assessmentId ? `${assessmentUrl(req.workspace.id, assessmentId)}/review` : baseUrl(req.workspace.id);
     try {
@@ -567,7 +576,8 @@ function register(app, deps) {
     }
   });
 
-  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/report', ...guarded('dpdpa.export'), (req, res) => {
+  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/report', ...guarded('dpdpa.export'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'), (req, res) => {
     try {
       const assessment = loadAssessment(req, res);
       if (!assessment) return;
@@ -672,11 +682,14 @@ function register(app, deps) {
     }
   }
 
-  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/exports/report.pdf', ...guarded('dpdpa.export'),
+  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/exports/report.pdf', ...guardedExport('dpdpa.export'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'),
     (req, res) => exportFrozenSnapshot(req, res, 'pdf'));
-  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/exports/report.docx', ...guarded('dpdpa.export'),
+  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/exports/report.docx', ...guardedExport('dpdpa.export'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'),
     (req, res) => exportFrozenSnapshot(req, res, 'docx'));
-  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/exports/data.csv', ...guarded('dpdpa.export'),
+  app.get('/workspaces/:wsId/dpdpa/assessments/:assessmentId(\\d+)/exports/data.csv', ...guardedExport('dpdpa.export'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'),
     (req, res) => exportFrozenSnapshot(req, res, 'csv'));
 }
 

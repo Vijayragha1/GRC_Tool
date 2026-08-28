@@ -161,7 +161,8 @@ explicitly not this plan. What can be done inside the policy:
   or DB file over ~2GB. Any of those reopens the datastore question.
 
 Gate: restore drill passes against a real backup; mirror file appears after a
-manual backup from the system page.
+host-operated `npm run backup`. Tenant workspaces do not execute platform-wide
+backup or key-management operations.
 
 ---
 

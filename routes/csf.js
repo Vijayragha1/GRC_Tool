@@ -14,6 +14,14 @@ const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-h
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, upload } = deps;
+  const requireFirmWorkspaceExport = requirePermission('workspace.export');
+  // Published CSF reports are an intentional client-portal deliverable. The
+  // workspace.export capability governs the internal/firm export path without
+  // broadening client roles into unrelated workspace exports.
+  function requireInternalExport(req, res, next) {
+    if (req.user?.user_type === 'client') return next();
+    return requireFirmWorkspaceExport(req, res, next);
+  }
 
   // ==================== NIST CSF 2.0 ====================
   // Module layout (Stage 2):
@@ -1390,7 +1398,8 @@ function register(app, deps) {
   const csfReports = require('../lib/csf-reports');
 
   // Word: live engagement (draft watermark) OR a specific version (vid query param).
-  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.docx', requireAuth, requireWorkspace,
+    requireInternalExport, async (req, res) => {
     const { engagement, error } = loadCsfEngagement(req, { allowClient: true });
     if (error) return res.status(error.status).send(error.message);
     if (req.user.user_type === 'client' && !req.query.vid) return res.status(403).send('Client users can download published report versions only.');
@@ -1416,7 +1425,8 @@ function register(app, deps) {
     logAction(req.user.id, req.workspace.id, 'csf_report_export_docx', 'csf_engagement', engagement.id, { version_id: versionRow?.id || null }, auditCtx(req));
   });
 
-  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.pdf', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/report.pdf', requireAuth, requireWorkspace,
+    requireInternalExport, async (req, res) => {
     const { engagement, error } = loadCsfEngagement(req, { allowClient: true });
     if (error) return res.status(error.status).send(error.message);
     if (req.user.user_type === 'client' && !req.query.vid) return res.status(403).send('Client users can download published report versions only.');
@@ -1441,7 +1451,8 @@ function register(app, deps) {
   // params (?fn=GV, ?status=Approved, ?scored=1). Filters are advisory; the
   // rollup math is recomputed only against the kept rows so a filtered export
   // stays internally consistent.
-  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/data.csv', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/csf/:id(\\d+)/exports/data.csv', requireAuth, requireWorkspace,
+    requireInternalExport, (req, res) => {
     const { engagement, error } = loadCsfEngagement(req);
     if (error) return res.status(error.status).send(error.message);
     csfPolicy.ensureAssessmentRows(db, engagement);

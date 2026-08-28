@@ -79,6 +79,38 @@ function register(app, deps) {
     return require('../lib/rbac').hasPermission(permissionsFor(req.user, req.workspace), permission);
   }
 
+  function workspaceRole(req) {
+    return rbac.normalizeRole(req.workspace._userRole || req.workspace.role);
+  }
+
+  function allowFirmPermission(req, res, permission) {
+    if (req.user.user_type === 'firm' && !can(req, permission)) {
+      res.status(403).send('Forbidden');
+      return false;
+    }
+    return true;
+  }
+
+  // Keep direct request loads aligned with the portal list: contributors see
+  // their own assignments, client coordinators see released team work, and
+  // firm actors retain workspace-scoped operating access.
+  function requestVisibility(req, alias = 'cr', clientPreview = false) {
+    if (isContributor(req)) return { clause: `${alias}.assignee_id=?`, params: [req.user.id] };
+    if (req.user.user_type === 'client' || clientPreview) {
+      return { clause: `${alias}.assignee_id IS NOT NULL`, params: [] };
+    }
+    return { clause: '', params: [] };
+  }
+
+  function deliveryVisibleToActor(req, row, clientPreview = false) {
+    const assignedToClient = row.owner_id != null || row.approver_id != null;
+    if (req.user.user_type === 'firm') return clientPreview ? assignedToClient : true;
+    if (isContributor(req)) {
+      return row.owner_id === req.user.id || row.approver_id === req.user.id;
+    }
+    return assignedToClient;
+  }
+
   function tableExists(name) {
     return !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(name);
   }
@@ -690,6 +722,7 @@ function register(app, deps) {
   }
 
   function loadRequest(req, id) {
+    const visibility = requestVisibility(req);
     const row = db.prepare(`SELECT cr.*, assignee.name AS assignee_name, assignee.email AS assignee_email,
         creator.name AS creator_name, reviewer.name AS reviewer_name,
         i.title AS control_title, i.type AS control_type, d.name AS document_name,
@@ -701,9 +734,9 @@ function register(app, deps) {
       LEFT JOIN users reviewer ON reviewer.id=cr.reviewed_by
       LEFT JOIN iso_items i ON i.id=cr.control_id
       LEFT JOIN generated_docs d ON d.id=cr.document_id AND d.workspace_id=cr.workspace_id
-      WHERE cr.id=? AND cr.workspace_id=?`).get(id, req.workspace.id);
+      WHERE cr.id=? AND cr.workspace_id=?${visibility.clause ? ` AND ${visibility.clause}` : ''}`)
+      .get(id, req.workspace.id, ...visibility.params);
     if (!row) return null;
-    if (isContributor(req) && row.assignee_id !== req.user.id) return null;
     return decryptRequest(row, req.workspace.id);
   }
 
@@ -751,6 +784,28 @@ function register(app, deps) {
       req.workspace.id, req.user.id, scopeId);
   }
 
+  function clientPolicyAccessible(req, document) {
+    if (req.user.user_type === 'firm') return true;
+    if (isContributor(req)) return targetAccessible(req, 'document', document.id);
+    if (!['client_owner', 'isms_manager'].includes(workspaceRole(req))) return false;
+
+    const sharedRequest = db.prepare(`SELECT 1 FROM client_requests
+      WHERE workspace_id=? AND document_id=? AND assignee_id IS NOT NULL AND status!='cancelled'
+      LIMIT 1`).get(req.workspace.id, document.id);
+    if (sharedRequest) return true;
+    if (!document.current_version_id) return false;
+    return !!db.prepare(`SELECT 1 FROM doc_approvers
+      WHERE workspace_id=? AND document_id=? AND version_id=? AND user_id=?
+      LIMIT 1`).get(req.workspace.id, document.id, document.current_version_id, req.user.id);
+  }
+
+  function loadVisiblePolicy(req, documentId) {
+    const document = db.prepare(`SELECT d.*, u.name AS creator_name
+      FROM generated_docs d LEFT JOIN users u ON u.id=d.created_by
+      WHERE d.id=? AND d.workspace_id=?`).get(documentId, req.workspace.id);
+    return document && clientPolicyAccessible(req, document) ? document : null;
+  }
+
   function clientMembers(req) {
     return db.prepare(`SELECT u.id, u.name, u.email, wm.role
       FROM workspace_members wm INNER JOIN users u ON u.id=wm.user_id
@@ -783,10 +838,9 @@ function register(app, deps) {
       const clientAudience = req.user.user_type === 'client' || clientPreview;
       const filters = [];
       const params = [req.workspace.id];
-      if (isContributor(req)) {
-        filters.push('cr.assignee_id=?');
-        params.push(req.user.id);
-      } else if (clientAudience) filters.push('cr.assignee_id IS NOT NULL');
+      const visibility = requestVisibility(req, 'cr', clientPreview);
+      if (visibility.clause) filters.push(visibility.clause);
+      params.push(...visibility.params);
       const status = String(req.query.status || 'active');
       if (status === 'active') filters.push("cr.status NOT IN ('accepted','cancelled')");
       else if (status === 'closed') filters.push("cr.status IN ('accepted','cancelled')");
@@ -809,8 +863,8 @@ function register(app, deps) {
         .map(r => decryptRequest(r, req.workspace.id));
 
       const allVisible = db.prepare(`SELECT status, due_date FROM client_requests cr
-        WHERE cr.workspace_id=?${isContributor(req) ? ' AND cr.assignee_id=?' : (clientAudience ? ' AND cr.assignee_id IS NOT NULL' : '')}`).all(
-        ...(isContributor(req) ? [req.workspace.id, req.user.id] : [req.workspace.id]));
+        WHERE cr.workspace_id=?${visibility.clause ? ` AND ${visibility.clause}` : ''}`)
+        .all(req.workspace.id, ...visibility.params);
       const today = todayFor(req.workspace);
       const requestMetrics = {
         active: allVisible.filter(r => !TERMINAL.has(r.status)).length,
@@ -847,8 +901,7 @@ function register(app, deps) {
       let deliveryWork = [];
       if (deliveryProjection) {
         deliveryWork = deliveryProjection.deliverables.filter(d => d.client_visible &&
-          (!clientAudience || d.owner_id != null || d.approver_id != null) &&
-          (!isContributor(req) || d.owner_id === req.user.id || d.approver_id === req.user.id));
+          deliveryVisibleToActor(req, d, clientPreview));
       }
       const deliveryEvidence = deliveryWork.length ? db.prepare(`SELECT de.deliverable_id,e.id,e.filename,e.uploaded_at
         FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
@@ -866,9 +919,12 @@ function register(app, deps) {
         FROM consultant_workpapers w JOIN requirements r ON r.id=w.requirement_id JOIN frameworks f ON f.id=r.framework_id
         WHERE w.workspace_id=? AND w.client_validator_id=? AND w.client_visible=1 AND w.requires_client_validation=1 AND w.status='client_validation'
         ORDER BY w.due_date,w.id`).all(req.workspace.id,portalActorId) : [];
-      const publishedReports = db.prepare(`SELECT r.id,r.title,r.report_type,r.version_number,r.published_at,p.name published_by_name
-        FROM consulting_report_snapshots r LEFT JOIN users p ON p.id=r.published_by
-        WHERE r.workspace_id=? AND r.status='published' ORDER BY r.published_at DESC,r.id DESC`).all(req.workspace.id);
+      const mayViewPublishedReports = req.user.user_type === 'client' || can(req, 'report.view');
+      const publishedReports = mayViewPublishedReports
+        ? db.prepare(`SELECT r.id,r.title,r.report_type,r.version_number,r.published_at,p.name published_by_name
+          FROM consulting_report_snapshots r LEFT JOIN users p ON p.id=r.published_by
+          WHERE r.workspace_id=? AND r.status='published' ORDER BY r.published_at DESC,r.id DESC`).all(req.workspace.id)
+        : [];
       const csfValidations = db.prepare(`SELECT a.id,a.engagement_id,s.code,s.description,e.name engagement_name,cr.assignee_id
         FROM csf_subcategory_assessments a JOIN csf_subcategories s ON s.id=a.subcategory_id
         JOIN csf_engagements e ON e.id=a.engagement_id
@@ -947,8 +1003,14 @@ function register(app, deps) {
       metrics.allZero = metrics.activeRequests === 0 && metrics.deliverablesToProvide === 0 &&
         metrics.overdue === 0 && metrics.awaitingReview === 0;
       const gapAssessment = clientGapAssessment.buildClientGapAssessmentProjection(db, req.workspace, {
-        assigneeId: isContributor(req) ? req.user.id : null
+        assigneeId: isContributor(req) ? req.user.id : null,
+        releasedOnly: clientAudience && !isContributor(req)
       });
+      // The gap-assessment projection carries its own released-report list for
+      // the progress rail. Keep it under the same contextual report.view rule
+      // as the dedicated Reports tab so a firm-side revoke cannot be bypassed
+      // through the secondary projection; client actors retain published access.
+      if (!mayViewPublishedReports) gapAssessment.reports = [];
       let frameworkWorkspace = req.workspace;
       if (!Array.isArray(frameworkWorkspace.frameworks)) {
         let parsed = [];
@@ -1254,8 +1316,7 @@ function register(app, deps) {
       FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
       JOIN engagement_delivery_phases p ON p.id=m.phase_id WHERE d.id=? AND d.workspace_id=? AND d.client_visible=1`).get(id, req.workspace.id);
     if (!row) return null;
-    if (isContributor(req) && row.owner_id && row.owner_id !== req.user.id && row.approver_id !== req.user.id) return null;
-    return row;
+    return deliveryVisibleToActor(req, row) ? row : null;
   }
 
   app.post('/workspaces/:wsId/client-portal/deliverables/:id/submit', requireAuth, requireWorkspace,
@@ -1326,6 +1387,7 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/client-portal/deliverables/:id/evidence/:evidenceId/download', requireAuth, requireWorkspace,
     requirePermission('client_portal.view'), (req, res) => {
+      if (!allowFirmPermission(req, res, 'evidence.download')) return;
       const deliverable = loadVisibleDelivery(req, req.params.id);
       if (!deliverable) return res.status(404).send('Not found');
       const row = db.prepare(`SELECT e.* FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
@@ -1567,6 +1629,7 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/client-portal/requests/:id/evidence/:evidenceId/download', requireAuth, requireWorkspace,
     requirePermission('client_portal.view'), (req, res) => {
+      if (!allowFirmPermission(req, res, 'evidence.download')) return;
       const request = loadRequest(req, req.params.id);
       if (!request) return res.status(404).send('Not found');
       const evidence = db.prepare(`SELECT e.* FROM client_request_evidence cre
@@ -1618,10 +1681,9 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/client-portal/policies/:id', requireAuth, requireWorkspace,
     requirePermission('client_portal.view'), (req, res) => {
+      if (!allowFirmPermission(req, res, 'document.view')) return;
       const documentId = parseInt(req.params.id, 10);
-      if (!targetAccessible(req, 'document', documentId)) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Policy not found or not assigned to you.' });
-      const raw = db.prepare(`SELECT d.*, u.name AS creator_name FROM generated_docs d LEFT JOIN users u ON u.id=d.created_by
-        WHERE d.id=? AND d.workspace_id=?`).get(documentId, req.workspace.id);
+      const raw = loadVisiblePolicy(req, documentId);
       if (!raw) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Policy not found.' });
       const doc = { ...raw, content: documentHtml.sanitizeDocumentHtml(enc.decryptIfNeeded(raw.content, req.workspace.id)) };
       const currentVersion = doc.current_version_id ? db.prepare('SELECT * FROM doc_versions WHERE id=? AND workspace_id=?').get(doc.current_version_id, req.workspace.id) : null;
@@ -1639,9 +1701,9 @@ function register(app, deps) {
 
   app.post('/workspaces/:wsId/client-portal/policies/:id/comments', requireAuth, requireWorkspace,
     requirePermission('client_request.respond'), (req, res) => {
+      if (!allowFirmPermission(req, res, 'document.view')) return;
       const documentId = parseInt(req.params.id, 10);
-      if (!targetAccessible(req, 'document', documentId)) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Policy not found or not assigned to you.' });
-      if (!db.prepare('SELECT 1 FROM generated_docs WHERE id=? AND workspace_id=?').get(documentId, req.workspace.id)) return res.status(404).send('Not found');
+      if (!loadVisiblePolicy(req, documentId)) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Policy not found or not assigned to you.' });
       const body = clean(req.body.body, MAX_COMMENT);
       if (!body || body === null) return badRequest(req, res, `Comment is required and must be under ${MAX_COMMENT} characters.`);
       const internal = req.body.internal_only === '1' && req.user.user_type === 'firm' ? 1 : 0;

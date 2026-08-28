@@ -48,8 +48,7 @@ function register(app, deps) {
     const role = u.user_type === 'client'
       ? membership.role
       : (rbac.isManager(u.firm_role) ? 'manager' : (membership ? membership.role : u.firm_role));
-    const overrides = db.prepare(`SELECT permission, granted FROM workspace_role_overrides
-      WHERE workspace_id=? AND user_id=?`).all(ws.id, userId);
+    const overrides = rbac.activeOverrides(db, ws.id, userId);
     const perms = rbac.effectivePermissions(role, overrides);
     if (!rbac.hasPermission(perms, 'document.review')) {
       return { ok: false, reason: 'that user cannot review documents.' };

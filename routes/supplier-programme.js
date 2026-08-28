@@ -862,7 +862,8 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}/due-diligence`, req.body.action === 'complete' && !canComplete ? `${refreshed.progress.open} item(s) still block completion.` : 'Due-diligence review saved.'));
   });
 
-  app.get('/workspaces/:wsId/vendors/:id/due-diligence/evidence/:evidenceId', requireAuth, requireWorkspace, requirePermission('tprm.third_party.view'), (req, res) => {
+  app.get('/workspaces/:wsId/vendors/:id/due-diligence/evidence/:evidenceId', requireAuth, requireWorkspace,
+    requirePermission('tprm.third_party.view'), requirePermission('evidence.download'), (req, res) => {
     const row = db.prepare(`SELECT e.* FROM supplier_ddq_evidence e JOIN supplier_ddq_assessments a ON a.id=e.assessment_id WHERE e.id=? AND a.supplier_id=? AND e.workspace_id=?`).get(req.params.evidenceId, req.params.id, req.workspace.id);
     if (!row) return res.status(404).send('Evidence not found');
     const filePath = resolveUploadPath(row.stored_path, req.workspace.firm_id);

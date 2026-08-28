@@ -20,7 +20,9 @@ function register(app, deps) {
     'Certification audit packs are outside this gap-assessment-only engagement. Use the controlled gap-assessment report and retained evidence instead.');
 
   // ==================== EXPORTS ====================
-  app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/export/soa.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('risk.view'), (req, res) => {
     const T = ctlReads.tables(db, req.workspace.id);
     const rows = db.prepare(`SELECT i.id, i.title, i.category,
       COALESCE(cs.applicability,'undecided') AS applicability,
@@ -44,7 +46,9 @@ function register(app, deps) {
     res.send(lines.join('\n'));
   });
 
-  app.get('/workspaces/:wsId/export/risks.csv', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/export/risks.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('risk.view'),
+    requirePermission('asset.view'), (req, res) => {
     const rows = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r
       LEFT JOIN assets a ON a.id = r.asset_id
       WHERE r.workspace_id = ? ORDER BY (r.likelihood * r.impact) DESC`).all(req.workspace.id);
@@ -61,7 +65,8 @@ function register(app, deps) {
     res.send(lines.join('\n'));
   });
 
-  app.get('/workspaces/:wsId/export/assets.csv', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/export/assets.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('asset.view'), (req, res) => {
     const rows = db.prepare('SELECT * FROM assets WHERE workspace_id = ? ORDER BY name').all(req.workspace.id);
     const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
     const lines = ['Name,Type,Classification,Owner,C,I,A,Description'];
@@ -171,7 +176,15 @@ function register(app, deps) {
   // returns a raw ZIP of CSVs + DOCX + evidence files - exactly what an internal
   // auditor wants to grep through, but not what you hand a certification body
   // or the client. The config page at /audit-pack links to both deliverables.
-  app.get('/workspaces/:wsId/audit-pack/zip', requireAuth, requireWorkspace, requireReadinessService, async (req, res) => {
+  app.get('/workspaces/:wsId/audit-pack/zip', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('evidence.download'), requirePermission('workspace.export'),
+    requirePermission('control.view'), requirePermission('risk.view'),
+    requirePermission('asset.view'), requirePermission('document.view'),
+    requirePermission('audit.manage'), requirePermission('nc.manage'),
+    requirePermission('mrm.manage'),
+    requirePermission('audit_log.view'), requirePermission('audit_log.export'),
+    requireReadinessService, async (req, res) => {
     const ws = req.workspace;
     const safeName = ws.client_name.replace(/[^\w]+/g, '_');
     const today = new Date().toISOString().split('T')[0];
@@ -336,7 +349,15 @@ function register(app, deps) {
     });
   }
 
-  app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace, requireReadinessService, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/audit-pack', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('workspace.export'),
+    requirePermission('control.view'), requirePermission('risk.view'),
+    requirePermission('asset.view'), requirePermission('audit_log.view'),
+    requirePermission('audit_log.export'),
+    requirePermission('audit.manage'), requirePermission('nc.manage'),
+    requirePermission('mrm.manage'),
+    requireReadinessService, (req, res) => {
     const snapshots = db.prepare(`SELECT id, label, created_at, included_count FROM soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC`).all(req.workspace.id);
     const firm = db.prepare(`SELECT name FROM firms WHERE id=?`).get(req.workspace.firm_id) || {};
     const riskCount = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(req.workspace.id).c;
@@ -352,7 +373,15 @@ function register(app, deps) {
     });
   });
 
-  app.get('/workspaces/:wsId/audit-pack/preview', requireAuth, requireWorkspace, requireReadinessService, requirePermission('control.view'), async (req, res) => {
+  app.get('/workspaces/:wsId/audit-pack/preview', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('workspace.export'),
+    requirePermission('control.view'), requirePermission('risk.view'),
+    requirePermission('asset.view'), requirePermission('audit_log.view'),
+    requirePermission('audit_log.export'),
+    requirePermission('audit.manage'), requirePermission('nc.manage'),
+    requirePermission('mrm.manage'),
+    requireReadinessService, async (req, res) => {
     try {
       const opts = buildAuditPackOpts(req.query);
       const html = await renderAuditPackHTML(app, req.workspace.id, opts);
@@ -363,7 +392,15 @@ function register(app, deps) {
     }
   });
 
-  app.post('/workspaces/:wsId/audit-pack/pdf', requireAuth, requireWorkspace, requireReadinessService, requirePermission('control.view'), async (req, res) => {
+  app.post('/workspaces/:wsId/audit-pack/pdf', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('workspace.export'),
+    requirePermission('control.view'), requirePermission('risk.view'),
+    requirePermission('asset.view'), requirePermission('audit_log.view'),
+    requirePermission('audit_log.export'),
+    requirePermission('audit.manage'), requirePermission('nc.manage'),
+    requirePermission('mrm.manage'),
+    requireReadinessService, async (req, res) => {
     try {
       const opts = buildAuditPackOpts(req.body);
       const html = await renderAuditPackHTML(app, req.workspace.id, opts);

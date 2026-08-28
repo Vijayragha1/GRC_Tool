@@ -71,3 +71,16 @@ test('operational forms and registers stay usable without iOS focus zoom', () =>
   assert.match(evidence, /\.evidence-record-actions\s*>\s*details\s*\.popover-panel\s*\{[\s\S]*left:\s*0\s*!important;[\s\S]*width:\s*100%\s*!important;[\s\S]*min-width:\s*0/);
   assert.match(risk, /\.risk-action-create,[\s\S]*\.risk-accept-form\s*\{\s*grid-template-columns:\s*1fr\s*!important/);
 });
+
+test('page-head popovers stay anchored inside the phone content width', () => {
+  const methodology = read('views/risk_methodology.ejs');
+  const kanban = read('views/controls_kanban.ejs');
+
+  assert.match(methodology, /\.risk-methodology-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(methodology, /\.risk-methodology-preset-panel\s*\{[\s\S]*left:\s*0\s*!important;[\s\S]*width:\s*100%\s*!important;[\s\S]*min-width:\s*0\s*!important/);
+  assert.match(methodology, /class="risk-methodology-preset"/);
+
+  assert.match(kanban, /\.controls-kanban-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,1fr\)/);
+  assert.match(kanban, /\.controls-kanban-import-panel\s*\{[\s\S]*left:0\s*!important;[\s\S]*width:100%\s*!important;[\s\S]*min-width:0\s*!important/);
+  assert.match(kanban, /class="popover-panel controls-kanban-import-panel"/);
+});

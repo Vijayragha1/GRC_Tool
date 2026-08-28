@@ -146,7 +146,7 @@ The part with no equivalent in the compliance-automation category.
 | **CSRF** | On every state-changing request. Token rotated per session, validated against body / `X-CSRF-Token` header / query string, auto-stamped into every form including dynamic and multipart. |
 | **Audit trail** | Activity log with tabs for Log / Timeline / Anomalies / **Verify (hash-chain integrity)**. |
 | **Email** | Three providers auto-selected in order — Brevo (HTTP API), Gmail SMTP, Resend (HTTP API) — with a dev fallback that writes to `data/email-dev-outbox.log` while still recording the `email_outbox` row. Per-firm branded From/Reply-to, on/off switch, test send, 50-row outbox log for deliverability triage. |
-| **Backup** | `scripts/backup.js` (online SQLite backup + uploads tar), `scripts/restore-check.js`, daily cron in the Lightsail deployment. |
+| **Backup** | `scripts/backup.js` creates an online SQLite + encrypted uploads recovery generation with a signed manifest; `scripts/restore-check.js` verifies database integrity and every upload path/hash/byte count; daily cron in the Lightsail deployment. |
 | **Deployment** | Docker + Nginx + Let's Encrypt on a single VM. `deploy/lightsail-setup.sh`, `ssl-setup.sh`, `update.sh`. Self-hosted, no cloud dependency. |
 | **Testing** | Smoke suite, security tests (CSRF/XSS/auth), RBAC permission matrix, Puppeteer UI crawler over ~40 pages / ~450 buttons. |
 

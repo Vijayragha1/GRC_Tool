@@ -175,6 +175,62 @@ test('rbac - effectivePermissions honours per-workspace revokes', () => {
   assert.ok(perms.has('evidence.upload'), 'siblings must persist');
 });
 
+test('rbac - a deny contains every canonical and legacy permission alias', () => {
+  for (const [canonical, legacy] of [
+    ['tprm.third_party.manage', 'supplier.manage'],
+    ['tprm.recommendation.issue', 'supplier.approve'],
+    ['tprm.assurance.export', 'supplier.export'],
+  ]) {
+    for (const denied of [canonical, legacy]) {
+      const perms = rbac.effectivePermissions('senior_consultant', [
+        { permission: denied, granted: 0 },
+      ]);
+      assert.ok(!perms.has(canonical), `${denied} deny must remove ${canonical}`);
+      assert.ok(!perms.has(legacy), `${denied} deny must remove ${legacy}`);
+      assert.ok(!rbac.hasPermission(perms, canonical), `${denied} deny must contain canonical lookup`);
+      assert.ok(!rbac.hasPermission(perms, legacy), `${denied} deny must contain legacy lookup`);
+    }
+  }
+});
+
+test('rbac - an alias-family deny wins over a conflicting alias grant', () => {
+  const perms = rbac.effectivePermissions('consultant', [
+    { permission: 'supplier.export', granted: 1 },
+    { permission: 'tprm.assurance.export', granted: 0 },
+  ]);
+  assert.ok(!rbac.hasPermission(perms, 'supplier.export'));
+  assert.ok(!rbac.hasPermission(perms, 'tprm.assurance.export'));
+});
+
+test('rbac - expired or malformed overrides are ignored at authorization time', () => {
+  const now = new Date('2026-08-25T12:00:00.000Z');
+  const perms = rbac.effectivePermissions('contributor', [
+    { permission: 'document.publish', granted: 1, expires_at: '2026-08-25 11:59:59' },
+    { permission: 'client_request.respond', granted: 0, expires_at: '2026-08-25T11:59:59Z' },
+    { permission: 'risk.delete', granted: 1, expires_at: 'not-a-time' },
+    { permission: 'evidence.download', granted: 1, expires_at: '2026-08-25 12:00:01' },
+  ], now);
+  assert.ok(!perms.has('document.publish'), 'expired grant must not survive');
+  assert.ok(perms.has('client_request.respond'), 'expired revoke must not survive');
+  assert.ok(!perms.has('risk.delete'), 'malformed time limit must fail closed');
+  assert.ok(perms.has('evidence.download'), 'unexpired SQLite UTC timestamp must apply');
+});
+
+test('rbac - internal evidence access is explicit and stays off client portal roles', () => {
+  for (const role of ['senior_consultant', 'consultant']) {
+    const perms = rbac.rolePermissions(role);
+    for (const permission of ['evidence.view', 'evidence.download', 'evidence.export']) {
+      assert.ok(perms.includes(permission), `${role} must retain ${permission}`);
+    }
+  }
+  for (const role of ['client_owner', 'isms_manager', 'contributor']) {
+    const perms = rbac.rolePermissions(role);
+    for (const permission of ['evidence.view', 'evidence.download', 'evidence.export', 'workspace.export']) {
+      assert.ok(!perms.includes(permission), `${role} must not receive internal ${permission}`);
+    }
+  }
+});
+
 test('rbac - hasPermission accepts both Set and Array shapes', () => {
   const set = new Set(['risk.view', 'risk.update']);
   assert.ok(rbac.hasPermission(set, 'risk.view'));

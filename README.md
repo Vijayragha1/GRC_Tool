@@ -337,23 +337,56 @@ Edits go in the file. Restart the server - the content sync runs at boot.
 ## Backup
 
 ```bash
-npm run backup                  # ./backups/iso27001-{timestamp}/
-npm run backup /path/to/dir     # custom destination
+npm run backup                       # uses ISMS_BACKUP_DIR
+npm run backup -- /path/to/dir       # custom destination
+npm run restore-check                # prove the newest generation restores
+node scripts/restore-check.js --generation <id>  # prove one exact generation
+node scripts/restore.js --destination /empty/path --generation <id>
 ```
 
-Online SQLite backup (no downtime), tar of `uploads/`, master.key, manifest. Schedule via cron and rsync offsite.
+Each committed recovery generation contains three `0600` artifacts: an online
+SQLite backup, an encrypted snapshot of `ISMS_UPLOADS_DIR` (default `uploads/`),
+and an HMAC-signed manifest containing archive and per-upload byte counts and
+SHA-256 hashes. The manifest is written last, so it is the generation's commit
+record only after that exact DB-and-uploads generation passes a full internal
+restore. Retention and `BACKUP_MIRROR_DIR` copying operate on all three files.
+
+The encryption master key is **never** included in a local or mirrored recovery
+generation. Escrow `ISMS_MASTER_KEY` or `data/master.key` separately, with access
+controls and failure-domain separation, and compare its fingerprint during
+recovery. A generation without its matching key cannot be restored.
+
+`npm run restore-check` verifies the signed manifest and both archive hashes,
+restores SQLite and runs integrity/row-count checks, then safely extracts every
+upload into a temporary directory and verifies its path, byte count, and hash.
+Traversal, symlinks in the source snapshot, missing files, extra files, and
+tampering fail closed. It also proves that retained file references in the
+restored database resolve inside that upload tree. Legacy database-only archives
+fail the full drill; `--allow-legacy-database-only` exists only for an explicit
+SQLite salvage check. Signed generations older than
+`ISMS_BACKUP_MAX_AGE_HOURS` (26 hours by default) fail the RPO gate; only an
+explicit `--allow-stale-generation` salvage operation bypasses it.
+
+`scripts/restore.js` is the operator restore path. It accepts an exact generation
+ID and a nonexistent or empty destination, then writes `restored.db`, `uploads/`,
+and `recovery-report.json`. It never overwrites or promotes live paths. Review
+the report and perform promotion only in a separately approved offline change
+window after stopping application traffic and retaining the current live data.
+Schedule the backup daily, mirror it off-host, and require a successful full
+restore drill at least monthly.
 
 ## Tests
 
 ```bash
-npm test                # smoke + security + rbac
+npm test                # discovers and runs every tests/*.test.js suite
 npm run test:security   # node:test - CSRF, XSS, auth gating, rbac matrix
 npm run test:browser    # puppeteer crawler - every sidebar route, every button
 ```
 
-- **Smoke** (45 assertions, bare-node): boots a fresh tmp DB through the full migration chain, walks the wizard POST, history-snapshot insert, bulk-spawn priority derivation, SoA risk-linkage rendering, and reads converged control state via the compat views. Discovers workspace IDs at runtime + auto-stamps CSRF tokens, so it survives schema changes.
-- **Security** (10 tests, `node:test`): CSRF reject without token, accept with valid token + cookie, token stability across requests, distinct tokens per session, XSS escape on tenant name + attribute injection, default-user fallback contract.
-- **Rbac** (15 tests, `node:test`): pins the role permission matrix. Catches accidental privilege grants and unreferenced permissions.
+- **Discovery guard**: `scripts/run-tests.js` assigns every `tests/*.test.js` file exactly once and fails when a family is empty or a suite is undiscovered.
+- **Smoke** (bare-node): boots a fresh temporary DB through the migration chain and walks load-bearing authenticated workflows.
+- **Security and RBAC** (`node:test`): cover CSRF, XSS, authorization boundaries, expiring overrides, evidence/export permissions, sessions, uploads, runtime failure handling, and recovery/deployment contracts.
+- **Recovery**: builds and restores database-plus-upload generations, checks reference integrity, and exercises tamper and traversal failure paths.
 - **Browser crawler** (`tests/browser-ui.js`): puppeteer-core driving headless Chrome through every sidebar route. Counts buttons, clicks every non-submit, validates modals, captures screenshots, asserts no console / network / page errors. 40 pages, ~450 buttons.
 
 ## What's not in it (and why)
@@ -379,7 +412,7 @@ Deliberately out of scope. The tool is consultant-side; anything client-ops belo
 
 ## Stack
 
-Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired and enforced) · nodemailer (Gmail SMTP) + Brevo HTTP API + Resend HTTP API (provider auto-selected, dev-fallback writes to log) · **puppeteer (bundled Chromium, ~170 MB) for the audit-pack PDF generator**. Tests use node:test plus puppeteer-core. Self-hosted typography: Inter variable + Source Serif 4 variable, both as woff2 in `public/fonts/`. No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
+Node 22 · Express · EJS · better-sqlite3 · TinyMCE 8 (self-hosted) · html-to-docx · archiver · mammoth / pdf-parse · multer · bcrypt + express-session (auth wired and enforced) · nodemailer (Gmail SMTP) + Brevo HTTP API + Resend HTTP API (provider auto-selected, dev-fallback writes to log) · **puppeteer (bundled Chromium, ~170 MB) for the audit-pack PDF generator**. Tests use node:test plus puppeteer-core. Self-hosted typography: Inter variable + Source Serif 4 variable, both as woff2 in `public/fonts/`. No frontend build step. Client-side JS does SPA-lite content swaps on same-origin nav - sidebar element stays in place, only the right pane re-renders, falls back to standard navigation on file downloads / failures / modifier-key clicks.
 
 ## Folder structure
 
@@ -429,7 +462,7 @@ Node 20+ · Express · EJS · better-sqlite3 · TinyMCE 6 (self-hosted) · html-
 │   └── … other operator + deliverable views
 ├── public/fonts/                   # Self-hosted Inter + Source Serif 4 (woff2)
 ├── scripts/
-│   ├── backup.js                   # Online backup (online SQLite + uploads tar)
+│   ├── backup.js                   # SQLite + uploads recovery generation
 │   ├── content-staleness.js        # Walk data/content-meta.js; CI gate for overdue content
 │   └── seed-realistic-engagements.js  # Demo seed - 5 users + 2 engagements (100% / 60%)
 ├── tests/
