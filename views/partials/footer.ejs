@@ -566,7 +566,10 @@ function toggleTheme() {
 
 // ----- Sidebar -----
 let sidebarReturnFocus = null;
-const mobileSidebarMedia = window.matchMedia('(max-width: 900px)');
+// Keep the phone shell active through 960px so wide landscape phones (for
+// example 932px CSS-wide devices) do not unexpectedly switch to a desktop
+// rail while the usable height is still phone-sized.
+const mobileSidebarMedia = window.matchMedia('(max-width: 960px)');
 
 function sidebarFocusableItems(sidebar) {
   return Array.from(sidebar.querySelectorAll(

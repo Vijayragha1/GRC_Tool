@@ -147,7 +147,9 @@ function register(app, deps) {
   });
 
 
-  app.get('/workspaces/:wsId/activity-log.csv', requireAuth, requireWorkspace, requirePermission('audit_log.export'), (req, res) => {
+  app.get('/workspaces/:wsId/activity-log.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('audit_log.view'),
+    requirePermission('audit_log.export'), (req, res) => {
     const log = db.prepare(`SELECT a.*, u.name AS user_name FROM audit_log a
       INNER JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY a.created_at DESC LIMIT 50000`).all(req.workspace.id);
     const esc = v => v == null ? '' : `"${String(v).replace(/"/g,'""')}"`;

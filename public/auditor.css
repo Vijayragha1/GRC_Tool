@@ -30,8 +30,16 @@
     --radius: 8px;
     --radius-sm: 6px;
   }
-  html { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  body { background: var(--bg-deep); color: var(--text); font-size: 14px; line-height: 1.5; margin: 0; }
+  html {
+    width: 100%; min-height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    width: 100%; min-width: 0; min-height: 100vh; min-height: 100dvh;
+    background: var(--bg-deep); color: var(--text); font-size: 14px; line-height: 1.5;
+    margin: 0; overflow-x: hidden;
+  }
 
   /* Display serif for titles + the wordmark. Same family as the consultant
      app so the brand voice is consistent when an auditor switches devices. */
@@ -59,18 +67,24 @@
   .a-topbar {
     background: var(--bg);
     border-bottom: 1px solid var(--border);
-    padding: 14px 0;
+    padding: max(14px, env(safe-area-inset-top)) 0 14px;
     position: sticky; top: 0; z-index: 50;
   }
-  .a-container { max-width: 1280px; margin: 0 auto; padding: 0 28px; }
-  .a-top-row { display: flex; align-items: center; gap: 14px; }
+  .a-container {
+    width: 100%; max-width: 1280px; min-width: 0; margin: 0 auto;
+    padding-right: max(28px, env(safe-area-inset-right));
+    padding-left: max(28px, env(safe-area-inset-left));
+  }
+  .a-top-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
   .a-brand {
     display: inline-flex; align-items: center; gap: 10px;
-    text-decoration: none; color: var(--ink);
+    min-width: 0; text-decoration: none; color: var(--ink);
   }
   /* Compliance Sphere mark, charcoal on transparent: one product icon
      everywhere, matching the in-app header and auth pages. */
   .a-brand-mark { width: 28px; height: 28px; flex-shrink: 0; }
+  .a-brand > span { min-width: 0; }
+  .a-brand-name, .a-brand-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .a-brand-name { font-size: 16px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; }
   .a-brand-sub  { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
   .a-spacer { flex: 1; }
@@ -88,15 +102,19 @@
   .a-tabs {
     background: var(--bg);
     border-bottom: 1px solid var(--border);
-    padding: 0; position: sticky; top: 60px; z-index: 49;
+    padding: 0; position: sticky; top: calc(60px + env(safe-area-inset-top)); z-index: 49;
   }
-  .a-tabs-row { display: flex; align-items: stretch; gap: 4px; overflow-x: auto; }
+  .a-tabs-row {
+    display: flex; align-items: stretch; gap: 4px; min-width: 0; overflow-x: auto;
+    overscroll-behavior-inline: contain; scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
   .a-tab {
     display: inline-flex; align-items: center; gap: 7px;
     padding: 12px 14px; text-decoration: none;
     font-size: 13px; font-weight: 500; color: var(--text-secondary);
     border-bottom: 2px solid transparent; transition: all 0.12s;
-    white-space: nowrap;
+    min-height: 44px; white-space: nowrap; scroll-snap-align: start;
   }
   .a-tab:hover { color: var(--text); background: var(--bg-subtle); }
   .a-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -104,13 +122,21 @@
   .a-tab.active svg { opacity: 1; }
 
   /* ---- main + content primitives ---- */
-  .a-main { max-width: 1280px; margin: 0 auto; padding: 22px 28px 48px; }
+  .a-main {
+    width: 100%; max-width: 1280px; min-width: 0; margin: 0 auto;
+    min-height: calc(100vh - 112px); min-height: calc(100dvh - 112px);
+    padding: 22px max(28px, env(safe-area-inset-right)) max(48px, env(safe-area-inset-bottom)) max(28px, env(safe-area-inset-left));
+  }
   .a-page-head { margin-bottom: 20px; }
   .a-page-title { font-size: 26px; font-weight: 500; color: var(--ink); line-height: 1.2; }
   .a-page-sub { font-size: 13px; color: var(--text-secondary); margin-top: 6px; max-width: 720px; }
 
-  .panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
-  .panel-pad { padding: 14px 16px; }
+  .panel {
+    max-width: 100%; min-width: 0; overflow-x: auto;
+    overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  }
+  .panel-pad { max-width: 100%; min-width: 0; padding: 14px 16px; }
   .panel-head { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .panel-head h2 { font-size: 13px; font-weight: 500; margin: 0; color: var(--ink); }
 
@@ -165,3 +191,120 @@
   .hash { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-secondary); }
   .empty-pane { padding: 40px; text-align: center; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-tertiary); }
   .empty-pane-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+
+  /* ---- responsive auditor portal ----
+     Tables stay tabular for audit review, but scroll inside their own panel.
+     The page itself never becomes wider than the physical device viewport. */
+  .a-main img, .a-main svg, .a-main video, .a-main canvas { max-width: 100%; }
+  .a-main img, .a-main video { height: auto; }
+  .a-page-title, .a-page-sub, .panel-head, table.t td, .hash { overflow-wrap: anywhere; }
+  .a-main form, .a-main input, .a-main select, .a-main textarea, .a-main button { max-width: 100%; }
+  .a-main input, .a-main select, .a-main textarea, .a-main button { font: inherit; }
+  .a-main :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  body .doc-shell, body .doc-body { min-width: 0; max-width: 100%; }
+  body .doc-body { overflow-x: auto; overscroll-behavior-inline: contain; }
+  body .doc-body pre { max-width: 100%; overflow-x: auto; }
+  body .doc-body table { min-width: 640px; }
+
+  @media (max-width: 760px) {
+    .a-topbar {
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-bottom: 12px;
+    }
+    .a-container {
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-left: max(16px, env(safe-area-inset-left));
+    }
+    .a-top-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px 12px;
+    }
+    .a-spacer { display: none; }
+    .a-share-meta { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
+    .a-mode-badge { flex-shrink: 0; white-space: nowrap; }
+
+    /* A wrapping top row has a content-dependent height, so keeping the tab
+       strip in normal flow avoids sticky layers overlapping at 320-430px. */
+    .a-tabs { position: static; }
+    .a-tabs .a-container { padding-right: 0; padding-left: 0; }
+    .a-tabs-row {
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-left: max(16px, env(safe-area-inset-left));
+      scroll-padding-inline: 16px; scroll-snap-type: inline proximity;
+    }
+    .a-tab { min-height: 48px; padding: 12px; }
+
+    .a-main {
+      min-height: calc(100vh - 112px); min-height: calc(100dvh - 112px);
+      padding-top: 18px;
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-bottom: max(32px, env(safe-area-inset-bottom));
+      padding-left: max(16px, env(safe-area-inset-left));
+    }
+    .a-page-title { font-size: 24px; }
+    .panel-head { align-items: flex-start; flex-wrap: wrap; }
+    .panel-pad { padding: 12px; }
+    .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .kpi { min-width: 0; padding: 12px 14px; }
+    .empty-pane { padding: 28px 18px; }
+
+    table.t { width: max-content; min-width: 680px; }
+    .panel-pad > table:not(.t) { min-width: 560px; }
+    table.t thead th, table.t tbody td { padding-right: 12px; padding-left: 12px; }
+
+    a.btn, .a-pack-cta, button, input, select, textarea { min-height: 44px; }
+    input, select, textarea { width: 100%; font-size: 16px; }
+    body .doc-shell { grid-template-columns: minmax(0, 1fr); }
+    body .doc-body { padding: 24px 20px; }
+  }
+
+  @media (max-width: 430px) {
+    .a-container {
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-left: max(12px, env(safe-area-inset-left));
+    }
+    .a-brand-mark { width: 24px; height: 24px; }
+    .a-brand-name { font-size: 15px; }
+    .a-brand-sub { font-size: 11px; }
+    .a-mode-badge {
+      max-width: 94px; padding: 4px 7px; white-space: normal;
+      font-size: 10px; line-height: 1.2; text-align: center;
+    }
+    .a-tabs-row {
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-left: max(12px, env(safe-area-inset-left));
+      scroll-padding-inline: 12px;
+    }
+    .a-main {
+      padding-top: 16px;
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-bottom: max(28px, env(safe-area-inset-bottom));
+      padding-left: max(12px, env(safe-area-inset-left));
+    }
+    .a-page-head { margin-bottom: 16px; }
+    .a-page-title { font-size: 22px; overflow-wrap: anywhere; }
+    .kpi-row { grid-template-columns: minmax(0, 1fr); }
+    .kpi-num { font-size: 24px; }
+    .panel-head, .panel-pad { padding-right: 12px; padding-left: 12px; }
+    table.t { min-width: 620px; }
+
+    body .a-toc-item {
+      grid-template-columns: 26px minmax(0, 1fr);
+      column-gap: 8px; align-items: start;
+    }
+    body .a-toc-meta { grid-column: 2; margin-top: 2px; }
+    body .a-colophon dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+    body .a-colophon dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+    body .doc-body { padding: 20px 16px; }
+    body .meta-row { align-items: flex-start; flex-wrap: wrap; gap: 2px 12px; }
+    body .meta-row-value { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+  }
+
+  @media (max-width: 360px) {
+    .a-top-row { gap: 7px 8px; }
+    .a-brand { gap: 7px; }
+    .a-mode-badge { max-width: 82px; font-size: 9px; }
+    .a-tab { padding-right: 10px; padding-left: 10px; }
+    .a-page-title { font-size: 20px; }
+    .panel-head h2 { max-width: 100%; overflow-wrap: anywhere; }
+  }

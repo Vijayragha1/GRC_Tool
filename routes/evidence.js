@@ -12,6 +12,7 @@ const evWrites = require('../lib/evidence-writes');
 const { paginate, paginateArray, pageHref } = require('../lib/paginate');
 const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
 const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
+const { requireInternalEvidenceMutation } = require('../lib/evidence-access');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
@@ -22,7 +23,7 @@ function register(app, deps) {
   // validity, and add/remove-link actions. Use this when a single artefact (e.g.
   // a network diagram) evidences several controls and you don't want to walk into
   // each control's wizard to attach.
-  app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePermission('evidence.view'), (req, res) => {
     const q = (req.query.q || '').toString().trim();
     const filter = (req.query.filter || 'all').toString();
     const tag = (req.query.tag || '').toString().trim().toLowerCase();
@@ -189,7 +190,8 @@ function register(app, deps) {
     for (const ref of selected.dpdpa) evWrites.attachCrossLink(db, evidenceId, 'dpdpa', ref, sectionRef || null);
   }
 
-  app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
     if (!req.file) return redirectBack(req, res, 'Pick a file to upload', 'error');
     const selected = selectedEvidenceRefs(req.workspace, req.body);
     const primaryId = selected.iso27001[0] || null;
@@ -240,7 +242,8 @@ function register(app, deps) {
   // Bulk upload - multiple files at once with shared metadata. Each file becomes
   // an independent evidence row; all share the same period / valid_from / valid_until
   // and link to the same set of selected controls.
-  app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.array('files', 50), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/bulk', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), upload.array('files', 50), (req, res) => {
     if (!req.files || !req.files.length) return redirectBack(req, res, 'Pick at least one file', 'error');
     const selected = selectedEvidenceRefs(req.workspace, req.body);
     const primaryId = selected.iso27001[0] || null;
@@ -284,7 +287,8 @@ function register(app, deps) {
   // Supersede an existing evidence file with a new version. Old row is kept
   // for audit trail (superseded_at + superseded_by_id), all links are copied
   // to the new row, and the new row records its predecessor in supersedes_id.
-  app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/supersede', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
     const old = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!old) return res.status(404).send('Not found');
     if (!req.file) return redirectBack(req, res, 'Pick the new version of the file', 'error');
@@ -315,7 +319,9 @@ function register(app, deps) {
 
   // Auditor evidence-pack export - single ZIP of every active (non-superseded)
   // evidence file in the workspace, plus a manifest CSV describing each one.
-  app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/evidence/pack.zip', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('evidence.download'), requirePermission('workspace.export'), (req, res) => {
     const dateFrom = (req.query.from || '').toString();
     const dateTo = (req.query.to || '').toString();
     let where = 'e.workspace_id = ? AND e.superseded_at IS NULL';
@@ -382,7 +388,8 @@ function register(app, deps) {
   // Cross-framework link route. Accepts any enabled non-ISO-27001 framework and one or more
   // item_ref values, writing them to evidence_requirement_links. The /controls
   // endpoint is the ISO 27001 equivalent; both resolve their ref to a requirement.
-  app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/links', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), (req, res) => {
     const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
     const framework = (req.body.framework || '').toString();
@@ -423,7 +430,8 @@ function register(app, deps) {
   });
 
   // Delete a single cross-framework link.
-  app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/links/:linkId/delete', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.delete'), (req, res) => {
     const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
     // Don't touch iso27001 rows from this route - those belong to the legacy
@@ -436,7 +444,8 @@ function register(app, deps) {
     redirectBack(req, res);
   });
 
-  app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/controls', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), (req, res) => {
     const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
     const ids = parseFormArray(req.body.iso_item_id);
@@ -456,7 +465,8 @@ function register(app, deps) {
 
   // Update the section_ref on an existing link (per-link, distinct from the
   // per-file clause_section). Posted from the chip on the library row.
-  app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/section', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), (req, res) => {
     const ev = db.prepare(`SELECT id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
     const newRef = (req.body.section_ref || '').toString().trim() || null;
@@ -464,7 +474,8 @@ function register(app, deps) {
     redirectBack(req, res);
   });
 
-  app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/controls/:linkId/delete', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.delete'), (req, res) => {
     const ev = db.prepare(`SELECT id, iso_item_id FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
     const removedIso = evWrites.unlinkIsoControl(db, ev.id, req.params.linkId);
@@ -478,7 +489,8 @@ function register(app, deps) {
     redirectBack(req, res);
   });
 
-  app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace, (req, res) => {
+  app.get('/workspaces/:wsId/evidence/:id/download', requireAuth, requireWorkspace,
+    requirePermission('evidence.download'), (req, res) => {
     const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
@@ -487,7 +499,8 @@ function register(app, deps) {
     res.download(fp, ev.filename);
   });
 
-  app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace, requirePermission('evidence.delete'), (req, res) => {
+  app.post('/workspaces/:wsId/evidence/:id/delete', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.delete'), (req, res) => {
     const ev = db.prepare('SELECT * FROM evidence WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (ev) {

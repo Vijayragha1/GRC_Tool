@@ -16,6 +16,10 @@ function register(app,deps) {
   const firmOnly = (req,res,next) => req.user.user_type === 'firm'
     ? next()
     : res.status(403).render('error',{ user:req.user,ws:req.workspace,message:'Consultant workpapers and commercial records are internal to the consulting firm.' });
+  const requireFirmPermission = permission => (req,res,next) => {
+    if (req.user?.user_type !== 'firm') return next();
+    return requirePermission(permission)(req,res,next);
+  };
   const redirect = (req,res,path,message,kind) => res.redirect(withToast(path || base(req.workspace.id),message,kind));
   const run = (req,res,fn,message,path) => {
     try { const value=fn(); return redirect(req,res,typeof path==='function'?path(value):path,message); }
@@ -329,7 +333,8 @@ function register(app,deps) {
     },successMessage,`${base(req.workspace.id)}/reports/${req.params.id}`));
   });
 
-  app.get('/workspaces/:wsId/client-portal/reports/:id',requireAuth,requireWorkspace,requirePermission('client_portal.view'),(req,res)=>{
+  app.get('/workspaces/:wsId/client-portal/reports/:id',requireAuth,requireWorkspace,
+    requirePermission('client_portal.view'),requireFirmPermission('report.view'),(req,res)=>{
     try{const report=consulting.reportDetail(db,req.workspace,req.params.id);if(report.status!=='published') throw new Error('Published report not found.');res.render('consulting_report',{user:req.user,ws:req.workspace,active:'client-portal',report,clientView:true});}
     catch(error){res.status(404).render('error',{user:req.user,ws:req.workspace,message:'Published report not found.'});}
   });

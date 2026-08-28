@@ -4,6 +4,24 @@
   @media (max-width:760px) {
     #kanban-board { grid-template-columns:none !important;grid-auto-flow:column;grid-auto-columns:min(84vw,320px);scroll-snap-type:x proximity;padding-bottom:8px;overscroll-behavior-inline:contain; }
     #kanban-board .kanban-col { min-width:0 !important;scroll-snap-align:start; }
+    .controls-kanban-actions { display:grid;grid-template-columns:minmax(0,1fr);width:100%; }
+    .controls-kanban-actions > .btn,
+    .controls-kanban-import,
+    .controls-kanban-import > summary { width:100%;justify-content:center; }
+    .controls-kanban-import-panel {
+      box-sizing:border-box;
+      top:calc(100% + 4px) !important;
+      right:auto !important;
+      left:0 !important;
+      width:100% !important;
+      min-width:0 !important;
+      max-width:100% !important;
+      max-height:calc(100vh - 140px);
+      max-height:calc(100dvh - 140px - env(safe-area-inset-bottom));
+      overflow-y:auto;
+      overscroll-behavior:contain;
+      -webkit-overflow-scrolling:touch;
+    }
   }
 </style>
 
@@ -12,11 +30,11 @@
 <div class="page-head" style="margin-top:8px">
   <div><h1 class="page-title">Controls - Kanban</h1>
     <div class="page-subtitle">Drag-friendly view across status columns. Click any card to open the control.</div></div>
-  <div class="row">
+  <div class="row controls-kanban-actions">
     <a href="/workspaces/<%= ws.id %>/controls/export.csv" class="btn btn-secondary btn-xs">Export CSV</a>
-    <details style="position:relative;">
+    <details class="controls-kanban-import" style="position:relative;">
       <summary class="btn btn-secondary btn-xs">Import CSV</summary>
-      <form method="POST" action="/workspaces/<%= ws.id %>/controls/import" class="popover-panel" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;--popover-w:380px;z-index:5;box-shadow:var(--shadow-lg);">
+      <form method="POST" action="/workspaces/<%= ws.id %>/controls/import" class="popover-panel controls-kanban-import-panel" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;--popover-w:380px;z-index:5;box-shadow:var(--shadow-lg);">
         <div class="meta" style="margin-bottom:6px;">CSV with headers: id,status,applicability,maturity,notes</div>
         <textarea class="textarea mono" name="csv" rows="6" required></textarea>
         <button class="btn btn-primary btn-xs" style="margin-top:8px;">Import</button>

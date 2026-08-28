@@ -415,7 +415,8 @@ function register(app, deps) {
   // iso_items.evidence_to_look_for content) vs what's actually attached, and
   // what's stale (>12 months old). This is the artefact an auditor builds in
   // their head while walking your controls; here we pre-build it.
-  app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/evidence-coverage', requireAuth, requireWorkspace,
+    requirePermission('evidence.view'), requirePermission('control.view'), (req, res) => {
     const frameworks = parseWorkspaceFrameworks(req.workspace.frameworks);
     if (frameworks.length === 1 && frameworks[0] === 'csf') {
       return res.redirect(`/workspaces/${req.workspace.id}/csf/current/assessment?view=outcomes&gap=evidence`);
@@ -482,7 +483,10 @@ function register(app, deps) {
   });
 
   // CSV export of the matrix
-  app.get('/workspaces/:wsId/evidence-coverage.csv', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/evidence-coverage.csv', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('workspace.export'),
+    requirePermission('control.view'), (req, res) => {
     const wsId = req.workspace.id;
     const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
     const rows = db.prepare(`SELECT i.id, i.title, i.category, i.evidence_to_look_for,

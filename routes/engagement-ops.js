@@ -6,7 +6,7 @@
 // member stats, access reviews, permission lookup, audit-chain verify,
 // widgets API, readiness drill-down, controls kanban + bulk import/export,
 // risk appetite + acceptance e-sign, search, handover export, bulk ops,
-// report builder, observations + crisis comms, key rotation + backup UI,
+// report builder, observations + crisis comms, tenant system settings,
 // file preview, comment mentions.
 
 const fs = require('fs');
@@ -20,8 +20,6 @@ const enc = require('../lib/encryption');
 const rbac = require('../lib/rbac');
 const email = require('../lib/email');
 const jobs = require('../lib/jobs');
-const backup = require('../lib/backup');
-const keyrotation = require('../lib/keyrotation');
 const ctlReads = require('../lib/control-reads');
 const tprmDomain = require('../lib/tprm-domain');
 const serviceCapabilities = require('../lib/tprm-capabilities');
@@ -29,7 +27,8 @@ const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const evReads = require('../lib/evidence-reads');
 const reports = require('../lib/reports');
-const restoreCheck = require('../lib/restore-check');
+const handoverExport = require('../lib/handover-export');
+const reportTemplateAccess = require('../lib/report-template-access');
 const assessmentPassQuality = require('../lib/assessment-pass-quality');
 const gapAssessmentReport = require('../lib/gap-assessment-report');
 const auditPack = require('../lib/audit-pack');
@@ -55,6 +54,23 @@ function register(app, deps) {
     'Internal audit delivery is outside this gap-assessment-only engagement. Assessment findings and client-owned recommendations remain available.');
   const requireDocumentImplementation = outcomeScope.requirePostGapService(
     'Policy and document implementation is outside this gap-assessment-only engagement. Existing client documents remain available as assessment inputs.');
+
+  function requireExactPermission(permission) {
+    return (req, res, next) => {
+      const permissions = req.userPerms || permissionsFor(req.user, req.workspace);
+      const allowed = permissions === '*' || (permissions?.has
+        ? (permissions.has('*') || permissions.has(permission))
+        : Array.isArray(permissions) && (permissions.includes('*') || permissions.includes(permission)));
+      if (allowed) return next();
+      logAction(req.user.id, req.workspace.id, 'permission_denied', 'permission', permission,
+        { route: `${req.method} ${req.path}` }, auditCtx(req));
+      return res.status(403).render('error', {
+        user: req.user,
+        ws: req.workspace,
+        message: `You don't have permission to do this (missing: ${permission}).`,
+      });
+    };
+  }
 
   // ==================== EXEC BRIEF (one-page CISO/board readout) ====================
   // Single-page health summary that renders as one screen, prints to one A4
@@ -471,7 +487,9 @@ function register(app, deps) {
 
   // Risk Treatment Plan (clause 6.1.3.e) - formal document export pulling from
   // the live risk register.
-  app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('risk.view'),
+    requirePermission('control.view'), async (req, res) => {
     const ws = req.workspace;
     const risks = db.prepare(`SELECT r.* FROM risks r
       WHERE r.workspace_id=? ORDER BY (r.likelihood * r.impact) DESC, r.id`).all(ws.id);
@@ -532,7 +550,12 @@ function register(app, deps) {
   // Gap Assessment Report - a controlled, editorial-style deliverable based on
   // the immutable assessment-pass lineage. PDF is the client-ready record;
   // Word is the editable companion using the same report model and structure.
-  app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/export/gap-report.docx', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'),
+    requirePermission('task.manage'),
+    requirePermission('nc.manage'), requirePermission('members.view'),
+    requirePermission('audit.manage'), async (req, res) => {
     const data = gapReportData(req, res);
     if (!data) return;
     const title = data.currentState
@@ -557,7 +580,12 @@ function register(app, deps) {
     res.send(buf);
   });
 
-  app.get('/workspaces/:wsId/export/gap-report.pdf', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/export/gap-report.pdf', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'),
+    requirePermission('task.manage'),
+    requirePermission('nc.manage'), requirePermission('members.view'),
+    requirePermission('audit.manage'), async (req, res) => {
     const data = gapReportData(req, res);
     if (!data) return;
     const html = gapAssessmentReport.renderGapAssessmentHtml(data);
@@ -576,7 +604,8 @@ function register(app, deps) {
   });
 
   // Recommendations memo - ranked, actionable handoff.
-  app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWorkspace, async (req, res) => {
+  app.get('/workspaces/:wsId/export/recommendations.docx', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'), async (req, res) => {
     const ws = req.workspace;
     const pass = db.prepare(`SELECT * FROM assessment_passes WHERE workspace_id=?
       ORDER BY (status='in_progress') DESC, pass_number DESC LIMIT 1`).get(ws.id);
@@ -618,7 +647,13 @@ function register(app, deps) {
 
   // Stage 1/2 readiness pack - single ZIP with the management-system docs +
   // linked evidence + manifest.
-  app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorkspace, requireReadinessService, async (req, res) => {
+  app.get('/workspaces/:wsId/export/readiness-pack.zip', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('evidence.download'), requirePermission('workspace.export'),
+    requireReadinessService,
+    requirePermission('control.view'), requirePermission('risk.view'),
+    requirePermission('audit.manage'), requirePermission('mrm.manage'),
+    async (req, res) => {
     const ws = req.workspace;
     const stage = (req.query.stage === '2') ? 2 : 1;
     const dateLabel = new Date().toISOString().slice(0,10);
@@ -1410,7 +1445,8 @@ function register(app, deps) {
   });
 
   // ==================== CONTROLS: BULK EXPORT/IMPORT + TEMPLATES + KANBAN ====================
-  app.get('/workspaces/:wsId/controls/export.csv', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/controls/export.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'), (req, res) => {
     const rows = db.prepare(`SELECT i.id, i.type, i.category, i.title,
       COALESCE(cs.status,'Not Assessed') AS status,
       COALESCE(cs.applicability,'undecided') AS applicability,
@@ -1629,7 +1665,19 @@ function register(app, deps) {
   });
 
   // ==================== CLIENT HANDOVER EXPORT ====================
-  app.get('/workspaces/:wsId/handover', requireAuth, requireWorkspace, requirePermission('workspace.export'), async (req, res) => {
+  app.get('/workspaces/:wsId/handover', requireAuth, requireWorkspace,
+    requirePermission('evidence.export'), requirePermission('evidence.view'),
+    requirePermission('evidence.download'),
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('risk.view'), requirePermission('asset.view'),
+    requirePermission('entity.view'), requirePermission('document.view'),
+    requirePermission('audit.manage'), requirePermission('nc.manage'),
+    requirePermission('mrm.manage'), requirePermission('incident.manage'),
+    requirePermission('task.manage'), requirePermission('audit_log.view'),
+    requirePermission('audit_log.export'), requirePermission('tprm.third_party.view'),
+    requirePermission('tprm.assurance.view'), requirePermission('tprm.assurance.export'),
+    requireExactPermission('tprm.assurance.export'),
+    requirePermission('members.view'), async (req, res) => {
     const ws = req.workspace;
     const safeName = ws.client_name.replace(/[^\w]+/g, '_');
     const today = new Date().toISOString().split('T')[0];
@@ -1639,30 +1687,12 @@ function register(app, deps) {
     zip.on('error', err => { console.error(err); res.status(500).end(); });
     zip.pipe(res);
 
-    // Dump every workspace-scoped table as JSON
-    const tables = [
-      'workspaces','entities','assets','risks','risk_treatments','risk_acceptances','risk_methodologies','risk_appetites',
-      // control state converged to control_instances (control_states/entity_control_states
-      // demolished, 019/020); history is the pass-snapshot tables (cutover 5 decision).
-      'control_instances','control_state_history','iso42001_control_state_history','soa_snapshots',
-      'generated_docs','doc_versions','doc_approvers','doc_signatures',
-      'evidence','comments','comment_mentions',
-      'audits','audit_findings','audit_observations','audit_programmes',
-      'mrms','nonconformities','incidents','incident_events',
-      'suppliers','supplier_documents','supplier_subprocessors','supplier_reviews','supplier_notes','supplier_clauses','supplier_controls','supplier_questionnaires','supplier_questionnaire_responses','supplier_monitoring','supplier_termination_items',
-      'document_requirement_links',
-      'tasks','task_templates',
-      'asset_relationships',
-      'workspace_members','workspace_role_overrides','access_reviews','access_review_items',
-      'audit_log','audit_chain','notifications'
-    ];
-    for (const t of tables) {
+    // Dump every workspace-scoped table as JSON. Parent-owned tables use
+    // explicit joins in the shared loader; global IDs are never treated as
+    // workspace IDs.
+    for (const t of handoverExport.handoverTableNames()) {
       try {
-        const cols = db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
-        const wsCol = cols.includes('workspace_id') ? 'workspace_id' : null;
-        const rows = wsCol
-          ? db.prepare(`SELECT * FROM ${t} WHERE ${wsCol}=?`).all(ws.id)
-          : db.prepare(`SELECT * FROM ${t} WHERE id=?`).all(ws.id);
+        const rows = handoverExport.loadHandoverRows(db, t, ws.id);
         // Decrypt encrypted fields for portability
         rows.forEach(r => {
           Object.keys(r).forEach(k => {
@@ -1750,20 +1780,29 @@ function register(app, deps) {
 
   // ==================== REPORT BUILDER ====================
   app.get('/workspaces/:wsId/reports', requireAuth, requireWorkspace, requirePermission('workspace.export'), (req, res) => {
-    const list = db.prepare(`SELECT id, name, description, is_system FROM report_templates WHERE workspace_id IS NULL OR workspace_id=? OR firm_id=? ORDER BY is_system DESC, name`).all(req.workspace.id, req.workspace.firm_id);
+    const list = reportTemplateAccess.listVisibleReportTemplates(db, req.workspace);
     res.render('reports', { user: req.user, ws: req.workspace, list });
   });
 
-  app.get('/workspaces/:wsId/reports/:id', requireAuth, requireWorkspace, requirePermission('workspace.export'), (req, res) => {
-    const tpl = db.prepare(`SELECT * FROM report_templates WHERE id=?`).get(req.params.id);
+  const reportSourcePermissions = [
+    'control.view', 'risk.view', 'audit.manage', 'nc.manage',
+    'mrm.manage', 'tprm.third_party.view', 'tprm.assurance.view',
+    'tprm.assurance.export', 'document.view', 'task.manage',
+  ].map(permission => requirePermission(permission));
+  reportSourcePermissions.push(requireExactPermission('tprm.assurance.export'));
+
+  app.get('/workspaces/:wsId/reports/:id', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), ...reportSourcePermissions, (req, res) => {
+    const tpl = reportTemplateAccess.loadVisibleReportTemplate(db, req.workspace, req.params.id);
     if (!tpl) return res.status(404).send('Not found');
     const ctx = reports.buildContext(req.workspace.id);
     const body = reports.render(tpl.body, ctx);
     res.render('report_view', { user: req.user, ws: req.workspace, tpl, body });
   });
 
-  app.get('/workspaces/:wsId/reports/:id/docx', requireAuth, requireWorkspace, requirePermission('workspace.export'), async (req, res) => {
-    const tpl = db.prepare(`SELECT * FROM report_templates WHERE id=?`).get(req.params.id);
+  app.get('/workspaces/:wsId/reports/:id/docx', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), ...reportSourcePermissions, async (req, res) => {
+    const tpl = reportTemplateAccess.loadVisibleReportTemplate(db, req.workspace, req.params.id);
     if (!tpl) return res.status(404).send('Not found');
     const ctx = reports.buildContext(req.workspace.id);
     const body = reports.render(tpl.body, ctx);
@@ -1976,17 +2015,16 @@ function register(app, deps) {
       `Promoted to ${finding_type.replace('_',' ')} finding`));
   });
 
-  // ==================== KEY ROTATION + BACKUP UI ====================
+  // ==================== TENANT SYSTEM SETTINGS ====================
+  // Backups and master-key operations are platform concerns. They deliberately
+  // have no tenant-visible data or executable control here; operators use the
+  // host CLI/scheduler until a separate platform control plane exists.
   app.get('/workspaces/:wsId/system', requireAuth, requireWorkspace, (req, res) => {
     if (!isFirmOwner(req.user)) return res.status(403).render('error', { user: req.user, message: 'Firm owner only.' });
-    const backups = backup.listBackups();
-    const rotations = db.prepare(`SELECT * FROM key_rotations ORDER BY id DESC LIMIT 50`).all();
-    const masterFp = keyrotation.fingerprint(enc.masterKey());
-    const lastDrill = require('../lib/restore-check').lastDrill();
     const firm = db.prepare(`SELECT id,name,timezone FROM firms WHERE id=?`).get(req.workspace.firm_id);
     const timezones = ['UTC','Europe/London','Europe/Dublin','Europe/Paris','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Asia/Tokyo','Australia/Sydney'];
     res.render('system', { user: req.user, ws: req.workspace, firm, timezones,
-      effectiveTimezone: workspaceTimeZone(req.workspace, firm), backups, rotations, masterFp, lastDrill });
+      effectiveTimezone: workspaceTimeZone(req.workspace, firm) });
   });
 
   app.post('/workspaces/:wsId/system/timezone', requireAuth, requireWorkspace, (req, res) => {
@@ -2006,23 +2044,13 @@ function register(app, deps) {
     res.redirect(withToast(`/workspaces/${req.workspace.id}/system`, `Calendar timezone set to ${workspaceTimezone || firmTimezone}.`));
   });
 
-  app.post('/workspaces/:wsId/system/backup', requireAuth, requireWorkspace, async (req, res) => {
-    if (!isFirmOwner(req.user)) return res.status(403).send('forbidden');
-    const r = await backup.runBackup();
-    logAction(req.user.id, req.workspace.id, 'manual_backup', 'system', null, r, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/system`, r.ok ? 'Backup ok' : 'Backup failed: ' + r.error, r.ok ? 'success' : 'error'));
-  });
-
-  app.post('/workspaces/:wsId/system/rotate-key', requireAuth, requireWorkspace, (req, res) => {
-    if (!isFirmOwner(req.user)) return res.status(403).send('forbidden');
-    if (req.body.confirm !== 'rotate') return res.redirect(`/workspaces/${req.workspace.id}/system`);
-    const r = keyrotation.rotate(req.user.id);
-    logAction(req.user.id, null, 'rotate_master_key', 'system', null, r, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/system`, r.ok ? `Rotated. Re-encrypted ${r.rows} rows.` : 'Rotation failed: ' + r.error, r.ok ? 'success' : 'error'));
-  });
+  const platformOperationUnavailable = (_req, res) => res.status(404).send('Not found');
+  app.post('/workspaces/:wsId/system/backup', requireAuth, requireWorkspace, platformOperationUnavailable);
+  app.post('/workspaces/:wsId/system/rotate-key', requireAuth, requireWorkspace, platformOperationUnavailable);
 
   // ==================== FILE PREVIEW ====================
-  app.get('/workspaces/:wsId/evidence/:id/preview', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/evidence/:id/preview', requireAuth, requireWorkspace,
+    requirePermission('evidence.download'), (req, res) => {
     const ev = db.prepare(`SELECT * FROM evidence WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!ev) return res.status(404).send('Not found');
     const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);

@@ -87,6 +87,8 @@ PORT=3000
 DB_PATH=/app/data/iso27001.db
 ISMS_BACKUP_DIR=/app/data/backups
 ISMS_BACKUP_RETAIN=14
+ISMS_IMAGE=iso27001-tool:bootstrap
+APP_VERSION=bootstrap
 
 # Required secrets (auto-generated — keep safe, back up separately)
 SESSION_SECRET=${SESSION_SECRET}
@@ -137,6 +139,9 @@ cat > /etc/nginx/sites-available/grc-tool <<'NGINXEOF'
 server {
     listen 80;
     server_name _;
+    # update.sh creates this marker only while an in-place candidate is gated.
+    # Nginx returns 503 instead of routing users to an unpromoted process.
+    if (-f /run/grc-deploy-maintenance) { return 503; }
     access_log /var/log/nginx/grc-tool.access.log grc_no_query;
 
     client_max_body_size 50M;
@@ -168,7 +173,7 @@ chmod 0644 /etc/cron.d/grc-backup
 
 echo "==> Setting up automatic Docker container restart monitoring..."
 cat > /etc/cron.d/grc-healthcheck <<'CRONEOF'
-*/5 * * * * root docker inspect --format='{{.State.Running}}' iso27001-tool 2>/dev/null | grep -q true || (cd /opt/grc-tool && docker compose up -d)
+*/5 * * * * root flock -n /var/lock/grc-deploy.lock sh -c 'docker inspect --format="{{.State.Health.Status}}" iso27001-tool 2>/dev/null | grep -q "^healthy$" || (cd /opt/grc-tool && docker compose up -d --no-deps --force-recreate isms)'
 CRONEOF
 chmod 0644 /etc/cron.d/grc-healthcheck
 

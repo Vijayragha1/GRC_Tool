@@ -1,11 +1,39 @@
 <%- include('partials/header', { title: 'Risk methodology', user, ws, active: 'risks' }) %>
 
+<style>
+  @media (max-width:760px) {
+    .risk-methodology-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      width: 100%;
+    }
+    .risk-methodology-actions > form,
+    .risk-methodology-preset { width: 100%; }
+    .risk-methodology-actions > form > .btn,
+    .risk-methodology-preset > summary { width: 100%; justify-content: center; }
+    .risk-methodology-preset-panel {
+      box-sizing: border-box;
+      top: calc(100% + 4px) !important;
+      right: auto !important;
+      left: 0 !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      max-height: calc(100vh - 140px);
+      max-height: calc(100dvh - 140px - env(safe-area-inset-bottom));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+</style>
+
 <div class="page-head">
   <div>
     <h1 class="page-title">Risks</h1>
     <div class="page-subtitle">Customize the likelihood scale, impact scale, and risk matrix used across the risk register. Saving a new methodology activates it for all subsequent scoring; existing risk scores are kept as-is until re-assessed.</div>
   </div>
-  <div class="row-center">
+  <div class="row-center risk-methodology-actions">
     <%
       // Each preset gets a one-line "what is this and when do you pick it"
       // hint so a junior consultant doesn't have to Google four standards
@@ -22,9 +50,9 @@
           desc: 'Three values each side. Fastest to populate at kickoff; coarse enough to obscure risk differentiation. OK for small clients, replace before Stage 1.' },
       ];
     %>
-    <details style="position:relative;">
+    <details class="risk-methodology-preset" style="position:relative;">
       <summary class="btn btn-secondary btn-xs">Apply preset</summary>
-      <div style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:5;box-shadow:var(--shadow-lg);min-width:340px;max-width:380px;">
+      <div class="risk-methodology-preset-panel" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:5;box-shadow:var(--shadow-lg);min-width:340px;max-width:380px;">
         <div class="text-xs text-secondary" style="padding:8px 10px;border-bottom:1px solid var(--border);line-height:1.45;">Replaces the current methodology with one of four standard templates. <strong>Existing risk scores are kept as-is until re-assessed.</strong></div>
         <% presets.forEach(p => { %>
           <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= p.key %>" style="margin:0;" onsubmit="return appConfirmForm(event, 'Apply the <%= p.label %> preset? This replaces likelihood / impact scales and the matrix bands; existing risk scores are not recalculated.');">

@@ -122,14 +122,21 @@
      genuinely never moves and a sidebar click doesn't feel like the whole
      page jumps. The body becomes a fixed-size flex container; vertical
      scrolling lives entirely on .main. */
-  html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
-  .app { display: flex; height: 100vh; height: 100dvh; }
+  html, body {
+    width: 100%; max-width: 100%; min-width: 0;
+    height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none;
+  }
+  .app {
+    display: flex; width: 100%; max-width: 100%; min-width: 0;
+    height: 100vh; height: 100dvh;
+  }
   .sidebar {
     width: 248px; flex-shrink: 0;
     background: var(--sidebar-bg);
     color: var(--text-secondary);
     border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+    display: flex; flex-direction: column; position: sticky; top: 0;
+    height: 100vh; height: 100dvh; max-height: 100dvh;
     transition: width 0.18s cubic-bezier(.4,0,.2,1), transform 0.18s cubic-bezier(.4,0,.2,1);
   }
   .sidebar-section { padding: 14px 14px; border-bottom: 1px solid var(--border); transition: padding 0.18s; }
@@ -212,7 +219,7 @@
   }
 
   /* Sidebar collapsed */
-  @media (min-width: 901px) {
+  @media (min-width: 961px) {
     .app.sidebar-collapsed .sidebar { width: 60px; }
     .app.sidebar-collapsed .sidebar-brand-name,
     .app.sidebar-collapsed .tenant-current,
@@ -241,15 +248,19 @@
 
   /* Mobile drawer */
   .sidebar-backdrop { display: none; }
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
     .sidebar { position: fixed; z-index: 60; transform: translateX(-100%); box-shadow: var(--shadow-xl); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; }
     .sidebar-backdrop.open { display: block; }
   }
 
-  .main { flex: 1; min-width: 0; background: var(--bg-deep); height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
-  .main-inner { max-width: 1280px; margin: 0 auto; padding: 22px 28px 72px; }
+  .main {
+    flex: 1; width: 100%; max-width: 100%; min-width: 0;
+    background: var(--bg-deep); height: 100vh; height: 100dvh;
+    overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;
+  }
+  .main-inner { width: 100%; max-width: 1280px; min-width: 0; margin: 0 auto; padding: 22px 28px 72px; }
   @media (max-width: 600px) { .main-inner { padding: 16px 14px 48px; } }
 
   .topbar { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
@@ -271,7 +282,7 @@
   .icon-btn.sidebar-collapse-toggle { display: inline-flex; }
   .sidebar-collapse-toggle svg { transition: transform 0.18s ease; }
   .sidebar-collapse-toggle.is-collapsed svg { transform: rotate(180deg); }
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
     .icon-btn.menu-toggle { display: inline-flex; }
     .icon-btn.sidebar-collapse-toggle { display: none; }
   }
@@ -974,7 +985,7 @@
 [data-theme="dark"] .cm-category-hero>div:last-child span { background:rgba(0,0,0,.16) }
 [data-theme="dark"] .cm-category-hero>div:last-child strong { color:var(--text) }
 
-@media(max-width:900px){.topbar{padding-top:6px}.palette-trigger{min-width:0}.palette-trigger>span:not(.kbd){display:none}.floating-contact{right:14px;bottom:66px}.back-to-top{right:14px;bottom:18px}.cookie-consent{right:12px;bottom:12px;width:calc(100vw - 24px);grid-template-columns:1fr}.cookie-consent-actions{justify-content:flex-start}.cookie-consent-actions .btn{flex:1}.app-page-meta{text-align:left}}
+@media(max-width:960px){.topbar{padding-top:6px}.palette-trigger{min-width:0}.palette-trigger>span:not(.kbd){display:none}.floating-contact{right:14px;bottom:66px}.back-to-top{right:14px;bottom:18px}.cookie-consent{right:12px;bottom:12px;width:calc(100vw - 24px);grid-template-columns:1fr}.cookie-consent-actions{justify-content:flex-start}.cookie-consent-actions .btn{flex:1}.app-page-meta{text-align:left}}
 @media(max-width:430px){.topbar{gap:6px}.palette-trigger .kbd{display:none}.cookie-consent-actions{display:grid;grid-template-columns:1fr}.floating-contact{max-width:132px}}
 
 /* Keep the calendar ruler visible while inspecting long delivery plans. */
@@ -1491,7 +1502,7 @@ img, video, canvas { max-width: 100%; height: auto; }
 pre { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 fieldset { min-width: 0; }
 
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .sidebar {
     width: min(300px, calc(100vw - 48px));
     max-width: calc(100vw - 48px);

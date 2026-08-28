@@ -44,11 +44,11 @@ const { computeNextStep, computeNeedsAttention } = require('./lib/next-steps');
 const { seedFirmRiskLibraryIfEmpty } = require('./lib/firm-library');
 // DOCX generation binding (worker pool); the exports slice has its own copy,
 // the report builder + gap report below still use this one.
-const generateDocxBuffer = require('./lib/workers').generateDocx;
+const workers = require('./lib/workers');
+const generateDocxBuffer = workers.generateDocx;
 const jobs = require('./lib/jobs');
 const fts = require('./lib/fts');
 const reports = require('./lib/reports');
-const keyrotation = require('./lib/keyrotation');
 const csvImport = require('./lib/csv-import');
 const auditPack = require('./lib/audit-pack');
 const changesSince = require('./lib/changes-since');
@@ -102,23 +102,6 @@ const { resolveRuntimeSecret } = require('./lib/runtime-secret-resolver');
 init();
 
 // ---------------------------------------------------------------------------
-// Process-level safety net. Express 4 does not catch throws inside async route
-// handlers; without this, one throwing request kills the process for every
-// logged-in user (observed: an undecryptable document aborting the audit-pack
-// zip took the whole server down). The offending request may hang and time out
-// client-side; that is strictly better than a full crash. Individual handlers
-// should still try/catch - this is the last line, not the pattern.
-// ---------------------------------------------------------------------------
-const UNHANDLED_REJECTION_HANDLER = Symbol.for('complianceSphere.unhandledRejectionHandler');
-if (process[UNHANDLED_REJECTION_HANDLER]) {
-  process.off('unhandledRejection', process[UNHANDLED_REJECTION_HANDLER]);
-}
-process[UNHANDLED_REJECTION_HANDLER] = (err) => {
-  console.error('[unhandledRejection]', err && err.stack ? err.stack : err);
-};
-process.on('unhandledRejection', process[UNHANDLED_REJECTION_HANDLER]);
-
-// ---------------------------------------------------------------------------
 // Startup secret validation
 // ---------------------------------------------------------------------------
 (function validateSecrets() {
@@ -155,11 +138,63 @@ process.on('unhandledRejection', process[UNHANDLED_REJECTION_HANDLER]);
 // Force master key generation eagerly so first request doesn't block.
 enc.masterKey();
 // Start scheduled job runner - every 60 minutes by default.
-jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
-// Production backups are scheduled once by the host cron installed by
-// deploy/lightsail-setup.sh. Manual backups remain available in System.
+// Release preflight boots use an isolated database clone and explicitly
+// disable jobs so no email or external side effect escapes the compatibility
+// check. The production service never sets this flag.
+if (process.env.ISMS_DISABLE_JOBS !== '1') {
+  jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
+}
+// Production backups are host-controlled: the scheduler and operators invoke
+// scripts/backup.js outside the tenant UI.
 
 const app = express();
+
+const ASYNC_ROUTE_HANDLER = Symbol('asyncRouteHandler');
+
+function wrapAsyncRouteHandler(handler) {
+  if (Array.isArray(handler)) return handler.map(wrapAsyncRouteHandler);
+  if (typeof handler !== 'function' || handler.length === 4 || handler[ASYNC_ROUTE_HANDLER]) return handler;
+
+  const wrapped = function asyncRouteBoundary(req, res, next) {
+    try {
+      const result = handler.call(this, req, res, next);
+      if (result && typeof result.then === 'function') Promise.resolve(result).catch(next);
+      return result;
+    } catch (error) {
+      return next(error);
+    }
+  };
+  Object.defineProperty(wrapped, ASYNC_ROUTE_HANDLER, { value: true });
+  return wrapped;
+}
+
+// Express 4 only catches synchronous route failures. Wrap every handler added
+// through the application registration methods, including handlers registered
+// later by routes/* modules. Error middleware (arity 4) is intentionally left
+// untouched.
+function installAsyncRouteSafety(targetApp) {
+  for (const method of ['all', 'get', 'post', 'put', 'patch', 'delete', 'options', 'head']) {
+    const register = targetApp[method].bind(targetApp);
+    targetApp[method] = function registerSafeRoute(...args) {
+      // app.get('setting') is Express's setting getter, not route registration.
+      if (method === 'get' && args.length === 1) return register(...args);
+      if (args.length < 2) return register(...args);
+      return register(args[0], ...args.slice(1).map(wrapAsyncRouteHandler));
+    };
+  }
+  return targetApp;
+}
+
+function requestIdMiddleware(req, res, next) {
+  req.id = crypto.randomBytes(12).toString('hex');
+  res.setHeader('X-Request-Id', req.id);
+  next();
+}
+
+installAsyncRouteSafety(app);
+// Correlation must be established before public ingress, parsers, sessions and
+// route handlers so every failure path can return the same request identifier.
+app.use(requestIdMiddleware);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
@@ -250,7 +285,12 @@ app.get('/healthz', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     db.prepare('SELECT 1').get();
-    res.json({ ok: true, version: app.locals.assetVersion, uptime: Math.round(process.uptime()) });
+    res.json({
+      ok: true,
+      version: process.env.APP_VERSION || app.locals.assetVersion,
+      asset_version: app.locals.assetVersion,
+      uptime: Math.round(process.uptime())
+    });
   } catch (_) {
     res.status(503).json({ ok: false, error: 'database unavailable' });
   }
@@ -260,17 +300,29 @@ app.get('/healthz', (_req, res) => {
 // instance is safe to receive client traffic, without returning secret values.
 app.get('/readyz', (_req, res) => {
   const production = process.env.NODE_ENV === 'production';
+  const isolatedPreflight = process.env.ISMS_PREFLIGHT === '1' &&
+    process.env.ISMS_DISABLE_JOBS === '1' &&
+    process.env.EMAIL_DELIVERY_DISABLED === '1' &&
+    !process.env.RESEND_API_KEY && !process.env.BREVO_API_KEY &&
+    !process.env.GMAIL_USER && !process.env.GMAIL_APP_PASSWORD;
   const checks = {
     database: true,
     session_secret: !!process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32,
     master_key: !!process.env.ISMS_MASTER_KEY || fs.existsSync(process.env.ISMS_KEY_FILE || path.join(__dirname, 'data', 'master.key')),
     public_https_url: !production || /^https:\/\//i.test(process.env.APP_BASE_URL || ''),
-    transactional_email: !production || !!(process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)),
+    transactional_email: !production || isolatedPreflight ||
+      (process.env.EMAIL_DELIVERY_DISABLED !== '1' &&
+        !!(process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD))),
+    preflight_isolation: process.env.ISMS_PREFLIGHT !== '1' || isolatedPreflight,
     malware_scanning: !production || ((process.env.UPLOAD_AV_MODE || 'required') === 'required' && require('./lib/upload-security').scannerAvailable())
   };
   try { db.prepare('SELECT 1').get(); } catch (_) { checks.database = false; }
   const ok = Object.values(checks).every(Boolean);
-  res.status(ok ? 200 : 503).set('Cache-Control', 'no-store').json({ ok, checks });
+  res.status(ok ? 200 : 503).set('Cache-Control', 'no-store').json({
+    ok,
+    version: process.env.APP_VERSION || app.locals.assetVersion,
+    checks
+  });
 });
 
 // Persistent session store. The default MemoryStore loses every session on
@@ -279,13 +331,18 @@ app.get('/readyz', (_req, res) => {
 // daily backup, deploy). SQLite-backed store reuses the existing db handle
 // so sessions persist alongside the rest of the workspace data.
 const SqliteStore = require('better-sqlite3-session-store')(session);
+// better-sqlite3-session-store currently coerces `expired.clear: false` back
+// to true and does not retain the interval handle. Override its hook before
+// construction so jobs.stop() really owns every recurring timer.
+class JobManagedSqliteStore extends SqliteStore {
+  startInterval() {}
+}
 app.use(session({
-  store: new SqliteStore({
+  store: new JobManagedSqliteStore({
     client: db,
-    // The store's own sweeper is a fire-and-forget setInterval with no handle,
-    // which held finished processes open (in-process test boots). The hourly
-    // sweep lives in lib/jobs.js instead (sessionSweep), on an unref'd timer.
-    expired: { clear: false, intervalMs: 0 }
+    // The hourly sweep lives in lib/jobs.js (sessionSweep), on an unref'd
+    // timer that graceful shutdown can stop deterministically.
+    expired: { clear: false }
   }),
   secret: process.env.SESSION_SECRET || 'change-me-in-production-' + crypto.randomBytes(8).toString('hex'),
   name: 'compliance_sphere.sid',
@@ -903,8 +960,12 @@ function permissionsFor(user, ws) {
     // rbac.normalizeRole maps the old name to contributor too.
     role = m?.role || 'contributor';
   }
-  const overrides = db.prepare(`SELECT permission, granted FROM workspace_role_overrides WHERE workspace_id=? AND user_id=?`).all(ws.id, user.id);
+  const overrides = activeOverridesFor(db, ws.id, user.id);
   return rbac.effectivePermissions(role, overrides);
+}
+
+function activeOverridesFor(connection, workspaceId, userId) {
+  return rbac.activeOverrides(connection, workspaceId, userId);
 }
 
 function requirePermission(perm) {
@@ -937,13 +998,6 @@ function diffObjects(before, after) {
   }
   return { before: b, after: a };
 }
-
-// Each request gets a short unique id for correlating audit log entries.
-app.use((req, res, next) => {
-  req.id = crypto.randomBytes(6).toString('hex');
-  res.setHeader('X-Request-Id', req.id);
-  next();
-});
 
 // Multi-entity scoping was removed. These stubs preserve call-site signatures
 // so server.js can be simplified incrementally rather than in one sweeping diff.
@@ -1238,22 +1292,269 @@ app.use((req, res) => {
   res.status(404).render('error', { user: currentUser(req), message: 'Page not found.' });
 });
 
-app.use((err, req, res, next) => {
-  console.error('[error]', err);
-  res.status(500).render('error', { user: currentUser(req), message: 'Server error: ' + err.message });
-});
+function opaqueErrorHandler(err, req, res, next) {
+  if (res.headersSent) return next(err);
+
+  const requestId = req.id || crypto.randomBytes(12).toString('hex');
+  req.id = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  res.setHeader('Cache-Control', 'no-store');
+  console.error('[request_error]', {
+    request_id: requestId,
+    method: req.method,
+    // Never log query strings: reset, invite and external-access credentials
+    // may be carried there even though nginx also uses a query-free log format.
+    path: req.path || String(req.url || '').split('?')[0],
+    error: err && err.stack ? err.stack : String(err)
+  });
+
+  if (req.accepts && req.accepts(['html', 'json']) === 'json') {
+    return res.status(500).json({ error: 'internal_server_error', request_id: requestId });
+  }
+
+  let user = null;
+  try { user = currentUser(req); } catch (_) { /* keep the failure response independent of session/DB state */ }
+  return res.status(500).render('error', {
+    user,
+    message: `An unexpected error occurred. Reference: ${requestId}.`
+  });
+}
+
+app.use(opaqueErrorHandler);
+
+function createGracefulShutdown({
+  server,
+  database = db,
+  jobsModule = jobs,
+  workersModule = workers,
+  timeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS || 15000),
+  logger = console,
+  now = () => Date.now(),
+  setTimer = setTimeout,
+  clearTimer = clearTimeout
+} = {}) {
+  const boundedTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 15000;
+  let shutdownPromise = null;
+
+  function log(level, message, details) {
+    const fn = logger && typeof logger[level] === 'function' ? logger[level].bind(logger) : null;
+    if (fn) fn(message, details || '');
+  }
+
+  function waitFor(operation, remainingMs) {
+    if (remainingMs <= 0) return Promise.resolve({ status: 'timeout' });
+    return new Promise((resolve) => {
+      let settled = false;
+      const timeout = setTimer(() => {
+        if (settled) return;
+        settled = true;
+        resolve({ status: 'timeout' });
+      }, remainingMs);
+      Promise.resolve(operation).then(
+        value => {
+          if (settled) return;
+          settled = true;
+          clearTimer(timeout);
+          resolve({ status: 'done', value });
+        },
+        error => {
+          if (settled) return;
+          settled = true;
+          clearTimer(timeout);
+          resolve({ status: 'error', error });
+        }
+      );
+    });
+  }
+
+  function stopListener() {
+    if (!server || typeof server.close !== 'function' || server.listening === false) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        server.close(error => error ? reject(error) : resolve());
+        if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  return function shutdown(reason = 'shutdown') {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = (async () => {
+      const startedAt = now();
+      const deadline = startedAt + boundedTimeoutMs;
+      let timedOut = false;
+      const errors = [];
+      log('info', '[shutdown] draining runtime', { reason, timeout_ms: boundedTimeoutMs });
+
+      try {
+        if (jobsModule && typeof jobsModule.stop === 'function') jobsModule.stop();
+      } catch (error) {
+        errors.push(error);
+        log('error', '[shutdown] could not stop scheduled jobs', error);
+      }
+
+      // Stop accepting connections first. Active requests retain the worker
+      // pool until they finish, so an in-flight document export can drain.
+      const listenerResult = await waitFor(stopListener(), deadline - now());
+      if (listenerResult.status === 'timeout') {
+        timedOut = true;
+        log('error', '[shutdown] HTTP drain timed out; closing active connections');
+        try {
+          if (server && typeof server.closeAllConnections === 'function') server.closeAllConnections();
+        } catch (error) {
+          errors.push(error);
+        }
+      } else if (listenerResult.status === 'error') {
+        errors.push(listenerResult.error);
+        log('error', '[shutdown] HTTP listener close failed', listenerResult.error);
+      }
+
+      const workerBudget = Math.max(0, deadline - now());
+      let workerResult = { status: 'done' };
+      if (workersModule && typeof workersModule.close === 'function') {
+        let workerClose;
+        try { workerClose = workersModule.close({ timeoutMs: workerBudget }); }
+        catch (error) { workerClose = Promise.reject(error); }
+        workerResult = await waitFor(workerClose, workerBudget);
+      }
+      if (workerResult.status === 'timeout') {
+        timedOut = true;
+        log('error', '[shutdown] worker drain timed out; terminating worker pool');
+        try {
+          if (workersModule && typeof workersModule.close === 'function') {
+            Promise.resolve(workersModule.close({ timeoutMs: 0, force: true })).catch(() => {});
+          }
+        } catch (_) { /* process shutdown remains bounded */ }
+      } else if (workerResult.status === 'error') {
+        errors.push(workerResult.error);
+        log('error', '[shutdown] worker pool close failed', workerResult.error);
+      }
+
+      // better-sqlite3 exposes synchronous checkpoint/close APIs. PASSIVE does
+      // not wait for readers, which keeps the shutdown deadline meaningful.
+      if (database) {
+        try {
+          if (typeof database.pragma === 'function' && database.open !== false) {
+            database.pragma('wal_checkpoint(PASSIVE)');
+          }
+        } catch (error) {
+          errors.push(error);
+          log('error', '[shutdown] database checkpoint failed', error);
+        }
+        try {
+          if (typeof database.close === 'function' && database.open !== false) database.close();
+        } catch (error) {
+          errors.push(error);
+          log('error', '[shutdown] database close failed', error);
+        }
+      }
+
+      const result = { reason, timedOut, errors, elapsedMs: now() - startedAt };
+      log(timedOut || errors.length ? 'error' : 'info', '[shutdown] runtime stopped', {
+        reason,
+        timed_out: timedOut,
+        errors: errors.length,
+        elapsed_ms: result.elapsedMs
+      });
+      return result;
+    })();
+    return shutdownPromise;
+  };
+}
+
+function installShutdownSignals(shutdown, {
+  processRef = process,
+  exit = code => process.exit(code),
+  logger = console
+} = {}) {
+  let handling = false;
+  const handlers = {};
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    handlers[signal] = () => {
+      if (handling) return exit(1);
+      handling = true;
+      Promise.resolve(shutdown(signal)).then(
+        result => exit(result && (result.timedOut || result.errors?.length) ? 1 : 0),
+        error => {
+          if (logger && typeof logger.error === 'function') logger.error('[shutdown] fatal failure', error);
+          exit(1);
+        }
+      );
+    };
+    processRef.once(signal, handlers[signal]);
+  }
+  return () => {
+    for (const signal of Object.keys(handlers)) processRef.off(signal, handlers[signal]);
+  };
+}
+
+function installUnhandledRejectionShutdown(shutdown, {
+  processRef = process,
+  exit = code => process.exit(code),
+  logger = console,
+} = {}) {
+  const handlerKey = Symbol.for('complianceSphere.unhandledRejectionHandler');
+  const previousHandler = processRef[handlerKey];
+  if (typeof previousHandler === 'function') {
+    processRef.off('unhandledRejection', previousHandler);
+  }
+
+  let handling = false;
+  const handler = reason => {
+    if (handling) return;
+    handling = true;
+    if (logger && typeof logger.error === 'function') {
+      logger.error('[unhandledRejection] draining runtime before fatal exit',
+        reason && reason.stack ? reason.stack : reason);
+    }
+    let draining;
+    try { draining = shutdown('unhandledRejection'); }
+    catch (error) {
+      if (logger && typeof logger.error === 'function') logger.error('[shutdown] fatal failure', error);
+      exit(1);
+      return;
+    }
+    Promise.resolve(draining).then(
+      () => exit(1),
+      error => {
+        if (logger && typeof logger.error === 'function') logger.error('[shutdown] fatal failure', error);
+        exit(1);
+      },
+    );
+  };
+  processRef.on('unhandledRejection', handler);
+  processRef[handlerKey] = handler;
+  return () => {
+    processRef.off('unhandledRejection', handler);
+    if (processRef[handlerKey] === handler) delete processRef[handlerKey];
+  };
+}
 
 // Export the configured app so tests can mount it without calling listen().
 // When run directly (node server.js), bind a port and start serving.
 module.exports = { app, db, computeReadiness, getOrCreateState,
+  activeOverridesFor,
+  installAsyncRouteSafety,
+  requestIdMiddleware,
+  opaqueErrorHandler,
+  createGracefulShutdown,
+  installShutdownSignals,
+  installUnhandledRejectionShutdown,
   // bound at register time in routes/iso42001.js
   get computeIso42001Readiness() { return iso42001Routes.shared.computeIso42001Readiness; },
   get getOrCreate42State() { return iso42001Routes.shared.getOrCreate42State; } };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`\nCompliance Sphere running at http://localhost:${PORT}`);
     console.log(`Need access? Visit /register for the controlled evaluation path.\n`);
   });
+  const shutdown = createGracefulShutdown({ server });
+  installShutdownSignals(shutdown);
+  installUnhandledRejectionShutdown(shutdown);
 }

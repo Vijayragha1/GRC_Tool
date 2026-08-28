@@ -112,7 +112,7 @@ test('gap-only readiness links and direct server routes are both blocked', () =>
   assert.match(readiness, /Certification readiness is outside this gap-assessment-only engagement/);
 
   const engagementOps = fs.readFileSync(path.join(__dirname, '..', 'routes', 'engagement-ops.js'), 'utf8');
-  assert.match(engagementOps, /app\.get\('\/workspaces\/:wsId\/export\/readiness-pack\.zip', requireAuth, requireWorkspace, requireReadinessService/);
+  assert.match(engagementOps, /app\.get\('\/workspaces\/:wsId\/export\/readiness-pack\.zip',[\s\S]{0,240}requirePermission\('workspace\.export'\)[\s\S]{0,120}requireReadinessService/);
   assert.match(engagementOps, /app\.get\('\/workspaces\/:wsId\/readiness\/auditor', requireAuth, requireWorkspace, requireReadinessService/);
   assert.match(engagementOps, /Certification readiness is outside this gap-assessment-only engagement/);
 });
@@ -120,9 +120,12 @@ test('gap-only readiness links and direct server routes are both blocked', () =>
 test('post-assessment contract surfaces have server-side outcome guards', () => {
   const guardedLine = (source, route, guard) => {
     const sourceRoute = route.replace(/\\/g, '\\\\');
-    const line = source.split('\n').find(candidate => candidate.includes(`'${sourceRoute}'`));
-    assert.ok(line, `missing route ${route}`);
-    assert.match(line, new RegExp(`requireWorkspace, ${guard}`), `${route} must use ${guard}`);
+    const start = source.indexOf(`'${sourceRoute}'`);
+    assert.notEqual(start, -1, `missing route ${route}`);
+    const callback = source.indexOf('=>', start);
+    assert.notEqual(callback, -1, `missing callback for ${route}`);
+    const declaration = source.slice(start, callback);
+    assert.match(declaration, new RegExp(`\\b${guard}\\b`), `${route} must use ${guard}`);
   };
 
   const governance = fs.readFileSync(path.join(__dirname, '..', 'routes', 'governance.js'), 'utf8');

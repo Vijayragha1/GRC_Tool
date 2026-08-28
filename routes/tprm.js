@@ -613,8 +613,7 @@ function register(app, deps) {
   function recommendationReviewers(req) {
     const candidates = db.prepare(`SELECT id,name,email,firm_role FROM users WHERE firm_id=? AND user_type='firm' AND active=1 ORDER BY name,id`).all(req.workspace.firm_id);
     return candidates.filter(candidate => {
-      const overrides = db.prepare(`SELECT permission,granted FROM workspace_role_overrides
-        WHERE workspace_id=? AND user_id=? AND (expires_at IS NULL OR expires_at>=datetime('now'))`).all(req.workspace.id, candidate.id);
+      const overrides = rbac.activeOverrides(db, req.workspace.id, candidate.id);
       const permissions = rbac.effectivePermissions(candidate.firm_role, overrides);
       if (candidate.id === req.user.id || !rbac.hasPermission(permissions, 'tprm.recommendation.issue')) return false;
       const role = rbac.normalizeRole(candidate.firm_role);

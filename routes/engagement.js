@@ -8,6 +8,7 @@ const enc = require('../lib/encryption');
 const fs = require('fs');
 const crypto = require('crypto');
 const fts = require('../lib/fts');
+const { requireInternalEvidenceMutation } = require('../lib/evidence-access');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, withToast, logAction, auditCtx, upload, resolveUploadPath } = deps;
@@ -551,7 +552,7 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence', requireAuth, requireWorkspace,
-    requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
+    requireInternalEvidenceMutation, requirePermission('evidence.upload'), upload.single('file'), (req, res) => {
       const cleanup = () => { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {} };
       try {
         requireContractedRow(req, 'deliverable', req.params.deliverableId);
@@ -578,7 +579,8 @@ function register(app, deps) {
       }
     });
 
-  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/link', requireAuth, requireWorkspace, requirePermission('evidence.upload'), (req, res) => {
+  app.post('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/link', requireAuth, requireWorkspace,
+    requireInternalEvidenceMutation, requirePermission('evidence.upload'), (req, res) => {
     runPlanAction(req, res, () => {
       requireContractedRow(req, 'deliverable', req.params.deliverableId);
       const row = db.prepare(`SELECT id,plan_id FROM engagement_delivery_deliverables WHERE id=? AND workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
@@ -590,7 +592,8 @@ function register(app, deps) {
     }, 'Existing evidence linked.');
   });
 
-  app.get('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/:evidenceId/download', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/engagement-plan/deliverables/:deliverableId/evidence/:evidenceId/download', requireAuth, requireWorkspace,
+    requirePermission('evidence.download'), (req, res) => {
     try { requireContractedRow(req, 'deliverable', req.params.deliverableId); }
     catch (_) { return res.status(404).send('Evidence not found'); }
     const row = db.prepare(`SELECT e.* FROM engagement_delivery_evidence de JOIN evidence e ON e.id=de.evidence_id
@@ -683,7 +686,10 @@ function register(app, deps) {
     }, 'Missing milestone tasks created and linked.');
   });
 
-  app.get('/workspaces/:wsId/engagement-plan/export.csv', requireAuth, requireWorkspace, requirePermission('control.view'), (req, res) => {
+  app.get('/workspaces/:wsId/engagement-plan/export.csv', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('task.manage'), requirePermission('members.view'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'), (req, res) => {
     const projection = delivery.getProjection(db, req.workspace, req.user.id);
     const esc = value => value == null ? '' : `"${String(value).replace(/"/g, '""')}"`;
     const lines = ['Phase,Milestone,Milestone status,Owner,Priority,Planned start,Planned finish,Forecast finish,Baseline finish,Variance days,Critical path,Deliverable,Deliverable status,Approver,Due,Evidence files,Client visible'];
@@ -697,7 +703,10 @@ function register(app, deps) {
     res.send(lines.join('\n'));
   });
 
-  app.get('/workspaces/:wsId/engagement-plan/report.pdf', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
+  app.get('/workspaces/:wsId/engagement-plan/report.pdf', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('task.manage'), requirePermission('members.view'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'), async (req, res) => {
     try {
       const projection = delivery.getProjection(db, req.workspace, req.user.id);
       const h = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

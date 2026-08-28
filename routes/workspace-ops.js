@@ -524,7 +524,9 @@ function register(app, deps) {
   // ==================== TIER 2.7 - GAP ASSESSMENT REPORT (DOCX) ====================
   // Renders the post-assessment summary as a downloadable DOCX. Replaces the
   // 2–4 hours of manual report-writing per gap assessment.
-  app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWorkspace, requirePermission('control.view'), async (req, res) => {
+  app.get('/workspaces/:wsId/controls/assess/summary.docx', requireAuth, requireWorkspace,
+    requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'), async (req, res) => {
     const wsId = req.workspace.id;
 
     const dist = { Implemented: 0, 'Partially Implemented': 0, 'Work In Progress': 0, 'Not Implemented': 0, 'Not Applicable': 0, 'Not Assessed': 0 };

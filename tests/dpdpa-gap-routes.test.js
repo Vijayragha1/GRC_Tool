@@ -8,10 +8,12 @@ const { bootClient, makeClient } = require('./helpers');
 let env;
 let client;
 let portalClient;
+let restrictedClient;
 let db;
 let domain;
 let auditLog;
 let manager;
+let restrictedUser;
 let workspaceId;
 let disabledWorkspaceId;
 let otherWorkspaceId;
@@ -68,6 +70,17 @@ test.before(async () => {
   workspaceId = insertWorkspace(manager.firm_id, 'Frozen DPDPA Client', ['dpdpa']);
   disabledWorkspaceId = insertWorkspace(manager.firm_id, 'DPDPA Disabled Client', ['iso27001']);
   otherWorkspaceId = insertWorkspace(manager.firm_id, 'Other DPDPA Tenant', ['dpdpa']);
+  const restrictedPassword = 'dpdpa-restricted-password-1234';
+  const restrictedUserId = Number(db.prepare(`INSERT INTO users
+    (email,password_hash,name,firm_id,user_type,firm_role,active)
+    VALUES ('dpdpa-route-senior@example.test',?,'DPDPA Route Senior',?,'firm','senior_consultant',1)`)
+    .run(bcrypt.hashSync(restrictedPassword, 4), manager.firm_id).lastInsertRowid);
+  db.prepare("INSERT INTO workspace_members(workspace_id,user_id,role) VALUES (?,?,'senior_consultant')")
+    .run(workspaceId, restrictedUserId);
+  restrictedUser = db.prepare('SELECT * FROM users WHERE id=?').get(restrictedUserId);
+  restrictedClient = await authenticateAs(
+    env.app, 'dpdpa-route-senior@example.test', restrictedPassword,
+  );
 
   assessment = domain.createAssessment(db, audited({
     workspaceId,
@@ -123,6 +136,7 @@ test.before(async () => {
 
 test.after(async () => {
   if (portalClient) await portalClient.close();
+  if (restrictedClient) await restrictedClient.close();
   if (client) await client.close();
 });
 
@@ -247,4 +261,30 @@ test('CSV, DOCX and PDF endpoints deliver exact frozen artifacts with no-store c
     assert.equal(details.snapshot_hash, snapshot.snapshot_hash);
     assert.ok(details.bytes > 0);
   }
+});
+
+test('snapshot creation, preview and exports honor evidence source revocations', async () => {
+  const insertOverride = db.prepare(`INSERT INTO workspace_role_overrides
+    (workspace_id,user_id,permission,granted,granted_by,reason)
+    VALUES (?,?,?,0,?,'DPDPA aggregate evidence authorization regression')`);
+  const clearOverrides = db.prepare(`DELETE FROM workspace_role_overrides
+    WHERE workspace_id=? AND user_id=?`);
+  const preview = `/workspaces/${workspaceId}/dpdpa/assessments/${assessment.id}/report?snapshot=${snapshot.id}`;
+  const exportBase = `/workspaces/${workspaceId}/dpdpa/assessments/${assessment.id}/exports`;
+
+  for (const permission of ['evidence.view', 'evidence.export']) {
+    clearOverrides.run(workspaceId, restrictedUser.id);
+    insertOverride.run(workspaceId, restrictedUser.id, permission, manager.id);
+    assert.equal((await restrictedClient.post(
+      `/workspaces/${workspaceId}/dpdpa/assessments/${assessment.id}/snapshots`,
+      { reason: 'This request must be denied before snapshot creation.' },
+    )).status, 403, `snapshot creation must honor a ${permission} revoke`);
+    assert.equal((await restrictedClient.get(preview)).status, 403,
+      `snapshot preview must honor a ${permission} revoke`);
+    for (const suffix of ['/report.pdf', '/report.docx', '/data.csv']) {
+      assert.equal((await restrictedClient.get(`${exportBase}${suffix}?snapshot=${snapshot.id}`)).status, 403,
+        `${suffix} must honor a ${permission} revoke`);
+    }
+  }
+  clearOverrides.run(workspaceId, restrictedUser.id);
 });
