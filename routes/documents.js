@@ -20,8 +20,15 @@ const { looksLikeMarkdown } = require('../lib/docx-gen');
 const { snapshotDocVersion, listVersions, listApprovers, listSignatures, verifyVersionSignatures } = require('../lib/doc-versions');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray } = require('../lib/http-helpers');
+const aimsTemplates = require('../lib/iso42001-templates');
+const { parseWorkspaceFrameworks, frameworkMeta } = require('../lib/frameworks');
 
 const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: true });
+
+// adoptTemplateForWorkspace is bound at register() so the ISO 42001
+// certification request page can start a document from a template through
+// the same path the library uses.
+const shared = {};
 
 function register(app, deps) {
   // AUTHZ-005: canonical internal-approver eligibility. Mirrors the candidate
@@ -148,11 +155,27 @@ function register(app, deps) {
 
   const TIER_RANK = { mandatory: 0, expected: 1, recommended: 2 };
 
+  // Template packs exist for ISO 27001 and ISO 42001. The library shows the
+  // pack for one programme at a time, chosen from the programmes this client
+  // actually runs, so a 42001 client is not offered ISO 27001 policies and the
+  // mandatory counts and bulk adoption mean the right thing.
+  function templateFrameworks(ws) {
+    const enabled = Array.isArray(ws.frameworks) ? ws.frameworks : parseWorkspaceFrameworks(ws.frameworks);
+    const withPacks = ['iso27001', aimsTemplates.FRAMEWORK].filter(f => enabled.includes(f));
+    return withPacks.length ? withPacks : ['iso27001'];
+  }
+  function chosenFramework(req) {
+    const available = templateFrameworks(req.workspace);
+    const asked = String((req.query && req.query.framework) || (req.body && req.body.framework) || '');
+    return available.includes(asked) ? asked : available[0];
+  }
+
   app.get('/workspaces/:wsId/templates', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
-    const templates = db.prepare(`SELECT id, name, category, description, tier, controls, clauses
+    const framework = chosenFramework(req);
+    const templates = db.prepare(`SELECT id, name, category, description, tier, controls, clauses, framework, requirement_refs
       FROM doc_templates
-      WHERE is_system=1 OR firm_id=?
-      ORDER BY name`).all(req.workspace.firm_id);
+      WHERE (is_system=1 OR firm_id=?) AND COALESCE(framework, 'iso27001')=?
+      ORDER BY name`).all(req.workspace.firm_id, framework);
 
     const adoptedRows = db.prepare(`SELECT template_id, MIN(id) AS doc_id, COUNT(*) AS n
       FROM generated_docs WHERE workspace_id=? AND template_id IS NOT NULL AND status!='withdrawn'
@@ -164,7 +187,14 @@ function register(app, deps) {
     const enriched = templates.map(t => {
       let controls = []; try { controls = JSON.parse(t.controls || '[]'); } catch (_) {}
       let clauses  = []; try { clauses  = JSON.parse(t.clauses  || '[]'); } catch (_) {}
-      return { ...t, controls, clauses, adopted: adoptedByTpl[t.id] || null };
+      // One chip vocabulary for both packs: controls first, then clauses.
+      const refs = aimsTemplates.refsOf(t);
+      const chips = aimsTemplates.frameworkOf(t) === aimsTemplates.FRAMEWORK
+        ? [...refs.filter(r => r.startsWith('ai-annex-')).map(r => ({ label: aimsTemplates.code(r), kind: 'control' })),
+           ...refs.filter(r => r.startsWith('ai-clause-')).map(r => ({ label: `Cl. ${aimsTemplates.code(r)}`, kind: 'clause' }))]
+        : [...controls.map(c => ({ label: c.replace('annex-a.', 'A.').toUpperCase(), kind: 'control' })),
+           ...clauses.map(c => ({ label: c.replace('clause-', 'Cl. '), kind: 'clause' }))];
+      return { ...t, controls, clauses, chips, adopted: adoptedByTpl[t.id] || null };
     }).sort((a, b) => {
       const ta = TIER_RANK[a.tier || 'recommended'];
       const tb = TIER_RANK[b.tier || 'recommended'];
@@ -182,7 +212,8 @@ function register(app, deps) {
 
     res.render('templates_library', {
       user: req.user, ws: req.workspace,
-      templates: enriched, counts
+      templates: enriched, counts, framework,
+      frameworkTabs: templateFrameworks(req.workspace).map(code => ({ code, label: (frameworkMeta(code) || {}).shortLabel || code }))
     });
   });
 
@@ -202,6 +233,10 @@ function register(app, deps) {
     const existing = db.prepare(`SELECT id FROM generated_docs
       WHERE workspace_id=? AND template_id=? AND status!='withdrawn' ORDER BY id DESC LIMIT 1`)
       .get(req.workspace.id, tpl.id);
+    const aiRefs = aimsTemplates.frameworkOf(tpl) === aimsTemplates.FRAMEWORK
+      ? aimsTemplates.refsOf(tpl).map(id => ({ id, code: aimsTemplates.code(id),
+          title: String((db.prepare('SELECT title FROM iso42001_items WHERE id=?').get(id) || {}).title || '').replace(/^(A\.)?[\d.]+\s+/, '') }))
+      : [];
 
     // Render the template body with workspace context substituted, then pass the
     // HTML to the view. EJS templates can't require() the markdown renderer, so
@@ -211,7 +246,7 @@ function register(app, deps) {
       .replace(/{{scope}}/g, req.workspace.scope || (req.workspace.client_name + ' information assets'))
       .replace(/{{date}}/g, new Date().toISOString().slice(0,10))
       .replace(/{{firm_name}}/g, '[Firm name]')
-      .replace(/{{document_owner}}/g, 'CISO')
+      .replace(/{{document_owner}}/g, aimsTemplates.frameworkOf(tpl) === aimsTemplates.FRAMEWORK ? 'AIMS Manager' : 'CISO')
       .replace(/{{approval_authority}}/g, 'Top Management')
       .replace(/{{review_period}}/g, 'Annual')
       .replace(/{{industry}}/g, req.workspace.industry || '');
@@ -219,7 +254,7 @@ function register(app, deps) {
 
     res.render('template_detail', {
       user: req.user, ws: req.workspace,
-      tpl, controls, clauses, isoLookup, existing, previewHtml
+      tpl, controls, clauses, isoLookup, existing, previewHtml, aiRefs
     });
   });
 
@@ -230,8 +265,9 @@ function register(app, deps) {
     const adopted = db.prepare(`SELECT template_id FROM generated_docs
       WHERE workspace_id=? AND template_id IS NOT NULL AND status!='withdrawn'`).all(req.workspace.id);
     const adoptedSet = new Set(adopted.map(r => r.template_id));
+    const framework = chosenFramework(req);
     const toAdopt = db.prepare(`SELECT * FROM doc_templates
-      WHERE is_system=1 AND tier='mandatory' ORDER BY name`).all()
+      WHERE is_system=1 AND tier='mandatory' AND COALESCE(framework, 'iso27001')=? ORDER BY name`).all(framework)
       .filter(t => !adoptedSet.has(t.id));
     let totalDocs = 0, totalLinks = 0;
     const tx = db.transaction(() => {
@@ -247,7 +283,7 @@ function register(app, deps) {
     const msg = totalDocs === 0
       ? 'All mandatory templates already adopted in this workspace.'
       : `Adopted ${totalDocs} mandatory template${totalDocs === 1 ? '' : 's'} · auto-linked ${totalLinks} control${totalLinks === 1 ? '' : 's'}`;
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/templates`, msg));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/templates?framework=${framework}`, msg));
   });
 
   app.post('/workspaces/:wsId/templates/:id(\\d+)/adopt', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
@@ -284,7 +320,7 @@ function register(app, deps) {
       scope: workspace.scope || `${workspace.client_name} information assets`,
       date: today,
       firm_name: firm?.name || '',
-      document_owner: (overrides && overrides.document_owner) || 'CISO',
+      document_owner: (overrides && overrides.document_owner) || (aimsTemplates.frameworkOf(tpl) === aimsTemplates.FRAMEWORK ? 'AIMS Manager' : 'CISO'),
       approval_authority: (overrides && overrides.approval_authority) || 'Top Management',
       review_period: (overrides && overrides.review_period) || 'Annual',
       industry: workspace.industry || ''
@@ -315,10 +351,18 @@ function register(app, deps) {
         }
       });
     }
+    // ISO 42001 templates name their requirements explicitly.
+    if (aimsTemplates.frameworkOf(tpl) === aimsTemplates.FRAMEWORK) {
+      aimsTemplates.refsOf(tpl).forEach(ref => {
+        const r = docLinks.addLink(db, aimsTemplates.FRAMEWORK, docId, ref, null);
+        if (r && r.changes) linkedControls++;
+      });
+    }
     logAction(user.id, workspace.id, 'create_document', 'document', docId,
       { from_template: tpl.name, auto_linked: linkedControls }, { ip: '', userAgent: '' });
     return { docId, linkedControls };
   }
+  shared.adoptTemplateForWorkspace = adoptTemplateForWorkspace;
 
   app.post('/workspaces/:wsId/documents/blank', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
     const { name, category } = req.body;
@@ -1324,4 +1368,4 @@ function register(app, deps) {
 
 }
 
-module.exports = { register };
+module.exports = { register, shared };

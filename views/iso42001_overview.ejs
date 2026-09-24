@@ -1,0 +1,272 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const prog = model.programme;
+  const body = prog.certification_body || 'the certification body';
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+  const dayText = d => d == null ? '' : d === 0 ? 'today' : d > 0 ? `in ${plural(d, 'day')}` : `${plural(-d, 'day')} ago`;
+  const segments = s => {
+    const c = s.counts;
+    const total = Math.max(s.total, 1);
+    return [
+      ['b-sent', c.submitted + c.accepted, 'With the auditor'],
+      ['b-done', c.ready + c.not_applicable, 'Ready or not applicable'],
+      ['b-review', c.to_review, 'Client responded'],
+      ['b-attention', c.follow_up, 'Auditor follow-up'],
+      ['b-client', c.with_client, 'With client'],
+    ].filter(([, n]) => n > 0).map(([cls, n, label]) => ({ cls, n, label, pct: (n * 100 / total).toFixed(2) }));
+  };
+  const countRows = s => {
+    const c = s.counts;
+    return [
+      ['not_started', 'Not started', c.not_started],
+      ['with_client', 'With client', c.with_client],
+      ['to_review', 'Client responded', c.to_review],
+      ['ready', 'Ready to submit', c.ready],
+      ['submitted', 'With the auditor', c.submitted + c.accepted],
+      ...(c.follow_up ? [['follow_up', 'Auditor follow-up', c.follow_up]] : []),
+      ...(c.not_applicable ? [['not_applicable', 'Not applicable', c.not_applicable]] : []),
+    ];
+  };
+  const waiting = [
+    ...model.queues.toReview.map(r => ({ r, why: `${r.client_assignee_name || 'The client'} responded` })),
+    ...model.queues.followUp.map(r => ({ r, why: 'Auditor follow-up' })),
+    ...model.queues.overdueWithClient.map(r => ({ r, why: `With ${r.client_assignee_name || 'the client'}, past its due date` })),
+    ...model.queues.dueSoon.map(r => ({ r, why: r.effective === 'ready' ? 'Ready, not yet submitted' : 'Due soon, not sent' })),
+  ];
+  const seenRefs = new Set();
+  const waitingRows = waiting.filter(w => !seenRefs.has(w.r.id) && seenRefs.add(w.r.id));
+  const sources = {
+    'ai-systems': 'AI system register, by go-live date',
+    'ai-vendors': 'Suppliers recorded on each AI system',
+    'ai-changes': 'Change register, linked to AI systems',
+    'ai-incidents': 'Incident register, linked to AI systems',
+  };
+  const inScope = systems.filter(s => s.in_scope);
+  const approvedIa = inScope.filter(s => s.ia_approved_at).length;
+%>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">ISO 42001 certification</h1>
+      <div class="page-subtitle">ISO/IEC 42001:2023 AI management system for <%= ws.client_name %>. The gap assessment comes first. The certification checklist then tracks everything the auditor will ask for, request by request, from the client to the auditor.</div>
+      <div class="a42-facts">
+        <% if (prog.certification_body) { %><span>Certification body <strong><%= prog.certification_body %></strong></span><% } %>
+        <% if (model.total) { %><span><strong><%= model.total %></strong> requests in the checklist</span><% } %>
+        <% if (checklist.applied) { %><span>Standard checklist <strong><%= checklist.version || checklist.latest %></strong></span><% } %>
+        <% if (prog.source_filename) { %><span>Also imported <%= prog.source_filename %> on <%= fmtDate(prog.imported_at) %></span><% } %>
+        <% if (prog.stage1_date) { %><span>Stage 1 <strong><%= fmtDate(prog.stage1_date) %></strong></span><% } %>
+        <% if (prog.stage2_date) { %><span>Stage 2 <strong><%= fmtDate(prog.stage2_date) %></strong></span><% } %>
+        <% if (model.withdrawn) { %><span><a href="<%= base %>/requests?status=withdrawn"><%= plural(model.withdrawn, 'request') %> withdrawn</a></span><% } %>
+      </div>
+    </div>
+    <div class="row">
+      <% if (perms.manage && checklist.updateAvailable) { %>
+        <form method="POST" action="<%= base %>/checklist" style="display:inline;"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-secondary" type="submit">Update checklist to <%= checklist.latest %></button></form>
+      <% } %>
+      <% if (model.total) { %><a class="btn btn-primary" href="<%= base %>/requests">Request list</a><% } %>
+    </div>
+  </div>
+
+  <section class="panel a42-next" aria-labelledby="a42NextTitle">
+    <div>
+      <div class="a42-next-label">What needs doing next</div>
+      <h2 id="a42NextTitle"><%= model.next.title %></h2>
+      <p><%= model.next.body %></p>
+    </div>
+    <div class="row" style="flex-wrap:wrap;justify-content:flex-end;">
+      <% [['btn-ghost', model.next.secondary], ['btn-primary', model.next.action]].forEach(([cls, act]) => {
+           if (!act || (act.post && !perms.manage)) return; %>
+        <% if (act.post) { %>
+          <form method="POST" action="<%= act.post %>" style="display:inline;"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn <%= cls %>" type="submit"><%= act.label %></button></form>
+        <% } else { %>
+          <a class="btn <%= cls %>" href="<%= act.href %>"><%= act.label %></a>
+        <% } %>
+      <% }) %>
+    </div>
+  </section>
+
+  <% if (model.total) { %>
+  <section class="panel" aria-labelledby="a42RunwayTitle">
+    <div class="panel-head">
+      <h2 id="a42RunwayTitle">Audit runway</h2>
+      <span class="meta"><a href="#a42Dates"><%= prog.stage1_date || prog.stage2_date ? 'Audit dates and review period' : 'Add audit dates (optional)' %></a></span>
+    </div>
+    <div class="a42-runway">
+      <% [model.stage1, model.stage2, model.fieldwork].forEach(s => { const segs = segments(s); %>
+        <div class="a42-stage">
+          <div class="a42-stage-head">
+            <strong><%= STAGE_LABELS[s.stage] %></strong>
+            <% if (s.date) { %><span class="<%= s.days != null && s.days < 0 && s.remaining ? 'is-late' : '' %>"><%= fmtDate(s.date) %> · <%= dayText(s.days) %></span><% } %>
+          </div>
+          <div class="a42-stage-hint"><%= STAGE_HINTS[s.stage] %></div>
+          <% if (!s.total) { %>
+            <div class="a42-stage-num">No requests at this stage.</div>
+          <% } else { %>
+            <div class="a42-stage-num"><b><%= s.done %></b> of <%= s.total %> <%= s.stage === 'fieldwork' ? 'samples settled' : 'ready or sent' %></div>
+            <div class="a42-bar" role="img" aria-label="<%= segs.map(g => `${g.label}: ${g.n}`).join(', ') || 'Nothing started' %>">
+              <% segs.forEach(g => { %><i class="<%= g.cls %>" style="width:<%= g.pct %>%"></i><% }) %>
+            </div>
+            <ul class="a42-counts">
+              <% countRows(s).forEach(([status, label, n]) => { %>
+                <li class="<%= n ? '' : 'is-zero' %>"><a href="<%= base %>/requests?stage=<%= s.stage %>&status=<%= status %>"><%= label %></a><span><%= n %></span></li>
+              <% }) %>
+            </ul>
+          <% } %>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="a42WaitingTitle">
+    <div class="panel-head">
+      <h2 id="a42WaitingTitle">Waiting on the consulting team</h2>
+      <span class="meta"><%= waitingRows.length ? plural(waitingRows.length, 'request') : '' %></span>
+    </div>
+    <% if (!waitingRows.length) { %>
+      <div class="a42-note">Nothing is waiting on you right now.
+        <% const owed = model.stage1.counts.with_client + model.stage2.counts.with_client; if (owed) { %>The client team owes <a href="<%= base %>/requests?status=with_client"><%= plural(owed, 'request') %></a>.<% } %></div>
+    <% } else { %>
+      <div style="overflow-x:auto;">
+        <table class="t a42-stack">
+          <thead><tr><th scope="col">Request</th><th scope="col">Why it is here</th><th scope="col">Stage</th><th scope="col">Client owner</th></tr></thead>
+          <tbody>
+            <% waitingRows.slice(0, 12).forEach(({ r, why }) => { %>
+              <tr>
+                <td><span class="a42-ref"><%= r.ref %></span> <a class="a42-title" href="<%= base %>/requests/<%= r.id %>"><%= r.title %></a></td>
+                <td><span class="status <%= r.status_class %>"><%= why %></span></td>
+                <td class="nowrap" data-label="Stage"><%= r.stage_label %></td>
+                <td data-label="Client owner"><%= r.client_assignee_name || '' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% if (waitingRows.length > 12) { %><div class="a42-note"><a href="<%= base %>/requests?status=open">See all <%= waitingRows.length %></a></div><% } %>
+    <% } %>
+  </section>
+
+  <% if (model.populationRows.length) { %>
+  <section class="panel" aria-labelledby="a42PopTitle">
+    <div class="panel-head">
+      <h2 id="a42PopTitle">Populations the auditor samples from</h2>
+      <span class="meta"><% if (prog.review_period_start || prog.review_period_end) { %>Review period <%= fmtDate(prog.review_period_start) || 'start of records' %> to <%= fmtDate(prog.review_period_end) || 'today' %><% } else { %>No review period recorded. <a href="#a42Dates">Set it</a> so populations only list what falls inside it.<% } %></span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="t a42-stack">
+        <thead><tr><th scope="col">Request</th><th scope="col">Where it comes from</th><th scope="col" class="num">Rows today</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <% model.populationRows.forEach(r => { const key = populationFor(r.description); %>
+            <tr>
+              <td><span class="a42-ref"><%= r.ref %></span> <a class="a42-title" href="<%= base %>/requests/<%= r.id %>"><%= r.title %></a></td>
+              <td data-label="Source"><%= key ? sources[key] : 'Client records; the client supplies this list' %></td>
+              <td class="num" data-label="Rows today"><%= key ? populationCounts[key] : '' %></td>
+              <td><span class="status <%= r.status_class %>"><%= r.status_label %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% } %>
+  <% } %>
+
+  <% if (canUseTemplates && docs.mandatory.total) { %>
+  <section class="panel" aria-labelledby="a42DocsTitle">
+    <div class="panel-head">
+      <h2 id="a42DocsTitle">AIMS documents</h2>
+      <a class="btn btn-ghost btn-xs" href="/workspaces/<%= ws.id %>/templates?framework=iso42001">ISO 42001 templates</a>
+    </div>
+    <div class="a42-note" style="padding-bottom:6px;">
+      <strong style="color:var(--ink);font-weight:500;"><%= docs.mandatory.drafted %> of <%= docs.mandatory.total %></strong> documents the standard requires are drafted, <strong style="color:var(--ink);font-weight:500;"><%= docs.mandatory.approved %></strong> approved.
+      <%= docs.expected.drafted %> of <%= docs.expected.total %> documents auditors expect for the Annex A controls are drafted.
+    </div>
+    <% const pending = [...docs.missingMandatory.map(t => ({ t, state: 'Not started' })), ...docs.awaitingApproval.map(t => ({ t, state: 'Drafted, not approved' }))]; %>
+    <% if (pending.length) { %>
+      <ul class="a42-files">
+        <% pending.slice(0, 6).forEach(({ t, state }) => { %>
+          <li>
+            <div><a href="<%= t.doc ? `/workspaces/${ws.id}/documents/${t.doc.doc_id}` : `/workspaces/${ws.id}/templates/${t.id}` %>"><%= t.name %></a></div>
+            <span class="status <%= t.doc ? 's-in_review' : 's-todo' %>"><%= state %></span>
+          </li>
+        <% }) %>
+      </ul>
+      <% if (pending.length > 6) { %><div class="a42-note" style="padding-top:0;"><a href="/workspaces/<%= ws.id %>/templates?framework=iso42001"><%= pending.length - 6 %> more required documents</a></div><% } %>
+    <% } %>
+  </section>
+  <% } %>
+
+  <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);margin-top:14px;">
+    <section class="panel" aria-labelledby="a42SystemsTitle">
+      <div class="panel-head">
+        <h2 id="a42SystemsTitle">AI systems in scope</h2>
+        <a class="btn btn-ghost btn-xs" href="<%= base %>/ai-systems">Open register</a>
+      </div>
+      <% if (!systems.length) { %>
+        <div class="a42-note">No AI systems are recorded. The auditor asks for the purpose of each system, the organisation's role for it, and its impact assessment, and samples from newly implemented systems. <% if (perms.manage) { %><a href="<%= base %>/ai-systems/new">Add the first system</a>.<% } %></div>
+      <% } else { %>
+        <div class="a42-note" style="padding-bottom:4px;"><%= plural(inScope.length, 'system') %> in scope; <%= approvedIa %> with an approved impact assessment.</div>
+        <ul class="a42-files">
+          <% inScope.slice(0, 6).forEach(s => { %>
+            <li>
+              <div><a href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a><span class="meta"><%= s.purpose ? s.purpose.slice(0, 90) + (s.purpose.length > 90 ? '...' : '') : 'Purpose not recorded' %></span></div>
+              <span class="status <%= s.ia_approved_at ? 's-done' : s.ia_status === 'draft' ? 's-in_review' : 's-todo' %>"><%= s.ia_approved_at ? 'Impact assessed' : s.ia_status === 'draft' ? 'Assessment in draft' : 'No impact assessment' %></span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </section>
+
+    <section class="panel" aria-labelledby="a42UncitedTitle">
+      <div class="panel-head"><h2 id="a42UncitedTitle">Not on the auditor's list</h2></div>
+      <% if (!model.total) { %>
+        <div class="a42-note">Once the list is imported, any clause or Annex A control it does not ask about is listed here. Those are still auditable; they tend to come up in interviews rather than as document requests.</div>
+      <% } else if (!model.uncited.length) { %>
+        <div class="a42-note">Every clause and Annex A control is cited by at least one request.</div>
+      <% } else { %>
+        <div class="a42-note" style="padding-bottom:4px;">The list does not ask for these directly. They are still auditable, usually through interviews and walkthroughs.</div>
+        <ul class="a42-reqs" style="border-top:0;">
+          <% model.uncited.forEach(i => { %>
+            <li><span class="a42-ref"><%= i.code %></span><a href="<%= base %>/gap/<%= i.id %>"><%= String(i.title).replace(/^(A\.)?[\d.]+\s+/, '') %></a><span></span></li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </section>
+  </div>
+
+  <details class="panel" id="a42Dates" style="margin-top:14px;" <%= model.total && !prog.stage1_date && !prog.stage2_date ? 'open' : '' %>>
+    <summary class="panel-head" style="cursor:pointer;list-style:none;"><h2>Audit dates and review period</h2><span class="meta"><%= prog.stage1_date ? `Stage 1 ${fmtDate(prog.stage1_date)}` : 'Stage 1 not set' %> · <%= prog.stage2_date ? `Stage 2 ${fmtDate(prog.stage2_date)}` : 'Stage 2 not set' %></span></summary>
+    <% if (perms.manage) { %>
+    <form method="POST" action="<%= base %>/programme" class="a42-form">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <div class="stack-grid" style="--cols:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);">
+        <div><label class="label" for="a42Body">Certification body</label><input id="a42Body" class="input" name="certification_body" maxlength="120" value="<%= prog.certification_body || '' %>"></div>
+        <div><label class="label" for="a42S1">Stage 1</label><input id="a42S1" class="input" type="date" name="stage1_date" value="<%= prog.stage1_date || '' %>"></div>
+        <div><label class="label" for="a42S2">Stage 2</label><input id="a42S2" class="input" type="date" name="stage2_date" value="<%= prog.stage2_date || '' %>"></div>
+      </div>
+      <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr);">
+        <div><label class="label" for="a42P1">Review period starts</label><input id="a42P1" class="input" type="date" name="review_period_start" value="<%= prog.review_period_start || '' %>"></div>
+        <div><label class="label" for="a42P2">Review period ends</label><input id="a42P2" class="input" type="date" name="review_period_end" value="<%= prog.review_period_end || '' %>"></div>
+        <div><span class="hint" style="margin-top:22px;">The auditor asks for populations "during the review period". Populations exported from the AI system register only list what falls inside it.</span></div>
+      </div>
+      <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Save dates</button></div>
+    </form>
+    <% } else { %>
+      <div class="a42-note">Only consultants who can update controls change the audit dates.</div>
+    <% } %>
+  </details>
+
+  <div class="a42-more">
+    Also in this programme:
+    <a href="<%= base %>/intake">Management intake</a>
+    <a href="<%= base %>">Requirements catalogue</a>
+    <a href="<%= base %>/gap-assessment">Gap assessment passes</a>
+    <a href="<%= base %>/roadmap">Improvement roadmap</a>
+    <a href="<%= base %>/readiness">Readiness scoring</a>
+    <a href="<%= base %>/exec-brief">Executive brief</a>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

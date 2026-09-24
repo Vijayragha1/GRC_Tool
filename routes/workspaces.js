@@ -335,7 +335,7 @@ function register(app, deps) {
       return res.redirect(`/workspaces/${ws.id}/csf`);
     }
     if (frameworkCodes.length === 1 && frameworkCodes[0] === 'iso42001') {
-      return res.redirect(`/workspaces/${ws.id}/iso42001`);
+      return res.redirect(`/workspaces/${ws.id}/iso42001/overview`);
     }
     if (frameworkCodes.length === 1 && frameworkCodes[0] === 'dpdpa') {
       return res.redirect(`/workspaces/${ws.id}/dpdpa`);

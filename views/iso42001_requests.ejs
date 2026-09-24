@@ -1,0 +1,170 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const qs = over => {
+    const p = { stage: filters.stage, status: filters.status, q: filters.q, item: filters.item, ...over };
+    const s = Object.entries(p).filter(([, v]) => v && v !== 'all').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    return `${base}/requests${s ? `?${s}` : ''}`;
+  };
+  const tabs = [
+    ['all', 'All', counts.all], ['stage1', 'Stage 1', counts.stage1], ['stage2', 'Stage 2', counts.stage2],
+    ['population', 'Populations', counts.population], ['fieldwork', 'Samples', counts.fieldwork],
+  ];
+  const statusOptions = [['all', 'Any status'], ['open', 'Still open'], ...Object.entries(STATUS_LABELS).filter(([k]) => k !== 'withdrawn' || counts.withdrawn)];
+  const sendable = r => ['not_started', 'follow_up'].includes(r.effective);
+  const canSend = perms.send && clientMembers.length;
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/overview">ISO 42001 certification</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Certification requests</h1>
+      <div class="page-subtitle">
+        Everything the certification auditor asks for, from the standard ISO 42001 checklist<%= programme.source_filename ? ` and ${programme.certification_body || 'the certification body'}'s own list` : '' %>. Each request is answered with files or records, checked by a consultant, then submitted to the auditor.
+      </div>
+    </div>
+    <div class="row">
+      <% if (perms.export && counts.all) { %><a class="btn btn-ghost" href="<%= base %>/requests/export.csv">Export CSV</a><% } %>
+      <% if (perms.manage) { %>
+        <details class="popover" style="position:relative;">
+          <summary class="btn btn-secondary">Add a request</summary>
+          <div class="panel popover-panel" style="--popover-w:420px;position:absolute;right:0;top:calc(100% + 6px);z-index:20;">
+            <form method="POST" action="<%= base %>/requests/new" class="a42-form">
+              <input type="hidden" name="_csrf" value="<%= csrf %>">
+              <p class="meta" style="margin:0;">For something the auditor asked for outside the list, by email or in a call. A later import never withdraws it.</p>
+              <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+                <div><label class="label" for="nrRef">Reference</label><input id="nrRef" class="input" name="ref" maxlength="40" required placeholder="e.g. EMAIL-01"></div>
+                <div><label class="label" for="nrDue">Due date (optional)</label><input id="nrDue" class="input" type="date" name="due_date"></div>
+              </div>
+              <div><label class="label" for="nrDesc">What the auditor asked for</label><textarea id="nrDesc" class="textarea" name="description" rows="3" maxlength="8000" required></textarea></div>
+              <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+                <div><label class="label" for="nrStage">Stage</label><select id="nrStage" class="select" name="stage"><option value="stage1">Stage 1</option><option value="stage2" selected>Stage 2</option></select></div>
+                <div><label class="label" for="nrKind">Type</label><select id="nrKind" class="select" name="kind"><option value="evidence">Evidence</option><option value="policy">Policy or procedure</option><option value="population">Population</option><option value="sample">Sample</option></select></div>
+              </div>
+              <div><label class="label" for="nrReq">Clauses or controls</label><input id="nrReq" class="input" name="requirements" maxlength="1000" placeholder="e.g. 6.1.4, A.5.2"></div>
+              <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Add request</button></div>
+            </form>
+          </div>
+        </details>
+        <% if (checklist.updateAvailable) { %>
+          <form method="POST" action="<%= base %>/checklist" style="display:inline;"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-secondary" type="submit">Update checklist to <%= checklist.latest %></button></form>
+        <% } %>
+        <a class="btn btn-ghost" href="<%= base %>/requests/import" title="Only when a certification body sends its own list for this client">Import a certification body's list</a>
+      <% } %>
+    </div>
+  </div>
+
+  <% if (!counts.all && !counts.withdrawn) { %>
+    <section class="panel">
+      <div class="empty-state">
+        <div class="empty-title">The certification checklist has not been started</div>
+        <div class="empty-sub">The standard checklist lists the <%= checklist.size %> documents, records, populations and samples a certification auditor asks for, sorted into Stage 1 and Stage 2 and mapped to the clauses and Annex A controls. Starting it gives this client its own copy. Audit dates are optional and can be added later.</div>
+        <% if (perms.manage) { %>
+          <form method="POST" action="<%= base %>/checklist" style="display:inline;"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-primary" type="submit">Start the checklist</button></form>
+          <div class="meta" style="margin-top:10px;">If a certification body has sent its own list for this client, you can <a href="<%= base %>/requests/import">import it</a> instead.</div>
+        <% } %>
+      </div>
+    </section>
+  <% } else { %>
+
+  <nav class="subtabs" aria-label="Request stages">
+    <% tabs.forEach(([key, label, n]) => { %>
+      <a class="subtab <%= filters.stage === key ? 'is-active' : '' %>" href="<%= qs({ stage: key, status: filters.status }) %>"<%- filters.stage === key ? ' aria-current="page"' : '' %>><%= label %> <span class="meta"><%= n %></span></a>
+    <% }) %>
+  </nav>
+
+  <form method="GET" action="<%= base %>/requests" class="a42-toolbar" style="margin-bottom:12px;">
+    <% if (filters.stage !== 'all') { %><input type="hidden" name="stage" value="<%= filters.stage %>"><% } %>
+    <% if (filters.item) { %><input type="hidden" name="item" value="<%= filters.item %>"><% } %>
+    <label class="sr-only" for="rqStatus">Status</label>
+    <select id="rqStatus" class="select" name="status" style="width:auto;">
+      <% statusOptions.forEach(([k, label]) => { %><option value="<%= k %>" <%= filters.status === k ? 'selected' : '' %>><%= label %></option><% }) %>
+    </select>
+    <label class="sr-only" for="rqSearch">Search</label>
+    <input id="rqSearch" class="input" type="search" name="q" value="<%= filters.q %>" placeholder="Search requests">
+    <button class="btn btn-secondary" type="submit">Apply</button>
+    <% if (filters.q || filters.status !== 'all' || filters.item) { %><a class="btn btn-ghost" href="<%= qs({ status: 'all', q: '', item: '' }) %>">Clear</a><% } %>
+  </form>
+
+  <% if (filters.item) { %>
+    <div class="a42-note" style="padding:0 0 10px;">Requests that cite <strong><%= itemTitle || filters.item %></strong>.</div>
+  <% } %>
+
+  <form method="POST" action="<%= base %>/requests/send" class="panel" id="rqSendForm">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <% if (canSend) { %>
+      <div class="a42-sendbar" data-sendbar>
+        <span class="a42-sendbar-count" data-send-count>Tick requests to send them to the client team.</span>
+        <div><label class="label" for="rqAssignee">Send to</label>
+          <select id="rqAssignee" class="select" name="assignee_id" required>
+            <option value="">Choose a client contact</option>
+            <% clientMembers.forEach(m => { %><option value="<%= m.id %>"><%= m.name %><%= m.role ? ` (${m.role.replace(/_/g, ' ')})` : '' %></option><% }) %>
+          </select></div>
+        <div><label class="label" for="rqAskBy">Ask for it by</label><input id="rqAskBy" class="input" type="date" name="due_date" min="<%= today %>"><span class="hint meta">Optional. Blank follows this client's audit dates, if set</span></div>
+        <div style="flex:1 1 220px;"><label class="label" for="rqNote">Note to the client</label><input id="rqNote" class="input" name="note" maxlength="4000" placeholder="Optional"></div>
+        <button class="btn btn-primary" type="submit" data-send-button disabled>Send</button>
+      </div>
+    <% } else if (perms.send) { %>
+      <div class="a42-note" style="border-bottom:1px solid var(--border);">Add someone from the client team to this workspace before sending requests to them.</div>
+    <% } %>
+
+    <% if (!rows.length) { %>
+      <div class="empty-state"><div class="empty-title">No requests match</div><div class="empty-sub">Try another stage or status.</div></div>
+    <% } else { %>
+    <div style="overflow-x:auto;">
+      <table class="t a42-stack">
+        <thead>
+          <tr>
+            <% if (canSend) { %><th scope="col" style="width:28px;"><span class="sr-only">Select</span></th><% } %>
+            <th scope="col">Request</th>
+            <th scope="col">Status</th>
+            <th scope="col">Client owner</th>
+            <th scope="col" class="num">Files</th>
+            <th scope="col">Stage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(r => { %>
+            <tr>
+              <% if (canSend) { %><td><% if (sendable(r)) { %><input type="checkbox" name="request_ids" value="<%= r.id %>" aria-label="Select <%= r.ref %>" data-send-pick><% } %></td><% } %>
+              <td>
+                <span class="a42-ref"><%= r.ref %></span>
+                <a class="a42-title" href="<%= base %>/requests/<%= r.id %>"><%= r.title %></a>
+                <span class="a42-codes"><%= r.kind_label %><%= r.codes.length ? ` · ${r.codes.join(', ')}` : '' %><% if (r.due_date) { %> · <span class="<%= r.overdue ? 'a42-late' : '' %>">due <%= fmtDate(r.due_date) %></span><% } %></span>
+              </td>
+              <td><span class="status <%= r.status_class %>"><%= r.status_label %></span></td>
+              <td data-label="Client owner"><%= r.client_assignee_name || '' %></td>
+              <td class="num" data-label="Files"><%= r.kind === 'sample' && r.sample_count ? `${r.sample_count - r.samples_open}/${r.sample_count}` : (r.record_count || '') %></td>
+              <td class="nowrap" data-label="Stage"><%= r.kind === 'population' ? 'Population' : r.stage_label %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </form>
+  <p class="meta" style="margin-top:8px;">Showing <%= rows.length %> of <%= counts.all %>. Only requests that are not started or have an auditor follow-up can be sent.</p>
+  <% } %>
+</div>
+
+<% if (canSend) { %>
+<script>
+  (function () {
+    var form = document.getElementById('rqSendForm');
+    if (!form) return;
+    var button = form.querySelector('[data-send-button]');
+    var count = form.querySelector('[data-send-count]');
+    function update() {
+      var n = form.querySelectorAll('[data-send-pick]:checked').length;
+      button.disabled = n === 0;
+      count.textContent = n ? n + (n === 1 ? ' request selected' : ' requests selected') : 'Tick requests to send them to the client team.';
+    }
+    form.addEventListener('change', function (e) { if (e.target.matches('[data-send-pick]')) update(); });
+    update();
+  })();
+</script>
+<% } %>
+
+<%- include('partials/footer') %>

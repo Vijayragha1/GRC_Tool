@@ -70,13 +70,13 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Policy library</h1>
-    <div class="page-subtitle">Adopt a template; the relevant Annex A controls auto-link.</div>
+    <div class="page-subtitle"><%= framework === 'iso42001' ? 'ISO/IEC 42001 AI management system templates. Adopt one to create a draft for this client; the clauses and Annex A controls it covers link automatically.' : 'Adopt a template; the relevant Annex A controls auto-link.' %></div>
   </div>
   <div class="row">
     <a href="/workspaces/<%= ws.id %>/documents" class="btn btn-secondary btn-xs" title="Go to the documents list">View documents</a>
     <% const missingMandatory = counts.mandatory - counts.mandatoryAdopted; %>
     <% if (missingMandatory > 0) { %>
-      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory" style="display:inline;" onsubmit="if (!appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this client? Each gets created as a draft document with Annex A controls auto-linked.')) return false; window._markBusy(this, 'Adopting…'); return true;">
+      <form method="POST" action="/workspaces/<%= ws.id %>/templates/adopt-mandatory?framework=<%= framework %>" style="display:inline;" onsubmit="if (!appConfirmForm(event, 'Adopt all <%= missingMandatory %> remaining mandatory template<%= missingMandatory === 1 ? '' : 's' %> in this client? Each gets created as a draft document with Annex A controls auto-linked.')) return false; window._markBusy(this, 'Adopting…'); return true;">
         <button class="btn btn-primary bulk-cta-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
           Adopt all mandatory<span class="num"><%= missingMandatory %></span>
@@ -90,6 +90,14 @@
     <% } %>
   </div>
 </div>
+
+<% if (frameworkTabs.length > 1) { %>
+  <nav class="subtabs" aria-label="Template pack">
+    <% frameworkTabs.forEach(f => { %>
+      <a class="subtab <%= f.code === framework ? 'is-active' : '' %>" href="/workspaces/<%= ws.id %>/templates?framework=<%= f.code %>"<%- f.code === framework ? ' aria-current="page"' : '' %>><%= f.label %></a>
+    <% }) %>
+  </nav>
+<% } %>
 
 <%# ===== adoption stats =====
      Typographic scanline rather than a KPI-card grid - the four cards
@@ -149,7 +157,7 @@
       <div class="tpl-card <%= t.adopted ? 'adopted' : '' %>"
            data-name="<%= t.name.toLowerCase() %>"
            data-desc="<%= (t.description || '').toLowerCase() %>"
-           data-controls="<%= t.controls.join(' ').toLowerCase() %>"
+           data-controls="<%= t.chips.map(c => c.label).join(' ').toLowerCase() %>"
            data-tier="<%= t.tier || 'recommended' %>"
            data-cat="<%= t.category || '' %>">
         <div class="tpl-card-head">
@@ -160,7 +168,7 @@
               Adopted
             </span>
           <% } else if (t.tier === 'mandatory') { %>
-            <span class="tpl-card-tier text-danger" style="display:inline-flex;" title="ISO 27001 mandates this document"><%- tierIcon('mandatory', 13) %></span>
+            <span class="tpl-card-tier text-danger" style="display:inline-flex;" title="The standard requires this document"><%- tierIcon('mandatory', 13) %></span>
           <% } else if (t.tier === 'expected') { %>
             <span class="tpl-card-tier text-warn" style="display:inline-flex;" title="Auditors expect this document"><%- tierIcon('expected', 13) %></span>
           <% } %>
@@ -168,19 +176,15 @@
         <div class="tpl-card-name"><%= t.name %></div>
         <div class="tpl-card-desc"><%= t.description || '(no description)' %></div>
         <div class="tpl-card-controls">
-          <% if (t.controls.length === 0 && t.clauses.length === 0) { %>
+          <% if (!t.chips.length) { %>
             <span class="tpl-card-control empty">No auto-link mappings; adopt and link manually</span>
           <% } else { %>
-            <% (t.controls.slice(0, 5)).forEach(c => { %>
-              <span class="tpl-card-control"><%= c.replace('annex-a.','A.').toUpperCase() %></span>
+            <% const shown = [...t.chips.filter(c => c.kind === 'control').slice(0, 5), ...t.chips.filter(c => c.kind === 'clause').slice(0, 3)]; %>
+            <% shown.forEach(c => { %>
+              <span class="tpl-card-control"<%- c.kind === 'clause' ? ' style="background:rgba(202,138,4,0.10);color:#b45309;"' : '' %>><%= c.label %></span>
             <% }) %>
-            <% if (t.controls.length > 5) { %>
-              <span class="tpl-card-control more">+<%= t.controls.length - 5 %> more</span>
-            <% } %>
-            <% if (t.clauses.length) { %>
-              <% (t.clauses.slice(0, 2)).forEach(c => { %>
-                <span class="tpl-card-control" style="background:rgba(202,138,4,0.10);color:#b45309;"><%= c.replace('clause-','Cl. ') %></span>
-              <% }) %>
+            <% if (t.chips.length > shown.length) { %>
+              <span class="tpl-card-control more">+<%= t.chips.length - shown.length %> more</span>
             <% } %>
           <% } %>
         </div>

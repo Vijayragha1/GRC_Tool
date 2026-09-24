@@ -1,0 +1,120 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+  const s = preview ? preview.summary : null;
+  const fieldName = f => ({ kind: 'type', description: 'wording', guidance: 'guidance', cb_advice: 'advice', cb_class: 'class', cb_category: 'category',
+    cb_type: 'type', cb_status: 'their status', requirement_text: 'clause mapping', requirements: 'clause mapping', due_date: 'due date', stage: 'stage' }[f] || f);
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/overview">ISO 42001 certification</a> / <a href="<%= base %>/requests">Certification requests</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><%= preview ? 'Check the import' : 'Import a certification body\'s list' %></h1>
+      <div class="page-subtitle"><%= preview ? 'Nothing is saved until you confirm. Check what will change.' : 'Optional. Every client already has the standard ISO 42001 checklist. Use this only when a certification body sends its own request list for this client and you want to track against their references. You see a preview before anything is saved.' %></div>
+    </div>
+  </div>
+
+  <% if (!preview) { %>
+    <div class="stack-grid" style="--cols:minmax(0,1.2fr) minmax(0,1fr);">
+      <section class="panel" aria-labelledby="impUploadTitle">
+        <div class="panel-head"><h2 id="impUploadTitle">Upload</h2></div>
+        <form method="POST" action="<%= base %>/requests/import/preview" enctype="multipart/form-data" class="a42-form">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <div><label class="label" for="impFile">Request list (.xlsx or .csv, up to 5 MB)</label><input id="impFile" class="input" type="file" name="file" accept=".xlsx,.csv" required></div>
+          <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Preview import</button></div>
+        </form>
+      </section>
+      <section class="panel" aria-labelledby="impHowTitle">
+        <div class="panel-head"><h2 id="impHowTitle">How the import works</h2></div>
+        <div class="a42-prose">
+          <p>It looks for the sheet with a request ID column and a description column, and reads the clause or control mapping, due date, type and the auditor's guidance where the list has them.</p>
+          <p>Requests tagged "(S1)", or due by the earliest date, go to Stage 1. Samples wait for fieldwork. You confirm both audit dates on the next screen.</p>
+          <p>Importing a newer list updates what the auditor owns: wording, guidance, dates and mapping. Your statuses, owners, client hand-offs and files are kept. A request missing from the newer list is marked withdrawn, not deleted.</p>
+        </div>
+      </section>
+    </div>
+
+    <% if (history.length) { %>
+      <section class="panel" aria-labelledby="impHistoryTitle" style="margin-top:14px;">
+        <div class="panel-head"><h2 id="impHistoryTitle">Earlier imports</h2></div>
+        <div style="overflow-x:auto;">
+          <table class="t a42-stack">
+            <thead><tr><th scope="col">File</th><th scope="col">Imported</th><th scope="col">By</th><th scope="col" class="num">Requests</th></tr></thead>
+            <tbody>
+              <% history.forEach(h => { %>
+                <tr><td><%= h.source_filename %></td><td data-label="Imported"><%= fmtDate(h.committed_at) %></td><td data-label="By"><%= h.committed_by_name || '' %></td><td class="num" data-label="Requests"><%= h.summary.total %></td></tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } %>
+  <% } else { %>
+    <section class="panel" aria-labelledby="impPreviewTitle">
+      <div class="panel-head">
+        <h2 id="impPreviewTitle"><%= preview.source_filename %></h2>
+        <span class="meta"><%= preview.sheet_name ? `Sheet "${preview.sheet_name}" · ` : '' %><%= plural(s.total, 'request') %></span>
+      </div>
+      <div class="a42-runway">
+        <div class="a42-stage">
+          <div class="a42-stage-head"><strong>What is on the list</strong></div>
+          <ul class="a42-counts" style="margin-top:10px;">
+            <li><span class="k">Stage 1</span><span><%= s.byStage.stage1 %></span></li>
+            <li><span class="k">Stage 2</span><span><%= s.byStage.stage2 %></span></li>
+            <li><span class="k">Populations</span><span><%= s.byStage.population %></span></li>
+            <li><span class="k">Samples for fieldwork</span><span><%= s.byStage.fieldwork %></span></li>
+            <li class="is-zero"><span class="k">Policies or procedures among them</span><span><%= s.byKind.policy %></span></li>
+          </ul>
+        </div>
+        <div class="a42-stage">
+          <div class="a42-stage-head"><strong>What will change</strong></div>
+          <ul class="a42-counts" style="margin-top:10px;">
+            <li><span class="k">New requests</span><span><%= s.diff.added.length %></span></li>
+            <li class="<%= s.diff.changed.length ? '' : 'is-zero' %>"><span class="k">Changed by the auditor</span><span><%= s.diff.changed.length %></span></li>
+            <li class="<%= s.diff.withdrawn.length ? '' : 'is-zero' %>"><span class="k">No longer on the list</span><span><%= s.diff.withdrawn.length %></span></li>
+            <li class="<%= s.diff.restored.length ? '' : 'is-zero' %>"><span class="k">Back on the list</span><span><%= s.diff.restored.length %></span></li>
+            <li class="is-zero"><span class="k">Unchanged</span><span><%= s.diff.unchanged %></span></li>
+          </ul>
+        </div>
+        <div class="a42-stage">
+          <div class="a42-stage-head"><strong>Mapping</strong></div>
+          <div class="a42-stage-num" style="margin-top:10px;"><%= s.unmapped.length ? `${plural(s.unmapped.length, 'request')} with no clause or control` : 'Every request maps to a clause or control' %></div>
+          <% if (s.unmapped.length) { %><div class="meta" style="margin-top:4px;"><%= s.unmapped.map(u => u.ref + (u.text ? ` (${u.text})` : '')).join(', ') %></div><% } %>
+        </div>
+      </div>
+      <% if (s.diff.changed.length || s.diff.withdrawn.length || s.warnings.length) { %>
+        <ul class="a42-diff" style="border-top:1px solid var(--border);padding-top:12px;">
+          <% s.diff.changed.slice(0, 20).forEach(c => { %><li><span class="a42-ref"><%= c.ref %></span> the auditor changed the <%= [...new Set(c.fields.map(fieldName))].join(', ') %></li><% }) %>
+          <% if (s.diff.changed.length > 20) { %><li><%= s.diff.changed.length - 20 %> more changed</li><% } %>
+          <% if (s.diff.withdrawn.length) { %><li>No longer on the list, will be marked withdrawn: <%= s.diff.withdrawn.join(', ') %></li><% } %>
+          <% s.warnings.forEach(w => { %><li class="a42-late"><%= w %></li><% }) %>
+        </ul>
+      <% } %>
+    </section>
+
+    <section class="panel" aria-labelledby="impConfirmTitle">
+      <div class="panel-head"><h2 id="impConfirmTitle">Confirm the audit</h2></div>
+      <form method="POST" action="<%= base %>/requests/import/<%= preview.id %>/commit" class="a42-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <div class="stack-grid" style="--cols:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);">
+          <div><label class="label" for="impBody">Certification body</label><input id="impBody" class="input" name="certification_body" maxlength="120" value="<%= programme.certification_body || s.guessedBody || '' %>"></div>
+          <div><label class="label" for="impS1">Stage 1 date (optional)</label><input id="impS1" class="input" type="date" name="stage1_date" value="<%= programme.stage1_date || '' %>"></div>
+          <div><label class="label" for="impS2">Stage 2 date (optional)</label><input id="impS2" class="input" type="date" name="stage2_date" value="<%= programme.stage2_date || '' %>"></div>
+        </div>
+        <span class="hint">Optional. The list's own due dates stay on each request. Enter this client's Stage 1 and Stage 2 dates only if you want them on the overview and used to suggest dates for the client.</span>
+        <div class="a42-form-actions">
+          <button class="btn btn-primary" type="submit">Import <%= plural(s.total, 'request') %></button>
+        </div>
+      </form>
+      <form method="POST" action="<%= base %>/requests/import/<%= preview.id %>/discard" class="a42-note" style="padding-top:0;">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <button class="btn btn-ghost btn-xs" type="submit">Discard this preview</button>
+      </form>
+    </section>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

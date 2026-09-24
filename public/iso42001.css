@@ -1,0 +1,157 @@
+/* ISO/IEC 42001 certification audit screens.
+   Built from app.css: .page-head, .panel, table.t, .status .s-*, .subtabs,
+   .input/.select/.textarea, .btn. This file only adds what the house does not
+   have: the next-step band, the stage runway, the request page rail and the
+   evidence list. Colours are app tokens; the only hues are the house status
+   colours, used where the status vocabulary already uses them. */
+
+.a42 { max-width: 1240px; }
+.a42 h2 { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; margin: 0; color: var(--ink); }
+.a42 .panel + .panel, .a42 .panel + .stack-grid, .a42 .stack-grid + .panel, .a42 .a42-next + .panel { margin-top: 14px; }
+.a42-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+.a42-facts strong { color: var(--ink); font-weight: 500; }
+.a42-crumb { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
+.a42-crumb a { color: var(--text-secondary); text-decoration: none; }
+.a42-crumb a:hover { color: var(--ink); text-decoration: underline; }
+
+/* The one decision the page opens with. */
+.a42-next { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 28px; align-items: center; padding: 18px 20px; }
+.a42-next-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px; }
+.a42-next h2 { font-size: 18px; font-weight: 500; letter-spacing: -0.2px; line-height: 1.3; }
+.a42-next p { margin: 6px 0 0; max-width: 720px; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+
+/* Stage runway: Stage 1, Stage 2 and fieldwork samples side by side. */
+.a42-runway { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.a42-stage { padding: 14px 16px 16px; min-width: 0; }
+.a42-stage + .a42-stage { border-left: 1px solid var(--border); }
+.a42-stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.a42-stage-head strong { font-size: 13px; font-weight: 600; }
+.a42-stage-head span { font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.a42-stage-head span.is-late { color: #b91c1c; }
+.a42-stage-hint { margin-top: 3px; font-size: 12px; color: var(--text-tertiary); line-height: 1.4; }
+.a42-stage-num { margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
+.a42-stage-num b { font-family: var(--font-display); font-size: 24px; font-weight: 500; color: var(--ink); letter-spacing: -0.3px; font-variant-numeric: tabular-nums; margin-right: 2px; }
+.a42-bar { display: flex; height: 6px; margin: 10px 0 12px; border-radius: 3px; overflow: hidden; background: var(--bg-muted); }
+.a42-bar i { display: block; height: 100%; }
+.a42-bar .b-done { background: #15803d; }
+.a42-bar .b-sent { background: var(--ink); }
+.a42-bar .b-review { background: #b45309; }
+.a42-bar .b-client { background: #1d4ed8; opacity: .55; }
+.a42-bar .b-attention { background: #b91c1c; }
+.a42-counts { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+.a42-counts li { display: flex; justify-content: space-between; gap: 10px; }
+.a42-counts a { color: var(--text-secondary); text-decoration: none; }
+.a42-counts a:hover { color: var(--ink); text-decoration: underline; }
+.a42-counts span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.a42-counts span.k { color: var(--text-secondary); font-variant-numeric: normal; }
+.a42-counts .is-zero a, .a42-counts .is-zero span, .a42-counts .is-zero span.k { color: var(--text-tertiary); }
+
+/* Request lists. */
+.a42 table.t td .a42-ref, .a42-ref { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.a42-title { color: var(--ink); text-decoration: none; font-weight: 500; }
+.a42-title:hover { text-decoration: underline; }
+.a42-codes { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-tertiary); }
+.a42-late { color: #b91c1c; }
+/* The house .status capitalises each word, which suits one-word tokens. These
+   labels are written as sentences ("Ready to submit"), so keep them as written. */
+.a42 .status { text-transform: none; }
+.a42 .nowrap { white-space: nowrap; }
+/* Subtabs become flex items on a phone, which drops the space before the count. */
+.a42 .subtab .meta { margin-left: 5px; }
+.a42 td.num, .a42 th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.a42-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.a42-toolbar .input { width: 220px; }
+.a42-sendbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg-subtle); }
+.a42-sendbar .label { margin-bottom: 3px; }
+.a42-sendbar .select { min-width: 200px; }
+.a42-sendbar .a42-sendbar-count { font-size: 12px; color: var(--text-secondary); margin-right: auto; align-self: center; }
+
+/* Request page: main column and a narrow rail. */
+.a42-split { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
+.a42-split > div { min-width: 0; display: grid; gap: 14px; }
+.a42-split .panel + .panel { margin-top: 0; }
+.a42-asked { padding: 14px 16px; font-size: 13.5px; line-height: 1.6; color: var(--ink); white-space: pre-line; }
+.a42-guidance { margin: 0 16px 14px; padding: 12px 14px; border-left: 2px solid var(--border-strong); background: var(--bg-subtle); font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); white-space: pre-line; }
+.a42-guidance-label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 500; color: var(--ink); white-space: normal; }
+.a42-reqs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.a42-reqs li { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 16px; font-size: 13px; }
+.a42-reqs li + li { border-top: 1px solid var(--border); }
+.a42-reqs a { color: var(--ink); text-decoration: none; }
+.a42-reqs a:hover { text-decoration: underline; }
+.a42-files { list-style: none; margin: 0; padding: 0; }
+.a42-files li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 16px; font-size: 13px; }
+.a42-files li + li { border-top: 1px solid var(--border); }
+.a42-files .meta { display: block; margin-top: 2px; }
+.a42-files a { color: var(--ink); }
+.a42-attach { display: grid; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--border); background: var(--bg-subtle); }
+.a42-attach form:not(.stack-grid) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.a42-rail .panel-pad { display: grid; gap: 12px; }
+.a42-rail form { display: grid; gap: 10px; }
+.a42-rail .btn { justify-content: center; }
+.a42-rail p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); }
+.a42-rail details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+.a42-rail details[open] summary { margin-bottom: 10px; }
+.a42-dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 7px 12px; margin: 0; padding: 14px 16px; font-size: 12.5px; }
+.a42-dl dt { color: var(--text-tertiary); }
+.a42-dl dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.a42-state { font-size: 13px; line-height: 1.5; }
+.a42-state strong { font-weight: 500; }
+.a42-quote { padding: 10px 12px; border-left: 2px solid var(--border-strong); font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); white-space: pre-line; background: var(--bg-subtle); }
+.a42-divider { border: 0; border-top: 1px solid var(--border); margin: 2px 0; }
+
+/* Templates offered on a request. */
+.a42-templates { border-top: 1px solid var(--border); }
+.a42-templates-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; padding: 12px 16px 2px; font-size: 13px; }
+.a42-templates-head strong { font-weight: 600; }
+
+/* History. */
+.a42-history { list-style: none; margin: 0; padding: 4px 16px 12px; }
+.a42-history li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 8px 0; font-size: 12.5px; }
+.a42-history li + li { border-top: 1px solid var(--border); }
+.a42-history time { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.a42-history .a42-quote { margin-top: 6px; }
+
+/* Forms on register pages. */
+.a42-form { display: grid; gap: 14px; padding: 16px; }
+.a42-form .hint { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.45; }
+.a42-checks { display: grid; gap: 6px; }
+.a42-checks label { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--ink); }
+.a42-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.a42-section-title { margin: 6px 0 -4px; font-size: 13px; font-weight: 600; color: var(--ink); }
+
+.a42-note { padding: 12px 16px; font-size: 12.5px; line-height: 1.55; color: var(--text-secondary); }
+.a42-more { margin: 22px 0 8px; font-size: 12.5px; color: var(--text-tertiary); line-height: 1.7; }
+.a42-more a { color: var(--text-secondary); margin-right: 14px; white-space: nowrap; }
+.a42-diff { list-style: none; margin: 0; padding: 0 16px 12px; display: grid; gap: 4px; font-size: 12.5px; color: var(--text-secondary); }
+.a42-prose { padding: 14px 16px; font-size: 13px; line-height: 1.6; color: var(--ink); }
+.a42-prose p { margin: 0 0 10px; }
+.a42-prose p:last-child { margin-bottom: 0; }
+.a42-frozen { font-size: 12px; color: var(--text-tertiary); }
+
+@media (max-width: 1000px) {
+  .a42-split { grid-template-columns: minmax(0, 1fr); }
+  /* The next action is the point of the page; on one column it comes first. */
+  .a42-split > .a42-rail { order: -1; display: grid; gap: 14px; }
+}
+@media (max-width: 760px) {
+  .a42-next { grid-template-columns: minmax(0, 1fr); }
+  .a42-next .btn { justify-content: center; }
+  .a42-runway { grid-template-columns: minmax(0, 1fr); }
+  .a42-stage + .a42-stage { border-left: 0; border-top: 1px solid var(--border); }
+  .a42-toolbar, .a42-toolbar .input, .a42-toolbar .select { width: 100%; }
+  .a42-sendbar { flex-direction: column; align-items: stretch; }
+  .a42-sendbar .select, .a42-sendbar .input { min-width: 0; width: 100%; }
+  .a42-reqs li { grid-template-columns: 56px minmax(0, 1fr); }
+  .a42-reqs li > :last-child { grid-column: 2; }
+  .a42-attach form:not(.stack-grid) { grid-template-columns: minmax(0, 1fr); }
+  .a42-dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .a42-dl dd { margin-bottom: 8px; }
+  .a42-history li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .a42 table.t.a42-stack thead { display: none; }
+  .a42 table.t.a42-stack, .a42 table.t.a42-stack tbody, .a42 table.t.a42-stack tr, .a42 table.t.a42-stack td { display: block; width: 100%; }
+  .a42 table.t.a42-stack tr { padding: 10px 14px; border-top: 1px solid var(--border); }
+  .a42 table.t.a42-stack tbody tr:first-child { border-top: 0; }
+  .a42 table.t.a42-stack td { padding: 2px 0 !important; border: 0 !important; }
+  .a42 table.t.a42-stack td.num { text-align: left; }
+  .a42 table.t.a42-stack td[data-label]:before { content: attr(data-label) ": "; color: var(--text-tertiary); }
+}

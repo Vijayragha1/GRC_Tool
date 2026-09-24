@@ -3464,6 +3464,12 @@ function init() {
   } catch (e) {
     console.error('[db] fresh-boot catalog backfill failed:', e.message);
   }
+
+  // ISO/IEC 42001 template pack. Runs last so its explicit framework, tier and
+  // requirement mapping override the ISO 27001 name and description tagging
+  // applied to every system template earlier in init().
+  const aimsPack = require('./lib/iso42001-templates').applyTemplatePack(db);
+  if (aimsPack.added) console.log(`[db] Added ${aimsPack.added} ISO 42001 templates (pack now: ${aimsPack.total})`);
 }
 
 const crypto = require('crypto');

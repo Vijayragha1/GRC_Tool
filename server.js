@@ -256,7 +256,7 @@ app.use(express.json({ limit: '10mb' }));
 // serve a stale stylesheet or favicon after a change.
 app.locals.assetVersion = (() => {
   const h = crypto.createHash('md5');
-  for (const f of ['public/app.css', 'public/tprm.css', 'public/dpdpa.css', 'public/auditor.css', 'public/public.css', 'public/page-loader.css', 'public/page-loader.js', 'public/site-enhancements.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
+  for (const f of ['public/app.css', 'public/tprm.css', 'public/dpdpa.css', 'public/iso42001.css', 'public/auditor.css', 'public/public.css', 'public/page-loader.css', 'public/page-loader.js', 'public/site-enhancements.js', 'public/favicon.svg', 'public/fonts/inter.css']) {
     try { h.update(fs.readFileSync(path.join(__dirname, f))); } catch (_) {}
   }
   return h.digest('hex').slice(0, 8);
@@ -468,6 +468,13 @@ const rawCsvUpload = multer({
 const CSV_UPLOAD_EXTENSIONS = new Set(['csv']);
 const csvUpload = {
   single: field => inspectedUpload(rawCsvUpload.single(field),CSV_UPLOAD_EXTENSIONS)
+};
+
+// Certification-body request lists arrive as the auditor's own export: an
+// .xlsx workbook or a .csv. Same memory-only, inspected, 5MB path as CSV.
+const REQUEST_LIST_EXTENSIONS = new Set(['csv', 'xlsx']);
+const requestListUpload = {
+  single: field => inspectedUpload(rawCsvUpload.single(field), REQUEST_LIST_EXTENSIONS)
 };
 
 // Questionnaire evidence uploader. Used on both the external (vendor, anonymous)
@@ -1286,6 +1293,11 @@ require('./routes/dpdpa').register(app, {
 const iso42001Routes = require('./routes/iso42001');
 iso42001Routes.register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, computeReadiness, notifyReviewers: controlsRoutes.notifyReviewers });
+// The certification audit (request list, AI system register, impact
+// assessments) lives beside the requirement screens in routes/iso42001-audit.js.
+require('./routes/iso42001-audit').register(app, { db, requireAuth, requireWorkspace, requirePermission,
+  logAction, upload, requestListUpload,
+  adoptTemplate: (...args) => require('./routes/documents').shared.adoptTemplateForWorkspace(...args) });
 
 // ==================== ERROR HANDLERS ====================
 app.use((req, res) => {

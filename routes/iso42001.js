@@ -11,6 +11,7 @@ const jobs = require('../lib/jobs');
 const ctlReads = require('../lib/control-reads');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
+const auditRequests = require('../lib/iso42001-audit');
 const { withToast, redirectBack, auditCtx, parseFormArray, escapeHtml } = require('../lib/http-helpers');
 
 // getOrCreate42State + computeIso42001Readiness close over deps; server.js
@@ -69,7 +70,8 @@ function register(app, deps) {
     else if (filter && filter.startsWith('a-')) rows = rows.filter(r => r.category === filter);
     else if (filter === 'open') rows = rows.filter(r => ['Not Implemented','Partially Implemented','Not Assessed'].includes(r.status));
     if (search) rows = rows.filter(r => r.title.toLowerCase().includes(search) || r.id.toLowerCase().includes(search));
-    res.render('iso42001_controls', { user: req.user, ws: req.workspace, rows, filter, search });
+    const requestCounts = auditRequests.requestCountsByItem(db, req.workspace, new Date().toISOString().slice(0, 10));
+    res.render('iso42001_controls', { user: req.user, ws: req.workspace, rows, filter, search, requestCounts });
   });
 
   // Single-control "detail" page - merged into the gap wizard like ISO 27001 did.
@@ -633,13 +635,19 @@ function register(app, deps) {
       LEFT JOIN v_iso42001_control_states cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
     const sectionPosition = db.prepare(`SELECT COUNT(*) AS c FROM iso42001_items WHERE type=? AND sort_order <= ?`).get(item.type, item.sort_order).c;
 
-    // Evidence files attached to this item (reuses the existing evidence table -
-    // iso_item_id is TEXT so ai-* ids coexist with ISO 27001 ids).
+    // Evidence for this item. ISO 42001 links live in evidence_requirement_links
+    // (library uploads, this page's own upload form, and files accepted for a
+    // certification request); the legacy iso_item_id column is kept for rows
+    // written before that.
     const evidenceList = db.prepare(`SELECT e.*, u.name AS uploader,
       (SELECT COUNT(*) FROM evidence e2 WHERE e2.sha256 = e.sha256 AND e2.workspace_id = e.workspace_id) AS link_count
       FROM evidence e LEFT JOIN users u ON u.id = e.uploaded_by
-      WHERE e.workspace_id=? AND e.iso_item_id=? AND e.superseded_at IS NULL
-      ORDER BY e.uploaded_at DESC`).all(req.workspace.id, item.id);
+      WHERE e.workspace_id=? AND e.superseded_at IS NULL AND (e.iso_item_id=? OR e.id IN (
+        SELECT erl.evidence_id FROM evidence_requirement_links erl
+        JOIN requirements rq ON rq.id=erl.requirement_id JOIN frameworks f ON f.id=rq.framework_id
+        WHERE f.code='iso42001' AND rq.ref=?))
+      ORDER BY e.uploaded_at DESC`).all(req.workspace.id, item.id, item.id);
+    const certRequests = auditRequests.requestsForItem(db, req.workspace, item.id, new Date().toISOString().slice(0, 10));
 
     // Open NCs linked to this control (reuses nonconformities table; its
     // iso_item_id is TEXT and FK isn't strictly enforced).
@@ -706,7 +714,7 @@ function register(app, deps) {
       questions, savedAnswers, suggestedStatus,
       prev, next, totals, sectionPosition, doneFlag,
       relatedRows, evidenceList, openNCs, linkedRisks, linkedDocs, linkableDocs, linkableRisks,
-      priorPassNotes, activePass,
+      priorPassNotes, activePass, certRequests,
       comments, firmUsers, requestedByName, reviewedByName, isReviewer });
   });
 

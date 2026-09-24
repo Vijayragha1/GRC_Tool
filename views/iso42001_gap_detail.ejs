@@ -449,6 +449,29 @@
 <!-- Comments + @-mentions for this iso42001 item -->
 <%- include('partials/comments_thread', { parent_type: 'iso42001_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
 
+<%# What the certification body asks for against this requirement. %>
+<% if (typeof certRequests !== 'undefined' && certRequests.length) { %>
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head">
+    <h2 class="text-xl">Requested by the certification body (<%= certRequests.length %>)</h2>
+    <a class="meta" href="/workspaces/<%= ws.id %>/iso42001/requests?item=<%= encodeURIComponent(item.id) %>">Open in the request list</a>
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="t">
+      <tbody>
+        <% certRequests.forEach(r => { %>
+          <tr>
+            <td style="width:1%;white-space:nowrap;" class="mono meta"><%= r.ref %></td>
+            <td><a href="/workspaces/<%= ws.id %>/iso42001/requests/<%= r.id %>" style="color:var(--ink);text-decoration:none;"><%= r.title %></a><div class="meta"><%= r.stage_label %><%= r.due_date ? ` · due ${r.due_date}` : '' %></div></td>
+            <td style="white-space:nowrap;"><span class="status <%= r.status_class %>"><%= r.status_label %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
+
 <!-- Evidence files panel -->
 <div class="panel" style="margin-bottom:16px;">
   <div class="panel-head">
@@ -457,8 +480,9 @@
   </div>
   <form class="iso42-upload-grid" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <input type="hidden" name="iso_item_id" value="<%= item.id %>">
-    <input type="hidden" name="redirect_to" value="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>">
+    <%# The evidence route links ISO 42001 files through iso42001_item_ref;
+        iso_item_id only accepts ISO 27001 ids and used to drop this link. %>
+    <input type="hidden" name="iso42001_item_ref" value="<%= item.id %>">
     <div class="col-full"><input class="text-base" type="file" name="file" required style="width:100%;"></div>
     <div><label class="label text-xxs">Period (e.g., Q1 2026)</label><input type="text" name="period_label" class="input text-base" placeholder="Q1 2026"></div>
     <div><label class="label text-xxs">Sub-clause / section</label><input type="text" name="clause_section" class="input text-base" placeholder="e.g., A.6.2.4.b"></div>

@@ -1,0 +1,82 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const sysBase = `${base}/ai-systems/${system.id}`;
+  const draft = ia.status === 'draft';
+  const editable = draft && perms.manage;
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/ai-systems">AI system register</a> / <a href="<%= sysBase %>"><%= system.name %></a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Impact assessment, version <%= ia.version_no %></h1>
+      <div class="page-subtitle">The effect of <%= system.name %> on the individuals and groups its outputs reach, and what the organisation does about it. The auditor reads the approved version against Annex A.5.</div>
+      <div class="a42-facts">
+        <span class="status <%= ia.status === 'approved' ? 's-done' : ia.status === 'draft' ? 's-in_review' : 's-na' %>"><%= ia.status === 'approved' ? 'Approved' : ia.status === 'draft' ? 'Draft' : 'Superseded' %></span>
+        <% if (preparedBy) { %><span>Prepared by <strong><%= preparedBy %></strong></span><% } %>
+        <% if (approvedBy) { %><span>Approved by <strong><%= approvedBy %></strong> on <%= fmtDate(ia.approved_at) %></span><% } %>
+      </div>
+    </div>
+  </div>
+
+  <% if (editable) { %>
+    <form method="POST" action="<%= sysBase %>/impact-assessments/<%= ia.id %>" class="panel a42-form" id="iaForm">
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="version" value="<%= ia.version %>">
+      <% registry.IA_FIELDS.forEach(([key, label, hint]) => { %>
+        <div><label class="label" for="ia_<%= key %>"><%= label %></label><textarea id="ia_<%= key %>" class="textarea" name="<%= key %>" rows="<%= ['potential_harms', 'mitigations', 'affected_parties'].includes(key) ? 4 : 3 %>" maxlength="8000"><%= ia[key] || '' %></textarea><span class="hint"><%= hint %></span></div>
+      <% }) %>
+      <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+        <div><label class="label" for="iaResidual">Residual impact after the measures</label>
+          <select id="iaResidual" class="select" name="residual_level"><option value="">Not concluded</option>
+            <% Object.entries(registry.RESIDUAL).forEach(([k, l]) => { %><option value="<%= k %>" <%= ia.residual_level === k ? 'selected' : '' %>><%= l %></option><% }) %>
+          </select></div>
+        <div><label class="label" for="iaDecision">Decision</label>
+          <select id="iaDecision" class="select" name="decision"><option value="">Not decided</option>
+            <% Object.entries(registry.DECISIONS).forEach(([k, l]) => { %><option value="<%= k %>" <%= ia.decision === k ? 'selected' : '' %>><%= l %></option><% }) %>
+          </select></div>
+      </div>
+      <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Save draft</button></div>
+    </form>
+
+    <section class="panel" aria-labelledby="iaApproveTitle">
+      <div class="panel-head"><h2 id="iaApproveTitle">Approval</h2></div>
+      <div class="a42-note">
+        Approval freezes this version: its content is hashed and cannot be edited afterwards. Reassessment starts a new version. The person who prepared the assessment cannot approve it.
+      </div>
+      <div class="a42-attach" style="grid-template-columns:auto auto;justify-content:start;">
+        <% if (perms.signoff && canApprove) { %>
+          <form method="POST" action="<%= sysBase %>/impact-assessments/<%= ia.id %>/approve" style="display:block;">
+            <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="version" value="<%= ia.version %>">
+            <button class="btn btn-primary btn-xs" type="submit">Approve version <%= ia.version_no %></button>
+          </form>
+        <% } else { %>
+          <span class="meta"><%= !perms.signoff ? 'Approval needs sign-off permission.' : 'You prepared this draft, so another reviewer approves it. Save first so they see the latest text.' %></span>
+        <% } %>
+        <form method="POST" action="<%= sysBase %>/impact-assessments/<%= ia.id %>/discard" style="display:block;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <button class="btn btn-ghost btn-xs" type="submit">Discard draft</button>
+        </form>
+      </div>
+    </section>
+  <% } else { %>
+    <section class="panel">
+      <dl class="a42-dl" style="grid-template-columns:200px minmax(0,1fr);">
+        <% registry.IA_FIELDS.forEach(([key, label]) => { %>
+          <dt><%= label %></dt><dd style="white-space:pre-line;"><%= ia[key] || 'Not recorded' %></dd>
+        <% }) %>
+        <dt>Residual impact</dt><dd><%= ia.residual_level ? registry.RESIDUAL[ia.residual_level] : 'Not concluded' %></dd>
+        <dt>Decision</dt><dd><%= ia.decision ? registry.DECISIONS[ia.decision] : 'Not decided' %></dd>
+      </dl>
+      <% if (ia.snapshot_hash) { %>
+        <div class="a42-note a42-frozen" style="border-top:1px solid var(--border);">
+          Frozen on approval. Content hash <span class="a42-ref"><%= ia.snapshot_hash.slice(0, 16) %></span>
+          <%= hashMatches ? 'matches the stored text.' : 'does not match the stored text. Report this to your administrator.' %>
+        </div>
+      <% } %>
+    </section>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

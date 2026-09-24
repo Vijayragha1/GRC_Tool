@@ -45,7 +45,9 @@
         <%- tierIcon(tpl.tier || 'recommended', 12) %><%= tpl.tier === 'mandatory' ? 'Mandatory' : tpl.tier === 'expected' ? 'Expected' : 'Recommended' %>
       </span>
       <span class="meta text-md" style="text-transform:capitalize;"><%= tpl.category %></span>
-      <% if (controls.length || clauses.length) { %>
+      <% if (aiRefs.length) { %>
+        <span class="meta text-md">· <%= aiRefs.length %> ISO 42001 requirement<%= aiRefs.length === 1 ? '' : 's' %> linked on adopt</span>
+      <% } else if (controls.length || clauses.length) { %>
         <span class="meta text-md">· <%= controls.length %> Annex A control<%= controls.length === 1 ? '' : 's' %><%= clauses.length ? ' · ' + clauses.length + ' clause' + (clauses.length === 1 ? '' : 's') : '' %> auto-linked on adopt</span>
       <% } else { %>
         <span class="meta text-md">· no auto-link mapping; link manually after adoption</span>
@@ -78,7 +80,7 @@
           </form>
         <% } else { %>
           <div class="meta text-md" style="line-height:1.55;margin-bottom:12px;">
-            Adopt this template to create a draft document in <strong><%= ws.client_name %></strong>. <%= controls.length || clauses.length ? 'Every mapped Annex A control will be auto-linked.' : '' %>
+            Adopt this template to create a draft document in <strong><%= ws.client_name %></strong>. <%= aiRefs.length ? 'The ISO 42001 clauses and controls it covers are linked automatically.' : controls.length || clauses.length ? 'Every mapped Annex A control will be auto-linked.' : '' %>
           </div>
           <form method="POST" action="/workspaces/<%= ws.id %>/templates/<%= tpl.id %>/adopt">
             <button class="btn btn-primary" style="width:100%;justify-content:center;">Adopt this template</button>
@@ -87,6 +89,20 @@
         <% } %>
       </div>
     </div>
+
+    <% if (aiRefs.length) { %>
+      <div class="panel">
+        <div class="panel-head"><h2>ISO 42001 requirements</h2><span class="meta text-xs"><%= aiRefs.length %></span></div>
+        <div class="panel-pad" style="padding-top:8px;padding-bottom:8px;">
+          <% aiRefs.forEach(r => { %>
+            <div class="map-row">
+              <span class="map-id"<%- r.id.startsWith('ai-clause-') ? ' style="background:rgba(202,138,4,0.10);color:#b45309;"' : '' %>><%= r.id.startsWith('ai-clause-') ? `Cl. ${r.code}` : r.code %></span>
+              <a class="map-title" href="/workspaces/<%= ws.id %>/iso42001/gap/<%= r.id %>"><%= r.title %></a>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
 
     <% if (controls.length) { %>
       <div class="panel">
@@ -116,7 +132,7 @@
       </div>
     <% } %>
 
-    <% if (!controls.length && !clauses.length) { %>
+    <% if (!controls.length && !clauses.length && !aiRefs.length) { %>
       <div class="panel">
         <div class="panel-pad">
           <div class="text-eyebrow text-tertiary" style="margin-bottom:6px;">No mappings</div>

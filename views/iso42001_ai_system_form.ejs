@@ -1,0 +1,22 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/overview">ISO 42001 certification</a> / <a href="<%= base %>/ai-systems">AI system register</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Add an AI system</h1>
+      <div class="page-subtitle">Record what the system is for, the organisation's role for it, and the resources it depends on. Suppliers, changes, incidents and the impact assessment are added on the system's page.</div>
+    </div>
+  </div>
+  <section class="panel">
+    <form method="POST" action="<%= base %>/ai-systems" class="a42-form">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <%- include('partials/iso42001_ai_system_fields', { system, registry }) %>
+      <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Add system</button><a class="btn btn-ghost" href="<%= base %>/ai-systems">Cancel</a></div>
+    </form>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

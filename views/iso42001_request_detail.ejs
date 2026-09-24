@@ -1,0 +1,417 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const r = request;
+  const body = programme.certification_body || 'The certification body';
+  const locked = ['submitted', 'accepted', 'withdrawn'].includes(r.effective);
+  const canAttach = perms.manage && !locked;
+  const canRemove = perms.manage && !['ready', 'submitted', 'accepted', 'withdrawn'].includes(r.effective);
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+  const conclusion = s => {
+    const key = String(s || 'not_assessed').toLowerCase().replace(/\s+/g, '_');
+    return ({
+      implemented: ['Implemented', 's-implemented'], partially_implemented: ['Partially implemented', 's-partially-implemented'],
+      work_in_progress: ['Work in progress', 's-in_progress'], not_implemented: ['Not implemented', 's-not-implemented'],
+      not_applicable: ['Not applicable', 's-na'], not_assessed: ['Not assessed', 's-not-assessed'],
+    })[key] || ['Not assessed', 's-not-assessed'];
+  };
+  const clientLine = cr => {
+    if (!cr) return null;
+    const who = cr.assignee_name || 'the client';
+    return ({
+      open: `Waiting for ${who}`, in_progress: `${who} is working on it`, submitted: `${who} responded${cr.submitted_at ? ` on ${fmtDate(cr.submitted_at)}` : ''}`,
+      changes_requested: `Returned to ${who} for changes`, accepted: 'Client response accepted', cancelled: 'Client request cancelled',
+    })[cr.status] || cr.status;
+  };
+  const eventText = e => {
+    const m = e.metadata || {};
+    switch (e.event_type) {
+      case 'imported': return m.source === 'standard' ? 'Added from the standard certification checklist' : 'Imported from the certification body\'s list';
+      case 'added_manually': return 'Added to the list by hand';
+      case 'updated_by_cb': return `${m.source === 'standard' ? 'A newer standard checklist changed' : 'The certification body\'s newer list changed'} ${(m.fields || []).map(f => f.replace(/_/g, ' ').replace(/^cb /, '')).join(', ') || 'this request'}${m.previous_due_date ? ` (due date was ${fmtDate(m.previous_due_date)})` : ''}`;
+      case 'withdrawn_by_cb': return m.source === 'standard' ? 'No longer in the standard checklist' : 'Dropped from the certification body\'s newer list';
+      case 'restored_by_cb': return m.source === 'standard' ? 'Back in the standard checklist' : 'Back on the certification body\'s list';
+      case 'sent_to_client': return `Sent to ${m.assignee_name || 'the client'}${m.due_date ? `, asked for by ${fmtDate(m.due_date)}` : ''}`;
+      case 'client_response_accepted': return 'Client response accepted';
+      case 'client_response_returned': return 'Returned to the client for changes';
+      case 'record_linked': return `Linked a ${m.record_type === 'document' ? 'document' : 'file'}`;
+      case 'record_unlinked': return `Removed a linked ${m.record_type === 'document' ? 'document' : 'file'}`;
+      case 'sample_added': return `Added ${plural(m.added || 0, 'item')} to the sample`;
+      case 'sample_updated': return `Sample item ${m.sample || ''}: ${m.status === 'exception' ? 'exception recorded' : m.status === 'evidenced' ? 'evidenced' : 'reopened'}`;
+      case 'owner_changed': return m.owner_name ? `Owner set to ${m.owner_name}` : 'Owner cleared';
+      case 'status_changed': return `${STATUS_LABELS[e.from_status] || e.from_status} to ${(STATUS_LABELS[e.to_status] || e.to_status).toLowerCase()}`;
+      default: return e.event_type.replace(/_/g, ' ');
+    }
+  };
+  const version = `<input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="version" value="${r.version}">`;
+  const fileCount = evidenceCount;
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/overview">ISO 42001 certification</a> / <a href="<%= base %>/requests?stage=<%= r.kind === 'population' ? 'population' : r.stage %>">Certification requests</a></div>
+  <div class="page-head">
+    <div>
+      <div class="a42-ref"><%= r.ref %> · <%= r.kind === 'population' ? `Population, due with ${r.stage_label}` : r.kind === 'sample' ? 'Sample, selected during fieldwork' : `${r.stage_label} · ${r.kind_label}` %></div>
+      <h1 class="page-title" style="margin-top:4px;"><%= r.title %></h1>
+      <div class="a42-facts">
+        <span class="status <%= r.status_class %>"><%= r.status_label %></span>
+        <span><%= STAGE_HINTS[r.stage] %></span>
+        <% if (r.due_date) { %><span class="<%= r.overdue ? 'a42-late' : '' %>">Due <strong><%= fmtDate(r.due_date) %></strong><%= r.days_left != null ? (r.days_left >= 0 ? ` · in ${plural(r.days_left, 'day')}` : ` · ${plural(-r.days_left, 'day')} late`) : '' %></span><% } %>
+        <% if (r.owner_name) { %><span>Owner <strong><%= r.owner_name %></strong></span><% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="a42-split">
+    <div>
+      <section class="panel" aria-labelledby="rqAskedTitle">
+        <div class="panel-head"><h2 id="rqAskedTitle">What the auditor asks for</h2><span class="meta"><%= r.source === 'import' ? `${body} reference ${r.ref}` : r.source === 'standard' ? `Checklist reference ${r.ref}` : `Reference ${r.ref}` %></span></div>
+        <div class="a42-asked"><%= r.description %></div>
+        <% if (r.guidance) { %>
+          <div class="a42-guidance"><span class="a42-guidance-label"><%= r.source === 'standard' ? 'What the auditor checks' : programme.certification_body ? `${programme.certification_body} guidance` : 'Auditor guidance' %></span><%= r.guidance %></div>
+        <% } %>
+        <% if (requirements.length) { %>
+          <ul class="a42-reqs" aria-label="Clauses and controls this request tests">
+            <% requirements.forEach(q => { const [label, cls] = conclusion(q.status); %>
+              <li><span class="a42-ref"><%= q.code %></span><a href="<%= base %>/gap/<%= q.id %>"><%= q.label %></a><span class="status <%= cls %>"><%= label %></span></li>
+            <% }) %>
+          </ul>
+        <% } else if (r.kind !== 'population') { %>
+          <div class="a42-note" style="border-top:1px solid var(--border);">Not mapped to a clause or control<%= r.requirement_text ? ` (the list says "${r.requirement_text}")` : '' %>.</div>
+        <% } %>
+      </section>
+
+      <% if (r.kind === 'population' && population) { %>
+      <section class="panel" aria-labelledby="rqPopTitle">
+        <div class="panel-head">
+          <h2 id="rqPopTitle"><%= population.title %></h2>
+          <span class="meta"><%= population.scoped ? `Review period ${fmtDate(population.period.start) || 'start of records'} to ${fmtDate(population.period.end) || 'today'}` : 'No review period set; the whole register is listed' %></span>
+        </div>
+        <% if (!population.rows.length) { %>
+          <div class="a42-note">The AI system register has nothing for this population yet. <a href="<%= base %>/ai-systems">Open the register</a> to record systems, suppliers, and the changes and incidents that involve them.</div>
+        <% } else { %>
+          <div style="overflow-x:auto;">
+            <table class="t">
+              <thead><tr><% population.columns.forEach(c => { %><th scope="col"><%= c %></th><% }) %></tr></thead>
+              <tbody>
+                <% population.rows.slice(0, 8).forEach(row => { %><tr><% row.forEach(v => { %><td><%= v %></td><% }) %></tr><% }) %>
+              </tbody>
+            </table>
+          </div>
+          <% if (population.rows.length > 8) { %><div class="a42-note"><%= population.rows.length - 8 %> more in the export.</div><% } %>
+        <% } %>
+        <div class="a42-attach">
+          <div class="row" style="flex-wrap:wrap;gap:8px;">
+            <% if (canAttach && perms.upload) { %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/population" style="display:inline;">
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <button class="btn btn-primary btn-xs" type="submit">Attach today's export (<%= plural(population.rows.length, 'row') %>)</button>
+              </form>
+            <% } %>
+            <% if (perms.export) { %><a class="btn btn-secondary btn-xs" href="<%= base %>/populations/<%= population.key %>.csv">Download CSV</a><% } %>
+          </div>
+          <span class="meta">Attaching keeps a copy of the file exactly as sent, even after the register changes.</span>
+        </div>
+      </section>
+      <% } %>
+
+      <% if (r.kind === 'sample') { %>
+      <section class="panel" id="samples" aria-labelledby="rqSampleTitle">
+        <div class="panel-head"><h2 id="rqSampleTitle">Items the auditor selected</h2><span class="meta"><%= samples.length ? `${samples.filter(s => s.status !== 'open').length} of ${samples.length} settled` : 'None recorded' %></span></div>
+        <% if (!samples.length) { %>
+          <div class="a42-note">The auditor picks the sample from the population during fieldwork. Record each selected item here (an employee, a change ticket, a vendor), then attach evidence item by item.</div>
+        <% } else { %>
+          <div style="overflow-x:auto;">
+            <table class="t a42-stack">
+              <thead><tr><th scope="col" style="width:26%;">Item</th><% if (canAttach) { %><th scope="col" colspan="3">Evidence, outcome and note</th><% } else { %><th scope="col">Evidence</th><th scope="col">Note</th><th scope="col"><span class="sr-only">Actions</span></th><% } %></tr></thead>
+              <tbody>
+                <% samples.forEach(s => { %>
+                  <tr>
+                    <td><strong style="font-weight:500;"><%= s.label %></strong><br><span class="status <%= s.status === 'evidenced' ? 's-done' : s.status === 'exception' ? 's-open' : 's-todo' %>"><%= s.status === 'evidenced' ? 'Evidenced' : s.status === 'exception' ? 'Exception' : 'Open' %></span></td>
+                    <% if (canAttach) { %>
+                      <td colspan="3">
+                        <form method="POST" action="<%= base %>/requests/<%= r.id %>/samples/<%= s.id %>" class="stack-grid" style="--cols:minmax(0,1.2fr) 118px minmax(0,1fr) auto;gap:6px;align-items:center;">
+                          <input type="hidden" name="_csrf" value="<%= csrf %>">
+                          <select class="select" name="evidence_id" aria-label="Evidence for <%= s.label %>">
+                            <option value="">No file</option>
+                            <% evidenceOptions.forEach(e => { %><option value="<%= e.id %>" <%= s.evidence_id === e.id ? 'selected' : '' %>><%= e.filename %></option><% }) %>
+                          </select>
+                          <select class="select" name="status" aria-label="Outcome for <%= s.label %>">
+                            <option value="evidenced" <%= s.status === 'evidenced' ? 'selected' : '' %>>Evidenced</option>
+                            <option value="exception" <%= s.status === 'exception' ? 'selected' : '' %>>Exception</option>
+                            <option value="open" <%= s.status === 'open' ? 'selected' : '' %>>Open</option>
+                          </select>
+                          <input class="input" name="note" value="<%= s.note || '' %>" maxlength="2000" placeholder="Note or exception" aria-label="Note for <%= s.label %>">
+                          <button class="btn btn-secondary btn-xs" type="submit">Save</button>
+                        </form>
+                      </td>
+                    <% } else { %>
+                      <td data-label="Evidence"><%= s.filename || '' %></td><td data-label="Note"><%= s.note || '' %></td><td></td>
+                    <% } %>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+        <% if (canAttach) { %>
+          <div class="a42-attach">
+            <form method="POST" action="<%= base %>/requests/<%= r.id %>/samples">
+              <input type="hidden" name="_csrf" value="<%= csrf %>">
+              <div><label class="label" for="rqSamples">Add selected items, one per line</label><textarea id="rqSamples" class="textarea" name="labels" rows="3" placeholder="e.g. EMP-0142 Priya Nair&#10;EMP-0187 Daniel Okafor"></textarea></div>
+              <button class="btn btn-secondary btn-xs" type="submit">Add items</button>
+            </form>
+          </div>
+        <% } %>
+      </section>
+      <% } %>
+
+      <section class="panel" aria-labelledby="rqFilesTitle">
+        <div class="panel-head"><h2 id="rqFilesTitle">What supports it</h2><span class="meta"><%= fileCount ? plural(fileCount, 'item') : 'Nothing attached yet' %></span></div>
+        <% if (clientEvidence.length || records.length) { %>
+          <ul class="a42-files">
+            <% clientEvidence.forEach(e => { %>
+              <li>
+                <div><a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download"><%= e.filename %></a><span class="meta">From the client portal · <%= e.uploader || 'client' %> · <%= fmtDate(e.uploaded_at) %><%= e.description ? ` · ${e.description}` : '' %></span></div>
+                <span></span>
+              </li>
+            <% }) %>
+            <% records.forEach(x => { %>
+              <li>
+                <div>
+                  <% if (x.record_type === 'document') { %>
+                    <a href="/workspaces/<%= ws.id %>/documents/<%= x.record_id %>"><%= x.document_name || 'Document' %></a><span class="meta">Controlled document<%= x.document_version ? ` · version ${x.document_version}` : '' %><%= x.document_status ? ` · ${x.document_status}` : '' %> · linked by <%= x.linked_by_name || 'a consultant' %></span>
+                  <% } else { %>
+                    <a href="/workspaces/<%= ws.id %>/evidence/<%= x.record_id %>/download"><%= x.filename || 'File' %></a><span class="meta">Linked by <%= x.linked_by_name || 'a consultant' %> · <%= fmtDate(x.linked_at) %><%= x.evidence_description ? ` · ${x.evidence_description}` : '' %></span>
+                  <% } %>
+                </div>
+                <% if (canRemove) { %>
+                  <form method="POST" action="<%= base %>/requests/<%= r.id %>/records/<%= x.id %>/delete">
+                    <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-ghost btn-xs" type="submit">Remove</button>
+                  </form>
+                <% } else { %><span></span><% } %>
+              </li>
+            <% }) %>
+          </ul>
+        <% } else { %>
+          <div class="a42-note"><%= r.effective === 'with_client' ? 'Nothing from the client yet. Files they upload through the portal appear here.' : 'Attach the file the auditor should receive, link a controlled document, or send the request to the client team.' %></div>
+        <% } %>
+        <% if (canAttach && perms.docCreate && canUseTemplates && templates.length) { %>
+          <div class="a42-templates">
+            <div class="a42-templates-head">
+              <strong>Templates for this request</strong>
+              <span class="meta">From the ISO 42001 pack, matched on <%= r.codes.join(', ') %></span>
+            </div>
+            <ul class="a42-files">
+              <% templates.slice(0, 4).forEach(t => { %>
+                <li>
+                  <div>
+                    <a href="/workspaces/<%= ws.id %>/templates/<%= t.id %>"><%= t.name %></a>
+                    <span class="meta"><%= t.tier === 'mandatory' ? 'Required by the standard' : t.tier === 'expected' ? 'Auditors expect it' : 'Recommended' %> · <%= t.codes.join(', ') %></span>
+                  </div>
+                  <form method="POST" action="<%= base %>/requests/<%= r.id %>/from-template">
+                    <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="template_id" value="<%= t.id %>">
+                    <button class="btn btn-secondary btn-xs" type="submit"><%= t.adoptedDocId ? 'Link the existing document' : 'Draft from template' %></button>
+                  </form>
+                </li>
+              <% }) %>
+            </ul>
+          </div>
+        <% } %>
+        <% if (canAttach) { %>
+          <div class="a42-attach">
+            <% if (perms.upload) { %>
+            <form method="POST" action="<%= base %>/requests/<%= r.id %>/upload" enctype="multipart/form-data">
+              <input type="hidden" name="_csrf" value="<%= csrf %>">
+              <div><label class="label" for="rqFile">Upload a file</label><input id="rqFile" class="input" type="file" name="file" required></div>
+              <button class="btn btn-secondary btn-xs" type="submit">Upload</button>
+            </form>
+            <% } %>
+            <% if (evidenceOptions.length) { %>
+            <form method="POST" action="<%= base %>/requests/<%= r.id %>/records">
+              <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="record_type" value="evidence">
+              <div><label class="label" for="rqEvidence">Link a file already in the evidence library</label>
+                <select id="rqEvidence" class="select" name="record_id" required><option value="">Choose a file</option>
+                  <% evidenceOptions.forEach(e => { %><option value="<%= e.id %>"><%= e.filename %><%= e.description ? ` · ${String(e.description).slice(0, 60)}` : '' %></option><% }) %>
+                </select></div>
+              <button class="btn btn-secondary btn-xs" type="submit">Link</button>
+            </form>
+            <% } %>
+            <% if (documentOptions.length) { %>
+            <form method="POST" action="<%= base %>/requests/<%= r.id %>/records">
+              <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="record_type" value="document">
+              <div><label class="label" for="rqDoc">Link a controlled document (policy, procedure, SoA)</label>
+                <select id="rqDoc" class="select" name="record_id" required><option value="">Choose a document</option>
+                  <% documentOptions.forEach(d => { %><option value="<%= d.id %>"><%= d.name %><%= d.version ? ` · v${d.version}` : '' %> · <%= d.status %></option><% }) %>
+                </select></div>
+              <button class="btn btn-secondary btn-xs" type="submit">Link</button>
+            </form>
+            <% } %>
+          </div>
+        <% } %>
+      </section>
+
+      <section class="panel" aria-labelledby="rqHistoryTitle">
+        <div class="panel-head"><h2 id="rqHistoryTitle">History</h2></div>
+        <ol class="a42-history">
+          <% events.forEach(e => { %>
+            <li>
+              <time datetime="<%= e.created_at %>"><%= fmtDate(e.created_at) %></time>
+              <div><%= eventText(e) %><span class="meta"> · <%= e.actor_name || 'System' %></span><% if (e.note) { %><div class="a42-quote"><%= e.note %></div><% } %></div>
+            </li>
+          <% }) %>
+        </ol>
+      </section>
+    </div>
+
+    <aside class="a42-rail">
+      <section class="panel" aria-labelledby="rqNextTitle">
+        <div class="panel-head"><h2 id="rqNextTitle">Next step</h2></div>
+        <div class="panel-pad">
+          <% if (r.effective === 'withdrawn') { %>
+            <p>The auditor's newer list no longer includes this request. It is kept, with everything linked to it, so the trail shows what was asked for.</p>
+          <% } %>
+
+          <% if (clientRequest) { %>
+            <div class="a42-state"><strong><%= clientLine(clientRequest) %></strong>
+              <div class="meta"><%= clientRequest.due_date ? `Asked for by ${fmtDate(clientRequest.due_date)} · ` : '' %><a href="/workspaces/<%= ws.id %>/client-portal/requests/<%= clientRequest.id %>">Open in the client portal</a></div>
+              <% if (clientRequest.response_note && ['submitted', 'changes_requested'].includes(clientRequest.status)) { %><div class="a42-quote" style="margin-top:8px;"><%= clientRequest.response_note %></div><% } %>
+            </div>
+          <% } %>
+
+          <% if (r.status_note && ['follow_up', 'not_applicable', 'submitted', 'accepted'].includes(r.effective)) { %>
+            <div class="a42-state"><strong><%= r.effective === 'follow_up' ? 'What the auditor asked' : r.effective === 'not_applicable' ? 'Why it does not apply' : 'Note' %></strong><div class="a42-quote" style="margin-top:6px;"><%= r.status_note %></div></div>
+          <% } %>
+          <% if (['submitted', 'accepted'].includes(r.effective) && r.submitted_at) { %>
+            <p>Submitted to <%= programme.certification_body || 'the auditor' %> on <%= fmtDate(r.submitted_at) %>.</p>
+          <% } %>
+
+          <% if (!perms.manage) { %>
+            <p>You can view this request. Changing it needs permission to update controls.</p>
+          <% } else { %>
+
+            <% if (actions.has('mark_ready') && r.effective === 'to_review') { %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                <%- version %><input type="hidden" name="action" value="mark_ready">
+                <p>Check the files answer what the auditor asked for, then accept them or send them back.</p>
+                <div><label class="label" for="rqAcceptNote">Note to the client (optional)</label><textarea id="rqAcceptNote" class="textarea" name="note" rows="2" maxlength="8000"></textarea></div>
+                <button class="btn btn-primary" type="submit" <%= fileCount ? '' : 'disabled' %>>Accept and mark ready</button>
+              </form>
+              <% if (actions.has('return_to_client')) { %>
+                <details>
+                  <summary>Send it back to the client</summary>
+                  <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                    <%- version %><input type="hidden" name="action" value="return_to_client">
+                    <div><label class="label" for="rqReturnNote">What is missing</label><textarea id="rqReturnNote" class="textarea" name="note" rows="3" maxlength="8000" required></textarea></div>
+                    <button class="btn btn-secondary" type="submit">Return to client</button>
+                  </form>
+                </details>
+              <% } %>
+            <% } %>
+
+            <% if (actions.has('send_to_client')) { %>
+              <% if (!perms.send) { %>
+                <p>Sending requests to the client needs permission to manage client requests.</p>
+              <% } else if (!clientMembers.length) { %>
+                <p>Add someone from the client team to this workspace to send them requests.</p>
+              <% } else { %>
+                <form method="POST" action="<%= base %>/requests/<%= r.id %>/send">
+                  <input type="hidden" name="_csrf" value="<%= csrf %>">
+                  <div><label class="label" for="rqSendTo"><%= r.effective === 'follow_up' ? 'Send the follow-up to' : 'Send to the client' %></label>
+                    <select id="rqSendTo" class="select" name="assignee_id" required>
+                      <option value="">Choose a client contact</option>
+                      <% clientMembers.forEach(m => { %><option value="<%= m.id %>" <%= clientRequest && clientRequest.assignee_id === m.id ? 'selected' : '' %>><%= m.name %></option><% }) %>
+                    </select></div>
+                  <div><label class="label" for="rqSendBy">Ask for it by</label><input id="rqSendBy" class="input" type="date" name="due_date" value="<%= defaultAskBy || '' %>" min="<%= today %>"><span class="hint meta"><%= defaultAskBy ? (r.due_date ? 'A week before the due date, so there is time to review.' : `Two weeks before this client's ${r.stage_label} date, so there is time to review.`) : 'Optional. Set the client\'s audit dates on the overview to get a suggested date.' %></span></div>
+                  <div><label class="label" for="rqSendNote">Note (optional)</label><textarea id="rqSendNote" class="textarea" name="note" rows="2" maxlength="4000" placeholder="What good looks like, who holds it"></textarea></div>
+                  <button class="btn btn-primary" type="submit">Send to client</button>
+                </form>
+              <% } %>
+            <% } %>
+
+            <% if (actions.has('mark_ready') && r.effective !== 'to_review') { %>
+              <% if (actions.has('send_to_client')) { %><hr class="a42-divider"><% } %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                <%- version %><input type="hidden" name="action" value="mark_ready">
+                <p><%= r.kind === 'sample' ? 'Mark ready once every selected item is evidenced or has a recorded exception.' : r.effective === 'with_client' ? 'Already hold what the auditor needs? Attach it and mark ready; the client\'s copy is closed.' : 'Already hold what the auditor needs? Attach it, then mark ready.' %></p>
+                <button class="btn <%= actions.has('send_to_client') ? 'btn-secondary' : 'btn-primary' %>" type="submit" <%= (r.kind === 'sample' ? (!samples.length || samples.some(s => s.status === 'open')) : !fileCount) ? 'disabled' : '' %>>Mark ready to submit</button>
+              </form>
+            <% } %>
+
+            <% if (actions.has('record_submission')) { %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                <%- version %><input type="hidden" name="action" value="record_submission">
+                <p>Upload the files to <%= programme.certification_body || 'the certification body' %>'s portal, then record it here.</p>
+                <div><label class="label" for="rqSubmittedOn">Submitted on</label><input id="rqSubmittedOn" class="input" type="date" name="submitted_on" value="<%= today %>" max="<%= today %>"></div>
+                <div><label class="label" for="rqSubmitNote">Note (optional)</label><input id="rqSubmitNote" class="input" name="note" maxlength="8000" placeholder="e.g. Uploaded to the auditor's portal"></div>
+                <button class="btn btn-primary" type="submit">Record submission</button>
+              </form>
+            <% } %>
+
+            <% if (actions.has('auditor_accepted')) { %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                <%- version %><input type="hidden" name="action" value="auditor_accepted">
+                <button class="btn <%= r.effective === 'submitted' ? 'btn-primary' : 'btn-secondary' %>" type="submit">The auditor accepted it</button>
+              </form>
+            <% } %>
+            <% if (actions.has('auditor_follow_up')) { %>
+              <details>
+                <summary>The auditor came back with a question</summary>
+                <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                  <%- version %><input type="hidden" name="action" value="auditor_follow_up">
+                  <div><label class="label" for="rqFollowNote">What the auditor asked</label><textarea id="rqFollowNote" class="textarea" name="note" rows="3" maxlength="8000" required></textarea></div>
+                  <button class="btn btn-secondary" type="submit">Record follow-up</button>
+                </form>
+              </details>
+            <% } %>
+
+            <% if (actions.has('mark_not_applicable')) { %>
+              <details>
+                <summary>This request does not apply</summary>
+                <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                  <%- version %><input type="hidden" name="action" value="mark_not_applicable">
+                  <div><label class="label" for="rqNaNote">Why it does not apply</label><textarea id="rqNaNote" class="textarea" name="note" rows="3" maxlength="8000" required placeholder="The auditor will read this"></textarea></div>
+                  <button class="btn btn-secondary" type="submit">Conclude not applicable</button>
+                </form>
+              </details>
+            <% } %>
+
+            <% if (actions.has('reopen')) { %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/transition">
+                <%- version %><input type="hidden" name="action" value="reopen">
+                <button class="btn btn-ghost" type="submit">Reopen</button>
+              </form>
+            <% } %>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="rqDetailsTitle">
+        <div class="panel-head"><h2 id="rqDetailsTitle">Details</h2></div>
+        <dl class="a42-dl">
+          <dt>Stage</dt><dd><%= r.kind === 'population' ? `Population, used at ${r.stage_label}` : r.stage_label %></dd>
+          <dt>Type</dt><dd><%= r.kind_label %><%= r.cb_type && r.cb_type.toLowerCase() !== r.kind_label.toLowerCase() ? ` (${r.cb_type})` : '' %></dd>
+          <% if (r.due_date) { %><dt>Due</dt><dd><%= fmtDate(r.due_date) %></dd><% } %>
+          <% if (r.cb_category || r.cb_class) { %><dt>Their category</dt><dd><%= [r.cb_class, r.cb_category].filter(Boolean).join(' / ') %></dd><% } %>
+          <dt>Source</dt><dd><%= r.source === 'manual' ? 'Added by hand' : r.source === 'standard' ? 'Standard certification checklist' : 'Certification body\'s list' %></dd>
+          <dt>Owner</dt>
+          <dd>
+            <% if (perms.manage) { %>
+              <form method="POST" action="<%= base %>/requests/<%= r.id %>/owner" class="row">
+                <%- version %>
+                <select class="select" name="owner_id" aria-label="Consultant owner" onchange="this.form.submit()">
+                  <option value="">Unassigned</option>
+                  <% firmMembers.forEach(m => { %><option value="<%= m.id %>" <%= r.consultant_owner_id === m.id ? 'selected' : '' %>><%= m.name %></option><% }) %>
+                </select>
+                <noscript><button class="btn btn-xs" type="submit">Save</button></noscript>
+              </form>
+            <% } else { %><%= r.owner_name || 'Unassigned' %><% } %>
+          </dd>
+        </dl>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

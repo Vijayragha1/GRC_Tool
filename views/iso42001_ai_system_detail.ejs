@@ -1,0 +1,167 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const s = system;
+  const draft = assessments.find(a => a.status === 'draft');
+  const current = assessments.find(a => a.status === 'approved');
+  const sysBase = `${base}/ai-systems/${s.id}`;
+  const text = v => v || 'Not recorded';
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/overview">ISO 42001 certification</a> / <a href="<%= base %>/ai-systems">AI system register</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><%= s.name %></h1>
+      <div class="a42-facts">
+        <span><strong><%= registry.LIFECYCLE[s.lifecycle_stage] %></strong></span>
+        <% if (s.go_live_date) { %><span>Went live <strong><%= fmtDate(s.go_live_date) %></strong></span><% } %>
+        <span><%= s.roles.length ? s.roles.map(r => registry.ROLES[r]).join('; ') : 'Organisation\'s role not recorded' %></span>
+        <span class="status <%= s.in_scope ? 's-done' : 's-na' %>"><%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
+      </div>
+    </div>
+    <% if (perms.manage && !edit) { %><a class="btn btn-secondary" href="<%= sysBase %>?edit=1">Edit</a><% } %>
+  </div>
+
+  <% if (edit && perms.manage) { %>
+    <section class="panel">
+      <form method="POST" action="<%= sysBase %>" class="a42-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="version" value="<%= s.version %>">
+        <%- include('partials/iso42001_ai_system_fields', { system: s, registry }) %>
+        <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Save</button><a class="btn btn-ghost" href="<%= sysBase %>">Cancel</a></div>
+      </form>
+    </section>
+  <% } else { %>
+    <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+      <section class="panel" aria-labelledby="aiAboutTitle">
+        <div class="panel-head"><h2 id="aiAboutTitle">Purpose and oversight</h2></div>
+        <dl class="a42-dl">
+          <dt>Purpose</dt><dd style="white-space:pre-line;"><%= text(s.purpose) %></dd>
+          <dt>Who uses it</dt><dd><%= text(s.intended_users) %></dd>
+          <dt>System owner</dt><dd><%= text(s.system_owner) %></dd>
+          <dt>Decides on its own</dt><dd><%= s.automation_level ? registry.AUTOMATION[s.automation_level] : 'Not recorded' %></dd>
+          <dt>Human oversight</dt><dd><%= text(s.human_oversight) %></dd>
+          <% if (s.scope_note) { %><dt>Scope note</dt><dd><%= s.scope_note %></dd><% } %>
+        </dl>
+      </section>
+      <section class="panel" aria-labelledby="aiResTitle">
+        <div class="panel-head"><h2 id="aiResTitle">Resources</h2><span class="meta">Annex A.4</span></div>
+        <dl class="a42-dl">
+          <dt>Data</dt><dd style="white-space:pre-line;"><%= text(s.data_resources) %></dd>
+          <dt>Tooling</dt><dd style="white-space:pre-line;"><%= text(s.tooling_resources) %></dd>
+          <dt>Computing</dt><dd style="white-space:pre-line;"><%= text(s.compute_resources) %></dd>
+          <dt>People</dt><dd style="white-space:pre-line;"><%= text(s.human_resources) %></dd>
+        </dl>
+      </section>
+    </div>
+  <% } %>
+
+  <section class="panel" aria-labelledby="aiIaTitle">
+    <div class="panel-head">
+      <h2 id="aiIaTitle">Impact assessment</h2>
+      <span class="meta">Clause 6.1.4 and 8.4, Annex A.5</span>
+    </div>
+    <% if (!assessments.length) { %>
+      <div class="a42-note">No impact assessment yet. The auditor asks for the documented results of the most recent assessment for each system, and for evidence of how it informed the design or use of the system.</div>
+    <% } else { %>
+      <ul class="a42-files">
+        <% assessments.forEach(a => { %>
+          <li>
+            <div>
+              <a href="<%= sysBase %>/impact-assessments/<%= a.id %>">Version <%= a.version_no %></a>
+              <span class="meta"><%= a.status === 'approved' ? `Approved ${fmtDate(a.approved_at)} by ${a.approved_by_name || 'a reviewer'}` : a.status === 'superseded' ? `Superseded; approved ${fmtDate(a.approved_at)}` : `Draft, prepared by ${a.prepared_by_name || 'a consultant'}` %><%= a.residual_level ? ` · residual ${a.residual_level}` : '' %><%= a.decision ? ` · ${registry.DECISIONS[a.decision].toLowerCase()}` : '' %></span>
+            </div>
+            <span class="status <%= a.status === 'approved' ? 's-done' : a.status === 'draft' ? 's-in_review' : 's-na' %>"><%= a.status === 'approved' ? 'Current' : a.status === 'draft' ? 'Draft' : 'Superseded' %></span>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (perms.manage) { %>
+      <div class="a42-attach">
+        <% if (draft) { %>
+          <div><a class="btn btn-primary btn-xs" href="<%= sysBase %>/impact-assessments/<%= draft.id %>">Continue the draft</a></div>
+        <% } else { %>
+          <form method="POST" action="<%= sysBase %>/impact-assessments" style="display:block;">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <button class="btn btn-<%= current ? 'secondary' : 'primary' %> btn-xs" type="submit"><%= current ? 'Reassess' : 'Start the impact assessment' %></button>
+            <% if (current) { %><span class="meta" style="margin-left:8px;">Starts version <%= current.version_no + 1 %> from the approved position.</span><% } %>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel" id="suppliers" aria-labelledby="aiSupTitle">
+    <div class="panel-head"><h2 id="aiSupTitle">Vendors in the lifecycle</h2><span class="meta">Annex A.10</span></div>
+    <% if (!suppliers.length) { %>
+      <div class="a42-note">No vendors recorded. Include model and API providers, data suppliers, labelling services and hosting.</div>
+    <% } else { %>
+      <div style="overflow-x:auto;">
+        <table class="t a42-stack">
+          <thead><tr><th scope="col">Vendor</th><th scope="col">Role in the lifecycle</th><th scope="col">Service</th><th scope="col">Assurance held</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
+          <tbody>
+            <% suppliers.forEach(v => { %>
+              <tr>
+                <td><strong style="font-weight:500;"><%= v.supplier_name %></strong></td>
+                <td data-label="Role"><%= v.lifecycle_role %></td>
+                <td data-label="Service"><%= v.service || '' %></td>
+                <td data-label="Assurance"><%= v.assurance || '' %></td>
+                <td class="num"><% if (perms.manage) { %><form method="POST" action="<%= sysBase %>/suppliers/<%= v.id %>/delete"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-ghost btn-xs" type="submit">Remove</button></form><% } %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+    <% if (perms.manage) { %>
+      <div class="a42-attach">
+        <form method="POST" action="<%= sysBase %>/suppliers" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <div><label class="label" for="supName">Vendor</label><input id="supName" class="input" name="supplier_name" maxlength="160" required></div>
+          <div><label class="label" for="supRole">Role</label><input id="supRole" class="input" name="lifecycle_role" maxlength="120" required list="supRoles" placeholder="e.g. Model provider"></div>
+          <div><label class="label" for="supService">Service</label><input id="supService" class="input" name="service" maxlength="500"></div>
+          <div><label class="label" for="supAssurance">Assurance held</label><input id="supAssurance" class="input" name="assurance" maxlength="500" placeholder="e.g. SOC 2 Type II, reviewed May 2026"></div>
+          <button class="btn btn-secondary btn-xs" type="submit">Add vendor</button>
+          <datalist id="supRoles"><option value="Model provider"><option value="Data provider"><option value="Labelling service"><option value="Hosting and compute"><option value="System integrator"><option value="Monitoring service"></datalist>
+        </form>
+      </div>
+    <% } %>
+  </section>
+
+  <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);margin-top:14px;">
+    <% [['changes', 'change', 'Changes affecting this system', changes, linkable.changes, 'changes', 'Clause 6.3, Annex A.6.2.5'], ['incidents', 'incident', 'Incidents involving this system', incidents, linkable.incidents, 'incidents', 'Annex A.8.4']].forEach(([id, type, heading, rows, options, path, ref]) => { %>
+      <section class="panel" id="<%= id %>" aria-labelledby="ai<%= id %>Title">
+        <div class="panel-head"><h2 id="ai<%= id %>Title"><%= heading %></h2><span class="meta"><%= ref %></span></div>
+        <% if (!rows.length) { %>
+          <div class="a42-note">None linked. <%= type === 'change' ? 'Link each change from the change register that touched this system, so the auditor\'s change population is complete.' : 'Link incidents from the incident register where this system failed or behaved unexpectedly.' %></div>
+        <% } else { %>
+          <ul class="a42-files">
+            <% rows.forEach(x => { %>
+              <li>
+                <div><a href="/workspaces/<%= ws.id %>/<%= path %>/<%= x.id %>"><%= x.title %></a><span class="meta"><%= type === 'change' ? `CHG-${x.id}` : `INC-${x.id}` %> · <%= x.status %><%= type === 'incident' && x.severity ? ` · ${x.severity}` : '' %> · <%= fmtDate(type === 'change' ? (x.implemented_at || x.created_at) : (x.detected_at || x.created_at)) %></span></div>
+                <% if (perms.manage) { %><form method="POST" action="<%= sysBase %>/links/<%= type %>/<%= x.id %>/delete"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-ghost btn-xs" type="submit">Unlink</button></form><% } else { %><span></span><% } %>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+        <% if (perms.manage && options.length) { %>
+          <div class="a42-attach">
+            <form method="POST" action="<%= sysBase %>/links">
+              <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="link_type" value="<%= type %>">
+              <div><label class="label" for="link<%= id %>">Link <%= type === 'change' ? 'a change' : 'an incident' %></label>
+                <select id="link<%= id %>" class="select" name="target_id" required><option value="">Choose</option>
+                  <% options.forEach(o => { %><option value="<%= o.id %>"><%= type === 'change' ? 'CHG' : 'INC' %>-<%= o.id %> · <%= o.title %></option><% }) %>
+                </select></div>
+              <button class="btn btn-secondary btn-xs" type="submit">Link</button>
+            </form>
+          </div>
+        <% } else if (perms.manage) { %>
+          <div class="a42-note" style="padding-top:0;"><%= rows.length ? `Every ${type} on record is linked. New ones are recorded in the` : `Nothing to link yet. Record it first in the` %> <a href="/workspaces/<%= ws.id %>/<%= path %>"><%= type %> register</a>.</div>
+        <% } %>
+      </section>
+    <% }) %>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

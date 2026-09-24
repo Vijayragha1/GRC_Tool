@@ -72,16 +72,20 @@
     ...(hasIso42001 ? [{
       id: 'ai-programme', label: 'AI management system',
       icon: '<path d="M12 3a4 4 0 0 0-4 4v1H7a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1v1a4 4 0 0 0 8 0v-1h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-1V7a4 4 0 0 0-4-4z"/><path d="M9 10h6M9 14h6"/>',
-      active: ['iso42001-intake', 'iso42001-engagement-plan', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle'],
+      // Ordered the way an ISO 42001 engagement is worked: the overview, the
+      // gap assessment every engagement opens with, then the certification
+      // body's request list and the registers and requirement screens that
+      // answer it. Readiness scoring, the catalogue, the roadmap and the
+      // executive brief are reached from the screens they belong to.
+      active: ['iso42001-overview', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-intake', 'iso42001-engagement-plan', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
       items: [
-        { label: 'Management intake', href: `/workspaces/${ws.id}/iso42001/intake`, active: ['iso42001-intake'] },
-        { label: 'Engagement plan', href: `/workspaces/${ws.id}/iso42001/engagement-plan`, active: ['iso42001-engagement-plan'] },
-        { label: 'Requirements catalog', href: `/workspaces/${ws.id}/iso42001`, active: ['iso42001-catalog'] },
-        { label: 'Control register', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls'] },
+        { label: 'Programme overview', href: `/workspaces/${ws.id}/iso42001/overview`, active: ['iso42001-overview', 'iso42001-readiness', 'iso42001-exec-brief'] },
         { label: 'Gap assessment', href: `/workspaces/${ws.id}/iso42001/gap-assessment`, active: ['iso42001-gap'] },
-        { label: 'Improvement roadmap', href: `/workspaces/${ws.id}/iso42001/roadmap`, active: ['iso42001-roadmap'] },
-        { label: 'Readiness', href: `/workspaces/${ws.id}/iso42001/readiness`, active: ['iso42001-readiness'] },
+        { label: 'Certification requests', href: `/workspaces/${ws.id}/iso42001/requests`, active: ['iso42001-requests'] },
+        { label: 'AI system register', href: `/workspaces/${ws.id}/iso42001/ai-systems`, active: ['iso42001-ai-systems'] },
+        { label: 'Requirements', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls', 'iso42001-catalog', 'iso42001-roadmap'] },
         { label: 'Statement of Applicability', href: `/workspaces/${ws.id}/iso42001/soa`, active: ['iso42001-soa'] },
+        { label: 'Engagement plan', href: `/workspaces/${ws.id}/iso42001/engagement-plan`, active: ['iso42001-engagement-plan', 'iso42001-intake'] },
         { label: 'Certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'] }
       ]
     }] : []),

@@ -1,0 +1,50 @@
+<%
+  const sv = (typeof system !== 'undefined' && system) || {};
+  const roles = sv.roles || [];
+%>
+<div class="stack-grid" style="--cols:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);">
+  <div><label class="label" for="aiName">Name</label><input id="aiName" class="input" name="name" maxlength="160" required value="<%= sv.name || '' %>" placeholder="e.g. Claims triage model"></div>
+  <div><label class="label" for="aiStage">Lifecycle stage</label>
+    <select id="aiStage" class="select" name="lifecycle_stage">
+      <% Object.entries(registry.LIFECYCLE).forEach(([k, label]) => { %><option value="<%= k %>" <%= (sv.lifecycle_stage || 'in_use') === k ? 'selected' : '' %>><%= label %></option><% }) %>
+    </select></div>
+  <div><label class="label" for="aiLive">Went live</label><input id="aiLive" class="input" type="date" name="go_live_date" value="<%= sv.go_live_date || '' %>"><span class="hint">The auditor samples systems implemented in the review period.</span></div>
+</div>
+<div><label class="label" for="aiPurpose">Purpose and context</label><textarea id="aiPurpose" class="textarea" name="purpose" rows="3" maxlength="4000" placeholder="What it does, for whom, and the decision or output it produces"><%= sv.purpose || '' %></textarea><span class="hint">The auditor asks for the general purpose and context of each AI system before fieldwork.</span></div>
+<div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+  <div><span class="label">The organisation's role for this system</span>
+    <div class="a42-checks">
+      <% Object.entries(registry.ROLES).forEach(([k, label]) => { %>
+        <label><input type="checkbox" name="org_roles" value="<%= k %>" <%= roles.includes(k) ? 'checked' : '' %>> <span><%= label %></span></label>
+      <% }) %>
+    </div>
+    <span class="hint">Clause 4.1. One organisation can hold several roles for the same system.</span>
+  </div>
+  <div class="a42-form" style="padding:0;gap:12px;">
+    <div><label class="label" for="aiUsers">Who uses it</label><input id="aiUsers" class="input" name="intended_users" maxlength="2000" value="<%= sv.intended_users || '' %>" placeholder="e.g. Claims handlers; customers via the app"></div>
+    <div><label class="label" for="aiOwner">System owner</label><input id="aiOwner" class="input" name="system_owner" maxlength="160" value="<%= sv.system_owner || '' %>" placeholder="Name and role"></div>
+  </div>
+</div>
+<div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,2fr);">
+  <div><label class="label" for="aiAuto">How much it decides on its own</label>
+    <select id="aiAuto" class="select" name="automation_level">
+      <option value="">Not recorded</option>
+      <% Object.entries(registry.AUTOMATION).forEach(([k, label]) => { %><option value="<%= k %>" <%= sv.automation_level === k ? 'selected' : '' %>><%= label %></option><% }) %>
+    </select></div>
+  <div><label class="label" for="aiOversight">Human oversight</label><input id="aiOversight" class="input" name="human_oversight" maxlength="4000" value="<%= sv.human_oversight || '' %>" placeholder="Who reviews outputs and when they can override"></div>
+</div>
+<div class="stack-grid" style="--cols:auto minmax(0,1fr);align-items:start;">
+  <div><span class="label">In the AIMS scope</span>
+    <div class="a42-checks">
+      <label><input type="radio" name="in_scope" value="1" <%= sv.in_scope === 0 ? '' : 'checked' %>> <span>In scope</span></label>
+      <label><input type="radio" name="in_scope" value="0" <%= sv.in_scope === 0 ? 'checked' : '' %>> <span>Excluded</span></label>
+    </div></div>
+  <div><label class="label" for="aiScopeNote">Scope note</label><input id="aiScopeNote" class="input" name="scope_note" maxlength="2000" value="<%= sv.scope_note || '' %>" placeholder="Required when excluded: why it sits outside the scope"></div>
+</div>
+<p class="a42-section-title">Resources (Annex A.4)</p>
+<div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+  <div><label class="label" for="aiData">Data</label><textarea id="aiData" class="textarea" name="data_resources" rows="3" maxlength="8000" placeholder="Training, validation and production data: sources, provenance, categories"><%= sv.data_resources || '' %></textarea></div>
+  <div><label class="label" for="aiTooling">Tooling</label><textarea id="aiTooling" class="textarea" name="tooling_resources" rows="3" maxlength="8000" placeholder="Models, algorithms, frameworks, evaluation tools"><%= sv.tooling_resources || '' %></textarea></div>
+  <div><label class="label" for="aiCompute">System and computing</label><textarea id="aiCompute" class="textarea" name="compute_resources" rows="3" maxlength="8000" placeholder="Where it runs: cloud, on premises, edge; storage; hardware"><%= sv.compute_resources || '' %></textarea></div>
+  <div><label class="label" for="aiPeople">People</label><textarea id="aiPeople" class="textarea" name="human_resources" rows="3" maxlength="8000" placeholder="Roles and expertise needed to build, run and oversee it"><%= sv.human_resources || '' %></textarea></div>
+</div>

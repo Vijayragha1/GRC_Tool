@@ -1,0 +1,83 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const inScope = systems.filter(s => s.in_scope);
+  const excluded = systems.filter(s => !s.in_scope);
+  const iaLabel = s => s.ia_approved_at ? ['Approved ' + fmtDate(s.ia_approved_at), 's-done'] : s.ia_status === 'draft' ? ['Draft', 's-in_review'] : ['None', 's-todo'];
+  const scoped = !!(programme.review_period_start || programme.review_period_end);
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/overview">ISO 42001 certification</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">AI system register</h1>
+      <div class="page-subtitle">Every AI system the organisation provides, builds or uses, its role for each, and the impact assessment behind it. The auditor's populations of new systems, AI vendors, AI changes and AI incidents are drawn from here.</div>
+      <div class="a42-facts">
+        <span><strong><%= inScope.length %></strong> in scope</span>
+        <% if (excluded.length) { %><span><strong><%= excluded.length %></strong> excluded</span><% } %>
+        <span><strong><%= inScope.filter(s => s.ia_approved_at).length %></strong> with an approved impact assessment</span>
+      </div>
+    </div>
+    <% if (perms.manage) { %><a class="btn btn-primary" href="<%= base %>/ai-systems/new">Add AI system</a><% } %>
+  </div>
+
+  <section class="panel" aria-labelledby="aiListTitle">
+    <div class="panel-head"><h2 id="aiListTitle">Systems</h2></div>
+    <% if (!systems.length) { %>
+      <div class="empty-state">
+        <div class="empty-title">No AI systems recorded</div>
+        <div class="empty-sub">Start with the systems in the AIMS scope. For each one the auditor wants its purpose, the organisation's role, the resources it uses and a documented impact assessment.</div>
+        <% if (perms.manage) { %><a class="btn btn-primary" href="<%= base %>/ai-systems/new">Add the first system</a><% } %>
+      </div>
+    <% } else { %>
+      <div style="overflow-x:auto;">
+        <table class="t a42-stack">
+          <thead><tr>
+            <th scope="col">System</th><th scope="col">Organisation's role</th><th scope="col">Stage</th><th scope="col" class="num">Went live</th>
+            <th scope="col">Impact assessment</th><th scope="col" class="num">Vendors</th><th scope="col" class="num">Changes</th><th scope="col" class="num">Incidents</th>
+          </tr></thead>
+          <tbody>
+            <% systems.forEach(s => { const [ia, cls] = iaLabel(s); %>
+              <tr>
+                <td><a class="a42-title" href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a><% if (!s.in_scope) { %><span class="a42-codes">Excluded from scope</span><% } else if (s.purpose) { %><span class="a42-codes"><%= s.purpose.length > 80 ? s.purpose.slice(0, 77) + '...' : s.purpose %></span><% } %></td>
+                <td data-label="Role"><%= s.roles.length ? s.roles.map(r => registry.ROLES[r].replace(/ \(.*\)$/, '')).join(', ') : 'Not recorded' %></td>
+                <td data-label="Stage"><%= registry.LIFECYCLE[s.lifecycle_stage] %></td>
+                <td class="num" data-label="Went live"><%= s.go_live_date ? fmtDate(s.go_live_date) : '' %></td>
+                <td><span class="status <%= cls %>"><%= ia %></span><% if (s.ia_residual) { %><span class="a42-codes">Residual <%= s.ia_residual %></span><% } %></td>
+                <td class="num" data-label="Vendors"><%= s.supplier_count || '' %></td>
+                <td class="num" data-label="Changes"><%= s.change_count || '' %></td>
+                <td class="num" data-label="Incidents"><%= s.incident_count || '' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel" aria-labelledby="aiPopTitle">
+    <div class="panel-head">
+      <h2 id="aiPopTitle">Populations for the auditor</h2>
+      <span class="meta"><%= scoped ? `Review period ${fmtDate(programme.review_period_start) || 'start of records'} to ${fmtDate(programme.review_period_end) || 'today'}` : 'No review period set, so each export lists the whole register' %> · <a href="<%= base %>/overview#a42Dates">Change</a></span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="t a42-stack">
+        <thead><tr><th scope="col">Population</th><th scope="col">Built from</th><th scope="col" class="num">Rows</th><th scope="col"><span class="sr-only">Export</span></th></tr></thead>
+        <tbody>
+          <% populations.forEach(p => { %>
+            <tr>
+              <td><%= p.title %></td>
+              <td data-label="Built from"><%= { 'ai-systems': 'In-scope systems, by go-live date', 'ai-vendors': 'Suppliers recorded on each system', 'ai-changes': 'Changes linked to a system', 'ai-incidents': 'Incidents linked to a system' }[p.key] %></td>
+              <td class="num" data-label="Rows"><%= p.rows.length %></td>
+              <td class="num"><% if (perms.export) { %><a class="btn btn-ghost btn-xs" href="<%= base %>/populations/<%= p.key %>.csv">Download CSV</a><% } %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <div class="a42-note">Employee and new-hire lists come from the client's HR records, so they are requested from the client rather than built here.</div>
+  </section>
+</div>
+
+<%- include('partials/footer') %>
