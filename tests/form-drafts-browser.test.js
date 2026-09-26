@@ -33,7 +33,13 @@ async function fixture(options={}) {
 }
 async function edit(page,name,value){await page.$eval(`[name="${name}"]`,(el,value)=>{el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));},value);}
 async function button(page,label){await page.evaluate(label=>[...document.querySelectorAll('button')].find(b=>b.textContent===label).click(),label);}
-test.before(async()=>{browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||(fs.existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':require('puppeteer').executablePath()),headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});});
+test.before(async()=>{
+  const macChrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const executablePath=process.env.CHROME_PATH||(fs.existsSync(macChrome)?macChrome:null);
+  const args=['--no-sandbox','--disable-dev-shm-usage'];
+  // Without a local Chrome (CI), use the headless shell CI installs, as lib/audit-pack.js does.
+  browser=executablePath?await puppeteer.launch({executablePath,headless:true,args}):await require('puppeteer').launch({headless:'shell',args});
+});
 test.after(async()=>{await browser?.close();});
 test('same-actor tab conflicts offer an explicit comparison and preserve local edits when rebasing',async()=>{
   const {page,state}=await fixture();try{
