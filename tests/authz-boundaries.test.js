@@ -7,6 +7,11 @@ const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
 const { bootApp, makeClient } = require('./helpers');
 
+// These tests count rows that HTTP requests must not create. The scheduled job
+// runner fires 5 seconds after the first boot and its restore drill writes a
+// backup_runs row, which lands mid-test on a slower machine.
+process.env.ISMS_DISABLE_JOBS = '1';
+
 const PASSWORD = 'Boundary-test-password-1234';
 
 async function login(client, email, password = PASSWORD) {
