@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "status": "pending_real_participants",
+  "build": "",
+  "sessionDate": "",
+  "programmes": [],
+  "highSeverityOpen": null,
+  "reliability": {
+    "draftRecovery": { "passed": null, "evidence": "" },
+    "uploadRecovery": { "passed": null, "evidence": "" },
+    "duplicateSubmit": { "passed": null, "evidence": "" },
+    "staleChange": { "passed": null, "evidence": "" },
+    "roleWorkspaceIsolation": { "passed": null, "evidence": "" },
+    "notificationRetryAccess": { "passed": null, "evidence": "" },
+    "independentReviewPublication": { "passed": null, "evidence": "" },
+    "retainedReportIntegrity": { "passed": null, "evidence": "" }
+  },
+  "groups": {
+    "contributor": [],
+    "sponsor": [],
+    "coordinator": [],
+    "junior_consultant": [],
+    "experienced_consultant": [],
+    "manager": []
+  },
+  "participantFormat": {
+    "id": "pseudonymous-unique-id",
+    "device": "desktop or mobile and browser",
+    "order": "baseline_first or redesign_first",
+    "ease": "number 1 to 10",
+    "flow": "number 1 to 10",
+    "notes": "rating reason and greatest friction",
+    "tasks": [{
+      "id": "stable-script-task-id",
+      "completedUnaided": "boolean",
+      "nextActionCorrect": "boolean",
+      "nextActorCorrect": "boolean",
+      "nextActionSeconds": "non-negative number",
+      "baselineNavigationAdminSeconds": "positive number",
+      "redesignNavigationAdminSeconds": "non-negative number"
+    }]
+  }
+}
