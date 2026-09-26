@@ -56,6 +56,7 @@ function makeClient(app) {
       // urlencoded by default; JSON if opts.json
       if (opts.json) {
         headers['content-type'] = 'application/json';
+        if (csrfToken && opts.csrf === true) headers['x-csrf-token'] = csrfToken;
         payload = JSON.stringify(body);
       } else {
         headers['content-type'] = 'application/x-www-form-urlencoded';
@@ -73,6 +74,7 @@ function makeClient(app) {
       if (!headers['content-type']) headers['content-type'] = 'application/x-www-form-urlencoded';
     }
 
+    if (payload != null) headers['content-length'] = Buffer.byteLength(payload);
     return new Promise((resolve, reject) => {
       const req = http.request({
         hostname: '127.0.0.1', port, method, path: urlPath, headers,
@@ -111,7 +113,9 @@ function makeClient(app) {
   return {
     get: (p, opts) => request('GET', p, null, opts),
     post: (p, body, opts) => request('POST', p, body || {}, opts),
+    put: (p, body, opts) => request('PUT', p, body || {}, opts),
     delete: (p, opts) => request('DELETE', p, null, opts),
+    deleteBody: (p, body, opts) => request('DELETE', p, body || {}, opts),
     baseUrl: async () => {
       await listening;
       return `http://127.0.0.1:${server.address().port}`;
@@ -158,7 +162,8 @@ async function authenticate(client, dbPath) {
   const token = (lg.text.match(/name="_csrf"\s+value="([a-f0-9]+)"/) || [])[1];
   const res = await client.post('/login', { email, password, _csrf: token }, { csrf: false });
   if (res.status < 300 || res.status >= 400) throw new Error(`test login failed: expected 3xx, got ${res.status}`);
-  await client.get('/dashboard'); // warm the meta token from an authed page
+  let landing = await client.get('/dashboard');
+  for (let redirects = 0; landing.location && redirects < 5; redirects++) landing = await client.get(landing.location);
   return { email, password };
 }
 

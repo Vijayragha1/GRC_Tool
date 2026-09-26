@@ -1,0 +1,6 @@
+<li class="work-item" data-work-id="<%= item.id %>">
+ <div><h3><a href="<%= detailHref(item.href) %>"><%= item.title %></a></h3><p><%= item.workspaceName %> · <%= item.programmeLabel %> · <%= item.sourceType.replaceAll('_',' ') %></p><span class="work-badge"><%= item.status.replaceAll('_',' ') %></span><% if(item.blockedReason){ %><p style="margin-top:7px"><%= item.blockedReason %></p><% } %></div>
+ <div><strong><%= item.ownerName || (item.waitingOn ? 'External dependency' : 'Needs assignment') %></strong><p><%= item.waitingOn ? `Waiting on ${item.waitingOn}` : 'Responsible for next step' %></p></div>
+ <div class="<%= item.overdue?'work-overdue':'' %>"><%= item.dueDate || 'No due date' %><% if(item.overdue){ %><p class="work-overdue">Overdue</p><% } %></div>
+ <a class="btn btn-secondary work-action" href="<%= detailHref(item.href) %>"><%= item.actionLabel %></a>
+</li>

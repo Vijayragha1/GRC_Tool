@@ -38,6 +38,11 @@ const migrationsDir = __dirname;
 // pre-date this release are separately enumerated below so deployed databases
 // can reach the forward reconciliation without weakening checksum validation.
 const RECONCILED_DRIFTS = Object.freeze({
+  '062_personal_drafts_and_diagnostics.js': Object.freeze({
+    applied: '8d2643035c852bc48dc1ca73af00d41adf054755b856bf0bb07e2606ccf5643a',
+    current: '26e3a86a79a27dc939ac33adccba05ef3ae28bdaa2fa671895ef582e34183173',
+    reconciledBy: '067_experience_diagnostic_view_reconciliation.js',
+  }),
   '046_tprm_domain_foundation.sql': Object.freeze({
     applied: '8a7ace8a6d33d3db5c69b579b904e205dac925eccb428ddc2786a24115c5bda3',
     current: '8c828fd9a713cf0353007749d4d69875100527d537b901ff57d2527f5bbe1d13',

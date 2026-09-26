@@ -12,6 +12,9 @@
     /* Compliance Sphere palette - cream + charcoal + warm grey, matches the
        auth screens (FAFAF8 / d8d6cf / 1a1a1a). Replaces the old oxblood
        accent + neutral-greys palette. */
+    --hero-surface: #17383e;
+    --hero-text: #ffffff;
+    --focus-ring: #246bce;
     --bg: #fbfbf8;
     --bg-subtle: #f6f5ef;
     --bg-muted: #f0eee7;
@@ -54,6 +57,9 @@
   [data-theme="dark"] {
     /* Warm graphite, not pure black. The three surface levels preserve the
        same hierarchy as the light theme without making the page glow. */
+    --hero-surface: #17383e;
+    --hero-text: #ffffff;
+    --focus-ring: #85b8ff;
     --bg: #1c2023;
     --bg-subtle: #202529;
     --bg-muted: #272d31;
@@ -202,6 +208,10 @@
     font-size: 12px; line-height: 1.35; text-decoration: none;
     position: relative; transition: background 0.12s ease, color 0.12s ease;
   }
+  .nav-programme > .nav-domain-summary { padding-left:8px; }
+  .nav-programme > .nav-domain-summary .nav-domain-text { white-space:normal; }
+  .nav-programme[open] > .nav-domain-items { margin-left:8px; padding-left:7px; }
+  .nav-programme .nav-subitem { overflow-wrap:anywhere; }
   .nav-subitem:hover { background: var(--nav-hover); color: var(--text); }
   .nav-subitem.active { color: var(--ink); font-weight: 500; background: var(--nav-sub-active); }
   .nav-subitem.active::before { display:none; }
@@ -1699,4 +1709,32 @@ fieldset { min-width: 0; }
   .cp-sub { display: none; }
   .app-confirm-actions { display: grid !important; grid-template-columns: 1fr 1fr; }
   .app-confirm-actions .btn { width: 100%; }
+}
+
+/* Shared task and draft interactions. These tokens work in both supported themes. */
+.personal-draft-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:18px;color:var(--text);font-size:14px;line-height:1.5}
+.personal-draft-bar>span{flex:1 1 220px}.personal-draft-bar [hidden]{display:none!important}
+.draft-comparison{flex:1 0 100%;max-width:100%;overflow:auto}.draft-comparison summary{cursor:pointer;font-weight:600;padding:10px 0}.draft-comparison td{max-width:360px;overflow-wrap:anywhere;vertical-align:top}
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}
+.queue-return{display:inline-flex;margin:0 0 14px;font-size:14px;align-items:center;gap:6px}
+/* Delivery decisions need the same reading scale as the shared work queue. */
+#app :is(.cwp,.dco,.fnd) :is(p,td,.cwp-ready,.cwp-kv,.dco-kv,.fnd-kv,.dco-empty,.fnd-empty){font-size:14px;line-height:1.55}
+#app :is(.cwp,.dco,.fnd) :is(label,th,summary){font-size:13px;line-height:1.5}
+#app :is(.cwp,.dco,.fnd) :is(input,select,textarea){font-size:14px;line-height:1.5;min-height:40px}
+#app :is(.cwp,.dco,.fnd) :is(small,.cwp-status,.dco-status,.fnd-status,.cwp-conclusion span,.dco-metric span){font-size:12px;line-height:1.5}
+#app :is(.cwp,.dco,.fnd) :is(.cwp-head,.dco-head,.fnd-head) h2{font-size:17px}
+#app .rpt :is(.rpt-section p,.rpt-cover p,.rpt-table,.rpt-table th,.rpt-meta b){font-size:14px;line-height:1.55}
+#app .rpt :is(.rpt-eye,.rpt-meta span,.rpt-status){font-size:12px}
+#app .rpt-decision textarea{font-size:14px;line-height:1.5}
+#app :is(.cwp-panel,.fnd-panel,.rpt-section){overflow-x:auto;max-width:100%}
+#app :is(.cwp-main,.cwp-grid,.fnd-grid){min-width:0}
+@media(max-width:760px){#app :is(.cwp,.dco,.fnd,.rpt-decision) :is(input,select,textarea){font-size:16px;min-height:44px}}
+#assessForm label{font-size:14px}#assessForm textarea{min-height:120px;font-size:15px;line-height:1.6}
+#assessForm .diag-pill{min-height:36px;min-width:44px}
+@media(max-width:600px){
+  #assessForm [style*="1fr 220px"]{grid-template-columns:1fr!important}
+  #assessForm [data-diagnostic-group]{justify-content:flex-start!important}
+  #assessForm .personal-draft-bar{position:static}
+  #assessForm input,#assessForm select,#assessForm textarea{max-width:100%;font-size:16px}
+  .draft-comparison table{min-width:400px}
 }

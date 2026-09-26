@@ -34,6 +34,7 @@
 **/*.sqlite
 data/master.key
 data/backups/
+data/ai-models/
 data/email-dev-outbox.log
 uploads/
 backups/

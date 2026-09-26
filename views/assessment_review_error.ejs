@@ -1,0 +1,6 @@
+<%- include('partials/header',{title:'Assessment review',user,ws,active:'controls'}) %>
+<div class="page-head"><div><h1>Review action not applied</h1><p><%= item.id %> · <%= item.title %></p></div></div>
+<section class="panel"><div class="panel-pad"><p role="alert"><%= message %></p>
+<% if(note){ %><label class="label" for="retained-review-note">Your review note is retained here</label><textarea id="retained-review-note" class="textarea" rows="5" readonly><%= note %></textarea><% } %>
+<p style="margin-top:16px"><a class="btn btn-primary" href="<%= path %>" target="_blank" rel="noopener">Open the current assessment to compare ↗</a></p></div></section>
+<%- include('partials/footer') %>

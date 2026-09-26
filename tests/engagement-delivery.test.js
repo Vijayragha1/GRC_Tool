@@ -336,7 +336,7 @@ test('a complete imported baseline can be adopted once as an auditable, reportab
   assert.match(before.text, /118 of 118 requirements concluded/);
   assert.match(before.text, /Adopt baseline for independent review/);
   assert.match(before.text, new RegExp(`/workspaces/${importedWorkspaceId}/export/gap-report\\.pdf`));
-  assert.match(before.text, /Download current report/);
+  assert.match(before.text, /Download current status export/);
 
   const currentReport = await client.get(`/workspaces/${importedWorkspaceId}/export/gap-report.docx`);
   assert.equal(currentReport.status, 200);
@@ -412,6 +412,7 @@ test('formal gap-assessment outputs and independent pass completion require deci
     (email,password_hash,name,firm_id,user_type,firm_role,active)
     SELECT 'assessment-preparer@example.com', password_hash, 'Assessment Preparer', firm_id, 'firm', 'consultant', 1
     FROM users WHERE id=?`).run(managerId).lastInsertRowid);
+  db.prepare("INSERT INTO workspace_members(workspace_id,user_id,role) VALUES (?,?,'consultant')").run(workspaceId,preparerId);
   const passId = Number(db.prepare(`INSERT INTO assessment_passes
     (workspace_id,pass_number,label,status,started_by)
     VALUES (?,1,'Initial gap assessment','in_progress',?)`).run(workspaceId, preparerId).lastInsertRowid);

@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: 'Gap assessment', user, ws, active: 'controls' }) %>
+<%- include('partials/header', { title: 'Gap assessment', user, ws, active: 'gap-assessment' }) %>
 
 <style>
   /* Diagnostic answers are toggle buttons rather than native radios: a
@@ -9,6 +9,20 @@
   .diag-pill-yes[aria-pressed="true"]     { background:#16a34a; color:#fff; border-color:#16a34a; font-weight:500; }
   .diag-pill-partial[aria-pressed="true"] { background:#a16207; color:#fff; border-color:#a16207; font-weight:500; }
   .diag-pill-no[aria-pressed="true"]      { background:#b91c1c; color:#fff; border-color:#b91c1c; font-weight:500; }
+  .assessment-copilot { margin-bottom:18px; border:1px solid rgba(79,70,229,0.35); border-radius:8px; background:rgba(79,70,229,0.035); overflow:hidden; }
+  .assessment-copilot-head { padding:12px 14px; border-bottom:1px solid rgba(79,70,229,0.18); display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+  .assessment-copilot-controls { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .assessment-copilot-result { margin:0 14px 14px; padding:14px; border:1px solid var(--border); border-radius:7px; background:var(--bg); }
+  .assessment-copilot-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+  .assessment-copilot-summary > div { padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-subtle); }
+  .assessment-copilot-findings { display:grid; grid-template-columns:1fr 1fr; gap:12px 18px; margin-top:12px; }
+  .assessment-copilot-findings h4 { margin:0 0 5px; font-size:12px; font-weight:600; }
+  .assessment-copilot-findings ul, #assessmentCopilotSources { margin:0; padding-left:18px; line-height:1.5; }
+  .assessment-copilot-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  .assessment-copilot-context { margin:10px 14px; padding:11px 12px; border:1px solid rgba(79,70,229,0.24); border-radius:6px; background:var(--bg); }
+  .assessment-copilot-context-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:9px; }
+  .assessment-copilot-context-item { padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-subtle); }
+  .assessment-copilot-disclosure { margin:10px 14px; padding:11px 12px; border:1px solid rgba(180,83,9,0.45); border-radius:6px; background:rgba(245,158,11,0.09); color:var(--text); }
 </style>
 
 <%
@@ -24,6 +38,13 @@
   const sectionTag = isClause
     ? 'Clause ' + refCode + ' · management system requirement'
     : refCode + ' · ' + (item.category === 'org' ? 'Organisational' : item.category === 'people' ? 'People' : item.category === 'physical' ? 'Physical' : 'Technological');
+  const evidenceAiConfig = typeof evidenceAi !== 'undefined' && evidenceAi ? evidenceAi : {};
+  const evidenceAiReadyCount = Math.max(0, Number(evidenceAiConfig.ready_count) || 0);
+  const evidenceAiModels = evidenceAiConfig.models || {};
+  const policySearchDocumentRows = typeof policySearchDocs !== 'undefined' && Array.isArray(policySearchDocs) ? policySearchDocs : [];
+  const policyProviderConfig = typeof policyRetrievalProviders !== 'undefined' && policyRetrievalProviders ? policyRetrievalProviders : {};
+  const policySearchDocumentCount = policySearchDocumentRows.length;
+  const localPolicySearchConfigured = !!(policyProviderConfig.local && policyProviderConfig.local.configured);
 %>
 
 <style>
@@ -58,6 +79,11 @@
     .assessment-support-grid { grid-template-columns: minmax(0, 1fr) !important; }
     .assessment-upload-grid, .assessment-link-form { grid-template-columns: minmax(0, 1fr) !important; }
     .assessment-upload-grid .col-full { grid-column: 1 !important; }
+    .assessment-copilot-head { flex-direction:column; }
+    .assessment-copilot-controls { width:100%; justify-content:flex-start; }
+    .assessment-copilot-controls > div, .assessment-copilot-controls select { width:100% !important; max-width:none !important; }
+    .assessment-copilot-controls .btn, .assessment-copilot-actions .btn { min-height:44px; }
+    .assessment-copilot-summary, .assessment-copilot-findings, .assessment-copilot-context-grid { grid-template-columns:minmax(0,1fr); }
   }
   @media (max-width: 430px) {
     .assess-shell [style*="grid-template-columns:140px 1fr"] { grid-template-columns: minmax(0, 1fr) !important; }
@@ -136,6 +162,7 @@
     <% } %>
   </div>
 
+  <details class="assessment-guidance"><summary class="panel-pad" style="cursor:pointer;font-weight:600">Guidance, acceptance criteria and evidence expectations</summary>
   <% if (item.purpose || item.what_good_looks_like) { %>
     <% // Audit-grade content shape - rich, narrative, cross-referenced. %>
     <%
@@ -212,7 +239,7 @@
         <div class="meta text-sm" style="margin-top:6px;line-height:1.4;">
           <%= attachedCount === 0
               ? 'No evidence attached yet for this item - scroll to the Evidence files panel below to upload.'
-              : 'Match the list above to your attached files in the Evidence files panel below. The bot can\'t auto-match the descriptions to filenames; that judgement is yours.' %>
+              : 'Match the list above to your attached files in the Evidence files panel below. The copilot can review metadata and bounded excerpts from ready Evidence Library indexes, but it does not decide whether the evidence is sufficient; that judgement is yours.' %>
         </div>
       </div>
     <% } %>
@@ -318,11 +345,38 @@
     </div>
   <% } %>
 
-  <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>" class="panel-pad" id="assessForm">
+  </details>
+  <% if (recovery) { %>
+    <section class="alert alert-warning" role="alert" tabindex="-1" id="assessmentRecovery">
+      <h2>Your conclusion was not recorded</h2>
+      <p><%= recovery.message %> Your submitted edits remain in the form.</p>
+      <details open><summary>Compare with the current recorded conclusion (version <%= recordedState.record_version || 0 %>)</summary>
+        <p>Status: <strong><%= recordedState.status %></strong> · Capability: <%= recordedState.maturity %> · Applicability: <%= recordedState.applicability %></p>
+        <pre style="white-space:pre-wrap"><%= recordedState.notes || 'No recorded notes.' %></pre>
+      </details>
+    </section>
+  <% } %>
+  <% if (privateDraft.draft) { %>
+    <div class="alert alert-info" role="status">Your private draft is restored. It has not been recorded as an assessment conclusion.
+      <% if (String(privateDraft.draft.baseVersion) !== String(recordedState.record_version || 0)) { %> The recorded version changed since this draft began. Recording will first ask you to compare your edits.<% } %>
+      <% if (recovery) { %><details><summary>Compare the saved private draft</summary><dl><% Object.entries(privateDraft.draft.payload).forEach(([key,value])=>{ %><dt><%= key.replaceAll('_',' ') %></dt><dd style="white-space:pre-wrap"><%= value %></dd><% }) %></dl></details><% } %>
+    </div>
+  <% } %>
+  <% if (diagnosticDraftChanged) { %><div class="alert alert-warning" role="alert">The diagnostic questions changed. Your other draft edits are restored; answer the current questions before recording.</div><% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>" class="panel-pad" id="assessForm" data-form-draft="assessment" data-draft-record="<%= item.id %>" data-draft-version="<%= recordedState.record_version || 0 %>" data-draft-recovery="<%= recovery ? 'true' : 'false' %>" data-draft-recorded="<%= JSON.stringify({status:recordedState.status,maturity:recordedState.maturity,applicability:recordedState.applicability,notes:recordedState.notes || '',scope_pct:recordedState.scope_pct ?? '',inclusion_justification:recordedState.inclusion_justification || '',exclusion_justification:recordedState.exclusion_justification || '',diagnostic_set_id:diagnosticState.current.setId,...Object.fromEntries(questions.map((q,i)=>['q_'+i,diagnosticState.answers[String(i)] || '']))}) %>">
+    <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+    <noscript><style>#assessForm .diag-pill{display:none!important}</style></noscript>
+    <input type="hidden" name="expected_record_version" value="<%= !recovery && privateDraft.draft ? privateDraft.draft.baseVersion : recordedState.record_version || 0 %>">
+    <input type="hidden" name="mutation_key" value="<%= mutationKey %>">
+    <input type="hidden" name="private_draft_generation" value="<%= privateDraft.generation %>">
+    <input type="hidden" name="private_draft_version" value="<%= privateDraft.draft ? privateDraft.draft.version : 0 %>">
+    <input type="hidden" name="assessment_context" value="<%= activePass ? activePass.id : '' %>">
+    <input type="hidden" name="diagnostic_set_id" value="<%= diagnosticState.current.setId %>">
     <%# Optimistic-concurrency snapshot: server rejects with 409 if another
         consultant saved this control between this page load and form submit.
         Stops silent overwrites without requiring real-time presence UI. %>
     <input type="hidden" name="last_updated_snapshot" value="<%= (state && state.last_updated) || '' %>">
+    <input type="hidden" name="state_fingerprint_snapshot" value="<%= assessmentStateFingerprint %>">
     <!-- Per-item diagnostic questions - specific to this clause/control -->
     <% if (questions && questions.length) { %>
       <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
@@ -343,7 +397,8 @@
               <div class="text-md" style="line-height:1.45;"><%= q %></div>
               <% const savedValue = ['yes','partial','no'].includes(savedAnswers[String(i)]) ? savedAnswers[String(i)] : ''; %>
               <div data-diagnostic-group role="group" aria-label="Answer for: <%= q %>" style="display:flex;gap:4px;justify-content:flex-end;">
-                <input type="hidden" data-diagnostic-value name="q_<%= i %>" value="<%= savedValue %>">
+                <input type="hidden" data-diagnostic-value name="q_<%= i %>" disabled value="<%= savedValue %>">
+                <noscript><label>Answer<select name="q_<%= i %>"><option value="" <%= !savedValue ? 'selected' : '' %>>Unanswered</option><% ['yes','partial','no'].forEach(opt=>{ %><option value="<%= opt %>" <%= savedValue===opt ? 'selected' : '' %>><%= opt==='yes'?'Yes':opt==='partial'?'Partial':'No' %></option><% }) %></select></label></noscript>
                 <% ['yes','partial','no'].forEach(opt => {
                      const isOn = savedValue === opt;
                 %>
@@ -358,6 +413,127 @@
       </div>
     <% } %>
 
+    <details class="assessment-copilot-expander"><summary style="cursor:pointer;padding:12px 0;font-weight:600">Assessment Copilot · optional draft assistance</summary>
+    <section id="assessmentCopilotPanel"
+             class="assessment-copilot"
+             data-item-id="<%= item.id %>"
+             data-endpoint="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/copilot"
+             aria-labelledby="assessmentCopilotTitle">
+      <div class="assessment-copilot-head">
+        <div style="flex:1;min-width:0;">
+          <div id="assessmentCopilotTitle" class="text-lg" style="font-weight:600;color:#4338ca;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+            Assessment copilot
+            <span class="tag" style="font-size:9px;background:rgba(79,70,229,0.10);color:#4338ca;">DRAFT ONLY</span>
+          </div>
+          <div class="meta text-sm" style="line-height:1.5;margin-top:4px;">
+            Automatically searches bounded, permission-scoped policy and Evidence Library context when available, then reviews this item's ISO guidance, live diagnostic answers, current form values, scope, and linked governance metadata. Unretrieved file contents, comments, document internal notes, and user identities are excluded. Nothing is saved automatically, and nothing is linked automatically.
+          </div>
+          <% if (['requested','reviewed'].includes(state.review_status || 'none')) { %>
+            <div class="text-xs" style="margin-top:6px;color:#a16207;">This item has a current review state. Saving any substantive change will clear that review so the revised assessment can be reviewed again.</div>
+          <% } %>
+        </div>
+        <div class="assessment-copilot-controls">
+          <% if (aiProvider === 'OpenRouter' && aiModels && aiModels.length) { %>
+            <div>
+              <label class="label text-xxs" for="assessmentAiModelSelect">OpenRouter model</label>
+              <select id="assessmentAiModelSelect" class="select text-base" style="width:auto;max-width:340px;">
+                <% aiModels.forEach(function(option) { %>
+                  <option value="<%= option.id %>" <%= option.id === aiModel ? 'selected' : '' %>><%= option.label %></option>
+                <% }) %>
+              </select>
+            </div>
+          <% } %>
+          <button type="button" id="assessmentCopilotButton" class="btn btn-primary" disabled>Draft assessment</button>
+        </div>
+      </div>
+      <section id="assessmentCopilotContextSummary" class="assessment-copilot-context" aria-labelledby="assessmentCopilotContextTitle">
+        <div id="assessmentCopilotContextTitle" class="text-md" style="font-weight:650;">Automatic context for this draft</div>
+        <div class="assessment-copilot-context-grid">
+          <div class="assessment-copilot-context-item">
+            <div class="meta text-xxs">Assessment</div>
+            <div id="assessmentCopilotAssessmentContext" class="text-sm"><%= questions.length %> diagnostic question<%= questions.length === 1 ? '' : 's' %> plus the current status, capability, and notes.</div>
+          </div>
+          <div class="assessment-copilot-context-item">
+            <div class="meta text-xxs">Policies</div>
+            <div class="text-sm"><%= localPolicySearchConfigured && policySearchDocumentCount
+              ? policySearchDocumentCount + ' active controlled document' + (policySearchDocumentCount === 1 ? '' : 's') + ' available to bounded local search.'
+              : policySearchDocumentCount
+                ? policySearchDocumentCount + ' active controlled document' + (policySearchDocumentCount === 1 ? '' : 's') + ' found, but local policy retrieval is not configured.'
+                : 'No eligible active controlled documents are available. Copilot will continue without policy excerpts.' %></div>
+          </div>
+          <div class="assessment-copilot-context-item">
+            <div class="meta text-xxs">Evidence Library</div>
+            <div class="text-sm"><%= evidenceAiConfig.configured && evidenceAiReadyCount
+              ? evidenceAiReadyCount + ' ready evidence index' + (evidenceAiReadyCount === 1 ? '' : 'es') + ' available to bounded retrieval.'
+              : evidenceAiReadyCount
+                ? evidenceAiReadyCount + ' ready evidence index' + (evidenceAiReadyCount === 1 ? '' : 'es') + ' found, but automatic Evidence Library retrieval is unavailable for this run.'
+                : 'No ready evidence index is available. Copilot will continue without Evidence Library excerpts.' %></div>
+          </div>
+          <div class="assessment-copilot-context-item">
+            <div class="meta text-xxs">Linked governance</div>
+            <div class="text-sm"><%= (linkedDocs || []).length %> document<%= (linkedDocs || []).length === 1 ? '' : 's' %>, <%= (evidenceList || []).length %> evidence record<%= (evidenceList || []).length === 1 ? '' : 's' %>, <%= (linkedRisks || []).length %> risk<%= (linkedRisks || []).length === 1 ? '' : 's' %>, and <%= (openNCs || []).length %> open nonconformit<%= (openNCs || []).length === 1 ? 'y' : 'ies' %>.</div>
+          </div>
+        </div>
+        <div class="meta text-xs" style="margin-top:8px;line-height:1.45;">Copilot chooses bounded relevant passages automatically. Sources actually considered appear below after the run. Review every citation against its source before relying on it.</div>
+        <section id="assessmentCopilotGroundingResult" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);" aria-labelledby="assessmentCopilotGroundingTitle">
+          <div id="assessmentCopilotGroundingTitle" class="text-sm" style="font-weight:650;">Sources Copilot considered</div>
+          <div id="assessmentCopilotGroundingStatus" class="meta text-xs" style="margin-top:3px;"></div>
+          <ul id="assessmentCopilotGroundingSummary" class="text-sm" style="margin:6px 0 0;padding-left:18px;line-height:1.5;"></ul>
+          <div id="assessmentCopilotGroundingLimitations" class="meta text-xs" style="display:none;margin-top:6px;line-height:1.45;"></div>
+        </section>
+      </section>
+      <div id="assessmentCopilotDisclosure"
+           class="assessment-copilot-disclosure"
+           data-disclosure-version="assessment_copilot_automatic_grounding_v2">
+        <div class="text-md" style="font-weight:650;color:#92400e;">External AI processing - fresh acknowledgement required</div>
+        <div class="text-sm" style="line-height:1.5;margin-top:4px;">
+          Each draft automatically searches available policy and indexed Evidence Library content for this item, then sends bounded retrieved passages, ISO guidance, workspace scope, current assessment values, diagnostic answers, and linked record metadata to <%= aiProvider || 'the configured AI provider' %>. Policy retrieval is local-only. Evidence retrieval sends queries and shortlisted evidence chunks to OpenRouter/NVIDIA free embedding and reranking endpoints; this trial path is disabled in production. Those evidence endpoints may log submitted inputs and outputs or use them to improve their models. Nimbus does not detect or redact personal, confidential, sensitive, production, or business-critical data.
+          <% if (aiProvider === 'OpenRouter') { %> The selected OpenRouter Copilot provider may also log its inputs and outputs or use them to improve its models.<% } %>
+        </div>
+        <div class="meta text-xs" style="line-height:1.5;margin-top:6px;">
+          Evidence embedding: <span class="mono"><%= evidenceAiModels.embedding_model || 'not configured' %></span> · Evidence reranking: <span class="mono"><%= evidenceAiModels.reranker_model || 'not configured' %></span><br>
+          Copilot provider: <%= aiProvider || 'not configured' %> · Selected model: <span id="assessmentCopilotSelectedModel"><%= aiModel || 'not configured' %></span>
+        </div>
+        <label class="text-sm" style="display:flex;gap:8px;align-items:flex-start;margin-top:9px;font-weight:550;">
+          <input type="checkbox" id="assessmentCopilotAcknowledgement" style="margin-top:2px;" <%= aiConfigured ? '' : 'disabled' %>>
+          <span>I confirm the assessment context and content available to automatic retrieval are public, synthetic, or sanitized non-confidential trial data, contain no personal, confidential, sensitive, production, or business-critical information, and may be sent to the configured external providers. This acknowledgement applies only to the next draft attempt.</span>
+        </label>
+      </div>
+      <% if (!aiConfigured) { %>
+        <div class="meta text-sm" style="padding:9px 14px;"><%= aiConfigurationMessage %> Manual assessment remains available.</div>
+      <% } %>
+      <div id="assessmentCopilotStatus" class="text-md text-secondary" role="status" aria-live="polite" aria-atomic="true" style="display:none;padding:10px 14px;"></div>
+      <div id="assessmentCopilotError" class="text-md" role="alert" style="display:none;padding:10px 14px;color:var(--danger,#b91c1c);background:rgba(185,28,28,0.05);"></div>
+      <div id="assessmentCopilotResult" class="assessment-copilot-result" style="display:none;">
+        <div class="assessment-copilot-summary">
+          <div><div class="meta text-xxs">Suggested status</div><strong id="assessmentCopilotStatusValue"></strong></div>
+          <div><div class="meta text-xxs">Advisory capability</div><strong id="assessmentCopilotMaturityValue"></strong></div>
+          <div><div class="meta text-xxs">Confidence</div><strong id="assessmentCopilotConfidenceValue"></strong></div>
+        </div>
+        <div>
+          <div class="meta text-xxs" style="margin-bottom:4px;">Rationale</div>
+          <div id="assessmentCopilotRationale" class="text-md" style="line-height:1.55;white-space:pre-wrap;"></div>
+        </div>
+        <div class="assessment-copilot-findings">
+          <section data-copilot-list-section="gaps" style="display:none;"><h4>Gaps</h4><ul id="assessmentCopilotGaps" class="text-md"></ul></section>
+          <section data-copilot-list-section="missing_evidence" style="display:none;"><h4>Missing evidence</h4><ul id="assessmentCopilotMissingEvidence" class="text-md"></ul></section>
+          <section data-copilot-list-section="follow_up_questions" style="display:none;"><h4>Follow-up questions</h4><ul id="assessmentCopilotQuestions" class="text-md"></ul></section>
+          <section data-copilot-list-section="recommended_actions" style="display:none;"><h4>Recommended actions</h4><ul id="assessmentCopilotActions" class="text-md"></ul></section>
+          <section data-copilot-list-section="limitations" style="display:none;"><h4>Limitations</h4><ul id="assessmentCopilotLimitations" class="text-md"></ul></section>
+          <section data-copilot-list-section="sources" style="display:none;"><h4>Sources cited by Copilot</h4><ul id="assessmentCopilotSources" class="text-md"></ul></section>
+        </div>
+        <div id="assessmentCopilotStale" class="text-sm" role="alert" style="display:none;margin-top:12px;padding:8px 10px;border-radius:5px;background:rgba(202,138,4,0.10);color:#92400e;">
+          The assessment form changed after this draft started. Run the copilot again before applying its fields.
+        </div>
+        <div class="assessment-copilot-actions">
+          <button type="button" id="assessmentCopilotApplyScoring" class="btn btn-secondary btn-xs">Use status + capability</button>
+          <button type="button" id="assessmentCopilotAppendNotes" class="btn btn-secondary btn-xs">Append notes draft</button>
+          <span id="assessmentCopilotModel" class="meta text-xs" style="align-self:center;"></span>
+        </div>
+      </div>
+    </section>
+
+    </details>
     <%# Gap-assessment fields only: Implementation status + Maturity.
         Applicability (Included/Excluded/Undecided) and the
         inclusion/exclusion justifications used to live here too, but
@@ -366,8 +542,8 @@
         only as a read-only indicator with a link to the SoA page. %>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div>
-        <label class="label">Implementation status<% if (isClause) { %> <span class="meta" style="color:#0891b2;">required for cert</span><% } %></label>
-        <select class="select" name="status">
+        <label class="label" for="assessment-status">Implementation status<% if (isClause) { %> <span class="meta" style="color:#0891b2;">required for cert</span><% } %></label>
+        <select class="select" name="status" id="assessment-status">
           <% let statusOpts = isClause
                ? ['Not Assessed','Not Implemented','Work In Progress','Partially Implemented','Implemented']
                : ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'];
@@ -381,8 +557,8 @@
         <% } %>
       </div>
       <div>
-        <label class="label">Advisory capability (0–5) <span class="meta">Nimbus proprietary method</span></label>
-        <select class="select" name="maturity">
+        <label class="label" for="assessment-maturity">Advisory capability (0–5) <span class="meta">Nimbus proprietary method</span></label>
+        <select class="select" name="maturity" id="assessment-maturity">
           <option value="0" <%= state.maturity == 0 ? 'selected' : '' %>>0 - Not implemented; no documentation; no awareness</option>
           <option value="1" <%= state.maturity == 1 ? 'selected' : '' %>>1 - Ad hoc; informal practice; no documentation</option>
           <option value="2" <%= state.maturity == 2 ? 'selected' : '' %>>2 - Documented; not yet consistently performed</option>
@@ -463,70 +639,14 @@
     <div class="assessment-form-actions" style="display:flex;gap:6px;align-items:center;justify-content:space-between;">
       <a href="/workspaces/<%= ws.id %>/controls/<%= item.id %>/history" class="meta link-muted text-base">View change history →</a>
       <div class="row">
-        <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
-        <button name="action" value="save" class="btn btn-primary">Save &amp; next →</button>
+        <button name="action" value="skip" class="btn btn-secondary btn-xs" formnovalidate>Skip for now</button>
+        <button name="action" value="save" class="btn btn-primary">Record conclusion &amp; next →</button>
       </div>
     </div>
   </form>
 </div>
 
-<!-- Flag-for-review state machine. junior -> requested -> reviewer approves / sends back. -->
-<% const rs = state.review_status || 'none'; %>
-<% if (rs === 'requested') { %>
-  <div class="panel" style="margin-bottom:14px;background:rgba(202,138,4,0.06);padding:14px 18px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-      <div style="flex:1;">
-        <div style="font-weight: 500;color:#a16207;font-size:13px;margin-bottom:3px;display:flex;align-items:center;gap:6px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Flagged for senior review</div>
-        <div class="meta" style="font-size:12px;line-height:1.5;">
-          Requested by <strong><%= requestedByName || 'someone' %></strong> on <%= state.review_requested_at %>.
-          <% if (state.review_reason) { %><br><em>"<%= state.review_reason %>"</em><% } %>
-        </div>
-      </div>
-      <% if (isReviewer) { %>
-        <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/review-action" style="display:flex;gap:6px;">
-          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-          <button name="action" value="approve" class="btn btn-primary btn-xs">Mark reviewed</button>
-          <button name="action" value="send_back" class="btn btn-secondary btn-xs">Send back</button>
-        </form>
-      <% } else { %>
-        <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/clear-flag" style="margin:0;">
-          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-          <button class="btn btn-ghost btn-xs">Cancel request</button>
-        </form>
-      <% } %>
-    </div>
-  </div>
-<% } else if (rs === 'reviewed' || rs === 'needs_changes') { %>
-  <div class="panel" style="margin-bottom:14px;background:<%= rs === 'reviewed' ? 'rgba(22,163,74,0.06)' : 'rgba(185,28,28,0.06)' %>;padding:14px 18px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-      <div style="flex:1;">
-        <div style="font-weight: 500;color:<%= rs === 'reviewed' ? '#15803d' : '#b91c1c' %>;font-size:13px;margin-bottom:3px;">
-          <%= rs === 'reviewed' ? '✓ Reviewed' : '↩ Sent back for changes' %>
-        </div>
-        <div class="meta" style="font-size:12px;">
-          By <strong><%= reviewedByName || 'reviewer' %></strong> on <%= state.reviewed_at %>.
-          <% if (rs === 'needs_changes' && state.review_reason) { %><br>Original request: <em>"<%= state.review_reason %>"</em><% } %>
-        </div>
-      </div>
-      <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/clear-flag" style="margin:0;">
-        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-        <button class="btn btn-ghost btn-xs">Clear flag</button>
-      </form>
-    </div>
-  </div>
-<% } else { %>
-  <details class="panel" style="margin-bottom:14px;border-style:dashed;">
-    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);">
-      Flag for senior review
-      <span class="meta" style="font-weight:400;font-size:12px;margin-left:6px;">- ask a senior to review your assessment before signoff</span>
-    </summary>
-    <form method="POST" action="/workspaces/<%= ws.id %>/controls/assess/<%= item.id %>/flag-for-review" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
-      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-      <textarea name="reason" rows="2" placeholder="Why are you unsure? e.g., 'Control says it's Implemented but evidence I saw was 6 months old - want a second opinion before signing off.'" class="textarea" style="width:100%;font-size:13px;margin-bottom:8px;font-family:inherit;"></textarea>
-      <button class="btn btn-primary btn-xs">Flag for senior review</button>
-    </form>
-  </details>
-<% } %>
+<%- include('partials/assessment_review',{state,reviewContext,user,ws,item,requestedByName,reviewedByName,path:`/workspaces/${ws.id}/controls/assess/${item.id}`}) %>
 
 <!-- Comments + @-mentions. parent_type='iso_item' so comments are scoped to this control across views. -->
 <%- include('partials/comments_thread', { parent_type: 'iso_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
@@ -695,6 +815,392 @@ function diagnosticValue(index) {
   const field = document.querySelector('input[data-diagnostic-value][name="q_' + index + '"]');
   return field ? field.value : '';
 }
+
+document.addEventListener('draftrestored',()=>{if(window.recomputeSuggested)window.recomputeSuggested();});
+const assessmentCopilotPanel = document.getElementById('assessmentCopilotPanel');
+const assessmentCopilotButton = document.getElementById('assessmentCopilotButton');
+const assessmentCopilotStatus = document.getElementById('assessmentCopilotStatus');
+const assessmentCopilotError = document.getElementById('assessmentCopilotError');
+const assessmentCopilotResult = document.getElementById('assessmentCopilotResult');
+const assessmentCopilotApplyScoring = document.getElementById('assessmentCopilotApplyScoring');
+const assessmentCopilotAppendNotes = document.getElementById('assessmentCopilotAppendNotes');
+const assessmentCopilotAcknowledgement = document.getElementById('assessmentCopilotAcknowledgement');
+const assessmentCopilotGroundingResult = document.getElementById('assessmentCopilotGroundingResult');
+const assessmentCopilotGroundingStatus = document.getElementById('assessmentCopilotGroundingStatus');
+const assessmentCopilotGroundingSummary = document.getElementById('assessmentCopilotGroundingSummary');
+const assessmentCopilotGroundingLimitations = document.getElementById('assessmentCopilotGroundingLimitations');
+const assessmentAiModelSelect = document.getElementById('assessmentAiModelSelect');
+const ASSESSMENT_COPILOT_CONFIGURED = <%= aiConfigured ? 'true' : 'false' %>;
+const ASSESSMENT_COPILOT_DISCLOSURE_VERSION = 'assessment_copilot_automatic_grounding_v2';
+let assessmentCopilotDraft = null;
+let assessmentCopilotFingerprint = '';
+let assessmentCopilotDraftStale = false;
+let assessmentCopilotBusy = false;
+
+// Navigating between controls swaps the main pane and re-runs this IIFE. Abort
+// any request owned by the previous page before it can paint into the new one.
+if (window._assessmentCopilotAbort) {
+  window._assessmentCopilotAbort.abort();
+  window._assessmentCopilotAbort = null;
+}
+
+function currentAssessmentDraft() {
+  const form = document.getElementById('assessForm');
+  const status = form && form.querySelector('select[name="status"]');
+  const maturity = form && form.querySelector('select[name="maturity"]');
+  const notes = form && form.querySelector('textarea[name="notes"]');
+  const snapshot = form && form.querySelector('input[name="last_updated_snapshot"]');
+  const stateFingerprint = form && form.querySelector('input[name="state_fingerprint_snapshot"]');
+  const answers = {};
+  for (let i = 0; i < QUESTION_TEXTS.length; i++) {
+    const value = diagnosticValue(i);
+    if (['yes','partial','no'].includes(value)) answers[String(i)] = value;
+  }
+  return {
+    status: status ? status.value : 'Not Assessed',
+    maturity: maturity ? maturity.value : '0',
+    notes: notes ? notes.value : '',
+    last_updated_snapshot: snapshot ? snapshot.value : '',
+    state_fingerprint_snapshot: stateFingerprint ? stateFingerprint.value : '',
+    answers: answers
+  };
+}
+
+function currentAssessmentFingerprint() {
+  const draft = currentAssessmentDraft();
+  return JSON.stringify({
+    status: draft.status,
+    maturity: draft.maturity,
+    notes: draft.notes,
+    answers: draft.answers
+  });
+}
+
+function assessmentCopilotAcknowledged() {
+  return !!(assessmentCopilotAcknowledgement && assessmentCopilotAcknowledgement.checked);
+}
+
+function updateAssessmentCopilotButton() {
+  if (!assessmentCopilotButton) return;
+  assessmentCopilotButton.textContent = 'Draft assessment';
+  assessmentCopilotButton.disabled = assessmentCopilotBusy
+    || !ASSESSMENT_COPILOT_CONFIGURED
+    || !assessmentCopilotAcknowledged();
+}
+
+function clearAssessmentCopilotAcknowledgement() {
+  if (assessmentCopilotAcknowledgement) assessmentCopilotAcknowledgement.checked = false;
+  updateAssessmentCopilotButton();
+}
+
+function setAssessmentCopilotBusy(busy) {
+  assessmentCopilotBusy = !!busy;
+  if (assessmentCopilotPanel) assessmentCopilotPanel.setAttribute('aria-busy', busy ? 'true' : 'false');
+  updateAssessmentCopilotButton();
+}
+
+function showAssessmentCopilotError(message) {
+  if (assessmentCopilotStatus) assessmentCopilotStatus.style.display = 'none';
+  if (!assessmentCopilotError) return;
+  assessmentCopilotError.textContent = message || 'The copilot could not create a draft.';
+  assessmentCopilotError.style.display = '';
+}
+
+const assessmentCopilotListIds = {
+  gaps: 'assessmentCopilotGaps',
+  missing_evidence: 'assessmentCopilotMissingEvidence',
+  follow_up_questions: 'assessmentCopilotQuestions',
+  recommended_actions: 'assessmentCopilotActions',
+  limitations: 'assessmentCopilotLimitations',
+  sources: 'assessmentCopilotSources'
+};
+
+function renderAssessmentCopilotList(name, values) {
+  if (!assessmentCopilotResult) return;
+  const section = assessmentCopilotResult.querySelector('[data-copilot-list-section="' + name + '"]');
+  const list = document.getElementById(assessmentCopilotListIds[name]);
+  if (!section || !list) return;
+  list.replaceChildren();
+  const rows = Array.isArray(values) ? values : [];
+  rows.forEach(function (value) {
+    const li = document.createElement('li');
+    if (name === 'sources' && value && typeof value === 'object') {
+      const label = boundedAssessmentCopilotText(value.label || value.ref, 'Unnamed source', 300);
+      const ref = boundedAssessmentCopilotText(value.ref, '', 160);
+      li.textContent = label + (ref ? ' [' + ref + ']' : '');
+    } else {
+      li.textContent = boundedAssessmentCopilotText(value, '', 700);
+    }
+    list.appendChild(li);
+  });
+  section.style.display = rows.length ? '' : 'none';
+}
+
+function boundedAssessmentCopilotText(value, fallback, limit) {
+  const text = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+  return (text || fallback).slice(0, limit);
+}
+
+function nonNegativeAssessmentCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0;
+}
+
+function retrievalConsideredCount(source, kind) {
+  if (!source || typeof source !== 'object') return 0;
+  const keys = kind === 'policy'
+    ? ['documents_considered', 'policies_considered', 'sources_considered']
+    : ['evidence_considered', 'files_considered', 'sources_considered'];
+  for (const key of keys) {
+    if (source[key] !== undefined) return nonNegativeAssessmentCount(source[key]);
+  }
+  return 0;
+}
+
+function retrievalStatusSentence(label, source, kind) {
+  const status = boundedAssessmentCopilotText(source && source.status, 'not reported', 80);
+  const considered = retrievalConsideredCount(source, kind);
+  const used = nonNegativeAssessmentCount(source && source.passages_used);
+  const noun = kind === 'policy' ? 'controlled document' : 'evidence file';
+  return label + ': ' + status + '. ' + considered + ' ' + noun + (considered === 1 ? '' : 's')
+    + ' considered; ' + used + ' passage' + (used === 1 ? '' : 's') + ' used.';
+}
+
+function renderAssessmentCopilotRetrieval(retrieval) {
+  if (!assessmentCopilotGroundingResult || !assessmentCopilotGroundingSummary) return;
+  assessmentCopilotGroundingSummary.replaceChildren();
+  if (assessmentCopilotGroundingLimitations) {
+    assessmentCopilotGroundingLimitations.textContent = '';
+    assessmentCopilotGroundingLimitations.style.display = 'none';
+  }
+
+  const details = retrieval && typeof retrieval === 'object' ? retrieval : null;
+  if (!details) {
+    if (assessmentCopilotGroundingStatus) {
+      assessmentCopilotGroundingStatus.textContent = 'Automatic retrieval details were not returned for this draft.';
+    }
+    const empty = document.createElement('li');
+    empty.textContent = 'No policy or Evidence Library source was reported as considered.';
+    assessmentCopilotGroundingSummary.appendChild(empty);
+    assessmentCopilotGroundingResult.style.display = '';
+    return;
+  }
+
+  if (assessmentCopilotGroundingStatus) {
+    assessmentCopilotGroundingStatus.textContent = retrievalStatusSentence('Policy', details.policy, 'policy')
+      + ' ' + retrievalStatusSentence('Evidence Library', details.evidence, 'evidence');
+  }
+
+  const sources = Array.isArray(details.sources) ? details.sources.slice(0, 12) : [];
+  sources.forEach(function (source) {
+    if (!source || typeof source !== 'object') return;
+    const type = boundedAssessmentCopilotText(source.source_type, 'source', 40);
+    const label = boundedAssessmentCopilotText(source.label, 'Unnamed source', 300);
+    const ref = boundedAssessmentCopilotText(source.ref, '', 160);
+    const li = document.createElement('li');
+    li.textContent = type + ': ' + label + (ref ? ' [' + ref + ']' : '');
+    assessmentCopilotGroundingSummary.appendChild(li);
+  });
+  if (!assessmentCopilotGroundingSummary.childElementCount) {
+    const empty = document.createElement('li');
+    empty.textContent = 'No policy or Evidence Library passage was used. Copilot relied on the governed assessment context shown above.';
+    assessmentCopilotGroundingSummary.appendChild(empty);
+  }
+
+  const limitations = (Array.isArray(details.limitations) ? details.limitations : [])
+    .slice(0, 6)
+    .map(function (value) { return boundedAssessmentCopilotText(value, '', 300); })
+    .filter(Boolean);
+  if (assessmentCopilotGroundingLimitations && limitations.length) {
+    assessmentCopilotGroundingLimitations.textContent = 'Retrieval limitations: ' + limitations.join(' ');
+    assessmentCopilotGroundingLimitations.style.display = '';
+  }
+  assessmentCopilotGroundingResult.style.display = '';
+}
+
+function updateAssessmentCopilotAssessmentContext() {
+  const summary = document.getElementById('assessmentCopilotAssessmentContext');
+  if (!summary) return;
+  let answered = 0;
+  for (let i = 0; i < QUESTION_TEXTS.length; i++) {
+    if (['yes','partial','no'].includes(diagnosticValue(i))) answered++;
+  }
+  const form = document.getElementById('assessForm');
+  const notes = form && form.querySelector('textarea[name="notes"]');
+  summary.textContent = answered + ' of ' + QUESTION_TEXTS.length + ' diagnostic question'
+    + (QUESTION_TEXTS.length === 1 ? '' : 's') + ' answered; '
+    + (notes && notes.value.trim() ? 'current draft notes included.' : 'no current draft notes.');
+}
+
+function markAssessmentCopilotStale() {
+  assessmentCopilotDraftStale = true;
+  const warning = document.getElementById('assessmentCopilotStale');
+  if (warning) warning.style.display = '';
+  if (assessmentCopilotApplyScoring) assessmentCopilotApplyScoring.disabled = true;
+  if (assessmentCopilotAppendNotes) assessmentCopilotAppendNotes.disabled = true;
+}
+
+function assessmentCopilotCanApply() {
+  if (!assessmentCopilotDraft || assessmentCopilotDraftStale) return false;
+  if (currentAssessmentFingerprint() !== assessmentCopilotFingerprint) {
+    markAssessmentCopilotStale();
+    return false;
+  }
+  return true;
+}
+
+function renderAssessmentCopilotDraft(data, requestFingerprint) {
+  const draft = data && data.suggestion;
+  if (!draft || !assessmentCopilotResult) return false;
+  assessmentCopilotDraft = draft;
+  assessmentCopilotFingerprint = requestFingerprint;
+  assessmentCopilotDraftStale = currentAssessmentFingerprint() !== requestFingerprint;
+
+  document.getElementById('assessmentCopilotStatusValue').textContent = String(draft.status || 'Not Assessed');
+  document.getElementById('assessmentCopilotMaturityValue').textContent = String(draft.maturity == null ? 0 : draft.maturity) + ' / 5';
+  document.getElementById('assessmentCopilotConfidenceValue').textContent = String(draft.confidence || 'low').replace(/^./, function (c) { return c.toUpperCase(); });
+  document.getElementById('assessmentCopilotRationale').textContent = String(draft.rationale || 'No rationale was returned.');
+  renderAssessmentCopilotList('gaps', draft.gaps);
+  renderAssessmentCopilotList('missing_evidence', draft.missing_evidence);
+  renderAssessmentCopilotList('follow_up_questions', draft.follow_up_questions);
+  renderAssessmentCopilotList('recommended_actions', draft.recommended_actions);
+  renderAssessmentCopilotList('limitations', draft.limitations);
+  renderAssessmentCopilotList('sources', draft.sources);
+  renderAssessmentCopilotRetrieval(data.retrieval);
+
+  const modelNote = document.getElementById('assessmentCopilotModel');
+  if (modelNote) {
+    const provider = data.provider ? String(data.provider) + ' / ' : '';
+    modelNote.textContent = 'Generated with ' + provider + String(data.model || 'configured model') + '. Review every field before use.';
+  }
+  const warning = document.getElementById('assessmentCopilotStale');
+  if (warning) warning.style.display = assessmentCopilotDraftStale ? '' : 'none';
+  if (assessmentCopilotApplyScoring) assessmentCopilotApplyScoring.disabled = assessmentCopilotDraftStale;
+  if (assessmentCopilotAppendNotes) assessmentCopilotAppendNotes.disabled = assessmentCopilotDraftStale || !String(draft.notes_draft || '').trim();
+  assessmentCopilotResult.style.display = '';
+  return true;
+}
+
+async function generateAssessmentCopilotDraft() {
+  if (!assessmentCopilotPanel || !assessmentCopilotButton) return;
+  if (!assessmentCopilotAcknowledged()) {
+    showAssessmentCopilotError('Confirm the external AI processing warning before drafting this assessment.');
+    return;
+  }
+  const requestDraft = currentAssessmentDraft();
+  const requestFingerprint = currentAssessmentFingerprint();
+  const itemId = assessmentCopilotPanel.getAttribute('data-item-id');
+  const endpoint = assessmentCopilotPanel.getAttribute('data-endpoint');
+  const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || window._csrfToken || '';
+  const controller = new AbortController();
+  window._assessmentCopilotAbort = controller;
+  assessmentCopilotDraft = null;
+  assessmentCopilotDraftStale = false;
+  if (assessmentCopilotResult) assessmentCopilotResult.style.display = 'none';
+  if (assessmentCopilotGroundingResult) assessmentCopilotGroundingResult.style.display = 'none';
+  if (assessmentCopilotError) assessmentCopilotError.style.display = 'none';
+  if (assessmentCopilotStatus) {
+    assessmentCopilotStatus.textContent = 'Finding relevant governed policy and Evidence Library context, then drafting an assessment. Large free models can take several minutes.';
+    assessmentCopilotStatus.style.display = '';
+  }
+  setAssessmentCopilotBusy(true);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      credentials: 'same-origin',
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: assessmentAiModelSelect ? assessmentAiModelSelect.value : '',
+        last_updated_snapshot: requestDraft.last_updated_snapshot,
+        state_fingerprint_snapshot: requestDraft.state_fingerprint_snapshot,
+        status: requestDraft.status,
+        maturity: requestDraft.maturity,
+        notes: requestDraft.notes,
+        answers: requestDraft.answers,
+        automatic_context: true,
+        ai_external_ack: 'accepted',
+        ai_data_classification: 'non_confidential_trial',
+        ai_disclosure_version: ASSESSMENT_COPILOT_DISCLOSURE_VERSION
+      })
+    });
+    const data = await response.json().catch(function () { return { ok: false, error: 'Unexpected response from the copilot endpoint.' }; });
+    if (controller.signal.aborted || !assessmentCopilotPanel.isConnected || assessmentCopilotPanel.getAttribute('data-item-id') !== itemId) return;
+    if (!response.ok || !data.ok || !data.suggestion) {
+      showAssessmentCopilotError((data && data.error) || 'No assessment draft was returned.');
+      return;
+    }
+    if (assessmentCopilotStatus) assessmentCopilotStatus.style.display = 'none';
+    if (!renderAssessmentCopilotDraft(data, requestFingerprint)) {
+      showAssessmentCopilotError('The copilot response was incomplete. Try a different model.');
+      return;
+    }
+    assessmentCopilotResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (error) {
+    if (error && error.name === 'AbortError') return;
+    showAssessmentCopilotError('Could not reach the copilot. Check your connection and try again.');
+  } finally {
+    clearAssessmentCopilotAcknowledgement();
+    if (window._assessmentCopilotAbort === controller) window._assessmentCopilotAbort = null;
+    if (assessmentCopilotPanel && assessmentCopilotPanel.isConnected) setAssessmentCopilotBusy(false);
+  }
+}
+
+if (assessmentCopilotButton) assessmentCopilotButton.addEventListener('click', generateAssessmentCopilotDraft);
+if (assessmentCopilotAcknowledgement) assessmentCopilotAcknowledgement.addEventListener('change', updateAssessmentCopilotButton);
+if (assessmentAiModelSelect) assessmentAiModelSelect.addEventListener('change', function () {
+  const selectedModel = document.getElementById('assessmentCopilotSelectedModel');
+  if (selectedModel) selectedModel.textContent = assessmentAiModelSelect.value;
+  clearAssessmentCopilotAcknowledgement();
+});
+document.querySelectorAll('input[data-diagnostic-value]').forEach(function (field) {
+  field.disabled = false;
+  field.addEventListener('change', updateAssessmentCopilotAssessmentContext);
+});
+const assessmentNotes = document.querySelector('#assessForm textarea[name="notes"]');
+if (assessmentNotes) assessmentNotes.addEventListener('input', updateAssessmentCopilotAssessmentContext);
+updateAssessmentCopilotAssessmentContext();
+updateAssessmentCopilotButton();
+
+if (assessmentCopilotApplyScoring) assessmentCopilotApplyScoring.addEventListener('click', function () {
+  if (!assessmentCopilotCanApply()) return;
+  const form = document.getElementById('assessForm');
+  const status = form && form.querySelector('select[name="status"]');
+  const maturity = form && form.querySelector('select[name="maturity"]');
+  if (status && Array.from(status.options).some(function (option) { return option.value === assessmentCopilotDraft.status; })) {
+    status.value = assessmentCopilotDraft.status;
+    status.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  if (maturity) {
+    maturity.value = String(assessmentCopilotDraft.maturity);
+    maturity.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  assessmentCopilotFingerprint = currentAssessmentFingerprint();
+  if (assessmentCopilotStatus) {
+    assessmentCopilotStatus.textContent = 'Status and capability copied into the form as a draft. Review them, then use Record conclusion & next when you are ready.';
+    assessmentCopilotStatus.style.display = '';
+  }
+});
+
+if (assessmentCopilotAppendNotes) assessmentCopilotAppendNotes.addEventListener('click', function () {
+  if (!assessmentCopilotCanApply()) return;
+  const form = document.getElementById('assessForm');
+  const notes = form && form.querySelector('textarea[name="notes"]');
+  const draftNotes = String(assessmentCopilotDraft.notes_draft || '').trim();
+  if (!notes || !draftNotes) return;
+  if (!notes.value.includes(draftNotes)) {
+    const prefix = notes.value.trim() ? notes.value.trim() + '\n\n' : '';
+    notes.value = prefix + 'Assessment copilot draft - review and verify:\n' + draftNotes;
+    notes.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  assessmentCopilotFingerprint = currentAssessmentFingerprint();
+  notes.focus();
+  if (assessmentCopilotStatus) {
+    assessmentCopilotStatus.textContent = 'Notes appended as a draft. Verify every statement against the underlying evidence before saving.';
+    assessmentCopilotStatus.style.display = '';
+  }
+});
 
 window.toggleDiagnosticAnswer = function (button) {
   const group = button && button.closest('[data-diagnostic-group]');

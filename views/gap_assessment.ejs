@@ -16,14 +16,16 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Gap assessment</h1>
-    <div class="page-subtitle">Each pass is a traceable round of consultant verification. Existing control states remain authoritative; passes add assessment lineage and allow point-in-time comparison.</div>
+    <div class="page-subtitle">Each pass is a traceable round of consultant verification. Completed versions retain the exact conclusions, evidence references and findings reviewed for that round.</div>
   </div>
   <% const latestReportablePass = passes.find(p => p.status === 'completed' && p.quality && p.quality.ready); %>
   <div class="row-center gap-page-actions">
     <a href="/workspaces/<%= ws.id %>/gap-assessment/fieldwork" class="btn btn-primary btn-sm">Open fieldwork manager</a>
-    <details class="gap-export-menu"><summary class="btn btn-secondary btn-sm">Download report</summary><div class="panel"><a href="/workspaces/<%= ws.id %>/export/gap-report.pdf" download data-no-loader="1">Current status PDF</a><a href="/workspaces/<%= ws.id %>/export/gap-report.docx" download data-no-loader="1">Editable Word</a><% if (!activePass && latestReportablePass) { %><a href="/workspaces/<%= ws.id %>/export/recommendations.docx" download data-no-loader="1">Recommendations memo</a><% } %></div></details>
+    <details class="gap-export-menu"><summary class="btn btn-secondary btn-sm">Operational exports</summary><div class="panel"><a href="/workspaces/<%= ws.id %>/export/gap-report.pdf" download data-no-loader="1">Current status PDF (regenerated)</a><a href="/workspaces/<%= ws.id %>/export/gap-report.docx" download data-no-loader="1">Current status Word (editable)</a><% if (!activePass && latestReportablePass) { %><a href="/workspaces/<%= ws.id %>/export/recommendations.docx" download data-no-loader="1">Recommendations memo</a><% } %></div></details>
   </div>
 </div>
+
+<p class="meta" style="margin-bottom:16px">Operational exports are regenerated from assessment records and current supporting data. For an issued client report, open a retained completion version below and use its controlled report register.</p>
 
 <% if (typeof legacyBaseline !== 'undefined' && legacyBaseline) { %>
   <% const baselineComplete = legacyBaseline.assessed === totalItems; %>
@@ -49,7 +51,7 @@
         <% } else { %>
           <a class="btn btn-primary btn-sm" href="/workspaces/<%= ws.id %>/controls/assess/<%= nextItem ? nextItem.id : '' %>">Complete remaining conclusions →</a>
         <% } %>
-        <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf" class="btn btn-secondary btn-sm" download data-no-loader="1">Download current report</a>
+        <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf" class="btn btn-secondary btn-sm" download data-no-loader="1">Download current status export</a>
       </div>
     </div>
   </div>
@@ -119,8 +121,8 @@
             <a href="/workspaces/<%= ws.id %>/controls/assess?done=1" class="btn btn-primary btn-xs">View summary →</a>
           <% } %>
           <a href="/workspaces/<%= ws.id %>/controls/assess/summary" class="btn btn-secondary btn-xs">Assessment findings</a>
-          <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs" download data-no-loader="1">Pass status PDF ↓</a>
-          <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs" download data-no-loader="1">Editable Word ↓</a>
+          <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs" download data-no-loader="1">Operational pass PDF ↓</a>
+          <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= activePass.id %>" class="btn btn-secondary btn-xs" download data-no-loader="1">Operational pass Word ↓</a>
           <% if (passGate.ready) { %>
             <a href="/workspaces/<%= ws.id %>/export/recommendations.docx" class="btn btn-secondary btn-xs" download data-no-loader="1">Recommendations memo ↓</a>
             <% if (canSignoff && Number(activePass.started_by) !== Number(user.id)) { %><form method="POST" action="/workspaces/<%= ws.id %>/gap-assessment/<%= activePass.id %>/complete"
@@ -206,10 +208,11 @@
               <% if (p.notes) { %>
                 <div class="text-md" style="margin-top:5px;line-height:1.5;"><%= p.notes %></div>
               <% } %>
+              <% if(p.manifests&&p.manifests.length){ %><div style="margin-top:12px"><strong>Retained completion versions</strong><% p.manifests.forEach(m=>{ %><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:8px"><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/delivery/pass-manifests/<%= m.id %>">Completion <%= m.completion_generation %> · <%= m.item_count %> conclusions</a><a href="/workspaces/<%= ws.id %>/delivery?view=reports&amp;engagement=<%= m.engagement_id %>&amp;manifestId=<%= m.id %>">Open controlled reports<%= m.published_reports?' · '+m.published_reports+' published':'' %></a><small class="meta">Captured <%= m.source_cutoff %></small></div><% }) %></div><% }else if(p.status==='completed'){ %><p class="meta" style="margin-top:10px">Legacy completion: no exact source manifest was recorded. Existing issued reports are retained as published.</p><% } %>
             </div>
             <div class="gap-pass-actions" style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
-              <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">PDF ↓</a>
-              <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">Word ↓</a>
+              <a href="/workspaces/<%= ws.id %>/export/gap-report.pdf?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">Operational PDF ↓</a>
+              <a href="/workspaces/<%= ws.id %>/export/gap-report.docx?pass=<%= p.id %>" class="btn btn-ghost btn-xs text-xs" download data-no-loader="1">Operational Word ↓</a>
               <% if (p.status === 'completed') { %><a href="/workspaces/<%= ws.id %>/delivery?view=reports" class="btn btn-ghost btn-xs text-xs">Governed reports →</a><% } %>
               <details style="position:relative;">
                 <summary class="btn btn-ghost btn-xs text-xs" style="list-style:none;cursor:pointer;">Edit</summary>

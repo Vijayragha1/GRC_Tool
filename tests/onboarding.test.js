@@ -173,7 +173,7 @@ test('onboarding state changes are manager-only and skip is not completion', asy
   state = conn.prepare('SELECT skipped,completed_at FROM tenant_onboarding WHERE firm_id=?').get(firm.id);
   assert.equal(state.completed_at, null, 'removing the final client invalidates live first-client completion');
   assert.equal(getOnboardingProgress(conn, firm.id).done, 0);
-  const dashboard = await client.get('/dashboard');
+  const dashboard = await client.get('/dashboard?legacy=1');
   assert.match(dashboard.text, /Next:\s*Create your first client/);
 
   conn.prepare("UPDATE users SET firm_role='consultant' WHERE email=?").run(login.email);

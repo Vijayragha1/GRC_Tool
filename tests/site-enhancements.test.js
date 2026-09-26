@@ -119,9 +119,11 @@ test('ISO 27001 diagnostic answers can return to an unanswered state', () => {
   assert.match(view, /window\.recomputeSuggested\(\)/,
     'answer changes must immediately update the heuristic');
   assert.match(view, /id="suggestedStatusText"[^>]*role="status"[^>]*aria-live="polite"/);
-  assert.match(route, /sawDiagnosticField = true/);
-  assert.match(route, /JSON\.stringify\(answers\)/,
-    'the legacy storage path must be able to replace the final answer with an empty object');
+  const diagnostics = require('../lib/assessment-diagnostics');
+  const cleared = diagnostics.serialize('test-control', ['Question one'], { q_0: '' });
+  assert.equal(JSON.parse(cleared).questions[0].answer, null);
+  assert.match(route, /diagnostics\.serialize/,
+    'explicit clearing is recorded in the canonical diagnostic envelope');
 });
 
 test('dashboard quick-create offers the governed DPDPA assessment programme', () => {

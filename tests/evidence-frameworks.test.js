@@ -39,6 +39,29 @@ test('evidence upload renders every enabled framework catalog', async () => {
   assert.match(page.text, /name="dpdpa_item_ref" value="DPDPA-APP-01"/);
 });
 
+test('an unlinked evidence file renders with empty framework buckets', async () => {
+  const form = new FormData();
+  form.set('_csrf', client.getCsrfToken());
+  form.set('description', 'Unlinked evidence render regression');
+  form.append('file', new Blob(['unlinked evidence record\n'], { type: 'text/plain' }), 'unlinked-evidence.txt');
+  const response = await fetch(`${await client.baseUrl()}/workspaces/${workspaceId}/evidence`, {
+    method: 'POST',
+    headers: {
+      cookie: client.getCookies(),
+      referer: `${await client.baseUrl()}/workspaces/${workspaceId}/evidence`,
+      'x-csrf-token': client.getCsrfToken()
+    },
+    body: form,
+    redirect: 'manual'
+  });
+  assert.equal(response.status, 302, await response.text());
+
+  const page = await client.get(`/workspaces/${workspaceId}/evidence`);
+  assert.equal(page.status, 200, page.text.slice(0, 500));
+  assert.match(page.text, /unlinked-evidence\.txt/);
+  assert.match(page.text, /Not linked to any control/);
+});
+
 test('one upload links to every enabled framework through canonical requirements', async () => {
   const form = new FormData();
   form.set('_csrf', client.getCsrfToken());

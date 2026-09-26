@@ -31,7 +31,7 @@ async function loginAs(http, email, password = PASSWORD) {
   assert.ok(csrf, `login CSRF token missing for ${email}`);
   const response = await http.post('/login', { email, password, _csrf: csrf }, { csrf: false });
   assert.ok(response.status >= 300 && response.status < 400, `login failed for ${email}`);
-  await http.get('/dashboard');
+  await http.get('/dashboard?legacy=1');
 }
 
 function relationshipUpdate(row, overrides = {}) {

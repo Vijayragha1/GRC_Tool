@@ -11,6 +11,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const rbac = require('../lib/rbac');
 
+test('legacy firm request management expands before independent create and cancel overrides',()=>{
+  const legacy=rbac.effectivePermissions('consultant');
+  assert.ok(legacy.has('client_request.create'));assert.ok(legacy.has('client_request.cancel'));
+  for(const overrides of [[{permission:'client_request.cancel',granted:0},{permission:'client_request.manage',granted:1}], [{permission:'client_request.manage',granted:1},{permission:'client_request.cancel',granted:0}]]){
+    const permissions=rbac.effectivePermissions('consultant',overrides);
+    assert.ok(permissions.has('client_request.create'));assert.ok(!permissions.has('client_request.cancel'));
+  }
+  const granular=rbac.effectivePermissions('consultant',[{permission:'client_request.manage',granted:0},{permission:'client_request.create',granted:1}]);
+  assert.ok(granular.has('client_request.create'));assert.ok(!granular.has('client_request.cancel'));
+  const client=rbac.effectivePermissions('client_owner',[{permission:'client_request.manage',granted:1}]);
+  assert.ok(!client.has('client_request.create'));assert.ok(!client.has('client_request.cancel'));
+});
+
 test('rbac - manager has every defined permission', () => {
   const perms = rbac.rolePermissions('manager');
   const all = Object.keys(rbac.PERMISSIONS);
@@ -34,6 +47,12 @@ test('rbac - senior_consultant has broad perms but not firm.manage, firm.users.m
   assert.ok(perms.includes('workspace.create'), 'senior_consultant needs workspace.create');
   assert.ok(perms.includes('members.override_perms'), 'senior_consultant needs members.override_perms');
   assert.ok(perms.includes('assessment.signoff'), 'senior_consultant needs assessment.signoff');
+});
+
+test('rbac - external AI disclosure is manager-only unless explicitly delegated', () => {
+  assert.ok(rbac.rolePermissions('manager').includes('ai.external_process'));
+  assert.ok(!rbac.rolePermissions('senior_consultant').includes('ai.external_process'));
+  assert.ok(!rbac.rolePermissions('consultant').includes('ai.external_process'));
 });
 
 test('rbac - consultant has working-level perms but no member management or document lifecycle', () => {
@@ -65,7 +84,9 @@ test('rbac - consultant has working-level perms but no member management or docu
 test('rbac - client_owner is a portal sponsor, never a workspace administrator', () => {
   const perms = rbac.rolePermissions('client_owner');
   assert.ok(perms.includes('client_portal.view'));
-  assert.ok(perms.includes('client_request.manage'));
+  assert.ok(perms.includes('client_request.coordinate'));
+  assert.ok(!perms.includes('client_request.manage'));
+  assert.ok(!perms.includes('client_request.review'));
   assert.ok(perms.includes('client_request.respond'));
   assert.ok(perms.includes('document.approve'), 'client_owner needs document.approve');
   assert.ok(perms.includes('document.sign'), 'client_owner needs document.sign');
@@ -85,7 +106,9 @@ test('rbac - isms_manager coordinates the portal without operator access', () =>
   assert.ok(perms.includes('document.approve'), 'isms_manager needs document.approve');
   assert.ok(perms.includes('document.review'), 'isms_manager needs document.review');
   assert.ok(perms.includes('document.sign'), 'isms_manager needs document.sign');
-  assert.ok(perms.includes('client_request.manage'));
+  assert.ok(perms.includes('client_request.coordinate'));
+  assert.ok(!perms.includes('client_request.manage'));
+  assert.ok(!perms.includes('client_request.review'));
   assert.ok(!perms.includes('document.publish'));
   assert.ok(!perms.includes('workspace.delete'), 'isms_manager must not delete workspace');
   assert.ok(!perms.includes('workspace.update'), 'isms_manager must not update workspace');
@@ -270,7 +293,7 @@ test('rbac - every permission listed in PERMISSIONS is referenced by at least on
   // control rather than a normal senior-consultant operation.
   const managerOnly = new Set(['firm.manage', 'firm.users.manage', 'workspace.delete', 'report.approve',
                               'auditor_share.manage', 'supplier.risk_accept', 'tprm.methodology.manage',
-                              'dpdpa.approve']);
+                              'dpdpa.approve', 'ai.external_process']);
   const allRoles = Object.keys(rbac.ROLE_PERMS).filter(r => r !== 'manager');
   for (const perm of Object.keys(rbac.PERMISSIONS)) {
     if (managerOnly.has(perm)) continue;

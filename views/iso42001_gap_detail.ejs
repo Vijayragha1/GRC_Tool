@@ -4,6 +4,7 @@
   /* Diagnostic-question pills - visual state driven by :has(input:checked)
      so the radio state is the single source of truth (no JS style mutation). */
   .diag-pill { cursor:pointer; display:inline-flex; align-items:center; gap:3px; padding:3px 9px; border:1px solid var(--border); border-radius:14px; font-size:11.5px; background:var(--bg); color:var(--text-secondary); font-weight:500; transition:all 0.12s; user-select:none; }
+  .diag-pill:focus-within { outline:2px solid var(--accent);outline-offset:2px; }
   .diag-pill:hover { border-color:var(--text-tertiary); }
   .diag-pill input[type="radio"] { position:absolute; opacity:0; pointer-events:none; }
   .diag-pill-yes:has(input:checked)     { background:#16a34a; color:#fff; border-color:#16a34a; font-weight: 500; }
@@ -259,7 +260,17 @@
     </div>
   <% } %>
 
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>" class="panel-pad" id="assessForm">
+  <% if(recovery){ %><section class="alert alert-warning" role="alert" id="assessmentRecovery"><h2>Your conclusion was not recorded</h2><p><%= recovery.message %></p><details open><summary>Compare with the current recorded conclusion (version <%= recordedState.record_version||0 %>)</summary><p>Status: <strong><%= recordedState.status %></strong> · Capability: <%= recordedState.maturity %></p><pre style="white-space:pre-wrap"><%= recordedState.notes||'No recorded notes.' %></pre></details></section><% } %>
+  <% if(privateDraft.draft){ %><div class="alert alert-info" role="status">Your private draft is restored. It has not been recorded as an assessment conclusion.<% if(String(privateDraft.draft.baseVersion)!==String(recordedState.record_version||0)){ %> The recorded version changed since this draft began. Compare it before recording.<% } %></div><% } %>
+  <% if(diagnosticDraftChanged){ %><div class="alert alert-warning" role="alert">The diagnostic questions changed. Your other edits are retained; answer the current questions before recording.</div><% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>" class="panel-pad" id="assessForm" data-form-draft="assessment-iso42001" data-draft-record="<%= item.id %>" data-draft-version="<%= recordedState.record_version||0 %>" data-draft-recovery="<%= recovery?'true':'false' %>" data-draft-recorded="<%= JSON.stringify({status:recordedState.status,maturity:recordedState.maturity,applicability:recordedState.applicability,notes:recordedState.notes||'',inclusion_justification:recordedState.inclusion_justification||'',exclusion_justification:recordedState.exclusion_justification||'',diagnostic_set_id:diagnosticState.current.setId,...Object.fromEntries(questions.map((q,i)=>['q_'+i,diagnosticState.answers[String(i)]||'']))}) %>">
+    <input type="hidden" name="expected_record_version" value="<%= !recovery&&privateDraft.draft?privateDraft.draft.baseVersion:recordedState.record_version||0 %>">
+    <input type="hidden" name="private_draft_generation" value="<%= privateDraft.generation %>">
+    <input type="hidden" name="private_draft_version" value="<%= privateDraft.draft?.version||0 %>">
+    <input type="hidden" name="assessment_context" value="<%= activePass?.id||'' %>">
+    <input type="hidden" name="mutation_key" value="<%= mutationKey %>">
+    <input type="hidden" name="diagnostic_set_id" value="<%= diagnosticState.current.setId %>">
+    <% if(!diagnosticState.available){ %><p class="meta">No diagnostic responses have been recorded. Unanswered questions remain unanswered.</p><% } %>
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <% if (questions && questions.length) { %>
       <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
@@ -277,14 +288,14 @@
         <div style="display:grid;grid-template-columns:1fr;">
           <% questions.forEach((q, i) => { %>
             <div style="display:grid;grid-template-columns:1fr 220px;gap:12px;padding:9px 14px;<%= i < questions.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>align-items:center;">
-              <div class="text-md" style="line-height:1.45;"><%= q %></div>
-              <div style="display:flex;gap:4px;justify-content:flex-end;">
-                <% ['yes','partial','no'].forEach(opt => {
-                     const isOn = savedAnswers[String(i)] === opt;
+              <div class="text-md" id="diagnostic-question-<%= i %>" style="line-height:1.45;"><%= q %></div>
+              <div role="radiogroup" data-diagnostic-group aria-labelledby="diagnostic-question-<%= i %>" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">
+                <% ['yes','partial','no',''].forEach(opt => {
+                     const isOn = (savedAnswers[String(i)] || '') === opt;
                 %>
                   <label class="diag-pill diag-pill-<%= opt %>">
                     <input type="radio" name="q_<%= i %>" value="<%= opt %>" <%= isOn ? 'checked' : '' %> onchange="recomputeSuggested()">
-                    <%= opt === 'yes' ? 'Yes' : opt === 'partial' ? 'Partial' : 'No' %>
+                    <%= opt === 'yes' ? 'Yes' : opt === 'partial' ? 'Partial' : opt === 'no' ? 'No' : 'Unanswered' %>
                   </label>
                 <% }) %>
               </div>
@@ -382,69 +393,14 @@
     </div>
 
     <div class="iso42-form-actions" style="display:flex;gap:6px;align-items:center;justify-content:flex-end;">
-      <button name="action" value="skip" class="btn btn-secondary btn-xs">Skip without saving</button>
-      <button name="action" value="save" class="btn btn-primary">Save &amp; next →</button>
+      <button name="action" value="skip" class="btn btn-secondary btn-xs" formnovalidate>Skip for now</button>
+      <button name="action" value="save" class="btn btn-secondary">Save conclusion</button>
+      <button name="action" value="save_next" class="btn btn-primary">Save &amp; next →</button>
     </div>
   </form>
 </div>
 
-<!-- Flag-for-review block (parallel to ISO 27001 wizard) -->
-<% const rs42 = state.review_status || 'none'; %>
-<% if (rs42 === 'requested') { %>
-  <div class="panel" style="margin-bottom:14px;background:rgba(202,138,4,0.06);padding:14px 18px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-      <div style="flex:1;">
-        <div style="font-weight: 500;color:#a16207;font-size:13px;margin-bottom:3px;display:flex;align-items:center;gap:6px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Flagged for senior review</div>
-        <div class="meta" style="font-size:12px;line-height:1.5;">
-          Requested by <strong><%= requestedByName || 'someone' %></strong> on <%= state.review_requested_at %>.
-          <% if (state.review_reason) { %><br><em>"<%= state.review_reason %>"</em><% } %>
-        </div>
-      </div>
-      <% if (isReviewer) { %>
-        <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/review-action" style="display:flex;gap:6px;">
-          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-          <button name="action" value="approve" class="btn btn-primary btn-xs">Mark reviewed</button>
-          <button name="action" value="send_back" class="btn btn-secondary btn-xs">Send back</button>
-        </form>
-      <% } else { %>
-        <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/clear-flag" style="margin:0;">
-          <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-          <button class="btn btn-ghost btn-xs">Cancel request</button>
-        </form>
-      <% } %>
-    </div>
-  </div>
-<% } else if (rs42 === 'reviewed' || rs42 === 'needs_changes') { %>
-  <div class="panel" style="margin-bottom:14px;background:<%= rs42 === 'reviewed' ? 'rgba(22,163,74,0.06)' : 'rgba(185,28,28,0.06)' %>;padding:14px 18px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-      <div style="flex:1;">
-        <div style="font-weight: 500;color:<%= rs42 === 'reviewed' ? '#15803d' : '#b91c1c' %>;font-size:13px;margin-bottom:3px;">
-          <%= rs42 === 'reviewed' ? '✓ Reviewed' : '↩ Sent back for changes' %>
-        </div>
-        <div class="meta" style="font-size:12px;">
-          By <strong><%= reviewedByName || 'reviewer' %></strong> on <%= state.reviewed_at %>.
-          <% if (rs42 === 'needs_changes' && state.review_reason) { %><br>Original request: <em>"<%= state.review_reason %>"</em><% } %>
-        </div>
-      </div>
-      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/clear-flag" style="margin:0;">
-        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-        <button class="btn btn-ghost btn-xs">Clear flag</button>
-      </form>
-    </div>
-  </div>
-<% } else { %>
-  <details class="panel" style="margin-bottom:14px;border-style:dashed;">
-    <summary class="panel-pad" style="cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);">
-      Flag for senior review
-      <span class="meta" style="font-weight:400;font-size:12px;margin-left:6px;">- ask a senior to review your assessment before signoff</span>
-    </summary>
-    <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>/flag-for-review" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);">
-      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-      <textarea name="reason" rows="2" placeholder="Why are you unsure? e.g., 'Annex C lists 'automation bias' as a risk source but I'm not sure if this AI system qualifies - want a second opinion.'" class="textarea" style="width:100%;font-size:13px;margin-bottom:8px;font-family:inherit;"></textarea>
-      <button class="btn btn-primary btn-xs">Flag for senior review</button>
-    </form>
-  </details>
-<% } %>
+<%- include('partials/assessment_review',{state,reviewContext,user,ws,item,requestedByName,reviewedByName,path:`/workspaces/${ws.id}/iso42001/gap/${item.id}`}) %>
 
 <!-- Comments + @-mentions for this iso42001 item -->
 <%- include('partials/comments_thread', { parent_type: 'iso42001_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
@@ -663,7 +619,7 @@ window.applySuggested = function (e) {
   const val = txt.textContent.trim();
   const allowed = ['Implemented','Partially Implemented','Work In Progress','Not Implemented'];
   if (!allowed.includes(val)) return;
-  for (const o of sel.options) { if (o.value === val) { sel.value = val; break; } }
+  for (const o of sel.options) { if (o.value === val) { sel.value = val;sel.dispatchEvent(new Event('change',{bubbles:true})); break; } }
 };
 
 window.prefillNotesFromGaps = function (e) {
@@ -682,6 +638,7 @@ window.prefillNotesFromGaps = function (e) {
     return;
   }
   ta.value = (ta.value && ta.value.trim() ? ta.value.trim() + '\n\n' : '') + lines.join('\n');
+  ta.dispatchEvent(new Event('input',{bubbles:true}));
   ta.focus();
 };
 
@@ -701,7 +658,7 @@ window.recomputeSuggested = function () {
   let total = 0, count = 0;
   for (let i = 0; i < QUESTION_COUNT; i++) {
     const sel = document.querySelector('input[name="q_' + i + '"]:checked');
-    if (sel) { total += score[sel.value] || 0; count++; }
+    if (sel && ['yes','partial','no'].includes(sel.value)) { total += score[sel.value] || 0; count++; }
   }
   const hint = document.getElementById('suggestedStatusHint');
   const text = document.getElementById('suggestedStatusText');

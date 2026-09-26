@@ -15,7 +15,7 @@ async function login(client, email, password = PASSWORD) {
   assert.ok(csrf, `login CSRF token missing for ${email}`);
   const signedIn = await client.post('/login', { email, password, _csrf: csrf }, { csrf: false });
   assert.equal(signedIn.status, 302, signedIn.text.slice(0, 300));
-  let warm = await client.get('/dashboard');
+  let warm = await client.get('/dashboard?legacy=1');
   if (warm.status === 302 && warm.location) warm = await client.get(warm.location);
   assert.equal(warm.status, 200, warm.text.slice(0, 300));
 }
@@ -379,10 +379,10 @@ test('SESS-001 - password reset revokes every prior session and new logins bind 
     password: 'Replacement-password-5678', password2: 'Replacement-password-5678', _csrf: csrf
   }, { csrf: false });
   assert.equal(changed.status, 302, changed.text.slice(0, 300));
-  assert.equal((await resetClient.get('/dashboard')).status, 200, 'resetting browser receives the new epoch session');
-  assert.equal((await oldA.get('/dashboard')).status, 302, 'first old session must be revoked');
-  assert.equal((await oldB.get('/dashboard')).status, 302, 'second old session must be revoked');
-  assert.equal((await unrelated.get('/dashboard')).status, 200, 'revocation must not affect a different user');
+  assert.equal((await resetClient.get('/dashboard?legacy=1')).status, 200, 'resetting browser receives the new epoch session');
+  assert.equal((await oldA.get('/dashboard?legacy=1')).status, 302, 'first old session must be revoked');
+  assert.equal((await oldB.get('/dashboard?legacy=1')).status, 302, 'second old session must be revoked');
+  assert.equal((await unrelated.get('/dashboard?legacy=1')).status, 200, 'revocation must not affect a different user');
 
   const verify = new Database(dbPath);
   assert.equal(verify.prepare('SELECT auth_epoch FROM users WHERE id=?').get(resetUserId).auth_epoch, 1);

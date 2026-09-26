@@ -33,10 +33,12 @@ test('SEC-001 image contract uses an explicit source allowlist and a non-root ru
   assert.match(dockerignore, /^\*$/m);
   assert.match(dockerignore, /^\.env\.\*$/m);
   assert.match(dockerignore, /^\*\*\/\*\.db$/m);
+  assert.match(dockerignore, /^data\/ai-models\/$/m);
   assert.doesNotMatch(dockerfile, /^COPY\s+\.\s+\.$/m);
   assert.match(dockerfile, /^COPY routes\/ \.\/routes\/$/m);
   assert.match(dockerfile, /^USER node:node$/m);
   assert.match(dockerfile, /ISMS_BACKUP_DIR=\/app\/data\/backups/);
+  assert.match(dockerfile, /self-test-policy-models\.js --dir \/app\/models\/policy-retrieval/);
 });
 
 test('SEC-003 safe URL cleaning removes every CSRF query value and preserves filters', () => {

@@ -111,6 +111,122 @@ Threaded comments on every control assessment (`views/partials/comments_thread.e
 - **Competence matrix** at `/workspaces/:id/competence` - roles with their required competences, plus per-person records (certificate / experience / training-record evidence, recorded-at, expires-on). Surfaces gaps. Maps to Clause 7.2.
 - **Communication plan** at `/workspaces/:id/communication-plan` - what / audience / channel / frequency / owner / internal vs external / last-sent / next-due / trigger event. Overdue and "due soon" rows highlight on the dashboard. Maps to Clause 7.4.
 
+### AI-assisted workflows
+
+Guided risk drafting and the ISO 27001 assessment copilot support OpenRouter
+and Anthropic. To use
+OpenRouter's free-model router, add the following to `.env` and restart:
+
+```bash
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-openrouter-key
+OPENROUTER_MODEL=openrouter/free
+OPENROUTER_SITE_URL=https://yourdomain.com       # optional attribution
+OPENROUTER_APP_NAME="Nimbus GRC"                 # optional attribution
+```
+
+`openrouter/free` selects a currently available free model that supports the
+request's required tool calling. To pin a particular open model, replace it
+with an OpenRouter model slug, including a `:free` variant when one is
+available. Free-model availability changes, so do not hard-code a catalog in
+the app. If both provider keys are present, set `AI_PROVIDER`; without it the
+existing Anthropic configuration takes precedence for backward compatibility.
+
+The Guided Assessment model dropdown includes NVIDIA Nemotron 3 Ultra 550B,
+Poolside Laguna S 2.1, MiniMax M3, Thinking Machines Inkling, and Z.ai GLM 5.2
+free variants. The selected model is validated server-side, sent only for that
+generation, and recorded in the activity log. Inkling supports tools but not
+forced tool choice, so its request omits that unsupported parameter.
+
+The assessment copilot is available inside each clause/control gap-assessment
+workpaper. It sends a bounded context containing canonical ISO guidance, the
+live diagnostic answers and current form values, workspace industry/scope, and
+linked evidence/document/risk/nonconformity metadata. It does not send file
+contents, comments, internal notes, or user identities. Its result is advisory:
+the consultant must explicitly copy suggested fields into the form, verify them,
+and use the existing Save action. Stale responses are discarded and substantive
+edits clear any earlier review decision.
+
+The same workpaper also has a separate **Find policy coverage** action. Its
+default path searches only the active controlled documents the consultant
+explicitly ticks, using local `all-MiniLM-L6-v2` vector embeddings followed by
+a local `ms-marco-MiniLM-L-6-v2` cross-encoder reranker. Exact passages and
+governed document/version references are returned for human review. The local
+path does not use OpenRouter, persist policy chunks/vectors, change document
+links, or update assessment fields. A policy passage supports documented design
+only; it does not demonstrate that the control operates consistently.
+
+For non-confidential development trials, the same panel can use OpenRouter's
+fixed `nvidia/llama-nemotron-embed-vl-1b-v2:free` embedding model and
+`nvidia/llama-nemotron-rerank-vl-1b-v2:free` reranker. It reuses
+`OPENROUTER_API_KEY`; no second key or browser-supplied model is accepted. Enable
+the option explicitly in a non-production `.env`:
+
+```bash
+OPENROUTER_POLICY_RETRIEVAL_ENABLED=true
+OPENROUTER_POLICY_EMBED_BATCH_SIZE=128
+OPENROUTER_POLICY_TIMEOUT_MS=90000
+OPENROUTER_POLICY_RERANK_MIN_SCORE=0
+```
+
+The NVIDIA free endpoints state that they log inputs and outputs for model and
+product improvement and must not receive personal, confidential, sensitive,
+production, or business-critical information. Nimbus therefore keeps local as
+the default, requires a fresh acknowledgement for every external run, caps the
+external trial at five selected documents / 100,000 extracted characters, and
+hard-disables it when `NODE_ENV=production`. Nimbus strips markup and sends only
+bounded, extracted plain text; it does not detect or redact personal,
+confidential, sensitive, or secret data. The operator must sanitize trial data
+before selecting it. Nimbus does not upload the original PDF/image,
+workspace/client identifiers, or API key. There is no transparent fallback to
+another model, and logged trial payloads are not automatically retried.
+
+The Evidence Library has a separate, durable retrieval path for the same fixed
+NVIDIA models. Enable it only in a non-production development environment:
+
+```bash
+OPENROUTER_EVIDENCE_RETRIEVAL_ENABLED=true
+OPENROUTER_EVIDENCE_RERANK_MIN_SCORE=0
+```
+
+On a single evidence upload, an authorized manager can explicitly opt in after
+confirming that the file is public, synthetic, or sanitized non-confidential
+trial data. Nimbus extracts searchable text from PDF, DOCX, TXT, Markdown, CSV,
+JSON, or XML, creates deterministic 150-word chunks, embeds them, and persists
+only tenant-scoped chunk hashes plus normalized 2,048-dimension Float32 vectors.
+Duplicate plaintext chunks are not stored. Unsupported and image-only files are
+retained normally and reported as unsearchable; OCR is not performed.
+
+On an ISO 27001 assessment workpaper, **Find relevant evidence** embeds the
+control guidance, shortlists current same-workspace vectors locally, reconstructs
+and hash-checks only the candidate chunks, then sends those bounded excerpts to
+the fixed reranker after a new acknowledgement. Results include governed source
+references and freshness labels. They do not attach files, change the assessment,
+or establish design or operating effectiveness. Superseded evidence becomes
+ineligible immediately, and deleting evidence cascades its derived index.
+
+Install the pinned, SHA-256-verified q8 ONNX assets once for local development:
+
+```bash
+npm run policy-models:install
+npm run policy-models:verify
+npm run policy-models:self-test
+```
+
+Docker builds bake the same immutable assets into `/app/models/policy-retrieval`
+and run without model-download access at runtime. The implementation uses the
+WebAssembly ONNX runtime so it remains compatible with the existing Alpine
+container and avoids native ONNX Runtime binaries. No Hugging Face API key is
+required. The selected models are English-focused; incomplete extraction,
+non-English documents, and bounded search limits are displayed as limitations
+rather than treated as proof that coverage is absent. Image-only PDFs are
+flagged as requiring OCR instead of being reported as successfully searched.
+The production Docker build runs the real embedding and reranker self-test on
+Alpine before the image can be published.
+
+AI prompts can contain client context. Review the selected model/provider's
+retention and training policy before sending confidential or regulated data.
+
 ### Email integration
 
 `/admin/email` (Manager-only). Per-firm branded transactional mail — `From name`, `From email`, `Reply-to`, on/off switch, test-send button, and a 50-row outbox log for deliverability triage. The status strip at the top reflects whichever provider is actually active.
@@ -479,3 +595,9 @@ Node 22 · Express · EJS · better-sqlite3 · TinyMCE 8 (self-hosted) · html-t
 ## License
 
 Private. Not currently open-sourced.
+
+### Role experience and pilot rollout
+
+The role/workflow redesign, verification evidence, presentation flags and rollback commands are documented in [Experience implementation and rollout](reports/experience-implementation.md). The shared work queue starts at `/work`; clients use their existing `/client-portal` routes. Production presentation remains off until a firm cohort is enabled. Permission and review protections apply regardless of that flag.
+
+Run the isolated real-browser matrix with `node tests/experience-browser.js`. The representative-user pilot remains pending; use the [pilot protocol](reports/experience-pilot-protocol.md) and [empty collection template](reports/experience-pilot-template.json). Engineering completion alone does not establish a 9/10 score.

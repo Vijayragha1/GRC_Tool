@@ -98,17 +98,33 @@ test('CSRF - safe GET requests do not require a token', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  for (const url of ['/dashboard', '/tenants', '/glossary']) {
+  for (const url of ['/dashboard?legacy=1', '/tenants', '/glossary']) {
     const r = await client.get(url);
     assert.equal(r.status, 200, `GET ${url} returned ${r.status}`);
   }
+});
+
+test('opening a workspace and its risk settings does not seed a risk methodology', async (t) => {
+  const { client, dbPath } = await bootClient();
+  const db = new Database(dbPath);
+  t.after(async () => { db.close(); await client.close(); });
+  const actor = db.prepare("SELECT * FROM users WHERE email='sec-test@example.com'").get();
+  const id = Number(db.prepare("INSERT INTO workspaces(firm_id,client_name,frameworks) VALUES (?,'Read-only workspace','[]')").run(actor.firm_id).lastInsertRowid);
+  for (const suffix of ['/client-portal', '/risk-methodology', '/risks']) {
+    const response = await client.get(`/workspaces/${id}${suffix}`);
+    assert.equal(response.status, 200, suffix);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM risk_methodologies WHERE workspace_id=?').get(id).n, 0);
+  }
+  const response = await client.post(`/workspaces/${id}/risk-methodology/reset`, {});
+  assert.equal(response.status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM risk_methodologies WHERE workspace_id=?').get(id).n, 1, 'an explicit reset stores the default methodology');
 });
 
 test('CSRF - token is exposed as a 64-hex meta tag on rendered pages', async (t) => {
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const r = await client.get('/dashboard');
+  const r = await client.get('/dashboard?legacy=1');
   const m = r.text.match(/name="csrf-token" content="([a-f0-9]+)"/);
   assert.ok(m, 'meta tag must include csrf token');
   assert.equal(m[1].length, 64, 'token should be 64 hex chars');
@@ -118,7 +134,7 @@ test('CSRF - token is stable across requests in the same session', async (t) => 
   const { client } = await bootClient();
   t.after(() => client.close());
 
-  const a = await client.get('/dashboard');
+  const a = await client.get('/dashboard?legacy=1');
   const b = await client.get('/glossary');
   const ta = (a.text.match(/name="csrf-token" content="([a-f0-9]+)"/) || [])[1];
   const tb = (b.text.match(/name="csrf-token" content="([a-f0-9]+)"/) || [])[1];
@@ -151,7 +167,7 @@ test('XSS - a script payload in a client name is HTML-escaped on render', async 
   const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001', engagement_outcome: 'certification_support' });
   assert.equal(post.status, 302, 'client creation should redirect');
 
-  const dash = await client.get('/dashboard');
+  const dash = await client.get('/dashboard?legacy=1');
   assert.equal(dash.status, 200);
   // (a) the raw executable payload must never reach the response. The marker is
   //     distinctive enough that a partial-strip bypass (e.g. <scr<script>ipt>)
@@ -171,7 +187,7 @@ test('XSS - an attribute-breakout payload in a client name cannot escape its ele
   const post = await client.post('/workspaces', { client_name: CANARY, name: CANARY, industry: 'T', frameworks: 'iso27001', engagement_outcome: 'certification_support' });
   assert.equal(post.status, 302);
 
-  const dash = await client.get('/dashboard');
+  const dash = await client.get('/dashboard?legacy=1');
   assert.ok(dash.text.includes('XSSATTR'), 'the client name must be rendered');
   // The raw event handler must never appear as live markup, and the quote that
   // would start a new attribute must be HTML-escaped (EJS emits &#34;).
@@ -229,7 +245,7 @@ test('Workspace deletion removes a populated client while restoring immutable-hi
   );
   conn.close();
 
-  const dashboard = await client.get('/dashboard');
+  const dashboard = await client.get('/dashboard?legacy=1');
   assert.equal(dashboard.status, 200);
   assert.match(dashboard.text, /Deletion Regression - Client/,
     'the confirmation dialog must show the globally normalized display name');
@@ -272,7 +288,7 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   t.after(() => client.close());
 
   // Authenticated session works and shows no "no user" error.
-  const authed = await client.get('/dashboard');
+  const authed = await client.get('/dashboard?legacy=1');
   assert.equal(authed.status, 200, 'authenticated dashboard must render');
   assert.ok(!/No default user found/.test(authed.text), 'must not show a no-user error');
   assert.match(authed.text, /id="pageLoader"/, 'protected app shell must include the branded page loader');
@@ -288,7 +304,7 @@ test('Auth - protected pages require authentication (no default-user bypass)', a
   // Regression guard: if a default-user bypass is ever reintroduced, this 200s.
   const anon = makeClient(app);
   t.after(() => anon.close());
-  const r = await anon.get('/dashboard');
+  const r = await anon.get('/dashboard?legacy=1');
   assert.equal(r.status, 302, 'unauthenticated dashboard must redirect, not serve a default user');
   assert.match(r.location, /\/login/, 'must redirect to /login');
   const login = await anon.get('/login');
@@ -315,7 +331,7 @@ test('Auth - logout crosses the view-transition boundary without retaining the a
   assert.match(signedOut.text, /::view-transition-old\(root\)[\s\S]*animation-duration:\s*0s/,
     'the auth boundary must not cross-fade the previously authenticated page');
 
-  const protectedPage = await client.get('/dashboard');
+  const protectedPage = await client.get('/dashboard?legacy=1');
   assert.equal(protectedPage.status, 302, 'the destroyed session must not retain protected access');
   assert.match(protectedPage.location, /^\/login/);
 });
@@ -339,7 +355,7 @@ test('Auth - legacy MFA account data cannot trigger a second-factor challenge', 
   }, { csrf: false });
   assert.equal(signedIn.status, 302);
   assert.equal(signedIn.location, '/dashboard');
-  assert.equal((await client.get('/dashboard')).status, 200);
+  assert.equal((await client.get('/dashboard?legacy=1')).status, 200);
   assert.equal((await client.get('/mfa/verify')).status, 404);
   assert.equal((await client.get('/security/mfa/setup')).status, 404);
 });

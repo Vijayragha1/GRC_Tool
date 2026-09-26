@@ -39,6 +39,13 @@ COPY data/ ./data/
 COPY migrations/ ./migrations/
 COPY scripts/ ./scripts/
 
+# Policy retrieval is local-only at runtime. Bake immutable q8 ONNX assets into
+# the image, verify their pinned SHA-256 values, and keep them outside /app/data
+# so the runtime data bind mount cannot hide them.
+RUN node scripts/install-policy-models.js --dir /app/models/policy-retrieval \
+ && node scripts/self-test-policy-models.js --dir /app/models/policy-retrieval \
+ && chmod -R a-w /app/models/policy-retrieval
+
 # Fail the build if a secret or data artifact reached the image anyway.
 RUN set -e; \
     for f in .env .env.local iso27001.db data/master.key; do \
@@ -60,6 +67,8 @@ RUN mkdir -p /app/data/backups /app/uploads \
 VOLUME ["/app/data", "/app/uploads"]
 ENV DB_PATH=/app/data/iso27001.db \
     ISMS_BACKUP_DIR=/app/data/backups \
+    POLICY_MODEL_DIR=/app/models/policy-retrieval \
+    POLICY_RETRIEVAL_ENABLED=true \
     PORT=3000
 
 # Email integration (Phase 1). Optional - if RESEND_API_KEY is unset

@@ -51,7 +51,7 @@ async function login(client, email) {
   assert.ok(csrf, `login CSRF missing for ${email}`);
   const signedIn = await client.post('/login', { email, password: PASSWORD, _csrf: csrf }, { csrf: false });
   assert.equal(signedIn.status, 302, signedIn.text.slice(0, 300));
-  const warm = await client.get('/dashboard');
+  const warm = await client.get('/dashboard?legacy=1');
   assert.ok([200, 302].includes(warm.status));
 }
 

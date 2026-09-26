@@ -6,6 +6,7 @@ const consulting = require('../lib/consulting-delivery');
 const engagementDelivery = require('../lib/engagement-delivery');
 const isoLifecycle = require('../lib/iso-lifecycle');
 const gapFieldwork = require('../lib/gap-fieldwork');
+const drafts = require('../lib/form-drafts');
 
 const ENGAGEMENT_TYPES = new Set(['implementation','readiness','internal_audit','gap_assessment','advisory','surveillance']);
 const GAP_ONLY_ENGAGEMENT_TYPES = new Set(['gap_assessment','advisory']);
@@ -23,7 +24,11 @@ function register(app,deps) {
   const redirect = (req,res,path,message,kind) => res.redirect(withToast(path || base(req.workspace.id),message,kind));
   const run = (req,res,fn,message,path) => {
     try { const value=fn(); return redirect(req,res,typeof path==='function'?path(value):path,message); }
-    catch(error) { return redirect(req,res,base(req.workspace.id),error.message || 'The update could not be completed.','error'); }
+    catch(error) {
+      if (req.params.id && req.path.includes('/delivery/workpapers/')) return renderWorkpaper(req,res,error,req.body);
+      const target=typeof path==='string'?path:base(req.workspace.id);
+      return redirect(req,res,target,error.message || 'The update could not be completed.','error');
+    }
   };
   const num = (value,label,{min=0,max=Number.MAX_SAFE_INTEGER}={}) => {
     const n=Number(value); if(!Number.isFinite(n)||n<min||n>max) throw new Error(`${label} is invalid.`); return n;
@@ -83,9 +88,9 @@ function register(app,deps) {
         WHERE workspace_id=? AND consulting_engagement_id=? LIMIT 1`).get(workspace.id,row.id));
       if(openFindings) blockers.push(`Close or withdraw ${openFindings} confirmed finding${openFindings===1?'':'s'} before completing ${isContractedCertificationEngagement?'certification-support delivery':'this engagement'}.`);
       if(isContractedCertificationEngagement) {
-        const projection=engagementDelivery.getProjection(db,workspace,actorId);
-        if(!projection.summary.completionReady) {
-          const summary=projection.summary;
+        const projection=engagementDelivery.getProjection(db,workspace,actorId,{ensure:false});
+        if(!projection?.summary.completionReady) {
+          const summary=projection?.summary || {};
           const reasons=Array.isArray(summary.completionBlockers)
             ? summary.completionBlockers.filter(Boolean)
             : [];
@@ -102,14 +107,26 @@ function register(app,deps) {
     return supplied?`${governed} ${supplied}`:governed;
   };
 
-  app.get('/workspaces/:wsId/delivery',requireAuth,requireWorkspace,firmOnly,(req,res)=>{
-    const data=consulting.getCockpit(db,req.workspace,req.user.id,req.query.engagement);
-    const view=new Set(['overview','workpapers','findings','requests','frameworks','reports','commercial','methodology','qa']).has(req.query.view)?req.query.view:'overview';
+  function renderCockpit(req,res,options={}) {
+    const chosen=options.engagementId || req.query.engagement;
+    if(!db.prepare('SELECT 1 FROM consulting_engagements WHERE workspace_id=?'+(chosen?' AND id=?':'')).get(req.workspace.id,...(chosen?[chosen]:[]))) {
+      if(chosen)return res.status(404).render('error',{user:req.user,ws:req.workspace,message:'Engagement not found.'});
+      return res.render('delivery_setup',{user:req.user,ws:req.workspace,active:'delivery'});
+    }
+    const data=consulting.getCockpit(db,req.workspace,req.user.id,chosen);
+    const replacesId=options.values?.replaces_report_id || req.query.replacesReportId;
+    if(replacesId&&!rbac.hasPermission(res.locals.userPerms||req.userPerms||new Set(),'report.view'))return res.status(403).render('error',{user:req.user,ws:req.workspace,message:'Report viewing permission is required.'});
+    const replacementRequest=replacesId?consulting.reportRevisionRequest(db,req.workspace,replacesId):null;
+    if(replacesId&&(!replacementRequest||replacementRequest.replacement_report_id||replacementRequest.engagement_id!==data.engagement.id))return res.status(404).render('error',{user:req.user,ws:req.workspace,message:'The selected report revision request is unavailable.'});
+    const selectedManifestId=options.values?Number(options.values.pass_manifest_id)||null:req.query.manifestId?Number(req.query.manifestId):replacementRequest?.manifest_id||data.manifests[0]?.id||null;
+    if(req.query.manifestId&&!data.manifests.some(m=>m.id===selectedManifestId))return res.status(404).render('error',{user:req.user,ws:req.workspace,message:'The selected assessment version is not available in this engagement.'});
+    const view=options.view || (new Set(['overview','workpapers','findings','requests','frameworks','reports','commercial','methodology','qa']).has(req.query.view)?req.query.view:'overview');
     const iso27001Contract=hasIso27001(req.workspace);
     const outcome=iso27001Contract?isoLifecycle.normalizeOutcome(req.workspace.engagement_outcome):null;
     const outcomeOption=iso27001Contract?isoLifecycle.OUTCOME_OPTIONS.find(option=>option.value===outcome):null;
     data.requests=data.requests.map(row=>({...row,description:enc.decryptIfNeeded(row.description,req.workspace.id)}));
-    res.render('delivery_cockpit',{ user:req.user,ws:req.workspace,active:'delivery',view,...data,
+    res.status(options.status||200).render('delivery_cockpit',{ user:req.user,ws:req.workspace,active:'delivery',view,...data,selectedManifestId,replacementRequest,reportValues:options.values||{},reportError:options.error||null,
+      completion:completionPosition(req.workspace,data.engagement,req.user.id),
       servicePath:{
         value:outcome,
         label:iso27001Contract?isoLifecycle.label(outcome):(req.workspace.vciso_enabled?'vCISO advisory':'Framework-specific consulting'),
@@ -123,9 +140,11 @@ function register(app,deps) {
           : [...ENGAGEMENT_TYPES]
       }
     });
-  });
+  }
+  app.get('/workspaces/:wsId/delivery',requireAuth,requireWorkspace,firmOnly,(req,res)=>renderCockpit(req,res));
+  app.post('/workspaces/:wsId/delivery/start',requireAuth,requireWorkspace,firmOnly,requirePermission('control.update'),(req,res)=>run(req,res,()=>db.transaction(()=>consulting.ensureEngagement(db,req.workspace,req.user.id))(),'Engagement started.',row=>`${base(req.workspace.id)}?engagement=${row.id}`));
 
-  app.post('/workspaces/:wsId/delivery/engagements',requireAuth,requireWorkspace,firmOnly,requirePermission('workspace.update'),(req,res)=>run(req,res,()=>{
+  app.post('/workspaces/:wsId/delivery/engagements',requireAuth,requireWorkspace,firmOnly,requirePermission('workspace.update'),(req,res)=>run(req,res,()=>db.transaction(()=>{
     const name=consulting.clean(req.body.name,300); if(!name) throw new Error('Engagement name is required.');
     const type=String(req.body.engagement_type||'implementation');
     if(!ENGAGEMENT_TYPES.has(type)) throw new Error('Choose a valid engagement type.');
@@ -138,8 +157,8 @@ function register(app,deps) {
     const code=consulting.clean(req.body.engagement_code,40)||`ENG-${req.workspace.id}-${Date.now().toString().slice(-6)}`;
     const lead=req.body.lead_consultant_id?Number(req.body.lead_consultant_id):req.user.id;
     const reviewer=req.body.quality_reviewer_id?Number(req.body.quality_reviewer_id):null;
-    if(!consulting.workspaceUser(db,req.workspace,lead)) throw new Error('Lead consultant is not an active workspace user.');
-    if(reviewer&&!consulting.workspaceUser(db,req.workspace,reviewer)) throw new Error('Quality reviewer is not an active workspace user.');
+    if(consulting.workspaceUser(db,req.workspace,lead)?.user_type!=='firm') throw new Error('Choose an active firm consultant as engagement lead.');
+    if(reviewer&&!consulting.eligibleReviewers(db,req.workspace,[lead]).some(u=>u.id===reviewer)) throw new Error('Choose an eligible independent engagement reviewer.');
     const id=Number(db.prepare(`INSERT INTO consulting_engagements
       (workspace_id,engagement_code,name,engagement_type,framework_scope_json,scope_statement,included_entities,included_locations,included_systems,exclusions,
        assessment_period_start,assessment_period_end,status,lead_consultant_id,quality_reviewer_id,start_date,target_date,created_by)
@@ -154,9 +173,9 @@ function register(app,deps) {
     consulting.event(db,req.workspace.id,id,req.user.id,'engagement',id,'created',{ frameworks:valid,engagement_outcome:engagementOutcome });
     logAction(req.user.id,req.workspace.id,'create_consulting_engagement','consulting_engagement',id,{ frameworks:valid,engagement_outcome:engagementOutcome },auditCtx(req));
     return id;
-  },'Engagement created.',id=>`${base(req.workspace.id)}?engagement=${id}`));
+  })(),'Engagement created.',id=>`${base(req.workspace.id)}?engagement=${id}`));
 
-  app.post('/workspaces/:wsId/delivery/engagements/:id',requireAuth,requireWorkspace,firmOnly,requirePermission('workspace.update'),(req,res)=>run(req,res,()=>{
+  app.post('/workspaces/:wsId/delivery/engagements/:id',requireAuth,requireWorkspace,firmOnly,requirePermission('workspace.update'),(req,res)=>run(req,res,()=>db.transaction(()=>{
     const row=consulting.engagementFor(db,req.workspace,req.user.id,req.params.id);
     const status=String(req.body.status||row.status);
     if(!new Set(['draft','active','on_hold','quality_review','complete','cancelled']).has(status)) throw new Error('Invalid engagement status.');
@@ -172,22 +191,27 @@ function register(app,deps) {
       if(position.blockers.length) throw new Error(position.blockers.join(' '));
     }
     const version=Number(req.body.row_version);
+    const requestedLead=req.body.lead_consultant_id===undefined?row.lead_consultant_id:(req.body.lead_consultant_id?Number(req.body.lead_consultant_id):null);
+    const requestedReviewer=req.body.quality_reviewer_id===undefined?row.quality_reviewer_id:(req.body.quality_reviewer_id?Number(req.body.quality_reviewer_id):null);
+    if(requestedLead && consulting.workspaceUser(db,req.workspace,requestedLead)?.user_type!=='firm') throw new Error('Choose an active firm consultant as engagement lead.');
+    if(requestedReviewer && !consulting.eligibleReviewers(db,req.workspace,[requestedLead]).some(u=>u.id===requestedReviewer)) throw new Error('Choose an eligible independent engagement reviewer.');
     const result=db.prepare(`UPDATE consulting_engagements SET name=?,scope_statement=?,included_entities=?,included_locations=?,included_systems=?,exclusions=?,
       assessment_period_start=?,assessment_period_end=?,status=?,lead_consultant_id=?,quality_reviewer_id=?,client_sponsor_id=?,start_date=?,target_date=?,
       completed_at=CASE WHEN ?='complete' THEN datetime('now') ELSE NULL END,completion_note=?,updated_at=datetime('now'),row_version=row_version+1
       WHERE id=? AND workspace_id=? AND row_version=?`).run(consulting.clean(req.body.name,300)||row.name,consulting.clean(req.body.scope_statement),
         consulting.clean(req.body.included_entities),consulting.clean(req.body.included_locations),consulting.clean(req.body.included_systems),consulting.clean(req.body.exclusions),
-        consulting.validDate(req.body.assessment_period_start),consulting.validDate(req.body.assessment_period_end),status,req.body.lead_consultant_id||null,
-        req.body.quality_reviewer_id||null,req.body.client_sponsor_id||null,consulting.validDate(req.body.start_date),consulting.validDate(req.body.target_date),status,
+        consulting.validDate(req.body.assessment_period_start),consulting.validDate(req.body.assessment_period_end),status,requestedLead,
+        requestedReviewer,req.body.client_sponsor_id||null,consulting.validDate(req.body.start_date),consulting.validDate(req.body.target_date),status,
         position?completionNote(position,req.body.completion_note):consulting.clean(req.body.completion_note,5000),row.id,req.workspace.id,version);
     if(!result.changes) throw new Error('The engagement changed in another session. Reload before saving.');
+    consulting.syncEngagementRoster(db,req.workspace,{...row,lead_consultant_id:requestedLead,quality_reviewer_id:requestedReviewer},req.user.id);
     consulting.event(db,req.workspace.id,row.id,req.user.id,'engagement',row.id,'updated',{ from_status:row.status,to_status:status });
     logAction(req.user.id,req.workspace.id,'update_consulting_engagement','consulting_engagement',row.id,{ status },auditCtx(req));
     if(status==='complete') engagementDelivery.syncOutcomePlanStatus(db,req.workspace,req.user.id);
     else if(reopeningCompleted&&iso27001Contract&&!gapOnlyContract) {
       engagementDelivery.reopenForConsultingEngagement(db,req.workspace,req.user.id,row.id);
     }
-  },'Engagement settings updated.',`${base(req.workspace.id)}?engagement=${req.params.id}`));
+  })(),'Engagement settings updated.',`${base(req.workspace.id)}?engagement=${req.params.id}`));
 
   app.post('/workspaces/:wsId/delivery/engagements/:id/complete-gap-assessment',requireAuth,requireWorkspace,firmOnly,requirePermission('workspace.update'),(req,res)=>{
     const fieldworkPath=`/workspaces/${req.workspace.id}/gap-assessment/fieldwork`;
@@ -218,7 +242,9 @@ function register(app,deps) {
   app.post('/workspaces/:wsId/delivery/engagements/:id/team',requireAuth,requireWorkspace,firmOnly,requirePermission('workspace.update'),(req,res)=>run(req,res,()=>{
     const eng=consulting.engagementFor(db,req.workspace,req.user.id,req.params.id);
     const userId=Number(req.body.user_id); if(!consulting.workspaceUser(db,req.workspace,userId)) throw new Error('Team member is not active in this workspace.');
-    const role=String(req.body.role||'consultant'); if(!new Set(['engagement_lead','consultant','quality_reviewer','subject_matter_expert','client_sponsor','client_contributor']).has(role)) throw new Error('Invalid engagement role.');
+    const role=String(req.body.role||'consultant'); if(!new Set(['consultant','subject_matter_expert','client_sponsor','client_contributor']).has(role)) throw new Error('Set the engagement lead and quality reviewer in Engagement scope and governance.');
+    const member=consulting.workspaceUser(db,req.workspace,userId);
+    if((role.startsWith('client_')?'client':'firm')!==member.user_type) throw new Error('Choose a member whose account type matches the engagement role.');
     db.prepare(`INSERT INTO consulting_engagement_team (engagement_id,user_id,role,planned_hours,assigned_by) VALUES (?,?,?,?,?)
       ON CONFLICT(engagement_id,user_id,role) DO UPDATE SET planned_hours=excluded.planned_hours`).run(eng.id,userId,role,num(req.body.planned_hours||0,'Planned hours',{max:100000}),req.user.id);
     consulting.event(db,req.workspace.id,eng.id,req.user.id,'team',userId,'assigned',{ role });
@@ -232,29 +258,57 @@ function register(app,deps) {
     return id;
   },'Workpaper created.',id=>`${base(req.workspace.id)}/workpapers/${id}`));
 
+  function renderWorkpaper(req,res,error=null,posted=null) {
+    const current=consulting.workpaperDetail(db,req.workspace,req.params.id);
+    const users=consulting.getCockpit(db,req.workspace,req.user.id,current.engagement_id).users;
+    const snapshots=db.prepare(`SELECT s.id,s.version_number,s.snapshot_hash,s.frozen_at,u.name frozen_by_name,
+      m.assessment_pass_id,m.completion_generation,p.pass_number FROM consultant_workpaper_snapshots s LEFT JOIN users u ON u.id=s.frozen_by
+      LEFT JOIN assessment_pass_manifest_items i ON i.snapshot_id=s.id LEFT JOIN assessment_pass_manifests m ON m.id=i.manifest_id
+      LEFT JOIN assessment_passes p ON p.id=m.assessment_pass_id WHERE s.workpaper_id=? ORDER BY s.version_number DESC`).all(current.id);
+    const selectedSnapshot=req.query.snapshot ? consulting.snapshotDetail(db,req.workspace,current.id,req.query.snapshot) : null;
+    let workpaper=selectedSnapshot ? {...selectedSnapshot.snapshot.workpaper,id:current.id,workpaper_ref:current.workpaper_ref,engagement_id:current.engagement_id,
+      framework_code:selectedSnapshot.snapshot.workpaper.framework_code||current.framework_code,requirement_ref:selectedSnapshot.snapshot.workpaper.requirement_ref||current.requirement_ref,
+      requirement_title:selectedSnapshot.snapshot.workpaper.requirement_title||current.requirement_title,status:'frozen'} : current;
+    const fieldNames=['title','objective','procedure_performed','persons_interviewed','testing_period_start','testing_period_end','population_description','population_size','sample_method','sample_size','exceptions_count','exception_summary','management_claim','design_conclusion','implementation_conclusion','operating_effectiveness','evidence_sufficiency','conclusion_rationale','internal_notes','client_visible_summary','client_visible','requires_client_validation','owner_id','reviewer_id','client_validator_id','due_date','row_version','note'];
+    const ownForm=posted && req.path===`${base(req.workspace.id)}/workpapers/${current.id}`;
+    const recoveryFields=ownForm?fieldNames:Object.keys(posted||{}).filter(k=>!['_csrf','draft_id','draft_version','draft_generation','mutation_key'].includes(k)).slice(0,50);
+    const attempted=posted ? Object.fromEntries(recoveryFields.filter(k=>Object.hasOwn(posted,k)).map(k=>[k,String(posted[k]??'').slice(0,20000)])) : null;
+    if(ownForm && attempted && ['draft','changes_requested'].includes(current.status)) workpaper={...workpaper,...attempted};
+    const reviews=selectedSnapshot ? selectedSnapshot.snapshot.reviews || [] : db.prepare(`SELECT r.*,u.name actor_name FROM consultant_workpaper_reviews r JOIN users u ON u.id=r.actor_id WHERE r.workpaper_id=? ORDER BY r.id`).all(current.id);
+    const linkedEvidence=selectedSnapshot ? selectedSnapshot.snapshot.evidence || [] : db.prepare(`SELECT we.*,e.filename,e.description,e.sha256,e.uploaded_at,u.name linked_by_name FROM consultant_workpaper_evidence we
+      JOIN evidence e ON e.id=we.evidence_id LEFT JOIN users u ON u.id=we.linked_by WHERE we.workpaper_id=? AND e.workspace_id=? ORDER BY we.id`).all(current.id,req.workspace.id);
+    const requests=db.prepare(`SELECT cr.*,a.name assignee_name FROM client_requests cr LEFT JOIN users a ON a.id=cr.assignee_id WHERE cr.workpaper_id=? AND cr.workspace_id=? ORDER BY cr.id DESC`).all(current.id,req.workspace.id);
+    const findings=db.prepare(`SELECT f.*,o.name owner_name FROM consulting_findings f LEFT JOIN users o ON o.id=f.owner_id WHERE f.workpaper_id=? AND f.workspace_id=? ORDER BY f.id`).all(current.id,req.workspace.id);
+    const evidenceQuery=String(req.query.evidence_q || '').trim().slice(0,200);
+    const evidenceCatalog=db.prepare(`SELECT id,filename,description,uploaded_at FROM evidence WHERE workspace_id=? AND superseded_at IS NULL
+      AND (?='' OR instr(lower(filename||' '||COALESCE(description,'')),lower(?))>0) ORDER BY uploaded_at DESC,id DESC`).all(req.workspace.id,evidenceQuery,evidenceQuery);
+    const status=error ? (Number(error.status) || (/changed|another session/i.test(error.message)?409:422)) : 200;
+    return res.status(status).render('consultant_workpaper',{user:req.user,ws:req.workspace,active:'delivery',workpaper,reviews,linkedEvidence,snapshots,requests,findings,users,evidenceCatalog,evidenceQuery,
+      readiness:consulting.readinessForSubmission(db,current),reviewerCandidates:consulting.eligibleReviewers(db,req.workspace,[current.owner_id,current.prepared_by || current.owner_id]),
+      selectedSnapshot,formError:error?.message || null,attemptedValues:attempted,recoveryPath:posted?req.path:null,recordedValues:selectedSnapshot?{}:Object.fromEntries(fieldNames.filter(k=>k!=='note').map(k=>[k,current[k]])),storedVersion:current.row_version});
+  }
+
   app.get('/workspaces/:wsId/delivery/workpapers/:id',requireAuth,requireWorkspace,firmOnly,(req,res)=>{
-    try {
-      const workpaper=consulting.workpaperDetail(db,req.workspace,req.params.id);
-      const reviews=db.prepare(`SELECT r.*,u.name actor_name FROM consultant_workpaper_reviews r JOIN users u ON u.id=r.actor_id WHERE r.workpaper_id=? ORDER BY r.id`).all(workpaper.id);
-      const linkedEvidence=db.prepare(`SELECT we.*,e.filename,e.description,e.sha256,e.uploaded_at,u.name linked_by_name FROM consultant_workpaper_evidence we
-        JOIN evidence e ON e.id=we.evidence_id LEFT JOIN users u ON u.id=we.linked_by WHERE we.workpaper_id=? AND e.workspace_id=? ORDER BY we.id`).all(workpaper.id,req.workspace.id);
-      const snapshots=db.prepare(`SELECT s.id,s.version_number,s.snapshot_hash,s.frozen_at,u.name frozen_by_name FROM consultant_workpaper_snapshots s LEFT JOIN users u ON u.id=s.frozen_by WHERE s.workpaper_id=? ORDER BY s.version_number DESC`).all(workpaper.id);
-      const requests=db.prepare(`SELECT cr.*,a.name assignee_name FROM client_requests cr LEFT JOIN users a ON a.id=cr.assignee_id WHERE cr.workpaper_id=? AND cr.workspace_id=? ORDER BY cr.id DESC`).all(workpaper.id,req.workspace.id).map(r=>({...r,description:enc.decryptIfNeeded(r.description,req.workspace.id)}));
-      const findings=db.prepare(`SELECT f.*,o.name owner_name FROM consulting_findings f LEFT JOIN users o ON o.id=f.owner_id WHERE f.workpaper_id=? AND f.workspace_id=? ORDER BY f.id`).all(workpaper.id,req.workspace.id);
-      const users=consulting.getCockpit(db,req.workspace,req.user.id,workpaper.engagement_id).users;
-      const evidenceCatalog=db.prepare(`SELECT id,filename,description,uploaded_at FROM evidence WHERE workspace_id=? AND superseded_at IS NULL ORDER BY uploaded_at DESC,id DESC LIMIT 200`).all(req.workspace.id);
-      const readiness=consulting.readinessForSubmission(db,workpaper);
-      res.render('consultant_workpaper',{ user:req.user,ws:req.workspace,active:'delivery',workpaper,reviews,linkedEvidence,snapshots,requests,findings,users,evidenceCatalog,readiness });
-    } catch(error) { res.status(404).render('error',{ user:req.user,ws:req.workspace,message:error.message }); }
+    try { return renderWorkpaper(req,res); }
+    catch(error) { res.status(404).render('error',{user:req.user,ws:req.workspace,message:error.message}); }
   });
 
   app.post('/workspaces/:wsId/delivery/workpapers/:id',requireAuth,requireWorkspace,firmOnly,requirePermission('control.update'),(req,res)=>run(req,res,()=>{
     const current=consulting.workpaperDetail(db,req.workspace,req.params.id);
     assertGapClosureMutable(req,current.engagement_id);
     const eng=consulting.engagementFor(db,req.workspace,req.user.id,current.engagement_id);
-    const id=consulting.saveWorkpaper(db,req.workspace,eng,req.user.id,req.body,current.id);
-    logAction(req.user.id,req.workspace.id,'update_consultant_workpaper','consultant_workpaper',id,null,auditCtx(req)); return id;
-  },'Workpaper saved.',id=>`${base(req.workspace.id)}/workpapers/${id}`));
+    return drafts.commit(db,{workspaceId:req.workspace.id,actorId:req.user.id,kind:'workpaper',recordId:String(current.id),contextKey:'',encryptionEnabled:!!req.workspace.encryption_enabled},req.body,effectiveBody=>{
+      req.body=effectiveBody;
+      const id=consulting.saveWorkpaper(db,req.workspace,eng,req.user.id,effectiveBody,current.id);
+      if(effectiveBody.intent==='submit') {
+        const saved=consulting.workpaperDetail(db,req.workspace,id);
+        consulting.transitionWorkpaper(db,req.workspace,req.user,id,'submit',effectiveBody.note,saved.row_version);
+      }
+      reconcileDeliveryCompletion(req,{reason:'The consultant workpaper was formally saved.',details:{workpaper_id:id,engagement_id:eng.id}});
+      logAction(req.user.id,req.workspace.id,'update_consultant_workpaper','consultant_workpaper',id,null,auditCtx(req));
+      return id;
+    });
+  },req.body.intent==='submit'?'Workpaper saved and submitted for independent review.':'Workpaper saved.',id=>`${base(req.workspace.id)}/workpapers/${id}`));
 
   app.post('/workspaces/:wsId/delivery/workpapers/:id/:action(submit|approve|changes|freeze|reopen)',requireAuth,requireWorkspace,firmOnly,(req,res,next)=>{
     const action=req.params.action;
@@ -262,9 +316,10 @@ function register(app,deps) {
     return requirePermission(permission)(req,res,()=>run(req,res,()=>{
       const current=consulting.workpaperDetail(db,req.workspace,req.params.id);
       assertGapClosureMutable(req,current.engagement_id);
-      const status=consulting.transitionWorkpaper(db,req.workspace,req.user,req.params.id,action,req.body.note);
-      reconcileDeliveryCompletion(req,{ reason:`Consultant workpaper moved from ${current.status} to ${status}.`,details:{ workpaper_id:current.id,engagement_id:current.engagement_id } });
-      logAction(req.user.id,req.workspace.id,`${action}_consultant_workpaper`,'consultant_workpaper',req.params.id,{ status },auditCtx(req)); return status;
+      const status=consulting.transitionWorkpaper(db,req.workspace,req.user,req.params.id,action,req.body.note,req.body.row_version);
+      reconcileDeliveryCompletion(req,{reason:`Consultant workpaper moved from ${current.status} to ${status}.`,details:{workpaper_id:current.id,engagement_id:current.engagement_id}});
+      logAction(req.user.id,req.workspace.id,`${action}_consultant_workpaper`,'consultant_workpaper',req.params.id,{status},auditCtx(req));
+      return status;
     },`Workpaper moved to ${action==='changes'?'changes requested':action}.`,`${base(req.workspace.id)}/workpapers/${req.params.id}`));
   });
 
@@ -273,7 +328,7 @@ function register(app,deps) {
     logAction(req.user.id,req.workspace.id,'link_workpaper_evidence','consultant_workpaper',req.params.id,{ evidence_id:req.body.evidence_id },auditCtx(req));
   },'Evidence linked and classified.',`${base(req.workspace.id)}/workpapers/${req.params.id}`));
 
-  app.post('/workspaces/:wsId/delivery/workpapers/:id/client-request',requireAuth,requireWorkspace,firmOnly,requirePermission('client_request.manage'),(req,res)=>run(req,res,()=>{
+  app.post('/workspaces/:wsId/delivery/workpapers/:id/client-request',requireAuth,requireWorkspace,firmOnly,requirePermission('client_request.create'),(req,res)=>run(req,res,()=>{
     const workpaper=consulting.workpaperDetail(db,req.workspace,req.params.id);
     assertGapClosureMutable(req,workpaper.engagement_id);
     const id=consulting.createClientRequest(db,req.workspace,req.user.id,req.params.id,req.body);
@@ -314,23 +369,36 @@ function register(app,deps) {
     logAction(req.user.id,req.workspace.id,'link_consulting_finding_evidence','consulting_finding',req.params.id,{evidence_id:req.body.evidence_id,role:req.body.evidence_role},auditCtx(req));
   },'Finding evidence linked.',`${base(req.workspace.id)}/findings/${req.params.id}`));
 
-  app.post('/workspaces/:wsId/delivery/reports',requireAuth,requireWorkspace,firmOnly,requirePermission('report.generate'),(req,res)=>run(req,res,()=>{
-    const id=consulting.generateReport(db,req.workspace,req.user.id,req.body.engagement_id,req.body);
-    logAction(req.user.id,req.workspace.id,'generate_consulting_report','consulting_report',id,{type:req.body.report_type},auditCtx(req));return id;
-  },'Immutable report version generated.',id=>`${base(req.workspace.id)}/reports/${id}`));
-
-  app.get('/workspaces/:wsId/delivery/reports/:id',requireAuth,requireWorkspace,firmOnly,requirePermission('report.view'),(req,res)=>{
-    try{const report=consulting.reportDetail(db,req.workspace,req.params.id);res.render('consulting_report',{user:req.user,ws:req.workspace,active:'delivery',report,clientView:false});}
-    catch(error){res.status(404).render('error',{user:req.user,ws:req.workspace,message:error.message});}
+  app.get('/workspaces/:wsId/delivery/pass-manifests/:id',requireAuth,requireWorkspace,firmOnly,requirePermission('control.view'),(req,res)=>{
+    try {
+      const manifest=consulting.passManifestDetail(db,req.workspace,req.params.id);
+      res.render('consulting_pass_manifest',{user:req.user,ws:req.workspace,active:'delivery',manifest});
+    }catch(error){res.status(Number(error.status)||422).render('error',{user:req.user,ws:req.workspace,message:error.message});}
   });
 
-  app.post('/workspaces/:wsId/delivery/reports/:id/:action(approve|publish)',requireAuth,requireWorkspace,firmOnly,(req,res)=>{
-    const permission=req.params.action==='approve'?'report.approve':'report.publish';
-    const successMessage={approve:'Report approved.',publish:'Report published.'}[req.params.action];
-    return requirePermission(permission)(req,res,()=>run(req,res,()=>{
-      const status=consulting.transitionReport(db,req.workspace,req.user.id,req.params.id,req.params.action,req.body.note);
-      logAction(req.user.id,req.workspace.id,`${req.params.action}_consulting_report`,'consulting_report',req.params.id,{status},auditCtx(req));return status;
-    },successMessage,`${base(req.workspace.id)}/reports/${req.params.id}`));
+  app.post('/workspaces/:wsId/delivery/reports',requireAuth,requireWorkspace,firmOnly,requirePermission('report.generate'),(req,res)=>{
+    try{
+      const id=consulting.generateReport(db,req.workspace,req.user.id,req.body.engagement_id,req.body);
+      logAction(req.user.id,req.workspace.id,'generate_consulting_report','consulting_report',id,{type:req.body.report_type,replaces_report_id:req.body.replaces_report_id||null},auditCtx(req));
+      return res.redirect(withToast(`${base(req.workspace.id)}/reports/${id}`,'Immutable report version generated.'));
+    }catch(error){return renderCockpit(req,res,{engagementId:req.body.engagement_id,view:'reports',values:req.body,error:error.message,status:error.status||422});}
+  });
+
+  function renderReport(req,res,options={}) {
+    try{const report=consulting.reportDetail(db,req.workspace,req.params.id);return res.status(options.status||200).render('consulting_report',{user:req.user,ws:req.workspace,active:'delivery',report,clientView:false,decisionError:options.error||null,decisionNote:options.note||''});}
+    catch(error){return res.status(404).render('error',{user:req.user,ws:req.workspace,message:error.message});}
+  }
+  app.get('/workspaces/:wsId/delivery/reports/:id',requireAuth,requireWorkspace,firmOnly,requirePermission('report.view'),(req,res)=>renderReport(req,res));
+
+  app.post('/workspaces/:wsId/delivery/reports/:id/:action(approve|publish|request-changes)',requireAuth,requireWorkspace,firmOnly,(req,res)=>{
+    const permission=req.params.action==='publish'?'report.publish':'report.approve';
+    return requirePermission(permission)(req,res,()=>{
+      try{
+        const status=consulting.transitionReport(db,req.workspace,req.user.id,req.params.id,req.params.action,req.body.note,{status:req.body.expected_status,hash:req.body.expected_snapshot_hash});
+        logAction(req.user.id,req.workspace.id,`${req.params.action}_consulting_report`,'consulting_report',req.params.id,{status},auditCtx(req));
+        return res.redirect(withToast(`${base(req.workspace.id)}/reports/${req.params.id}`,{'approve':'Report approved.','publish':'Report published.','request-changes':'Changes requested. The report author has a linked revision task.'}[req.params.action]));
+      }catch(error){return renderReport(req,res,{status:error.status||422,error:error.message,note:String(req.body.note||'')});}
+    });
   });
 
   app.get('/workspaces/:wsId/client-portal/reports/:id',requireAuth,requireWorkspace,
@@ -352,7 +420,7 @@ function register(app,deps) {
     assertGapClosureMutable(req,row.engagement_id);
     if(!row.client_visible||!row.requires_client_validation||Number(row.client_validator_id)!==Number(req.user.id)) throw new Error('This information check is not assigned to you.');
     const action=req.body.decision==='changes'?'changes':'validate';
-    const status=consulting.transitionWorkpaper(db,req.workspace,req.user,row.id,action,req.body.note);
+    const status=consulting.transitionWorkpaper(db,req.workspace,req.user,row.id,action,req.body.note,req.body.row_version);
     reconcileDeliveryCompletion(req,{ reason:`Client validation moved a workpaper from ${row.status} to ${status}.`,details:{ workpaper_id:row.id,engagement_id:row.engagement_id } });
     logAction(req.user.id,req.workspace.id,`${action}_client_workpaper`,'consultant_workpaper',row.id,null,auditCtx(req));
   },req.body.decision==='changes'?'Changes requested.':'Information confirmed.',`/workspaces/${req.workspace.id}/client-portal`));
@@ -382,9 +450,9 @@ function register(app,deps) {
     const eng=engagement(req); const version=Number(req.body.row_version);
     const currency=String(req.body.currency||'USD').toUpperCase(); if(!/^[A-Z]{3}$/.test(currency)) throw new Error('Use a three-letter currency code.');
     const result=db.prepare(`UPDATE engagement_commercials SET currency=?,contract_value_minor=?,planned_hours=?,internal_cost_rate_minor=?,billing_model=?,billing_status=?,
-      invoiced_minor=?,collected_minor=?,updated_by=?,updated_at=datetime('now'),row_version=row_version+1 WHERE engagement_id=? AND row_version=?`).run(currency,
+      invoiced_minor=?,collected_minor=?,estimated_remaining_cost_minor=?,updated_by=?,updated_at=datetime('now'),row_version=row_version+1 WHERE engagement_id=? AND row_version=?`).run(currency,
       money(req.body.contract_value),num(req.body.planned_hours||0,'Planned hours',{max:100000}),money(req.body.internal_cost_rate),req.body.billing_model||'fixed_fee',
-      req.body.billing_status||'not_started',money(req.body.invoiced),money(req.body.collected),req.user.id,eng.id,version);
+      req.body.billing_status||'not_started',money(req.body.invoiced),money(req.body.collected),req.body.estimated_remaining_cost==null || req.body.estimated_remaining_cost==='' ? null : Math.round(num(req.body.estimated_remaining_cost,'Estimated remaining cost',{max:1000000000})*100),req.user.id,eng.id,version);
     if(!result.changes) throw new Error('Commercial data changed in another session. Reload before saving.');
     consulting.event(db,req.workspace.id,eng.id,req.user.id,'commercial',eng.id,'updated',{ currency });
     logAction(req.user.id,req.workspace.id,'update_engagement_commercials','consulting_engagement',eng.id,null,auditCtx(req));
@@ -429,7 +497,7 @@ function register(app,deps) {
   app.get('/delivery-portfolio',requireAuth,(req,res)=>{
     if(req.user.user_type!=='firm'||!rbac.rolePermissions(req.user.firm_role).includes('firm.cross_view')) return res.status(403).render('error',{ user:req.user,message:'Portfolio access is restricted to authorised firm users.' });
     const rows=consulting.portfolio(db,req.user.firm_id);
-    const totals=rows.reduce((a,r)=>({ engagements:a.engagements+1,contract:a.contract+Number(r.contract_value_minor||0),hours:a.hours+Number(r.actual_hours||0),review:a.review+Number(r.review_count||0),overdue:a.overdue+Number(r.overdue_workpapers||0),margin:a.margin+Number(r.forecast_margin_minor||0) }),{engagements:0,contract:0,hours:0,review:0,overdue:0,margin:0});
+    const totals=consulting.portfolioTotals(rows);
     res.render('delivery_portfolio',{ user:req.user,active:'delivery-portfolio',rows,totals,firmWorkspaces:listWorkspaces(req.user) });
   });
 }

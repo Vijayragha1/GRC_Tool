@@ -19,7 +19,7 @@ test.after(async () => {
 });
 
 test('new-client surfaces expose DPDPA and vCISO choices', async () => {
-  const dashboard = await client.get('/dashboard');
+  const dashboard = await client.get('/dashboard?legacy=1');
   assert.equal(dashboard.status, 200);
   assert.match(dashboard.text, /id="dashboard-dpdpa-programme"[^>]*value="dpdpa"/);
   assert.match(dashboard.text, /id="dashboard-vciso-module"[^>]*name="vciso_enabled"[^>]*value="1"/);

@@ -141,8 +141,10 @@ enc.masterKey();
 // Release preflight boots use an isolated database clone and explicitly
 // disable jobs so no email or external side effect escapes the compatibility
 // check. The production service never sets this flag.
+let stopNotificationDelivery = () => {};
 if (process.env.ISMS_DISABLE_JOBS !== '1') {
   jobs.start(parseInt(process.env.ISMS_JOB_INTERVAL_MIN || '60', 10));
+  stopNotificationDelivery = require('./lib/notification-delivery').start(db);
 }
 // Production backups are host-controlled: the scheduler and operators invoke
 // scripts/backup.js outside the tenant UI.
@@ -741,6 +743,7 @@ function requireAuth(req, res, next) {
     }
     return res.status(401).json({ error: 'auth_required' });
   }
+  res.locals.experienceEnabled = require('./lib/experience-flags').enabledFor(db,{actor:req.user});
   next();
 }
 
@@ -836,13 +839,12 @@ function requireWorkspace(req, res, next) {
   res.locals.tprmModule = ws.tprm_module;
   res.locals.workspaceEntities = [];
   res.locals.userPerms = permissionsFor(req.user, ws);
-  // Ensure default risk methodology exists.
-  ensureWorkspaceMethodology(ws.id);
+  res.locals.experienceEnabled = require('./lib/experience-flags').enabledFor(db,{actor:req.user,workspace:ws});
+  // Risk reads use the built-in methodology until an explicit configuration
+  // command stores a version. Opening a workspace must not seed domain rows.
   // Unread notifications for the bell icon
   try {
-    res.locals.unreadNotifications = db.prepare(
-      `SELECT COUNT(*) c FROM notifications WHERE workspace_id=? AND read_at IS NULL AND dismissed_at IS NULL AND (user_id IS NULL OR user_id=?)`
-    ).get(ws.id, req.user.id).c;
+    res.locals.unreadNotifications = require('./lib/notification-delivery').countUnread(db,{workspaceId:ws.id,actor:req.user});
   } catch (_) { res.locals.unreadNotifications = 0; }
   // Open review-queue count for the sidebar badge.
   try {
@@ -851,7 +853,9 @@ function requireWorkspace(req, res, next) {
     const b = db.prepare(`SELECT COUNT(*) c FROM ${T.cs42} WHERE workspace_id=? AND review_status IN ('requested','needs_changes')`).get(ws.id).c;
     const d = db.prepare(`SELECT COUNT(*) c FROM dpdpa_gap_assessments
       WHERE workspace_id=? AND status='Under Review'`).get(ws.id).c;
-    res.locals.openReviewCount = a + b + d;
+    res.locals.openReviewCount = res.locals.experienceEnabled
+      ? require('./lib/work-projection').listWork({db,workspaces:[ws],actor:req.user,scope:'team',filters:{type:'review'},limit:1}).counts.total
+      : a + b + d;
   } catch (_) { res.locals.openReviewCount = 0; }
   next();
 }
@@ -1111,6 +1115,7 @@ require('./routes/auditor').register(app, {
 
 // ==================== FIRM HOME ====================
 // Lives in routes/dashboard.js: dashboard, portfolio health, firm team.
+require('./routes/work').register(app, { db, requireAuth });
 require('./routes/dashboard').register(app, { db, requireAuth, logAction, isFirmUser, isFirmOwner,
   getActiveFirmId, listWorkspaces, workspaceProgress, computeClientStage });
 
@@ -1131,11 +1136,12 @@ require('./routes/workspaces').register(app, { db, requireAuth, requireWorkspace
   computeRoadmap, computeClientStage, computeNeedsAttention, resolveUploadPath });
 
 // ==================== CONTROLS + GAP ASSESSMENT ====================
+require('./routes/form-drafts').register(app, { db, requireAuth, requireWorkspace });
 // Lives in routes/controls.js (slice 7): controls list + detail, guided gap
 // wizard, flag-for-review, assessment passes. controlsRoutes.notifyReviewers
 // is shared with the ISO 42001 flag flow below.
 const controlsRoutes = require('./routes/controls');
-controlsRoutes.register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, getOrCreateState });
+  controlsRoutes.register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction, getOrCreateState, resolveUploadPath });
 require('./routes/gap-fieldwork').register(app, {
   db, requireAuth, requireWorkspace, requirePermission, logAction
 });
@@ -1195,7 +1201,7 @@ require('./routes/governance').register(app, { db, requireAuth, requireWorkspace
 // firm library.
 require('./routes/workspace-ops-b').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, getActiveFirmId, isFirmUser, isFirmOwner, getOrCreateState, getActiveMethodology,
-  methodologyBand, ensureWorkspaceMethodology, activeEntityFilter, computeNeedsAttention,
+  defaultMethodology, methodologyBand, ensureWorkspaceMethodology, activeEntityFilter, computeNeedsAttention,
   getWorkspace, listWorkspaces, permissionsFor });
 
 // ==================== READINESS ====================
@@ -1404,6 +1410,7 @@ function createGracefulShutdown({
 
       try {
         if (jobsModule && typeof jobsModule.stop === 'function') jobsModule.stop();
+        stopNotificationDelivery();
       } catch (error) {
         errors.push(error);
         log('error', '[shutdown] could not stop scheduled jobs', error);

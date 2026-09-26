@@ -7,8 +7,11 @@ const archiver = require('archiver');
 const path = require('path');
 const crypto = require('crypto');
 const fts = require('../lib/fts');
+const rbac = require('../lib/rbac');
 const evReads = require('../lib/evidence-reads');
 const evWrites = require('../lib/evidence-writes');
+const evidenceRetrieval = require('../lib/evidence-retrieval');
+const { PolicyRetrievalError } = require('../lib/policy-retrieval');
 const { paginate, paginateArray, pageHref } = require('../lib/paginate');
 const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
 const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
@@ -17,6 +20,91 @@ const { requireInternalEvidenceMutation } = require('../lib/evidence-access');
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           upload, resolveUploadPath } = deps;
+
+  function hasPermission(req, permission) {
+    return rbac.hasPermission(req.userPerms || new Set(), permission);
+  }
+
+  function canUseExternalEvidenceAi(req) {
+    return hasPermission(req, 'evidence.view')
+      && hasPermission(req, 'evidence.download')
+      && hasPermission(req, 'ai.external_process');
+  }
+
+  function hasEvidenceAiAcknowledgement(body) {
+    return body && body.ai_external_ack === 'accepted'
+      && body.ai_data_classification === 'non_confidential_trial';
+  }
+
+  async function runEvidenceIndex(req, evidenceId, authorizationScope) {
+    if (!canUseExternalEvidenceAi(req)) {
+      throw new PolicyRetrievalError(
+        'You need evidence.view, evidence.download, and manager-granted ai.external_process permissions before evidence content can leave Nimbus.',
+        'external_evidence_processing_forbidden', 403
+      );
+    }
+    if (!hasEvidenceAiAcknowledgement(req.body)) {
+      throw new PolicyRetrievalError(
+        'Confirm that this file is sanitized, non-confidential trial evidence before sending its text to the logged OpenRouter/NVIDIA free endpoint.',
+        'external_evidence_acknowledgement_required', 400
+      );
+    }
+    const startedAt = Date.now();
+    let audited = false;
+    try {
+      const result = await evidenceRetrieval.indexEvidence({
+        db,
+        workspaceId: req.workspace.id,
+        evidenceId: Number(evidenceId),
+        actorId: req.user.id,
+        authorizationScope,
+        resolveUploadPath,
+        beforeEgress(stage, metadata) {
+          logAction(req.user.id, req.workspace.id, 'ai_evidence_index_egress_started', 'evidence', evidenceId, {
+            provider: 'OpenRouter',
+            stage,
+            external_processing: true,
+            external_processing_acknowledged: true,
+            acknowledgement_version: evidenceRetrieval.DISCLOSURE_VERSION,
+            embedding_model: evidenceRetrieval.modelInfo().embedding_model,
+            chunk_count: Number(metadata && metadata.chunk_count || 0),
+            extracted_character_count: Number(metadata && metadata.extracted_character_count || 0),
+            data_categories: ['selected_non_confidential_evidence_plaintext_sent_to_logged_free_embedding_endpoint']
+          }, { ...auditCtx(req), strict: true });
+          audited = true;
+        }
+      });
+      logAction(req.user.id, req.workspace.id, 'ai_evidence_index_completed', 'evidence', evidenceId, {
+        provider: 'OpenRouter',
+        status: result.status,
+        reused: !!result.reused,
+        chunk_count: Number(result.chunk_count || 0),
+        duration_ms: Date.now() - startedAt
+      }, auditCtx(req));
+      return result;
+    } catch (error) {
+      logAction(req.user.id, req.workspace.id, 'ai_evidence_index_failed', 'evidence', evidenceId, {
+        provider: 'OpenRouter',
+        external_egress_started: audited,
+        error_type: String(error && error.name || 'Error').slice(0, 80),
+        error_code: String(error && error.code || 'evidence_index_failed').slice(0, 100),
+        duration_ms: Date.now() - startedAt
+      }, auditCtx(req));
+      throw error;
+    }
+  }
+
+  function evidenceIndexToast(result) {
+    if (result.status === 'ready' && result.reused) return 'Evidence already has a current AI index; the existing vectors were reused.';
+    if (result.status === 'ready') return `Evidence indexed for control search (${result.chunk_count} chunk${result.chunk_count === 1 ? '' : 's'}).`;
+    return result.error || 'The evidence was retained, but no searchable text could be indexed.';
+  }
+
+  function publicEvidenceIndexError(error) {
+    return error instanceof PolicyRetrievalError
+      ? String(error.message || 'Evidence indexing failed.').slice(0, 500)
+      : 'Evidence indexing failed because of an internal error. The original file was not changed.';
+  }
 
   // ==================== EVIDENCE ====================
   // Workspace-wide evidence library - every uploaded file with its links, owner,
@@ -111,6 +199,18 @@ function register(app, deps) {
           FROM requirements r JOIN frameworks f ON f.id=r.framework_id
           WHERE f.code='dpdpa' AND f.status='active' ORDER BY r.sort_order,r.ref`).all() : [];
 
+    const canExternalProcess = canUseExternalEvidenceAi(req);
+    const evidenceAi = {
+      configured: canExternalProcess && evidenceRetrieval.isConfigured(),
+      configuration_error: canExternalProcess
+        ? evidenceRetrieval.configurationError()
+        : 'A manager must grant evidence download and ai.external_process before file content can leave Nimbus.',
+      can_external_process: canExternalProcess,
+      disclosure: evidenceRetrieval.DATA_DISCLOSURE,
+      models: evidenceRetrieval.modelInfo(),
+      status_by_id: evidenceRetrieval.statusByEvidence(db, req.workspace.id)
+    };
+
     res.render('evidence_library', {
       user: req.user, ws: req.workspace,
       title: 'Evidence library',
@@ -120,6 +220,7 @@ function register(app, deps) {
       allIsoItems, allIso42001Items, allCsfSubcats, allDpdpaItems,
       q, filter, tag, today, expSoon,
       tagList,
+      evidenceAi,
       pg: pgEv, pagerHref: p => pageHref(req, p)
     });
   });
@@ -217,6 +318,11 @@ function register(app, deps) {
         framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
       });
       const back = req.headers.referer || '/workspaces/' + req.workspace.id + '/evidence';
+      if (req.body && req.body.ai_index === '1') {
+        return runEvidenceIndex(req, existing.id, 'single_upload')
+          .then(result => res.redirect(withToast(back, `Same file already exists (${existing.filename}) - linked instead of duplicated. ${evidenceIndexToast(result)}`)))
+          .catch(error => res.redirect(withToast(back, `Same file already exists (${existing.filename}) - linked instead of duplicated. AI indexing did not run: ${publicEvidenceIndexError(error)}`, 'error')));
+      }
       return res.redirect(withToast(back, `Same file already exists (${existing.filename}) - linked instead of duplicated`));
     }
 
@@ -236,8 +342,53 @@ function register(app, deps) {
       framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
     });
     const back = req.headers.referer || '/workspaces/' + req.workspace.id;
+    if (req.body && req.body.ai_index === '1') {
+      return runEvidenceIndex(req, evId, 'single_upload')
+        .then(result => res.redirect(withToast(back, `Evidence uploaded. ${evidenceIndexToast(result)}`)))
+        .catch(error => res.redirect(withToast(back, `Evidence uploaded locally, but AI indexing did not complete: ${publicEvidenceIndexError(error)}`, 'error')));
+    }
     res.redirect(back);
   });
+
+  // Explicit manual indexing for an existing Evidence Library file. The free
+  // endpoints log content, so every run requires a fresh unchecked consent.
+  app.post('/workspaces/:wsId/evidence/:id/ai-index', requireAuth, requireWorkspace,
+    requireInternalEvidenceMutation, requirePermission('evidence.upload'), requirePermission('evidence.view'),
+    requirePermission('evidence.download'), requirePermission('ai.external_process'), async (req, res) => {
+      const evidence = db.prepare(`SELECT id FROM evidence
+        WHERE workspace_id=? AND id=? AND superseded_at IS NULL`).get(req.workspace.id, req.params.id);
+      if (!evidence) return res.status(404).send('Not found');
+      const back = req.headers.referer || `/workspaces/${req.workspace.id}/evidence`;
+      try {
+        const result = await runEvidenceIndex(req, evidence.id, 'manual_index');
+        return res.redirect(withToast(back, evidenceIndexToast(result), result.status === 'ready' ? 'success' : 'info'));
+      } catch (error) {
+        const status = error instanceof PolicyRetrievalError ? Number(error.status) : 500;
+        if (status === 404) return res.status(404).send('Not found');
+        const message = publicEvidenceIndexError(error);
+        return res.redirect(withToast(back, message, 'error'));
+      }
+    });
+
+  app.post('/workspaces/:wsId/evidence/:id/ai-index/delete', requireAuth, requireWorkspace,
+    requireInternalEvidenceMutation, requirePermission('evidence.upload'), requirePermission('evidence.view'),
+    requirePermission('evidence.download'), requirePermission('ai.external_process'), (req, res) => {
+      const evidence = db.prepare(`SELECT id FROM evidence
+        WHERE workspace_id=? AND id=?`).get(req.workspace.id, req.params.id);
+      if (!evidence) return res.status(404).send('Not found');
+      logAction(req.user.id, req.workspace.id, 'ai_evidence_index_removal_started', 'evidence', evidence.id, {
+        derived_vectors_removal_requested: true
+      }, { ...auditCtx(req), strict: true });
+      const removed = evidenceRetrieval.purgeEvidenceIndexes(db, req.workspace.id, evidence.id);
+      logAction(req.user.id, req.workspace.id, 'ai_evidence_index_removed', 'evidence', evidence.id, {
+        removed_generation_count: removed,
+        derived_vectors_removed: true
+      }, auditCtx(req));
+      const back = req.headers.referer || `/workspaces/${req.workspace.id}/evidence`;
+      return res.redirect(withToast(back, removed
+        ? 'The evidence AI index and its derived vectors were removed.'
+        : 'This evidence did not have an AI index.', 'info'));
+    });
 
   // Bulk upload - multiple files at once with shared metadata. Each file becomes
   // an independent evidence row; all share the same period / valid_from / valid_until
@@ -313,6 +464,7 @@ function register(app, deps) {
     try { tx(); } catch (_) {}
     // Mark old as superseded - kept for audit trail but hidden from active view.
     db.prepare(`UPDATE evidence SET superseded_at=datetime('now'), superseded_by_id=? WHERE id=?`).run(newId, old.id);
+    evidenceRetrieval.markEvidenceStale(db, req.workspace.id, old.id);
     logAction(req.user.id, req.workspace.id, 'supersede_evidence', 'evidence', old.id, { new_id: newId, filename: req.file.originalname });
     res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, `Superseded ${old.filename} → ${req.file.originalname}`));
   });

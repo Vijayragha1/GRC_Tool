@@ -43,7 +43,7 @@ async function loginAs(browser, email, password) {
   assert.ok(csrf, `login CSRF missing for ${email}`);
   const signedIn = await browser.post('/login', { email, password, _csrf: csrf }, { csrf: false });
   assert.equal(signedIn.status, 302);
-  await browser.get('/dashboard');
+  await browser.get('/dashboard?legacy=1');
 }
 
 test.before(async () => {

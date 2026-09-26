@@ -59,5 +59,12 @@
   "058_framework_catalog_releases.sql": "b3e41ae665144c0c57bf485a8fef212090bc08598bcde13e04a8d63eee73a9c4",
   "059_repair_misplaced_iso27001_intakes.sql": "fbc82540a376bf05d825aab53d7bf47198f3c7c04b0f4fbef4c180364b76728c",
   "060_tprm_foreign_key_scope_reconciliation.js": "c19f2a257c7f3c176ce375ceeb8fab821d67cbc7ef1b0a786b88a02808edbad6",
+  "061_evidence_ai_retrieval.sql": "eed227dc69f5c938c7b481ba41d7057f31dc67f59dd1759bcda1ee63a440bd6b",
+  "062_personal_drafts_and_diagnostics.js": "26e3a86a79a27dc939ac33adccba05ef3ae28bdaa2fa671895ef582e34183173",
+  "063_client_collaboration_experience.sql": "283939684662ff69d30514134028a938d16c2dce95dc3daefaa9fa109085dccc",
+  "064_assessment_pass_manifests.sql": "4e948057269678a26e9812c48d9376d205399bf4fba0fef6ce96e8d497a76c52",
+  "065_experience_rollout.sql": "065b18f29826223d66752f69171f187ab1db667816a34b6f0a80c9a8ec915a0b",
+  "066_report_revision_requests.sql": "834ad4647ba6f406ac6fa68d2be46c8fb0ec2d3f9ed3b3197848f18eec115e20",
+  "067_experience_diagnostic_view_reconciliation.js": "985b4ed62b474872ca09af3b56434b1bca50f10ad58ac678e0b80a2482c6b381",
   "068_iso42001_certification_audit.sql": "1041e4e575b79407a609e2652a7aa6cd75eec59f9254825dc83c97aa0e64a3f6"
 }

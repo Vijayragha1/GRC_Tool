@@ -51,7 +51,7 @@ async function authenticateAs(app, email, password) {
   const token = (login.text.match(/name="_csrf"\s+value="([a-f0-9]+)"/) || [])[1];
   const response = await scoped.post('/login', { email, password, _csrf: token }, { csrf: false });
   assert.ok(response.status >= 300 && response.status < 400, `login returned ${response.status}`);
-  await scoped.get('/dashboard');
+  await scoped.get('/dashboard?legacy=1');
   return scoped;
 }
 
@@ -141,7 +141,7 @@ test.after(async () => {
 });
 
 test('manager quick-create exposes, persists and opens a DPDPA-only programme', async () => {
-  const dashboard = await client.get('/dashboard');
+  const dashboard = await client.get('/dashboard?legacy=1');
   assert.equal(dashboard.status, 200);
   assert.match(dashboard.text, /id="dashboard-dpdpa-programme"[^>]*value="dpdpa"/);
 

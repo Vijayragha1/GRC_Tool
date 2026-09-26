@@ -27,7 +27,7 @@ async function loginAs(http, email, password) {
   assert.ok(csrf, `login CSRF token missing for ${email}`);
   const response = await http.post('/login', { email, password, _csrf:csrf }, { csrf:false });
   assert.equal(response.status, 302);
-  await http.get('/dashboard');
+  await http.get('/dashboard?legacy=1');
 }
 
 function findingContextPath(source, assessmentId, itemKey) {

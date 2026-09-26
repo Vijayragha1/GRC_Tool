@@ -117,14 +117,14 @@ test('NIST CSF distinguishes unassessed outcomes from confirmed findings', async
   db.prepare(`UPDATE workspaces SET frameworks='["iso27001","iso42001","csf"]' WHERE id=?`).run(workspaceId);
 });
 
-test('consultant workspace navigation exposes the integrated overview and separates framework programmes without a duplicate audit-pack entry', async () => {
+test('consultant workspace navigation exposes the integrated overview and groups programme journeys without a duplicate audit-pack entry', async () => {
   const page = await manager.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(page.status, 200);
-  assert.equal((page.text.match(/class="nav-domain-summary"/g) || []).length, 11);
+  assert.equal((page.text.match(/class="nav-domain-summary"/g) || []).length, 5);
   assert.match(page.text, /nav-item-text">Integrated overview/);
-  assert.match(page.text, /ISO 27001 programme/);
-  assert.match(page.text, /Cybersecurity maturity/);
-  assert.match(page.text, /AI management system/);
+  assert.match(page.text, /nav-subitem-text">ISO 27001 · Gap assessment/);
+  assert.match(page.text, /nav-subitem-text">NIST CSF · Programme dashboard/);
+  assert.match(page.text, /nav-subitem-text">ISO 42001 · Management intake/);
   assert.doesNotMatch(page.text, /nav-item-text">Audit pack/);
 });
 
@@ -186,7 +186,7 @@ test('every client account receives the same restricted client workspace shell',
     for (const destination of ['Home', 'My actions', 'Progress', 'Findings &amp; remediation', 'Reports']) {
       assert.match(portal.text, new RegExp(`nav-item-text">${destination}`));
     }
-    for (const section of ['engagement', 'requests', 'approvals', 'reports', 'team-help']) {
+    for (const section of ['engagement-progress', 'action-list', 'reports', 'team-help']) {
       assert.match(portal.text, new RegExp(`id="${section}"`));
     }
 
@@ -395,26 +395,26 @@ test('client portal excludes unassigned delivery work and blocks evidence-free s
   const rows = db.prepare(`SELECT d.id,d.title FROM engagement_delivery_deliverables d JOIN engagement_delivery_plans p ON p.id=d.plan_id WHERE p.workspace_id=? ORDER BY d.id LIMIT 2`).all(workspaceId);
   db.prepare(`UPDATE engagement_delivery_deliverables SET due_date='2020-08-20' WHERE id=?`).run(rows[0].id);
   const unassignedPage = await clientOwner.get(`/workspaces/${workspaceId}/client-portal?view=actions`);
-  assert.match(unassignedPage.text, /Deliverables to provide[\s\S]*?<strong>0<\/strong>/);
-  assert.match(unassignedPage.text, /Overdue items[\s\S]*?<strong>0<\/strong>/);
+  assert.doesNotMatch(unassignedPage.text, new RegExp(`id="work-engagement_deliverable-${rows[0].id}"`));
   assert.doesNotMatch(unassignedPage.text, /Kick-off records and role acknowledgements/);
   assert.doesNotMatch(unassignedPage.text, /20 Aug 2020/);
   db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=?,client_visible=1 WHERE id=?`).run(contributorId, managerId, rows[0].id);
   db.prepare(`UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=?,client_visible=1 WHERE id=?`).run(otherContributorId, managerId, rows[1].id);
   const page = await contributor.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(page.status, 200);
-  assert.match(page.text, /Deliverables and approvals/);
-  assert.match(page.text, /Review what’s required, provide supporting evidence and track formal sign-off/);
-  assert.doesNotMatch(page.text, /client-visible|factual validation|workspace verified|append-only|controlled deliverable|internal consultant|version-controlled/i);
+  assert.match(page.text, /id="action-list"/);
+  assert.match(page.text, /Requests, deliverables, approvals and information checks in one list/);
   assert.match(page.text, /Kick-off records and role acknowledgements/);
   assert.doesNotMatch(page.text, /Completed engagement intake and draft scope statement/);
-  assert.match(page.text, /Evidence required/);
-  assert.match(page.text, /scope="col"/);
-  assert.match(page.text, /role="progressbar"[\s\S]*?aria-valuenow="0"/);
-  assert.match(page.text, /for="delivery-file-/);
-  assert.match(page.text, /for="delivery-comment-/);
-  assert.doesNotMatch(page.text, /onchange="this\.form\.submit\(\)"/);
-  assert.match(page.text, /disabled aria-disabled="true" title="Upload evidence before submitting"/);
+  assert.match(page.text, new RegExp(`/client-portal/deliverables/${rows[0].id}`));
+  const detail = await contributor.get(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}`);
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /What completion requires/);
+  assert.match(detail.text, /All supporting files/);
+  assert.match(detail.text, /for="delivery-file"/);
+  assert.match(detail.text, /for="delivery-comment"/);
+  assert.match(detail.text, /disabled>Submit for review/);
+  assert.equal((await contributor.get(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[1].id}`)).status, 404);
 
   const blocked = await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/submit`, { note: 'No evidence attached.' });
   assert.equal(blocked.status, 400);
@@ -429,18 +429,18 @@ test('client portal excludes unassigned delivery work and blocks evidence-free s
   db.prepare(`INSERT INTO engagement_delivery_evidence (workspace_id,deliverable_id,evidence_id,linked_by) VALUES (?,?,?,?)`)
     .run(workspaceId, rows[0].id, evidenceId, contributorId);
 
-  const readyPage = await contributor.get(`/workspaces/${workspaceId}/client-portal`);
-  const readyDeliverableRow = (readyPage.text.match(/<tr><td[^>]*><strong>Kick-off records and role acknowledgements<\/strong>[\s\S]*?<\/tr>/) || [])[0];
-  assert.ok(readyDeliverableRow, 'the assigned deliverable row should render');
-  assert.doesNotMatch(readyDeliverableRow, /disabled aria-disabled="true" title="Upload evidence before submitting"/);
+  const readyPage = await contributor.get(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}`);
+  assert.match(readyPage.text, /client-evidence.pdf/);
+  assert.doesNotMatch(readyPage.text, /disabled>Submit for review/);
   const submitted = await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/submit`, { note: 'Ready for formal review.' });
   assert.equal(submitted.status, 302);
   assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'submitted');
   assert.ok(db.prepare(`SELECT 1 FROM audit_log WHERE workspace_id=? AND entity_type='engagement_deliverable' AND entity_id=? AND action='client_submit_delivery_deliverable'`).get(workspaceId, String(rows[0].id)));
   const underReviewPage = await contributor.get(`/workspaces/${workspaceId}/client-portal?view=actions`);
-  assert.match(underReviewPage.text, /Deliverables to provide[\s\S]*?<strong>0<\/strong>/);
-  assert.match(underReviewPage.text, /Awaiting review[\s\S]*?<strong>1<\/strong>/);
-  assert.match(underReviewPage.text, /Overdue items[\s\S]*?<strong>0<\/strong>/);
+  const waitingRow = (underReviewPage.text.match(new RegExp(`<article[^>]*id="work-engagement_deliverable-${rows[0].id}"[\\s\\S]*?</article>`)) || [])[0];
+  assert.ok(waitingRow, 'submitted work remains visible in the shared action queue');
+  assert.match(waitingRow, /Waiting on engagement team/);
+  assert.doesNotMatch(waitingRow, /Submit for review/);
   await contributor.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/accept`, { note: 'Owner must not self-approve.' });
   assert.equal(db.prepare(`SELECT status FROM engagement_delivery_deliverables WHERE id=?`).get(rows[0].id).status, 'submitted', 'non-approver cannot accept');
   await manager.post(`/workspaces/${workspaceId}/client-portal/deliverables/${rows[0].id}/accept`, { note: 'Accepted against the linked evidence.' });

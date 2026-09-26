@@ -302,7 +302,7 @@ test('all downstream readers ignore retained certification rows for a gap-only c
   let managerCalendar;
   dashboardHandlers.get('GET /calendar')({
     user: { id: managerId, firm_id: firmId, user_type: 'firm', firm_role: 'manager' },
-    query: { month: dueDate.slice(0, 7) },
+    query: { month: dueDate.slice(0, 7), legacy: '1' },
   }, {
     status() { return this; },
     render(_view, locals) { managerCalendar = locals; },
@@ -316,6 +316,7 @@ test('all downstream readers ignore retained certification rows for a gap-only c
   let dashboard;
   dashboardHandlers.get('GET /dashboard')({
     user: { id: managerId, firm_id: firmId, user_type: 'firm', firm_role: 'manager' },
+    query: { legacy: '1' },
   }, {
     redirect() { throw new Error('unexpected redirect'); },
     status() { return this; },

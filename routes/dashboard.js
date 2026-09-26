@@ -13,6 +13,7 @@ const isoLifecycle = require('../lib/iso-lifecycle');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const gapFieldwork = require('../lib/gap-fieldwork');
 const { buildGapAssessmentOverview } = require('../lib/workspace-outcome-overview');
+const { enabledFor: experienceEnabled } = require('../lib/experience-flags');
 
 const PROGRAMME_LABELS = Object.freeze({
   iso42001: 'ISO 42001 programme',
@@ -125,6 +126,9 @@ function register(app, deps) {
 
   // ==================== DASHBOARD ====================
   app.get('/dashboard', requireAuth, (req, res) => {
+    if(req.user.user_type==='firm'&&req.query.legacy!=='1'&&req.query.new!=='1'&&experienceEnabled(db,{actor:req.user})){
+      return res.redirect(rbac.isManager(req.user.firm_role)?'/work/overview':'/work');
+    }
     const workspaces = listWorkspaces(req.user);
     // The dashboard is a consulting-firm portfolio surface. Client accounts
     // must never see its cross-engagement readiness, risk or internal delivery
@@ -686,6 +690,7 @@ function register(app, deps) {
   // and who's carrying it. Gated on firm.cross_view (manager + senior consultant),
   // same as /portfolio; the per-workspace calendar lives at /workspaces/:id/calendar.
   app.get('/calendar', requireAuth, (req, res) => {
+    if(req.user.user_type==='firm'&&req.query.legacy!=='1'&&experienceEnabled(db,{actor:req.user}))return res.redirect('/work/calendar');
     if (!isFirmUser(req.user) || !rbac.rolePermissions(req.user.firm_role).includes('firm.cross_view')) {
       return res.status(403).render('error', { user: req.user, message: 'The firm calendar is for managers and senior consultants.' });
     }

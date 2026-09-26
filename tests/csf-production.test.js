@@ -49,7 +49,10 @@ test('cybersecurity maturity programme renders decision, workbench, assurance, r
   const programme=await client.get(`/workspaces/${workspaceId}/csf`);assert.equal(programme.status,200,programme.text.slice(0,500));
   assert.match(programme.text,/NIST Cybersecurity Framework 2\.0/);assert.match(programme.text,/Cybersecurity maturity programme/);
   assert.match(programme.text,/Assessment status/);assert.match(programme.text,/Function-level maturity/);
-  assert.match(programme.text,/ISO 27001 programme/);assert.match(programme.text,/Cybersecurity maturity/);assert.match(programme.text,/AI management system/);
+  for(const [href,label]of [[`/workspaces/${workspaceId}/gap-assessment`,'ISO 27001'],[`/workspaces/${workspaceId}/csf`,'CSF'],[`/workspaces/${workspaceId}/iso42001/gap-assessment`,'ISO 42001']]){
+    assert.ok(programme.text.includes(`href="${href}"`),`${label} must retain its native programme destination`);
+    assert.match(programme.text,new RegExp(label));
+  }
   assert.doesNotMatch(programme.text,/nav-subitem-text">NIST CSF 2\.0/,'NIST must not be buried inside the ISO assessment menu');
   for(const path of ['scope','assessment','review','findings','report']){
     const page=await client.get(`/workspaces/${workspaceId}/csf/${engagementId}/${path}`);assert.equal(page.status,200,`${path}: ${page.text.slice(0,500)}`);
@@ -80,14 +83,15 @@ test('a CSF-only client root resolves to its programme with no duplicate overvie
   assert.match(programme.text,/NIST CSF 2\.0 governed assessment/);
   assert.doesNotMatch(programme.text,/Stage 1 maturity|ISO 27001 programme|ISO controls &amp; SoA/);
   const sidebarNav=(programme.text.match(/<nav class="sidebar-nav">[\s\S]*?<\/nav>/)||[])[0];assert.ok(sidebarNav);
-  assert.equal((sidebarNav.match(/class="nav-domain-summary"/g)||[]).length,3);
-  for(const label of ['Delivery','Cybersecurity maturity','Settings']) assert.match(sidebarNav,new RegExp(label));
+  assert.equal((sidebarNav.match(/class="nav-domain-summary"/g)||[]).length,5);
+  for(const label of ['Work','Programmes','Evidence &amp; documents','Reports','Team &amp; settings']) assert.match(sidebarNav,new RegExp(label));
   for(const label of ['Business profile','Maturity workbench','Quality review','Priorities &amp; roadmap','Executive reporting']) assert.match(sidebarNav,new RegExp(label));
   // "Client setup" is the programme-agnostic setup hub and belongs on every
   // client. The ISO 27001-specific surface it used to point at is now listed
   // separately as "ISO 27001 intake", and that is what a CSF-only client
   // must never see.
-  assert.doesNotMatch(sidebarNav,/nav-item-text">Overview|Review queue|Plan &amp; roadmap|Compliance calendar|Risks &amp; context|Suppliers|Incidents|Business continuity|Evidence coverage|Policy templates|Management reviews|Reports &amp; assurance|Assurance &amp; certification|Internal audits|Auditor access|ISO 27001 intake/);
+  assert.doesNotMatch(sidebarNav,/Plan &amp; roadmap|Risks &amp; context|Suppliers|Incidents|Business continuity|Evidence coverage|Policy templates|Management reviews|Reports &amp; assurance|Assurance &amp; certification|Internal audits|Auditor access|ISO 27001 intake/);
+  for(const section of ['scope','assessment','review','findings','report'])assert.ok(sidebarNav.includes(`/workspaces/${workspaceId}/csf/current/${section}`),`${section} remains a native CSF destination`);
   const evidenceCoverage=await client.get(`/workspaces/${workspaceId}/evidence-coverage`);
   assert.equal(evidenceCoverage.status,302);
   assert.equal(evidenceCoverage.location,`/workspaces/${workspaceId}/csf/current/assessment?view=outcomes&gap=evidence`);

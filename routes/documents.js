@@ -8,8 +8,12 @@ const rbac = require('../lib/rbac');
 const fs = require('fs');
 const crypto = require('crypto');
 const MarkdownIt = require('markdown-it');
+const mammoth = require('mammoth');
+const { PDFParse } = require('pdf-parse');
 const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
+const personalDrafts = require('../lib/form-drafts');
+const collaborationNotifications = require('../lib/notification-delivery');
 const email = require('../lib/email');
 const docLinks = require('../lib/doc-links');
 const ctlReads = require('../lib/control-reads');
@@ -413,7 +417,9 @@ function register(app, deps) {
         }
         const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         bodyHtml = pdfText.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('\n');
-        conversionNote = `<p><em>Imported from PDF - formatting (tables, headings, lists) may need to be re-applied. The original PDF is attached as the approved source.</em></p>`;
+        conversionNote = pdfText.trim()
+          ? `<p><em>Imported from PDF - formatting (tables, headings, lists) may need to be re-applied. The original PDF is attached as the approved source.</em></p>`
+          : `<p><strong>Text extraction warning:</strong> No searchable text was found. This PDF may be scanned or image-only; run OCR and import the text before relying on automated policy coverage.</p>`;
       } else {
         // .md / .markdown / .txt - run through markdown-it (treats plain text reasonably)
         const MarkdownIt = require('markdown-it');
@@ -833,6 +839,7 @@ function register(app, deps) {
           internal: chain.filter(c => c.kind === 'internal').length,
           external: chain.filter(c => c.kind === 'external').length, summary },
         { ...auditCtx(req), strict: true });
+      if(docApprovals.nextPending(db,v.id)?.kind==='internal')notifyChainAdvanced(v.id,doc,req.workspace,req.user.name,true);
     });
     try {
       tx();
@@ -858,32 +865,9 @@ function register(app, deps) {
       merged.forEach((row, idx) => {
         const isFirst = idx === 0;
         if (row.kind === 'internal') {
-          if (!row.person_email) return;
-          const intro = isFirst
-            ? `${submitter} has submitted "${doc.name}" (v${v.version}) for your approval in the ${wsName} workspace.`
-            : `${submitter} has submitted "${doc.name}" (v${v.version}) for approval in the ${wsName} workspace. You are approver #${idx + 1} - you'll be able to decide once the earlier approvers have signed off.`;
-          const bodyHtml = `
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;border:1px solid #ececef;border-radius:6px;">
-              <tr><td style="padding:14px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">
-                <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin-bottom:6px;">Document</div>
-                <div style="font-size:15px;font-weight:500;color:#0a0a0a;margin-bottom:10px;">${email.escapeHtml(doc.name)} <span style="color:#9c9ca5;font-weight:400;">· v${v.version}</span></div>
-                ${summary ? `<div style="font-size:13px;line-height:1.5;color:#51525c;border-left:2px solid #1a1a1a;padding-left:10px;">${email.escapeHtml(summary)}</div>` : ''}
-              </td></tr>
-            </table>`;
-          email.sendEmail({
-            to: row.person_email,
-            subject: `[${wsName}] Approval requested: ${doc.name} (v${v.version})`,
-            html: email.renderEmailLayout({
-              headline: isFirst ? 'A document needs your approval' : 'You are in the approval queue',
-              intro, bodyHtml,
-              ctaText: isFirst ? 'Review and approve' : 'View document',
-              ctaUrl: docUrl,
-              footnote: `You're receiving this because you were named as an approver on this document. Decisions are recorded with your signature and the workspace audit log.`,
-              fromName: wsName
-            }),
-            firmId: req.workspace.firm_id, workspaceId: req.workspace.id,
-            relatedType: 'doc_approval_request', relatedId: doc.id
-          }).catch(err => console.error('[email] internal-approver send failed:', err.message));
+          // The first internal recipient is recorded atomically in the outbox.
+          // Later approvers are notified when the chain reaches their step.
+          return;
         } else {
           // External - send the magic link only on the first approver's
           // turn. Later external approvers get nudged when their turn
@@ -913,7 +897,7 @@ function register(app, deps) {
   // (POST /approve/:token). Keep these here so server.js owns the
   // chain-advance + completion side-effects in one place.
 
-  function notifyChainAdvanced(versionId, doc, workspace, decidedByDisplay) {
+  function notifyChainAdvanced(versionId, doc, workspace, decidedByDisplay, initial=false) {
     const next = docApprovals.nextPending(db, versionId);
     if (!next) return; // chain complete - completion handler runs separately
     const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
@@ -921,18 +905,10 @@ function register(app, deps) {
     const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
 
     if (next.kind === 'internal') {
-      if (!next.row.person_email) return;
-      const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">${email.escapeHtml(decidedByDisplay)} has signed off. "${email.escapeHtml(doc.name)}" (v${version.version}) is now waiting on your decision as approver #${next.row.sequence}${next.row.role_label ? ` (${email.escapeHtml(next.row.role_label)})` : ''}.</p>`;
-      email.sendEmail({
-        to: next.row.person_email,
-        subject: `[${wsName}] Your turn to approve: ${doc.name} (v${version.version})`,
-        html: email.renderEmailLayout({
-          headline: 'A document is waiting on you',
-          bodyHtml, ctaText: 'Review and approve', ctaUrl: docUrl, fromName: wsName
-        }),
-        firmId: workspace.firm_id, workspaceId: workspace.id,
-        relatedType: 'doc_approval_request', relatedId: doc.id
-      }).catch(err => console.error('[email] next-internal notify failed:', err.message));
+      const recipient=db.prepare('SELECT user_type FROM users WHERE id=?').get(next.row.user_id);
+      collaborationNotifications.enqueue(db,{workspaceId:workspace.id,recipientIds:[next.row.user_id],eventKey:`policy:${versionId}:approver:${next.row.id}`,sourceType:'policy',sourceId:doc.id,
+        title:`Policy approval required: ${doc.name}`,body:`${decidedByDisplay} ${initial?'submitted this policy for approval':'completed the previous step'}. Review version ${version.version} as approver ${next.row.sequence}.`,
+        link:`/workspaces/${workspace.id}/${recipient?.user_type==='client'?'client-portal/policies':'documents'}/${doc.id}`});
     } else {
       // External next - rotate the token (the old one was either never
       // delivered or has been sitting in their inbox for days) and send
@@ -955,50 +931,19 @@ function register(app, deps) {
     }
   }
 
-  function notifyChainComplete(versionId, doc, workspace, decidedByDisplay) {
-    const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
-    const submitter = version ? db.prepare('SELECT id, name, email FROM users WHERE id=?').get(version.created_by) : null;
-    if (!submitter || !submitter.email) return;
-    const wsName = workspace.client_name;
-    const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
-    const chain = docApprovals.listChain(db, versionId);
-    const listRows = chain.map(a =>
-      `<li style="margin-bottom:4px;">${email.escapeHtml(a.person_name)}${a.role_label ? ` <span style="color:#9c9ca5;">(${email.escapeHtml(a.role_label)})</span>` : ''}${a.kind === 'external' ? ` <span style="color:#9c9ca5;">· external</span>` : ''}</li>`
-    ).join('');
-    const bodyHtml = `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">All approvers have signed off on v${version.version} of "${email.escapeHtml(doc.name)}". The document is now locked as <strong>approved</strong> and ready for publication.</p>
-      <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9c9ca5;margin:16px 0 6px;">Approval chain</div>
-      <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">${listRows}</ul>`;
-    email.sendEmail({
-      to: submitter.email,
-      subject: `[${wsName}] Approved: ${doc.name} (v${version.version})`,
-      html: email.renderEmailLayout({
-        headline: 'Your document has been approved',
-        bodyHtml, ctaText: 'Publish document', ctaUrl: docUrl, fromName: wsName
-      }),
-      firmId: workspace.firm_id, workspaceId: workspace.id,
-      relatedType: 'doc_approval_decision', relatedId: doc.id
-    }).catch(err => console.error('[email] approval-complete notify failed:', err.message));
+  function notifyDocumentAuthor(versionId,doc,workspace,event,title,body){
+    const version=db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
+    if(!version)return;
+    const author=db.prepare('SELECT id,user_type FROM users WHERE id=?').get(version.created_by);
+    if(!author)return;
+    collaborationNotifications.enqueue(db,{workspaceId:workspace.id,recipientIds:[author.id],eventKey:`policy:${versionId}:${event}`,sourceType:'policy',sourceId:doc.id,title,body,
+      link:`/workspaces/${workspace.id}/${author.user_type==='client'?'client-portal/policies':'documents'}/${doc.id}`});
   }
-
-  function notifyRejection(versionId, doc, workspace, rejectorDisplay, reason) {
-    const version = db.prepare('SELECT * FROM doc_versions WHERE id=?').get(versionId);
-    const submitter = version ? db.prepare('SELECT id, name, email FROM users WHERE id=?').get(version.created_by) : null;
-    if (!submitter || !submitter.email) return;
-    const wsName = workspace.client_name;
-    const docUrl = `${email.appBaseUrl()}/workspaces/${workspace.id}/documents/${doc.id}`;
-    const bodyHtml = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>${email.escapeHtml(rejectorDisplay)}</strong> rejected v${version.version} of "${email.escapeHtml(doc.name)}".</p>
-      ${reason ? `<div style="margin:12px 0;padding:12px 14px;background:#fafafa;border-left:2px solid #1a1a1a;font-size:13px;line-height:1.5;color:#27272a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;"><strong>Reason:</strong> ${email.escapeHtml(reason)}</div>` : ''}
-      <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#51525c;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;">The document is back in draft so you can address the feedback and resubmit.</p>`;
-    email.sendEmail({
-      to: submitter.email,
-      subject: `[${wsName}] Rejected: ${doc.name} (v${version.version})`,
-      html: email.renderEmailLayout({
-        headline: 'Your document was rejected',
-        bodyHtml, ctaText: 'Open document', ctaUrl: docUrl, fromName: wsName
-      }),
-      firmId: workspace.firm_id, workspaceId: workspace.id,
-      relatedType: 'doc_approval_decision', relatedId: doc.id
-    }).catch(err => console.error('[email] reject-notify failed:', err.message));
+  function notifyChainComplete(versionId,doc,workspace,decidedByDisplay){
+    notifyDocumentAuthor(versionId,doc,workspace,'approved',`Policy approved: ${doc.name}`,`${decidedByDisplay} completed the approval chain. The approved version is ready for the publisher.`);
+  }
+  function notifyRejection(versionId,doc,workspace,rejectorDisplay,reason){
+    notifyDocumentAuthor(versionId,doc,workspace,'changes',`Changes requested: ${doc.name}`,`${rejectorDisplay} requested changes. ${reason||''}`);
   }
 
   // Mark the version + document as approved (called from both decide
@@ -1029,69 +974,58 @@ function register(app, deps) {
   }
 
   app.post('/workspaces/:wsId/documents/:id/decide', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.review'), (req, res) => {
-    const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
-    const decisionBack = req.user.user_type === 'client'
-      ? `/workspaces/${req.workspace.id}/client-portal/policies/${req.params.id}`
-      : `/workspaces/${req.workspace.id}/documents/${req.params.id}`;
-    if (!doc || !doc.current_version_id) return res.redirect(decisionBack);
-    const { decision } = req.body;
-
-    // The logged-in user must be the next pending approver (mixed-chain
-    // aware - they have to be at the front of the merged queue, not just
-    // the front of the internal queue).
-    const myRow = db.prepare(
-      `SELECT * FROM doc_approvers WHERE version_id=? AND user_id=? AND decision IS NULL ORDER BY sequence LIMIT 1`
-    ).get(doc.current_version_id, req.user.id);
-    if (!myRow) return res.status(403).render('error', { user: req.user, message: 'You are not a pending approver on this version.' });
-    const upNext = docApprovals.nextPending(db, doc.current_version_id);
-    if (!upNext || upNext.kind !== 'internal' || upNext.row.id !== myRow.id) {
-      return res.status(400).render('error', { user: req.user, message: `Approver #${upNext ? upNext.row.sequence : '?'} must decide first.` });
+    const initial=db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id,req.workspace.id);
+    const decisionBack=req.user.user_type==='client'?`/workspaces/${req.workspace.id}/client-portal/policies/${req.params.id}`:`/workspaces/${req.workspace.id}/documents/${req.params.id}`;
+    if(!initial?.current_version_id)return res.redirect(decisionBack);
+    let effectiveBody=req.body,externalAdvance=null;
+    try{
+      const contextKey=String(req.body.expected_version_id ?? initial.current_version_id);
+      const result=personalDrafts.commit(db,{workspaceId:req.workspace.id,actorId:req.user.id,kind:'policy-decision',recordId:String(initial.id),contextKey,encryptionEnabled:!!req.workspace.encryption_enabled},req.body,input=>{
+        effectiveBody=input;
+        const doc=db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(initial.id,req.workspace.id);
+        const expected=input.expected_record_version ?? input.expected_version_id;
+        if(expected!=null&&String(expected)!==String(doc.current_version_id))throw personalDrafts.failure('The policy version changed. Review the latest version before deciding. Your note is retained.');
+        const myRow=db.prepare('SELECT * FROM doc_approvers WHERE version_id=? AND user_id=? AND decision IS NULL ORDER BY sequence LIMIT 1').get(doc.current_version_id,req.user.id);
+        if(!myRow)throw personalDrafts.failure('You are not a pending approver on this version.',403);
+        const upNext=docApprovals.nextPending(db,doc.current_version_id);
+        if(!upNext||upNext.kind!=='internal'||upNext.row.id!==myRow.id)throw personalDrafts.failure(`Approver #${upNext?upNext.row.sequence:'?'} must decide first.`,400);
+        const version=db.prepare('SELECT status FROM doc_versions WHERE id=? AND workspace_id=?').get(doc.current_version_id,req.workspace.id);
+        if(version?.status!=='in_review')throw personalDrafts.failure('This version is no longer open for approval. Review the latest policy status.');
+        const validation=docApprovals.validateDecision(input.decision,input.reason);
+        if(!validation.ok)throw personalDrafts.failure(input.decision==='reject'&&!String(input.reason||'').trim()?'Explain what must change so the author can respond.':validation.error,422);
+        const reason=validation.reason,decision=input.decision;
+        const decResult=db.prepare(`UPDATE doc_approvers SET decision=?,decision_reason=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND decision IS NULL`)
+          .run(decision==='approve'?'approved':'rejected',reason||null,myRow.id);
+        if(!decResult.changes)return {url:withToast(decisionBack,'Your decision was already recorded.','info')};
+        if(decision==='reject'){
+          if(finaliseRejectedDocument(doc.current_version_id,doc)){
+            logAction(req.user.id,req.workspace.id,'reject_document','document',doc.id,{version_id:doc.current_version_id,reason},auditCtx(req));
+            notifyRejection(doc.current_version_id,doc,req.workspace,req.user.name,reason);
+          }
+          return {url:withToast(decisionBack,'Changes requested. The author can update and resubmit this policy.','info')};
+        }
+        if(docApprovals.countPending(db,doc.current_version_id)===0){
+          if(finaliseApprovedDocument(doc.current_version_id,doc,req.workspace.id,req.user.id)){
+            logAction(req.user.id,req.workspace.id,'approve_document','document',doc.id,{version_id:doc.current_version_id},auditCtx(req));
+            notifyChainComplete(doc.current_version_id,doc,req.workspace,req.user.name);
+          }
+        }else{
+          logAction(req.user.id,req.workspace.id,'partial_approve_document','document',doc.id,{version_id:doc.current_version_id,remaining:docApprovals.countPending(db,doc.current_version_id)},auditCtx(req));
+          if(docApprovals.nextPending(db,doc.current_version_id)?.kind==='external')externalAdvance={versionId:doc.current_version_id,doc};
+          else notifyChainAdvanced(doc.current_version_id,doc,req.workspace,req.user.name);
+        }
+        return {url:withToast(decisionBack,'Your approval has been recorded.')};
+      });
+      // External magic-link issuance has its own token lifecycle; never send
+      // before the decision commits, or again on an idempotent replay.
+      if(externalAdvance)notifyChainAdvanced(externalAdvance.versionId,externalAdvance.doc,req.workspace,req.user.name);
+      return res.redirect(result.url);
+    }catch(error){
+      const current=db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(initial.id,req.workspace.id);
+      const stillNamed=current&&db.prepare('SELECT 1 FROM doc_approvers WHERE workspace_id=? AND document_id=? AND version_id=? AND user_id=?').get(req.workspace.id,current.id,current.current_version_id,req.user.id);
+      if(req.user.user_type==='client'&&stillNamed)return require('../lib/client-policy-view').render(db,req,res,current,{status:error.status||400,error:error.message,reason:effectiveBody.reason});
+      return res.status(error.status||400).render('error',{user:req.user,ws:req.workspace,message:error.message});
     }
-    const validation = docApprovals.validateDecision(decision, req.body.reason);
-    if (!validation.ok) {
-      return res.status(422).render('error', { user: req.user, message: validation.error });
-    }
-    const reason = validation.reason;
-
-    // CAS the decision so re-submits (browser double-click, network retry)
-    // and concurrent decisions can't double-write. If 0 rows changed, someone
-    // else (or the user themselves) already decided on this row.
-    const decResult = db.prepare(`UPDATE doc_approvers
-      SET decision=?, decision_reason=?, decided_at=CURRENT_TIMESTAMP
-      WHERE id=? AND decision IS NULL`)
-      .run(decision === 'approve' ? 'approved' : 'rejected', reason || null, myRow.id);
-    if (decResult.changes === 0) {
-      return res.redirect(withToast(decisionBack,
-        'Your decision was already recorded.', 'info'));
-    }
-
-    if (decision === 'reject') {
-      // finaliseRejectedDocument CAS-flips doc_versions.status from in_review
-      // to rejected. Only the first caller succeeds; the rest get false and
-      // skip the duplicate notification/log emission.
-      if (finaliseRejectedDocument(doc.current_version_id, doc)) {
-        logAction(req.user.id, req.workspace.id, 'reject_document', 'document', doc.id,
-          { version_id: doc.current_version_id, reason }, auditCtx(req));
-        notifyRejection(doc.current_version_id, doc, req.workspace, req.user.name, reason);
-      }
-      return res.redirect(withToast(decisionBack, 'Document rejected', 'error'));
-    }
-
-    if (docApprovals.countPending(db, doc.current_version_id) === 0) {
-      // Two simultaneous final approvers could both see pending=0 here. Only
-      // the one whose finaliseApprovedDocument CAS succeeds fires the
-      // chain-complete side effects (email, audit log). The loser silently
-      // returns and the user sees a regular success page.
-      if (finaliseApprovedDocument(doc.current_version_id, doc, req.workspace.id, req.user.id)) {
-        logAction(req.user.id, req.workspace.id, 'approve_document', 'document', doc.id, { version_id: doc.current_version_id }, auditCtx(req));
-        notifyChainComplete(doc.current_version_id, doc, req.workspace, req.user.name);
-      }
-    } else {
-      logAction(req.user.id, req.workspace.id, 'partial_approve_document', 'document', doc.id,
-        { version_id: doc.current_version_id, remaining: docApprovals.countPending(db, doc.current_version_id) }, auditCtx(req));
-      notifyChainAdvanced(doc.current_version_id, doc, req.workspace, req.user.name);
-    }
-    res.redirect(decisionBack);
   });
 
   // ==================== MAGIC-LINK APPROVAL PORTAL ====================

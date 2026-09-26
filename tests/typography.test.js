@@ -20,6 +20,7 @@ function sourceFiles(entry) {
   return fs.readdirSync(absolute, { withFileTypes: true }).flatMap(item => {
     if (item.name === 'node_modules' || item.name.startsWith('.')) return [];
     const child = path.join(absolute, item.name);
+    if (path.relative(ROOT, child) === path.join('data', 'ai-models')) return [];
     if (item.isDirectory()) return sourceFiles(path.relative(ROOT, child));
     return TEXT_EXTENSIONS.has(path.extname(item.name)) ? [child] : [];
   });

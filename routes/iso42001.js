@@ -10,6 +10,8 @@ const enc = require('../lib/encryption');
 const jobs = require('../lib/jobs');
 const ctlReads = require('../lib/control-reads');
 const ctlWrites = require('../lib/control-writes');
+const personalDrafts = require('../lib/form-drafts');
+const diagnostics = require('../lib/assessment-diagnostics');
 const docLinks = require('../lib/doc-links');
 const auditRequests = require('../lib/iso42001-audit');
 const { withToast, redirectBack, auditCtx, parseFormArray, escapeHtml } = require('../lib/http-helpers');
@@ -112,11 +114,7 @@ function register(app, deps) {
 
   // SoA - Statement of Applicability for the 38 Annex A controls.
   app.get('/workspaces/:wsId/iso42001/soa', requireAuth, requireWorkspace, (req, res) => {
-    // Ensure converged whole-org rows for every 42001 Annex A control (iso42001_control_states
-    // demolished, 019).
-    db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id)
-                SELECT ?, rq.id, NULL FROM requirements rq JOIN frameworks f ON f.id=rq.framework_id
-                JOIN iso42001_items ii ON ii.id=rq.ref WHERE f.code='iso42001' AND ii.type='control'`).run(req.workspace.id);
+    // Read missing states as neutral defaults; opening the SoA records no work.
     const T = ctlReads.tables(db, req.workspace.id);
     const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
         COALESCE(cs.applicability,'undecided') AS applicability,
@@ -542,7 +540,7 @@ function register(app, deps) {
     if (!answers || !total) return null;
     const score = { yes: 1, partial: 0.5, no: 0 };
     const vals = [];
-    for (let i = 0; i < total; i++) { if (answers[String(i)] != null) vals.push(answers[String(i)]); }
+    for (let i = 0; i < total; i++) { if (['yes','partial','no'].includes(answers[String(i)])) vals.push(answers[String(i)]); }
     if (vals.length < total) return null;
     const ratio = vals.reduce((s, v) => s + (score[v] || 0), 0) / vals.length;
     if (ratio >= 0.85) return 'Implemented';
@@ -600,13 +598,22 @@ function register(app, deps) {
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${next.id}`);
   });
 
-  app.get('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, (req, res) => {
+  function render42001Assessment(req,res) {
     const item = db.prepare(`SELECT * FROM iso42001_items WHERE id=?`).get(req.params.isoId);
     if (!item) return res.status(404).render('error', { user: req.user, message: 'Item not found.' });
-    const state = getOrCreate42State(req.workspace.id, item.id);
-    let savedAnswers = {};
-    try { if (state.assessment_answers) savedAnswers = JSON.parse(state.assessment_answers) || {}; } catch (_) {}
+    const recordedState = db.prepare('SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?').get(req.workspace.id,item.id) || {
+      status:'Not Assessed',applicability:item.type==='clause'?'included':'undecided',maturity:0,notes:'',review_status:'none',record_version:0
+    };
+    const activePass=db.prepare("SELECT id,pass_number,name FROM iso42001_assessment_passes WHERE workspace_id=? AND status='open' ORDER BY pass_number DESC LIMIT 1").get(req.workspace.id);
+    const privateDraft=personalDrafts.get(db,{workspaceId:req.workspace.id,actorId:req.user.id,kind:'assessment-iso42001',recordId:item.id,contextKey:String(activePass?.id||'')});
+    const recovery=req.assessmentRecovery || null;
+    const enteredValues=recovery?Object.fromEntries(Object.entries(recovery.body).filter(([key,value])=>(personalDrafts.fields['assessment-iso42001'].includes(key)||/^q_\d+$/.test(key))&&['string','number','boolean'].includes(typeof value)).map(([key,value])=>[key,String(value)])):privateDraft.draft?.payload;
+    const state=enteredValues?{...recordedState,...enteredValues}:recordedState;
     const questions = iso42001QuestionsFor(item);
+    const diagnosticState=diagnostics.read(recordedState.assessment_answers,item.id,questions);
+    const diagnosticDraftChanged=!!(enteredValues?.diagnostic_set_id && enteredValues.diagnostic_set_id!==diagnosticState.current.setId);
+    let savedAnswers=diagnosticState.answers;
+    if(enteredValues&&!diagnosticDraftChanged)savedAnswers={...savedAnswers,...Object.fromEntries(Object.entries(enteredValues).filter(([key])=>/^q_\d+$/.test(key)).map(([key,value])=>[key.slice(2),value]))};
     item.evidence_needed_arr = JSON.parse(item.evidence_needed || '[]');
     item.documentation_needed_arr = JSON.parse(item.documentation_needed || '[]');
     item.common_pitfalls = item.common_pitfalls ? JSON.parse(item.common_pitfalls) : null;
@@ -690,8 +697,7 @@ function register(app, deps) {
       ORDER BY p.pass_number DESC`).all(req.workspace.id, item.id);
 
     // Active pass = most recent open pass (or null).
-    const activePass = db.prepare(`SELECT id, pass_number, name FROM iso42001_assessment_passes
-      WHERE workspace_id=? AND status='open' ORDER BY pass_number DESC LIMIT 1`).get(req.workspace.id);
+
 
     // Completion + suggested status
     const doneFlag = totals.clausesAssessed === totals.clausesTotal && totals.controlsAssessed === totals.controlsTotal;
@@ -708,107 +714,68 @@ function register(app, deps) {
     let requestedByName = null, reviewedByName = null;
     if (state.review_requested_by) requestedByName = db.prepare(`SELECT name FROM users WHERE id=?`).get(state.review_requested_by)?.name;
     if (state.reviewed_by) reviewedByName = db.prepare(`SELECT name FROM users WHERE id=?`).get(state.reviewed_by)?.name;
-    const isReviewer = req.user.user_type === 'firm' && ['manager','senior_consultant'].includes(rbac.normalizeRole(req.user.firm_role));
+    const reviewContext = require('../lib/control-review').context(db,req.workspace,req.user,'iso42001',item.id);
+    const isReviewer = reviewContext.canReview;
 
     res.render('iso42001_gap_detail', { user: req.user, ws: req.workspace, item, state,
-      questions, savedAnswers, suggestedStatus,
+      questions, savedAnswers, suggestedStatus,recordedState,privateDraft,recovery,diagnosticState,diagnosticDraftChanged,mutationKey:crypto.randomUUID(),
       prev, next, totals, sectionPosition, doneFlag,
       relatedRows, evidenceList, openNCs, linkedRisks, linkedDocs, linkableDocs, linkableRisks,
       priorPassNotes, activePass, certRequests,
-      comments, firmUsers, requestedByName, reviewedByName, isReviewer });
-  });
+      comments, firmUsers, requestedByName, reviewedByName, isReviewer, reviewContext });
+  }
+  app.get('/workspaces/:wsId/iso42001/gap/:isoId',requireAuth,requireWorkspace,render42001Assessment);
 
-  app.post('/workspaces/:wsId/iso42001/gap/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const item = db.prepare(`SELECT * FROM iso42001_items WHERE id=?`).get(req.params.isoId);
-    if (!item) return res.status(404).send('Not found');
-    getOrCreate42State(req.workspace.id, item.id);
-
-    const action = req.body.action || 'save';
-    const nextItem = db.prepare(`SELECT id FROM iso42001_items WHERE sort_order > ? ORDER BY sort_order LIMIT 1`).get(item.sort_order);
-    // Skip without saving - just navigate forward
-    if (action === 'skip') {
-      if (nextItem) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${nextItem.id}`);
-      return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`);
+  app.post('/workspaces/:wsId/iso42001/gap/:isoId',requireAuth,requireWorkspace,requirePermission('control.update'),(req,res,nextMw)=>{
+    const item=db.prepare('SELECT * FROM iso42001_items WHERE id=?').get(req.params.isoId);
+    if(!item)return res.status(404).send('Not found');
+    const base=`/workspaces/${req.workspace.id}/iso42001/gap`;
+    const nextItem=db.prepare('SELECT id FROM iso42001_items WHERE sort_order>? ORDER BY sort_order LIMIT 1').get(item.sort_order);
+    const activePass=db.prepare("SELECT id FROM iso42001_assessment_passes WHERE workspace_id=? AND status='open' ORDER BY pass_number DESC LIMIT 1").get(req.workspace.id);
+    const context={workspaceId:req.workspace.id,actorId:req.user.id,kind:'assessment-iso42001',recordId:item.id,contextKey:String(activePass?.id||''),encryptionEnabled:!!req.workspace.encryption_enabled};
+    let effectiveBody=req.body;
+    try{
+      if(req.body.action==='skip'){
+        if(req.body.assessment_context!==undefined&&String(req.body.assessment_context)!==context.contextKey)throw personalDrafts.failure('The assessment pass changed. Your entered edits remain here; review the current pass before retaining them.');
+        if(req.body.private_draft_generation!==undefined&&!req.body.draft_id)personalDrafts.save(db,context,{payload:req.body,baseVersion:String(req.body.expected_record_version||0),generation:Number(req.body.private_draft_generation),expectedDraftVersion:Number(req.body.private_draft_version),clientSaveId:crypto.randomUUID()});
+        return res.redirect(nextItem?`${base}/${nextItem.id}`:`/workspaces/${req.workspace.id}/iso42001/gap-assessment`);
+      }
+      const result=personalDrafts.commit(db,context,req.body,body=>{
+        effectiveBody=body;
+        if(body.assessment_context!==undefined&&String(body.assessment_context)!==context.contextKey)throw personalDrafts.failure('The assessment pass changed. Compare the current pass before recording your conclusion.');
+        const prior=db.prepare('SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?').get(req.workspace.id,item.id);
+        if(body.expected_record_version===undefined||!/^\d+$/.test(String(body.expected_record_version))||Number(body.expected_record_version)!==Number(prior?.record_version||0))throw personalDrafts.failure('The assessment version changed or this form predates version protection. Compare the recorded conclusion with your retained edits.');
+        const validStatuses=['Not Assessed','Not Implemented','Work In Progress','Partially Implemented','Implemented','Not Applicable'];
+        if(body.status!==undefined&&(!validStatuses.includes(body.status)||item.type==='clause'&&body.status==='Not Applicable'))throw personalDrafts.failure('Choose a valid conclusion. Mandatory clauses cannot be Not Applicable.',422);
+        if(body.applicability!==undefined&&!['included','excluded','undecided'].includes(body.applicability))throw personalDrafts.failure('Choose Included, Excluded or Undecided.',422);
+        if(item.type==='clause'&&body.applicability==='excluded')throw personalDrafts.failure('Mandatory clauses cannot be excluded.',422);
+        if(body.maturity!==undefined&&body.maturity!==''&&!/^[0-4]$/.test(String(body.maturity)))throw personalDrafts.failure('Capability must be a whole number from 0 to 4.',422);
+        for(const field of ['notes','inclusion_justification','exclusion_justification'])if(body[field]!==undefined&&String(body[field]).length>40000)throw personalDrafts.failure('Assessment text must be under 40,000 characters.',422);
+        const sets=[],values=[],put=(field,value)=>{sets.push(field+'=?');values.push(value);};
+        for(const field of ['status','applicability','notes','inclusion_justification','exclusion_justification'])if(body[field]!==undefined&&!(item.type==='clause'&&field==='applicability'))put(field,String(body[field]));
+        if(item.type==='clause')put('applicability','included');
+        if(body.maturity!==undefined&&body.maturity!=='')put('maturity',Number(body.maturity));
+        if(body.diagnostic_set_id!==undefined||Object.keys(body).some(key=>/^q_\d+$/.test(key)))put('assessment_answers',diagnostics.serialize(item.id,iso42001QuestionsFor(item),body));
+        const reviewInvalidated=!!(prior&&prior.review_status!=='none'&&sets.some((set,index)=>String(prior[set.slice(0,-2)]??'')!==String(values[index]??'')));
+        if(reviewInvalidated)sets.push("review_status='none'",'review_requested_by=NULL','review_requested_at=NULL','review_reason=NULL','reviewed_by=NULL','reviewed_at=NULL');
+        sets.push('last_updated=CURRENT_TIMESTAMP');
+        if(body.status&&body.status!=='Not Assessed')sets.push('last_verified_at=CURRENT_TIMESTAMP');
+        const requirementId=ctlWrites.requirementId(db,'iso42001',item.id);
+        if(!requirementId)throw personalDrafts.failure('The requirement is unavailable. Your edits are retained.',422);
+        const state=getOrCreate42State(req.workspace.id,item.id),converted=ctlWrites.convergeSets(sets,values);
+        const updated=db.prepare(`UPDATE control_instances SET ${converted.sets.join(',')} WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL AND record_version=?`).run(...converted.vals,req.workspace.id,requirementId,state.record_version);
+        if(updated.changes!==1)throw personalDrafts.failure('The recorded assessment changed before your conclusion could be applied.');
+        const current=db.prepare('SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?').get(req.workspace.id,item.id);
+        db.prepare(`INSERT INTO iso42001_control_state_history(workspace_id,iso_item_id,pass_id,changed_by,status,applicability,maturity,inclusion_justification,exclusion_justification,notes,assessment_answers) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(req.workspace.id,item.id,activePass?.id||null,req.user.id,current.status,current.applicability,current.maturity,current.inclusion_justification,current.exclusion_justification,current.notes,current.assessment_answers);
+        logAction(req.user.id,req.workspace.id,'assess_iso42001','iso42001_item',item.id,{status:current.status,record_version:current.record_version,review_invalidated:reviewInvalidated},auditCtx(req));
+        return {url:body.action==='save_next'&&nextItem?`${base}/${nextItem.id}`:`${base}/${item.id}`};
+      });
+      return res.redirect(result.url);
+    }catch(error){
+      if(!error.status)return nextMw(error);
+      req.assessmentRecovery={body:effectiveBody,message:error.message};res.status(error.status);return render42001Assessment(req,res);
     }
-
-    // Collect answers from body (keys like q_0, q_1, ...)
-    const answers = {};
-    for (const k of Object.keys(req.body)) {
-      if (k.startsWith('q_')) answers[k.slice(2)] = req.body[k];
-    }
-    const questions = iso42001QuestionsFor(item);
-    const suggested = suggestStatus42(answers, questions.length);
-    const { status, notes, maturity, applicability, inclusion_justification, exclusion_justification } = req.body;
-
-    // Cutover 4 (W2, ISO 42001): on a write-flipped workspace the authoritative state
-    // write goes to the converged control_instances (status/applicability normalized
-    // to tokens; same COALESCE partial-update semantics, the keep-current fallback now
-    // references control_instances); 014 mirrors it to iso42001_control_states.
-    // assessment_answers has no converged column (deferred), so it is persisted to the
-    // legacy table directly. The history INSERT below stays legacy with pass_id per the
-    // Phase 4 manifest (reads `cur` from iso42001_control_states, kept fresh by 014).
-    const wConverged42 = ctlWrites.converged(db, req.workspace.id);
-    const wReqId42 = wConverged42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
-    if (wConverged42 && wReqId42) {
-      db.prepare(`UPDATE control_instances
-                  SET status = COALESCE(?, ?, status),
-                      notes = COALESCE(?, notes),
-                      maturity = COALESCE(?, maturity),
-                      applicability = COALESCE(?, applicability),
-                      inclusion_justification = COALESCE(?, inclusion_justification),
-                      exclusion_justification = COALESCE(?, exclusion_justification),
-                      last_updated = CURRENT_TIMESTAMP
-                  WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
-        .run(ctlWrites.normStatus(status || null), ctlWrites.normStatus(suggested),
-             notes || null,
-             maturity != null && maturity !== '' ? parseInt(maturity, 10) : null,
-             ctlWrites.normApplic(applicability || null),
-             inclusion_justification || null,
-             exclusion_justification || null,
-             req.workspace.id, wReqId42);
-      // assessment_answers is dead (deferred-drop, demolition 019): persistence removed.
-    } else {
-      db.prepare(`UPDATE iso42001_control_states
-                  SET assessment_answers=?,
-                      status = COALESCE(?, ?, status),
-                      notes = COALESCE(?, notes),
-                      maturity = COALESCE(?, maturity),
-                      applicability = COALESCE(?, applicability),
-                      inclusion_justification = COALESCE(?, inclusion_justification),
-                      exclusion_justification = COALESCE(?, exclusion_justification),
-                      last_updated = CURRENT_TIMESTAMP
-                  WHERE workspace_id=? AND iso_item_id=?`)
-        .run(JSON.stringify(answers),
-             status || null, suggested,
-             notes || null,
-             maturity != null && maturity !== '' ? parseInt(maturity, 10) : null,
-             applicability || null,
-             inclusion_justification || null,
-             exclusion_justification || null,
-             req.workspace.id, item.id);
-    }
-    logAction(req.user.id, req.workspace.id, 'assess_iso42001', 'iso42001_item', item.id, { suggested });
-
-    // Snapshot to history. pass_id ties the snapshot to the active pass if any.
-    // Post control-state demolition (019): cur sources from the converged view
-    // (iso42001_control_states is gone). The view does not expose assessment_answers
-    // (dead), so the snapshot records NULL for it. History table + pass_id untouched.
-    const cur = db.prepare(`SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
-    const activePass = db.prepare(`SELECT id FROM iso42001_assessment_passes
-      WHERE workspace_id=? AND status='open' ORDER BY pass_number DESC LIMIT 1`).get(req.workspace.id);
-    db.prepare(`INSERT INTO iso42001_control_state_history
-      (workspace_id, iso_item_id, pass_id, changed_by, status, applicability, maturity,
-       inclusion_justification, exclusion_justification, notes, assessment_answers)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(req.workspace.id, item.id, activePass ? activePass.id : null, req.user.id,
-           cur.status, cur.applicability, cur.maturity,
-           cur.inclusion_justification, cur.exclusion_justification,
-           cur.notes, null);
-
-    if (action === 'save' && nextItem) {
-      return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${nextItem.id}`);
-    }
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
   });
 
   // --- Linkage POST routes: connect risks/docs to ISO 42001 controls ---
@@ -825,81 +792,25 @@ function register(app, deps) {
   });
 
   // ---- ISO 42001 flag-for-review (parallels the ISO 27001 routes above) ----
-  app.post('/workspaces/:wsId/iso42001/gap/:isoId/flag-for-review', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
-    if (!item) return res.status(404).send('Not found');
-    // Review-convergence: converged write when control_writes_converged (014 mirrors).
-    getOrCreate42State(req.workspace.id, item.id);
-    const wcFr42 = ctlWrites.converged(db, req.workspace.id);
-    const ridFr42 = wcFr42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
-    if (wcFr42 && ridFr42) {
-      db.prepare(`UPDATE control_instances
-        SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
-            reviewed_by=NULL, reviewed_at=NULL
-        WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
-        .run(req.user.id, req.body.reason || null, req.workspace.id, ridFr42);
-    } else {
-      db.prepare(`UPDATE iso42001_control_states
-        SET review_status='requested', review_requested_by=?, review_requested_at=CURRENT_TIMESTAMP, review_reason=?,
-            reviewed_by=NULL, reviewed_at=NULL
-        WHERE workspace_id=? AND iso_item_id=?`)
-        .run(req.user.id, req.body.reason || null, req.workspace.id, item.id);
-    }
-    logAction(req.user.id, req.workspace.id, 'flag_for_review', 'iso42001_item', item.id, { reason: req.body.reason }, auditCtx(req));
-    deps.notifyReviewers(req.workspace.id, req.user.id, item, req.body.reason, 'iso42001');
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
-  });
-
-  app.post('/workspaces/:wsId/iso42001/gap/:isoId/review-action', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
-    if (!item) return res.status(404).send('Not found');
-    const action = req.body.action;
-    if (!['approve', 'send_back'].includes(action)) return res.status(400).send('Bad action');
-    const newStatus = action === 'approve' ? 'reviewed' : 'needs_changes';
-    // Review-convergence: converged write + read when control_writes_converged.
-    const wcRa42 = ctlWrites.converged(db, req.workspace.id);
-    const ridRa42 = wcRa42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
-    let cur;
-    if (wcRa42 && ridRa42) {
-      cur = db.prepare(`SELECT review_requested_by FROM control_instances WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).get(req.workspace.id, ridRa42);
-      db.prepare(`UPDATE control_instances SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
-        WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(newStatus, req.user.id, req.workspace.id, ridRa42);
-    } else {
-      cur = db.prepare(`SELECT review_requested_by FROM iso42001_control_states WHERE workspace_id=? AND iso_item_id=?`).get(req.workspace.id, item.id);
-      db.prepare(`UPDATE iso42001_control_states SET review_status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP
-        WHERE workspace_id=? AND iso_item_id=?`).run(newStatus, req.user.id, req.workspace.id, item.id);
-    }
-    logAction(req.user.id, req.workspace.id, 'review_action', 'iso42001_item', item.id, { action, note: req.body.note }, auditCtx(req));
-    if (cur && cur.review_requested_by && cur.review_requested_by !== req.user.id) {
-      const code = item.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.');
-      const verb = action === 'approve' ? 'approved your review on' : 'sent back your review on';
-      jobs.notify(req.workspace.id, cur.review_requested_by, 'review_complete', 'info',
-        `Reviewer ${verb} ${code}`, (req.body.note || '').slice(0, 140),
-        `/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
-    }
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
-  });
-
-  app.post('/workspaces/:wsId/iso42001/gap/:isoId/clear-flag', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const item = db.prepare(`SELECT id FROM iso42001_items WHERE id=?`).get(req.params.isoId);
-    if (!item) return res.status(404).send('Not found');
-    // Review-convergence: clear converged review state when control_writes_converged.
-    const wcCf42 = ctlWrites.converged(db, req.workspace.id);
-    const ridCf42 = wcCf42 ? ctlWrites.requirementId(db, 'iso42001', item.id) : null;
-    if (wcCf42 && ridCf42) {
-      db.prepare(`UPDATE control_instances
-        SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
-            reviewed_by=NULL, reviewed_at=NULL
-        WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(req.workspace.id, ridCf42);
-    } else {
-      db.prepare(`UPDATE iso42001_control_states
-        SET review_status='none', review_requested_by=NULL, review_requested_at=NULL, review_reason=NULL,
-            reviewed_by=NULL, reviewed_at=NULL
-        WHERE workspace_id=? AND iso_item_id=?`).run(req.workspace.id, item.id);
-    }
-    logAction(req.user.id, req.workspace.id, 'clear_review_flag', 'iso42001_item', item.id, null, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`);
-  });
+  // Exact recorded-version review commands; independent authority is shared across programmes.
+  for(const command of ['flag-for-review','review-action','clear-flag']) {
+    const permission=command==='review-action'?'assessment.signoff':'control.update';
+    app.post('/workspaces/:wsId/iso42001/gap/:isoId/'+command,requireAuth,requireWorkspace,requirePermission(permission),(req,res)=>{
+      const item=db.prepare('SELECT id,title FROM iso42001_items WHERE id=?').get(req.params.isoId);
+      if(!item)return res.status(404).send('Not found');
+      const path=`/workspaces/${req.workspace.id}/iso42001/gap/${item.id}`;
+      try{
+        const action=command==='flag-for-review'?'request':command==='clear-flag'?'clear':String(req.body.action||'');
+        require('../lib/control-review').transition(db,{workspace:req.workspace,actor:req.user,framework:'iso42001',itemId:item.id,action,
+          expectedRecordVersion:req.body.expected_record_version,note:command==='flag-for-review'?req.body.reason:req.body.note},
+          details=>logAction(req.user.id,req.workspace.id,'assessment_review_'+action,'iso42001_assessment',item.id,details,auditCtx(req)));
+        return res.redirect(path);
+      }catch(error){
+        return res.status(Number(error.status)||422).render('assessment_review_error',{user:req.user,ws:req.workspace,item,path,message:error.message,
+          note:String(req.body.note||req.body.reason||'').slice(0,4000)});
+      }
+    });
+  }
 
   app.post('/workspaces/:wsId/iso42001/controls/:isoId/documents/:linkId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     // Verify the link belongs to a doc in this workspace before deleting.

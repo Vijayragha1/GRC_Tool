@@ -69,7 +69,7 @@ function get(pathStr) {
     const req = http.request({ host: '127.0.0.1', port, path: pathStr, method: 'GET', headers }, res => {
       let body = '';
       res.on('data', c => body += c);
-      res.on('end', () => { captureResponse(res, body); resolve({ status: res.statusCode, body }); });
+      res.on('end', () => { captureResponse(res, body); resolve({ status: res.statusCode, body, headers: res.headers }); });
     });
     req.on('error', reject);
     req.end();
@@ -222,8 +222,12 @@ function stopServer() {
     await startServer();
 
     console.log('boot');
-    const dash = await get('/dashboard');
-    ok('GET /dashboard returns 200', dash.status === 200, `got ${dash.status}`);
+    const landing = await get('/dashboard');
+    ok('GET /dashboard opens the role home', landing.status === 302 && landing.headers.location === '/work/overview', `got ${landing.status} ${landing.headers.location}`);
+    const home = await get(landing.headers.location || '/work/overview');
+    ok('role home renders the shared operating view', home.status === 200 && home.body.includes('Delivery overview'), `got ${home.status}`);
+    const dash = await get('/dashboard?legacy=1');
+    ok('retained Clients page returns 200', dash.status === 200, `got ${dash.status}`);
 
     // Discover the active workspace ID from the seeded DB so the test isn't
     // pinned to a specific id (which the user's live DB no longer matches).
@@ -442,8 +446,10 @@ function stopServer() {
 
     console.log('\nwizard POST + history snapshot');
     const before = db.prepare(`SELECT COUNT(*) c FROM control_state_history WHERE workspace_id=? AND iso_item_id='clause-5.1'`).get(wsId).c;
+    const assessmentVersion = db.prepare("SELECT record_version FROM v_control_states WHERE workspace_id=? AND iso_item_id='clause-5.1'").get(wsId)?.record_version || 0;
     db.close();
     const saveResp = await post(`/workspaces/${wsId}/controls/assess/clause-5.1`, {
+      expected_record_version: assessmentVersion,
       status: 'Partially Implemented',
       maturity: 2,
       scope_pct: 70,
@@ -493,12 +499,16 @@ function stopServer() {
     ok('GET /portfolio returns 200', portfolioResp.status === 200, `got ${portfolioResp.status}`);
     ok('portfolio renders the health board', portfolioResp.body.includes('Portfolio health'), 'heading missing');
 
-    const calYear = await get('/calendar');
+    const calendarLanding = await get('/calendar');
+    ok('calendar opens the shared work agenda', calendarLanding.status === 302 && calendarLanding.headers.location.startsWith('/work/calendar'), `got ${calendarLanding.status}`);
+    const agenda = await get(calendarLanding.headers.location || '/work/calendar');
+    ok('shared calendar renders', agenda.status === 200 && agenda.body.includes('Calendar'), `got ${agenda.status}`);
+    const calYear = await get('/calendar?legacy=1');
     ok('GET /calendar (year overview) returns 200', calYear.status === 200, `got ${calYear.status}`);
     ok('year view renders the connected month grid', calYear.body.includes('mc-year'), 'mc-year grid missing');
     ok('year view renders the 3 month rows', calYear.body.includes('mc-yrow'), 'mc-yrow rows missing');
 
-    const calMonth = await get('/calendar?month=2026-05');
+    const calMonth = await get('/calendar?month=2026-05&legacy=1');
     ok('GET /calendar?month= (month detail) returns 200', calMonth.status === 200, `got ${calMonth.status}`);
     ok('month view renders the weekday day-grid header', calMonth.body.includes('mc-cal-head'), 'mc-cal-head missing');
 

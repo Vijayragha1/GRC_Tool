@@ -71,7 +71,7 @@ test('non-ISO and programme-neutral clients can be created without an ISO outcom
   assert.equal(db.prepare('SELECT COUNT(*) c FROM consulting_engagements WHERE workspace_id=?').get(csfWorkspace.id).c, 0);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_plans WHERE workspace_id=?').get(csfWorkspace.id).c, 0);
 
-  const dashboard = await client.get('/dashboard');
+  const dashboard = await client.get('/dashboard?legacy=1');
   assert.equal(dashboard.status, 200);
   const csfRow = (dashboard.text.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g) || [])
     .find(row => row.includes('CSF Only Lifecycle Client')) || '';

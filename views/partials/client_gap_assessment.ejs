@@ -151,7 +151,7 @@
     <details class="panel cp-gap-stage" id="gap-validation" <%= gapAssessment.currentPhase === 'validation' ? 'open' : '' %>>
       <summary><span class="cp-gap-stage-number">03</span><div><strong>Validation</strong><small>Factual-accuracy review of confirmed findings</small></div><span class="cp-gap-stage-state"><%= gapAssessment.phases[2].state === 'complete' ? 'Complete' : gapAssessment.phases[2].state === 'current' ? 'Current stage' : 'Upcoming' %></span><span class="cp-chevron">⌄</span></summary>
       <div class="cp-gap-stage-body">
-        <div class="cp-gap-validation-note"><div><strong>Validate facts; add evidence where needed</strong><p>Correct the observed facts or provide late evidence through your requests. The assessor’s risk rating and rationale are shown as a read-only conclusion.</p></div><a class="btn btn-secondary btn-xs" href="#requests">Open requests</a></div>
+        <div class="cp-gap-validation-note"><div><strong>Validate facts; add evidence where needed</strong><p>Correct the observed facts or provide late evidence through your requests. The assessor’s risk rating and rationale are shown as a read-only conclusion.</p></div><a class="btn btn-secondary btn-xs" href="/workspaces/<%= ws.id %>/client-portal?view=actions&amp;work_status=action_required">Open requests</a></div>
         <% if (!gapAssessment.findings.length) { %><div class="cp-gap-empty cp-gap-empty-large"><strong>No findings are ready for fact checking</strong><p>Only confirmed findings are shared here. Draft judgements and fieldwork notes are not displayed.</p></div><% } else { %>
           <div class="cp-gap-findings"><% gapAssessment.findings.forEach(finding => { %>
             <article class="cp-gap-finding">

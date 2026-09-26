@@ -24,6 +24,7 @@
   }
 
   function captureAttribution() {
+    if (document.body.dataset.authenticated === 'true') return;
     if (getCookie(CONSENT_COOKIE) !== 'analytics') return;
     const params = new URLSearchParams(location.search);
     const keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
@@ -45,6 +46,10 @@
   }
 
   function installCookieBanner() {
+    if (document.body.dataset.authenticated === 'true') {
+      document.getElementById('cookieConsent')?.remove();
+      return;
+    }
     if (getCookie(CONSENT_COOKIE) || document.getElementById('cookieConsent')) {
       captureAttribution();
       return;

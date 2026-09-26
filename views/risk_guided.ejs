@@ -27,7 +27,7 @@
     <div class="panel" style="margin-bottom:16px;background:var(--bg-subtle);">
       <div class="panel-pad">
         <div class="text-xs text-tertiary" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:500;margin-bottom:6px;">Assistant not configured</div>
-        <div class="text-md text-secondary" style="line-height:1.55;">AI suggestions are turned off because no <span class="mono">ANTHROPIC_API_KEY</span> is set. You can still build the register manually with the <a class="link" href="/workspaces/<%= ws.id %>/risks/library">starter library</a> or <a class="link" href="/workspaces/<%= ws.id %>/risks">New risk</a>. To turn the assistant on, add <span class="mono">ANTHROPIC_API_KEY</span> to <span class="mono">.env</span> and restart.</div>
+        <div class="text-md text-secondary" style="line-height:1.55;"><%= aiConfigurationMessage %> You can still build the register manually with the <a class="link" href="/workspaces/<%= ws.id %>/risks/library">starter library</a> or <a class="link" href="/workspaces/<%= ws.id %>/risks">New risk</a>. To turn the assistant on, update <span class="mono">.env</span> and restart.</div>
       </div>
     </div>
   <% } %>
@@ -42,18 +42,33 @@
       <textarea id="ctxBox" class="textarea" rows="10" style="font-family:inherit;line-height:1.5;"><%= prefillContext %></textarea>
 
       <div class="row risk-guide-context-actions" style="margin-top:14px;align-items:flex-end;justify-content:space-between;">
-        <div>
-          <label class="label">How many risks to draft?</label>
-          <select id="ctxCount" class="select" style="width:auto;">
-            <option value="8">8</option>
-            <option value="12" selected>12</option>
-            <option value="16">16</option>
-            <option value="20">20</option>
-          </select>
+        <div class="row risk-guide-options" style="align-items:flex-end;">
+          <div>
+            <label class="label">How many risks to draft?</label>
+            <select id="ctxCount" class="select" style="width:auto;">
+              <option value="8">8</option>
+              <option value="12" selected>12</option>
+              <option value="16">16</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+          <% if (aiProvider === 'OpenRouter' && aiModels.length) { %>
+            <div>
+              <label class="label">OpenRouter model</label>
+              <select id="aiModelSelect" class="select" style="width:auto;max-width:360px;">
+                <% aiModels.forEach(function(option) { %>
+                  <option value="<%= option.id %>" <%= option.id === aiModel ? 'selected' : '' %>><%= option.label %></option>
+                <% }) %>
+              </select>
+            </div>
+          <% } %>
         </div>
         <button id="genBtn" class="btn btn-primary" <%= aiConfigured ? '' : 'disabled' %>>Draft risks with the assistant</button>
       </div>
-      <div class="text-xs text-tertiary" style="margin-top:8px;">The assistant proposes risks scored against this workspace's <strong><%= methodology.name %></strong> methodology. Nothing is saved until you review and add them in step 3.</div>
+      <div class="text-xs text-tertiary" style="margin-top:8px;">The assistant proposes risks scored against this workspace's <strong><%= methodology.name %></strong> methodology. Nothing is saved until you review and add them in step 3.<% if (aiConfigured) { %> Provider: <strong><%= aiProvider %></strong> · <span class="mono"><%= aiModel %></span>.<% } %></div>
+      <% if (aiProvider === 'OpenRouter') { %>
+        <div class="text-xs" style="margin-top:7px;color:var(--danger,#b91c1c);">Free model providers may log prompts or use them to improve their models. Use synthetic or redacted context unless your organisation has approved the provider for client data.</div>
+      <% } %>
     </div>
   </div>
 </section>
@@ -62,7 +77,7 @@
 <div id="genStatus" class="panel" style="display:none;margin-bottom:16px;">
   <div class="panel-pad" style="display:flex;align-items:center;gap:12px;">
     <span class="g-spinner" style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:999px;display:inline-block;animation:gspin 0.7s linear infinite;"></span>
-    <span class="text-md text-secondary" id="genStatusText">Analysing the client and drafting tailored risks… this usually takes 15-30 seconds.</span>
+    <span class="text-md text-secondary" id="genStatusText">Analysing the client and drafting tailored risks… large free reasoning models can take several minutes.</span>
   </div>
 </div>
 <div id="genError" class="panel" style="display:none;margin-bottom:16px;background:rgba(185,28,28,0.05);">
@@ -77,6 +92,7 @@
   </div>
   <div class="text-md text-secondary" style="line-height:1.6;margin-bottom:14px;">
     Each card is a proposed risk with a suggested score and the reasoning behind it. <strong>Keep</strong> the ones that fit, edit anything that's off, and <strong>untick</strong> the rest. Every kept risk is linked to its Annex A controls, which feeds your Statement of Applicability automatically.
+    <span id="generatedModelNote" class="text-xs text-tertiary" style="display:block;margin-top:5px;"></span>
   </div>
 
   <div id="cards"></div>
@@ -109,6 +125,9 @@
   .risk-guide-context-actions > div,
   .risk-guide-context-actions select,
   .risk-guide-context-actions .btn { width: 100% !important; }
+  .risk-guide-options { align-items: stretch !important; flex-direction: column; }
+  .risk-guide-options > div,
+  .risk-guide-options select { width: 100% !important; max-width: none !important; }
   .risk-guide-context-actions .btn { justify-content: center; }
   .risk-guide-commit-bar {
     align-items: stretch !important;
@@ -330,7 +349,8 @@
         credentials: 'same-origin',
         body: JSON.stringify({
           context: document.getElementById('ctxBox').value,
-          count: parseInt(document.getElementById('ctxCount').value, 10)
+          count: parseInt(document.getElementById('ctxCount').value, 10),
+          model: (document.getElementById('aiModelSelect') || {}).value || ''
         })
       });
       var data = await res.json().catch(function () { return { ok: false, error: 'Unexpected response.' }; });
@@ -342,6 +362,8 @@
         return;
       }
       renderCards(data.risks);
+      var generatedModelNote = document.getElementById('generatedModelNote');
+      if (generatedModelNote && data.model) generatedModelNote.textContent = 'Generated with ' + data.model + '.';
       step1.style.display = 'none';
       step2.style.display = '';
       setStep(2);

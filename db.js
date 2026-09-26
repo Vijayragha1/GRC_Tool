@@ -3622,8 +3622,8 @@ function ensureWorkspaceMethodology(wsId) {
 }
 
 function getActiveMethodology(wsId) {
-  ensureWorkspaceMethodology(wsId);
   const row = db.prepare(`SELECT * FROM risk_methodologies WHERE workspace_id=? AND is_active=1`).get(wsId);
+  if (!row) return { ...defaultMethodology(), id: null, workspace_id: wsId, is_active: 1, built_in: true };
   return {
     ...row,
     likelihood_scale: JSON.parse(row.likelihood_scale),

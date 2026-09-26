@@ -17,6 +17,7 @@ data/master.key
 
 # Backups & user uploads
 data/backups/
+data/ai-models/
 backups/
 uploads/
 

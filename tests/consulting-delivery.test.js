@@ -13,7 +13,8 @@ async function loginAs(http,email,password){
   const token=(page.text.match(/name="_csrf"\s+value="([a-f0-9]+)"/)||[])[1];
   const response=await http.post('/login',{email,password,_csrf:token},{csrf:false});
   assert.ok(response.status>=300&&response.status<400);
-  await http.get('/dashboard');
+  const home=await http.get('/dashboard');
+  if(home.status===302) await http.get(home.location);
 }
 
 test.before(async()=>{
@@ -36,7 +37,9 @@ test.before(async()=>{
 
 test.after(async()=>{if(db)db.close();if(client)await client.close();if(reviewerClient)await reviewerClient.close();});
 
-test('delivery cockpit seeds one consulting engagement and governed methodology',async()=>{
+test('delivery cockpit stays read-only until its explicit start creates the engagement',async()=>{
+  const empty=await client.get(`/workspaces/${wsId}/delivery`);assert.equal(empty.status,200);assert.match(empty.text,/Start delivery engagement/);assert.equal(db.prepare('SELECT COUNT(*) n FROM consulting_engagements WHERE workspace_id=?').get(wsId).n,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM engagement_delivery_plans WHERE workspace_id=?').get(wsId).n,0);
+  const started=await client.post(`/workspaces/${wsId}/delivery/start`,{});assert.equal(started.status,302);
   const page=await client.get(`/workspaces/${wsId}/delivery`);
   assert.equal(page.status,200);assert.match(page.text,/Consultant delivery operating system/);assert.match(page.text,/four-layer|professional work/i);
   assert.match(page.text,/Contracted service path/);assert.match(page.text,/Full certification support/);
@@ -79,6 +82,7 @@ test('gap-only cockpit shows the report endpoint and rejects certification-only 
   const gapWorkspaceId=Number(db.prepare(`INSERT INTO workspaces
     (firm_id,client_name,stage,frameworks,engagement_outcome,lead_consultant_id,created_at)
     VALUES (?,'Report Only Client','gap_assessment','["iso27001"]','gap_assessment_only',?,'2026-08-20')`).run(firmId,managerId).lastInsertRowid);
+  await client.post(`/workspaces/${gapWorkspaceId}/delivery/start`,{});
   const page=await client.get(`/workspaces/${gapWorkspaceId}/delivery`);
   assert.equal(page.status,200);assert.match(page.text,/Contracted service path/);assert.match(page.text,/Gap assessment only/);
   assert.match(page.text,/Contract endpoint: independently approved and published gap-assessment report/);
@@ -129,7 +133,8 @@ test('gap-only cockpit shows the report endpoint and rejects certification-only 
   const portfolio=await client.get('/delivery-portfolio');
   assert.equal(portfolio.status,200);assert.match(portfolio.text,/Service path/);
   assert.match(portfolio.text,/Gap assessment only/);assert.match(portfolio.text,/Full certification support/);
-  const dashboard=await client.get('/dashboard');
+  let dashboard=await client.get('/dashboard?legacy=1');
+  if(dashboard.status===302) dashboard=await client.get(dashboard.location);
   assert.equal(dashboard.status,200);assert.match(dashboard.text,/Report Only Client/);assert.match(dashboard.text,/Gap assessment only/);
 });
 
@@ -155,7 +160,7 @@ test('workpaper enforces sampling and evidence classification before review',asy
     internal_notes:'Internal quality note',client_visible_summary:'The quarterly access-review process operated as described during the assessment period.',client_visible:'1',requires_client_validation:'1'
   });
   assert.equal(update.status,302);
-  const premature=await client.post(`/workspaces/${wsId}/delivery/workpapers/${workpaperId}/submit`,{note:'Ready'});assert.equal(premature.status,302);assert.match(premature.location,/toastKind=error/);
+  const premature=await client.post(`/workspaces/${wsId}/delivery/workpapers/${workpaperId}/submit`,{note:'Ready'});assert.equal(premature.status,422);assert.match(premature.text,/not review-ready/);
   const linked=await client.post(`/workspaces/${wsId}/delivery/workpapers/${workpaperId}/evidence`,{evidence_id:String(evidenceId),purpose:'Supports operating-effectiveness conclusion',relevance:'relevant',period_covered_start:'2026-04-01',period_covered_end:'2026-06-30',reviewer_note:'Period and population align to the procedure.'});
   assert.equal(linked.status,302);
   assert.equal(db.prepare('SELECT relevance FROM consultant_workpaper_evidence WHERE workpaper_id=?').get(workpaperId).relevance,'relevant');
@@ -164,7 +169,7 @@ test('workpaper enforces sampling and evidence classification before review',asy
 });
 
 test('maker-checker approval, client validation and immutable freeze retain decision lineage',async()=>{
-  const selfApprove=await client.post(`/workspaces/${wsId}/delivery/workpapers/${workpaperId}/approve`,{note:'Self approval attempt'});assert.equal(selfApprove.status,302);assert.match(selfApprove.location,/toastKind=error/);
+  const selfApprove=await client.post(`/workspaces/${wsId}/delivery/workpapers/${workpaperId}/approve`,{note:'Self approval attempt'});assert.equal(selfApprove.status,422);assert.match(selfApprove.text,/cannot approve their own workpaper/);
   const approved=await reviewerClient.post(`/workspaces/${wsId}/delivery/workpapers/${workpaperId}/approve`,{note:'Procedures and evidence support the stated conclusions.'});assert.equal(approved.status,302);
   assert.equal(db.prepare('SELECT status FROM consultant_workpapers WHERE id=?').get(workpaperId).status,'client_validation');
   // Simulate the assigned client validation through the same domain service;
@@ -210,7 +215,7 @@ test('reports are immutable, maker-checker approved and published to the client 
   const generated=await reviewerClient.post(`/workspaces/${wsId}/delivery/reports`,{engagement_id:String(engagementId),report_type:'readiness',title:'ISO 27001 readiness assessment report'});
   assert.equal(generated.status,302);const report=db.prepare('SELECT * FROM consulting_report_snapshots WHERE engagement_id=? ORDER BY id DESC LIMIT 1').get(engagementId);reportId=report.id;
   assert.equal(report.status,'generated');assert.equal(report.snapshot_hash.length,64);assert.match(report.snapshot_json,/Access review exceptions/);
-  const selfApprove=await reviewerClient.post(`/workspaces/${wsId}/delivery/reports/${reportId}/approve`,{note:'Self approval attempt'});assert.equal(selfApprove.status,302);assert.match(selfApprove.location,/toastKind=error/);
+  const selfApprove=await reviewerClient.post(`/workspaces/${wsId}/delivery/reports/${reportId}/approve`,{note:'Self approval attempt'});assert.equal(selfApprove.status,403);assert.match(selfApprove.text,/cannot independently review their own report/);
   const approved=await client.post(`/workspaces/${wsId}/delivery/reports/${reportId}/approve`,{note:'Independent review confirms the report agrees to frozen workpapers and confirmed findings.'});assert.equal(approved.status,302);
   const published=await reviewerClient.post(`/workspaces/${wsId}/delivery/reports/${reportId}/publish`,{note:'Approved client deliverable released through the controlled portal.'});assert.equal(published.status,302);
   assert.equal(db.prepare('SELECT status FROM consulting_report_snapshots WHERE id=?').get(reportId).status,'published');
@@ -254,15 +259,79 @@ test('commercial baseline, time and scope-change decisions feed firm QA portfoli
   const portfolio=await client.get('/delivery-portfolio');assert.equal(portfolio.status,200);assert.match(portfolio.text,/30,000/);assert.match(portfolio.text,/Consulting OS Client/);
 });
 
-test('client portal exposes assigned factual validation but never firm delivery cockpit',async()=>{
+test('client portal exposes assigned factual validation but never firm delivery cockpit',async(t)=>{
   // Return workpaper to validation state for the discovery test.
   db.prepare("UPDATE consultant_workpapers SET status='client_validation',client_visible=1,requires_client_validation=1,client_validator_id=? WHERE id=?").run(clientId,workpaperId);
-  const clientHttp=makeClient(env.app);await loginAs(clientHttp,'client.validator@example.com','client-password-1234');
-  const portal=await clientHttp.get(`/workspaces/${wsId}/client-portal`);assert.equal(portal.status,200);assert.match(portal.text,/Information to confirm/);assert.match(portal.text,/Review and confirm/);
+  const clientHttp=makeClient(env.app);t.after(()=>clientHttp.close());await loginAs(clientHttp,'client.validator@example.com','client-password-1234');
+  const portal=await clientHttp.get(`/workspaces/${wsId}/client-portal`);assert.equal(portal.status,200);assert.match(portal.text,new RegExp(`/client-portal/workpapers/${workpaperId}/validate`));
   assert.match(portal.text,/Reports and completed work/);assert.match(portal.text,/ISO 27001 readiness assessment report/);
   assert.doesNotMatch(portal.text,/factual validation|client-visible|internal consultant|append-only|version-controlled/i);
   const publishedReport=await clientHttp.get(`/workspaces/${wsId}/client-portal/reports/${reportId}`);assert.equal(publishedReport.status,200);assert.match(publishedReport.text,/assessment report/);assert.doesNotMatch(publishedReport.text,/Internal quality note|controlled client deliverable|SHA-256 snapshot|immutable source workpaper/i);
   const validation=await clientHttp.get(`/workspaces/${wsId}/client-portal/workpapers/${workpaperId}/validate`);assert.equal(validation.status,200);assert.match(validation.text,/Please confirm that the information below accurately reflects your organisation/);assert.match(validation.text,/Confirm information/);assert.doesNotMatch(validation.text,/Internal quality note|client-visible|internal consultant|factual validation/i);
   const denied=await clientHttp.get(`/workspaces/${wsId}/delivery`);assert.equal(denied.status,403);
-  await clientHttp.close();
+});
+
+
+test('workpaper keeps recovery fields and finds evidence beyond the newest 200 files',async()=>{
+  const requirement=db.prepare(`SELECT r.id FROM requirements r JOIN frameworks f ON f.id=r.framework_id WHERE f.code='iso27001' AND r.id!=? ORDER BY r.sort_order LIMIT 1`).get(requirementId);
+  const created=await client.post(`/workspaces/${wsId}/delivery/workpapers`,{engagement_id:String(engagementId),requirement_id:String(requirement.id),title:'Recovery and evidence coverage',owner_id:String(managerId),reviewer_id:String(reviewerId)});
+  assert.equal(created.status,302);
+  const row=db.prepare('SELECT * FROM consultant_workpapers WHERE engagement_id=? AND requirement_id=?').get(engagementId,requirement.id);
+  const insert=db.prepare(`INSERT INTO evidence(workspace_id,filename,stored_path,sha256,size_bytes,uploaded_by,description) VALUES (?,?,?,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,?,?)`);
+  db.transaction(()=>{for(let i=0;i<205;i++)insert.run(wsId,`newer-${i}.pdf`,`newer-${i}.pdf`,managerId,`Evidence description ${i}`);})();
+  const detail=await client.get(`/workspaces/${wsId}/delivery/workpapers/${row.id}`);
+  assert.equal(detail.status,200);
+  assert.match(detail.text,/Search all available evidence/);
+  assert.match(detail.text,/access-review.xlsx/,'the oldest evidence remains selectable');
+  assert.match(detail.text,/data-form-draft="workpaper"/);
+  const failed=await client.post(`/workspaces/${wsId}/delivery/workpapers/${row.id}`,{row_version:String(row.row_version),title:'Retained despite validation',owner_id:String(managerId),reviewer_id:String(reviewerId),population_size:'1',sample_size:'9'});
+  assert.equal(failed.status,422);assert.match(failed.text,/Sample size cannot exceed/);assert.match(failed.text,/value="Retained despite validation"/);assert.match(failed.text,/data-draft-recovery=true/);
+  assert.equal(db.prepare('SELECT title FROM consultant_workpapers WHERE id=?').get(row.id).title,row.title);
+  const stale=await client.post(`/workspaces/${wsId}/delivery/workpapers/${row.id}`,{row_version:String(row.row_version-1),title:'Retained stale edits',owner_id:String(managerId),reviewer_id:String(reviewerId)});
+  assert.equal(stale.status,409);assert.match(stale.text,/Retained stale edits/);
+  assert.match(stale.text,new RegExp(`data-draft-version="${row.row_version}"`));
+});
+
+test('save and submit uses the durable draft atomically and retains it when review validation fails',async()=>{
+  const row=db.prepare("SELECT * FROM consultant_workpapers WHERE engagement_id=? AND title='Recovery and evidence coverage'").get(engagementId);
+  const drafts=require('../lib/form-drafts');
+  const context={workspaceId:wsId,actorId:managerId,kind:'workpaper',recordId:String(row.id),contextKey:'',recordVersion:row.row_version};
+  const draft=drafts.save(db,context,{generation:0,expectedDraftVersion:0,baseVersion:row.row_version,clientSaveId:'failed-review-draft',payload:{title:'Recovered durable title',objective:'Incomplete',owner_id:String(managerId),reviewer_id:String(reviewerId),internal_notes:'Private retained draft notes'}});
+  const response=await client.post(`/workspaces/${wsId}/delivery/workpapers/${row.id}`,{row_version:String(row.row_version),title:'Stale browser value',owner_id:String(managerId),reviewer_id:String(reviewerId),intent:'submit',draft_id:draft.id,draft_version:String(draft.version),draft_generation:String(draft.generation)});
+  assert.equal(response.status,422);assert.match(response.text,/value="Recovered durable title"/);assert.match(response.text,/not review-ready/);
+  assert.deepEqual(db.prepare('SELECT * FROM consultant_workpapers WHERE id=?').get(row.id),row,'the failed submission also rolls back its formal save');
+  assert.equal(drafts.get(db,context).draft.state,'active');
+  assert.equal(drafts.get(db,context).draft.payload.title,'Recovered durable title');
+});
+
+
+test('exact pass snapshot view excludes later working fields and exposes the retained report basis',async()=>{
+  const service=require('../lib/consulting-delivery');
+  const ws=db.prepare('SELECT * FROM workspaces WHERE id=?').get(wsId);
+  const row=db.prepare("SELECT w.*,r.ref FROM consultant_workpapers w JOIN requirements r ON r.id=w.requirement_id WHERE w.engagement_id=? AND w.title='Recovery and evidence coverage'").get(engagementId);
+  db.prepare('UPDATE consultant_workpapers SET persons_interviewed=?,internal_notes=? WHERE id=?').run('Later manual interviews must stay in the working record','Later manual notes must stay in the working record',row.id);
+  const passId=Number(db.prepare(`INSERT INTO assessment_passes(workspace_id,pass_number,label,status,started_by) VALUES (?,1,'HTTP snapshot pass','in_progress',?)`).run(wsId,managerId).lastInsertRowid);
+  db.prepare(`INSERT INTO control_state_history(workspace_id,iso_item_id,changed_by,status,applicability,maturity,notes,pass_id) VALUES (?,?,?,'Not Implemented','included',0,'Retained assessment gap.',?)`).run(wsId,row.ref,managerId,passId);
+  const pass=db.prepare('SELECT * FROM assessment_passes WHERE id=?').get(passId);
+  const materialized=service.materializeAssessmentPass(db,ws,pass,reviewerId);
+  const item=db.prepare('SELECT * FROM assessment_pass_manifest_items WHERE manifest_id=?').get(materialized.manifestId);
+  const snapshot=await client.get(`/workspaces/${wsId}/delivery/workpapers/${row.id}?snapshot=${item.snapshot_id}`);
+  assert.equal(snapshot.status,200);assert.match(snapshot.text,/Retained assessment gap/);assert.match(snapshot.text,/Assessment pass 1/);
+  assert.doesNotMatch(snapshot.text,/Later manual interviews|Later manual notes|data-form-draft="workpaper"/);
+  const reports=await client.get(`/workspaces/${wsId}/delivery?view=reports&engagement=${engagementId}`);
+  assert.equal(reports.status,200);assert.match(reports.text,/Source assessment/);assert.match(reports.text,new RegExp(`option value="${materialized.manifestId}" selected`));
+  const generated=await client.post(`/workspaces/${wsId}/delivery/reports`,{engagement_id:String(engagementId),report_type:'assessment',pass_manifest_id:String(materialized.manifestId)});
+  assert.equal(generated.status,302);assert.doesNotMatch(generated.location,/toastKind=error/);
+  const report=await client.get(generated.location);assert.equal(report.status,200);assert.match(report.text,new RegExp(`workpapers/${row.id}\\?snapshot=${item.snapshot_id}`));
+  const retained=await client.get(`/workspaces/${wsId}/delivery/pass-manifests/${materialized.manifestId}`);
+  assert.equal(retained.status,200);assert.match(retained.text,/Retained conclusions/);assert.match(retained.text,new RegExp(`workpapers/${row.id}\\?snapshot=${item.snapshot_id}`));
+  const second=service.materializeAssessmentPass(db,ws,pass,reviewerId);
+  const history=await client.get(`/workspaces/${wsId}/gap-assessment`);
+  assert.equal(history.status,200);assert.match(history.text,new RegExp(`delivery/pass-manifests/${materialized.manifestId}`));assert.match(history.text,new RegExp(`delivery/pass-manifests/${second.manifestId}`));
+  assert.match(history.text,/Operational exports/);assert.match(history.text,/issued client report/);
+  const older=await client.get(`/workspaces/${wsId}/delivery?view=reports&engagement=${engagementId}&manifestId=${materialized.manifestId}`);
+  assert.equal(older.status,200);assert.match(older.text,new RegExp(`option value="${materialized.manifestId}" selected`));
+  const wrongWorkspace=await client.get(`/workspaces/${otherWsId}/delivery/pass-manifests/${materialized.manifestId}`);assert.equal(wrongWorkspace.status,404);
+  const invalidSource=await client.get(`/workspaces/${wsId}/delivery?view=reports&engagement=${engagementId}&manifestId=99999999`);assert.equal(invalidSource.status,404);
+
 });

@@ -21,7 +21,7 @@
   // setup, so it is labelled as such and the setup hub sits above it.
   const showIso27001Intake = hasIso27001;
 
-  const navDomains = [
+  let navDomains = [
     {
       id: 'work', label: csfOnly ? 'Delivery' : 'Work queue',
       icon: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
@@ -213,10 +213,51 @@
       ]
     }
   ];
+  const newExperience = typeof experienceEnabled !== 'undefined' && experienceEnabled;
+  if (newExperience) {
+    const original = navDomains;
+    const collect = ids => original.filter(d=>ids.includes(d.id)).flatMap(d=>d.items);
+    const grouped = (id,label,ids,leading=[]) => {
+      const source=original.filter(d=>ids.includes(d.id));
+      return {id,label,icon:source[0]?.icon || '<circle cx="12" cy="12" r="8"/>',active:[...leading.flatMap(i=>i.active),...source.flatMap(d=>d.active)],items:[...leading,...collect(ids)]};
+    };
+    const assigned=new Set(['work','plan','policies','settings','audit']);
+    const programmeIds=original.filter(d=>!assigned.has(d.id)).map(d=>d.id);
+    navDomains=[
+      grouped('work','Work',['work','plan'],[
+        {label:'My work',href:`/workspaces/${ws.id}/work?scope=mine`,active:['work']},
+        {label:'All engagement work',href:`/workspaces/${ws.id}/work?scope=team`,active:[]},
+        {label:'Calendar',href:`/workspaces/${ws.id}/work/calendar`,active:['work-calendar']}
+      ]),
+      grouped('programmes','Programmes',programmeIds),
+      grouped('documents','Evidence & documents',['policies']),
+      grouped('reports','Reports',['audit'],[{label:'Report register',href:`/workspaces/${ws.id}/work/reports?scope=team`,active:['work-reports']}]),
+      grouped('settings','Team & settings',['settings'])
+    ];
+    navDomains[0].items=navDomains[0].items.filter(i=>!['Inbox & notifications','Review queue','Compliance calendar'].includes(i.label));
+    const programmeLabels={'assessment':'ISO 27001','cyber-maturity':'NIST CSF','ai-programme':'ISO 42001','dpdpa':'DPDPA','tprm':'Third-party risk','vciso':'vCISO','controls':'ISO 27001'};
+    // Keep each programme's tools together. Flattening these into one list
+    // repeats long prefixes and makes the whole rail expand for one programme.
+    const programmeGroups = new Map();
+    original.filter(d=>programmeIds.includes(d.id)).forEach(domain=>{
+      const label=programmeLabels[domain.id] || domain.label;
+      const group=programmeGroups.get(label) || {...domain,label,items:[],active:[]};
+      group.items.push(...domain.items);
+      group.active.push(...domain.active);
+      programmeGroups.set(label,group);
+    });
+    navDomains[1].items=[];
+    navDomains[1].groups=[...programmeGroups.values()];
+    if (!navDomains[2].items.length) navDomains[2].items=[
+      {label:'Evidence library',href:`/workspaces/${ws.id}/evidence`,active:['evidence']},
+      {label:'Document register',href:`/workspaces/${ws.id}/documents`,active:['documents']}
+    ];
+  }
+
 %>
 
-<% if (!csfOnly) { %>
-  <a href="/workspaces/<%= ws.id %>" data-shortcut="g o" class="nav-item <%= navActive === 'overview' ? 'active' : '' %>" <% if (navActive === 'overview') { %>aria-current="page"<% } %>>
+<% if (newExperience || !csfOnly) { %>
+  <a href="/workspaces/<%= ws.id %><%= newExperience ? '/work/overview' : '' %>" data-shortcut="g o" class="nav-item <%= ['overview','work-overview'].includes(navActive) ? 'active' : '' %>" <% if (['overview','work-overview'].includes(navActive)) { %>aria-current="page"<% } %>>
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span class="nav-item-text"><%= navFrameworks.length > 1 ? 'Integrated overview' : 'Overview' %></span>
   </a>
@@ -233,6 +274,19 @@
       <svg class="nav-domain-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
     </summary>
     <div class="nav-domain-items">
+      <% (domain.groups || []).forEach(group => { const groupActive=group.active.includes(navActive); %>
+        <details class="nav-domain nav-programme <%= groupActive ? 'is-active' : '' %>" <%= groupActive ? 'open' : '' %>>
+          <summary class="nav-domain-summary" aria-label="<%= group.label %>">
+            <span class="nav-domain-text"><%= group.label %></span>
+            <svg class="nav-domain-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </summary>
+          <div class="nav-domain-items">
+            <% group.items.forEach(item => { const itemActive=item.active.includes(navActive); %>
+              <a href="<%= item.href %>" class="nav-subitem <%= itemActive ? 'active' : '' %>" <% if(item.shortcut){ %>data-shortcut="<%= item.shortcut %>"<% } %> <% if(itemActive){ %>aria-current="page"<% } %>><span><%= item.label %></span></a>
+            <% }); %>
+          </div>
+        </details>
+      <% }); %>
       <% domain.items.forEach(item => {
            const itemActive = item.active.includes(navActive);
       %>

@@ -71,7 +71,7 @@ async function loginActor(email) {
     email, password: PASSWORD, _csrf: csrf,
   }, { csrf: false });
   assert.equal(signedIn.status, 302);
-  await browser.get('/dashboard');
+  await browser.get('/dashboard?legacy=1');
   return browser;
 }
 

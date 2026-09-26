@@ -483,6 +483,7 @@ test('the runner records only exact audited pre-release checksum pairs as reconc
     '050_tprm_condition_governance.sql',
     '054_tprm_upgrade_reconciliation.js',
     '055_tprm_exact_schema_reconciliation.js',
+    '062_personal_drafts_and_diagnostics.js',
   ]);
   for (const [migration, entry] of Object.entries(RECONCILED_DRIFTS)) {
     const appliedChecksums = Array.isArray(entry.applied) ? entry.applied : [entry.applied];
@@ -491,7 +492,9 @@ test('the runner records only exact audited pre-release checksum pairs as reconc
     assert.match(entry.current, /^[a-f0-9]{64}$/);
     assert.equal(
       entry.reconciledBy,
-      ['054_tprm_upgrade_reconciliation.js', '055_tprm_exact_schema_reconciliation.js'].includes(migration)
+      migration === '062_personal_drafts_and_diagnostics.js'
+        ? '067_experience_diagnostic_view_reconciliation.js'
+        : ['054_tprm_upgrade_reconciliation.js', '055_tprm_exact_schema_reconciliation.js'].includes(migration)
         ? '060_tprm_foreign_key_scope_reconciliation.js'
         : '054_tprm_upgrade_reconciliation.js',
     );

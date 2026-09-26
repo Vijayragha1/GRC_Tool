@@ -1,0 +1,35 @@
+<%
+ const reviewStatus=state.review_status||'none';
+ const mayRequest=user.user_type==='firm'&&typeof userPerms!=='undefined'&&userPerms.has('control.update');
+ const reviewCsrf=typeof csrfToken!=='undefined'?csrfToken:'';
+%>
+<section class="panel" style="margin-bottom:16px" aria-labelledby="assessment-review-heading">
+  <div class="panel-head"><div><h2 id="assessment-review-heading">Independent assessment review</h2><p class="meta">Review applies to the recorded conclusion. Record your current edits before requesting review.</p></div><span class="tag"><%= reviewStatus.replaceAll('_',' ') %></span></div>
+  <div class="panel-pad">
+  <% if(reviewStatus==='requested'){ %>
+    <p>Requested by <strong><%= requestedByName||'the assessment preparer' %></strong> on <%= state.review_requested_at %>.</p>
+    <% if(state.review_reason){ %><p><%= state.review_reason %></p><% } %>
+    <% if(!reviewContext.requestFresh){ %><p role="status">The assessment changed or this request predates recorded-version reviews. Request a fresh review of the current conclusion.</p><% }
+       else if(!reviewContext.canReview){ %><p>An independent consultant with assessment sign-off permission will review this conclusion.</p><% } %>
+  <% }else if(reviewStatus==='reviewed'||reviewStatus==='needs_changes'){ %>
+    <p><%= reviewStatus==='reviewed'?'Reviewed':'Changes requested' %> by <strong><%= reviewedByName||'the reviewer' %></strong> on <%= state.reviewed_at %>.</p>
+  <% } %>
+  <% if(reviewContext.canReview){ %>
+    <form method="POST" action="<%= path %>/review-action">
+      <input type="hidden" name="_csrf" value="<%= reviewCsrf %>"><input type="hidden" name="expected_record_version" value="<%= reviewContext.recordVersion %>">
+      <label class="label" for="assessment-review-note">Review rationale</label><textarea id="assessment-review-note" name="note" class="textarea" rows="3" maxlength="4000" required placeholder="Explain how the recorded conclusion agrees with the evidence, or describe required changes."></textarea>
+      <div class="row" style="margin-top:10px"><button name="action" value="approve" class="btn btn-primary btn-sm">Mark reviewed</button><button name="action" value="send_back" class="btn btn-secondary btn-sm">Request changes</button></div>
+    </form>
+  <% } %>
+  <% if(mayRequest&&!reviewContext.requestFresh){ %>
+    <form method="POST" action="<%= path %>/flag-for-review" style="margin-top:12px">
+      <input type="hidden" name="_csrf" value="<%= reviewCsrf %>"><input type="hidden" name="expected_record_version" value="<%= reviewContext.recordVersion %>">
+      <label class="label" for="assessment-review-reason">Context for the reviewer</label><textarea id="assessment-review-reason" name="reason" class="textarea" rows="2" maxlength="4000" placeholder="Explain what needs a second opinion or identify evidence to inspect."></textarea>
+      <button class="btn btn-primary btn-sm" style="margin-top:10px">Request independent review</button>
+    </form>
+  <% } %>
+  <% if(reviewContext.canClear){ %>
+    <form method="POST" action="<%= path %>/clear-flag" style="margin-top:12px"><input type="hidden" name="_csrf" value="<%= reviewCsrf %>"><input type="hidden" name="expected_record_version" value="<%= reviewContext.recordVersion %>"><button class="btn btn-ghost btn-xs"><%= reviewStatus==='requested'?'Cancel review request':'Clear review flag' %></button></form>
+  <% } %>
+  </div>
+</section>

@@ -390,6 +390,7 @@ window._unmarkBusy = function (form) {
       const target = new URL(targetHref || location.href, location.href);
       if (!scrollToTargetHash(target.hash) && liveMain) liveMain.scrollTop = 0;
       updateSidebarActive(target.href);
+      window.WorkNavigation?.mount(target.href);
     });
     return true;
   }
@@ -443,6 +444,9 @@ window._unmarkBusy = function (form) {
         }
         text = await res.text();
       }
+      // Retain the rendered queue's scroll before the URL changes. A popstate
+      // has already changed location, so use the path of the current content.
+      window.WorkNavigation?.capture(renderedPath);
       // pushState first so location.pathname reflects the new URL inside swap.
       if (push) window.history.pushState({}, '', href);
       const ok = swapApp(text, href);

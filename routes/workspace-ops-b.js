@@ -20,7 +20,7 @@ const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray } = requir
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           getActiveFirmId, isFirmUser, isFirmOwner, getOrCreateState,
-          getActiveMethodology, methodologyBand, ensureWorkspaceMethodology,
+          getActiveMethodology, defaultMethodology, methodologyBand, ensureWorkspaceMethodology,
           activeEntityFilter, computeNeedsAttention, getWorkspace, listWorkspaces, permissionsFor } = deps;
 
   // ==================== BULK CONTROL UPDATE ====================
@@ -654,11 +654,8 @@ function register(app, deps) {
     const wsId = req.workspace.id;
     const computed = computeNeedsAttention(wsId);
     const filter = req.query.filter === 'all' ? 'all' : 'unread';
-    let q = `SELECT * FROM notifications WHERE workspace_id=? AND (user_id IS NULL OR user_id=?)`;
-    if (filter === 'unread') q += ` AND read_at IS NULL AND dismissed_at IS NULL`;
-    else q += ` AND dismissed_at IS NULL`;
-    q += ` ORDER BY created_at DESC LIMIT 200`;
-    const notifications = db.prepare(q).all(wsId, req.user.id);
+    const notifications = require('../lib/notification-delivery').list(db,{workspaceId:wsId,actor:req.user,unreadOnly:filter==='unread',limit:200})
+      .map(row=>({...row,read_at:row.actor_read_at,dismissed_at:row.actor_dismissed_at}));
     res.render('client_inbox', {
       user: req.user, ws: req.workspace,
       computed, notifications, filter,

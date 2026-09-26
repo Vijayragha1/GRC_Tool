@@ -8,6 +8,7 @@ const { computeNeedsAttention } = require('../lib/next-steps');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 const delivery = require('../lib/engagement-delivery');
 const outcomeScope = require('../lib/engagement-outcome-scope');
+const notificationDelivery = require('../lib/notification-delivery');
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction } = deps;
@@ -18,15 +19,15 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/notifications/:id/read', requireAuth, requireWorkspace, (req, res) => {
-    db.prepare(`UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+    if (!notificationDelivery.mark(db,{workspaceId:req.workspace.id,actor:req.user,notificationId:req.params.id,action:'read'})) return res.status(404).send('Update not found.');
     redirectBack(req, res);
   });
   app.post('/workspaces/:wsId/notifications/:id/dismiss', requireAuth, requireWorkspace, (req, res) => {
-    db.prepare(`UPDATE notifications SET dismissed_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+    if (!notificationDelivery.mark(db,{workspaceId:req.workspace.id,actor:req.user,notificationId:req.params.id,action:'dismiss'})) return res.status(404).send('Update not found.');
     redirectBack(req, res);
   });
   app.post('/workspaces/:wsId/notifications/mark-all-read', requireAuth, requireWorkspace, (req, res) => {
-    db.prepare(`UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND read_at IS NULL`).run(req.workspace.id);
+    notificationDelivery.markAllRead(db,{workspaceId:req.workspace.id,actor:req.user});
     redirectBack(req, res);
   });
 

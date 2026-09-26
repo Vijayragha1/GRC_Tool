@@ -1,0 +1,11 @@
+<%- include('partials/header',{title:'Start delivery',user,ws,active:'delivery'}) %>
+<div class="page-head"><div><h1 class="page-title">Start the delivery engagement</h1><p class="meta">Set up the agreed consulting work for <%= ws.client_name %>.</p></div></div>
+<section class="panel panel-pad" style="max-width:720px">
+  <h2>No delivery engagement has been started</h2>
+  <p>Starting creates the engagement, assigns its lead and prepares the delivery structure for the agreed service scope. You can then confirm the scope, team and review responsibilities.</p>
+  <% if(typeof userPerms!=='undefined'&&userPerms.has('control.update')){ %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/delivery/start"><input type="hidden" name="_csrf" value="<%= typeof csrfToken!=='undefined'?csrfToken:'' %>"><button class="btn btn-primary">Start delivery engagement</button></form>
+  <% }else{ %><p>Ask the engagement consultant to start delivery.</p><% } %>
+  <p><a href="/workspaces/<%= ws.id %>/work/overview">Return to client overview</a></p>
+</section>
+<%- include('partials/footer') %>

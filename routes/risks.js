@@ -87,7 +87,7 @@ function register(app, deps) {
   });
 
   // ==================== GUIDED (AI-ASSISTED) RISK ASSESSMENT ====================
-  // A beginner-friendly wizard: confirm client context -> Claude proposes tailored,
+  // A beginner-friendly wizard: confirm client context -> the configured AI provider proposes tailored,
   // audit-grade risk scenarios -> the consultant reviews / edits / keeps -> the
   // selected risks are written into the register (with Annex A control links) in a
   // single transaction. Built so a junior can run a defensible first risk
@@ -96,7 +96,7 @@ function register(app, deps) {
   const INTAKE = require('../data/intake-questions');
 
   // Readable client-context block from the workspace record + any engagement-intake
-  // answers, so the consultant (and Claude) start from what's already known.
+  // answers, so the consultant and assistant start from what's already known.
   function buildClientContext(ws) {
     const parts = [];
     if (ws.client_name) parts.push(`Client: ${ws.client_name}`);
@@ -132,17 +132,21 @@ function register(app, deps) {
       methodology: getActiveMethodology(req.workspace.id),
       controls: annexAControls(),
       prefillContext: buildClientContext(req.workspace),
-      aiConfigured: ai.isConfigured()
+      aiConfigured: ai.isConfigured(),
+      aiConfigurationMessage: ai.configurationError(),
+      aiProvider: ai.providerLabel(),
+      aiModel: ai.model(),
+      aiModels: ai.availableModels()
     });
   });
 
-  // JSON endpoint: ask Claude for tailored risk scenarios. Returns
+  // JSON endpoint: ask the configured provider for tailored risk scenarios. Returns
   // { ok, risks:[...] } or { ok:false, error }. Control IDs are filtered to the
   // real Annex A catalogue and L/I clamped to the active scale before returning,
   // so the client only ever sees valid data.
   app.post('/workspaces/:wsId/risks/guided/suggest', requireAuth, requireWorkspace, requirePermission('risk.create'), async (req, res) => {
     if (!ai.isConfigured()) {
-      return res.status(503).json({ ok: false, error: 'AI is not configured. Add ANTHROPIC_API_KEY to enable suggestions, or add risks manually.' });
+      return res.status(503).json({ ok: false, error: `${ai.configurationError()} Add risks manually or update .env and restart.` });
     }
     const methodology = getActiveMethodology(req.workspace.id);
     const controls = annexAControls();
@@ -150,12 +154,13 @@ function register(app, deps) {
     const lMax = methodology.likelihood_scale.length;
     const iMax = methodology.impact_scale.length;
     const context = String(req.body.context || '').slice(0, 8000);
+    const selectedModel = ai.resolveModel(req.body.model);
     let count = parseInt(req.body.count, 10) || 12;
     count = Math.max(3, Math.min(20, count));
     const existingTitles = db.prepare(`SELECT title FROM risks WHERE workspace_id=?`).all(req.workspace.id).map(r => r.title);
 
     try {
-      const raw = await ai.suggestRisks({ context, methodology, controlCatalog: controls, count, existingTitles });
+      const raw = await ai.suggestRisks({ context, methodology, controlCatalog: controls, count, existingTitles, model: selectedModel });
       const clamp = (v, max) => Math.max(1, Math.min(max, parseInt(v, 10) || Math.ceil(max / 2)));
       const validTreatments = new Set(['modify', 'retain', 'avoid', 'share']);
       const risks = raw.map(r => {
@@ -179,8 +184,8 @@ function register(app, deps) {
           suggested_controls
         };
       }).filter(r => r.title);
-      logAction(req.user.id, req.workspace.id, 'ai_suggest_risks', 'risk', null, { count: risks.length }, auditCtx(req));
-      res.json({ ok: true, risks });
+      logAction(req.user.id, req.workspace.id, 'ai_suggest_risks', 'risk', null, { count: risks.length, model: selectedModel }, auditCtx(req));
+      res.json({ ok: true, risks, model: selectedModel });
     } catch (e) {
       res.status(502).json({ ok: false, error: e.message || 'AI request failed.' });
     }

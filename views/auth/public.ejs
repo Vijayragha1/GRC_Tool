@@ -28,98 +28,126 @@
   </header>
 
   <main id="mainContent">
-    <% if (page === 'home') { %>
-      <section class="hero">
-        <p class="eyebrow">Multi-framework assurance delivery</p>
-        <h1>Four standards. One evidence base. Four separate conclusions.</h1>
-        <p class="lede">Compliance Sphere is the delivery record consulting firms run an engagement on. Assessments, evidence, findings, approvals and reports live against one client, and each framework still reaches its own conclusion on its own method.</p>
+    <% if (page === 'home') {
+      // The sample record quotes the ISO 27001 catalogue as loaded, so the
+      // "of N" figure cannot drift from what the product actually holds.
+      const iso = programmes.find(function (p) { return p.code === 'ISO 27001'; }) || { formalName: 'ISO/IEC 27001:2022', count: 118 };
+      const sampleConcluded = Math.max(iso.count - 37, 0);
+    %>
+      <section class="home-intro">
+        <h1>Run client compliance engagements from gap assessment to certification audit.</h1>
+        <p class="lede">Compliance Sphere is the working record for a consulting firm's engagements. Consultants conclude each requirement against linked evidence, the client's team answers requests in its own portal, and a manager approves every report before the client sees it.</p>
         <div class="actions">
           <a class="button primary" href="<%= evaluationUrl %>">Request an evaluation</a>
           <a class="button secondary" href="/login">Sign in</a>
         </div>
-        <p class="plain-note">Evaluation access is issued by invitation. No unscoped self-sign-up.</p>
+        <p class="plain-note">Accounts are issued by invitation. There is no self-sign-up.</p>
       </section>
 
-      <section class="section bordered" aria-labelledby="programmesTitle">
-        <div>
-          <p class="eyebrow">Programme register</p>
-          <h2 id="programmesTitle">A shared operating record, not a certification shortcut.</h2>
-          <p class="section-note">A conclusion is a readiness position for a stated boundary and date. It is the consulting firm's assessment, and it does not stand in for a certification body's audit decision.</p>
+      <figure class="sample" aria-labelledby="sampleTitle">
+        <div class="sample-head">
+          <div>
+            <span class="sample-client">Harbourline Payments &middot; card platform and corporate IT</span>
+            <strong id="sampleTitle"><%= iso.formalName %> gap assessment</strong>
+          </div>
+          <dl class="sample-facts">
+            <div><dt>Concluded</dt><dd><%= sampleConcluded %> <small>of <%= iso.count %></small></dd></div>
+            <div><dt>Evidence</dt><dd>146</dd></div>
+            <div><dt>Open requests</dt><dd>7</dd></div>
+          </dl>
         </div>
-        <table class="register">
-          <caption>Catalogues carried in the product</caption>
-          <thead>
-            <tr><th scope="col">Programme</th><th scope="col">Catalogue</th></tr>
-          </thead>
-          <tbody>
-            <% programmes.forEach(function (p) { %>
-            <tr>
-              <td>
-                <span class="code"><%= p.code %></span>
-                <span class="name"><%= p.formalName %></span>
-                <span class="desc"><%= p.descriptor %></span>
-              </td>
-              <td>
-                <span class="count"><%= p.count %></span>
-                <span class="unit"><%= p.unit %></span>
-              </td>
-            </tr>
-            <% }); %>
-          </tbody>
-        </table>
+        <div class="sample-scroll">
+          <table class="sample-table">
+            <thead>
+              <tr><th scope="col">Ref</th><th scope="col">Requirement</th><th scope="col">Conclusion</th><th scope="col">Evidence</th><th scope="col">Review</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="ref">6.1.2</td><td>Information security risk assessment</td><td><span class="s s-good">Implemented</span></td><td>3 files</td><td>Approved</td></tr>
+              <tr><td class="ref">A.5.15</td><td>Access control</td><td><span class="s s-warn">Partially implemented</span></td><td>2 files</td><td>Approved</td></tr>
+              <tr><td class="ref">A.5.19</td><td>Information security in supplier relationships</td><td><span class="s s-bad">Not implemented</span></td><td class="none">None</td><td>Awaiting review</td></tr>
+              <tr><td class="ref">A.8.8</td><td>Management of technical vulnerabilities</td><td><span class="s s-warn">Partially implemented</span></td><td>4 files</td><td>Changes requested</td></tr>
+              <tr><td class="ref">A.8.13</td><td>Information backup</td><td><span class="s s-idle">Not assessed</span></td><td class="none">Requested from client</td><td class="none">Not started</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figcaption>
+          <span>Fieldwork sign-off is blocked until the remaining 37 requirements are concluded and the open requests are answered.</span>
+          <span class="sample-note">Sample data</span>
+        </figcaption>
+      </figure>
+
+      <section class="home-section" aria-labelledby="lifecycleTitle">
+        <div class="home-section-head">
+          <h2 id="lifecycleTitle">How an ISO 27001 engagement runs</h2>
+          <p>Every engagement starts with onboarding and a gap assessment. At onboarding the firm records whether it ends at the gap report or carries on through certification.</p>
+        </div>
+        <div class="stages-key" aria-hidden="true"><span></span><span>Stage</span><span>Output</span></div>
+        <ol class="stages">
+          <li><span class="stage-n">1</span><div><h3>Onboarding</h3><p>Kickoff, scope and stakeholders are recorded, and the engagement plan is set.</p></div><span class="stage-out">Engagement plan</span></li>
+          <li><span class="stage-n">2</span><div><h3>Gap assessment</h3><p>Each requirement is concluded against evidence, reviewed by a second consultant and, where required, validated by the client.</p></div><span class="stage-out">Gap assessment report</span></li>
+          <li><span class="stage-n">3</span><div><h3>Implementation</h3><p>Assets and risks are assessed and treated, and policies are drafted from the firm's templates and published to the client.</p></div><span class="stage-out">Statement of Applicability, policy set</span></li>
+          <li><span class="stage-n">4</span><div><h3>Internal audit</h3><p>An audit programme is run, and each finding becomes a nonconformity with a root cause, corrective action and due date.</p></div><span class="stage-out">Internal audit report</span></li>
+          <li><span class="stage-n">5</span><div><h3>Management review</h3><p>Review inputs are gathered and the meeting's decisions are tracked as actions until they close.</p></div><span class="stage-out">Management review minutes</span></li>
+          <li><span class="stage-n">6</span><div><h3>Stage 1 audit</h3><p>The firm prepares a readiness pack, represents the client and closes each observation the certification body raises.</p></div><span class="stage-out">Readiness pack</span></li>
+          <li><span class="stage-n">7</span><div><h3>Stage 2 audit</h3><p>Nonconformities from the certification audit are closed with evidence, then the ISMS moves onto a surveillance calendar.</p></div><span class="stage-out">Closure record</span></li>
+        </ol>
       </section>
 
-      <section class="section" aria-labelledby="governedTitle">
-        <p class="eyebrow">What governed means here</p>
-        <h2 id="governedTitle">The record resists being talked into a better answer.</h2>
-        <p class="claim">Most of this product is refusals. A conclusion that is not supported cannot be recorded, an approved report cannot be edited afterwards, and the person who proposes a decision is not the person who signs it off.</p>
-        <div class="mechanisms">
-          <div>
-            <h3>A conclusion needs evidence attached</h3>
-            <p>Controls and obligations are concluded against linked evidence, not against a dropdown. Coverage is reported separately from sufficiency, so one retained file is never mistaken for a complete evidence set.</p>
-          </div>
-          <div>
-            <h3>Approved records freeze</h3>
-            <p>An approved report is a content-addressed snapshot. Reassessment opens a new record rather than rewriting the old one, so what the client was told in March still reads in March's terms.</p>
-          </div>
-          <div>
-            <h3>Recommending is not deciding</h3>
-            <p>On third-party risk the consultancy records a recommendation and the client's decision authority accepts or declines it. The two are stored separately and export as separate columns.</p>
-            <span class="ref">Maker-checker applies to the recommendation itself.</span>
-          </div>
-          <div>
-            <h3>Catalogues are fixed at a version</h3>
-            <p>Each framework catalogue carries a content hash and validates itself on load. An engagement states which release it was assessed against, and a later release supersedes rather than silently replaces it.</p>
-          </div>
+      <div class="home-pair">
+        <section class="home-section" aria-labelledby="programmesTitle">
+          <h2 id="programmesTitle">Frameworks</h2>
+          <p class="home-note">Each framework is assessed on its own method. Evidence collected once can be linked to more than one of them.</p>
+          <table class="register">
+            <thead>
+              <tr><th scope="col">Framework</th><th scope="col">Catalogue</th></tr>
+            </thead>
+            <tbody>
+              <% programmes.forEach(function (p) { %>
+              <tr>
+                <td>
+                  <span class="name"><%= p.formalName %></span>
+                  <span class="desc"><%= p.descriptor %></span>
+                </td>
+                <td><span class="count"><%= p.count %></span> <span class="unit"><%= p.unit %></span></td>
+              </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="home-section" aria-labelledby="rolesTitle">
+          <h2 id="rolesTitle">Who works in it</h2>
+          <p class="home-note">Access is checked on every protected action. A client team sees the engagements assigned to it and nothing else.</p>
+          <dl class="roles">
+            <div><dt>Consultant</dt><dd>Runs fieldwork, links evidence, keeps workpapers and drafts reports.</dd></div>
+            <div><dt>Manager</dt><dd>Reviews and approves reports, manages access and sees the firm's whole portfolio.</dd></div>
+            <div><dt>Client team</dt><dd>Answers requests, uploads evidence and follows progress on its own engagement.</dd></div>
+            <div><dt>External auditor</dt><dd>Opens a time-limited link to approved records, without an account at the firm.</dd></div>
+          </dl>
+        </section>
+      </div>
+
+      <section class="home-section" aria-labelledby="rulesTitle">
+        <div class="home-section-head">
+          <h2 id="rulesTitle">Rules the software enforces</h2>
+          <p>A readiness conclusion is the firm's own assessment for a stated scope and date. It is not a certification decision, so the record behind it has to hold up.</p>
         </div>
+        <ul class="rules">
+          <li><h3>Conclusions need evidence</h3><p>A requirement cannot be marked implemented without evidence linked to it. Coverage and sufficiency are reported separately, so one file does not pass for a complete evidence set.</p></li>
+          <li><h3>Approved reports are fixed</h3><p>An approved report is stored as a snapshot and cannot be edited. A reassessment opens a new version, and the approved one stays as it was issued.</p></li>
+          <li><h3>Drafting and approving are separate</h3><p>The person who drafts a report or recommendation cannot approve it. On third-party risk, the client's decision is stored apart from the firm's recommendation.</p></li>
+          <li><h3>Catalogues are versioned</h3><p>Every engagement records which catalogue release it was assessed against. A new release is added alongside the old one and does not overwrite it.</p></li>
+        </ul>
       </section>
 
-      <section class="section bordered" aria-labelledby="rolesTitle">
+      <section class="home-close" aria-labelledby="evaluationTitle">
         <div>
-          <p class="eyebrow">Role separation</p>
-          <h2 id="rolesTitle">One engagement, four bounded views.</h2>
-          <p class="section-note">Membership is checked on every protected action. A client team sees the workspaces assigned to it and nothing adjacent.</p>
+          <h2 id="evaluationTitle">Evaluate it on a real engagement</h2>
+          <p>Evaluations run in an isolated workspace. Tell us the framework, the roles you need and the evidence flow you want to test. It is also worth trying each rule above, for example approving your own draft or opening a client you were not assigned.</p>
         </div>
-        <div class="roles">
-          <div><strong>Consultant</strong><span>Runs fieldwork, links evidence, maintains workpapers and drafts controlled outputs.</span></div>
-          <div><strong>Manager</strong><span>Holds access and approval. Reviews decisions, signs off governed records, sees the firm portfolio.</span></div>
-          <div><strong>Client team</strong><span>Answers requests, supplies evidence and follows progress on its own engagement only.</span></div>
-          <div><strong>External auditor</strong><span>Reaches a time-boxed, token-scoped view of approved records without an account on the firm.</span></div>
-        </div>
-      </section>
-
-      <section class="section evaluation" aria-labelledby="evaluationTitle">
-        <div>
-          <p class="eyebrow">A useful evaluation</p>
-          <h2 id="evaluationTitle">Try to break the boundary.</h2>
-        </div>
-        <div>
-          <p class="claim">An evaluation runs in an isolated workspace. The useful test is not whether a report renders. It is whether you can conclude a control with no evidence behind it, edit a report after approval, approve your own recommendation, or see a client that was never assigned to you.</p>
-          <p class="section-note">If any of those succeed, we would rather hear it from you than from an auditor.</p>
-          <div class="actions">
-            <a class="button primary" href="<%= evaluationUrl %>">Request an evaluation</a>
-            <a class="button secondary" href="/security">Read the security overview</a>
-          </div>
+        <div class="actions">
+          <a class="button primary" href="<%= evaluationUrl %>">Request an evaluation</a>
+          <a class="button secondary" href="/security">Security overview</a>
         </div>
       </section>
 
