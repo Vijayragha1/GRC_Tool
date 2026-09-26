@@ -120,11 +120,15 @@ test('NIST CSF distinguishes unassessed outcomes from confirmed findings', async
 test('consultant workspace navigation exposes the integrated overview and groups programme journeys without a duplicate audit-pack entry', async () => {
   const page = await manager.get(`/workspaces/${workspaceId}/client-portal`);
   assert.equal(page.status, 200);
-  assert.equal((page.text.match(/class="nav-domain-summary"/g) || []).length, 5);
+  // Five top-level sections; each programme is its own group inside Programmes.
+  assert.equal((page.text.match(/<details class="nav-domain(?! nav-programme)[ "]/g) || []).length, 5);
   assert.match(page.text, /nav-item-text">Integrated overview/);
-  assert.match(page.text, /nav-subitem-text">ISO 27001 · Gap assessment/);
-  assert.match(page.text, /nav-subitem-text">NIST CSF · Programme dashboard/);
-  assert.match(page.text, /nav-subitem-text">ISO 42001 · Management intake/);
+  const programmeGroup = label => page.text.split('<details class="nav-domain nav-programme').slice(1)
+    .map(block => block.split('</details>')[0])
+    .find(block => block.includes(`nav-domain-text">${label}<`)) || '';
+  assert.match(programmeGroup('ISO 27001'), /<span>Gap assessment<\/span>/);
+  assert.match(programmeGroup('NIST CSF'), /<span>Programme dashboard<\/span>/);
+  assert.match(programmeGroup('ISO 42001'), /<span>Programme overview<\/span>/);
   assert.doesNotMatch(page.text, /nav-item-text">Audit pack/);
 });
 

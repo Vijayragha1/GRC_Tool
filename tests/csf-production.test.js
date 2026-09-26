@@ -83,7 +83,10 @@ test('a CSF-only client root resolves to its programme with no duplicate overvie
   assert.match(programme.text,/NIST CSF 2\.0 governed assessment/);
   assert.doesNotMatch(programme.text,/Stage 1 maturity|ISO 27001 programme|ISO controls &amp; SoA/);
   const sidebarNav=(programme.text.match(/<nav class="sidebar-nav">[\s\S]*?<\/nav>/)||[])[0];assert.ok(sidebarNav);
-  assert.equal((sidebarNav.match(/class="nav-domain-summary"/g)||[]).length,5);
+  // Five top-level sections; the programme's tools sit in its own group inside Programmes.
+  assert.equal((sidebarNav.match(/<details class="nav-domain(?! nav-programme)[ "]/g)||[]).length,5);
+  assert.equal((sidebarNav.match(/<details class="nav-domain nav-programme/g)||[]).length,1);
+  assert.match(sidebarNav,/nav-domain-text">NIST CSF</);
   for(const label of ['Work','Programmes','Evidence &amp; documents','Reports','Team &amp; settings']) assert.match(sidebarNav,new RegExp(label));
   for(const label of ['Business profile','Maturity workbench','Quality review','Priorities &amp; roadmap','Executive reporting']) assert.match(sidebarNav,new RegExp(label));
   // "Client setup" is the programme-agnostic setup hub and belongs on every
