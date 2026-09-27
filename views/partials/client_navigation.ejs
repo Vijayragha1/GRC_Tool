@@ -13,7 +13,9 @@
   // workspaces default to enabled until an explicit module record says no.
   const hasTprm = Number(ws.tprm_enabled || 0) === 1;
   const hasVciso = Number(ws.vciso_enabled || 0) === 1;
-  const gapAssessmentOnly = hasIso27001 && ws.engagement_outcome === 'gap_assessment_only';
+  // Both certifiable management systems can be contracted as a gap
+  // assessment only (lib/engagement-outcome-scope.js).
+  const gapAssessmentOnly = (hasIso27001 || hasIso42001) && ws.engagement_outcome === 'gap_assessment_only';
   const csfOnly = hasCsf && !hasIso27001 && !hasIso42001 && !hasDpdpa;
   // The ISO 27001 intake remains the authoritative intake record throughout an
   // ISO 27001 engagement. Confirmation changes its state, not its
@@ -33,10 +35,10 @@
         ...(!csfOnly ? [{ label: 'Review queue', href: `/workspaces/${ws.id}/review-queue`, active: ['review-queue'], badge: navReviewCount }] : [])
       ]
     },
-    ...(hasIso27001 ? [{
+    ...((hasIso27001 || hasIso42001) ? [{
       id: 'plan', label: csfOnly ? 'Plan & roadmap' : 'Plan & work',
       icon: '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
-      active: ['engagement-plan', 'roadmap', 'tasks', 'calendar'],
+      active: ['engagement-plan', 'iso42001-engagement-plan', 'roadmap', 'tasks', 'calendar'],
       items: [
         { label: 'Engagement plan', href: `/workspaces/${ws.id}/engagement-plan`, active: ['engagement-plan'] },
         { label: 'Tasks', href: `/workspaces/${ws.id}/tasks`, active: ['tasks'], shortcut: 'g t' },
@@ -70,23 +72,23 @@
       ]
     }] : []),
     ...(hasIso42001 ? [{
-      id: 'ai-programme', label: 'AI management system',
+      id: 'ai-programme', label: gapAssessmentOnly ? 'ISO 42001 gap assessment' : 'AI management system',
       icon: '<path d="M12 3a4 4 0 0 0-4 4v1H7a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1v1a4 4 0 0 0 8 0v-1h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-1V7a4 4 0 0 0-4-4z"/><path d="M9 10h6M9 14h6"/>',
       // Ordered the way an ISO 42001 engagement is worked: the overview, the
       // gap assessment every engagement opens with, then the certification
       // body's request list and the registers and requirement screens that
       // answer it. Readiness scoring, the catalogue, the roadmap and the
       // executive brief are reached from the screens they belong to.
-      active: ['iso42001-overview', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-intake', 'iso42001-engagement-plan', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
+      active: ['iso42001-overview', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-context', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
       items: [
         { label: 'Programme overview', href: `/workspaces/${ws.id}/iso42001/overview`, active: ['iso42001-overview', 'iso42001-readiness', 'iso42001-exec-brief'] },
         { label: 'Gap assessment', href: `/workspaces/${ws.id}/iso42001/gap-assessment`, active: ['iso42001-gap'] },
-        { label: 'Certification requests', href: `/workspaces/${ws.id}/iso42001/requests`, active: ['iso42001-requests'] },
+        ...(!gapAssessmentOnly ? [{ label: 'Certification requests', href: `/workspaces/${ws.id}/iso42001/requests`, active: ['iso42001-requests'] }] : []),
         { label: 'AI system register', href: `/workspaces/${ws.id}/iso42001/ai-systems`, active: ['iso42001-ai-systems'] },
+        { label: 'Context and interested parties', href: `/workspaces/${ws.id}/iso42001/context`, active: ['iso42001-context'] },
         { label: 'Requirements', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls', 'iso42001-catalog', 'iso42001-roadmap'] },
         { label: 'Statement of Applicability', href: `/workspaces/${ws.id}/iso42001/soa`, active: ['iso42001-soa'] },
-        { label: 'Engagement plan', href: `/workspaces/${ws.id}/iso42001/engagement-plan`, active: ['iso42001-engagement-plan', 'iso42001-intake'] },
-        { label: 'Certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'] }
+        ...(!gapAssessmentOnly ? [{ label: 'Certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'] }] : [])
       ]
     }] : []),
     ...(hasDpdpa ? [{
@@ -203,9 +205,10 @@
     {
       id: 'settings', label: 'Settings',
       icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
-      active: ['setup', 'intake', 'team', 'members', 'access', 'system', 'activity'],
+      active: ['setup', 'intake', 'iso42001-intake', 'team', 'members', 'access', 'system', 'activity'],
       items: [
         { label: 'Client setup', href: `/workspaces/${ws.id}/setup`, active: ['setup'] },
+        ...(hasIso42001 ? [{ label: 'ISO 42001 intake', href: `/workspaces/${ws.id}/iso42001/intake`, active: ['iso42001-intake'] }] : []),
         ...(showIso27001Intake ? [{ label: 'ISO 27001 intake', href: `/workspaces/${ws.id}/intake`, active: ['intake'] }] : []),
         { label: 'Team & access', href: `/workspaces/${ws.id}/team`, active: ['team', 'members', 'access'] },
         ...(rbac.isManager(user.firm_role) ? [{ label: 'System', href: `/workspaces/${ws.id}/system`, active: ['system'] }] : []),

@@ -7,6 +7,10 @@ const fts = require('../lib/fts');
 const ctlWrites = require('../lib/control-writes');
 const delivery = require('../lib/engagement-delivery');
 const outcomeScope = require('../lib/engagement-outcome-scope');
+const reqOpts = require('../lib/requirement-options');
+const auditChecklists = require('../lib/audit-checklists');
+const aimsReview = require('../lib/aims-review-inputs');
+const frameworks = require('../lib/frameworks');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx } = require('../lib/http-helpers');
 
@@ -20,6 +24,14 @@ function register(app, deps) {
     if (!db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) return;
     delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
     delivery.syncCertificationEngagementCompletion(db, req.workspace, req.user.id);
+  };
+
+  // The requirement a form names, kept only when it belongs to one of the
+  // workspace's frameworks, so a hand-edited post cannot tie a record to
+  // another programme's catalogue.
+  const requirementOf = (req, field = 'iso_item_id') => {
+    const id = String(req.body[field] || '').trim();
+    return id && reqOpts.belongs(db, req.workspace, id) ? id : null;
   };
 
   // ==================== INTERNAL AUDITS ====================
@@ -45,18 +57,22 @@ function register(app, deps) {
     const audit = db.prepare('SELECT * FROM audits WHERE id = ? AND workspace_id = ?')
       .get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
-    const findings = db.prepare(`SELECT f.*, i.title AS iso_title FROM audit_findings f
-      LEFT JOIN iso_items i ON i.id = f.iso_item_id
-      WHERE f.audit_id = ? ORDER BY f.created_at`).all(audit.id);
-    const allItems = db.prepare(`SELECT id, title FROM iso_items ORDER BY sort_order`).all();
+    // Findings, samples and checklist items name a requirement of any
+    // framework the client works to (lib/requirement-options).
+    const named = (rows) => reqOpts.nameRows(req.workspace, rows);
+    const findings = named(db.prepare(`SELECT f.*, rq.title AS iso_title, rq_fw.code AS iso_framework FROM audit_findings f
+      ${reqOpts.joinSql('f.iso_item_id')}
+      WHERE f.audit_id = ? ORDER BY f.created_at`).all(audit.id));
+    const requirementGroups = reqOpts.grouped(db, req.workspace);
     // Tier C.9 - per-control samples taken during the audit
-    const samples = db.prepare(`SELECT s.*, i.title AS iso_title FROM audit_samples s
-      LEFT JOIN iso_items i ON i.id=s.iso_item_id
-      WHERE s.audit_id=? ORDER BY s.sample_taken_at IS NULL, s.sample_taken_at DESC`).all(audit.id);
-    const observations = db.prepare(`SELECT o.*, i.title AS iso_title FROM audit_observations o
-      LEFT JOIN iso_items i ON i.id = o.iso_item_id
-      WHERE o.audit_id=? ORDER BY o.status='closed', o.created_at`).all(audit.id);
-    res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, allItems, samples, observations });
+    const samples = named(db.prepare(`SELECT s.*, rq.title AS iso_title, rq_fw.code AS iso_framework FROM audit_samples s
+      ${reqOpts.joinSql('s.iso_item_id')}
+      WHERE s.audit_id=? ORDER BY s.sample_taken_at IS NULL, s.sample_taken_at DESC`).all(audit.id));
+    const observations = named(db.prepare(`SELECT o.*, rq.title AS iso_title, rq_fw.code AS iso_framework FROM audit_observations o
+      ${reqOpts.joinSql('o.iso_item_id')}
+      WHERE o.audit_id=? ORDER BY o.status='closed', o.created_at`).all(audit.id));
+    const checklistSources = auditChecklists.sources(req.workspace);
+    res.render('audit_detail', { user: req.user, ws: req.workspace, audit, findings, requirementGroups, samples, observations, checklistSources });
   });
 
   app.post('/workspaces/:wsId/audits/:id', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
@@ -141,12 +157,12 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/audits/:id/samples', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
-    const { iso_item_id, description, sample_taken_at, population_size, sample_size, finding } = req.body;
+    const { description, sample_taken_at, population_size, sample_size, finding } = req.body;
     if (!description) return redirectBack(req, res);
     db.prepare(`INSERT INTO audit_samples
       (audit_id, iso_item_id, description, sample_taken_at, population_size, sample_size, finding)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      audit.id, iso_item_id || null, description.trim(),
+      audit.id, requirementOf(req), description.trim(),
       sample_taken_at || null,
       population_size ? parseInt(population_size, 10) : null,
       sample_size ? parseInt(sample_size, 10) : null,
@@ -183,11 +199,11 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/audits/:id/findings', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Audit not found');
-    const { iso_item_id, finding_type, description, severity } = req.body;
+    const { finding_type, description, severity } = req.body;
     if (!description) return redirectBack(req, res);
     db.prepare(`INSERT INTO audit_findings (audit_id, iso_item_id, finding_type, description, severity)
                 VALUES (?, ?, ?, ?, ?)`)
-      .run(audit.id, iso_item_id || null, finding_type || 'observation',
+      .run(audit.id, requirementOf(req), finding_type || 'observation',
            description, severity || 'medium');
     res.redirect('/workspaces/' + req.workspace.id + '/audits/' + req.params.id);
   });
@@ -221,14 +237,24 @@ function register(app, deps) {
     // Preview the 9.3.2 input pack so the consultant sees what will be auto-
     // filled before submitting the create form. The same compute is then re-run
     // server-side on POST - no risk of staleness.
-    const pack932Preview = compute932InputPack(req.workspace.id);
+    const pack932Preview = compute932InputPack(req.workspace);
     res.render('mrms', { user: req.user, ws: req.workspace, mrms, pack932Preview });
   });
 
   // Helper - compute the auto-fillable 9.3.2 input fields from current data.
   // Used both by MRM creation (Tier 2.5) and by the on-demand refresh action
   // (Tier A.4) so the saved values can be brought back in line with reality.
-  function compute932InputPack(wsId) {
+  // The management system(s) under review, named the way the client knows
+  // them: 'ISMS', 'AIMS', or 'ISMS and AIMS'.
+  function systemName(workspace) {
+    const names = reqOpts.enabledCodes(workspace)
+      .map((code) => (frameworks.frameworkMeta(code) || {}).systemCode)
+      .filter((code) => code === 'ISMS' || code === 'AIMS');
+    return names.length ? names.join(' and ') : 'management system';
+  }
+
+  function compute932InputPack(workspace) {
+    const wsId = workspace.id;
     const today = new Date().toISOString().slice(0,10);
 
     // ---- existing 9.3.2 a / c / e numbers ----
@@ -287,7 +313,7 @@ function register(app, deps) {
       risksClosedSinceLast = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status IN ('closed','treated')`).get(wsId).c;
     }
 
-    return {
+    const pack = {
       // 9.3.2.a - prior MRM actions
       prior_actions_status: lastMrm
         ? `Last MRM (${lastMrm.meeting_date}) actions:\n${lastMrm.action_items || '(none recorded)'}\n\n[Review status of each above before this meeting.]`
@@ -296,7 +322,7 @@ function register(app, deps) {
       // 9.3.2.b - context changes
       context_changes: lastMrm
         ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution, and changes in the needs / expectations of interested parties identified during gap assessment.]`
-        : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ISMS - regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
+        : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ${systemName(workspace)} - regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
 
       // 9.3.2.c - performance review (extended with incidents + suppliers)
       performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\nIncidents (last 12 months):\n  Total: ${incidents.last12m} (${incidents.open} still open)\n\nSupplier reviews:\n  ${supplierReview.total} suppliers · ${supplierReview.overdue} overdue review${supplierReview.overdue === 1 ? '' : 's'}\n\n[Add commentary on KPIs, monitoring metrics (9.1), trends, root-cause patterns.]`,
@@ -317,11 +343,15 @@ function register(app, deps) {
 
       refreshedAt: new Date().toISOString()
     };
+    // An ISO 42001 client's review also takes its AI records: the register,
+    // impact assessments, AI incidents and changes, ISO 42001 nonconformities,
+    // controls and certification requests (lib/aims-review-inputs).
+    return aimsReview.mergeInto(pack, aimsReview.compute(db, workspace, lastMrm ? lastMrm.meeting_date : null));
   }
 
   app.post('/workspaces/:wsId/mrms', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     const { meeting_date, attendees } = req.body;
-    const pack = compute932InputPack(req.workspace.id);
+    const pack = compute932InputPack(req.workspace);
     const id = db.prepare(`INSERT INTO mrms
       (workspace_id, meeting_date, attendees,
        prior_actions_status, context_changes, performance_review, feedback_interested_parties,
@@ -343,7 +373,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/mrms/:id/refresh-inputs', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
     const mrm = db.prepare('SELECT id, status FROM mrms WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!mrm) return res.status(404).send('Not found');
-    const pack = compute932InputPack(req.workspace.id);
+    const pack = compute932InputPack(req.workspace);
     db.prepare(`UPDATE mrms SET
         prior_actions_status=?, context_changes=?, performance_review=?,
         feedback_interested_parties=?, risk_treatment_status=?, improvement_opportunities=?
@@ -407,7 +437,11 @@ function register(app, deps) {
                'performance_review','feedback_interested_parties','risk_treatment_status',
                'improvement_opportunities','decisions','action_items'];
     const set = []; const vals = [];
-    f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+    f.forEach(k => {
+      if (req.body[k] === undefined) return;
+      set.push(`${k}=?`);
+      vals.push(k === 'iso_item_id' ? requirementOf(req) : (req.body[k] || null));
+    });
     if (set.length) {
       vals.push(req.params.id, req.workspace.id);
       db.prepare(`UPDATE mrms SET ${set.join(',')} WHERE id=? AND workspace_id=?`).run(...vals);
@@ -424,8 +458,8 @@ function register(app, deps) {
   // ==================== NONCONFORMITIES / CAPA ====================
   app.get('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, (req, res) => {
     const filter = req.query.filter || 'open';
-    let q = `SELECT n.*, i.title AS iso_title FROM nonconformities n
-             LEFT JOIN iso_items i ON i.id = n.iso_item_id
+    let q = `SELECT n.*, rq.title AS iso_title, rq_fw.code AS iso_framework FROM nonconformities n
+             ${reqOpts.joinSql('n.iso_item_id')}
              WHERE n.workspace_id = ?`;
     if (filter === 'open') q += ` AND n.status NOT IN ('closed','verified')`;
     const pgN = paginate(db, req, {
@@ -433,17 +467,17 @@ function register(app, deps) {
       rows: q + ` ORDER BY n.created_at DESC`,
       params: [req.workspace.id], perPage: 100,
     });
-    res.render('nonconformities', { user: req.user, ws: req.workspace, ncs: pgN.rows, filter,
-      pg: pgN, pagerHref: p => pageHref(req, p) });
+    res.render('nonconformities', { user: req.user, ws: req.workspace, ncs: reqOpts.nameRows(req.workspace, pgN.rows), filter,
+      pg: pgN, pagerHref: p => pageHref(req, p), requirementGroups: reqOpts.grouped(db, req.workspace) });
   });
 
   app.post('/workspaces/:wsId/nonconformities', requireAuth, requireWorkspace, requirePermission('nc.manage'), (req, res) => {
-    const { title, source, description, severity, iso_item_id } = req.body;
+    const { title, source, description, severity } = req.body;
     if (!title) return redirectBack(req, res);
     const id = db.prepare(`INSERT INTO nonconformities (workspace_id, title, source, description, severity, iso_item_id)
                            VALUES (?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, title, source || 'other', description || null,
-           severity || 'minor', iso_item_id || null).lastInsertRowid;
+           severity || 'minor', requirementOf(req)).lastInsertRowid;
     fts.refresh(req.workspace.id, 'nc', id);
     logAction(req.user.id, req.workspace.id, 'create_nc', 'nonconformity', id, { title });
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/nonconformities/' + id, 'Nonconformity created'));
@@ -464,12 +498,12 @@ function register(app, deps) {
     const evidenceCatalog = db.prepare(`SELECT id,filename,sha256,uploaded_at
       FROM evidence WHERE workspace_id=? AND superseded_at IS NULL
       ORDER BY uploaded_at DESC,id DESC LIMIT 250`).all(req.workspace.id);
-    const allItems = db.prepare(`SELECT id, title FROM iso_items ORDER BY sort_order`).all();
+    const requirementGroups = reqOpts.grouped(db, req.workspace);
     // Phase C: corrective tasks spawned from this NC
     const correctiveTasks = db.prepare(`SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id
       WHERE t.workspace_id=? AND t.nonconformity_id=? ORDER BY t.created_at DESC`).all(req.workspace.id, nc.id);
     res.render('nonconformity_detail', {
-      user: req.user, ws: req.workspace, nc, allItems, correctiveTasks,
+      user: req.user, ws: req.workspace, nc, requirementGroups, correctiveTasks,
       certificationLineage, findingEvidence, evidenceCatalog,
     });
   });
@@ -521,7 +555,11 @@ function register(app, deps) {
     const f = ['title','source','source_ref','description','severity','iso_item_id',
                'root_cause','corrective_action','responsible','due_date','effectiveness_check','status'];
     const set = []; const vals = [];
-    f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+    f.forEach(k => {
+      if (req.body[k] === undefined) return;
+      set.push(`${k}=?`);
+      vals.push(k === 'iso_item_id' ? requirementOf(req) : (req.body[k] || null));
+    });
     const requestedStatus = req.body.status === undefined ? before.status : req.body.status;
     const closing = (requestedStatus === 'closed' || requestedStatus === 'verified');
     if (retainedLineage && closing) {
@@ -574,15 +612,14 @@ function register(app, deps) {
           // Cutover 4 (W5): bump last_verified_at on the converged row when flipped
           // (014 mirrors to legacy). entity_id IS NULL is not ON-CONFLICT-safe, so
           // ensure-then-update. Fail-safe to the legacy upsert otherwise.
-          const ridNc = ctlWrites.converged(db, req.workspace.id) ? ctlWrites.requirementId(db, 'iso27001', ncRow.iso_item_id) : null;
+          // The requirement may belong to any framework (lib/requirement-options);
+          // control_instances is the only control-state table since migration 019,
+          // so an unmapped requirement is simply not bumped.
+          const ncFramework = reqOpts.frameworkOf(db, ncRow.iso_item_id);
+          const ridNc = ncFramework ? ctlWrites.requirementId(db, ncFramework, ncRow.iso_item_id) : null;
           if (ridNc) {
             db.prepare(`INSERT OR IGNORE INTO control_instances (workspace_id, requirement_id, entity_id) VALUES (?, ?, NULL)`).run(req.workspace.id, ridNc);
             db.prepare(`UPDATE control_instances SET last_verified_at = CURRENT_TIMESTAMP WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`).run(req.workspace.id, ridNc);
-          } else {
-            db.prepare(`INSERT INTO control_states (workspace_id, iso_item_id, last_verified_at)
-                        VALUES (?, ?, CURRENT_TIMESTAMP)
-                        ON CONFLICT(workspace_id, iso_item_id) DO UPDATE SET last_verified_at = CURRENT_TIMESTAMP`)
-              .run(req.workspace.id, ncRow.iso_item_id);
           }
         }
       }

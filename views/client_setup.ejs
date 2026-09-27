@@ -42,6 +42,57 @@
   </div>
 </div>
 
+<% if (typeof isoContract !== 'undefined' && isoContract) { %>
+  <section class="panel panel-pad" id="iso-contract-settings" style="margin-bottom:18px;">
+    <h2>Contracted <%= isoContract.label %> outcome</h2>
+    <p class="meta">The contracted endpoint governs the shared engagement plan. Expanding a gap assessment to certification support preserves the completed assessment and is a one-way change.</p>
+    <% if (typeof canUpdateWorkspace !== 'undefined' && canUpdateWorkspace) { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/frameworks" id="iso-contract-form">
+        <% (Array.isArray(ws.frameworks) ? ws.frameworks : []).forEach(code => { %><input type="hidden" name="frameworks" value="<%= code %>"><% }) %>
+        <% if (isoContract.outcome === 'gap_assessment_only') { %>
+          <label class="label" for="setup-iso-outcome">Contracted outcome</label>
+          <select class="select" id="setup-iso-outcome" name="engagement_outcome">
+            <% isoContract.options.forEach(option => { %><option value="<%= option.value %>" <%= isoContract.outcome === option.value ? 'selected' : '' %>><%= option.label %></option><% }) %>
+          </select>
+          <label id="setup-iso-upgrade-confirmation" hidden style="margin:12px 0;"><input type="checkbox" name="confirm_outcome_upgrade" value="1"> I confirm the one-way change to full certification support.</label>
+        <% } else { %>
+          <input type="hidden" name="engagement_outcome" value="certification_support">
+          <p><strong>Full certification support</strong> · implementation, documentation, internal audit, management review, Stage 1 and Stage 2 support.</p>
+        <% } %>
+        <div id="setup-iso-target" <%= isoContract.outcome === 'gap_assessment_only' ? 'hidden' : '' %> style="margin:12px 0;max-width:320px;">
+          <label class="label" for="setup-iso-target-date">Target certification date</label>
+          <input class="input" id="setup-iso-target-date" type="date" name="target_cert_date" value="<%= ws.target_cert_date || '' %>" <%= isoContract.outcome === 'gap_assessment_only' ? 'disabled' : '' %>>
+        </div>
+        <button class="btn btn-secondary" type="submit">Save contracted outcome</button>
+        <a class="btn" href="/workspaces/<%= ws.id %>/engagement-plan">Open engagement plan</a>
+      </form>
+      <% if (isoContract.outcome === 'gap_assessment_only') { %>
+      <script>
+        (function () {
+          const outcome = document.getElementById('setup-iso-outcome');
+          const confirmation = document.getElementById('setup-iso-upgrade-confirmation');
+          const check = confirmation.querySelector('input');
+          const target = document.getElementById('setup-iso-target');
+          const date = document.getElementById('setup-iso-target-date');
+          const refresh = () => {
+            const full = outcome.value === 'certification_support';
+            confirmation.hidden = !full;
+            check.required = full;
+            target.hidden = !full;
+            date.disabled = !full;
+            if (!full) { check.checked = false; date.value = ''; }
+          };
+          outcome.addEventListener('change', refresh);
+          refresh();
+        })();
+      </script>
+      <% } %>
+    <% } else { %>
+      <p><strong><%= isoContract.options.find(option => option.value === isoContract.outcome).label %></strong></p>
+    <% } %>
+  </section>
+<% } %>
+
 <% if (!setup.total) { %>
   <div class="panel empty-state">
     <div class="empty-title">No programme assigned yet</div>

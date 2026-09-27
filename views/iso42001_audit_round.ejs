@@ -1,0 +1,29 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a class="link-muted" href="<%= base %>/requests">Certification requests</a> · Audit round</div>
+    <h1 class="page-title"><%= round.label %></h1>
+    <div class="page-subtitle">Sealed <%= String(round.closed_at).slice(0, 16) %> by <%= round.closed_by_name || 'unknown' %> · <%= round.request_count %> requests, <%= round.accepted_count %> accepted by the auditor</div>
+  </div>
+  <span class="tag <%= round.intact ? 'tag-neutral' : 'tag-danger' %>" title="SHA-256 <%= round.payload_hash %>"><%= round.intact ? 'Sealed' : 'Does not match its seal' %></span>
+</div>
+<section class="panel">
+  <div style="overflow-x:auto;">
+    <table class="t">
+      <thead><tr><th style="width:90px;">Ref</th><th style="width:110px;">Stage</th><th>Request</th><th style="width:130px;">Status</th><th style="width:110px;">Submitted</th><th>Supplied</th></tr></thead>
+      <tbody>
+        <% round.rows.forEach(r => { %>
+          <tr>
+            <td class="mono meta"><%= r.ref %></td>
+            <td class="meta"><%= (STAGE_LABELS && STAGE_LABELS[r.stage]) || r.stage %></td>
+            <td><%= r.description %><% if (r.status_note) { %><div class="meta text-xs"><%= r.status_note %></div><% } %></td>
+            <td><%= (STATUS_LABELS && STATUS_LABELS[r.status]) || r.status %></td>
+            <td class="meta"><%= r.submitted_at ? String(r.submitted_at).slice(0, 10) : '-' %></td>
+            <td class="meta text-sm"><%= [...(r.records || []).map(x => x.label || (x.record_type + ' ' + x.record_id)), ...(r.samples || []).map(x => 'sample ' + x.label + ' (' + x.status + ')')].join('; ') || '-' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+<%- include('partials/footer') %>

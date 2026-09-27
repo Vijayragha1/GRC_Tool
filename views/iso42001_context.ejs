@@ -1,0 +1,88 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<style>
+  .ctx-row { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 150px 140px auto; gap: 8px; align-items: end; }
+  .ctx-party { display: grid; grid-template-columns: minmax(0, 1fr) 170px minmax(0, 1.4fr) 170px minmax(0, 1.2fr) 130px 140px auto; gap: 8px; align-items: end; }
+  .ctx-item { padding: 10px 16px; border-top: 1px solid var(--border); }
+  .ctx-item:first-of-type { border-top: 0; }
+  @media (max-width: 1100px) { .ctx-row, .ctx-party { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  @media (max-width: 760px) { .ctx-row, .ctx-party { grid-template-columns: minmax(0, 1fr); } }
+</style>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : null;
+  const overdue = (d) => d && d < today;
+%>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Context and interested parties</h1>
+    <div class="page-subtitle">The internal and external issues that shape the AI management system (clause 4.1), and the interested parties whose requirements it addresses (clause 4.2). Mark each requirement that is a legal, regulatory or contractual obligation.</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
+  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Issues</div><div class="kpi-num"><%= context.issues.length %></div></div></div>
+  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Interested parties</div><div class="kpi-num"><%= context.parties.length %></div></div></div>
+  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Obligations</div><div class="kpi-num"><%= context.obligations %></div></div></div>
+  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Past their review date</div><div class="kpi-num" style="<%= context.overdue ? 'color:#b91c1c;' : '' %>"><%= context.overdue %></div></div></div>
+</div>
+
+<section class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><h2>Issues</h2><span class="meta">Clause 4.1</span></div>
+  <% if (!context.issues.length) { %><div class="t-empty">No issues recorded. Start with the intake answers: markets, laws on AI, customers' expectations, the organisation's AI strategy and capabilities.</div><% } %>
+  <% context.issues.forEach(i => { %>
+    <form method="POST" action="<%= base %>/context/issues/<%= i.id %>" class="ctx-item ctx-row">
+      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+      <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= i.kind === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+      <div><label class="label">Issue</label><input class="input" name="issue" value="<%= i.issue %>" required></div>
+      <div><label class="label">Effect on the AIMS</label><input class="input" name="effect" value="<%= i.effect || '' %>"></div>
+      <div><label class="label">How it is addressed</label><input class="input" name="response" value="<%= i.response || '' %>"></div>
+      <div><label class="label">Owner</label><input class="input" name="owner" value="<%= i.owner || '' %>"></div>
+      <div><label class="label">Next review</label><input class="input" type="date" name="next_review" value="<%= i.next_review || '' %>" style="<%= overdue(i.next_review) ? 'border-color:#b91c1c;' : '' %>"></div>
+      <div style="display:flex;gap:4px;"><% if (perms.manage) { %><button class="btn btn-secondary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/issues/<%= i.id %>/delete" onclick="return confirm('Remove this issue?')">×</button><% } %></div>
+    </form>
+  <% }) %>
+  <% if (perms.manage) { %>
+    <form method="POST" action="<%= base %>/context/issues" class="ctx-item ctx-row" style="background:var(--bg-subtle);">
+      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+      <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+      <div><label class="label">Issue</label><input class="input" name="issue" required placeholder="e.g. Customers now ask for evidence of AI governance in tenders"></div>
+      <div><label class="label">Effect on the AIMS</label><input class="input" name="effect"></div>
+      <div><label class="label">How it is addressed</label><input class="input" name="response"></div>
+      <div><label class="label">Owner</label><input class="input" name="owner"></div>
+      <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
+      <div><button class="btn btn-primary btn-xs">Add issue</button></div>
+    </form>
+  <% } %>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Interested parties and their requirements</h2><span class="meta">Clause 4.2</span></div>
+  <% if (!context.parties.length) { %><div class="t-empty">No interested parties recorded. Include the people affected by the AI systems' decisions, not only customers and regulators.</div><% } %>
+  <% context.parties.forEach(p => { %>
+    <form method="POST" action="<%= base %>/context/parties/<%= p.id %>" class="ctx-item ctx-party">
+      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+      <div><label class="label">Party</label><input class="input" name="party" value="<%= p.party %>" required></div>
+      <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>" <%= p.party_type === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+      <div><label class="label">Requirement</label><input class="input" name="needs" value="<%= p.needs || '' %>"></div>
+      <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= (p.requirement_kind || 'need') === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+      <div><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed" value="<%= p.how_addressed || '' %>"></div>
+      <div><label class="label">Owner</label><input class="input" name="owner" value="<%= p.owner || '' %>"></div>
+      <div><label class="label">Next review</label><input class="input" type="date" name="next_review" value="<%= p.next_review || '' %>" style="<%= overdue(p.next_review) ? 'border-color:#b91c1c;' : '' %>"></div>
+      <div style="display:flex;gap:4px;"><% if (perms.manage) { %><button class="btn btn-secondary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/parties/<%= p.id %>/delete" onclick="return confirm('Remove this interested party?')">×</button><% } %></div>
+    </form>
+  <% }) %>
+  <% if (perms.manage) { %>
+    <form method="POST" action="<%= base %>/context/parties" class="ctx-item ctx-party" style="background:var(--bg-subtle);">
+      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+      <div><label class="label">Party</label><input class="input" name="party" required placeholder="e.g. Patients triaged by the assistant"></div>
+      <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+      <div><label class="label">Requirement</label><input class="input" name="needs" placeholder="What they need or require of the AIMS"></div>
+      <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+      <div><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed"></div>
+      <div><label class="label">Owner</label><input class="input" name="owner"></div>
+      <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
+      <div><button class="btn btn-primary btn-xs">Add party</button></div>
+    </form>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

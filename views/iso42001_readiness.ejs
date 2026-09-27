@@ -99,6 +99,8 @@
             <div style="flex:1;">
               <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text);font-weight:500' %>"><%= c.name %></span>
               <span class="mono meta" style="margin-left:6px;">Cl. <%= c.clause %></span>
+              <% if (c.basis) { %><div class="meta text-xs"><%= c.basis %></div><% } %>
+              <% if (c.declaredOnly) { %><div class="text-xs" style="color:#a16207;">Marked implemented, but the record was not found</div><% } %>
             </div>
           </div>
         <% }) %>
@@ -112,6 +114,8 @@
             <div style="flex:1;">
               <span class="text-secondary"><%= c.name %></span>
               <span class="mono meta" style="margin-left:6px;"><%= c.clause %></span>
+              <% if (c.basis) { %><div class="meta text-xs"><%= c.basis %></div><% } %>
+              <% if (c.declaredOnly) { %><div class="text-xs" style="color:#a16207;">Marked implemented, but the record was not found</div><% } %>
             </div>
           </div>
         <% }) %>

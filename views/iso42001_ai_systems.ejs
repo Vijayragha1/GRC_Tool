@@ -19,7 +19,10 @@
         <span><strong><%= inScope.filter(s => s.ia_approved_at).length %></strong> with an approved impact assessment</span>
       </div>
     </div>
-    <% if (perms.manage) { %><a class="btn btn-primary" href="<%= base %>/ai-systems/new">Add AI system</a><% } %>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <% if (systems.length) { %><a class="btn btn-secondary" href="<%= base %>/ai-register.docx">Word</a><a class="btn btn-secondary" href="<%= base %>/ai-register.csv">CSV</a><% } %>
+      <% if (perms.manage) { %><a class="btn btn-primary" href="<%= base %>/ai-systems/new">Add AI system</a><% } %>
+    </div>
   </div>
 
   <section class="panel" aria-labelledby="aiListTitle">

@@ -19,7 +19,7 @@
      sees the coverage scope before editing the content -->
 <div class="panel" style="margin-top:12px;margin-bottom:16px;">
   <div class="panel-head">
-    <h2>Linked ISO 27001 controls / clauses</h2>
+    <h2>Linked controls / clauses</h2>
     <span class="meta">What this document operationalizes - drives the SoA "covered by" view</span>
   </div>
   <div class="panel-pad">
@@ -31,7 +31,7 @@
         <tbody>
           <% linkedControls.forEach(lc => { %>
             <tr>
-              <td><code class="text-sm"><%= lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code></td>
+              <td><code class="text-sm"><%= lc.code || lc.iso_item_id.replace('annex-','').replace('clause-','').toUpperCase() %></code><% if (lc.frameworkLabel && new Set((linkedControls || []).map(x => x.framework)).size > 1) { %> <span class="meta text-xs"><%= lc.frameworkLabel %></span><% } %></td>
               <td><%= (lc.title || '').replace(/^A\.[0-9.]+ /, '').replace(/^[0-9.]+ /, '') %></td>
               <td class="meta" style="text-transform:capitalize;"><%= lc.type %><% if (lc.category) { %> · <%= lc.category %><% } %></td>
               <td class="meta"><%= lc.section_ref || '-' %></td>
@@ -48,7 +48,8 @@
       </table>
     <% } %>
     <% if (can('document.edit') && !doc.locked) {
-         const grp = {}; allControls.forEach(c => { (grp[c.type] = grp[c.type] || []).push(c); });
+         const grp = {}; const grpLabel = {};
+         allControls.forEach(c => { const k = c.groupKey || c.type; (grp[k] = grp[k] || []).push(c); grpLabel[k] = c.groupLabel || (c.type === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls'); });
          const linkedIds = new Set((linkedControls || []).map(lc => lc.iso_item_id));
          // Strip the leading code prefix from the canonical title so the option
          // renders as "A.5.15 - Access control" instead of "A.5.15 - A.5.15 Access control".
@@ -68,11 +69,11 @@
                    const available = grp[t].filter(c => !linkedIds.has(c.id));
                    if (!available.length) return;
               %>
-                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:<%= t === 'clause' ? '#0891b2' : '#475569' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
-                  <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
+                <div data-combo-grouplabel style="padding:6px 10px;font-size:10px;font-weight: 500;text-transform:uppercase;letter-spacing:0.05em;color:<%= t.endsWith('clause') ? '#0891b2' : '#475569' %>;background:var(--bg-subtle);border-bottom:1px solid var(--border);">
+                  <%= grpLabel[t] %>
                 </div>
                 <% available.forEach(c => {
-                     const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const code = c.code || c.id.replace('annex-','').replace('clause-','').toUpperCase();
                      const ctitle = cleanTitle(c.title);
                      const label = code + ' - ' + ctitle;
                 %>
@@ -176,12 +177,12 @@
             <% Object.keys(grp).forEach(t => {
                  const available = grp[t].filter(c => !linkedIds.has(c.id));
                  if (!available.length) return; %>
-              <div class="meta" style="font-weight: 500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t === 'clause' ? '#0891b2' : '#475569' %>;">
-                <%= t === 'clause' ? 'Main body clauses (4–10)' : 'Annex A controls' %>
+              <div class="meta" style="font-weight: 500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin:6px 0 4px 0;color:<%= t.endsWith('clause') ? '#0891b2' : '#475569' %>;">
+                <%= grpLabel[t] %>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;">
                 <% available.forEach(c => {
-                     const code = c.id.replace('annex-','').replace('clause-','').toUpperCase();
+                     const code = c.code || c.id.replace('annex-','').replace('clause-','').toUpperCase();
                      const ctitle = cleanTitle(c.title);
                 %>
                   <label class="bulk-row text-md" data-search="<%= (code + ' ' + ctitle).toLowerCase() %>" style="display:flex;gap:8px;align-items:center;padding:3px 0;cursor:pointer;">
@@ -228,14 +229,36 @@
           <% if (doc.locked) { %> · <span class="tag tag-info">locked</span><% } %>
           · updated <%= doc.updated_at %>
         </div>
+        <%# How long the document is kept once superseded (clause 7.5). %>
+        <form class="row-center" method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/retention" style="gap:6px;margin-top:6px;">
+          <label class="meta text-sm" for="docRetention">Kept for</label>
+          <input id="docRetention" class="input text-base" name="retention_period" list="retentionPeriods" value="<%= doc.retention_period || '' %>" placeholder="not set" style="max-width:240px;padding:3px 8px;" <%= can('document.edit') ? '' : 'disabled' %>>
+          <datalist id="retentionPeriods"><option value="3 years after it is superseded"><option value="For the life of the certification plus 3 years"><option value="7 years after it is superseded"><option value="Until the AI system is retired plus 3 years"></datalist>
+          <% if (can('document.edit')) { %><button class="btn btn-ghost btn-xs">Save</button><% } %>
+        </form>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/versions" class="btn btn-secondary btn-xs">Versions (<%= versions.length %>)</a>
+        <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/acknowledgements" class="btn btn-secondary btn-xs" title="Ask the people this document applies to to confirm they have read it">Acknowledgements</a>
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/docx" class="btn btn-accent btn-xs">.docx</a>
         <% if (doc.source_filename) { %>
           <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/source" class="btn btn-secondary btn-xs" title="Download originally uploaded file (<%= doc.source_filename %>)">Original file</a>
         <% } %>
         <a href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/print" target="_blank" class="btn btn-secondary btn-xs">Print</a>
+        <% if (can('document.create') && user.user_type === 'firm') { %>
+          <details style="position:relative;">
+            <summary class="btn btn-secondary btn-xs" style="list-style:none;cursor:pointer;">Save as firm template</summary>
+            <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/save-as-firm-template" class="popover-panel" style="position:absolute;right:0;top:30px;z-index:20;--popover-w:340px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);">
+              <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+              <label class="label" for="ftName">Template name</label>
+              <input class="input" id="ftName" name="name" value="<%= doc.name %>" maxlength="160" required>
+              <label class="label" for="ftDesc" style="margin-top:8px;">What it is for</label>
+              <input class="input" id="ftDesc" name="description" maxlength="500" placeholder="Shown in the template library">
+              <p class="meta text-sm" style="margin:8px 0 0;line-height:1.5;">Every client of the firm will see it. <%= ws.client_name %>'s name and the names set for its templates are replaced with placeholders; remove anything else specific to <%= ws.client_name %> first.</p>
+              <button class="btn btn-primary btn-xs" style="margin-top:8px;">Save to the firm library</button>
+            </form>
+          </details>
+        <% } %>
         <% if (can('document.delete')) { %>
           <details style="position:relative;">
             <summary class="btn btn-danger btn-xs" style="list-style:none;cursor:pointer;">Withdraw</summary>

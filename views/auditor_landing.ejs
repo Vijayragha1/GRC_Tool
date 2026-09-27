@@ -76,20 +76,21 @@
   }
 </style>
 
+<% const std = auditorStandards; %>
 <div class="a-page-head">
-  <h1 class="a-page-title"><%= workspace.client_name %> · Information Security Management System</h1>
+  <h1 class="a-page-title"><%= workspace.client_name %> · <%= std.systemLong %></h1>
 </div>
 
 <div class="a-letter">
   <p>
     Welcome.  This portal presents the documented information for <strong><%= workspace.client_name %></strong>'s
-    Information Security Management System,
+    <%= std.systemLong %>,
     prepared by <strong><%= firm.name || 'the consulting firm of record' %></strong>
-    in accordance with <strong>ISO/IEC&nbsp;27001:2022</strong>.
+    in accordance with <strong><%= std.standardText %></strong>.
   </p>
   <p>
     The complete engagement record is available as a single branded PDF, the audit pack,
-    bundling the Statement of Applicability with its SHA-256 hash, the risk register and inherent-risk heatmap,
+    bundling the Statement of Applicability with its SHA-256 hash,<% if (std.aims) { %> the AI system register and approved impact assessments,<% } %> the risk register and inherent-risk heatmap,
     the full evidence index with file hashes, internal audit findings, nonconformities,
     management reviews, and the improvement log.  We recommend downloading it first,
     then returning here for targeted drill-through and individual evidence files.
@@ -108,13 +109,20 @@
 
 <div class="a-toc">
   <%
+    const aiSoaMeta = { approved: 'approved version', snapshot: 'latest snapshot, not yet approved', live: 'live state, no snapshot yet' }[counts.ai_soa_from] || '';
     const tocItems = [
-      { num: 'I',   href: 'soa',       title: 'Statement of Applicability',     meta: `${counts.soa_total} controls · ${counts.soa_snapshots} snapshot${counts.soa_snapshots === 1 ? '' : 's'}` },
-      { num: 'II',  href: 'risks',     title: 'Risk register and heatmap',      meta: `${counts.risks} risk${counts.risks === 1 ? '' : 's'} · ${counts.risks_open} open` },
-      { num: 'III', href: 'evidence',  title: 'Evidence index',                 meta: `${counts.evidence} file${counts.evidence === 1 ? '' : 's'} on record` },
-      { num: 'IV',  href: 'documents', title: 'Policies and procedures',        meta: `${counts.documents} document${counts.documents === 1 ? '' : 's'} in force` },
-      { num: 'V',   href: 'audits',    title: 'Internal audits and nonconformities', meta: `${counts.audits} audit${counts.audits === 1 ? '' : 's'} · ${counts.ncs_open} open NC${counts.ncs_open === 1 ? '' : 's'}` }
+      ...(std.isms ? [{ href: 'soa', title: std.aims ? 'Statement of Applicability · ISO/IEC 27001' : 'Statement of Applicability', meta: `${counts.soa_total} controls · ${counts.soa_snapshots} snapshot${counts.soa_snapshots === 1 ? '' : 's'}` }] : []),
+      ...(std.aims ? [
+        { href: 'aims/soa', title: std.isms ? 'Statement of Applicability · ISO/IEC 42001' : 'Statement of Applicability', meta: `${counts.ai_soa_total} controls · ${aiSoaMeta}` },
+        { href: 'aims/systems', title: 'AI system register and impact assessments', meta: `${counts.ai_systems} system${counts.ai_systems === 1 ? '' : 's'} in scope · ${counts.ai_assessments} approved assessment${counts.ai_assessments === 1 ? '' : 's'}` },
+      ] : []),
+      { href: 'risks',     title: 'Risk register and heatmap',      meta: `${counts.risks} risk${counts.risks === 1 ? '' : 's'} · ${counts.risks_open} open` },
+      { href: 'evidence',  title: 'Evidence index',                 meta: `${counts.evidence} file${counts.evidence === 1 ? '' : 's'} on record` },
+      { href: 'documents', title: 'Policies and procedures',        meta: `${counts.documents} document${counts.documents === 1 ? '' : 's'} in force` },
+      { href: 'audits',    title: 'Internal audits and nonconformities', meta: `${counts.audits} audit${counts.audits === 1 ? '' : 's'} · ${counts.ncs_open} open NC${counts.ncs_open === 1 ? '' : 's'}` }
     ];
+    const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+    tocItems.forEach((t, i) => { t.num = roman[i]; });
   %>
   <% tocItems.forEach(t => { %>
     <a href="/auditor/<%= token %>/<%= t.href %>" class="a-toc-item">
@@ -127,9 +135,9 @@
 
 <div class="a-colophon">
   <dl>
-    <dt>Standard</dt><dd>ISO/IEC&nbsp;27001:2022</dd>
+    <dt>Standard</dt><dd><%= std.standardText %></dd>
     <% if (workspace.scope) { %><dt>Scope</dt><dd><%= workspace.scope %></dd><% } %>
-    <dt>Prepared by</dt><dd><%= firm.name || 'ISMS consultancy' %></dd>
+    <dt>Prepared by</dt><dd><%= firm.name || 'the consulting firm of record' %></dd>
     <dt>Report date</dt><dd><%= new Date().toISOString().slice(0,10) %></dd>
     <% if (counts.mrms > 0) { %><dt>Last MRM</dt><dd><%= counts.mrms %> management review<%= counts.mrms === 1 ? '' : 's' %> held to date</dd><% } %>
   </dl>

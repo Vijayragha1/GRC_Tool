@@ -1,0 +1,44 @@
+<%- include('partials/header', { title: record.label, user, ws, active: 'risks' }) %>
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a href="/workspaces/<%= ws.id %>/risks" class="link-muted">Risk register</a> · Risk assessment record</div>
+    <h1 class="page-title"><%= record.label %></h1>
+    <div class="page-subtitle">Performed <%= record.performed_on %> · recorded by <%= record.recorded_by_name || 'unknown' %> on <%= String(record.created_at).slice(0, 10) %><% if (record.methodology_name) { %> · method: <%= record.methodology_name %><% } %></div>
+  </div>
+  <span class="tag <%= record.intact ? 'tag-neutral' : 'tag-danger' %>" title="SHA-256 <%= record.payload_hash %>"><%= record.intact ? 'Sealed record' : 'Record does not match its seal' %></span>
+</div>
+
+<% if (record.notes) { %><div class="panel" style="margin-bottom:14px;"><div class="panel-pad text-lg" style="line-height:1.55;"><%= record.notes %></div></div><% } %>
+
+<div class="panel">
+  <div class="panel-head"><h2><%= record.scope === 'ai' ? 'AI risks' : 'Risks' %> as assessed (<%= record.risk_count %>)</h2><span class="meta"><%= record.above_appetite %> above appetite</span></div>
+  <% if (!record.rows.length) { %>
+    <div class="t-empty">The register was empty when this assessment was recorded.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:70px;">Risk</th><th>Title</th><th style="width:70px;" class="num">L</th><th style="width:150px;" class="num">Impact (org · people · society)</th>
+        <th style="width:100px;">Treatment</th><th style="width:90px;">Residual</th><th>Controls</th>
+      </tr></thead>
+      <tbody>
+        <% record.rows.forEach(r => { %>
+          <tr>
+            <td class="mono meta">R-<%= r.id %></td>
+            <td><strong><%= r.title %></strong>
+              <% if (r.ai_system || r.risk_source) { %><div class="meta text-xs"><%= [r.ai_system, sourceLabel[r.risk_source]].filter(Boolean).join(' · ') %></div><% } %>
+              <% if (r.owner) { %><div class="meta text-xs">Owner: <%= r.owner %></div><% } %>
+            </td>
+            <td class="num"><%= r.likelihood %></td>
+            <td class="num"><%= r.impact %><% if (r.impact_individuals || r.impact_society) { %> <span class="meta">(<%= r.impact_organisation ?? '-' %> · <%= r.impact_individuals ?? '-' %> · <%= r.impact_society ?? '-' %>)</span><% } %></td>
+            <td><%= r.treatment || '-' %></td>
+            <td class="meta"><%= r.residual_likelihood && r.residual_impact ? `${r.residual_likelihood}×${r.residual_impact}` : '-' %></td>
+            <td class="meta text-sm"><%= (r.controls || []).join('; ') || '-' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

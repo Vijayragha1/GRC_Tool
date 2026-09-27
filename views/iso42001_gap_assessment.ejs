@@ -12,10 +12,20 @@
     <h1 class="page-title">ISO 42001 gap assessment</h1>
     <div class="page-subtitle">Walk through 27 clauses (4-10) + 38 Annex A controls one at a time. Answers drive a suggested status; the result feeds the SoA, Roadmap, and Exec brief.</div>
   </div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/start">
-    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <button class="btn btn-primary">Start a new pass</button>
-  </form>
+  <div class="row-center" style="gap:6px;">
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/iso42001/gap-report.pdf" title="The assessment as it stands, for your own working. The client receives the independently reviewed report released through the engagement plan.">Working export PDF</a>
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/iso42001/gap-report.docx" title="The same working export as an editable Word document">Word</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/start">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <button class="btn btn-primary" <%= passes.some(p=>p.status==='open')?'disabled':'' %>>Start a new pass</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel panel-pad" style="margin-bottom:16px">
+  <strong><%= gapState.complete ? 'Independently reviewed assessment retained' : 'Independent assessment sign-off required' %></strong>
+  <p>Completion requires a reviewer who did not prepare the conclusions, a verified decision for every requirement in this pass, justified exclusions and gaps, and linked evidence for implementation claims. Historical operating evidence remains available for review. A completed assessment does not mean every requirement conforms.</p>
+  <% if(gapState.blockers.length){ %><details><summary><%= gapState.blockers.length %> completion condition(s) outstanding</summary><ul><% gapState.blockers.forEach(message=>{ %><li><%= message %></li><% }) %></ul></details><% } %>
 </div>
 
 <div class="panel" style="padding:16px;margin-bottom:16px;">
@@ -43,14 +53,16 @@
           <td><%= p.name %></td>
           <td class="meta"><%= p.started_at %></td>
           <td class="meta"><%= p.started_by_name || '-' %></td>
-          <td><span class="status s-<%= (p.status||'open').toLowerCase().replace(/ /g,'-') %>"><%= p.status %></span></td>
+          <td><span class="status s-<%= (p.status||'open').toLowerCase().replace(/ /g,'-') %>"><%= reviewedPasses[p.id] ? 'Independently reviewed' : p.status==='completed' ? 'Legacy completion, not independently reviewed' : p.status %></span></td>
           <td class="meta"><%= p.completed_at || '-' %></td>
           <td>
             <% if (p.status !== 'completed') { %>
               <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/<%= p.id %>/complete" style="display:inline;">
                 <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-                <button class="btn btn-ghost btn-xs">Mark complete</button>
+                <button class="btn btn-ghost btn-xs" <%= Number(p.started_by)===Number(user.id)?'disabled':'' %>>Independently sign off</button>
               </form>
+            <% } else if(reviewedPasses[p.id]) { %>
+              <a class="btn btn-ghost btn-xs" href="/workspaces/<%= ws.id %>/iso42001/gap-assessment/<%= p.id %>/report">Reviewed report</a>
             <% } %>
           </td>
         </tr>

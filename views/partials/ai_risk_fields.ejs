@@ -1,0 +1,35 @@
+<%# AI risk fields for an ISO 42001 client (lib/ai-risk.js). Takes iScale,
+    aiSystemOptions, riskSources and, on the edit form, risk. The risk is
+    scored on the highest of the organisational, individual and societal
+    impact. %>
+<% const ar = locals.risk || {}; const scale = locals.iScale || []; %>
+<div class="col-full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+  <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:.04em;">AI risk</div>
+  <div class="meta text-sm" style="line-height:1.45;">For a risk from an AI system, rate the consequence for people and for society as well as for the organisation. The risk is scored on the highest of the three.</div>
+</div>
+<div><label class="label">AI system</label>
+  <select class="select" name="ai_system_id">
+    <option value="">- not tied to one system -</option>
+    <% (locals.aiSystemOptions || []).forEach(s => { %><option value="<%= s.id %>" <%= ar.ai_system_id === s.id ? 'selected' : '' %>><%= s.name %></option><% }) %>
+  </select>
+</div>
+<div><label class="label">Risk source</label>
+  <select class="select" name="risk_source">
+    <option value="">- choose -</option>
+    <% (locals.riskSources || []).forEach(s => { %><option value="<%= s.key %>" <%= ar.risk_source === s.key ? 'selected' : '' %>><%= s.label %></option><% }) %>
+  </select>
+</div>
+<div><label class="label">Impact on individuals or groups</label>
+  <select class="select" name="impact_individuals">
+    <option value="">- not rated -</option>
+    <% scale.forEach(l => { %><option value="<%= l.value %>" <%= ar.impact_individuals === l.value ? 'selected' : '' %>><%= l.value %> · <%= l.label %></option><% }) %>
+  </select>
+</div>
+<div><label class="label">Impact on society</label>
+  <select class="select" name="impact_society">
+    <option value="">- not rated -</option>
+    <% scale.forEach(l => { %><option value="<%= l.value %>" <%= ar.impact_society === l.value ? 'selected' : '' %>><%= l.value %> · <%= l.label %></option><% }) %>
+  </select>
+</div>
+<div><label class="label">Next review</label><input class="input" type="date" name="next_review_date" value="<%= ar.next_review_date || '' %>"></div>
+<div></div>

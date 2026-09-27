@@ -2,7 +2,10 @@
 
 <%- include('partials/audit_tabs', { ws, tab: 'audits' }) %>
 
-<a href="/workspaces/<%= ws.id %>/audits" class="link-muted text-base">← All audits</a>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+  <a href="/workspaces/<%= ws.id %>/audits" class="link-muted text-base">← All audits</a>
+  <a class="btn btn-secondary btn-sm" href="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/report.docx">Audit report (Word)</a>
+</div>
 
 <%
   // Tier 1.4 - Internal audit lifecycle stages
@@ -79,7 +82,7 @@
       <div class="meta text-sm" style="line-height:1.5;margin-bottom:10px;">
         One observation per applicable + included control. Each item pre-fills the linked-policy count, linked-evidence count, a sample-size suggestion based on the control family, and a finding wording template.
       </div>
-      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist-from-soa" onsubmit="return appConfirmForm(event, 'Generate one observation per included Annex A control? Existing observations are kept.');">
+      <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist-from-soa" onsubmit="return appConfirmForm(event, 'Generate one observation per control included on the Statement of Applicability? Existing observations are kept.');">
         <button class="btn btn-primary btn-xs">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           Generate from SoA
@@ -91,18 +94,18 @@
         regardless of applicability; useful when scoping the audit broadly. %>
     <div style="padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
       <div class="text-eyebrow text-tertiary" style="margin-bottom:6px;">BY CATEGORY</div>
-      <div style="font-size:13.5px;font-weight: 500;color:var(--ink);margin-bottom:4px;">By Annex A section</div>
+      <div style="font-size:13.5px;font-weight: 500;color:var(--ink);margin-bottom:4px;">By section</div>
       <div class="meta text-sm" style="line-height:1.5;margin-bottom:10px;">
         Generates for every control in the chosen section, regardless of applicability. Use when scoping a broader sample.
       </div>
       <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/checklist" style="display:flex;gap:6px;align-items:end;flex-wrap:wrap;">
         <select class="select" name="category" required style="flex:1;min-width:160px;font-size:12px;">
           <option value="">- pick a section -</option>
-          <option value="org">A.5 Organisational (37)</option>
-          <option value="people">A.6 People (8)</option>
-          <option value="physical">A.7 Physical (14)</option>
-          <option value="tech">A.8 Technological (34)</option>
-          <option value="clauses">Main clauses 4–10</option>
+          <% (checklistSources || []).forEach(src => { %>
+            <% if (checklistSources.length > 1) { %><optgroup label="<%= src.label %>"><% } %>
+            <% src.sections.forEach(sec => { %><option value="<%= sec.value %>"><%= sec.label %></option><% }) %>
+            <% if (checklistSources.length > 1) { %></optgroup><% } %>
+          <% }) %>
         </select>
         <button class="btn btn-secondary btn-xs" onclick="return appConfirmClick(event, 'This adds one observation per control in this category. Continue?')">Generate</button>
       </form>
@@ -116,17 +119,21 @@
   const closedObs = obsList.filter(o => o.status === 'closed');
   // Map an iso_item_id to a filter bucket so the UI can scope the checklist
   // without re-fetching. Mirrors the categories used by the generators.
+  const AI_SECTIONS = { 2: 'a-policies', 3: 'b-internal-organization', 4: 'c-resources', 5: 'd-impact-assessment', 6: 'e-lifecycle', 7: 'f-data', 8: 'g-information', 9: 'h-use', 10: 'i-third-party' };
   function bucketFor(id) {
     if (!id) return 'other';
-    if (id.startsWith('clause-')) return 'clauses';
-    if (id.startsWith('annex-a.5.')) return 'org';
-    if (id.startsWith('annex-a.6.')) return 'people';
-    if (id.startsWith('annex-a.7.')) return 'physical';
-    if (id.startsWith('annex-a.8.')) return 'tech';
+    if (id.startsWith('clause-')) return 'iso27001:clauses';
+    if (id.startsWith('annex-a.5.')) return 'iso27001:org';
+    if (id.startsWith('annex-a.6.')) return 'iso27001:people';
+    if (id.startsWith('annex-a.7.')) return 'iso27001:physical';
+    if (id.startsWith('annex-a.8.')) return 'iso27001:tech';
+    if (id.startsWith('ai-clause-')) return 'iso42001:clauses';
+    const ai = /^ai-annex-a-(\d+)-/.exec(id);
+    if (ai && AI_SECTIONS[ai[1]]) return 'iso42001:' + AI_SECTIONS[ai[1]];
     return 'other';
   }
-  const bucketCounts = { all: obsList.length, clauses: 0, org: 0, people: 0, physical: 0, tech: 0, other: 0 };
-  obsList.forEach(o => { bucketCounts[bucketFor(o.iso_item_id)]++; });
+  const bucketCounts = { all: obsList.length, other: 0 };
+  obsList.forEach(o => { const b = bucketFor(o.iso_item_id); bucketCounts[b] = (bucketCounts[b] || 0) + 1; });
 %>
 <div class="panel" style="margin-bottom:14px;">
   <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -142,17 +149,13 @@
     <% } %>
   </div>
   <% if (obsList.length === 0) { %>
-    <div class="t-empty">No checklist items yet. Use Generate from SoA above to pre-populate one per included Annex A control.</div>
+    <div class="t-empty">No checklist items yet. Use Generate from SoA above to pre-populate one per included control.</div>
   <% } else { %>
     <%
-      const filterDefs = [
-        { key: 'all', label: 'All' },
-        { key: 'clauses', label: 'Clauses 4-10' },
-        { key: 'org', label: 'A.5 Org' },
-        { key: 'people', label: 'A.6 People' },
-        { key: 'physical', label: 'A.7 Physical' },
-        { key: 'tech', label: 'A.8 Tech' }
-      ].filter(f => f.key === 'all' || bucketCounts[f.key] > 0);
+      const multiSource = (checklistSources || []).length > 1;
+      const filterDefs = [{ key: 'all', label: 'All' }]
+        .concat(...(checklistSources || []).map(src => src.sections.map(sec => ({ key: sec.value, label: (multiSource ? src.label + ' ' : '') + sec.label }))))
+        .filter(f => f.key === 'all' || bucketCounts[f.key] > 0);
     %>
     <div class="panel-pad" style="display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border);background:var(--bg-subtle);">
       <% filterDefs.forEach((f, idx) => { %>
@@ -260,10 +263,7 @@
     <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/observations" class="panel-pad" style="border-top:1px solid var(--border);display:grid;grid-template-columns:1fr;gap:12px;">
       <div>
         <label class="label">Control (optional)</label>
-        <select class="select" name="iso_item_id">
-          <option value="">- none -</option>
-          <% allItems.forEach(it => { %><option value="<%= it.id %>"><%= it.title %></option><% }) %>
-        </select>
+        <%- include('partials/requirement_select', { groups: requirementGroups, name: 'iso_item_id' }) %>
       </div>
       <div><label class="label">Description</label><textarea class="input" name="description" rows="3" required></textarea></div>
       <div><label class="label">Recommendation (optional)</label><textarea class="input" name="recommendation" rows="2"></textarea></div>
@@ -314,11 +314,8 @@
       <div><label class="label">Severity</label>
         <select class="select" name="severity"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
       </div>
-      <div><label class="label">Related ISO item</label>
-        <select class="select" name="iso_item_id">
-          <option value="">- none -</option>
-          <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.title %></option><% }) %>
-        </select>
+      <div><label class="label">Related requirement</label>
+        <%- include('partials/requirement_select', { groups: requirementGroups, name: 'iso_item_id' }) %>
       </div>
       <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3" required></textarea></div>
       <div class="col-full"><button class="btn btn-primary btn-xs">Add finding</button></div>
@@ -374,10 +371,7 @@
   <form method="POST" action="/workspaces/<%= ws.id %>/audits/<%= audit.id %>/samples" class="panel-pad" style="border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:160px 1fr 110px 80px 80px 1fr auto;gap:6px;align-items:end;">
     <div>
       <label class="label">Control / clause</label>
-      <select name="iso_item_id" class="select text-base">
-        <option value="">- optional -</option>
-        <% allItems.forEach(i => { %><option value="<%= i.id %>"><%= i.id.replace('annex-','').replace('clause-','').toUpperCase() %></option><% }) %>
-      </select>
+      <%- include('partials/requirement_select', { groups: requirementGroups, name: 'iso_item_id', cls: 'select text-base', blank: '- optional -', short: true }) %>
     </div>
     <div><label class="label">What was sampled</label><input class="input text-base" name="description" required placeholder="e.g., 5 of 28 access reviews from Q1"></div>
     <div><label class="label">Date</label><input class="input text-base" type="date" name="sample_taken_at"></div>

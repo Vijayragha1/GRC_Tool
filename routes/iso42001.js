@@ -14,11 +14,38 @@ const personalDrafts = require('../lib/form-drafts');
 const diagnostics = require('../lib/assessment-diagnostics');
 const docLinks = require('../lib/doc-links');
 const auditRequests = require('../lib/iso42001-audit');
+const aimsCycle = require('../lib/iso42001-cycle');
+const aimsSoa = require('../lib/iso42001-soa');
+const reqOpts = require('../lib/requirement-options');
+const outcomeScope = require('../lib/engagement-outcome-scope');
+const aiRisk = require('../lib/ai-risk');
+const aimsPlan = require('../lib/iso42001-plan');
+const crosswalk = require('../lib/framework-crosswalk');
+const { requireInternalEvidenceMutation } = require('../lib/evidence-access');
+const fts = require('../lib/fts');
+const aimsAssessment = require('../lib/iso42001-assessment');
 const { withToast, redirectBack, auditCtx, parseFormArray, escapeHtml } = require('../lib/http-helpers');
 
 // getOrCreate42State + computeIso42001Readiness close over deps; server.js
 // re-exports them for tooling through these refs, bound at register().
 const shared = {};
+
+// An SoA row posts one justification box, `justification`, for whichever
+// applicability is chosen. It is filed under that applicability and the other
+// justification is left as it was, so moving a control between included and
+// excluded never loses the reason recorded for the other side. The two named
+// fields are still accepted from older forms. Only the keys returned here are
+// written, so a field the request did not carry is never cleared.
+function soaJustifications(body) {
+  const clean = (v) => (v == null ? null : (String(v).trim() || null));
+  const out = {};
+  if (body.inclusion_justification !== undefined) out.inclusion_justification = clean(body.inclusion_justification);
+  if (body.exclusion_justification !== undefined) out.exclusion_justification = clean(body.exclusion_justification);
+  if (body.justification !== undefined) {
+    out[body.applicability === 'excluded' ? 'exclusion_justification' : 'inclusion_justification'] = clean(body.justification);
+  }
+  return out;
+}
 
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction, computeReadiness } = deps;
@@ -72,8 +99,11 @@ function register(app, deps) {
     else if (filter && filter.startsWith('a-')) rows = rows.filter(r => r.category === filter);
     else if (filter === 'open') rows = rows.filter(r => ['Not Implemented','Partially Implemented','Not Assessed'].includes(r.status));
     if (search) rows = rows.filter(r => r.title.toLowerCase().includes(search) || r.id.toLowerCase().includes(search));
-    const requestCounts = auditRequests.requestCountsByItem(db, req.workspace, new Date().toISOString().slice(0, 10));
-    res.render('iso42001_controls', { user: req.user, ws: req.workspace, rows, filter, search, requestCounts });
+    const today = new Date().toISOString().slice(0, 10);
+    const requestCounts = auditRequests.requestCountsByItem(db, req.workspace, today);
+    const canPlan = rbac.hasPermission(res.locals.userPerms, 'control.update');
+    res.render('iso42001_controls', { user: req.user, ws: req.workspace, rows, filter, search, requestCounts, today, canPlan,
+      people: canPlan ? aimsPlan.assignableUsers(db, req.workspace) : [] });
   });
 
   // Single-control "detail" page - merged into the gap wizard like ISO 27001 did.
@@ -90,7 +120,18 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/iso42001/bulk-controls', requireAuth, requireWorkspace, requirePermission('control.bulk_update'), (req, res) => {
     const ids = parseFormArray(req.body.ids);
     const { status, applicability } = req.body;
-    if (!ids.length || (!status && !applicability)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/controls`);
+    // Owner and due date: blank leaves them as they are; "none" or the clear
+    // box removes them.
+    let ownerId, dueDate;
+    try {
+      ownerId = req.body.owner_id === 'none' ? null : req.body.owner_id ? aimsPlan.parseOwner(db, req.workspace, req.body.owner_id) : undefined;
+      dueDate = req.body.clear_due ? null : req.body.due_date ? aimsPlan.parseDue(req.body.due_date) : undefined;
+    } catch (e) {
+      if (!(e instanceof aimsPlan.PlanError)) throw e;
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/iso42001/controls`, e.message, 'error'));
+    }
+    const planning = ownerId !== undefined || dueDate !== undefined;
+    if (!ids.length || (!status && !applicability && !planning)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/controls`);
     // Cutover 4 (W5): converged-authoritative 42001 bulk toggle; status/applicability
     // normalized (014 mirrors each). Fail-safe to legacy when unmapped.
     const wcB42 = ctlWrites.converged(db, req.workspace.id);
@@ -105,11 +146,32 @@ function register(app, deps) {
           if (status) db.prepare(`UPDATE iso42001_control_states SET status=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(status, req.workspace.id, id);
           if (applicability) db.prepare(`UPDATE iso42001_control_states SET applicability=?, last_updated=CURRENT_TIMESTAMP WHERE workspace_id=? AND iso_item_id=?`).run(applicability, req.workspace.id, id);
         }
+        if (planning && rid) aimsPlan.setPlan(db, req.workspace, id, { ownerId, dueDate });
       }
     });
     tx();
-    logAction(req.user.id, req.workspace.id, 'bulk_update_iso42001_controls', 'iso42001_item', null, { ids: ids.length, status, applicability });
+    aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'ISO 42001 conclusions or applicability were bulk updated.');
+    logAction(req.user.id, req.workspace.id, 'bulk_update_iso42001_controls', 'iso42001_item', null,
+      { ids: ids.length, status, applicability, owner_id: ownerId, due_date: dueDate });
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/controls`);
+  });
+
+  // One requirement's owner and due date, from the controls grid.
+  app.post('/workspaces/:wsId/iso42001/controls/:isoId/plan', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/iso42001/controls`;
+    try {
+      const saved = aimsPlan.setPlan(db, req.workspace, req.params.isoId, {
+        ownerId: aimsPlan.parseOwner(db, req.workspace, req.body.owner_id),
+        dueDate: aimsPlan.parseDue(req.body.due_date),
+      });
+      logAction(req.user.id, req.workspace.id, 'plan_iso42001_control', 'iso42001_item', req.params.isoId, saved, auditCtx(req));
+      if (req.query.ajax === '1') return res.status(204).end();
+      res.redirect(withToast(back, 'Owner and due date saved'));
+    } catch (e) {
+      if (!(e instanceof aimsPlan.PlanError)) throw e;
+      if (req.query.ajax === '1') return res.status(e.status).json({ error: e.message });
+      res.redirect(withToast(back, e.message, 'error'));
+    }
   });
 
   // SoA - Statement of Applicability for the 38 Annex A controls.
@@ -148,70 +210,55 @@ function register(app, deps) {
         WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
 
     // SoA metadata from latest snapshot
-    const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, created_at
+    const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, approval_status, created_at
         FROM iso42001_soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(req.workspace.id);
 
     res.render('iso42001_soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl,
-      customControls, soaMeta: latestSnap || {} });
+      customControls, soaMeta: latestSnap || {}, approvedSoa: aimsSoa.latestApproved(db, req.workspace),
+      soaIssues: aimsSoa.issues(aimsSoa.payloadFor(db, req.workspace)) });
   });
 
-  // SoA snapshot capture - immutable, hashed payload.
+  // SoA snapshots (lib/iso42001-soa.js): sealed on capture, with the risks and
+  // documents behind every control, and approved by someone other than the
+  // person who captured them once the SoA is complete.
   app.post('/workspaces/:wsId/iso42001/soa/snapshot', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const T = ctlReads.tables(db, req.workspace.id);
-    const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
-        COALESCE(cs.applicability,'undecided') AS applicability,
-        cs.inclusion_justification, cs.exclusion_justification
-        FROM iso42001_items i
-        LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-        WHERE i.type = 'control'
-        ORDER BY i.sort_order`).all(req.workspace.id);
-    const customs = db.prepare(`SELECT * FROM iso42001_soa_custom_controls WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
-    const payload = JSON.stringify({ rows, customs });
-    const hash = crypto.createHash('sha256').update(payload).digest('hex');
-    const included = rows.filter(r => r.applicability === 'included').length + customs.filter(c => c.applicability === 'included').length;
-    const excluded = rows.filter(r => r.applicability === 'excluded').length + customs.filter(c => c.applicability === 'excluded').length;
-    const total = rows.length + customs.length;
-    const id = db.prepare(`INSERT INTO iso42001_soa_snapshots
-      (workspace_id, label, reason, version, owner, approved_by, approved_at,
-       payload, payload_hash, control_count, included_count, excluded_count, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(req.workspace.id,
-           req.body.label || 'Manual snapshot',
-           req.body.reason || null,
-           req.body.version || null,
-           req.body.owner || null,
-           req.body.approved_by || null,
-           req.body.approved_at || null,
-           payload, hash, total, included, excluded, req.user.id).lastInsertRowid;
-    logAction(req.user.id, req.workspace.id, 'capture_iso42001_soa_snapshot', 'iso42001_soa_snapshot', id, { hash });
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
+    const id = aimsSoa.capture(db, req.workspace, req.user.id, { label: req.body.label || 'Manual snapshot', reason: req.body.reason, version: req.body.version, owner: req.body.owner });
+    logAction(req.user.id, req.workspace.id, 'capture_iso42001_soa_snapshot', 'iso42001_soa_snapshot', id, null);
+    aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'The ISO 42001 Statement of Applicability was versioned.');
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/iso42001/soa/snapshots/${id}`, 'Snapshot captured. Ask a second person to approve it.'));
   });
 
-  // SoA metadata - captures version/owner/approver and auto-snapshots if none exists yet.
+  // Version and owner are recorded on a new snapshot, so the SoA's metadata is
+  // versioned with its content. Approval is a separate, recorded step.
   app.post('/workspaces/:wsId/iso42001/soa/metadata', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    // Always create a new snapshot with the metadata - that way metadata is versioned.
-    const rows = db.prepare(`SELECT i.id, i.title, i.category, COALESCE(cs.status,'Not Assessed') AS status,
-        COALESCE(cs.applicability,'undecided') AS applicability,
-        cs.inclusion_justification, cs.exclusion_justification
-        FROM iso42001_items i
-        LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-        WHERE i.type = 'control' ORDER BY i.sort_order`).all(req.workspace.id);
-    const customs = db.prepare(`SELECT * FROM iso42001_soa_custom_controls WHERE workspace_id=? ORDER BY code, id`).all(req.workspace.id);
-    const payload = JSON.stringify({ rows, customs });
-    const hash = crypto.createHash('sha256').update(payload).digest('hex');
-    const included = rows.filter(r => r.applicability === 'included').length + customs.filter(c => c.applicability === 'included').length;
-    const excluded = rows.filter(r => r.applicability === 'excluded').length + customs.filter(c => c.applicability === 'excluded').length;
-    const total = rows.length + customs.length;
-    db.prepare(`INSERT INTO iso42001_soa_snapshots
-      (workspace_id, label, reason, version, owner, approved_by, approved_at,
-       payload, payload_hash, control_count, included_count, excluded_count, created_by)
-      VALUES (?, 'Metadata update', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(req.workspace.id,
-           req.body.version || null, req.body.owner || null,
-           req.body.approved_by || null, req.body.approved_at || null,
-           payload, hash, total, included, excluded, req.user.id);
-    logAction(req.user.id, req.workspace.id, 'iso42001_soa_metadata', 'iso42001_soa_snapshot', null, req.body);
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
+    const id = aimsSoa.capture(db, req.workspace, req.user.id, { label: 'Metadata update', version: req.body.version, owner: req.body.owner });
+    logAction(req.user.id, req.workspace.id, 'iso42001_soa_metadata', 'iso42001_soa_snapshot', id, { version: req.body.version || null, owner: req.body.owner || null });
+    aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'ISO 42001 Statement of Applicability metadata changed.');
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/iso42001/soa/snapshots/${id}`, 'Metadata saved on a new snapshot'));
+  });
+
+  app.get('/workspaces/:wsId/iso42001/soa/snapshots/:snapId(\\d+)', requireAuth, requireWorkspace, (req, res) => {
+    const snapshot = aimsSoa.load(db, req.workspace, Number(req.params.snapId));
+    if (!snapshot) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That SoA snapshot was not found.' });
+    const perms = res.locals.userPerms;
+    const canSignoff = perms instanceof Set ? perms.has('assessment.signoff') : Array.isArray(perms) ? perms.includes('assessment.signoff') : !!(perms && perms['assessment.signoff']);
+    res.render('iso42001_soa_snapshot', { user: req.user, ws: req.workspace, snapshot, canSignoff,
+      isAuthor: Number(snapshot.created_by) === Number(req.user.id), issueCount: aimsSoa.issueCount(snapshot.issues) });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/soa/snapshots/:snapId(\\d+)/approve', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/iso42001/soa/snapshots/${req.params.snapId}`;
+    try {
+      const id = aimsSoa.approve(db, req.workspace, req.user, Number(req.params.snapId), req.body.note);
+      logAction(req.user.id, req.workspace.id, 'approve_iso42001_soa_snapshot', 'iso42001_soa_snapshot', id, null, auditCtx(req));
+      return res.redirect(withToast(back, 'Statement of Applicability approved'));
+    } catch (error) {
+      if (error instanceof aimsSoa.SoaError) {
+        if (error.status === 404) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: error.message });
+        return res.redirect(withToast(back, error.message, 'error'));
+      }
+      throw error;
+    }
   });
 
   // Auto-justify SoA: for every Annex A control that any open risk treats, mark it
@@ -255,6 +302,7 @@ function register(app, deps) {
     });
     tx();
     logAction(req.user.id, req.workspace.id, 'iso42001_soa_auto_justify', 'iso42001_item', null, { affected });
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'ISO 42001 applicability justifications changed.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   });
 
@@ -268,26 +316,29 @@ function register(app, deps) {
       .run(req.workspace.id, code.trim(), title.trim(), source_framework || null,
            description || null, applicability || 'included', inclusion_justification || null);
     logAction(req.user.id, req.workspace.id, 'add_iso42001_custom_control', 'iso42001_soa_custom_control', null, { code });
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'A custom AIMS control was added.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   });
 
   app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const { code, title, source_framework, applicability, status, inclusion_justification, exclusion_justification } = req.body;
+    const { code, title, source_framework, applicability, status } = req.body;
+    const just = soaJustifications(req.body);
+    const justSets = Object.keys(just).map((k) => `, ${k}=?`).join('');
     db.prepare(`UPDATE iso42001_soa_custom_controls
       SET code=COALESCE(?, code), title=COALESCE(?, title), source=COALESCE(?, source),
-          applicability=COALESCE(?, applicability), status=COALESCE(?, status),
-          inclusion_justification=?, exclusion_justification=?
+          applicability=COALESCE(?, applicability), status=COALESCE(?, status)${justSets}
       WHERE id=? AND workspace_id=?`)
       .run(code || null, title || null, source_framework || null,
-           applicability || null, status || null,
-           inclusion_justification || null, exclusion_justification || null,
+           applicability || null, status || null, ...Object.values(just),
            req.params.id, req.workspace.id);
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'A custom AIMS control changed.');
     if (req.query.ajax === '1') return res.status(204).end();
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   });
 
   app.post('/workspaces/:wsId/iso42001/soa/custom-controls/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     db.prepare(`DELETE FROM iso42001_soa_custom_controls WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'A custom AIMS control was removed.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   });
 
@@ -367,27 +418,29 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
     if (['bulk'].includes(req.params.isoId)) return nextMw();
     getOrCreate42State(req.workspace.id, req.params.isoId);
-    const { applicability, inclusion_justification, exclusion_justification, status } = req.body;
+    const { applicability, status } = req.body;
+    const just = soaJustifications(req.body);
     // Cutover 4 (W4): converged-authoritative 42001 SoA save; applicability/status
     // normalized to tokens (014 mirrors back to iso42001_control_states).
     const wcSoa42 = ctlWrites.converged(db, req.workspace.id);
     const ridSoa42 = wcSoa42 ? ctlWrites.requirementId(db, 'iso42001', req.params.isoId) : null;
+    const justSets = Object.keys(just).map((k) => `${k}=?`);
+    const justVals = Object.values(just);
     if (wcSoa42 && ridSoa42) {
-      db.prepare(`UPDATE control_instances SET applicability=?, inclusion_justification=?, exclusion_justification=?,
+      db.prepare(`UPDATE control_instances SET ${['applicability=?', ...justSets].join(', ')},
                   status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
                   WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
-        .run(ctlWrites.normApplic(applicability || 'undecided'),
-             inclusion_justification || null, exclusion_justification || null,
+        .run(ctlWrites.normApplic(applicability || 'undecided'), ...justVals,
              ctlWrites.normStatus(status || null), req.workspace.id, ridSoa42);
     } else {
-      db.prepare(`UPDATE iso42001_control_states SET applicability=?, inclusion_justification=?, exclusion_justification=?,
+      db.prepare(`UPDATE iso42001_control_states SET ${['applicability=?', ...justSets].join(', ')},
                   status = COALESCE(?, status), last_updated = CURRENT_TIMESTAMP
                   WHERE workspace_id=? AND iso_item_id=?`)
-        .run(applicability || 'undecided',
-             inclusion_justification || null, exclusion_justification || null,
+        .run(applicability || 'undecided', ...justVals,
              status || null, req.workspace.id, req.params.isoId);
     }
     logAction(req.user.id, req.workspace.id, 'update_iso42001_soa', 'iso42001_item', req.params.isoId, null);
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'ISO 42001 applicability or its rationale changed.');
     if (req.query.ajax === '1') return res.status(204).end();
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   });
@@ -442,6 +495,7 @@ function register(app, deps) {
       tx();
     }
     logAction(req.user.id, req.workspace.id, 'bulk_iso42001_soa', 'iso42001_item', null, { action, affected });
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'ISO 42001 applicability was bulk updated.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
   });
 
@@ -571,24 +625,39 @@ function register(app, deps) {
         SUM(CASE WHEN cs.status IS NULL OR cs.status='Not Assessed' THEN 1 ELSE 0 END) AS unassessed,
         COUNT(i.id) AS total
       FROM iso42001_items i LEFT JOIN ${ctlReads.tables(db, req.workspace.id).cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?`).get(req.workspace.id);
-    res.render('iso42001_gap_assessment', { user: req.user, ws: req.workspace, passes, counts });
+    const gapState = aimsAssessment.getGapState(db, req.workspace.id);
+    const reviewedPasses = db.prepare('SELECT pass_id,id,snapshot_hash,reviewed_at FROM iso42001_assessment_snapshots WHERE workspace_id=?').all(req.workspace.id);
+    res.render('iso42001_gap_assessment', { user: req.user, ws: req.workspace, passes, counts, gapState,
+      reviewedPasses:Object.fromEntries(reviewedPasses.map(row => [row.pass_id,row])) });
   });
 
   app.post('/workspaces/:wsId/iso42001/gap-assessment/start', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const maxPass = db.prepare(`SELECT COALESCE(MAX(pass_number), 0) AS n FROM iso42001_assessment_passes WHERE workspace_id=?`).get(req.workspace.id).n;
-    const passId = db.prepare(`INSERT INTO iso42001_assessment_passes (workspace_id, pass_number, name, started_by)
-      VALUES (?, ?, ?, ?)`).run(req.workspace.id, maxPass + 1, `Pass ${maxPass + 1}`, req.user.id).lastInsertRowid;
+    let passId;
+    try { passId = aimsAssessment.startPass(db,req.workspace.id,req.user.id); }
+    catch (error) { if (!error.status) throw error; return res.redirect(withToast(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`,error.message,'error')); }
     logAction(req.user.id, req.workspace.id, 'start_iso42001_pass', 'iso42001_pass', passId, null);
     const first = nextUnassessed42(req.workspace.id, 0);
     if (first) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${first.id}`);
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`);
   });
 
-  app.post('/workspaces/:wsId/iso42001/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    db.prepare(`UPDATE iso42001_assessment_passes SET status='completed', completed_at=CURRENT_TIMESTAMP
-                WHERE id=? AND workspace_id=?`).run(req.params.passId, req.workspace.id);
-    logAction(req.user.id, req.workspace.id, 'complete_iso42001_pass', 'iso42001_pass', req.params.passId, null);
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`);
+  app.post('/workspaces/:wsId/iso42001/gap-assessment/:passId/complete', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
+    try {
+      const snapshot = aimsAssessment.completePass(db,req.workspace.id,Number(req.params.passId),req.user.id);
+      logAction(req.user.id, req.workspace.id, 'complete_iso42001_pass', 'iso42001_pass', req.params.passId,
+        { snapshot_id:snapshot.id,snapshot_hash:snapshot.snapshot_hash,reviewed_at:snapshot.reviewed_at },auditCtx(req));
+      return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap-assessment/${req.params.passId}/report`);
+    } catch (error) {
+      if (!error.status) throw error;
+      if ([403,404].includes(error.status)) return res.status(error.status).render('error',{user:req.user,ws:req.workspace,message:error.message});
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/iso42001/gap-assessment`,error.message.slice(0,900),'error'));
+    }
+  });
+
+  app.get('/workspaces/:wsId/iso42001/gap-assessment/:passId/report',requireAuth,requireWorkspace,requirePermission('control.view'),(req,res)=>{
+    const snapshot=aimsAssessment.loadSnapshot(db,req.workspace.id,Number(req.params.passId));
+    if(!snapshot)return res.status(404).render('error',{user:req.user,message:'No independently reviewed snapshot exists for this assessment pass.'});
+    res.render('iso42001_assessment_report',{user:req.user,ws:req.workspace,snapshot});
   });
 
   // Per-item gap-assessment wizard.
@@ -605,6 +674,7 @@ function register(app, deps) {
       status:'Not Assessed',applicability:item.type==='clause'?'included':'undecided',maturity:0,notes:'',review_status:'none',record_version:0
     };
     const activePass=db.prepare("SELECT id,pass_number,name FROM iso42001_assessment_passes WHERE workspace_id=? AND status='open' ORDER BY pass_number DESC LIMIT 1").get(req.workspace.id);
+    const assessmentReadOnly=!activePass && !!db.prepare("SELECT id FROM iso42001_assessment_passes WHERE workspace_id=? AND status='completed' LIMIT 1").get(req.workspace.id);
     const privateDraft=personalDrafts.get(db,{workspaceId:req.workspace.id,actorId:req.user.id,kind:'assessment-iso42001',recordId:item.id,contextKey:String(activePass?.id||'')});
     const recovery=req.assessmentRecovery || null;
     const enteredValues=recovery?Object.fromEntries(Object.entries(recovery.body).filter(([key,value])=>(personalDrafts.fields['assessment-iso42001'].includes(key)||/^q_\d+$/.test(key))&&['string','number','boolean'].includes(typeof value)).map(([key,value])=>[key,String(value)])):privateDraft.draft?.payload;
@@ -721,7 +791,7 @@ function register(app, deps) {
       questions, savedAnswers, suggestedStatus,recordedState,privateDraft,recovery,diagnosticState,diagnosticDraftChanged,mutationKey:crypto.randomUUID(),
       prev, next, totals, sectionPosition, doneFlag,
       relatedRows, evidenceList, openNCs, linkedRisks, linkedDocs, linkableDocs, linkableRisks,
-      priorPassNotes, activePass, certRequests,
+      priorPassNotes, activePass, assessmentReadOnly, certRequests, crosswalk: crosswalk.counterparts(db, req.workspace, 'iso42001', item.id),
       comments, firmUsers, requestedByName, reviewedByName, isReviewer, reviewContext });
   }
   app.get('/workspaces/:wsId/iso42001/gap/:isoId',requireAuth,requireWorkspace,render42001Assessment);
@@ -742,6 +812,7 @@ function register(app, deps) {
       }
       const result=personalDrafts.commit(db,context,req.body,body=>{
         effectiveBody=body;
+        if(!activePass && db.prepare("SELECT id FROM iso42001_assessment_passes WHERE workspace_id=? AND status='completed' LIMIT 1").get(req.workspace.id))throw personalDrafts.failure('The assessment pass is completed and retained. Start a new pass before recording further conclusions.');
         if(body.assessment_context!==undefined&&String(body.assessment_context)!==context.contextKey)throw personalDrafts.failure('The assessment pass changed. Compare the current pass before recording your conclusion.');
         const prior=db.prepare('SELECT * FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id=?').get(req.workspace.id,item.id);
         if(body.expected_record_version===undefined||!/^\d+$/.test(String(body.expected_record_version))||Number(body.expected_record_version)!==Number(prior?.record_version||0))throw personalDrafts.failure('The assessment version changed or this form predates version protection. Compare the recorded conclusion with your retained edits.');
@@ -771,10 +842,27 @@ function register(app, deps) {
         logAction(req.user.id,req.workspace.id,'assess_iso42001','iso42001_item',item.id,{status:current.status,record_version:current.record_version,review_invalidated:reviewInvalidated},auditCtx(req));
         return {url:body.action==='save_next'&&nextItem?`${base}/${nextItem.id}`:`${base}/${item.id}`};
       });
+      aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id);
       return res.redirect(result.url);
     }catch(error){
       if(!error.status)return nextMw(error);
       req.assessmentRecovery={body:effectiveBody,message:error.message};res.status(error.status);return render42001Assessment(req,res);
+    }
+  });
+
+  // Reuse a file already on record against the paired ISO 27001 requirement
+  // (lib/framework-crosswalk.js).
+  app.post('/workspaces/:wsId/iso42001/gap/:isoId/reuse-evidence', requireAuth, requireWorkspace, requireInternalEvidenceMutation,
+    requirePermission('evidence.upload'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/iso42001/gap/${encodeURIComponent(req.params.isoId)}`;
+    try {
+      const { from } = crosswalk.reuseEvidence(db, req.workspace, 'iso42001', req.params.isoId, req.body.evidence_id);
+      logAction(req.user.id, req.workspace.id, 'reuse_evidence_crosswalk', 'evidence', Number(req.body.evidence_id),
+        { to: req.params.isoId, from: from.ref }, auditCtx(req));
+      res.redirect(withToast(back, `Evidence from ${from.code} linked`));
+    } catch (e) {
+      if (!(e instanceof crosswalk.CrosswalkError)) throw e;
+      res.redirect(withToast(back, e.message, 'error'));
     }
   });
 
@@ -833,8 +921,13 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks/:linkRiskId/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    // The link table carries no workspace, so the risk must be this client's
+    // before its link can be removed.
+    const risk = db.prepare(`SELECT id FROM risks WHERE id=? AND workspace_id=?`).get(req.params.linkRiskId, req.workspace.id);
+    if (!risk) return res.status(404).send('Risk not found');
     db.prepare(`DELETE FROM iso42001_risk_controls WHERE risk_id=? AND iso_item_id=?`)
-      .run(req.params.linkRiskId, req.params.isoId);
+      .run(risk.id, req.params.isoId);
+    logAction(req.user.id, req.workspace.id, 'unlink_iso42001_risk', 'iso42001_item', req.params.isoId, { risk_id: risk.id });
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
   });
 
@@ -842,28 +935,21 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/iso42001/roadmap', requireAuth, requireWorkspace, (req, res) => {
     const wsId = req.workspace.id;
     const T = ctlReads.tables(db, wsId);
-    // roadmap_phase was demolished with iso42001_control_states (019, deferred-drop):
-    // no converged home, so it is no longer selected; all controls group as
-    // Unscheduled until/unless the roadmap feature is rebuilt converged.
+    // Each control's treatment phase is read from its due date (lib/iso42001-plan.js).
+    const today = (new Date()).toISOString().slice(0, 10);
     const rows = db.prepare(`SELECT i.*, COALESCE(cs.status,'Not Assessed') AS status,
         COALESCE(cs.applicability,'undecided') AS applicability,
-        cs.maturity, cs.owner_id, cs.due_date, NULL AS roadmap_phase,
+        cs.maturity, cs.owner_id, cs.due_date,
         (SELECT name FROM users WHERE id = cs.owner_id) AS owner_name
         FROM iso42001_items i
         LEFT JOIN ${T.cs42} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
         WHERE i.type='control'
-        ORDER BY i.sort_order`).all(wsId);
-    const phases = [
-      { key: '0_3M', label: '0-3 months (now)' },
-      { key: '3_6M', label: '3-6 months' },
-      { key: '6_12M', label: '6-12 months' },
-      { key: '12M_plus', label: '12+ months' },
-      { key: '', label: 'Unscheduled' }
-    ];
-    const grouped = phases.map(p => ({ ...p, rows: rows.filter(r => (r.roadmap_phase || '') === p.key) }));
+        ORDER BY cs.due_date IS NULL, cs.due_date, i.sort_order`).all(wsId)
+      .map(r => ({ ...r, roadmap_phase: aimsPlan.phaseFor(r.due_date, today), overdue: !!(r.due_date && r.due_date < today && r.status !== 'Implemented') }));
+    const phases = aimsPlan.PHASES;
+    const grouped = phases.map(p => ({ ...p, rows: rows.filter(r => r.roadmap_phase === p.key) }));
 
     // "Needs your attention" - live items needing action
-    const today = (new Date()).toISOString().slice(0, 10);
     const soon = (new Date(Date.now() + 30 * 86400000)).toISOString().slice(0, 10);
     const needsAttention = [];
 
@@ -921,7 +1007,7 @@ function register(app, deps) {
     const ncTotal = db.prepare(`SELECT COUNT(*) AS c FROM nonconformities WHERE workspace_id=? AND iso_item_id LIKE 'ai-%'`).get(wsId).c;
     const intakeDone = db.prepare(`SELECT COUNT(*) AS c FROM iso42001_intake_answers WHERE workspace_id=? AND answer IS NOT NULL AND answer != ''`).get(wsId).c >= 8;
     const planDone = db.prepare(`SELECT COUNT(*) AS c FROM iso42001_engagement_plan_progress WHERE workspace_id=? AND completed_at IS NOT NULL`).get(wsId).c;
-    const passOpen = db.prepare(`SELECT COUNT(*) AS c FROM iso42001_assessment_passes WHERE workspace_id=? AND status='completed'`).get(wsId).c;
+    const completedAudits = db.prepare(`SELECT COUNT(*) AS c FROM audits WHERE workspace_id=? AND status IN ('complete','closed')`).get(wsId).c;
 
     const milestone = (phase, label, clause, detail, done, partial, link, link_label) => ({ phase, label, clause, detail, done, partial, link, link_label });
     const roadmap = [
@@ -965,10 +1051,10 @@ function register(app, deps) {
         `/workspaces/${wsId}/iso42001/gap/ai-clause-9.1`, 'Open clause 9.1'),
 
       // CHECK
-      milestone('check', 'Internal audit', '9.2', `First internal audit pass complete${passOpen > 0 ? ` (${passOpen} passes done)` : ''}`,
-        passOpen > 0 && clauseStatus['ai-clause-9.2'] === 'Implemented',
-        passOpen > 0 && clauseStatus['ai-clause-9.2'] !== 'Implemented',
-        `/workspaces/${wsId}/iso42001/gap-assessment`, 'Open passes'),
+      milestone('check', 'Internal audit', '9.2', 'Completed internal audit with AIMS scope and a verified clause 9.2 conclusion',
+        completedAudits > 0 && clauseStatus['ai-clause-9.2'] === 'Implemented',
+        completedAudits > 0 && clauseStatus['ai-clause-9.2'] !== 'Implemented',
+        `/workspaces/${wsId}/audits`, 'Open audits'),
       milestone('check', 'Management review', '9.3', 'Top management review with all required inputs',
         clauseStatus['ai-clause-9.3'] === 'Implemented', false,
         `/workspaces/${wsId}/iso42001/gap/ai-clause-9.3`, 'Open clause 9.3'),
@@ -986,12 +1072,23 @@ function register(app, deps) {
     res.render('iso42001_roadmap', { user: req.user, ws: req.workspace, grouped, phases, needsAttention, roadmap });
   });
 
+  // Moving a control to a phase sets its due date inside that phase, or clears
+  // it for Unscheduled (lib/iso42001-plan.js).
   app.post('/workspaces/:wsId/iso42001/roadmap/:isoId/phase', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    // roadmap_phase was demolished with iso42001_control_states (019, deferred-drop):
-    // no converged home, so phase assignment is no longer persisted. Route kept as a
-    // no-op so the UI does not 404; rebuild converged if the roadmap feature is wanted.
-    if (req.query.ajax === '1') return res.status(204).end();
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/roadmap`);
+    const back = `/workspaces/${req.workspace.id}/iso42001/roadmap`;
+    try {
+      const state = getOrCreate42State(req.workspace.id, req.params.isoId);
+      if (!state) throw new aimsPlan.PlanError('That requirement is not in ISO 42001.', 404);
+      const dueDate = aimsPlan.dueForPhase(String(req.body.phase ?? ''), state.due_date);
+      const saved = aimsPlan.setPlan(db, req.workspace, req.params.isoId, { dueDate });
+      logAction(req.user.id, req.workspace.id, 'plan_iso42001_control', 'iso42001_item', req.params.isoId, { ...saved, phase: req.body.phase || '' }, auditCtx(req));
+      if (req.query.ajax === '1') return res.status(204).end();
+      res.redirect(withToast(back, saved.due_date ? `Due ${saved.due_date}` : 'Moved to Unscheduled'));
+    } catch (e) {
+      if (!(e instanceof aimsPlan.PlanError)) throw e;
+      if (req.query.ajax === '1') return res.status(e.status).json({ error: e.message });
+      res.redirect(withToast(back, e.message, 'error'));
+    }
   });
 
   // --- Readiness (computed scorecard) ---
@@ -1039,37 +1136,74 @@ function register(app, deps) {
       FROM iso42001_items i LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
       WHERE i.type='control'`).all(wsId).forEach(r => { controlStatusById[r.id] = r; });
 
-    const docCheck = (clauseId, name) => ({ name, clause: clauseId.replace('ai-clause-',''), found: clauseStatusById[clauseId] === 'Implemented' });
+    // Each record is found only when the record itself exists: an approved
+    // document, an approved SoA, a retained risk assessment, approved impact
+    // assessments, a reported internal audit, a completed management review.
+    // A clause the consultant marked Implemented without that record is shown
+    // as declared but not evidenced, rather than counted as found.
+    const wsRow = db.prepare('SELECT * FROM workspaces WHERE id=?').get(wsId);
+    const count = (sql, ...params) => { try { return db.prepare(sql).get(...params).c || 0; } catch (_) { return 0; } };
+    const approvedDocFor = (...refs) => count(`SELECT COUNT(*) c FROM document_requirement_links drl
+        JOIN requirements rq ON rq.id = drl.requirement_id JOIN frameworks f ON f.id = rq.framework_id AND f.code='iso42001'
+        JOIN generated_docs d ON d.id = drl.document_id
+        WHERE d.workspace_id=? AND d.retired_at IS NULL AND d.status IN ('approved','published') AND rq.ref IN (${refs.map(() => '?').join(',')})`, wsId, ...refs) > 0;
+    const linkedRecordFor = (ref) => approvedDocFor(ref) || count(`SELECT COUNT(*) c FROM evidence_requirement_links erl
+        JOIN evidence e ON e.id = erl.evidence_id JOIN requirements rq ON rq.id = erl.requirement_id
+        WHERE e.workspace_id=? AND e.superseded_at IS NULL AND rq.ref=?`, wsId, ref) > 0;
+    const liveSystems = count(`SELECT COUNT(*) c FROM ai_systems WHERE workspace_id=? AND in_scope=1 AND lifecycle_stage != 'retired'`, wsId);
+    const systemsAssessed = count(`SELECT COUNT(*) c FROM ai_systems s WHERE s.workspace_id=? AND s.in_scope=1 AND s.lifecycle_stage != 'retired'
+        AND EXISTS (SELECT 1 FROM ai_impact_assessments ia WHERE ia.ai_system_id=s.id AND ia.status='approved')`, wsId);
+    const recentRiskRecord = count(`SELECT COUNT(*) c FROM risk_assessment_records WHERE workspace_id=? AND performed_on >= date('now','-12 months')`, wsId) > 0;
+    const aiRiskTreated = count(`SELECT COUNT(DISTINCT r.id) c FROM risks r JOIN iso42001_risk_controls rc ON rc.risk_id=r.id WHERE r.workspace_id=?`, wsId) > 0;
+    const aimsAudit = count(`SELECT COUNT(*) c FROM audits a WHERE a.workspace_id=?
+        AND (COALESCE(a.lifecycle_stage,'') IN ('report','follow_up','closed') OR a.status IN ('complete','completed','closed'))
+        AND (EXISTS (SELECT 1 FROM audit_observations o WHERE o.audit_id=a.id AND o.iso_item_id LIKE 'ai-%')
+          OR EXISTS (SELECT 1 FROM audit_findings f WHERE f.audit_id=a.id AND f.iso_item_id LIKE 'ai-%')
+          OR EXISTS (SELECT 1 FROM audit_samples sm WHERE sm.audit_id=a.id AND sm.iso_item_id LIKE 'ai-%'))`, wsId) > 0;
+    const reviewHeld = count(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete' AND meeting_date >= date('now','-12 months')`, wsId) > 0;
+    const aimsNcs = count(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND iso_item_id LIKE 'ai-%'`, wsId);
+    // Objectives for the AIMS with the plan clause 6.2 asks for behind them.
+    const objectives = count(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND COALESCE(framework,'iso42001')='iso42001'
+      AND plan_actions IS NOT NULL AND evaluation_method IS NOT NULL`, wsId);
+    const approvedSoa = aimsSoa.latestApproved(db, wsRow || { id: wsId });
+
+    const record = (clauseId, name, found, basis) => ({
+      name, clause: clauseId.replace('ai-clause-', ''), found: !!found, basis,
+      declaredOnly: !found && clauseStatusById[clauseId] === 'Implemented',
+    });
     const mandatoryChecks = [
-      docCheck('ai-clause-4.3', 'AIMS scope'),
-      docCheck('ai-clause-5.2', 'AI policy'),
-      docCheck('ai-clause-6.1.2', 'AI risk assessment process'),
-      docCheck('ai-clause-6.1.3', 'AI risk treatment process & SoA'),
-      docCheck('ai-clause-6.1.4', 'AI system impact assessment process'),
-      docCheck('ai-clause-6.2', 'AI objectives'),
-      docCheck('ai-clause-7.5', 'Documented information control'),
-      docCheck('ai-clause-8.2', 'AI risk assessment results'),
-      docCheck('ai-clause-8.3', 'AI risk treatment results'),
-      docCheck('ai-clause-8.4', 'AI system impact assessment results'),
-      docCheck('ai-clause-9.2', 'Internal audit programme & results'),
-      docCheck('ai-clause-9.3', 'Management review results'),
-      docCheck('ai-clause-10.2', 'Nonconformity records'),
+      record('ai-clause-4.3', 'AIMS scope', approvedDocFor('ai-clause-4.3'), 'An approved scope document linked to clause 4.3'),
+      record('ai-clause-5.2', 'AI policy', approvedDocFor('ai-clause-5.2', 'ai-annex-a-2-2'), 'An approved AI policy linked to clause 5.2 or A.2.2'),
+      record('ai-clause-6.1.2', 'AI risk assessment process', approvedDocFor('ai-clause-6.1.2'), 'An approved risk assessment method linked to clause 6.1.2'),
+      record('ai-clause-6.1.3', 'AI risk treatment process & SoA', !!approvedSoa, approvedSoa ? `SoA approved by ${approvedSoa.approved_by_name}` : 'An SoA snapshot approved by a second person'),
+      record('ai-clause-6.1.4', 'AI system impact assessment process', approvedDocFor('ai-clause-6.1.4', 'ai-annex-a-5-2'), 'An approved impact assessment procedure linked to clause 6.1.4 or A.5.2'),
+      record('ai-clause-6.2', 'AI objectives', objectives > 0, `${objectives} AIMS objective${objectives === 1 ? '' : 's'} with actions and an evaluation method`),
+      record('ai-clause-7.5', 'Documented information control', approvedDocFor('ai-clause-7.5'), 'An approved document control procedure linked to clause 7.5'),
+      record('ai-clause-8.2', 'AI risk assessment results', recentRiskRecord, 'A risk assessment recorded in the last 12 months'),
+      record('ai-clause-8.3', 'AI risk treatment results', aiRiskTreated, 'Risks treated by ISO 42001 controls in the register'),
+      record('ai-clause-8.4', 'AI system impact assessment results', liveSystems > 0 && systemsAssessed === liveSystems,
+        liveSystems ? `${systemsAssessed} of ${liveSystems} in-scope AI systems have an approved impact assessment` : 'No in-scope AI system is registered'),
+      record('ai-clause-9.2', 'Internal audit programme & results', aimsAudit, 'An internal audit covering ISO 42001 that has reached its report'),
+      record('ai-clause-9.3', 'Management review results', reviewHeld, 'A completed management review in the last 12 months'),
+      record('ai-clause-10.2', 'Nonconformity records', aimsNcs > 0 || aimsAudit,
+        aimsNcs ? `${aimsNcs} nonconformit${aimsNcs === 1 ? 'y' : 'ies'} recorded against ISO 42001` : 'Nonconformities are recorded once the internal audit is reported'),
     ];
     const mandatoryFound = mandatoryChecks.filter(c => c.found).length;
 
-    const expectedCheck = (ctlId, name) => ({
+    const expectedCheck = (ctlId, name, found, basis) => ({
       name, clause: ctlId.replace('ai-annex-','').toUpperCase().replace(/-/g,'.'),
-      found: controlStatusById[ctlId] && controlStatusById[ctlId].status === 'Implemented'
+      found: !!found, basis,
+      declaredOnly: !found && !!(controlStatusById[ctlId] && controlStatusById[ctlId].status === 'Implemented'),
     });
     const expectedChecks = [
-      expectedCheck('ai-annex-a-4-2', 'AI system inventory'),
-      expectedCheck('ai-annex-a-4-3', 'Dataset documentation (datasheets)'),
-      expectedCheck('ai-annex-a-5-3', 'Impact assessment reports per system'),
-      expectedCheck('ai-annex-a-6-2-3', 'Design / model documentation'),
-      expectedCheck('ai-annex-a-6-2-4', 'Verification & validation reports'),
-      expectedCheck('ai-annex-a-6-2-7', 'AI system technical documentation / model cards'),
-      expectedCheck('ai-annex-a-6-2-8', 'Event logs specification'),
-      expectedCheck('ai-annex-a-7-5', 'Data lineage records'),
+      expectedCheck('ai-annex-a-4-2', 'AI system inventory', liveSystems > 0, `${liveSystems} in-scope AI system${liveSystems === 1 ? '' : 's'} in the register`),
+      expectedCheck('ai-annex-a-4-3', 'Dataset documentation (datasheets)', linkedRecordFor('ai-annex-a-4-3'), 'A document or evidence linked to A.4.3'),
+      expectedCheck('ai-annex-a-5-3', 'Impact assessment reports per system', liveSystems > 0 && systemsAssessed === liveSystems, `${systemsAssessed} of ${liveSystems} approved`),
+      expectedCheck('ai-annex-a-6-2-3', 'Design / model documentation', linkedRecordFor('ai-annex-a-6-2-3'), 'A document or evidence linked to A.6.2.3'),
+      expectedCheck('ai-annex-a-6-2-4', 'Verification & validation reports', linkedRecordFor('ai-annex-a-6-2-4'), 'A document or evidence linked to A.6.2.4'),
+      expectedCheck('ai-annex-a-6-2-7', 'AI system technical documentation / model cards', linkedRecordFor('ai-annex-a-6-2-7'), 'A document or evidence linked to A.6.2.7'),
+      expectedCheck('ai-annex-a-6-2-8', 'Event logs specification', linkedRecordFor('ai-annex-a-6-2-8'), 'A document or evidence linked to A.6.2.8'),
+      expectedCheck('ai-annex-a-7-5', 'Data lineage records', linkedRecordFor('ai-annex-a-7-5'), 'A document or evidence linked to A.7.5'),
     ];
     const expectedFound = expectedChecks.filter(c => c.found).length;
 
@@ -1091,6 +1225,19 @@ function register(app, deps) {
       ORDER BY i.sort_order LIMIT 20`).all(wsId);
     if (notReady.length) flags.push({ kind: 'controls_not_ready', label: 'Included Annex A controls not yet Implemented', severity: 'high', items: notReady });
 
+    // Work planned against a requirement that is late, or has nobody on it.
+    const todayYmd = new Date().toISOString().slice(0, 10);
+    const overdueWork = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
+      INNER JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+      WHERE cs.due_date < ? AND cs.status != 'Implemented' AND COALESCE(cs.applicability,'undecided') != 'excluded'
+      ORDER BY cs.due_date LIMIT 20`).all(wsId, todayYmd);
+    if (overdueWork.length) flags.push({ kind: 'controls_overdue', label: 'Requirements past their due date and not yet Implemented', severity: 'high', items: overdueWork });
+    const unowned = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
+      INNER JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+      WHERE i.type='control' AND cs.applicability='included' AND cs.owner_id IS NULL AND cs.status != 'Implemented'
+      ORDER BY i.sort_order LIMIT 20`).all(wsId);
+    if (unowned.length) flags.push({ kind: 'controls_unowned', label: 'Included Annex A controls with no owner', severity: 'medium', items: unowned });
+
     // Unassessed clauses (mandatory)
     const unassessedClauses = db.prepare(`SELECT i.id, i.title FROM iso42001_items i
       LEFT JOIN ${T.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
@@ -1110,6 +1257,22 @@ function register(app, deps) {
       WHERE workspace_id=? AND iso_item_id LIKE 'ai-%' AND status != 'closed'
       ORDER BY created_at DESC LIMIT 20`).all(wsId);
     if (openNCs.length) flags.push({ kind: 'open_ncs', label: 'Open nonconformities on ISO 42001 items', severity: 'high', items: openNCs });
+
+    // Records an auditor asks for that do not exist yet.
+    if (!approvedSoa) flags.push({ kind: 'soa_not_approved', label: 'The Statement of Applicability has no approved snapshot', severity: 'high', items: [] });
+    const unassessedSystems = db.prepare(`SELECT s.id, s.name AS title FROM ai_systems s WHERE s.workspace_id=? AND s.in_scope=1 AND s.lifecycle_stage != 'retired'
+      AND NOT EXISTS (SELECT 1 FROM ai_impact_assessments ia WHERE ia.ai_system_id=s.id AND ia.status='approved') ORDER BY s.name LIMIT 20`).all(wsId);
+    if (unassessedSystems.length) flags.push({ kind: 'systems_without_ia', label: 'In-scope AI systems without an approved impact assessment', severity: 'high', items: unassessedSystems });
+    if (!recentRiskRecord) flags.push({ kind: 'no_risk_record', label: 'No risk assessment recorded in the last 12 months', severity: 'medium', items: [] });
+    const registry42 = require('../lib/ai-systems');
+    const dueSystems = db.prepare(`SELECT id, name AS title FROM ai_systems WHERE workspace_id=? AND in_scope=1 AND lifecycle_stage != 'retired' ORDER BY name`).all(wsId)
+      .filter(sys => registry42.reassessment(db, wsRow || { id: wsId }, sys.id).state === 'due');
+    if (dueSystems.length) flags.push({ kind: 'reassessment_due', label: 'AI systems whose impact assessment is due for review or was overtaken by a change', severity: 'medium', items: dueSystems });
+    const contextIssues = count('SELECT COUNT(*) c FROM context_issues WHERE workspace_id=?', wsId);
+    const contextParties = count('SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?', wsId);
+    if (!contextIssues || !contextParties) flags.push({ kind: 'context_missing', label: 'Internal and external issues or interested parties are not recorded (clauses 4.1 and 4.2)', severity: 'medium', items: [] });
+    const cbOpen = aimsCycle.openFindings(db, wsRow || { id: wsId });
+    if (cbOpen.total) flags.push({ kind: 'open_cb_findings', label: `Open certification body findings (${cbOpen.major || 0} major, ${cbOpen.minor || 0} minor)`, severity: 'high', items: [] });
 
     // Days to target cert
     let daysToTarget = null;
@@ -1249,16 +1412,27 @@ function register(app, deps) {
       WHERE workspace_id=? AND status='Implemented' AND snapshot_at > ? AND snapshot_at <= ?`).get(wsId, t60, t30).c;
     const velocityDelta = velocityNow - velocityPrior;
 
-    // Residual ALE heuristic: Σ (likelihood/5 × impact × $50k) for open AI-linked risks.
-    // We use risks linked to any iso42001 item; if none linked, fall back to all open workspace risks.
-    const openRisks = db.prepare(`SELECT DISTINCT r.id, r.title, r.likelihood, r.impact, r.owner_name, r.status
-      FROM risks r WHERE r.workspace_id=? AND r.status != 'closed'
-        AND (r.id IN (SELECT risk_id FROM iso42001_risk_controls)
-             OR NOT EXISTS (SELECT 1 FROM iso42001_risk_controls))
-      ORDER BY (r.likelihood * r.impact) DESC`).all(wsId);
-    const residualAle = openRisks.reduce((s, r) => s + Math.round((r.likelihood / 5) * (r.impact || 0) * 50000), 0);
-    const topRisks = openRisks.slice(0, 5).map(r => ({ ...r, score: (r.likelihood||0) * (r.impact||0) }));
+    // Open AI risks, rated on the client's own risk methodology: the band after
+    // treatment where a residual rating is recorded, else before it, and whether
+    // a high one has been formally accepted. No money figure is shown, because
+    // the register does not record one.
+    const { getActiveMethodology, methodologyBand } = require('../db');
+    const methodology = getActiveMethodology(wsId);
+    const openRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.residual_likelihood, r.residual_impact, r.owner_name, r.status,
+        EXISTS (SELECT 1 FROM risk_acceptances ra WHERE ra.risk_id = r.id AND ra.revoked_at IS NULL) AS accepted
+      FROM risks r WHERE r.workspace_id=? AND r.status != 'closed' AND ${aiRisk.isAiRiskSql('r')}
+      ORDER BY (r.likelihood * r.impact) DESC, r.id`).all(wsId).map(r => {
+      const residual = !!(r.residual_likelihood && r.residual_impact);
+      const band = methodology ? String(methodologyBand(methodology, residual ? r.residual_likelihood : r.likelihood, residual ? r.residual_impact : r.impact) || '') : '';
+      return { ...r, residual, band, severe: /high|critical|extreme|severe/i.test(band), score: (r.likelihood || 0) * (r.impact || 0) };
+    });
+    const topRisks = openRisks.slice(0, 5);
     const openRiskCount = openRisks.length;
+    const riskSummary = {
+      severe: openRisks.filter(r => r.severe).length,
+      severeUnaccepted: openRisks.filter(r => r.severe && !r.accepted).length,
+      unrated: openRisks.filter(r => !r.residual).length,
+    };
 
     // Engagement plan progress
     const phases = ISO42001_PLAN_PHASES;
@@ -1281,73 +1455,101 @@ function register(app, deps) {
     const topNCs = ncs.slice(0, 5);
 
     res.render('iso42001_exec_brief', { user: req.user, ws: req.workspace,
-      readiness, velocityNow, velocityPrior, velocityDelta, residualAle, openRiskCount,
+      readiness, velocityNow, velocityPrior, velocityDelta, riskSummary, openRiskCount,
       planDone, planTotal, planPct, ncTotals, topRisks, topNCs });
   });
 
-  // --- Cert cycle ---
-  const ISO42001_EVENT_TYPES = [
-    { key: 'stage1', label: 'Stage 1 audit', desc: 'Documentation review by the cert body. AIMS scope, AI policy, SoA, methodology docs.' },
-    { key: 'stage2', label: 'Stage 2 audit', desc: 'Operational audit. Auditors test that the AIMS works in practice across in-scope AI systems.' },
-    { key: 'surv1',  label: 'Surveillance audit (year 1)', desc: 'Annual surveillance by the cert body to confirm continued conformance.' },
-    { key: 'surv2',  label: 'Surveillance audit (year 2)', desc: 'Second annual surveillance.' },
-    { key: 'recert', label: 'Recertification audit', desc: 'Three-year recertification - full reassessment.' },
-    { key: 'internal', label: 'Internal audit', desc: 'Internal audit pass (clause 9.2).' },
-    { key: 'mrm', label: 'Management review', desc: 'Top-management review of the AIMS (clause 9.3).' },
-  ];
-
-  app.get('/workspaces/:wsId/iso42001/cert-cycle', requireAuth, requireWorkspace, (req, res) => {
-    const events = db.prepare(`SELECT * FROM iso42001_cert_cycle_events WHERE workspace_id=? ORDER BY planned_date, id`).all(req.workspace.id);
-    res.render('iso42001_cert_cycle', { user: req.user, ws: req.workspace, events, eventTypes: ISO42001_EVENT_TYPES });
-  });
-
-  // Seed default cycle - 5 standard events based on the target cert date or today + 60 days.
-  app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const ws = db.prepare(`SELECT target_cert_date FROM workspaces WHERE id=?`).get(req.workspace.id);
-    const stage1 = ws && ws.target_cert_date ? new Date(ws.target_cert_date) : new Date(Date.now() + 60 * 86400000);
-    // Cert target -> Stage 2 date. Stage 1 = -30 days, surveillance +12mo, +24mo, recert +36mo.
-    const stage2 = new Date(stage1.getTime());
-    const stage1Date = new Date(stage1.getTime() - 30 * 86400000);
-    const surv1 = new Date(stage1.getTime() + 365 * 86400000);
-    const surv2 = new Date(stage1.getTime() + 365 * 2 * 86400000);
-    const recert = new Date(stage1.getTime() + 365 * 3 * 86400000);
-    const iso = (d) => d.toISOString().slice(0, 10);
-    const ins = db.prepare(`INSERT INTO iso42001_cert_cycle_events (workspace_id, event_type, planned_date, status) VALUES (?, ?, ?, 'planned')`);
-    const tx = db.transaction(() => {
-      ins.run(req.workspace.id, 'Stage 1 audit', iso(stage1Date));
-      ins.run(req.workspace.id, 'Stage 2 audit', iso(stage2));
-      ins.run(req.workspace.id, 'Surveillance audit (year 1)', iso(surv1));
-      ins.run(req.workspace.id, 'Surveillance audit (year 2)', iso(surv2));
-      ins.run(req.workspace.id, 'Recertification audit', iso(recert));
+  // --- Certification cycle ---
+  // Every audit date for the client, and the certification body's findings
+  // against each audit (lib/iso42001-cycle). The programme overview's Stage 1
+  // and Stage 2 dates are the current cycle's Stage events. A gap-assessment-
+  // only engagement has no certification audits.
+  const requireAimsCertification = outcomeScope.requirePostGapService(
+    'Certification audits are outside this gap-assessment-only engagement. Continue the client to full certification support to plan Stage 1 and Stage 2.');
+  const cycleUrl = (ws, hash) => `/workspaces/${ws.id}/iso42001/cert-cycle${hash ? `#${hash}` : ''}`;
+  // A change to an audit can undo a completed delivery plan (Stage 2 is what
+  // certification support is closed against), so the plan is reconciled
+  // after every change, as for ISO 27001.
+  function reconcileCertificationChange(req, details) {
+    const delivery = require('../lib/engagement-delivery');
+    delivery.reconcileCompletionState(db, req.workspace, req.user.id, {
+      reason: 'An ISO 42001 certification event changed after delivery completion.', details,
     });
-    tx();
-    logAction(req.user.id, req.workspace.id, 'seed_iso42001_cert_cycle', 'iso42001_cert_event', null, null);
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
+    if (db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) {
+      delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
+      delivery.syncCertificationEngagementCompletion(db, req.workspace, req.user.id);
+    }
+  }
+  const cycleAction = (fn) => (req, res) => {
+    let result;
+    try {
+      result = db.transaction(() => fn(req))();
+    } catch (error) {
+      if (error instanceof aimsCycle.CycleError) {
+        if (error.status === 404) return res.status(404).send(error.message);
+        return res.redirect(withToast(cycleUrl(req.workspace), error.message, 'error'));
+      }
+      throw error;
+    }
+    reconcileCertificationChange(req, { mutation: String(req.path || req.originalUrl || '').split('/').pop(), event_id: Number(req.params && req.params.id) || null });
+    return res.redirect(withToast(cycleUrl(req.workspace, result && result.hash), (result && result.message) || 'Certification cycle updated'));
+  };
+
+  app.get('/workspaces/:wsId/iso42001/cert-cycle', requireAuth, requireWorkspace, requireAimsCertification, (req, res) => {
+    const events = aimsCycle.events(db, req.workspace);
+    const current = aimsCycle.currentCycle(db, req.workspace.id);
+    const recert = events.find(e => e.cycle_no === current && e.event_key === 'recert');
+    res.render('iso42001_cert_cycle', {
+      user: req.user, ws: req.workspace, events, currentCycle: current,
+      eventTypes: aimsCycle.EVENT_TYPES, severities: aimsCycle.SEVERITIES, statuses: aimsCycle.STATUSES,
+      requirementGroups: reqOpts.grouped(db, req.workspace),
+      canStartNextCycle: !!(recert && recert.status === 'completed' && recert.actual_date),
+      openFindings: aimsCycle.openFindings(db, req.workspace),
+    });
   });
 
-  app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const { event_type, planned_date, notes } = req.body;
-    if (!event_type) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
-    db.prepare(`INSERT INTO iso42001_cert_cycle_events (workspace_id, event_type, planned_date, notes) VALUES (?, ?, ?, ?)`)
-      .run(req.workspace.id, event_type, planned_date || null, notes || null);
-    logAction(req.user.id, req.workspace.id, 'add_iso42001_cert_event', 'iso42001_cert_event', null, { event_type });
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
-  });
+  app.post('/workspaces/:wsId/iso42001/cert-cycle/seed', requireAuth, requireWorkspace, requireAimsCertification, requirePermission('control.update'), cycleAction(req => {
+    const target = (db.prepare('SELECT target_cert_date FROM workspaces WHERE id=?').get(req.workspace.id) || {}).target_cert_date;
+    const added = aimsCycle.seed(db, req.workspace, req.user.id, target || null);
+    logAction(req.user.id, req.workspace.id, 'seed_iso42001_cert_cycle', 'iso42001_cert_event', null, { added });
+    return { message: added ? `Planned ${added} audit${added === 1 ? '' : 's'} for this cycle` : 'Every audit of this cycle is already planned' };
+  }));
 
-  app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const { planned_date, actual_date, status, notes } = req.body;
-    db.prepare(`UPDATE iso42001_cert_cycle_events
-                SET planned_date=COALESCE(?,planned_date), actual_date=COALESCE(?,actual_date),
-                    status=COALESCE(?,status), notes=COALESCE(?,notes)
-                WHERE id=? AND workspace_id=?`)
-      .run(planned_date || null, actual_date || null, status || null, notes || null, req.params.id, req.workspace.id);
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
-  });
+  app.post('/workspaces/:wsId/iso42001/cert-cycle/add', requireAuth, requireWorkspace, requireAimsCertification, requirePermission('control.update'), cycleAction(req => {
+    const id = aimsCycle.addEvent(db, req.workspace, req.user.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'add_iso42001_cert_event', 'iso42001_cert_event', id, { event_key: req.body.event_key || req.body.event_type });
+    return { hash: `event-${id}`, message: 'Added to the certification cycle' };
+  }));
 
-  app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    db.prepare(`DELETE FROM iso42001_cert_cycle_events WHERE id=? AND workspace_id=?`).run(req.params.id, req.workspace.id);
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/cert-cycle`);
-  });
+  app.post('/workspaces/:wsId/iso42001/cert-cycle/next', requireAuth, requireWorkspace, requireAimsCertification, requirePermission('control.update'), cycleAction(req => {
+    const next = aimsCycle.startNextCycle(db, req.workspace, req.user.id);
+    logAction(req.user.id, req.workspace.id, 'start_iso42001_cert_cycle', 'iso42001_cert_event', null, { cycle_no: next });
+    return { message: `Cycle ${next} planned: two surveillance audits and the next recertification` };
+  }));
+
+  app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/update', requireAuth, requireWorkspace, requireAimsCertification, requirePermission('control.update'), cycleAction(req => {
+    const id = aimsCycle.updateEvent(db, req.workspace, req.user.id, req.params.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'update_iso42001_cert_event', 'iso42001_cert_event', id, { status: req.body.status || null });
+    return { hash: `event-${id}`, message: 'Audit updated' };
+  }));
+
+  app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/delete', requireAuth, requireWorkspace, requireAimsCertification, requirePermission('control.update'), cycleAction(req => {
+    aimsCycle.deleteEvent(db, req.workspace, req.user.id, req.params.id);
+    logAction(req.user.id, req.workspace.id, 'delete_iso42001_cert_event', 'iso42001_cert_event', Number(req.params.id), null);
+    return { message: 'Removed from the certification cycle' };
+  }));
+
+  // A finding the certification body raised at a Stage 1, Stage 2,
+  // surveillance or recertification audit. It becomes a nonconformity with
+  // retained lineage (see lib/iso42001-cycle.js), tracked to closure with the
+  // client on the nonconformity page.
+  app.post('/workspaces/:wsId/iso42001/cert-cycle/:id/findings', requireAuth, requireWorkspace, requireAimsCertification, requirePermission('nc.manage'), cycleAction(req => {
+    const ncId = aimsCycle.recordFinding(db, req.workspace, req.user.id, req.params.id, req.body);
+    fts.refresh(req.workspace.id, 'nc', ncId);
+    logAction(req.user.id, req.workspace.id, 'record_iso42001_cb_finding', 'nonconformity', ncId,
+      { event_id: Number(req.params.id), severity: req.body.severity, iso_item_id: req.body.iso_item_id || null }, auditCtx(req));
+    return { hash: `event-${req.params.id}`, message: 'Finding recorded. Track its correction from the nonconformity.' };
+  }));
 
   // --- Intake ---
   app.get('/workspaces/:wsId/iso42001/intake', requireAuth, requireWorkspace, (req, res) => {
@@ -1373,6 +1575,7 @@ function register(app, deps) {
     });
     tx();
     logAction(req.user.id, req.workspace.id, 'save_iso42001_intake', 'iso42001_intake', null, null);
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'The ISO 42001 scope or intake context changed.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/intake`);
   });
 
@@ -1427,39 +1630,18 @@ function register(app, deps) {
     }
 
     logAction(req.user.id, wsId, 'apply_iso42001_intake', 'iso42001_intake', null, { questionsAnswered: Object.keys(answers).length });
+    aimsAssessment.reconcileDelivery(db,wsId,req.user.id,'The ISO 42001 intake was applied to assessment conclusions.');
     res.redirect(`/workspaces/${wsId}/iso42001/gap/ai-clause-4.3`);
   });
 
-  // --- Engagement plan ---
+  // Preserve old bookmarks and checklist records, but all new decisions use
+  // the common evidence-gated delivery plan. Legacy ticks are not approvals.
   app.get('/workspaces/:wsId/iso42001/engagement-plan', requireAuth, requireWorkspace, (req, res) => {
-    const rows = db.prepare(`SELECT p.phase_key, p.completed_at, p.notes, (SELECT name FROM users WHERE id = p.completed_by) AS completed_by_name
-      FROM iso42001_engagement_plan_progress p WHERE workspace_id=?`).all(req.workspace.id);
-    const progress = {};
-    rows.forEach(r => { progress[r.phase_key] = r; });
-    res.render('iso42001_engagement_plan', { user: req.user, ws: req.workspace, phases: ISO42001_PLAN_PHASES, progress });
+    const view = ['plan', 'timeline', 'gates'].includes(req.query.view) ? `?view=${req.query.view}` : '';
+    res.redirect(`/workspaces/${req.workspace.id}/engagement-plan${view}`);
   });
-
-  app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/toggle', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const phaseKey = req.params.phaseKey;
-    if (!ISO42001_PLAN_PHASES.find(p => p.key === phaseKey)) return res.status(400).send('Bad phase');
-    const existing = db.prepare(`SELECT completed_at FROM iso42001_engagement_plan_progress WHERE workspace_id=? AND phase_key=?`).get(req.workspace.id, phaseKey);
-    if (existing && existing.completed_at) {
-      db.prepare(`UPDATE iso42001_engagement_plan_progress SET completed_at=NULL, completed_by=NULL WHERE workspace_id=? AND phase_key=?`).run(req.workspace.id, phaseKey);
-    } else {
-      db.prepare(`INSERT INTO iso42001_engagement_plan_progress (workspace_id, phase_key, completed_at, completed_by)
-        VALUES (?, ?, CURRENT_TIMESTAMP, ?)
-        ON CONFLICT(workspace_id, phase_key) DO UPDATE SET completed_at=CURRENT_TIMESTAMP, completed_by=excluded.completed_by`).run(req.workspace.id, phaseKey, req.user.id);
-    }
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/engagement-plan`);
-  });
-
-  app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/notes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
-    const phaseKey = req.params.phaseKey;
-    if (!ISO42001_PLAN_PHASES.find(p => p.key === phaseKey)) return res.status(400).send('Bad phase');
-    db.prepare(`INSERT INTO iso42001_engagement_plan_progress (workspace_id, phase_key, notes)
-      VALUES (?, ?, ?)
-      ON CONFLICT(workspace_id, phase_key) DO UPDATE SET notes=excluded.notes`).run(req.workspace.id, phaseKey, req.body.notes || null);
-    res.redirect(`/workspaces/${req.workspace.id}/iso42001/engagement-plan`);
+  app.post('/workspaces/:wsId/iso42001/engagement-plan/:phaseKey/:action', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    res.status(409).render('error', { user: req.user, ws: req.workspace, message: 'This legacy checklist is retained as history. Use the engagement delivery plan to submit evidence and record phase-gate decisions.' });
   });
 
 

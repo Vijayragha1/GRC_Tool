@@ -56,6 +56,15 @@
       <option value="included">Included</option>
       <option value="excluded">Excluded</option>
     </select>
+    <% if (canPlan) { %>
+      <select name="owner_id" class="select text-base" style="width:170px;padding:4px 8px;" aria-label="Owner">
+        <option value="">Owner…</option>
+        <option value="none">No owner</option>
+        <% people.forEach(p => { %><option value="<%= p.id %>"><%= p.name %></option><% }) %>
+      </select>
+      <input type="date" name="due_date" class="input text-base" style="width:150px;padding:3px 8px;" aria-label="Due date">
+      <label class="meta text-sm" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="clear_due" value="1"> clear due</label>
+    <% } %>
     <button class="btn btn-primary btn-xs">Apply</button>
     <button type="button" onclick="clearSel()" class="btn btn-ghost btn-xs">Clear</button>
   </div>
@@ -82,8 +91,19 @@
             <td><a href="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>" class="link-muted"><%= r.title.replace(/^(A\.[0-9.]+|[0-9.]+) /, '') %></a></td>
             <td><span class="status s-<%= r.status.toLowerCase().replace(/ /g,'-') %>"><%= r.status %></span></td>
             <td class="num text-secondary"><%= r.maturity || 0 %>/4</td>
-            <td class="text-secondary text-base"><%= r.owner_name || '-' %></td>
-            <td class="num meta"><%= r.due_date || '-' %></td>
+            <% const late = r.due_date && r.due_date < today && r.status !== 'Implemented'; %>
+            <% if (canPlan) { %>
+              <td>
+                <select name="owner_id" form="plan-<%= r.id %>" class="select text-sm" style="width:100%;padding:2px 4px;" onchange="this.form.submit()" aria-label="Owner of <%= r.title %>">
+                  <option value="">-</option>
+                  <% people.forEach(p => { %><option value="<%= p.id %>" <%= Number(r.owner_id) === p.id ? 'selected' : '' %>><%= p.name %></option><% }) %>
+                </select>
+              </td>
+              <td><input type="date" name="due_date" form="plan-<%= r.id %>" value="<%= r.due_date || '' %>" class="input text-sm" style="width:100%;padding:2px 4px;<%= late ? 'border-color:#b91c1c;color:#b91c1c;' : '' %>" onchange="this.form.submit()" aria-label="Due date of <%= r.title %>"<%= late ? ' title="Past due"' : '' %>></td>
+            <% } else { %>
+              <td class="text-secondary text-base"><%= r.owner_name || '-' %></td>
+              <td class="num meta" style="<%= late ? 'color:#b91c1c;' : '' %>"><%= r.due_date || '-' %></td>
+            <% } %>
             <td class="meta"><% const rc = requestCounts[r.id]; if (rc) { %><a href="/workspaces/<%= ws.id %>/iso42001/requests?item=<%= encodeURIComponent(r.id) %>" class="link-muted"><%= rc.done %> of <%= rc.total %> settled</a><% } %></td>
           </tr>
         <% }) %>
@@ -94,6 +114,10 @@
     </table>
   </div>
 </form>
+<% if (canPlan) { %>
+  <%# One form per row for its owner and due date; the inputs sit in the table and attach by the form attribute, since forms cannot nest inside the bulk form. %>
+  <% rows.forEach(r => { %><form method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= r.id %>/plan" id="plan-<%= r.id %>" hidden><% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %></form><% }) %>
+<% } %>
 
 <script>
 function updBulk(){

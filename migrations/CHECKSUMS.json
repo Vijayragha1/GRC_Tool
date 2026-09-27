@@ -66,5 +66,12 @@
   "065_experience_rollout.sql": "065b18f29826223d66752f69171f187ab1db667816a34b6f0a80c9a8ec915a0b",
   "066_report_revision_requests.sql": "834ad4647ba6f406ac6fa68d2be46c8fb0ec2d3f9ed3b3197848f18eec115e20",
   "067_experience_diagnostic_view_reconciliation.js": "985b4ed62b474872ca09af3b56434b1bca50f10ad58ac678e0b80a2482c6b381",
-  "068_iso42001_certification_audit.sql": "1041e4e575b79407a609e2652a7aa6cd75eec59f9254825dc83c97aa0e64a3f6"
+  "068_iso42001_certification_audit.sql": "1041e4e575b79407a609e2652a7aa6cd75eec59f9254825dc83c97aa0e64a3f6",
+  "069_audit_samples_any_framework.sql": "82d675d62fa1e57a3704d683bb9f16e6683d2292a2ed3fcda109f86cde30036e",
+  "070_iso42001_certification_cycle.js": "e0359e22a7bfcc1999ed6b310bff009a9e589b4f54e0ad34e0c8e542a483df0f",
+  "071_ai_risk_assessment.js": "cb13b19b507dd6523cf3a828410b0dcf5b85e739fe30dd8825a146c60619fff9",
+  "072_iso42001_soa_approval.js": "970a9c86f75a99f38c364549bdcec20e0fe749442ac1bd4f43209589341957d8",
+  "073_aims_records.js": "984ce0128f488120c5b866c2495c1e93b7b566dc9396017c8e72e00db5507aef",
+  "074_template_values.sql": "38b1325ea447562e52930eaf3af863f7574c4faacffdc8acd615574ad3c4c4ce",
+  "070_iso42001_assessment_signoff.sql": "fbabbf85ff64fb19af34f3f6f24cd30aff339ede559eced4522ca43723d636cc"
 }

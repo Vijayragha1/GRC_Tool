@@ -149,7 +149,9 @@ test('an invalidated completed plan reopens together with only its linked consul
 });
 
 test('explicit non-ISO workspaces cannot seed or project an ISO delivery plan', () => {
-  const nonIso = workspace('ISO 42001 only client', ['iso42001']);
+  // ISO 42001 now shares the delivery plan (lib/iso42001-delivery.js); a client
+  // on neither ISO management system still gets none.
+  const nonIso = workspace('NIST CSF only client', ['csf']);
   assert.equal(delivery.ensurePlan(db, nonIso, actorId), null);
   assert.equal(delivery.getProjection(db, nonIso, actorId), null);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_plans WHERE workspace_id=?').get(nonIso.id).c, 0);

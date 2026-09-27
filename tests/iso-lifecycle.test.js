@@ -31,13 +31,13 @@ test.after(async () => {
 test('new-client onboarding requires a plain-language contracted outcome', async () => {
   const page = await client.get('/workspaces/new');
   assert.equal(page.status, 200);
-  assert.match(page.text, /Contracted ISO 27001 outcome/);
+  assert.match(page.text, /Contracted ISO management-system outcome/);
   assert.match(page.text, /Gap assessment only/);
   assert.match(page.text, /Full certification support/);
   assert.match(page.text, /issue the report, and close this engagement/);
   assert.match(page.text, /Stage 1 and Stage 2 support/);
   assert.match(page.text, /id="iso27001-outcome-fieldset"[^>]*hidden/);
-  assert.match(page.text, /choice\.required = hasIso27001/);
+  assert.match(page.text, /choice\.required = hasIso/);
 
   const before = db.prepare('SELECT COUNT(*) c FROM workspaces').get().c;
   const missing = await client.post('/workspaces', {
@@ -90,7 +90,7 @@ test('non-ISO and programme-neutral clients can be created without an ISO outcom
 test('enabling ISO 27001 later requires an explicit outcome and creates the matching engagement and plan', async () => {
   const setupPage = await client.get(`/workspaces/${neutralWorkspaceId}?skipSetupRedirect=1`);
   assert.equal(setupPage.status, 200);
-  assert.match(setupPage.text, /Choose the contracted endpoint before ISO 27001 is enabled/);
+  assert.match(setupPage.text, /Choose the contracted endpoint before ISO 27001 or ISO 42001 is enabled/);
   assert.match(setupPage.text, /id="enable-iso27001-outcome"[^>]*hidden/);
 
   const missing = await client.post(`/workspaces/${neutralWorkspaceId}/frameworks`, {

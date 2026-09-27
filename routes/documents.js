@@ -16,6 +16,7 @@ const personalDrafts = require('../lib/form-drafts');
 const collaborationNotifications = require('../lib/notification-delivery');
 const email = require('../lib/email');
 const docLinks = require('../lib/doc-links');
+const reqOpts = require('../lib/requirement-options');
 const ctlReads = require('../lib/control-reads');
 const docApprovals = require('../lib/doc-approvals');
 const documentHtml = require('../lib/document-html');
@@ -25,6 +26,8 @@ const { snapshotDocVersion, listVersions, listApprovers, listSignatures, verifyV
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray } = require('../lib/http-helpers');
 const aimsTemplates = require('../lib/iso42001-templates');
+const templateValues = require('../lib/template-values');
+const firmTemplates = require('../lib/firm-templates');
 const { parseWorkspaceFrameworks, frameworkMeta } = require('../lib/frameworks');
 
 const mdRenderer = new MarkdownIt({ html: false, linkify: true, typographer: true });
@@ -69,6 +72,12 @@ function register(app, deps) {
 
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           upload, resolveUploadPath, isFirmUser, diffObjects } = deps;
+  // ISO frameworks a document can be linked against, and their catalogues.
+  const DOC_CATALOGUES = { iso27001: 'iso_items', iso42001: 'iso42001_items' };
+  const isoFrameworksFor = (workspace) => {
+    const codes = reqOpts.enabledCodes(workspace).filter(code => DOC_CATALOGUES[code]);
+    return codes.length ? codes : ['iso27001'];
+  };
   const requireDocumentImplementation = outcomeScope.requirePostGapService(
     'Policy and document implementation is outside this gap-assessment-only engagement. Existing client documents remain available as assessment inputs.');
   function rejectGapOnlyExternalApproval(res, row) {
@@ -145,7 +154,7 @@ function register(app, deps) {
 
     res.render('documents', {
       user: req.user, ws: req.workspace, docs, templates,
-      tagsByDoc, taggedItems, tagFilter, registers,
+      tagsByDoc, taggedItems, tagFilter, registers, awaitingMe: awaitingApprovalBy(req.workspace, req.user),
       pg: pgDocs, pagerHref: p => pageHref(req, p)
     });
   });
@@ -216,7 +225,7 @@ function register(app, deps) {
 
     res.render('templates_library', {
       user: req.user, ws: req.workspace,
-      templates: enriched, counts, framework,
+      templates: enriched, counts, framework, templateValues: templateValues.values(db, req.workspace),
       frameworkTabs: templateFrameworks(req.workspace).map(code => ({ code, label: (frameworkMeta(code) || {}).shortLabel || code }))
     });
   });
@@ -329,7 +338,10 @@ function register(app, deps) {
       review_period: (overrides && overrides.review_period) || 'Annual',
       industry: workspace.industry || ''
     };
-    const content = documentHtml.sanitizeDocumentHtml(substitutePlaceholders(tpl.content, vars));
+    // The values set for this client replace their bracketed placeholders
+    // (lib/template-values.js); an unset one stays for the client to fill.
+    const filled = templateValues.fill(substitutePlaceholders(tpl.content, vars), templateValues.values(db, workspace)).content;
+    const content = documentHtml.sanitizeDocumentHtml(filled);
     const encContent = enc.encryptIfNeeded(content, workspace.id, !!workspace.encryption_enabled);
     const docId = db.prepare(`INSERT INTO generated_docs (workspace_id, entity_id, template_id, name, category, content, created_by)
                            VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -503,9 +515,18 @@ function register(app, deps) {
 
     // Linked Annex A controls + clauses (Phase A: doc <-> control bidirectional mapping).
     // drl-native (document_controls demolished); link_id = drl.id.
-    const linkedControls = docLinks.linkedControlsForDoc(db, 'iso27001', doc.id);
-    const allControls = db.prepare(`SELECT id, title, category, type FROM iso_items
-      WHERE type IN ('control','clause') ORDER BY sort_order`).all();
+    // Every ISO framework the client works to: an ISO 42001 policy is linked to
+    // ISO 42001 clauses and controls from here, not only from the control page.
+    const docFrameworks = isoFrameworksFor(req.workspace);
+    const multiDocFramework = docFrameworks.length > 1;
+    const linkedControls = [].concat(...docFrameworks.map(fw => docLinks.linkedControlsForDoc(db, fw, doc.id)
+      .map(lc => ({ ...lc, framework: fw, frameworkLabel: reqOpts.label(fw), code: reqOpts.codeOf({ id: lc.iso_item_id, title: lc.title }) }))));
+    const allControls = [].concat(...docFrameworks.map(fw => db.prepare(`SELECT id, title, category, type FROM ${DOC_CATALOGUES[fw]}
+      WHERE type IN ('control','clause') ORDER BY sort_order`).all()
+      .map(c => ({
+        ...c, framework: fw, code: reqOpts.codeOf(c), groupKey: `${fw}:${c.type}`,
+        groupLabel: (multiDocFramework ? `${reqOpts.label(fw)} ` : '') + (c.type === 'clause' ? 'main body clauses (4–10)' : 'Annex A controls'),
+      }))));
 
     res.render('document_detail', {
       user: req.user, ws: req.workspace, doc, comments: filtered,
@@ -530,7 +551,9 @@ function register(app, deps) {
     let added = 0;
     const tx = db.transaction(() => {
       for (const id of ids) {
-        if (docLinks.addLink(db, 'iso27001', doc.id, id, sectionRef).changes > 0) added++;
+        const fw = reqOpts.frameworkOf(db, id);
+        if (!fw || !isoFrameworksFor(req.workspace).includes(fw)) continue;
+        if (docLinks.addLink(db, fw, doc.id, id, sectionRef).changes > 0) added++;
       }
     });
     try { tx(); } catch (_) {}
@@ -578,6 +601,90 @@ function register(app, deps) {
       logAction(req.user.id, req.workspace.id, 'unlink_doc_control', 'control', req.params.isoId, { document_id: link.document_id }, auditCtx(req));
     }
     res.redirect(`/workspaces/${req.workspace.id}/controls/assess/${req.params.isoId}`);
+  });
+
+  // The values written into templates for this client, and optionally into
+  // the placeholders of its documents still in draft.
+  app.post('/workspaces/:wsId/templates/values', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.create'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/templates?framework=${encodeURIComponent(req.body.framework || 'iso42001')}`;
+    try {
+      templateValues.save(db, req.workspace, req.user.id, req.body);
+      let message = 'Template values saved';
+      if (req.body.apply_to_drafts) {
+        if (!rbac.hasPermission(res.locals.userPerms, 'document.edit')) return res.redirect(withToast(back, 'Saved. Filling drafts needs permission to edit documents.', 'error'));
+        const changed = templateValues.applyToDrafts(db, req.workspace);
+        changed.forEach(d => fts.refresh(req.workspace.id, 'document', d.id));
+        message += changed.length ? ` and filled into ${changed.length} draft${changed.length === 1 ? '' : 's'}` : '; no draft had those placeholders';
+        logAction(req.user.id, req.workspace.id, 'fill_template_values', 'workspace', req.workspace.id,
+          { documents: changed.map(d => d.id), replaced: changed.reduce((n, d) => n + d.replaced, 0) }, auditCtx(req));
+      }
+      logAction(req.user.id, req.workspace.id, 'save_template_values', 'workspace', req.workspace.id, null, auditCtx(req));
+      res.redirect(withToast(back, message));
+    } catch (e) {
+      if (!(e instanceof templateValues.ValuesError)) throw e;
+      res.redirect(withToast(back, e.message, 'error'));
+    }
+  });
+
+  // Save a document as one of the firm's templates, with this client taken out
+  // (lib/firm-templates.js). Firm staff only: the template is offered to every
+  // client of the firm.
+  app.post('/workspaces/:wsId/documents/:id(\\d+)/save-as-firm-template', requireAuth, requireWorkspace, requirePermission('document.create'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/documents/${req.params.id}`;
+    if (!isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'Only the firm\'s staff can save firm templates.' });
+    try {
+      const saved = firmTemplates.saveFromDocument(db, req.workspace, Number(req.params.id), req.body);
+      logAction(req.user.id, req.workspace.id, 'save_firm_template', 'doc_template', saved.id, { document_id: Number(req.params.id), framework: saved.framework }, auditCtx(req));
+      res.redirect(withToast(back, `Saved as the firm template "${saved.name}". Check it for anything else specific to this client.`));
+    } catch (e) {
+      if (!(e instanceof firmTemplates.FirmTemplateError)) throw e;
+      res.redirect(withToast(back, e.message, 'error'));
+    }
+  });
+
+  // Approve several documents at once. Each is checked as its own decision
+  // would be (the user is the next internal approver on a version still in
+  // review), and a version the user prepared is never approved in bulk; any
+  // document that fails a check is skipped and named, and the rest go ahead.
+  app.post('/workspaces/:wsId/documents/bulk-approve', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.review'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/documents`;
+    const ids = [...new Set(parseFormArray(req.body.document_ids).map(Number).filter(Number.isInteger))].slice(0, 100);
+    if (!ids.length) return res.redirect(withToast(back, 'Select the documents to approve.', 'error'));
+    const approved = [];
+    const skipped = [];
+    const notices = [];
+    for (const id of ids) {
+      const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(id, req.workspace.id);
+      if (!doc || !doc.current_version_id) { skipped.push(`#${id} (not found)`); continue; }
+      const outcome = db.transaction(() => {
+        const version = db.prepare('SELECT status, created_by FROM doc_versions WHERE id=? AND workspace_id=?').get(doc.current_version_id, req.workspace.id);
+        if (!version || version.status !== 'in_review') return 'not in review';
+        if (Number(version.created_by) === Number(req.user.id)) return 'you prepared this version; approve it on its own page';
+        const mine = db.prepare('SELECT * FROM doc_approvers WHERE version_id=? AND user_id=? AND decision IS NULL ORDER BY sequence LIMIT 1').get(doc.current_version_id, req.user.id);
+        if (!mine) return 'you are not a pending approver';
+        const next = docApprovals.nextPending(db, doc.current_version_id);
+        if (!next || next.kind !== 'internal' || next.row.id !== mine.id) return 'an earlier approver has not decided';
+        const decided = db.prepare(`UPDATE doc_approvers SET decision='approved', decision_reason=NULL, decided_at=CURRENT_TIMESTAMP WHERE id=? AND decision IS NULL`).run(mine.id);
+        if (!decided.changes) return 'already decided';
+        if (docApprovals.countPending(db, doc.current_version_id) === 0) {
+          if (finaliseApprovedDocument(doc.current_version_id, doc, req.workspace.id, req.user.id)) {
+            logAction(req.user.id, req.workspace.id, 'approve_document', 'document', doc.id, { version_id: doc.current_version_id, bulk: true }, auditCtx(req));
+            notices.push(() => notifyChainComplete(doc.current_version_id, doc, req.workspace, req.user.name));
+          }
+        } else {
+          logAction(req.user.id, req.workspace.id, 'partial_approve_document', 'document', doc.id,
+            { version_id: doc.current_version_id, remaining: docApprovals.countPending(db, doc.current_version_id), bulk: true }, auditCtx(req));
+          notices.push(() => notifyChainAdvanced(doc.current_version_id, doc, req.workspace, req.user.name));
+        }
+        return null;
+      })();
+      if (outcome) skipped.push(`${doc.name} (${outcome})`); else approved.push(doc.name);
+    }
+    // Notify only after each decision has committed.
+    for (const send of notices) { try { send(); } catch (e) { console.error('[bulk-approve] notify failed:', e.message); } }
+    const message = [approved.length ? `Approved ${approved.length} document${approved.length === 1 ? '' : 's'}.` : 'Nothing was approved.',
+      skipped.length ? `Skipped: ${skipped.join('; ')}.` : ''].filter(Boolean).join(' ');
+    res.redirect(withToast(back, message, approved.length ? (skipped.length ? 'info' : undefined) : 'error'));
   });
 
   app.post('/workspaces/:wsId/documents/:id', requireAuth, requireWorkspace, requireDocumentImplementation, requirePermission('document.edit'), (req, res) => {
@@ -668,6 +775,104 @@ function register(app, deps) {
     })();
     fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'document', entityId: req.params.id });
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/documents', 'Document withdrawn; governed history and audit evidence were retained.'));
+  });
+
+  // ==================== POLICY ACKNOWLEDGEMENTS (clause 7.3) ====================
+  // lib/doc-acknowledgements.js. Links are shown once, straight after they are
+  // issued, and emailed where the person has an address and email is set up.
+  const ackEmail = require('../lib/email');
+  const acks = require('../lib/doc-acknowledgements');
+  const ackUrl = (req, token) => `${req.protocol}://${req.get('host')}/ack/${token}`;
+  const sendAckEmails = (req, doc, versionNumber, campaignId, links, dueDate) => {
+    for (const link of links) {
+      if (!link.email) continue;
+      ackEmail.sendAcknowledgementEmail({
+        toEmail: link.email, toName: link.name, documentName: doc.name, versionNumber,
+        workspaceName: req.workspace.brand_display_name || req.workspace.client_name, workspaceId: req.workspace.id,
+        firmId: req.workspace.firm_id, token: link.token, dueDate, campaignId,
+      }).catch(() => {});
+    }
+  };
+
+  app.get('/workspaces/:wsId/documents/:id/acknowledgements', requireAuth, requireWorkspace, requirePermission('document.view'), (req, res) => {
+    const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!doc) return res.status(404).send('Not found');
+    const published = db.prepare(`SELECT id, version FROM doc_versions WHERE document_id=? AND workspace_id=? AND status='published' ORDER BY version DESC LIMIT 1`).get(doc.id, req.workspace.id);
+    const issued = (req.session && req.session.ackLinks && Number(req.session.ackLinks.documentId) === doc.id) ? req.session.ackLinks.links : [];
+    if (req.session) delete req.session.ackLinks;
+    const members = db.prepare(`SELECT u.name, u.email FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.active=1 ORDER BY u.name`).all(req.workspace.id);
+    res.render('document_acknowledgements', { user: req.user, ws: req.workspace, doc, published, campaigns: acks.campaigns(db, req.workspace, doc.id),
+      issued: issued.map(l => ({ ...l, url: ackUrl(req, l.token) })), members });
+  });
+
+  app.post('/workspaces/:wsId/documents/:id/acknowledgements', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/documents/${req.params.id}/acknowledgements`;
+    try {
+      const { doc } = { doc: db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id) };
+      const result = acks.create(db, req.workspace, req.user.id, Number(req.params.id), req.body);
+      const version = db.prepare('SELECT v.version FROM doc_ack_campaigns c JOIN doc_versions v ON v.id=c.version_id WHERE c.id=?').get(result.id).version;
+      sendAckEmails(req, doc, version, result.id, result.links, req.body.due_date || null);
+      if (req.session) req.session.ackLinks = { documentId: Number(req.params.id), links: result.links };
+      logAction(req.user.id, req.workspace.id, 'create_doc_ack_campaign', 'document', Number(req.params.id), { campaign_id: result.id, recipients: result.links.length }, auditCtx(req));
+      return res.redirect(withToast(back, `Acknowledgement requested from ${result.links.length} ${result.links.length === 1 ? 'person' : 'people'}`));
+    } catch (e) {
+      if (e instanceof acks.AckError) return res.redirect(withToast(back, e.message, 'error'));
+      throw e;
+    }
+  });
+
+  app.post('/workspaces/:wsId/documents/:id/acknowledgements/recipients/:rid/reissue', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+    const back = `/workspaces/${req.workspace.id}/documents/${req.params.id}/acknowledgements`;
+    try {
+      const link = acks.reissue(db, req.workspace, Number(req.params.rid));
+      const doc = db.prepare('SELECT * FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+      const version = db.prepare('SELECT v.version FROM doc_ack_campaigns c JOIN doc_versions v ON v.id=c.version_id WHERE c.id=?').get(link.campaignId).version;
+      sendAckEmails(req, doc, version, link.campaignId, [link], null);
+      if (req.session) req.session.ackLinks = { documentId: Number(req.params.id), links: [link] };
+      logAction(req.user.id, req.workspace.id, 'reissue_doc_ack_link', 'document', Number(req.params.id), { recipient_id: Number(req.params.rid) }, auditCtx(req));
+      return res.redirect(withToast(back, `New link issued for ${link.name}`));
+    } catch (e) {
+      if (e instanceof acks.AckError) return res.redirect(withToast(back, e.message, 'error'));
+      throw e;
+    }
+  });
+
+  app.post('/workspaces/:wsId/documents/:id/acknowledgements/:cid/close', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+    acks.close(db, req.workspace, Number(req.params.cid));
+    logAction(req.user.id, req.workspace.id, 'close_doc_ack_campaign', 'document', Number(req.params.id), { campaign_id: Number(req.params.cid) }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/documents/${req.params.id}/acknowledgements`, 'Campaign closed'));
+  });
+
+  // The recipient's own page: no account; the link is the credential.
+  app.get('/ack/:token', (req, res) => {
+    const found = acks.byToken(db, req.params.token);
+    if (!found) return res.status(404).render('public_ack', { state: 'invalid', found: null, html: '' });
+    const state = found.recipient.acknowledged_at ? 'done' : (found.recipient.campaign_status !== 'active' ? 'closed' : 'open');
+    const body = enc.decryptIfNeeded(found.version.content || '', found.recipient.workspace_id);
+    const html = documentHtml.renderDocumentHtml(body, { isMarkdown: looksLikeMarkdown(body), markdownRenderer: mdRenderer });
+    res.render('public_ack', { state, found, html, token: req.params.token });
+  });
+
+  app.post('/ack/:token', (req, res) => {
+    try {
+      const found = acks.acknowledge(db, req.params.token, { ip: req.ip, userAgent: req.get('user-agent') });
+      logAction(0, found.recipient.workspace_id, 'acknowledge_document', 'doc_ack_recipient', found.recipient.id,
+        { campaign_id: found.recipient.campaign_id, version_id: found.version.id }, { ip: req.ip || '', userAgent: (req.get('user-agent') || '').slice(0, 200) });
+      return res.redirect(`/ack/${req.params.token}`);
+    } catch (e) {
+      if (e instanceof acks.AckError) return res.status(e.status).render('public_ack', { state: e.status === 410 ? 'closed' : 'invalid', found: null, html: '' });
+      throw e;
+    }
+  });
+
+  // How long a document is kept once superseded (clause 7.5).
+  app.post('/workspaces/:wsId/documents/:id/retention', requireAuth, requireWorkspace, requirePermission('document.edit'), (req, res) => {
+    const doc = db.prepare('SELECT id, retention_period FROM generated_docs WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!doc) return res.status(404).send('Not found');
+    const period = String(req.body.retention_period || '').trim().slice(0, 200) || null;
+    db.prepare('UPDATE generated_docs SET retention_period=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=?').run(period, doc.id, req.workspace.id);
+    logAction(req.user.id, req.workspace.id, 'set_doc_retention', 'document', doc.id, { from: doc.retention_period || null, to: period }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/documents/${doc.id}`, 'Retention saved'));
   });
 
   // Snooze a document's review date by N days. Used by the overdue/due-soon
@@ -963,6 +1168,19 @@ function register(app, deps) {
     db.prepare(`UPDATE generated_docs SET status='approved', approved_by=?, approved_at=CURRENT_TIMESTAMP, locked=1 WHERE id=?`)
       .run(byUserId, doc.id);
     return true;
+  }
+
+  // Documents whose version in review is waiting on this user as the next
+  // internal approver. A version the user prepared is marked, since it is
+  // never approved in bulk.
+  function awaitingApprovalBy(workspace, user) {
+    return db.prepare(`SELECT d.id, d.name, d.category, v.id AS version_id, v.version, v.submitted_at, v.created_by, u.name AS prepared_by
+      FROM generated_docs d JOIN doc_versions v ON v.id = d.current_version_id AND v.workspace_id = d.workspace_id
+      LEFT JOIN users u ON u.id = v.created_by
+      JOIN doc_approvers a ON a.version_id = v.id AND a.user_id = ? AND a.decision IS NULL
+      WHERE d.workspace_id = ? AND v.status = 'in_review' ORDER BY v.submitted_at, d.name`).all(user.id, workspace.id)
+      .filter((d) => { const next = docApprovals.nextPending(db, d.version_id); return next && next.kind === 'internal' && Number(next.row.user_id) === Number(user.id); })
+      .map((d) => ({ ...d, ownWork: Number(d.created_by) === Number(user.id) }));
   }
 
   function finaliseRejectedDocument(versionId, doc) {

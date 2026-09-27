@@ -78,8 +78,8 @@ test('client portal describes gap-only findings as recommendations', async () =>
   assert.doesNotMatch(fullHtml, /Findings &amp; recommendations/);
 });
 
-test('non-ISO programmes do not expose or materialise the ISO 27001 plan', async () => {
-  for (const frameworks of [['csf'], ['iso42001']]) {
+test('non-ISO programmes do not expose or materialise an ISO plan', async () => {
+  for (const frameworks of [['csf'], ['dpdpa']]) {
     const html = await renderPartial('client_navigation.ejs', {
       ws: { id: 45, frameworks, engagement_outcome: 'certification_support' },
       user: firmUser,
@@ -90,7 +90,7 @@ test('non-ISO programmes do not expose or materialise the ISO 27001 plan', async
     assert.doesNotMatch(html, /href="\/workspaces\/45\/engagement-plan"/);
   }
   const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'engagement.js'), 'utf8');
-  assert.match(source, /app\.use\('\/workspaces\/:wsId\/engagement-plan', requireAuth, requireWorkspace, requireIso27001Plan\)/);
+  assert.match(source, /app\.use\('\/workspaces\/:wsId\/engagement-plan', requireAuth, requireWorkspace, requireIso(?:27001)?Plan\)/);
 });
 
 test('certification-cycle routes enforce the contracted service path on the server', () => {
@@ -202,7 +202,7 @@ test('post-assessment contract surfaces have server-side outcome guards', () => 
   }
 });
 
-test('shared guard applies only to ISO 27001 gap-only workspaces', () => {
+test('shared guard applies only to ISO gap-only workspaces', () => {
   const scope = require('../lib/engagement-outcome-scope');
   const guard = scope.requirePostGapService('Out of contract');
   const nextCalls = [];

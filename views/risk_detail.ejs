@@ -83,10 +83,12 @@
         <% lScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.likelihood===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
       </select>
     </div>
-    <div><label class="label">Impact</label>
+    <% const aiOn = typeof aiRiskEnabled !== 'undefined' && aiRiskEnabled; const orgImpact = risk.impact_organisation != null ? risk.impact_organisation : risk.impact; %>
+    <div><label class="label"><%= aiOn ? 'Impact on the organisation' : 'Impact' %></label>
       <select class="select" name="impact">
-        <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.impact===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
+        <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= orgImpact===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
       </select>
+      <% if (aiOn && risk.impact !== orgImpact) { %><div class="meta text-xs" style="margin-top:3px;">Scored at <%= risk.impact %>, its highest consequence for people or society.</div><% } %>
     </div>
     <div><label class="label">Treatment</label>
       <select class="select" name="treatment">
@@ -108,6 +110,9 @@
         <% iScale.forEach(l => { %><option value="<%= l.value %>" <%= risk.residual_impact===l.value?'selected':'' %>><%= l.value %> · <%= l.label %></option><% }) %>
       </select>
     </div>
+    <% if (aiOn) { %>
+      <%- include('partials/ai_risk_fields', { iScale, aiSystemOptions, riskSources, risk }) %>
+    <% } %>
     <div class="col-full row">
       <button class="btn btn-primary">Save</button>
       <a href="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/treatments" class="btn btn-secondary">Treatment plan →</a>
@@ -151,11 +156,12 @@
 
 <div class="panel">
   <div class="panel-head"><h2>Linked Annex A controls</h2><span class="meta">Linking auto-includes the control in the SoA</span></div>
+  <% const multiLinked = (controlGroups || []).length > 1; %>
   <% if (linked.length) { %>
     <div class="divide-row">
       <% linked.forEach(c => { %>
         <div class="text-lg risk-linked-row" style="padding:8px 16px;display:flex;align-items:center;justify-content:space-between;">
-          <a href="/workspaces/<%= ws.id %>/controls/<%= c.id %>" class="link-muted"><%= c.title %></a>
+          <a href="<%= c.href %>" class="link-muted"><% if (multiLinked) { %><span class="meta"><%= c.frameworkLabel %></span> <% } %><%= c.title %></a>
           <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/unlink">
             <input type="hidden" name="iso_item_id" value="<%= c.id %>">
             <button class="btn btn-ghost btn-xs text-danger">Unlink</button>
@@ -167,10 +173,7 @@
     <div class="t-empty">No controls linked yet.</div>
   <% } %>
   <form method="POST" action="/workspaces/<%= ws.id %>/risks/<%= risk.id %>/link" class="panel-pad risk-link-form" style="display:flex;gap:6px;border-top:1px solid var(--border);background:var(--bg-subtle);">
-    <select name="iso_item_id" class="select" required>
-      <option value="">- pick a control -</option>
-      <% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %>
-    </select>
+    <%- include('partials/requirement_select', { groups: controlGroups, name: 'iso_item_id', blank: '- pick a control -' }) %>
     <button class="btn btn-primary btn-xs" style="white-space:nowrap;">Link</button>
   </form>
 </div>

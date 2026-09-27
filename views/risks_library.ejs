@@ -33,9 +33,18 @@
               <% if (r.threat) { %><span class="meta text-sm"><strong>Threat:</strong> <%= r.threat %></span><% } %>
               <% if (r.vulnerability) { %><span class="meta text-sm"><strong>Vulnerability:</strong> <%= r.vulnerability %></span><% } %>
             </div>
-            <% if (r.suggested_controls && r.suggested_controls.length) { %>
+            <%
+              // Chips for the controls that will be linked: ISO 27001 ones and
+              // ISO 42001 ones, each shown only where the client works to it.
+              const libFrameworks = (() => { try { return JSON.parse(ws.frameworks || '[]'); } catch (_) { return []; } })();
+              const libChips = [
+                ...(libFrameworks.includes('iso27001') || !libFrameworks.length ? (r.suggested_controls || []).map(c => c.replace('annex-', '').toUpperCase()) : []),
+                ...(libFrameworks.includes('iso42001') ? (r.ai_controls || []).map(c => 'ISO 42001 ' + c.replace(/^ai-annex-a-/, 'A.').replace(/-/g, '.')) : []),
+              ];
+            %>
+            <% if (libChips.length) { %>
               <div style="margin-top:6px;">
-                <% r.suggested_controls.forEach(c => { %><span class="tag tag-info text-eyebrow" style="margin-right:3px;"><%= c.replace('annex-','').toUpperCase() %></span><% }) %>
+                <% libChips.forEach(c => { %><span class="tag tag-info text-eyebrow" style="margin-right:3px;"><%= c %></span><% }) %>
               </div>
             <% } %>
           </div>

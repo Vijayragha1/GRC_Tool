@@ -1,0 +1,78 @@
+<%- include('partials/header', { title: 'SoA snapshot', user, ws, active: 'iso42001-soa' }) %>
+<%
+  const c = snapshot.content || { rows: [], customs: [] };
+  const approved = snapshot.approval_status === 'approved';
+  const code = (r) => (r.title || '').split(' ')[0];
+  const clean = (t) => (t || '').replace(/^A\.[0-9.]+ /, '');
+%>
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a href="/workspaces/<%= ws.id %>/iso42001/soa/snapshots" class="link-muted">SoA snapshots</a></div>
+    <h1 class="page-title"><%= snapshot.label || 'Snapshot' %><% if (snapshot.version) { %> <span class="tag tag-info">v<%= snapshot.version %></span><% } %></h1>
+    <div class="page-subtitle">Captured <%= String(snapshot.created_at).slice(0, 16) %> by <%= snapshot.created_by_name || 'unknown' %><% if (snapshot.owner) { %> · owner <%= snapshot.owner %><% } %> · <%= snapshot.control_count %> controls, <%= snapshot.included_count %> included, <%= snapshot.excluded_count %> excluded</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="tag <%= snapshot.intact ? 'tag-neutral' : 'tag-danger' %>" title="SHA-256 <%= snapshot.payload_hash %>"><%= snapshot.intact ? 'Sealed' : 'Does not match its seal' %></span>
+    <a class="btn btn-secondary btn-sm" href="/workspaces/<%= ws.id %>/iso42001/soa/snapshots/<%= snapshot.id %>/report.docx">Word</a>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px;">
+  <div class="panel-pad">
+    <% if (approved) { %>
+      <div class="text-lg"><strong>Approved</strong> by <%= snapshot.approved_by_name %> on <%= String(snapshot.approved_on).slice(0, 10) %>.<% if (snapshot.approval_note) { %> <span class="meta"><%= snapshot.approval_note %></span><% } %></div>
+      <div class="meta text-sm" style="margin-top:4px;">This is the Statement of Applicability to give the certification body. An approved snapshot cannot be changed.</div>
+    <% } else if (issueCount) { %>
+      <div class="text-lg"><strong>Not ready for approval.</strong></div>
+      <ul class="meta text-sm" style="margin:6px 0 0 18px;line-height:1.5;">
+        <% if (snapshot.issues.undecided.length) { %><li><%= snapshot.issues.undecided.length %> undecided: <%= snapshot.issues.undecided.slice(0, 6).join('; ') %><%= snapshot.issues.undecided.length > 6 ? '…' : '' %></li><% } %>
+        <% if (snapshot.issues.excludedUnjustified.length) { %><li><%= snapshot.issues.excludedUnjustified.length %> excluded without a justification: <%= snapshot.issues.excludedUnjustified.slice(0, 6).join('; ') %><%= snapshot.issues.excludedUnjustified.length > 6 ? '…' : '' %></li><% } %>
+        <% if (snapshot.issues.includedUnjustified.length) { %><li><%= snapshot.issues.includedUnjustified.length %> included without a justification: <%= snapshot.issues.includedUnjustified.slice(0, 6).join('; ') %><%= snapshot.issues.includedUnjustified.length > 6 ? '…' : '' %></li><% } %>
+      </ul>
+      <div class="meta text-sm" style="margin-top:6px;">Complete the SoA, then capture a new snapshot for approval.</div>
+    <% } else if (!canSignoff) { %>
+      <div class="text-lg">Complete and awaiting approval by someone with sign-off rights.</div>
+    <% } else if (isAuthor) { %>
+      <div class="text-lg">Complete. It must be approved by someone other than you, as you captured it.</div>
+    <% } else { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/snapshots/<%= snapshot.id %>/approve" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+        <div><label class="label">Approval note <span class="meta">optional</span></label><input class="input" name="note" placeholder="e.g. Approved by the AI governance board"></div>
+        <div><button class="btn btn-primary">Approve this SoA</button></div>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2>Controls</h2></div>
+  <div style="overflow-x:auto;">
+    <table class="t">
+      <thead><tr><th style="width:80px;">Control</th><th>Title</th><th style="width:100px;">Applicability</th><th style="width:140px;">Status</th><th>Justification</th><th style="width:180px;">Risks and documents</th></tr></thead>
+      <tbody>
+        <% c.rows.forEach(r => { %>
+          <tr>
+            <td class="mono meta"><%= code(r) %></td>
+            <td><%= clean(r.title) %></td>
+            <td><%= r.applicability %></td>
+            <td class="meta"><%= r.status %></td>
+            <td class="text-sm"><%= r.applicability === 'excluded' ? (r.exclusion_justification || '-') : (r.inclusion_justification || '-') %></td>
+            <td class="meta text-xs"><%= [...(r.risks || []).map(x => 'R-' + x.id), ...(r.documents || []).map(x => x.name)].join(', ') || '-' %></td>
+          </tr>
+        <% }) %>
+        <% c.customs.forEach(r => { %>
+          <tr>
+            <td class="mono meta"><%= r.code %></td>
+            <td><%= r.title %><% if (r.source) { %> <span class="meta text-xs"><%= r.source %></span><% } %></td>
+            <td><%= r.applicability %></td>
+            <td class="meta"><%= r.status %></td>
+            <td class="text-sm"><%= r.applicability === 'excluded' ? (r.exclusion_justification || '-') : (r.inclusion_justification || '-') %></td>
+            <td class="meta text-xs">-</td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

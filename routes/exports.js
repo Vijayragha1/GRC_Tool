@@ -195,21 +195,36 @@ function register(app, deps) {
     zip.on('error', err => { console.error(err); res.status(500).end(); });
     zip.pipe(res);
 
-    const manifest = ['ISO 27001:2022 Audit Pack', '='.repeat(40), `Client: ${ws.client_name}`, `Generated: ${new Date().toISOString()}`, `Stage: ${ws.stage}`, ws.target_cert_date ? `Target cert: ${ws.target_cert_date}` : '', '', 'Contents:', ''];
+    const std = require('../lib/aims-audit-view').standards(ws);
+    const manifest = [`${std.standardText} Audit Pack`, '='.repeat(40), `Client: ${ws.client_name}`, `Generated: ${new Date().toISOString()}`, `Stage: ${ws.stage}`, ws.target_cert_date ? `Target cert: ${ws.target_cert_date}` : '', '', 'Contents:', ''];
 
-    // SoA CSV
-    const soaRows = db.prepare(`SELECT i.id, i.title, i.category,
-      COALESCE(cs.applicability,'undecided') AS applicability,
-      COALESCE(cs.status,'Not Assessed') AS status,
-      cs.inclusion_justification, cs.exclusion_justification
-      FROM iso_items i
-      LEFT JOIN ${ctlReads.tables(db, ws.id).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-      WHERE i.type = 'control' ORDER BY i.sort_order`).all(ws.id);
     const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
-    let soaCsv = 'Control ID,Title,Category,Applicability,Status,Inclusion Justification,Exclusion Justification\n';
-    soaRows.forEach(r => { soaCsv += [r.id.replace('annex-','').toUpperCase(), r.title, r.category, r.applicability, r.status, r.inclusion_justification, r.exclusion_justification].map(esc).join(',') + '\n'; });
-    zip.append(soaCsv, { name: '01_Statement_of_Applicability.csv' });
-    manifest.push(`  01_Statement_of_Applicability.csv (${soaRows.length} controls)`);
+    // SoA CSV
+    if (std.isms) {
+      const soaRows = db.prepare(`SELECT i.id, i.title, i.category,
+        COALESCE(cs.applicability,'undecided') AS applicability,
+        COALESCE(cs.status,'Not Assessed') AS status,
+        cs.inclusion_justification, cs.exclusion_justification
+        FROM iso_items i
+        LEFT JOIN ${ctlReads.tables(db, ws.id).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+        WHERE i.type = 'control' ORDER BY i.sort_order`).all(ws.id);
+      let soaCsv = 'Control ID,Title,Category,Applicability,Status,Inclusion Justification,Exclusion Justification\n';
+      soaRows.forEach(r => { soaCsv += [r.id.replace('annex-','').toUpperCase(), r.title, r.category, r.applicability, r.status, r.inclusion_justification, r.exclusion_justification].map(esc).join(',') + '\n'; });
+      zip.append(soaCsv, { name: '01_Statement_of_Applicability.csv' });
+      manifest.push(`  01_Statement_of_Applicability.csv (${soaRows.length} controls)`);
+    }
+
+    // ISO 42001: the SoA the client approved (else the latest), and the AI system register
+    if (std.aims) {
+      const aiSoa = require('../lib/aims-audit-view').soa(db, ws);
+      let aiCsv = 'Control,Title,Applicability,Status,Inclusion Justification,Exclusion Justification\n';
+      aiSoa.rows.forEach(r => { aiCsv += [r.code, r.title, r.applicability, r.status, r.inclusion_justification, r.exclusion_justification].map(esc).join(',') + '\n'; });
+      zip.append(aiCsv, { name: '01_ISO42001_Statement_of_Applicability.csv' });
+      const basis = aiSoa.from === 'approved' ? `approved ${String(aiSoa.snapshot.approved_on).slice(0, 10)}` : aiSoa.from === 'snapshot' ? 'latest snapshot, not approved' : 'live state';
+      manifest.push(`  01_ISO42001_Statement_of_Applicability.csv (${aiSoa.rows.length} controls, ${basis})`);
+      zip.append(require('../lib/aims-reports').aiRegisterCsv(db, ws), { name: '01_AI_System_Register.csv' });
+      manifest.push('  01_AI_System_Register.csv');
+    }
 
     // Risk register CSV
     const riskRows = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.workspace_id=? ORDER BY (r.likelihood*r.impact) DESC`).all(ws.id);
@@ -310,7 +325,7 @@ function register(app, deps) {
   // HTML (handy for iterating on layout), POST generate (renders HTML then prints
   // to PDF with Chromium). The lib lives in lib/audit-pack.js so it can be
   // unit-tested without spinning up Express.
-  const AUDIT_PACK_SECTIONS = ['cover','summary','soa','risks','evidence','audits','ncs','mrms','improvements','audit_trail'];
+  const AUDIT_PACK_SECTIONS = ['cover','summary','soa','ai_systems','risks','evidence','audits','ncs','mrms','improvements','audit_trail'];
 
   function parseSectionsFromBody(body) {
     // express.urlencoded with extended:true gives us either string (one checked)
@@ -329,6 +344,7 @@ function register(app, deps) {
         ? parseSectionsFromBody(body)
         : undefined,
       snapshotId: body && body.snapshotId ? parseInt(body.snapshotId, 10) || null : null,
+      aiSnapshotId: body && body.aiSnapshotId ? parseInt(body.aiSnapshotId, 10) || null : null,
       preparedFor: body && body.preparedFor ? String(body.preparedFor).trim() : null,
       preparedBy: body && body.preparedBy ? String(body.preparedBy).trim() : null,
       brand: {
@@ -366,9 +382,13 @@ function register(app, deps) {
     const ncCount = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=?`).get(req.workspace.id).c;
     const mrmCount = db.prepare(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=?`).get(req.workspace.id).c;
     const improvementCount = db.prepare(`SELECT COUNT(*) c FROM improvements WHERE workspace_id=?`).get(req.workspace.id).c;
+    const standards = require('../lib/aims-audit-view').standards(req.workspace);
+    const aiSnapshots = standards.aims ? db.prepare(`SELECT id, label, version, created_at, approval_status FROM iso42001_soa_snapshots
+      WHERE workspace_id=? ORDER BY created_at DESC, id DESC`).all(req.workspace.id) : [];
+    const aiSystemCount = standards.aims ? db.prepare(`SELECT COUNT(*) c FROM ai_systems WHERE workspace_id=?`).get(req.workspace.id).c : 0;
     res.render('audit_pack_config', {
       user: req.user, ws: req.workspace,
-      snapshots, firmName: firm.name || '',
+      snapshots, firmName: firm.name || '', standards, aiSnapshots, aiSystemCount,
       riskCount, evidenceCount, auditCount, ncCount, mrmCount, improvementCount
     });
   });
@@ -405,7 +425,7 @@ function register(app, deps) {
       const opts = buildAuditPackOpts(req.body);
       const html = await renderAuditPackHTML(app, req.workspace.id, opts);
       const headerLeft = opts.brand && opts.brand.displayName ? opts.brand.displayName : (db.prepare('SELECT name FROM firms WHERE id=?').get(req.workspace.firm_id) || {}).name || '';
-      const headerRight = `${req.workspace.client_name} · ISMS Audit Pack`;
+      const headerRight = `${req.workspace.client_name} · ${require('../lib/aims-audit-view').standards(req.workspace).system} Audit Pack`;
       const footerLeft = (opts.brand && opts.brand.confidentialityLabel) || 'Confidential · For audit and management review purposes only';
       const pdfRaw = await auditPack.renderPDF(html, { headerLeft, headerRight, footerLeft });
       // Puppeteer v22+ returns a Uint8Array, which Express's res.send would

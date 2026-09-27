@@ -10,6 +10,8 @@ const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const rbac = require('../lib/rbac');
 const ctlReads = require('../lib/control-reads');
+const reqOpts = require('../lib/requirement-options');
+const riskLinks = require('../lib/risk-control-links');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const changesSince = require('../lib/changes-since');
@@ -159,15 +161,19 @@ function register(app, deps) {
     if (wsId) {
       const ws = getWorkspace(wsId, req.user);
       if (ws) {
-        // ISO items (clauses + controls) - search across all
-        const items = db.prepare(`SELECT id, title, type FROM iso_items
-                                   WHERE lower(title) LIKE ? OR lower(id) LIKE ?
-                                   ORDER BY sort_order LIMIT 8`).all(like, like);
+        // Clauses and controls of the client's ISO frameworks, each opening
+        // on its own framework's page.
+        const isoCodes = reqOpts.enabledCodes(ws).filter(code => code === 'iso27001' || code === 'iso42001');
+        const items = isoCodes.length ? db.prepare(`SELECT rq.ref AS id, rq.title, rq.req_type AS type, f.code AS framework
+                                   FROM requirements rq JOIN frameworks f ON f.id = rq.framework_id
+                                   WHERE f.code IN (${isoCodes.map(() => '?').join(',')}) AND rq.req_type IN ('clause','control')
+                                     AND (lower(rq.title) LIKE ? OR lower(rq.ref) LIKE ?)
+                                   ORDER BY rq.sort_order LIMIT 8`).all(...isoCodes, like, like) : [];
         items.forEach(i => results.push({
           type: i.type === 'clause' ? 'Clause' : 'Control',
-          label: i.title,
-          sublabel: i.id.startsWith('clause') ? i.id.replace('clause-', 'Cl. ') : i.id.replace('annex-', '').toUpperCase(),
-          href: '/workspaces/' + wsId + '/controls/' + i.id
+          label: reqOpts.displayTitle(ws, i.framework, i.title),
+          sublabel: reqOpts.codeOf(i),
+          href: i.framework === 'iso42001' ? '/workspaces/' + wsId + '/iso42001/gap/' + i.id : '/workspaces/' + wsId + '/controls/' + i.id
         }));
 
         const risks = db.prepare(`SELECT id, title FROM risks WHERE workspace_id = ? AND lower(title) LIKE ? LIMIT 5`).all(wsId, like);
@@ -467,9 +473,12 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
     const risk = db.prepare('SELECT * FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Not found');
-    const treatments = db.prepare('SELECT * FROM risk_treatments WHERE risk_id=? ORDER BY due_date IS NULL, due_date').all(risk.id);
-    const allControls = db.prepare(`SELECT id, title FROM iso_items WHERE type='control' ORDER BY sort_order`).all();
-    res.render('risk_treatments', { user: req.user, ws: req.workspace, risk, treatments, allControls });
+    const treatments = reqOpts.nameRows(req.workspace, db.prepare(`SELECT t.*, rq.title AS iso_title, rq_fw.code AS iso_framework
+      FROM risk_treatments t ${reqOpts.joinSql('t.iso_item_id')}
+      WHERE t.risk_id=? ORDER BY t.due_date IS NULL, t.due_date`).all(risk.id));
+    // The implementing control can be from any ISO framework the client works to.
+    const controlGroups = riskLinks.pickerGroups(db, req.workspace);
+    res.render('risk_treatments', { user: req.user, ws: req.workspace, risk, treatments, controlGroups });
   });
 
   app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
@@ -483,7 +492,7 @@ function register(app, deps) {
       due_date || null, status || 'planned', cost_estimate || null,
       expected_residual_l ? parseInt(expected_residual_l) : null,
       expected_residual_i ? parseInt(expected_residual_i) : null,
-      iso_item_id || null
+      iso_item_id && reqOpts.belongs(db, req.workspace, iso_item_id) ? iso_item_id : null
     ).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'create_treatment', 'treatment', id, { risk_id: req.params.id, title }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}/treatments`);
@@ -494,7 +503,13 @@ function register(app, deps) {
     if (!risk) return res.status(404).send('Risk not found');
     const f = ['title','description','owner_name','due_date','completed_date','status','cost_estimate','expected_residual_l','expected_residual_i','iso_item_id'];
     const set = []; const vals = [];
-    f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+    f.forEach(k => {
+      if (req.body[k] === undefined) return;
+      set.push(`${k}=?`);
+      vals.push(k === 'iso_item_id'
+        ? (req.body[k] && reqOpts.belongs(db, req.workspace, req.body[k]) ? req.body[k] : null)
+        : (req.body[k] || null));
+    });
     if (req.body.status === 'done' && !req.body.completed_date) { set.push(`completed_date=date('now')`); }
     if (set.length) {
       vals.push(req.params.tId, req.params.id);
@@ -706,8 +721,33 @@ function register(app, deps) {
     seedFirmRiskLibraryIfEmpty(firmId);
     const counts = {
       risks: db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c,
+      templates: db.prepare('SELECT COUNT(*) c FROM doc_templates WHERE firm_id=? AND is_system=0').get(firmId).c,
     };
     res.render('firm_library', { user: req.user, ws: null, counts }); // firm-level page - firm sidebar
+  });
+
+  // The firm's own document templates, saved from client documents
+  // (lib/firm-templates.js). They appear in every client's template library.
+  app.get('/firm/library/templates', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    const firmId = getActiveFirmId(req);
+    if (!firmId) return res.redirect('/tenants');
+    res.render('firm_library_templates', { user: req.user, ws: null, templates: require('../lib/firm-templates').list(db, firmId),
+      canManage: rbac.rolePermissions(req.user.firm_role).includes('firm.library.manage') });
+  });
+
+  app.post('/firm/library/templates/:id(\\d+)/delete', requireAuth, (req, res) => {
+    if (!requireFirmLibraryManage(req, res)) return;
+    const firmId = getActiveFirmId(req);
+    const firmTemplates = require('../lib/firm-templates');
+    try {
+      const t = firmTemplates.remove(db, firmId, Number(req.params.id));
+      logAction(req.user.id, null, 'delete_firm_template', 'doc_template', t.id, { name: t.name });
+      res.redirect(withToast('/firm/library/templates', `Removed "${t.name}". Documents already made from it are unchanged.`));
+    } catch (e) {
+      if (!(e instanceof firmTemplates.FirmTemplateError)) throw e;
+      res.redirect(withToast('/firm/library/templates', e.message, 'error'));
+    }
   });
 
   app.get('/firm/library/risks', requireAuth, (req, res) => {

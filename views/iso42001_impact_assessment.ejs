@@ -19,6 +19,7 @@
         <% if (approvedBy) { %><span>Approved by <strong><%= approvedBy %></strong> on <%= fmtDate(ia.approved_at) %></span><% } %>
       </div>
     </div>
+    <a class="btn btn-secondary" href="<%= base %>/ai-systems/<%= system.id %>/impact-assessments/<%= ia.id %>/report.docx">Word</a>
   </div>
 
   <% if (editable) { %>
@@ -27,6 +28,17 @@
       <% registry.IA_FIELDS.forEach(([key, label, hint]) => { %>
         <div><label class="label" for="ia_<%= key %>"><%= label %></label><textarea id="ia_<%= key %>" class="textarea" name="<%= key %>" rows="<%= ['potential_harms', 'mitigations', 'affected_parties'].includes(key) ? 4 : 3 %>" maxlength="8000"><%= ia[key] || '' %></textarea><span class="hint"><%= hint %></span></div>
       <% }) %>
+      <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);">
+        <div><label class="label" for="iaSeverity">Severity of the worst harm</label>
+          <select id="iaSeverity" class="select" name="harm_severity"><option value="">Not rated</option>
+            <% Object.entries(registry.HARM_SEVERITY).forEach(([k, l]) => { %><option value="<%= k %>" <%= Number(ia.harm_severity) === Number(k) ? 'selected' : '' %>><%= k %> · <%= l %></option><% }) %>
+          </select></div>
+        <div><label class="label" for="iaLikelihood">Likelihood of that harm</label>
+          <select id="iaLikelihood" class="select" name="harm_likelihood"><option value="">Not rated</option>
+            <% Object.entries(registry.HARM_LIKELIHOOD).forEach(([k, l]) => { %><option value="<%= k %>" <%= Number(ia.harm_likelihood) === Number(k) ? 'selected' : '' %>><%= k %> · <%= l %></option><% }) %>
+          </select></div>
+        <div><label class="label" for="iaReview">Next review</label><input id="iaReview" class="input" type="date" name="next_review_date" value="<%= ia.next_review_date || '' %>"><span class="hint">Twelve months after approval if left blank.</span></div>
+      </div>
       <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
         <div><label class="label" for="iaResidual">Residual impact after the measures</label>
           <select id="iaResidual" class="select" name="residual_level"><option value="">Not concluded</option>
@@ -43,7 +55,7 @@
     <section class="panel" aria-labelledby="iaApproveTitle">
       <div class="panel-head"><h2 id="iaApproveTitle">Approval</h2></div>
       <div class="a42-note">
-        Approval freezes this version: its content is hashed and cannot be edited afterwards. Reassessment starts a new version. The person who prepared the assessment cannot approve it.
+        Approval freezes this version: its content is hashed and cannot be edited afterwards. Reassessment starts a new version. No one who prepared or edited the assessment can approve it.
       </div>
       <div class="a42-attach" style="grid-template-columns:auto auto;justify-content:start;">
         <% if (perms.signoff && canApprove) { %>
@@ -66,7 +78,9 @@
         <% registry.IA_FIELDS.forEach(([key, label]) => { %>
           <dt><%= label %></dt><dd style="white-space:pre-line;"><%= ia[key] || 'Not recorded' %></dd>
         <% }) %>
+        <dt>Severity and likelihood</dt><dd><%= ia.harm_severity ? registry.HARM_SEVERITY[ia.harm_severity] : 'Not rated' %> · <%= ia.harm_likelihood ? registry.HARM_LIKELIHOOD[ia.harm_likelihood] : 'Not rated' %></dd>
         <dt>Residual impact</dt><dd><%= ia.residual_level ? registry.RESIDUAL[ia.residual_level] : 'Not concluded' %></dd>
+        <dt>Next review</dt><dd><%= ia.next_review_date || 'Not set' %></dd>
         <dt>Decision</dt><dd><%= ia.decision ? registry.DECISIONS[ia.decision] : 'Not decided' %></dd>
       </dl>
       <% if (ia.snapshot_hash) { %>

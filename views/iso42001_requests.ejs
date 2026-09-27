@@ -167,4 +167,32 @@
 </script>
 <% } %>
 
+<section class="panel" style="margin-top:16px;" aria-labelledby="rqRoundsTitle">
+  <div class="panel-head"><h2 id="rqRoundsTitle">Audit rounds</h2><span class="meta">Each audit keeps its own record of what was asked and supplied</span></div>
+  <% const roundList = typeof rounds !== 'undefined' ? rounds : []; %>
+  <% if (roundList.length) { %>
+    <table class="t">
+      <thead><tr><th>Round</th><th style="width:110px;" class="num">Requests</th><th style="width:110px;" class="num">Accepted</th><th style="width:170px;">Closed</th></tr></thead>
+      <tbody>
+        <% roundList.forEach(r => { %>
+          <tr><td><a class="link-muted" href="<%= base %>/requests/rounds/<%= r.id %>"><%= r.label %></a></td><td class="num"><%= r.request_count %></td><td class="num"><%= r.accepted_count %></td><td class="meta"><%= String(r.closed_at).slice(0, 10) %> · <%= r.closed_by_name || '' %></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <div class="a42-note">When an audit is over, seal its requests as a round. The list then resets for the next audit, so a surveillance audit starts from current evidence and the earlier audit's record is kept.</div>
+  <% } %>
+  <% if (perms.manage) { %>
+    <form method="POST" action="<%= base %>/requests/rounds" class="panel-pad" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;border-top:1px solid var(--border);" onsubmit="return confirm('Seal the current requests as a finished audit round and reset the list for the next audit?');">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <div><label class="label">The audit these requests were for</label>
+        <select class="select" name="cycle_event_id"><option value="">- not recorded on the cycle -</option>
+          <% (typeof cycleAudits !== 'undefined' ? cycleAudits : []).forEach(e => { %><option value="<%= e.id %>"><%= e.event_type %> · cycle <%= e.cycle_no %><%= e.actual_date || e.planned_date ? ' · ' + (e.actual_date || e.planned_date) : '' %></option><% }) %>
+        </select></div>
+      <div><label class="label">Round name <span class="meta">optional</span></label><input class="input" name="label" placeholder="e.g. Stage 1 and Stage 2, 2027"></div>
+      <div><button class="btn btn-secondary btn-xs">Close this audit round</button></div>
+    </form>
+  <% } %>
+</section>
+
 <%- include('partials/footer') %>

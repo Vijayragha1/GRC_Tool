@@ -40,6 +40,7 @@
     <div class="js-manual-field"><label class="label">Manual target</label><input class="input" name="target_value" placeholder="e.g. ≥ 95%"></div>
     <div class="js-manual-field"><label class="label">Manual current value</label><input class="input" name="current_value" placeholder="e.g. 82%"></div>
     <div class="js-manual-field"><label class="label">Manual status</label><select name="status" class="select"><option value="on_track">On target</option><option value="at_risk">Near target</option><option value="off_track">Off target</option><option value="achieved">Achieved</option><option value="paused">Paused</option></select></div>
+    <%- include('partials/objective_plan_fields', { ws }) %>
     <div class="wide perf-form-actions"><button class="btn btn-primary">Add objective</button></div>
   </form>
 </details>
@@ -82,6 +83,7 @@
                 <div class="js-manual-field"><label class="label">Manual target</label><input name="target_value" value="<%= row.target_value || '' %>" class="input"></div>
                 <div class="js-manual-field"><label class="label">Manual current value</label><input name="current_value" value="<%= row.current_value || '' %>" class="input"></div>
                 <div class="js-manual-field"><label class="label">Manual status</label><select name="status" class="select"><% ['on_track','at_risk','off_track','achieved','paused'].forEach(status => { %><option value="<%= status %>" <%= row.status === status ? 'selected' : '' %>><%= statusLabel[status] %></option><% }) %></select></div>
+                <%- include('partials/objective_plan_fields', { ws, row }) %>
                 <div class="wide perf-form-actions"><button class="btn btn-primary btn-xs">Save changes</button></div>
               </form>
             </details>

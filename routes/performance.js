@@ -5,6 +5,7 @@
 // communication plan.
 
 const ctlReads = require('../lib/control-reads');
+const reqOpts = require('../lib/requirement-options');
 const evReads = require('../lib/evidence-reads');
 const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
 const { parseWorkspaceFrameworks } = require('../lib/frameworks');
@@ -37,8 +38,11 @@ function register(app, deps) {
     const Tm = ctlReads.tables(db, wsId);
 
     // 1. Control implementation %
-    const controlImpl = cnt(`SELECT COUNT(*) c FROM ${Tm.cs} WHERE workspace_id=? AND status='Implemented' AND applicability='included'`);
-    const controlIncluded = cnt(`SELECT COUNT(*) c FROM ${Tm.cs} WHERE workspace_id=? AND applicability='included'`);
+    // Counted over the SoA of each ISO framework the client works to.
+    const stateViews = reqOpts.enabledCodes(workspace).map(code => ({ iso27001: Tm.cs, iso42001: Tm.cs42 })[code]).filter(Boolean);
+    const sumViews = (where) => stateViews.reduce((n, v) => n + cnt(`SELECT COUNT(*) c FROM ${v} WHERE workspace_id=? AND ${where}`), 0);
+    const controlImpl = sumViews(`status='Implemented' AND applicability='included'`);
+    const controlIncluded = sumViews(`applicability='included'`);
 
     // 2. Training completion %
     const trainAssigned = cnt(`SELECT COUNT(*) c FROM training_records WHERE workspace_id=?`);
@@ -80,6 +84,17 @@ function register(app, deps) {
         FROM iso_items i
         INNER JOIN ${Tm.cs} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
         WHERE i.type='control' AND cs.applicability='included'`).all(wsId, wsId);
+      // ISO 42001 evidence is linked to its controls through the requirement
+      // links rather than evidence.iso_item_id.
+      if (reqOpts.enabledCodes(workspace).includes('iso42001')) {
+        rows.push(...db.prepare(`SELECT i.id,
+            (SELECT MAX(e.uploaded_at) FROM evidence_requirement_links erl
+               JOIN evidence e ON e.id = erl.evidence_id JOIN requirements rq ON rq.id = erl.requirement_id
+               WHERE rq.ref = i.id AND e.workspace_id=? AND e.superseded_at IS NULL) AS last_ev
+          FROM iso42001_items i
+          INNER JOIN ${Tm.cs42} cs ON cs.iso_item_id=i.id AND cs.workspace_id=?
+          WHERE i.type='control' AND cs.applicability='included'`).all(wsId, wsId));
+      }
       evidenceTotalCtl = rows.length;
       evidenceFresh = rows.filter(r => r.last_ev && r.last_ev >= oneYearAgo).length;
     } catch (_) {}
@@ -183,7 +198,17 @@ function register(app, deps) {
   // target on, and record readings against over time. Complements the auto-computed
   // clause-9.1 dashboard above with a curated, user-maintained measurement programme.
   const ISO27004_METRICS = require('../data/iso27004-metrics');
-  const ISO27004_BY_KEY = Object.fromEntries(ISO27004_METRICS.map(m => [m.key, m]));
+  // AI measures for an ISO 42001 client (data/aims-metrics.js), adopted the
+  // same way; ISO27004_BY_KEY resolves either catalogue's key.
+  const AIMS_METRICS = require('../data/aims-metrics');
+  const ISO27004_BY_KEY = Object.fromEntries([...ISO27004_METRICS, ...AIMS_METRICS].map(m => [m.key, m]));
+  const catalogFor = (workspace) => {
+    const ai = reqOpts.enabledCodes(workspace).includes('iso42001');
+    return {
+      metrics: ai ? [...AIMS_METRICS, ...ISO27004_METRICS] : ISO27004_METRICS,
+      categories: ai ? [...AIMS_METRICS.CATEGORIES, ...ISO27004_METRICS.CATEGORIES] : ISO27004_METRICS.CATEGORIES,
+    };
+  };
 
   // RAG status for a reading vs the adopted target, honouring the metric's direction
   // (whether a higher or lower value is better). Null when no target/value is set.
@@ -191,11 +216,33 @@ function register(app, deps) {
     return performanceObjectives.metricRag(value, target, direction);
   }
 
+  // Controls of each ISO framework the workspace works to, with their state,
+  // for the evidence coverage matrix and its CSV. An ISO 42001 client's matrix
+  // lists its Annex A controls, not the ISO 27001 ones.
+  function coverageControls(workspace) {
+    const T = ctlReads.tables(db, workspace.id);
+    const sources = { iso27001: ['iso_items', T.cs], iso42001: ['iso42001_items', T.cs42] };
+    const rows = [];
+    for (const code of reqOpts.enabledCodes(workspace)) {
+      const src = sources[code];
+      if (!src) continue;
+      rows.push(...db.prepare(`SELECT i.id, i.title, i.category, i.type, i.evidence_to_look_for, ? AS framework,
+          COALESCE(cs.status,'Not Assessed') AS status,
+          COALESCE(cs.applicability,'undecided') AS applicability
+        FROM ${src[0]} i
+        LEFT JOIN ${src[1]} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
+        WHERE i.type='control'
+        ORDER BY i.sort_order`).all(code, workspace.id));
+    }
+    return rows;
+  }
+
   // Resolve iso_item ids to {id, title, type} for display + linking to controls.
   function resolveControls(ids) {
     if (!ids || !ids.length) return [];
     const ph = ids.map(() => '?').join(',');
-    const rows = db.prepare(`SELECT id, title, type FROM iso_items WHERE id IN (${ph})`).all(...ids);
+    const rows = db.prepare(`SELECT id, title, type FROM iso_items WHERE id IN (${ph})
+      UNION ALL SELECT id, title, type FROM iso42001_items WHERE id IN (${ph})`).all(...ids, ...ids);
     const byId = Object.fromEntries(rows.map(r => [r.id, r]));
     return ids.map(id => byId[id] || { id, title: id, type: 'control' });
   }
@@ -207,17 +254,21 @@ function register(app, deps) {
     db.prepare(`SELECT m.id,m.metric_key,(SELECT COUNT(*) FROM security_objectives o WHERE o.metric_id=m.id) AS objective_count
       FROM isms_metrics m WHERE m.workspace_id=?`).all(req.workspace.id).forEach(a => { adoptedById[a.metric_key] = a; });
     const byCategory = {};
-    ISO27004_METRICS.forEach(m => {
+    const catalog = catalogFor(req.workspace);
+    catalog.metrics.forEach(m => {
       (byCategory[m.category] = byCategory[m.category] || []).push({
         ...m, adoptedId: adoptedById[m.key]?.id || null, adopted: adoptedById[m.key] != null,
         objectiveCount: adoptedById[m.key]?.objective_count || 0, controlsResolved: resolveControls(m.controls),
       });
     });
     const categories = [
-      ...ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]),
-      ...Object.keys(byCategory).filter(c => !ISO27004_METRICS.CATEGORIES.includes(c)).sort(),
+      ...catalog.categories.filter(c => byCategory[c]),
+      ...Object.keys(byCategory).filter(c => !catalog.categories.includes(c)).sort(),
     ];
-    res.render('metrics_library', { user: req.user, ws: req.workspace, byCategory, categories, total: ISO27004_METRICS.length, adoptedCount: Object.keys(adoptedById).length });
+    const aiSystems = reqOpts.enabledCodes(req.workspace).includes('iso42001')
+      ? db.prepare(`SELECT id, name FROM ai_systems WHERE workspace_id=? AND lifecycle_stage != 'retired' ORDER BY name`).all(req.workspace.id) : [];
+    res.render('metrics_library', { user: req.user, ws: req.workspace, byCategory, categories, total: catalog.metrics.length,
+      adoptedCount: Object.keys(adoptedById).length, aiSystems, customCategories: catalog.categories });
   });
 
   // Adopt selected catalog measures into the engagement.
@@ -225,15 +276,16 @@ function register(app, deps) {
     const picked = parseFormArray(req.body.pick);
     if (!picked.length) return redirectBack(req, res, 'Select at least one metric to adopt.', 'warn');
     const ins = db.prepare(`INSERT OR IGNORE INTO isms_metrics
-      (workspace_id, metric_key, ref, name, category, unit, direction, formula, target_value, target_text, frequency, created_by)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+      (workspace_id, metric_key, ref, name, category, unit, direction, formula, target_value, target_text, frequency, created_by, framework)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     let added = 0;
     const tx = db.transaction(() => {
       picked.forEach(key => {
         const m = ISO27004_BY_KEY[key];
         if (!m) return;
         const r = ins.run(req.workspace.id, m.key, m.ref, m.name, m.category, m.unit, m.direction,
-          m.formula, m.suggestedTarget ?? null, m.targetText || null, m.frequency || null, req.user.id);
+          m.formula, m.suggestedTarget ?? null, m.targetText || null, m.frequency || null, req.user.id,
+          m.key.startsWith('aims-') ? 'iso42001' : 'iso27001');
         if (r.changes) added++;
       });
     });
@@ -241,6 +293,29 @@ function register(app, deps) {
     logAction(req.user.id, req.workspace.id, 'adopt_isms_metrics', 'isms_metric', null, { count: added }, auditCtx(req));
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/metrics/adopted',
       added ? `Adopted ${added} metric${added === 1 ? '' : 's'} - set targets and record readings` : 'Those metrics were already adopted'));
+  });
+
+  // A measure of the consultant's own, for what neither catalogue covers:
+  // an AI system's accuracy, a fairness threshold, a client-specific KPI.
+  app.post('/workspaces/:wsId/metrics/custom', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const name = String(req.body.name || '').trim().slice(0, 200);
+    if (!name) return redirectBack(req, res, 'Name the measure.', 'error');
+    const direction = req.body.direction === 'lower' ? 'lower' : 'higher';
+    const target = req.body.target_value === '' || req.body.target_value == null ? null : Number(req.body.target_value);
+    const aiSystem = Number(req.body.ai_system_id) || null;
+    const aiSystemOk = aiSystem && db.prepare('SELECT 1 FROM ai_systems WHERE id=? AND workspace_id=?').get(aiSystem, req.workspace.id) ? aiSystem : null;
+    const framework = ['iso27001', 'iso42001'].includes(req.body.framework) && reqOpts.enabledCodes(req.workspace).includes(req.body.framework)
+      ? req.body.framework : (aiSystemOk ? 'iso42001' : null);
+    const key = `custom-${require('crypto').randomBytes(6).toString('hex')}`;
+    const id = db.prepare(`INSERT INTO isms_metrics (workspace_id, metric_key, ref, name, category, unit, direction, formula, target_value, target_text, frequency, owner_name, notes, created_by, framework, ai_system_id)
+      VALUES (?, ?, 'Custom', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      req.workspace.id, key, name, String(req.body.category || 'Custom measures').trim().slice(0, 80) || 'Custom measures',
+      String(req.body.unit || '').trim().slice(0, 20) || null, direction, String(req.body.formula || '').trim().slice(0, 1000) || null,
+      Number.isFinite(target) ? target : null, String(req.body.target_text || '').trim().slice(0, 200) || null,
+      String(req.body.frequency || '').trim().slice(0, 40) || null, String(req.body.owner_name || '').trim().slice(0, 120) || null,
+      String(req.body.notes || '').trim().slice(0, 2000) || null, req.user.id, framework, aiSystemOk).lastInsertRowid;
+    logAction(req.user.id, req.workspace.id, 'create_custom_metric', 'isms_metric', id, { name, framework }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/metrics/adopted/${id}`, 'Measure created - record its first reading'));
   });
 
   // Adopted measures with their latest reading vs target (RAG).
@@ -254,9 +329,10 @@ function register(app, deps) {
       m.reading_count = readingCounts.get(m.id) || 0;
       (byCategory[m.category] = byCategory[m.category] || []).push(m);
     });
+    const adoptedCatalog = catalogFor(req.workspace);
     const categories = [
-      ...ISO27004_METRICS.CATEGORIES.filter(c => byCategory[c]),
-      ...Object.keys(byCategory).filter(c => !ISO27004_METRICS.CATEGORIES.includes(c)).sort(),
+      ...adoptedCatalog.categories.filter(c => byCategory[c]),
+      ...Object.keys(byCategory).filter(c => !adoptedCatalog.categories.includes(c)).sort(),
     ];
     const ragCounts = { green: 0, amber: 0, red: 0, none: 0 };
     rows.forEach(m => ragCounts[m.rag || 'none']++);
@@ -426,13 +502,7 @@ function register(app, deps) {
     const today = todayFor(req.workspace);
     const staleCutoff = ymdInZone(new Date(Date.now() - 365 * 86400000),workspaceTimeZone(req.workspace));
 
-    const rows = db.prepare(`SELECT i.id, i.title, i.category, i.type, i.evidence_to_look_for,
-        COALESCE(cs.status,'Not Assessed') AS status,
-        COALESCE(cs.applicability,'undecided') AS applicability
-      FROM iso_items i
-      LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-      WHERE i.type='control'
-      ORDER BY i.sort_order`).all(wsId);
+    const rows = coverageControls(req.workspace);
 
     // For each control, count attached evidence (live, not superseded). Two link
     // paths: primary evidence.iso_item_id (core table, unchanged) + the join
@@ -454,7 +524,9 @@ function register(app, deps) {
       else if (attachedCount >= expectedCount && !stale) band = 'green';
       else if (attachedCount > 0) band = 'amber';
       return {
-        id: r.id, title: r.title, category: r.category,
+        id: r.id, title: r.title, category: r.category, framework: r.framework,
+        code: reqOpts.codeOf(r), frameworkLabel: reqOpts.label(r.framework),
+        href: r.framework === 'iso42001' ? `/workspaces/${wsId}/iso42001/gap/${r.id}` : `/workspaces/${wsId}/controls/assess/${r.id}`,
         status: r.status, applicability: r.applicability,
         expected, expectedCount, attachedCount, lastUp, stale, band
       };
@@ -479,7 +551,8 @@ function register(app, deps) {
     kpis.linkedPct = included.length ? Math.round((kpis.linked / included.length) * 100) : 0;
     kpis.sufficiencyPct = included.length ? Math.round((kpis.fullyCovered / included.length) * 100) : 0;
 
-    res.render('evidence_coverage', { user: req.user, ws: req.workspace, rows: filtered, kpis, filter, today });
+    res.render('evidence_coverage', { user: req.user, ws: req.workspace, rows: filtered, kpis, filter, today,
+      multiFramework: new Set(matrix.map(m => m.framework)).size > 1 });
   });
 
   // CSV export of the matrix
@@ -489,14 +562,10 @@ function register(app, deps) {
     requirePermission('control.view'), (req, res) => {
     const wsId = req.workspace.id;
     const staleCutoff = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-    const rows = db.prepare(`SELECT i.id, i.title, i.category, i.evidence_to_look_for,
-        COALESCE(cs.applicability,'undecided') AS applicability
-      FROM iso_items i
-      LEFT JOIN ${ctlReads.tables(db, wsId).cs} cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-      WHERE i.type='control' ORDER BY i.sort_order`).all(wsId);
+    const rows = coverageControls(req.workspace);
     const evidenceByControl = evReads.coverageEvidenceByControl(db, wsId);
     const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
-    const lines = ['Code,Title,Category,Applicability,Expected count,Attached count,Last upload,Stale (>12mo),Status band'];
+    const lines = ['Framework,Code,Title,Category,Applicability,Expected count,Attached count,Last upload,Stale (>12mo),Status band'];
     for (const r of rows) {
       let expected = [];
       try { expected = JSON.parse(r.evidence_to_look_for || '[]') || []; } catch (_) {}
@@ -506,8 +575,8 @@ function register(app, deps) {
       const band = expected.length === 0 ? (ev.attached > 0 ? 'green' : 'gray')
                   : (ev.attached >= expected.length && !stale) ? 'green'
                   : ev.attached > 0 ? 'amber' : 'red';
-      const code = r.id.replace('annex-','').toUpperCase();
-      lines.push([code, r.title, r.category, r.applicability, expected.length, ev.attached, lastUp, stale ? 'yes' : '', band].map(esc).join(','));
+      const code = reqOpts.codeOf(r);
+      lines.push([reqOpts.label(r.framework), code, r.title, r.category, r.applicability, expected.length, ev.attached, lastUp, stale ? 'yes' : '', band].map(esc).join(','));
     }
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="evidence-coverage-${(new Date()).toISOString().slice(0,10)}.csv"`);
@@ -577,11 +646,21 @@ function register(app, deps) {
   });
 
   // ==================== COMPETENCE MATRIX (Clause 7.2) ====================
+  // The evidence file a competence record points to, if it is this client's.
+  const competenceEvidence = (req) => {
+    const id = Number(req.body.evidence_id) || null;
+    return id && db.prepare('SELECT 1 FROM evidence WHERE id=? AND workspace_id=?').get(id, req.workspace.id) ? id : null;
+  };
   app.get('/workspaces/:wsId/competence', requireAuth, requireWorkspace, requirePermission('members.view'), (req, res) => {
     const roles = db.prepare(`SELECT * FROM competence_roles WHERE workspace_id=? ORDER BY name`).all(req.workspace.id);
-    const records = db.prepare(`SELECT cr.*, r.name AS role_name
+    const records = db.prepare(`SELECT cr.*, r.name AS role_name, e.filename AS evidence_filename
       FROM competence_records cr INNER JOIN competence_roles r ON r.id=cr.role_id
+      LEFT JOIN evidence e ON e.id=cr.evidence_id AND e.workspace_id=cr.workspace_id
       WHERE cr.workspace_id=? ORDER BY r.name, cr.person_name, cr.competence`).all(req.workspace.id);
+    // Evidence files a competence record can point to (clause 7.2 asks for
+    // retained evidence of competence, not a reference to it).
+    const evidenceFiles = db.prepare(`SELECT id, filename, uploaded_at FROM evidence
+      WHERE workspace_id=? AND superseded_at IS NULL ORDER BY uploaded_at DESC LIMIT 300`).all(req.workspace.id);
     // Build matrix: people × competences per role
     const matrix = {};
     records.forEach(r => {
@@ -598,7 +677,7 @@ function register(app, deps) {
       expired: records.filter(r => r.expires_on && r.expires_on < today).length,
       expiringSoon: records.filter(r => r.expires_on && r.expires_on >= today && r.expires_on < soon).length
     };
-    res.render('competence', { user: req.user, ws: req.workspace, roles, records, matrix, stats, today, soon });
+    res.render('competence', { user: req.user, ws: req.workspace, roles, records, matrix, stats, today, soon, evidenceFiles });
   });
 
   app.post('/workspaces/:wsId/competence/roles', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
@@ -628,19 +707,20 @@ function register(app, deps) {
     // Sanity: the role must belong to this workspace.
     const role = db.prepare(`SELECT id FROM competence_roles WHERE id=? AND workspace_id=?`).get(role_id, req.workspace.id);
     if (!role) return res.redirect(`/workspaces/${req.workspace.id}/competence`);
-    db.prepare(`INSERT INTO competence_records (workspace_id, role_id, person_name, person_email, competence, evidence_type, evidence_ref, recorded_at, expires_on, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO competence_records (workspace_id, role_id, person_name, person_email, competence, evidence_type, evidence_ref, recorded_at, expires_on, notes, evidence_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, role_id, person_name.trim(), person_email || null, competence.trim(),
-           evidence_type || null, evidence_ref || null, recorded_at || null, expires_on || null, notes || null);
+           evidence_type || null, evidence_ref || null, recorded_at || null, expires_on || null, notes || null,
+           competenceEvidence(req));
     logAction(req.user.id, req.workspace.id, 'add_competence_record', 'competence_record', null, { role_id, person_name, competence }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/competence`);
   });
 
   app.post('/workspaces/:wsId/competence/records/:id/update', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const { evidence_type, evidence_ref, recorded_at, expires_on, notes } = req.body;
-    db.prepare(`UPDATE competence_records SET evidence_type=?, evidence_ref=?, recorded_at=?, expires_on=?, notes=? WHERE id=? AND workspace_id=?`)
+    db.prepare(`UPDATE competence_records SET evidence_type=?, evidence_ref=?, recorded_at=?, expires_on=?, notes=?, evidence_id=? WHERE id=? AND workspace_id=?`)
       .run(evidence_type || null, evidence_ref || null, recorded_at || null, expires_on || null, notes || null,
-           req.params.id, req.workspace.id);
+           competenceEvidence(req), req.params.id, req.workspace.id);
     res.redirect(`/workspaces/${req.workspace.id}/competence`);
   });
 

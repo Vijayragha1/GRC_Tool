@@ -1,0 +1,78 @@
+<%- include('partials/header', { title: 'Acknowledgements', user, ws, active: 'documents' }) %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : null; %>
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a class="link-muted" href="/workspaces/<%= ws.id %>/documents/<%= doc.id %>"><%= doc.name %></a></div>
+    <h1 class="page-title">Acknowledgements</h1>
+    <div class="page-subtitle">The people this document applies to confirm they have read the published version. Each person gets a link of their own; the record of who acknowledged which version, and when, is the awareness evidence an auditor samples.</div>
+  </div>
+</div>
+
+<% if (issued.length) { %>
+  <div class="panel" style="margin-bottom:14px;border-color:var(--accent);">
+    <div class="panel-head"><h2>Links issued</h2><span class="meta">Shown once. People with an email address have been sent theirs.</span></div>
+    <table class="t">
+      <thead><tr><th>Person</th><th>Email</th><th>Link</th></tr></thead>
+      <tbody>
+        <% issued.forEach(l => { %>
+          <tr><td><%= l.name %></td><td class="meta"><%= l.email || '-' %></td><td><input class="input mono text-xs" readonly value="<%= l.url %>" onclick="this.select()"></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<% if (!published) { %>
+  <div class="panel" style="margin-bottom:14px;"><div class="panel-pad">Publish the document before asking people to acknowledge it.</div></div>
+<% } else { %>
+  <details class="panel" style="margin-bottom:14px;" <%= campaigns.length ? '' : 'open' %>>
+    <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Ask people to acknowledge version <%= published.version %></summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/acknowledgements" class="panel-pad stack-grid" style="--cols:minmax(0,1fr) 180px;gap:10px;border-top:1px solid var(--border);">
+      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+      <div><label class="label">Name <span class="meta">optional</span></label><input class="input" name="name" placeholder="<%= doc.name %> v<%= published.version %> acknowledgement"></div>
+      <div><label class="label">Due by</label><input class="input" type="date" name="due_date"></div>
+      <div class="col-full"><label class="label">People, one per line</label>
+        <textarea class="textarea" name="recipients" rows="6" required placeholder="Maya Iyer <maya@example.com>&#10;Tom Reyes, tom@example.com"><%= members.map(m => `${m.name} <${m.email}>`).join('\n') %></textarea>
+        <div class="meta text-xs" style="margin-top:4px;">Filled with the client's portal users; edit the list to suit the document's audience.</div>
+      </div>
+      <div class="col-full"><button class="btn btn-primary btn-xs">Issue links</button></div>
+    </form>
+  </details>
+<% } %>
+
+<% campaigns.forEach(c => { %>
+  <div class="panel" style="margin-bottom:14px;">
+    <div class="panel-head">
+      <h2><%= c.name %></h2>
+      <span class="meta">version <%= c.version_number %> · <%= c.acknowledged %> of <%= c.recipients.length %> acknowledged<% if (c.due_date) { %> · due <%= c.due_date %><% } %> · <%= c.status %></span>
+    </div>
+    <table class="t">
+      <thead><tr><th>Person</th><th>Email</th><th style="width:170px;">Acknowledged</th><th style="width:120px;"></th></tr></thead>
+      <tbody>
+        <% c.recipients.forEach(r => { %>
+          <tr>
+            <td><%= r.recipient_name %></td>
+            <td class="meta"><%= r.recipient_email || '-' %></td>
+            <td class="<%= r.acknowledged_at ? '' : 'meta' %>"><%= r.acknowledged_at ? String(r.acknowledged_at).slice(0, 16) : 'not yet' %></td>
+            <td>
+              <% if (!r.acknowledged_at && c.status === 'active') { %>
+                <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/acknowledgements/recipients/<%= r.id %>/reissue">
+                  <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+                  <button class="btn btn-ghost btn-xs">New link</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (c.status === 'active') { %>
+      <form method="POST" action="/workspaces/<%= ws.id %>/documents/<%= doc.id %>/acknowledgements/<%= c.id %>/close" class="panel-pad" style="border-top:1px solid var(--border);">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <button class="btn btn-secondary btn-xs" onclick="return confirm('Close this campaign? Outstanding links stop working.')">Close campaign</button>
+      </form>
+    <% } %>
+  </div>
+<% }) %>
+
+<%- include('partials/footer') %>

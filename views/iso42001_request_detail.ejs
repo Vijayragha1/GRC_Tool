@@ -29,7 +29,8 @@
     switch (e.event_type) {
       case 'imported': return m.source === 'standard' ? 'Added from the standard certification checklist' : 'Imported from the certification body\'s list';
       case 'added_manually': return 'Added to the list by hand';
-      case 'updated_by_cb': return `${m.source === 'standard' ? 'A newer standard checklist changed' : 'The certification body\'s newer list changed'} ${(m.fields || []).map(f => f.replace(/_/g, ' ').replace(/^cb /, '')).join(', ') || 'this request'}${m.previous_due_date ? ` (due date was ${fmtDate(m.previous_due_date)})` : ''}`;
+      case 'updated_by_cb': if (m.kept_from_checklist) return `No longer in the standard checklist (version ${m.checklist_version || 'newer'}); kept as your own request because work had started on it`;
+        return `${m.source === 'standard' ? 'A newer standard checklist changed' : 'The certification body\'s newer list changed'} ${(m.fields || []).map(f => f.replace(/_/g, ' ').replace(/^cb /, '')).join(', ') || 'this request'}${m.previous_due_date ? ` (due date was ${fmtDate(m.previous_due_date)})` : ''}`;
       case 'withdrawn_by_cb': return m.source === 'standard' ? 'No longer in the standard checklist' : 'Dropped from the certification body\'s newer list';
       case 'restored_by_cb': return m.source === 'standard' ? 'Back in the standard checklist' : 'Back on the certification body\'s list';
       case 'sent_to_client': return `Sent to ${m.assignee_name || 'the client'}${m.due_date ? `, asked for by ${fmtDate(m.due_date)}` : ''}`;
