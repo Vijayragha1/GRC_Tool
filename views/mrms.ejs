@@ -77,10 +77,11 @@
           <% [
                { key: 'prior_actions_status',        clause: '9.3.2 a)', label: 'Prior actions' },
                { key: 'context_changes',             clause: '9.3.2 b)', label: 'Context changes' },
-               { key: 'performance_review',          clause: '9.3.2 c)', label: 'Performance' },
-               { key: 'feedback_interested_parties', clause: '9.3.2 d)', label: 'Interested-party feedback' },
-               { key: 'risk_treatment_status',       clause: '9.3.2 e)', label: 'Risk treatment' },
-               { key: 'improvement_opportunities',   clause: '9.3.2 f)', label: 'Improvements' }
+               { key: 'interested_party_changes',    clause: '9.3.2 c)', label: 'Interested-party changes' },
+               { key: 'performance_review',          clause: '9.3.2 d)', label: 'Performance' },
+               { key: 'feedback_interested_parties', clause: '9.3.2 e)', label: 'Interested-party feedback' },
+               { key: 'risk_treatment_status',       clause: '9.3.2 f)', label: 'Risk treatment' },
+               { key: 'improvement_opportunities',   clause: '9.3.2 g)', label: 'Improvements' }
              ].forEach(f => { %>
             <div class="pre932-row">
               <div class="pre932-label"><%= f.label %><span class="clause"><%= f.clause %></span></div>

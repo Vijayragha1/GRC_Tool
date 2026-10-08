@@ -2,6 +2,7 @@
 <%
   const statusLabel = { on_track:'On target', at_risk:'Near target', off_track:'Off target', achieved:'Achieved', paused:'Paused', no_data:'Awaiting data' };
   const statusClass = { on_track:'good', achieved:'good', at_risk:'warn', off_track:'risk', paused:'neutral', no_data:'neutral' };
+  const aiTopicLabel = typeof aiTopics !== 'undefined' ? Object.fromEntries(aiTopics.map(t => [t.key, t.label])) : {};
 %>
 
 <div class="page-head perf-page-head">
@@ -55,6 +56,7 @@
         <article>
           <div class="perf-objective-main">
             <div class="perf-objective-title"><strong><%= row.title %></strong><span class="perf-status <%= statusClass[row.effectiveStatus] || 'neutral' %>"><%= statusLabel[row.effectiveStatus] || row.effectiveStatus %></span></div>
+            <% if (row.ai_topic && aiTopicLabel[row.ai_topic]) { %><p class="meta text-xs">AI objective &middot; <%= aiTopicLabel[row.ai_topic] %></p><% } %>
             <% if (row.description) { %><p><%= row.description %></p><% } %>
             <div class="perf-source">
               <% if (row.metricDriven) { %>

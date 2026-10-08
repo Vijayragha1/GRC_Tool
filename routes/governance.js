@@ -257,7 +257,7 @@ function register(app, deps) {
     const wsId = workspace.id;
     const today = new Date().toISOString().slice(0,10);
 
-    // ---- existing 9.3.2 a / c / e numbers ----
+    // ---- existing 9.3.2 a / d / f numbers (ISO 27001:2022 lettering) ----
     const ncOpen = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified')`).get(wsId).c;
     const ncMajor = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND severity='major' AND status NOT IN ('closed','verified')`).get(wsId).c;
     const ncOverdue = db.prepare(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND status NOT IN ('closed','verified') AND due_date < ?`).get(wsId, today).c;
@@ -291,7 +291,24 @@ function register(app, deps) {
       if (row) incidents = { total: row.total || 0, open: row.open || 0, last12m: row.last12m || 0 };
     } catch (_) {}
 
-    // ---- 9.3.2.f opportunities for improvement ----
+    // ---- 9.3.2.c changes in interested parties' needs and expectations ----
+    // The interested parties register (clause 4.2) is kept on the ISO 42001
+    // context page; any client can hold entries there.
+    let parties = { total: 0, added: 0, changed: 0, obligations: 0, recent: [] };
+    try {
+      const since = lastMrm ? lastMrm.meeting_date : null;
+      const sinceSql = since ? '?' : "date('now','-12 months')";
+      const sinceParams = since ? [since] : [];
+      parties.total = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?`).get(wsId).c;
+      parties.obligations = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND requirement_kind IN ('legal','regulatory','contractual')`).get(wsId).c;
+      parties.added = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND date(created_at) > ${sinceSql}`).get(wsId, ...sinceParams).c;
+      parties.changed = db.prepare(`SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=? AND date(created_at) <= ${sinceSql} AND date(updated_at) > ${sinceSql}`)
+        .get(wsId, ...sinceParams, ...sinceParams).c;
+      parties.recent = db.prepare(`SELECT party, needs FROM interested_parties WHERE workspace_id=? AND date(updated_at) > ${sinceSql} ORDER BY updated_at DESC LIMIT 5`)
+        .all(wsId, ...sinceParams);
+    } catch (_) {}
+
+    // ---- 9.3.2.g opportunities for improvement ----
     const improvementsOpen = db.prepare(`SELECT COUNT(*) c FROM improvements WHERE workspace_id=? AND status IN ('open','in_progress')`).get(wsId).c;
     const improvementsDone = db.prepare(`SELECT COUNT(*) c FROM improvements WHERE workspace_id=? AND status='done'`).get(wsId).c;
     const recentImprovements = db.prepare(`SELECT title, source FROM improvements WHERE workspace_id=? AND status IN ('open','in_progress') ORDER BY created_at DESC LIMIT 5`).all(wsId);
@@ -306,7 +323,7 @@ function register(app, deps) {
       if (row) supplierReview = { total: row.total || 0, overdue: row.overdue || 0 };
     } catch (_) {}
 
-    // ---- 9.3.2.e: risk register diff since last MRM ----
+    // ---- 9.3.2.f: risk register diff since last MRM ----
     let risksAddedSinceLast = 0, risksClosedSinceLast = 0;
     if (lastMrm) {
       risksAddedSinceLast = db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND date(created_at) > ?`).get(wsId, lastMrm.meeting_date).c;
@@ -324,19 +341,24 @@ function register(app, deps) {
         ? `Changes since last MRM (${lastMrm.meeting_date}):\n  New suppliers onboarded: ${newSuppliers}\n\n[Add narrative on regulatory updates, organisational changes, technology shifts, threat-landscape evolution, and changes in the needs / expectations of interested parties identified during gap assessment.]`
         : `Baseline context (no prior MRM):\n  Suppliers on file: ${supplierReview.total}\n\n[Document the external + internal context relevant to the ${systemName(workspace)} - regulations, market, technology, organisation. Note the interested parties identified during gap assessment (clause 4.2).]`,
 
-      // 9.3.2.c - performance review (extended with incidents + suppliers)
+      // 9.3.2.c - changes in interested parties' needs and expectations
+      interested_party_changes: parties.total
+        ? `Interested parties on record: ${parties.total} (${parties.obligations} with a legal, regulatory or contractual obligation)\n  Added ${lastMrm ? `since last MRM (${lastMrm.meeting_date})` : 'in the last 12 months'}: ${parties.added}\n  Requirements changed: ${parties.changed}${parties.recent.length ? '\n\nRecently added or changed:\n' + parties.recent.map(p => `  - ${p.party}${p.needs ? ': ' + p.needs : ''}`).join('\n') : ''}\n\n[Note what customers, regulators, affected people and employees now need or expect that they did not before, and what the management system will do about it.]`
+        : '[No interested parties are recorded yet. Note what customers, regulators, employees and others now need or expect that they did not at the last review.]',
+
+      // 9.3.2.d - performance review (extended with incidents + suppliers)
       performance_review: `Internal audit programme (last 12 months):\n  Audits run: ${auditsLast12}\n  Findings raised: ${findingsLast12}\n\nNonconformity status:\n  Open: ${ncOpen} (Major: ${ncMajor}, Overdue: ${ncOverdue})\n\nRisk treatment plan:\n  Open actions: ${treatmentOpen}\n  Closed actions: ${treatmentDone}\n\nIncidents (last 12 months):\n  Total: ${incidents.last12m} (${incidents.open} still open)\n\nSupplier reviews:\n  ${supplierReview.total} suppliers · ${supplierReview.overdue} overdue review${supplierReview.overdue === 1 ? '' : 's'}\n\n[Add commentary on KPIs, monitoring metrics (9.1), trends, root-cause patterns.]`,
 
-      // 9.3.2.d - interested-party feedback. Parties are now captured
+      // 9.3.2.e - interested-party feedback. Parties are now captured
       // during the gap assessment + clause 4.2 work rather than a
       // dedicated register, so the auto-pack just hands the consultant
       // a structured prompt to fill in.
       feedback_interested_parties: `[Summarise feedback received in the period from interested parties identified in clause 4.2 - customer concerns / contractual security asks, regulator queries, employee survey results, supplier feedback, board observations. Quantify where possible (NPS, audit findings against customer SoWs, complaint volumes).]`,
 
-      // 9.3.2.e - risk-treatment status (existing + register diff)
+      // 9.3.2.f - risk-treatment status (existing + register diff)
       risk_treatment_status: `Risk register snapshot (today):\n  Total open risks: ${openRisks}\n  High-residual (L×I ≥ 16): ${highRisks}${lastMrm ? `\n\nSince last MRM (${lastMrm.meeting_date}):\n  Risks added: ${risksAddedSinceLast}\n  Risks closed/treated: ${risksClosedSinceLast}` : ''}\n\n[Add narrative on top risks, treatment progress, residual-risk acceptance.]`,
 
-      // 9.3.2.f - improvement opportunities
+      // 9.3.2.g - improvement opportunities
       improvement_opportunities: improvementsOpen === 0 && improvementsDone === 0
         ? 'No improvement actions recorded yet. Capture observations from audits, MRMs, incidents, and monitoring under Improvements (Clause 10.1).'
         : `Improvement log:\n  Active: ${improvementsOpen}\n  Completed: ${improvementsDone}${recentImprovements.length ? '\n\nActive items:\n' + recentImprovements.map(i => `  - ${i.title}${i.source ? ' [' + i.source + ']' : ''}`).join('\n') : ''}\n\n[Identify themes from this period's data: recurring NCs, gaps surfaced by audits, technology refresh, training needs, control automation candidates.]`,
@@ -354,12 +376,12 @@ function register(app, deps) {
     const pack = compute932InputPack(req.workspace);
     const id = db.prepare(`INSERT INTO mrms
       (workspace_id, meeting_date, attendees,
-       prior_actions_status, context_changes, performance_review, feedback_interested_parties,
+       prior_actions_status, context_changes, interested_party_changes, performance_review, feedback_interested_parties,
        risk_treatment_status, improvement_opportunities,
        created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, meeting_date || null, attendees || null,
-           pack.prior_actions_status, pack.context_changes, pack.performance_review,
+           pack.prior_actions_status, pack.context_changes, pack.interested_party_changes, pack.performance_review,
            pack.feedback_interested_parties, pack.risk_treatment_status, pack.improvement_opportunities,
            req.user.id).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'create_mrm', 'mrm', id, null);
@@ -375,10 +397,10 @@ function register(app, deps) {
     if (!mrm) return res.status(404).send('Not found');
     const pack = compute932InputPack(req.workspace);
     db.prepare(`UPDATE mrms SET
-        prior_actions_status=?, context_changes=?, performance_review=?,
+        prior_actions_status=?, context_changes=?, interested_party_changes=?, performance_review=?,
         feedback_interested_parties=?, risk_treatment_status=?, improvement_opportunities=?
       WHERE id=? AND workspace_id=?`)
-      .run(pack.prior_actions_status, pack.context_changes, pack.performance_review,
+      .run(pack.prior_actions_status, pack.context_changes, pack.interested_party_changes, pack.performance_review,
            pack.feedback_interested_parties, pack.risk_treatment_status, pack.improvement_opportunities,
            mrm.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'refresh_mrm_inputs', 'mrm', mrm.id, null, auditCtx(req));
@@ -433,7 +455,7 @@ function register(app, deps) {
   });
 
   app.post('/workspaces/:wsId/mrms/:id', requireAuth, requireWorkspace, requireManagementReviewService, requirePermission('mrm.manage'), (req, res) => {
-    const f = ['meeting_date','attendees','status','context_changes','prior_actions_status',
+    const f = ['meeting_date','attendees','status','context_changes','interested_party_changes','prior_actions_status',
                'performance_review','feedback_interested_parties','risk_treatment_status',
                'improvement_opportunities','decisions','action_items'];
     const set = []; const vals = [];

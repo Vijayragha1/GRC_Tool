@@ -76,5 +76,6 @@
   "074_template_values.sql": "38b1325ea447562e52930eaf3af863f7574c4faacffdc8acd615574ad3c4c4ce",
   "075_aims_impact_and_planning.js": "78b93a276ed338a99599095a51eedd3bfb9eea426e8fb77ea6ee084e543638aa",
   "076_ai_datasets.js": "dad039b2871765157711545e5eef93c55fb5bfc7d2d638e73a7568aaee67bd7f",
-  "077_ai_concerns_and_suppliers.js": "93c0c841d418fba13b553ed3c88261476f4ef9dedb192ce355f698d762cd1679"
+  "077_ai_concerns_and_suppliers.js": "93c0c841d418fba13b553ed3c88261476f4ef9dedb192ce355f698d762cd1679",
+  "078_review_and_objective_inputs.js": "10a4118fc51b08b50046a2eaf2797f8cc2cb59c431df1c271f2a9ae55eca8d4d"
 }

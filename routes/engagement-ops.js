@@ -27,6 +27,7 @@ const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const evReads = require('../lib/evidence-reads');
 const reqOpts = require('../lib/requirement-options');
+const { TOPICS: AI_TOPICS, LABEL: AI_TOPIC_LABEL } = require('../data/iso42001-objective-topics');
 const auditChecklists = require('../lib/audit-checklists');
 const aiRisk = require('../lib/ai-risk');
 const reports = require('../lib/reports');
@@ -179,10 +180,15 @@ function register(app, deps) {
     const date = text(b.communicated_on, 10);
     const fw = ['iso27001', 'iso42001'].includes(b.framework) && reqOpts.enabledCodes(workspace).includes(b.framework) ? b.framework : null;
     const single = reqOpts.enabledCodes(workspace).filter(code => code === 'iso27001' || code === 'iso42001');
+    const framework = fw || (single.length === 1 ? single[0] : null);
+    // The AI topic an objective serves (data/iso42001-objective-topics.js),
+    // kept only for a client with the ISO 42001 programme and an objective
+    // that is not the ISMS's alone.
+    const aiTopic = reqOpts.enabledCodes(workspace).includes('iso42001') && framework !== 'iso27001' && AI_TOPIC_LABEL[b.ai_topic] ? b.ai_topic : null;
     return {
       plan_actions: text(b.plan_actions), resources: text(b.resources, 1000), evaluation_method: text(b.evaluation_method, 1000),
       communicated_on: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
-      framework: fw || (single.length === 1 ? single[0] : null),
+      framework, ai_topic: aiTopic,
     };
   }
 
@@ -197,7 +203,7 @@ function register(app, deps) {
       attention: rows.filter(row => ['at_risk', 'off_track', 'no_data'].includes(row.effectiveStatus)).length,
     };
     res.render('objectives', {
-      user: req.user, ws: req.workspace, title: 'Performance & objectives', active: 'objectives', rows, metrics, objectiveCounts
+      user: req.user, ws: req.workspace, title: 'Performance & objectives', active: 'objectives', rows, metrics, objectiveCounts, aiTopics: AI_TOPICS
     });
   });
 
@@ -209,13 +215,13 @@ function register(app, deps) {
     const plan = objectivePlan(req.workspace, b);
     db.prepare(`INSERT INTO security_objectives
       (workspace_id, title, description, measurement, target_value, current_value, owner, due_date, status, notes, metric_id, status_mode,
-       plan_actions, resources, evaluation_method, communicated_on, framework)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+       plan_actions, resources, evaluation_method, communicated_on, framework, ai_topic)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, b.title.trim(), b.description || null, b.measurement || null,
            b.target_value || null, b.current_value || null, b.owner || null,
            b.due_date || null, b.status || 'on_track', b.notes || null,
            metric ? metric.id : null, metric ? 'metric' : 'manual',
-           plan.plan_actions, plan.resources, plan.evaluation_method, plan.communicated_on, plan.framework);
+           plan.plan_actions, plan.resources, plan.evaluation_method, plan.communicated_on, plan.framework, plan.ai_topic);
     logAction(req.user.id, req.workspace.id, 'create_objective', 'objective', null, { title: b.title, metric_id: metric?.id || null });
     res.redirect(withToast(`/workspaces/${req.workspace.id}/objectives`, metric ? 'Objective linked to live measure' : 'Objective added'));
   });
@@ -230,14 +236,14 @@ function register(app, deps) {
     const plan = objectivePlan(req.workspace, b);
     db.prepare(`UPDATE security_objectives SET
       title=?, description=?, measurement=?, target_value=?, current_value=?, owner=?, due_date=?, status=?, notes=?,
-      metric_id=?,status_mode=?, plan_actions=?, resources=?, evaluation_method=?, communicated_on=?, framework=?,
+      metric_id=?,status_mode=?, plan_actions=?, resources=?, evaluation_method=?, communicated_on=?, framework=?, ai_topic=?,
       updated_at=datetime('now')
       WHERE id=? AND workspace_id=?`)
       .run(b.title.trim(), b.description || null, b.measurement || null,
            b.target_value || null, b.current_value || null, b.owner || null,
            b.due_date || null, b.status || 'on_track', b.notes || null,
            metric ? metric.id : null, metric ? 'metric' : 'manual',
-           plan.plan_actions, plan.resources, plan.evaluation_method, plan.communicated_on, plan.framework,
+           plan.plan_actions, plan.resources, plan.evaluation_method, plan.communicated_on, plan.framework, plan.ai_topic,
            req.params.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'update_objective', 'objective', objective.id, { metric_id: metric?.id || null });
     res.redirect(withToast(`/workspaces/${req.workspace.id}/objectives`, 'Objective updated'));
