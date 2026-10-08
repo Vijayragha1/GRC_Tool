@@ -1238,6 +1238,9 @@ function register(app, deps) {
     const contextIssues = count('SELECT COUNT(*) c FROM context_issues WHERE workspace_id=?', wsId);
     const contextParties = count('SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?', wsId);
     if (!contextIssues || !contextParties) flags.push({ kind: 'context_missing', label: 'Internal and external issues or interested parties are not recorded (clauses 4.1 and 4.2)', severity: 'medium', items: [] });
+    const lateReports = db.prepare(`SELECT id, summary AS title FROM ai_concern_reports WHERE workspace_id=? AND status != 'resolved'
+      AND respond_by < date('now') ORDER BY respond_by LIMIT 20`).all(wsId);
+    if (lateReports.length) flags.push({ kind: 'concerns_late', label: 'Concerns or reported adverse impacts past their response date (A.3.3, A.8.3)', severity: 'medium', items: lateReports });
     if (!count('SELECT COUNT(*) c FROM aims_climate_decision WHERE workspace_id=?', wsId)) {
       flags.push({ kind: 'climate_undecided', label: 'No recorded decision on whether climate change is a relevant issue (clause 4.1)', severity: 'medium', items: [] });
     }

@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const audit = require('../lib/iso42001-audit');
 const registry = require('../lib/ai-systems');
 const aiDatasets = require('../lib/ai-datasets');
+const aiConcerns = require('../lib/ai-concerns');
 const aimsContext = require('../lib/aims-context');
 const aimsTemplates = require('../lib/iso42001-templates');
 const aimsOverview = require('../lib/iso42001-overview');
@@ -590,6 +591,31 @@ function register(app, deps) {
     const back = req.body.return_to === 'dataset' ? `${base(req)}/datasets/${encodeURIComponent(req.params.datasetId)}#uses` : `${systemPage(req)}#datasets`;
     res.redirect(withToast(back, 'Link removed'));
   }, systemPage));
+
+  // ------------------------------------------------------------ concerns and reports
+  // Concerns raised inside the organisation (A.3.3) and adverse impacts
+  // reported from outside (A.8.3), with what happened to each
+  // (lib/ai-concerns.js). Entries are corrected, not deleted: the log is
+  // what the auditor samples.
+
+  app.get('/workspaces/:wsId/iso42001/concerns', ...view, (req, res) => {
+    render(res, 'iso42001_concerns', req, { title: 'Concerns and reports', active: 'iso42001-concerns', log: aiConcerns.list(db, req.workspace, today()),
+      C: aiConcerns, areas: registry.IMPACT_AREAS, today: today(),
+      systems: db.prepare('SELECT id, name FROM ai_systems WHERE workspace_id=? ORDER BY name').all(req.workspace.id),
+      incidents: db.prepare(`SELECT id, title FROM incidents WHERE workspace_id=? AND COALESCE(is_tabletop,0)=0 ORDER BY id DESC LIMIT 200`).all(req.workspace.id) });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/concerns', ...manage, handle((req, res) => {
+    const id = aiConcerns.create(db, req.workspace, req.user.id, req.body, today());
+    logAction(req.user.id, req.workspace.id, 'record_ai_concern_report', 'ai_concern_report', id, { channel: req.body.channel }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/concerns#report-${id}`, 'Recorded'));
+  }, req => `${base(req)}/concerns`));
+
+  app.post('/workspaces/:wsId/iso42001/concerns/:id(\\d+)', ...manage, handle((req, res) => {
+    aiConcerns.update(db, req.workspace, req.params.id, req.body, today());
+    logAction(req.user.id, req.workspace.id, 'update_ai_concern_report', 'ai_concern_report', Number(req.params.id), { status: req.body.status }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/concerns#report-${Number(req.params.id)}`, 'Saved'));
+  }, req => `${base(req)}/concerns`));
 
   app.get('/workspaces/:wsId/iso42001/populations/:key.csv', ...view, requirePermission('workspace.export'), (req, res) => {
     const prog = audit.programme(db, req.workspace);

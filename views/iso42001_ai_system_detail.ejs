@@ -156,7 +156,7 @@
   <section class="panel" id="suppliers" aria-labelledby="aiSupTitle">
     <div class="panel-head"><h2 id="aiSupTitle">Vendors in the lifecycle</h2><span class="meta">Annex A.10</span></div>
     <% if (!suppliers.length) { %>
-      <div class="a42-note">No vendors recorded. Include model and API providers, data suppliers, labelling services and hosting.</div>
+      <div class="a42-note">No vendors recorded. Include model and API providers, data suppliers, labelling services and hosting. Choose a vendor from the supplier register where it is there, so its due diligence and reviews are one click away.</div>
     <% } else { %>
       <div style="overflow-x:auto;">
         <table class="t a42-stack">
@@ -164,7 +164,7 @@
           <tbody>
             <% suppliers.forEach(v => { %>
               <tr>
-                <td><strong style="font-weight:500;"><%= v.supplier_name %></strong></td>
+                <td><strong style="font-weight:500;"><%= v.supplier_name %></strong><% if (v.supplier_id) { %><div class="meta text-xs"><a href="/workspaces/<%= ws.id %>/vendors/<%= v.supplier_id %>">In the supplier register<%= v.register_name && v.register_name !== v.supplier_name ? ` as ${v.register_name}` : '' %></a></div><% } %></td>
                 <td data-label="Role"><%= v.lifecycle_role %></td>
                 <td data-label="Service"><%= v.service || '' %></td>
                 <td data-label="Assurance"><%= v.assurance || '' %></td>
@@ -179,9 +179,10 @@
       <details class="a42-fold"<%= suppliers.length ? '' : ' open' %>>
       <summary>Add a vendor</summary>
       <div class="a42-attach">
-        <form method="POST" action="<%= sysBase %>/suppliers" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end;">
+        <form method="POST" action="<%= sysBase %>/suppliers" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;--cols-sm:1fr;align-items:end;">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
-          <div><label class="label" for="supName">Vendor</label><input id="supName" class="input" name="supplier_name" maxlength="160" required></div>
+          <div><label class="label" for="supRegister">From the supplier register</label><select id="supRegister" class="select" name="supplier_id"><option value="">Not in the register</option><% linkable.registerSuppliers.forEach(r => { %><option value="<%= r.id %>"><%= r.name %></option><% }) %></select></div>
+          <div><label class="label" for="supName">Vendor</label><input id="supName" class="input" name="supplier_name" maxlength="160" placeholder="The register name if left blank"></div>
           <div><label class="label" for="supRole">Role</label><input id="supRole" class="input" name="lifecycle_role" maxlength="120" required list="supRoles" placeholder="e.g. Model provider"></div>
           <div><label class="label" for="supService">Service</label><input id="supService" class="input" name="service" maxlength="500"></div>
           <div><label class="label" for="supAssurance">Assurance held</label><input id="supAssurance" class="input" name="assurance" maxlength="500" placeholder="e.g. SOC 2 Type II, reviewed May 2026"></div>

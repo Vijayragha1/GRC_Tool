@@ -79,7 +79,7 @@
       // body's request list and the registers and requirement screens that
       // answer it. Readiness scoring, the catalogue, the roadmap and the
       // executive brief are reached from the screens they belong to.
-      active: ['iso42001-overview', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-datasets', 'iso42001-context', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
+      active: ['iso42001-overview', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-datasets', 'iso42001-concerns', 'iso42001-context', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
       items: [
         { label: 'Programme overview', href: `/workspaces/${ws.id}/iso42001/overview`, active: ['iso42001-overview', 'iso42001-readiness', 'iso42001-exec-brief'] },
         { label: 'Gap assessment', href: `/workspaces/${ws.id}/iso42001/gap-assessment`, active: ['iso42001-gap'] },
@@ -87,6 +87,7 @@
         { label: 'AI system register', href: `/workspaces/${ws.id}/iso42001/ai-systems`, active: ['iso42001-ai-systems'] },
         { label: 'Dataset register', href: `/workspaces/${ws.id}/iso42001/datasets`, active: ['iso42001-datasets'] },
         { label: 'Context and interested parties', href: `/workspaces/${ws.id}/iso42001/context`, active: ['iso42001-context'] },
+        { label: 'Concerns and reports', href: `/workspaces/${ws.id}/iso42001/concerns`, active: ['iso42001-concerns'] },
         { label: 'Requirements', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls', 'iso42001-catalog', 'iso42001-roadmap'] },
         { label: 'Statement of Applicability', href: `/workspaces/${ws.id}/iso42001/soa`, active: ['iso42001-soa'] },
         ...(!gapAssessmentOnly ? [{ label: 'Certification cycle', moreLabel: 'ISO 42001 certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'], lead: true }] : [])

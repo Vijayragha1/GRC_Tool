@@ -735,6 +735,8 @@
 .a42-area-list { display: grid; gap: 5px; margin: 6px 0 0; padding: 0; list-style: none; }
 .a42-area-list li { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; line-height: 1.5; }
 .a42-area-list strong { font-weight: 600; }
+/* A single checkbox sitting in a form grid, aligned with the inputs beside it. */
+.a42-check { display: flex; align-items: center; gap: 8px; min-height: 36px; margin-top: 18px; font-weight: 400; cursor: pointer; }
 @media (max-width: 760px) {
   .a42-area-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .a42-area-row .input { grid-column: 1 / -1; }
