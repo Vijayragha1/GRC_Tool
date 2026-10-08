@@ -10,37 +10,40 @@
   .diag-pill-yes:has(input:checked)     { background:#16a34a; color:#fff; border-color:#16a34a; font-weight: 500; }
   .diag-pill-partial:has(input:checked) { background:#a16207; color:#fff; border-color:#a16207; font-weight: 500; }
   .diag-pill-no:has(input:checked)      { background:#b91c1c; color:#fff; border-color:#b91c1c; font-weight: 500; }
+  .iso42-diagnostic { margin-bottom:18px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-subtle); }
+  .iso42-diagnostic-head { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .iso42-diagnostic-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:9px 14px; align-items:center; }
+  .iso42-diagnostic-row + .iso42-diagnostic-row { border-top:1px dashed var(--border); }
+  .iso42-form-actions { display:flex; gap:6px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+  .iso42-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 14px; border-top:1px solid var(--border); }
+  .iso42-row:first-child { border-top:0; }
+  .iso42-row-main { flex:1; min-width:0; }
+  .iso42-row-main a { text-decoration:none; }
+  .iso42-link-form { padding:10px 14px; border-top:1px solid var(--border); background:var(--bg-subtle); }
+  .iso42-expected { margin:0; padding:0; list-style:none; }
+  .iso42-expected li { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:12px; padding:8px 14px; border-top:1px dashed var(--border); font-size:13px; line-height:1.5; }
+  .iso42-expected li:first-child { border-top:0; }
+  .iso42-subhead { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:12px 14px 6px; border-top:1px solid var(--border); }
+  .iso42-subhead h3 { margin:0; font-size:13px; font-weight:500; }
+  .iso42-upload summary { padding:10px 14px; cursor:pointer; border-top:1px solid var(--border); font-size:13px; font-weight:500; }
+  .iso42-upload form { padding:0 14px 12px; }
   @media (max-width: 760px) {
-    .iso42-assessment > .page-head > .row-center { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%; }
-    .iso42-assessment [style*="grid-template-columns:1fr 1fr"],
-    .iso42-assessment [style*="grid-template-columns:repeat(3,1fr)"],
-    .iso42-assessment [style*="grid-template-columns:1fr 220px"],
-    .iso42-assessment [style*="grid-template-columns:1fr 100px auto"] {
-      grid-template-columns:minmax(0,1fr) !important;
-    }
-    .iso42-assessment [data-diagnostic-group] { justify-content:flex-start !important;flex-wrap:wrap; }
     .iso42-assessment .diag-pill { min-height:44px;flex:1 1 72px;justify-content:center; }
-    .iso42-form-actions { display:grid !important;grid-template-columns:1fr 1fr;align-items:stretch !important; }
+    .iso42-diagnostic-row { grid-template-columns:minmax(0,1fr); }
+    .iso42-assessment [data-diagnostic-group] { justify-content:flex-start !important;flex-wrap:wrap; }
+    .iso42-form-actions { display:grid;grid-template-columns:1fr 1fr;align-items:stretch; }
     .iso42-form-actions .btn { width:100%; }
-    .iso42-support-grid { grid-template-columns:minmax(0,1fr) !important; }
-    .iso42-upload-grid,.iso42-link-form { grid-template-columns:minmax(0,1fr) !important; }
-    .iso42-upload-grid .col-full { grid-column:1 !important; }
-    .iso42-upload-grid .col-full[style*="display:flex"] { align-items:stretch !important;flex-direction:column; }
+    .iso42-expected li { grid-template-columns:minmax(0,1fr); gap:2px; }
   }
   @media (max-width: 430px) {
-    .iso42-assessment > .page-head > .row-center,.iso42-form-actions { grid-template-columns:minmax(0,1fr); }
-    .iso42-assessment [style*="grid-template-columns:140px 1fr"] { grid-template-columns:minmax(0,1fr) !important; }
+    .iso42-form-actions { grid-template-columns:minmax(0,1fr); }
   }
 </style>
 
 <%
   const isClause = item.type === 'clause';
   const isExcluded = state.applicability === 'excluded';
-  const overallTotal = (totals.clausesTotal||0) + (totals.controlsTotal||0);
-  const overallAssessed = (totals.clausesAssessed||0) + (totals.controlsAssessed||0);
-  const pct = overallTotal ? Math.round((overallAssessed / overallTotal) * 100) : 0;
   const sectionTotal = isClause ? totals.clausesTotal : totals.controlsTotal;
-  const sectionLabel = isClause ? 'Management system clauses (4-10)' : 'Annex A controls';
   const refCode = item.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.');
   const cleanTitle = item.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
   const categoryNames = {
@@ -54,216 +57,76 @@
     'h-use': 'Use of AI systems',
     'i-third-party': 'Third-party & customer relationships'
   };
-  const sectionTag = isClause
-    ? 'Clause ' + refCode + ' - AI management system requirement'
-    : refCode + ' - ' + (categoryNames[item.category] || 'Annex A');
+  const sectionName = isClause ? 'Management system clause' : (categoryNames[item.category] || 'Annex A');
+
+  // Evidence on file against what the auditor asks to see.
+  const today = (new Date()).toISOString().slice(0,10);
+  const expSoon = (new Date(Date.now() + 30*86400000)).toISOString().slice(0,10);
+  const expected = item.evidence_to_look_for || [];
+  const files = (evidenceList || []).filter(ev => !ev.superseded_at);
+  const expiredCount = files.filter(ev => ev.valid_until && ev.valid_until < today).length;
+  const expiringCount = files.filter(ev => ev.valid_until && ev.valid_until >= today && ev.valid_until < expSoon).length;
+  const evidenceLine = !files.length ? 'None yet'
+    : `${files.length} file${files.length === 1 ? '' : 's'}${expiredCount ? `, ${expiredCount} expired` : expiringCount ? `, ${expiringCount} expiring soon` : ''}`;
+  const evidenceClass = !files.length || expiredCount ? 's-not-impl' : expiringCount ? 's-partial' : 's-implemented';
+  const applicabilityText = { included: 'Included', excluded: 'Excluded', undecided: 'Undecided' }[recordedState.applicability] || 'Undecided';
+  const hasGuidance = !!(item.purpose || item.what_good_looks_like);
 %>
 
-<div class="iso42-assessment">
-<div class="page-head">
-  <div>
-    <h1 class="page-title">ISO 42001 gap assessment</h1>
-    <div class="page-subtitle">Walks 27 ISO 42001 management-system clauses (4-10) plus 38 Annex A controls - one item at a time, with the prompts and evidence auditors expect.</div>
-  </div>
-  <div class="row-center">
-    <a href="/workspaces/<%= ws.id %>/iso42001/gap-assessment" class="btn btn-secondary btn-xs">Passes</a>
-    <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="btn btn-secondary btn-xs">Go to SoA</a>
-    <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="btn btn-primary btn-xs">Readiness →</a>
-  </div>
+<div class="iso42-assessment assessment-page">
+
+<div class="assessment-topline">
+  <a href="/workspaces/<%= ws.id %>/iso42001/gap-assessment" class="link-muted text-sm">← Gap assessment</a>
+  <span class="assessment-topline-links">
+    <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="link-muted text-sm">SoA</a>
+    <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="link-muted text-sm">Readiness</a>
+  </span>
+  <span class="assessment-topline-nav">
+    <% if (prev) { %><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= prev.id %>" class="btn btn-secondary btn-xs" title="Previous: <%= prev.title %>" aria-label="Previous requirement">←</a><% } %>
+    <% if (next) { %><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= next.id %>" class="btn btn-secondary btn-xs" title="Next: <%= next.title %>" aria-label="Next requirement">→</a><% } %>
+  </span>
 </div>
 
+<section class="assessment-hero" aria-labelledby="requirementTitle">
+  <div>
+    <div class="assessment-hero-eyebrow"><%= sectionName %> · <%= isClause ? 'clause' : 'control' %> <%= sectionPosition %> of <%= sectionTotal %></div>
+    <h1 id="requirementTitle" class="assessment-hero-title"><span class="assessment-hero-code"><%= refCode %></span><%= cleanTitle %></h1>
+    <% if (item.summary) { %><p><%= item.summary %></p><% } %>
+    <% if (isClause) { %><p class="assessment-hero-note">Every certified AI management system must meet this clause. It cannot be excluded.</p><% } %>
+  </div>
+  <dl class="assessment-hero-facts">
+    <div><dt>Conclusion</dt><dd><%= recordedState.status || 'Not Assessed' %></dd></div>
+    <% if (!isClause) { %><div><dt>In the SoA</dt><dd><%= applicabilityText %></dd></div><% } %>
+    <div><dt>Capability</dt><dd><%= Number(recordedState.maturity) || 0 %> of 4</dd></div>
+    <div><dt>Evidence</dt><dd><%= evidenceLine %></dd></div>
+  </dl>
+</section>
+
 <% if (doneFlag) { %>
-  <div class="panel" style="margin-bottom:16px;border-color:#16a34a;background:rgba(22,163,74,0.04);">
-    <div class="panel-pad">
-      <div class="text-success" style="font-weight: 500;margin-bottom:4px;">All clauses and controls assessed</div>
-      <div class="meta">Every item has a status other than "Not Assessed". Move to the SoA to finalise applicability decisions, then Readiness for the pre-audit blocker check.</div>
-      <div style="margin-top:10px;display:flex;gap:6px;">
-        <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="btn btn-primary">Go to SoA →</a>
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="panel-pad row-center" style="justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div><strong>Every clause and control has a conclusion.</strong> <span class="meta">Settle applicability in the SoA, then check readiness.</span></div>
+      <div class="row-center" style="gap:6px;">
+        <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="btn btn-primary btn-xs">Go to the SoA</a>
         <a href="/workspaces/<%= ws.id %>/iso42001/readiness" class="btn btn-secondary btn-xs">Readiness</a>
-        <a href="/workspaces/<%= ws.id %>/iso42001/exec-brief" class="btn btn-secondary btn-xs">Exec brief</a>
       </div>
     </div>
   </div>
 <% } %>
 
-<!-- Two-section progress: clauses + Annex A -->
-<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:14px;margin-bottom:16px;align-items:center;">
-  <div>
-    <div class="text-sm" style="display:flex;justify-content:space-between;margin-bottom:3px;">
-      <span class="meta" style="font-weight:500;">Clauses (4-10)</span>
-      <span class="meta"><strong><%= totals.clausesAssessed||0 %></strong> / <%= totals.clausesTotal||0 %></span>
-    </div>
-    <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
-      <div style="height:100%;width:<%= totals.clausesTotal ? Math.round((totals.clausesAssessed||0) / totals.clausesTotal * 100) : 0 %>%;background:#0891b2;transition:width 0.2s;"></div>
-    </div>
+<div class="assessment-layout">
+
+<section class="panel" aria-labelledby="conclusionTitle">
+  <div class="panel-head">
+    <h2 id="conclusionTitle">Your conclusion</h2>
+    <span class="meta"><% if (activePass) { %>Pass <%= activePass.pass_number %><% if (activePass.name) { %> · <%= activePass.name %><% } %><% } else { %>No open pass<% } %></span>
   </div>
-  <div>
-    <div class="text-sm" style="display:flex;justify-content:space-between;margin-bottom:3px;">
-      <span class="meta" style="font-weight:500;">Annex A controls</span>
-      <span class="meta"><strong><%= totals.controlsAssessed||0 %></strong> / <%= totals.controlsTotal||0 %></span>
-    </div>
-    <div style="height:5px;background:var(--bg-subtle);border-radius:3px;overflow:hidden;">
-      <div style="height:100%;width:<%= totals.controlsTotal ? Math.round((totals.controlsAssessed||0) / totals.controlsTotal * 100) : 0 %>%;background:var(--accent);transition:width 0.2s;"></div>
-    </div>
-  </div>
-  <div style="display:flex;gap:4px;align-items:center;">
-    <span class="meta text-base" style="margin-right:6px;"><strong><%= overallAssessed %></strong> / <%= overallTotal %> &middot; <%= pct %>%</span>
-    <% if (prev) { %><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= prev.id %>" class="btn btn-secondary btn-xs" title="Previous">←</a><% } %>
-    <% if (next) { %><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= next.id %>" class="btn btn-secondary btn-xs" title="Next">→</a><% } %>
-  </div>
-</div>
-
-<div class="panel" style="margin-bottom:16px;">
-  <div class="panel-pad" style="border-bottom:1px solid var(--border);<%= isClause ? 'background:rgba(8,145,178,0.04);' : '' %>">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-      <div class="meta" style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;color:<%= isClause ? '#0891b2' : 'var(--text-secondary)' %>;">
-        <%= sectionTag %>
-      </div>
-      <span class="meta text-sm"><%= isClause ? 'Clause' : 'Control' %> <%= sectionPosition %> of <%= sectionTotal %></span>
-    </div>
-    <h2 style="margin:0;font-size:18px;font-weight: 500;line-height:1.3;"><%= cleanTitle %></h2>
-    <% if (item.summary) { %>
-      <p class="text-xl" style="margin:8px 0 0 0;line-height:1.55;"><%= item.summary %></p>
-    <% } %>
-    <% if (isClause) { %>
-      <div class="meta text-base" style="margin-top:8px;font-style:italic;">This is a "shall" requirement of ISO/IEC 42001:2023 - every certified AIMS must satisfy it. Applicability is not a choice.</div>
-    <% } %>
-  </div>
-
-  <% if (item.purpose || item.what_good_looks_like) { %>
-    <%
-      const hLabel = (s) => `<div class="meta text-eyebrow text-secondary" style="font-weight: 500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">${s}</div>`;
-    %>
-    <div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:24px;">
-      <% if (item.purpose) { %>
-        <div>
-          <%- hLabel('What this is actually for') %>
-          <p class="text-lg" style="margin:0;line-height:1.6;"><%= item.purpose %></p>
-        </div>
-      <% } %>
-      <% if (item.what_good_looks_like) { %>
-        <div>
-          <%- hLabel('What good looks like') %>
-          <p class="text-lg" style="margin:0;line-height:1.6;"><%= item.what_good_looks_like %></p>
-        </div>
-      <% } %>
-    </div>
-
-    <% if (item.common_pitfalls && item.common_pitfalls.length) { %>
-      <div class="panel-pad" style="border-bottom:1px solid var(--border);background:rgba(185,28,28,0.03);">
-        <%- hLabel('Where this usually goes wrong') %>
-        <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.55;">
-          <% item.common_pitfalls.forEach(p => { %><li style="margin-bottom:4px;"><%= p %></li><% }) %>
-        </ul>
-      </div>
-    <% } %>
-
-    <% if (item.evidence_to_look_for && item.evidence_to_look_for.length) { %>
-      <%
-        const expectedCount = item.evidence_to_look_for.length;
-        const attachedCount = (evidenceList || []).filter(ev => !ev.superseded_at).length;
-        const today = (new Date()).toISOString().slice(0,10);
-        const expSoon = (new Date(Date.now() + 30*86400000)).toISOString().slice(0,10);
-        const expiringCount = (evidenceList || []).filter(ev => ev.valid_until && ev.valid_until >= today && ev.valid_until < expSoon).length;
-        const expiredCount = (evidenceList || []).filter(ev => ev.valid_until && ev.valid_until < today).length;
-        let covBg, covLabel, covColor;
-        if (attachedCount === 0) { covBg = 'rgba(185,28,28,0.08)'; covColor = '#b91c1c'; covLabel = 'No evidence attached'; }
-        else if (expiredCount > 0) { covBg = 'rgba(185,28,28,0.08)'; covColor = '#b91c1c'; covLabel = `${attachedCount} attached - ${expiredCount} expired`; }
-        else if (expiringCount > 0) { covBg = 'rgba(202,138,4,0.10)'; covColor = '#a16207'; covLabel = `${attachedCount} attached - ${expiringCount} expiring soon`; }
-        else { covBg = 'rgba(22,163,74,0.08)'; covColor = '#15803d'; covLabel = `${attachedCount} attached`; }
-      %>
-      <div class="panel-pad" style="border-bottom:1px solid var(--border);">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-          <%- hLabel('Evidence the auditor will ask for') %>
-          <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:14px;background:<%= covBg %>;color:<%= covColor %>;font-size:11.5px;font-weight: 500;border:1px solid <%= covColor %>;">
-            <span style="font-family:ui-monospace,monospace;"><%= attachedCount %>/<%= expectedCount %></span>
-            <span><%= covLabel %></span>
-          </div>
-        </div>
-        <table class="text-md" style="width:100%;border-collapse:collapse;">
-          <% item.evidence_to_look_for.forEach((e, i) => { %>
-            <tr style="<%= i < item.evidence_to_look_for.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>">
-              <td style="padding:6px 14px 6px 0;width:42%;line-height:1.5;font-weight:500;"><%= e.item %></td>
-              <td class="text-secondary" style="padding:6px 0;line-height:1.5;"><%= e.what_it_tells_you %></td>
-            </tr>
-          <% }) %>
-        </table>
-        <div class="meta text-sm" style="margin-top:6px;line-height:1.4;">
-          <%= attachedCount === 0
-              ? 'No evidence attached yet - scroll to the Evidence files panel below to upload.'
-              : 'Match the list above to your attached files in the Evidence files panel below.' %>
-        </div>
-      </div>
-    <% } %>
-
-    <div class="panel-pad" style="border-bottom:1px solid var(--border);display:grid;grid-template-columns:<%= item.maturity_ladder ? '1fr 1fr' : '1fr' %>;gap:24px;">
-      <% if (item.scoping_notes) { %>
-        <div>
-          <%- hLabel('Scoping notes') %>
-          <p class="text-md" style="margin:0;line-height:1.55;"><%= item.scoping_notes %></p>
-        </div>
-      <% } %>
-      <% if (item.maturity_ladder) { %>
-        <div>
-          <%- hLabel('Maturity ladder for this item') %>
-          <div class="text-base" style="display:grid;grid-template-columns:30px 1fr;gap:6px 10px;line-height:1.5;">
-            <% [1,2,3,4].forEach(lvl => { if (item.maturity_ladder[lvl]) { %>
-              <div class="mono meta" style="font-weight: 500;"><%= lvl %> -</div>
-              <div><%= item.maturity_ladder[lvl] %></div>
-            <% } }) %>
-          </div>
-        </div>
-      <% } %>
-    </div>
-
-    <% if (relatedRows && relatedRows.length) { %>
-      <div class="panel-pad" style="border-bottom:1px solid var(--border);">
-        <%- hLabel('Related items the auditor will check alongside') %>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <% relatedRows.forEach(r => {
-               const code = r.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.');
-               const title = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
-          %>
-            <a class="text-base" href="/workspaces/<%= ws.id %>/iso42001/gap/<%= r.id %>" style="display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:4px;text-decoration:none;background:var(--bg);">
-              <span class="mono meta" style="font-weight: 500;"><%= code %></span>
-              <span><%= title %></span>
-            </a>
-          <% }) %>
-        </div>
-      </div>
-    <% } %>
-  <% } else { %>
-    <%# Fallback to legacy 3-column layout for items not yet authored %>
-    <div class="panel-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-bottom:1px solid var(--border);">
-      <div>
-        <div class="meta text-eyebrow text-secondary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Applicability - points to consider</div>
-        <% if (!questions || questions.length === 0) { %>
-          <div class="meta text-md">Generally applies to all AI systems within the AIMS scope.</div>
-        <% } else { %>
-          <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.5;">
-            <% questions.forEach(q => { %><li style="margin-bottom:4px;"><%= q %></li><% }) %>
-          </ul>
-        <% } %>
-      </div>
-      <div>
-        <div class="meta text-eyebrow text-secondary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">What it requires</div>
-        <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.5;">
-          <% (item.evidence_needed_arr||[]).forEach(e => { %><li style="margin-bottom:4px;"><%= e %></li><% }) %>
-        </ul>
-      </div>
-      <div>
-        <div class="meta text-eyebrow text-secondary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Evidence auditors expect</div>
-        <ul class="text-md" style="margin:0;padding-left:16px;line-height:1.5;">
-          <% (item.documentation_needed_arr||[]).forEach(d => { %><li style="margin-bottom:4px;"><%= d %></li><% }) %>
-        </ul>
-      </div>
-    </div>
-  <% } %>
 
   <% if(recovery){ %><section class="alert alert-warning" role="alert" id="assessmentRecovery"><h2>Your conclusion was not recorded</h2><p><%= recovery.message %></p><details open><summary>Compare with the current recorded conclusion (version <%= recordedState.record_version||0 %>)</summary><p>Status: <strong><%= recordedState.status %></strong> · Capability: <%= recordedState.maturity %></p><pre style="white-space:pre-wrap"><%= recordedState.notes||'No recorded notes.' %></pre></details></section><% } %>
   <% if(privateDraft.draft){ %><div class="alert alert-info" role="status">Your private draft is restored. It has not been recorded as an assessment conclusion.<% if(String(privateDraft.draft.baseVersion)!==String(recordedState.record_version||0)){ %> The recorded version changed since this draft began. Compare it before recording.<% } %></div><% } %>
   <% if(diagnosticDraftChanged){ %><div class="alert alert-warning" role="alert">The diagnostic questions changed. Your other edits are retained; answer the current questions before recording.</div><% } %>
   <% if(assessmentReadOnly){ %><div class="alert alert-info" role="status">The completed pass is retained. <a href="/workspaces/<%= ws.id %>/iso42001/gap-assessment">Start a new assessment pass</a> to record further conclusions.</div><% } %>
+
   <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap/<%= item.id %>" class="panel-pad" id="assessForm" data-form-draft="assessment-iso42001" data-draft-record="<%= item.id %>" data-draft-version="<%= recordedState.record_version||0 %>" data-draft-recovery="<%= recovery?'true':'false' %>" data-draft-recorded="<%= JSON.stringify({status:recordedState.status,maturity:recordedState.maturity,applicability:recordedState.applicability,notes:recordedState.notes||'',inclusion_justification:recordedState.inclusion_justification||'',exclusion_justification:recordedState.exclusion_justification||'',diagnostic_set_id:diagnosticState.current.setId,...Object.fromEntries(questions.map((q,i)=>['q_'+i,diagnosticState.answers[String(i)]||'']))}) %>">
     <input type="hidden" name="expected_record_version" value="<%= !recovery&&privateDraft.draft?privateDraft.draft.baseVersion:recordedState.record_version||0 %>">
     <input type="hidden" name="private_draft_generation" value="<%= privateDraft.generation %>">
@@ -273,43 +136,42 @@
     <input type="hidden" name="diagnostic_set_id" value="<%= diagnosticState.current.setId %>">
     <% if(!diagnosticState.available){ %><p class="meta">No diagnostic responses have been recorded. Unanswered questions remain unanswered.</p><% } %>
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+
     <% if (questions && questions.length) { %>
-      <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);">
-        <div class="panel-pad" style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <div class="iso42-diagnostic">
+        <div class="iso42-diagnostic-head">
           <div>
-            <div class="text-lg" style="font-weight: 500;">Current-state diagnostic <span class="meta" style="font-weight:400;">- <%= questions.length %> question<%= questions.length === 1 ? '' : 's' %> for this <%= isClause ? 'clause' : 'control' %></span></div>
-            <div class="meta text-sm" style="line-height:1.45;">Answer based on evidence you can show an auditor. The status hint below is a heuristic; <strong>you</strong> set the final status.</div>
+            <div style="font-weight:500;">What is in place today <span class="meta" style="font-weight:400;">· <%= questions.length %> question<%= questions.length === 1 ? '' : 's' %></span></div>
+            <div class="meta text-sm">Answer from evidence you could show an auditor. The hint is a guide; you set the conclusion.</div>
           </div>
-          <div id="suggestedStatusHint" class="meta" style="font-size:11.5px;<%= suggestedStatus ? '' : 'display:none;' %>;display:flex;gap:8px;align-items:center;">
-            <span>Heuristic hint: <strong class="text-secondary" id="suggestedStatusText"><%= suggestedStatus || '' %></strong></span>
-            <a href="#" id="applySuggestedLink" onclick="applySuggested(event)" style="font-size:11px;color:var(--text-secondary);text-decoration:underline;<%= suggestedStatus ? '' : 'display:none;' %>" title="Copy the hint into the status dropdown - review before saving">Use as draft</a>
-            <a class="text-xs text-secondary" href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" style="text-decoration:underline;">Pre-fill notes from gaps</a>
+          <div id="suggestedStatusHint" class="meta text-sm" style="<%= suggestedStatus ? '' : 'display:none;' %>display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span id="suggestedStatusLabel" style="<%= suggestedStatus ? '' : 'display:none;' %>">Hint: <strong class="text-secondary" id="suggestedStatusText"><%= suggestedStatus || '' %></strong></span>
+            <a href="#" id="applySuggestedLink" onclick="applySuggested(event)" class="text-secondary" style="text-decoration:underline;<%= suggestedStatus ? '' : 'display:none;' %>" title="Copy the hint into the status field; review it before saving">Use as draft</a>
+            <a href="#" id="prefillNotesLink" onclick="prefillNotesFromGaps(event)" class="text-secondary" style="text-decoration:underline;">Pre-fill notes from gaps</a>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr;">
-          <% questions.forEach((q, i) => { %>
-            <div style="display:grid;grid-template-columns:1fr 220px;gap:12px;padding:9px 14px;<%= i < questions.length - 1 ? 'border-bottom:1px dashed var(--border);' : '' %>align-items:center;">
-              <div class="text-md" id="diagnostic-question-<%= i %>" style="line-height:1.45;"><%= q %></div>
-              <div role="radiogroup" data-diagnostic-group aria-labelledby="diagnostic-question-<%= i %>" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">
-                <% ['yes','partial','no',''].forEach(opt => {
-                     const isOn = (savedAnswers[String(i)] || '') === opt;
-                %>
-                  <label class="diag-pill diag-pill-<%= opt %>">
-                    <input type="radio" name="q_<%= i %>" value="<%= opt %>" <%= isOn ? 'checked' : '' %> onchange="recomputeSuggested()">
-                    <%= opt === 'yes' ? 'Yes' : opt === 'partial' ? 'Partial' : opt === 'no' ? 'No' : 'Unanswered' %>
-                  </label>
-                <% }) %>
-              </div>
+        <% questions.forEach((q, i) => { %>
+          <div class="iso42-diagnostic-row">
+            <div class="text-md" id="diagnostic-question-<%= i %>" style="line-height:1.45;"><%= q %></div>
+            <div role="radiogroup" data-diagnostic-group aria-labelledby="diagnostic-question-<%= i %>" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">
+              <% ['yes','partial','no',''].forEach(opt => {
+                   const isOn = (savedAnswers[String(i)] || '') === opt;
+              %>
+                <label class="diag-pill diag-pill-<%= opt %>">
+                  <input type="radio" name="q_<%= i %>" value="<%= opt %>" <%= isOn ? 'checked' : '' %> onchange="recomputeSuggested()">
+                  <%= opt === 'yes' ? 'Yes' : opt === 'partial' ? 'Partial' : opt === 'no' ? 'No' : 'Unanswered' %>
+                </label>
+              <% }) %>
             </div>
-          <% }) %>
-        </div>
+          </div>
+        <% }) %>
       </div>
     <% } %>
 
-    <div style="display:grid;grid-template-columns:<%= isClause ? '1fr 1fr' : 'repeat(3,1fr)' %>;gap:14px;margin-bottom:14px;">
+    <div class="stack-grid" style="--cols:<%= isClause ? '1fr 1fr' : '1fr 1fr 1fr' %>;gap:14px;margin-bottom:14px;">
       <% if (!isClause) { %>
         <div>
-          <label class="label">Applicability</label>
+          <label class="label" for="applicabilityField">Applicability</label>
           <select class="select" name="applicability" id="applicabilityField" onchange="toggleExclusion()">
             <option value="undecided" <%= state.applicability === 'undecided' ? 'selected' : '' %>>Undecided</option>
             <option value="included" <%= state.applicability === 'included' ? 'selected' : '' %>>Included in SoA</option>
@@ -318,8 +180,8 @@
         </div>
       <% } %>
       <div>
-        <label class="label">Implementation status<% if (isClause) { %> <span class="meta" style="color:#0891b2;">required for cert</span><% } %></label>
-        <select class="select" name="status">
+        <label class="label" for="statusField">Implementation status</label>
+        <select class="select" name="status" id="statusField">
           <% let statusOpts = isClause
                ? ['Not Assessed','Not Implemented','Work In Progress','Partially Implemented','Implemented']
                : ['Not Assessed','Implemented','Partially Implemented','Work In Progress','Not Implemented','Not Applicable'];
@@ -328,13 +190,10 @@
             <option value="<%= s %>" <%= state.status === s ? 'selected' : '' %>><%= s %><%= (isClause && s === 'Not Applicable') ? ' - invalid for clauses' : '' %></option>
           <% }) %>
         </select>
-        <% if (isClause) { %>
-          <div class="meta text-xs" style="margin-top:4px;line-height:1.4;">Clauses are mandatory "shalls" - every certified AIMS must reach <strong>Implemented</strong>. There is no "Not Applicable" path.</div>
-        <% } %>
       </div>
       <div>
-        <label class="label">Capability (0 to 4) <span class="meta">Compliance Sphere method v2026.1</span></label>
-        <select class="select" name="maturity">
+        <label class="label" for="maturityField">Capability (0 to 4)</label>
+        <select class="select" name="maturity" id="maturityField">
           <option value="0" <%= state.maturity == 0 ? 'selected' : '' %>>0 - Not performed</option>
           <option value="1" <%= state.maturity == 1 ? 'selected' : '' %>>1 - Ad-hoc / informal</option>
           <option value="2" <%= state.maturity == 2 ? 'selected' : '' %>>2 - Documented and repeatable</option>
@@ -355,147 +214,144 @@
       </div>
     <% } %>
 
-    <% if (priorPassNotes && priorPassNotes.length) { %>
-      <div style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);">
-        <div class="panel-pad text-base text-secondary" style="padding:8px 14px;border-bottom:1px solid var(--border);font-weight: 500;display:flex;align-items:center;gap:6px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Notes from prior passes <span class="meta" style="font-weight:400;">- read-only context for re-assessment</span>
-        </div>
-        <% priorPassNotes.forEach((p, i) => { %>
-          <details <%= i === 0 ? 'open' : '' %> style="border-bottom:<%= i < priorPassNotes.length - 1 ? '1px dashed var(--border)' : 'none' %>;">
-            <summary class="text-base" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;">
-              <span style="font-weight: 500;">Pass <%= p.pass_number %></span>
-              <% if (p.label) { %><span><%= p.label %></span><% } %>
-              <% if (p.pass_status === 'completed' && p.completed_at) { %>
-                <span class="meta text-eyebrow">completed <%= p.completed_at.slice(0,10) %></span>
-              <% } else if (p.pass_status === 'open') { %>
-                <span class="tag tag-accent" style="font-size:9.5px;">OPEN</span>
-              <% } %>
-              <% if (p.item_status) { %>
-                <span class="status s-<%= p.item_status.toLowerCase().replace(/\s+/g,'-') %> text-xs" style="margin-left:auto;"><%= p.item_status %></span>
-              <% } %>
-            </summary>
-            <div class="text-md" style="padding:0 14px 10px;line-height:1.55;white-space:pre-wrap;"><%= p.notes %></div>
-          </details>
-        <% }) %>
-      </div>
-    <% } %>
-
     <div style="margin-bottom:14px;">
-      <label class="label">
-        Notes
-        <% if (activePass) { %>
-          <span class="meta" style="font-weight:400;">- for <strong style="color:var(--accent);">Pass <%= activePass.pass_number %><% if (activePass.name) { %> &middot; <%= activePass.name %><% } %></strong>. Prior pass notes preserved above.</span>
-        <% } else { %>
-          <span class="meta">no open pass - start one from Gap assessment to track pass history</span>
-        <% } %>
-      </label>
-      <textarea class="textarea" name="notes" rows="3" placeholder="<%= priorPassNotes && priorPassNotes.length ? 'For this pass: verify what was implemented, what is still outstanding, what evidence you saw.' : 'Describe what is in place today, what is missing, and what you will do about it.' %>"><%= state.notes || '' %></textarea>
+      <label class="label" for="notesField">Notes <% if (!activePass) { %><span class="meta">start a pass from the gap assessment to keep a history of notes</span><% } %></label>
+      <textarea class="textarea" name="notes" id="notesField" rows="3" placeholder="<%= priorPassNotes && priorPassNotes.length ? 'For this pass: what was implemented, what is still outstanding, what evidence you saw.' : 'What is in place today, what is missing, and what you will do about it.' %>"><%= state.notes || '' %></textarea>
     </div>
 
-    <div class="iso42-form-actions" style="display:flex;gap:6px;align-items:center;justify-content:flex-end;">
+    <% if (priorPassNotes && priorPassNotes.length) { %>
+      <details open style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-subtle);">
+        <summary class="text-base" style="padding:8px 14px;cursor:pointer;font-weight:500;">Notes from earlier passes (<%= priorPassNotes.length %>)</summary>
+        <% priorPassNotes.forEach(p => { %>
+          <div style="padding:8px 14px;border-top:1px dashed var(--border);">
+            <div class="row-center text-sm" style="gap:8px;">
+              <strong>Pass <%= p.pass_number %></strong>
+              <% if (p.label) { %><span><%= p.label %></span><% } %>
+              <span class="meta"><%= p.pass_status === 'completed' && p.completed_at ? 'completed ' + p.completed_at.slice(0,10) : p.pass_status === 'open' ? 'open' : '' %></span>
+              <% if (p.item_status) { %><span class="status s-<%= p.item_status.toLowerCase().replace(/\s+/g,'-') %> text-xs" style="margin-left:auto;"><%= p.item_status %></span><% } %>
+            </div>
+            <div class="text-md" style="line-height:1.55;white-space:pre-wrap;margin-top:4px;"><%= p.notes %></div>
+          </div>
+        <% }) %>
+      </details>
+    <% } %>
+
+    <div class="iso42-form-actions">
       <button name="action" value="skip" class="btn btn-secondary btn-xs" formnovalidate>Skip for now</button>
       <button name="action" value="save" class="btn btn-secondary" <%= assessmentReadOnly?'disabled':'' %>>Save conclusion</button>
       <button name="action" value="save_next" class="btn btn-primary" <%= assessmentReadOnly?'disabled':'' %>>Save &amp; next →</button>
     </div>
   </form>
-</div>
+</section>
 
-<%- include('partials/assessment_review',{state,reviewContext,user,ws,item,requestedByName,reviewedByName,path:`/workspaces/${ws.id}/iso42001/gap/${item.id}`}) %>
-
-<!-- Comments + @-mentions for this iso42001 item -->
-<%- include('partials/comments_thread', { parent_type: 'iso42001_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
-
-<%# What the certification body asks for against this requirement. %>
-<% if (typeof certRequests !== 'undefined' && certRequests.length) { %>
-<div class="panel" style="margin-bottom:16px;">
+<section class="panel" id="evidence" aria-labelledby="evidenceTitle">
   <div class="panel-head">
-    <h2 class="text-xl">Requested by the certification body (<%= certRequests.length %>)</h2>
-    <a class="meta" href="/workspaces/<%= ws.id %>/iso42001/requests?item=<%= encodeURIComponent(item.id) %>">Open in the request list</a>
+    <h2 id="evidenceTitle">Evidence</h2>
+    <span class="status <%= evidenceClass %>" style="text-transform:none;"><%= evidenceLine %></span>
   </div>
-  <div style="overflow-x:auto;">
-    <table class="t">
-      <tbody>
-        <% certRequests.forEach(r => { %>
-          <tr>
-            <td style="width:1%;white-space:nowrap;" class="mono meta"><%= r.ref %></td>
-            <td><a href="/workspaces/<%= ws.id %>/iso42001/requests/<%= r.id %>" style="color:var(--ink);text-decoration:none;"><%= r.title %></a><div class="meta"><%= r.stage_label %><%= r.due_date ? ` · due ${r.due_date}` : '' %></div></td>
-            <td style="white-space:nowrap;"><span class="status <%= r.status_class %>"><%= r.status_label %></span></td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
-</div>
-<% } %>
-
-<!-- Evidence files panel -->
-<div class="panel" style="margin-bottom:16px;">
-  <div class="panel-head">
-    <h2 class="text-xl">Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h2>
-    <span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span>
-  </div>
-  <form class="iso42-upload-grid" method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data" style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
-    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <%# The evidence route links ISO 42001 files through iso42001_item_ref;
-        iso_item_id only accepts ISO 27001 ids and used to drop this link. %>
-    <input type="hidden" name="iso42001_item_ref" value="<%= item.id %>">
-    <div class="col-full"><input class="text-base" type="file" name="file" required style="width:100%;"></div>
-    <div><label class="label text-xxs">Period (e.g., Q1 2026)</label><input type="text" name="period_label" class="input text-base" placeholder="Q1 2026"></div>
-    <div><label class="label text-xxs">Sub-clause / section</label><input type="text" name="clause_section" class="input text-base" placeholder="e.g., A.6.2.4.b"></div>
-    <div></div>
-    <div><label class="label text-xxs">Valid from</label><input type="date" name="valid_from" class="input text-base"></div>
-    <div><label class="label text-xxs">Valid until</label><input type="date" name="valid_until" class="input text-base"></div>
-    <div></div>
-    <div class="col-full" style="display:flex;gap:6px;align-items:end;">
-      <input type="text" name="description" placeholder="Optional note about what this evidences" class="input text-base" style="flex:1;">
-      <button class="btn btn-primary btn-xs">Upload evidence</button>
-    </div>
-  </form>
+  <% if (expected.length) { %>
+    <div class="iso42-subhead" style="border-top:0;"><h3>What the auditor asks to see</h3><span class="meta"><%= expected.length %> item<%= expected.length === 1 ? '' : 's' %></span></div>
+    <ul class="iso42-expected">
+      <% expected.forEach(e => { %>
+        <li><span style="font-weight:500;"><%= e.item %></span><span class="text-secondary"><%= e.what_it_tells_you %></span></li>
+      <% }) %>
+    </ul>
+  <% } %>
+  <div class="iso42-subhead"><h3>Evidence files (<%= evidenceList ? evidenceList.length : 0 %>)</h3><span class="meta">Files attached to this <%= isClause ? 'clause' : 'control' %></span></div>
   <% if (!evidenceList || evidenceList.length === 0) { %>
-    <div class="panel-pad meta text-base">No evidence yet.</div>
+    <div class="panel-pad meta text-base" style="padding-top:4px;">Nothing on file yet.</div>
   <% } else { %>
-    <%
-      const today = new Date().toISOString().slice(0,10);
-      const expSoon = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
-    %>
     <div style="max-height:280px;overflow-y:auto;">
       <% evidenceList.forEach(e => {
            const isExpired = e.valid_until && e.valid_until < today;
            const isExpiringSoon = !isExpired && e.valid_until && e.valid_until < expSoon;
-           const badgeColor = isExpired ? '#b91c1c' : isExpiringSoon ? '#a16207' : '#16a34a';
-           const badgeLabel = isExpired ? 'EXPIRED' : isExpiringSoon ? 'EXPIRES SOON' : (e.valid_until ? 'CURRENT' : null);
       %>
-        <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;<%= isExpired ? 'background:rgba(185,28,28,0.04);' : '' %>">
-          <div style="flex:1;min-width:0;">
-            <div class="row-center">
-              <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><%= e.filename %></a>
-              <% if (badgeLabel) { %><span style="font-size:9px;font-weight: 500;color:white;background:<%= badgeColor %>;padding:1px 5px;border-radius:3px;letter-spacing:0.05em;"><%= badgeLabel %></span><% } %>
-              <% if (e.clause_section) { %><span class="mono meta text-eyebrow" style="background:var(--bg-subtle);padding:1px 4px;border-radius:3px;">§<%= e.clause_section %></span><% } %>
+        <div class="iso42-row text-sm">
+          <div class="iso42-row-main">
+            <div class="row-center" style="gap:8px;">
+              <a href="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/download" style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;"><%= e.filename %></a>
+              <% if (isExpired) { %><span class="status s-not-impl">Expired</span><% } else if (isExpiringSoon) { %><span class="status s-partial" style="text-transform:none;">Expires soon</span><% } else if (e.valid_until) { %><span class="status s-implemented">Current</span><% } %>
+              <% if (e.clause_section) { %><span class="mono meta text-xs">§<%= e.clause_section %></span><% } %>
             </div>
-            <div class="meta text-xs"><%= e.uploader || 'unknown' %> &middot; uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> &middot; period <%= e.period_label %><% } %><% if (e.valid_until) { %> &middot; valid until <%= e.valid_until %><% } %><% if (e.description) { %> &middot; <%= e.description %><% } %></div>
+            <div class="meta text-xs"><%= e.uploader || 'unknown' %> · uploaded <%= e.uploaded_at ? e.uploaded_at.slice(0,10) : '' %><% if (e.period_label) { %> · period <%= e.period_label %><% } %><% if (e.valid_until) { %> · valid until <%= e.valid_until %><% } %><% if (e.description) { %> · <%= e.description %><% } %></div>
           </div>
           <form method="POST" action="/workspaces/<%= ws.id %>/evidence/<%= e.id %>/delete" onsubmit="return confirm('Delete this evidence file?')" style="display:inline;">
             <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-            <button class="btn btn-ghost btn-xs text-xxs text-secondary">×</button>
+            <button class="btn btn-ghost btn-xs text-secondary" aria-label="Delete <%= e.filename %>">×</button>
           </form>
         </div>
       <% }) %>
     </div>
   <% } %>
-</div>
+  <details class="iso42-upload" <%= !files.length ? 'open' : '' %>>
+    <summary>Upload evidence</summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/evidence" enctype="multipart/form-data">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <%# The evidence route links ISO 42001 files through iso42001_item_ref;
+          iso_item_id only accepts ISO 27001 ids and used to drop this link. %>
+      <input type="hidden" name="iso42001_item_ref" value="<%= item.id %>">
+      <div style="margin-bottom:8px;"><input class="text-base" type="file" name="file" required style="width:100%;"></div>
+      <div class="stack-grid" style="--cols:1fr 1fr 1fr 1fr;--cols-sm:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div><label class="label text-xxs">Period</label><input type="text" name="period_label" class="input text-base" placeholder="Q1 2026"></div>
+        <div><label class="label text-xxs">Sub-clause / section</label><input type="text" name="clause_section" class="input text-base" placeholder="e.g., A.6.2.4.b"></div>
+        <div><label class="label text-xxs">Valid from</label><input type="date" name="valid_from" class="input text-base"></div>
+        <div><label class="label text-xxs">Valid until</label><input type="date" name="valid_until" class="input text-base"></div>
+      </div>
+      <div class="stack-grid" style="--cols:minmax(0,1fr) auto;gap:6px;align-items:end;">
+        <input type="text" name="description" placeholder="Optional note about what this evidences" class="input text-base">
+        <button class="btn btn-primary btn-xs">Upload evidence</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<%- include('partials/assessment_review',{state,reviewContext,user,ws,item,requestedByName,reviewedByName,path:`/workspaces/${ws.id}/iso42001/gap/${item.id}`}) %>
+
+<aside class="assessment-guide" aria-label="Guidance for this requirement">
+  <details class="assessment-guide-box" data-open-wide>
+    <summary>What the auditor looks for</summary>
+    <% if (hasGuidance) { %>
+      <% if (item.what_good_looks_like) { %><div class="assessment-guide-section"><h3>What good looks like</h3><p><%= item.what_good_looks_like %></p></div><% } %>
+      <% if (item.purpose) { %><div class="assessment-guide-section"><h3>What this is for</h3><p><%= item.purpose %></p></div><% } %>
+      <% if (item.common_pitfalls && item.common_pitfalls.length) { %>
+        <div class="assessment-guide-section"><h3>Where it usually goes wrong</h3><ul><% item.common_pitfalls.forEach(p => { %><li><%= p %></li><% }) %></ul></div>
+      <% } %>
+      <% if (item.scoping_notes) { %><div class="assessment-guide-section"><h3>Scoping notes</h3><p><%= item.scoping_notes %></p></div><% } %>
+      <% if (item.maturity_ladder) { %>
+        <div class="assessment-guide-section"><h3>Capability levels</h3>
+          <dl class="assessment-guide-ladder"><% [1,2,3,4].forEach(lvl => { if (item.maturity_ladder[lvl]) { %><dt><%= lvl %></dt><dd><%= item.maturity_ladder[lvl] %></dd><% } }) %></dl>
+        </div>
+      <% } %>
+      <% if (relatedRows && relatedRows.length) { %>
+        <div class="assessment-guide-section"><h3>Checked alongside</h3>
+          <ul class="assessment-guide-links">
+            <% relatedRows.forEach(r => {
+                 const code = r.id.replace('ai-annex-','').replace('ai-clause-','').toUpperCase().replace(/-/g,'.');
+                 const title = r.title.replace(/^A\.[0-9.]+ /,'').replace(/^[0-9.]+ /,'');
+            %><li><a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= r.id %>"><span class="mono meta"><%= code %></span> <%= title %></a></li><% }) %>
+          </ul>
+        </div>
+      <% } %>
+    <% } else { %>
+      <div class="assessment-guide-section"><h3>Points to consider</h3>
+        <% if (!questions || questions.length === 0) { %><p class="meta">Generally applies to all AI systems within the AIMS scope.</p><% } else { %><ul><% questions.forEach(q => { %><li><%= q %></li><% }) %></ul><% } %>
+      </div>
+      <% if ((item.evidence_needed_arr||[]).length) { %><div class="assessment-guide-section"><h3>What it requires</h3><ul><% item.evidence_needed_arr.forEach(e => { %><li><%= e %></li><% }) %></ul></div><% } %>
+      <% if ((item.documentation_needed_arr||[]).length) { %><div class="assessment-guide-section"><h3>Evidence auditors expect</h3><ul><% item.documentation_needed_arr.forEach(d => { %><li><%= d %></li><% }) %></ul></div><% } %>
+    <% } %>
+  </details>
+</aside>
 
 <% if (typeof crosswalk !== 'undefined' && crosswalk.length) { %>
-<!-- What the client's ISO 27001 records already hold for this requirement -->
-<div class="panel" style="margin-bottom:16px;">
+<section class="panel" aria-labelledby="crosswalkTitle">
   <div class="panel-head">
-    <h2 class="text-xl">Already on record for ISO 27001</h2>
+    <h2 id="crosswalkTitle">Already on record for ISO 27001</h2>
     <span class="meta">A partial match: reuse what applies, then add what ISO 42001 asks for beyond it</span>
   </div>
   <% crosswalk.forEach(c => { %>
     <div style="padding:10px 14px;border-top:1px solid var(--border);">
       <div class="row-center" style="gap:8px;flex-wrap:wrap;">
-        <span class="mono text-xs" style="background:var(--bg-subtle);padding:1px 6px;border-radius:3px;"><%= c.code %></span>
+        <span class="mono text-xs meta"><%= c.code %></span>
         <a href="/workspaces/<%= ws.id %>/controls/<%= c.ref %>" class="link-muted text-base"><%= c.title.replace(/^(A\.)?[0-9.]+\s+/, '') %></a>
         <span class="status s-<%= String(c.status).toLowerCase().replace(/ /g, '-') %> text-xxs"><%= c.status %></span>
       </div>
@@ -523,64 +379,68 @@
       <% } %>
     </div>
   <% }) %>
-</div>
+</section>
 <% } %>
 
-<!-- Open NCs + Risks + Documents panels -->
-<div class="iso42-support-grid" style="display:grid;grid-template-columns:<%= isClause ? '1fr 1fr' : '1fr 1fr 1fr' %>;gap:14px;margin-bottom:16px;">
-  <!-- Open NCs -->
-  <div class="panel">
-    <div class="panel-head">
-      <h2 class="text-xl">Open nonconformities (<%= openNCs ? openNCs.length : 0 %>)</h2>
-      <span class="meta">NCs raised against this item</span>
+<%# What the certification body asks for against this requirement. %>
+<% if (typeof certRequests !== 'undefined' && certRequests.length) { %>
+<section class="panel" aria-labelledby="certRequestsTitle">
+  <div class="panel-head">
+    <h2 id="certRequestsTitle">Requested by the certification body (<%= certRequests.length %>)</h2>
+    <a class="meta" href="/workspaces/<%= ws.id %>/iso42001/requests?item=<%= encodeURIComponent(item.id) %>">Open in the request list</a>
+  </div>
+  <% certRequests.forEach(r => { %>
+    <div class="iso42-row">
+      <div class="iso42-row-main">
+        <a href="/workspaces/<%= ws.id %>/iso42001/requests/<%= r.id %>" style="color:var(--ink);"><span class="mono meta"><%= r.ref %></span> <%= r.title %></a>
+        <div class="meta text-xs"><%= r.stage_label %><%= r.due_date ? ` · due ${r.due_date}` : '' %></div>
+      </div>
+      <span class="status <%= r.status_class %>"><%= r.status_label %></span>
     </div>
+  <% }) %>
+</section>
+<% } %>
+
+<div class="stack-grid" style="--cols:<%= isClause ? '1fr 1fr' : '1fr 1fr 1fr' %>;gap:14px;">
+  <section class="panel" aria-labelledby="ncTitle">
+    <div class="panel-head"><h2 id="ncTitle">Open nonconformities (<%= openNCs ? openNCs.length : 0 %>)</h2></div>
     <% if (!openNCs || openNCs.length === 0) { %>
-      <div class="panel-pad meta text-base">No open NCs.</div>
+      <div class="panel-pad meta text-base">None open against this <%= isClause ? 'clause' : 'control' %>.</div>
     <% } else { %>
       <div style="max-height:240px;overflow-y:auto;">
-        <% openNCs.forEach(n => {
-             const sev = n.severity === 'major' ? '#b91c1c' : n.severity === 'minor' ? '#a16207' : 'var(--text-secondary)';
-        %>
-          <a class="text-base" href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" style="display:block;padding:8px 14px;border-bottom:1px solid var(--border);text-decoration:none;">
-            <div style="display:flex;justify-content:space-between;gap:8px;">
-              <span style="font-weight:500;flex:1;"><%= n.title %></span>
-              <span class="tag" style="background:<%= sev %>;color:white;font-size:10px;"><%= n.severity || '-' %></span>
-            </div>
-            <div class="meta text-xs">Status: <%= n.status %><% if (n.due_date) { %> &middot; due <%= n.due_date %><% } %></div>
+        <% openNCs.forEach(n => { %>
+          <a class="iso42-row text-base" href="/workspaces/<%= ws.id %>/nonconformities/<%= n.id %>" style="text-decoration:none;color:inherit;">
+            <span class="iso42-row-main"><span style="font-weight:500;"><%= n.title %></span><span class="meta text-xs" style="display:block;"><%= n.status %><% if (n.due_date) { %> · due <%= n.due_date %><% } %></span></span>
+            <span class="status <%= n.severity === 'major' ? 's-not-impl' : n.severity === 'minor' ? 's-partial' : 's-na' %>"><%= n.severity || '-' %></span>
           </a>
         <% }) %>
       </div>
     <% } %>
-  </div>
+  </section>
 
   <% if (!isClause) { %>
-  <!-- Linked risks (controls only - clauses are mandatory and don't "treat" risks) -->
-  <div class="panel">
-    <div class="panel-head">
-      <h2 class="text-xl">Risks treated by this control (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2>
-    </div>
+  <section class="panel" aria-labelledby="risksTitle">
+    <div class="panel-head"><h2 id="risksTitle">Risks treated by this control (<%= linkedRisks ? linkedRisks.length : 0 %>)</h2></div>
     <% if (!linkedRisks || linkedRisks.length === 0) { %>
       <div class="panel-pad meta text-base">No risks linked yet.</div>
     <% } else { %>
       <div style="max-height:200px;overflow-y:auto;">
         <% linkedRisks.forEach(r => { %>
-          <div class="text-base" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);">
-            <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" style="flex:1;text-decoration:none;">
-              <span class="mono meta" style="margin-right:6px;">R-<%= r.id %></span><%= r.title %>
-            </a>
-            <span class="num meta text-xs" style="margin-right:8px;"><%= r.likelihood %>×<%= r.impact %></span>
+          <div class="iso42-row text-base">
+            <a class="iso42-row-main" href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><span class="mono meta" style="margin-right:6px;">R-<%= r.id %></span><%= r.title %></a>
+            <span class="num meta text-xs"><%= r.likelihood %>×<%= r.impact %></span>
             <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/risks/<%= r.id %>/delete" onsubmit="return confirm('Unlink this risk?')" style="margin:0;">
               <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-              <button class="btn btn-ghost btn-xs text-xxs text-secondary">×</button>
+              <button class="btn btn-ghost btn-xs text-secondary" aria-label="Unlink R-<%= r.id %>">×</button>
             </form>
           </div>
         <% }) %>
       </div>
     <% } %>
     <% if (linkableRisks && linkableRisks.length > 0) { %>
-      <form class="iso42-link-form" method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/risks" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end;">
+      <form class="iso42-link-form row-center" method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/risks" style="gap:6px;align-items:end;">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-        <div>
+        <div style="flex:1;min-width:0;">
           <label class="label text-xxs">Link a risk</label>
           <select class="select text-base" name="risk_id" required>
             <option value="">- pick a risk -</option>
@@ -592,54 +452,56 @@
         <button class="btn btn-primary btn-xs">Link</button>
       </form>
     <% } %>
-  </div>
+  </section>
   <% } %>
 
-  <!-- Linked documents -->
-  <div class="panel">
-    <div class="panel-head">
-      <h2 class="text-xl">Documents covering this <%= isClause ? 'clause' : 'control' %> (<%= linkedDocs ? linkedDocs.length : 0 %>)</h2>
-    </div>
+  <section class="panel" aria-labelledby="docsTitle">
+    <div class="panel-head"><h2 id="docsTitle">Documents covering this <%= isClause ? 'clause' : 'control' %> (<%= linkedDocs ? linkedDocs.length : 0 %>)</h2></div>
     <% if (!linkedDocs || linkedDocs.length === 0) { %>
-      <div class="panel-pad meta text-base">No documents linked yet - pick one below or generate from a template.</div>
+      <div class="panel-pad meta text-base">No documents linked yet. Link one below or adopt a template.</div>
     <% } else { %>
       <div style="max-height:200px;overflow-y:auto;">
         <% linkedDocs.forEach(d => { %>
-          <div class="text-base" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);">
-            <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" style="text-decoration:none;flex:1;min-width:0;">
+          <div class="iso42-row text-base">
+            <a class="iso42-row-main" href="/workspaces/<%= ws.id %>/documents/<%= d.id %>">
               <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><%= d.name %></div>
-              <div class="meta text-xs"><%= d.category || '-' %> &middot; <%= d.status || '-' %><% if (d.section_ref) { %> &middot; §<%= d.section_ref %><% } %></div>
+              <div class="meta text-xs"><%= d.category || '-' %> · <%= d.status || '-' %><% if (d.section_ref) { %> · §<%= d.section_ref %><% } %></div>
             </a>
             <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/documents/<%= d.link_id %>/delete" onsubmit="return confirm('Remove this document link?')" style="margin:0;">
               <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-              <button class="btn btn-ghost btn-xs text-xxs text-secondary" title="Remove link">×</button>
+              <button class="btn btn-ghost btn-xs text-secondary" title="Remove link" aria-label="Remove the link to <%= d.name %>">×</button>
             </form>
           </div>
         <% }) %>
       </div>
     <% } %>
     <% if (linkableDocs && linkableDocs.length > 0) { %>
-      <form class="iso42-link-form" method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/documents" style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);display:grid;grid-template-columns:1fr 100px auto;gap:6px;align-items:end;">
+      <form class="iso42-link-form" method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/documents">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-        <div>
-          <label class="label text-xxs">Link a document</label>
-          <select class="select text-base" name="document_id" required>
-            <option value="">- pick a document -</option>
-            <% linkableDocs.forEach(d => { %>
-              <option value="<%= d.id %>"><%= d.name %><% if (d.status) { %> (<%= d.status %>)<% } %></option>
-            <% }) %>
-          </select>
+        <div class="stack-grid" style="--cols:1fr 100px auto;--cols-sm:1fr;gap:6px;align-items:end;">
+          <div>
+            <label class="label text-xxs">Link a document</label>
+            <select class="select text-base" name="document_id" required>
+              <option value="">- pick a document -</option>
+              <% linkableDocs.forEach(d => { %>
+                <option value="<%= d.id %>"><%= d.name %><% if (d.status) { %> (<%= d.status %>)<% } %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div>
+            <label class="label text-xxs">Section</label>
+            <input class="input text-base" name="section_ref" placeholder="e.g. §6.2.4">
+          </div>
+          <button class="btn btn-primary btn-xs">Link</button>
         </div>
-        <div>
-          <label class="label text-xxs">Section</label>
-          <input class="input text-base" name="section_ref" placeholder="e.g. §6.2.4">
-        </div>
-        <button class="btn btn-primary btn-xs">Link</button>
       </form>
     <% } %>
-  </div>
+  </section>
 </div>
 
+<%- include('partials/comments_thread', { parent_type: 'iso42001_item', parent_id: item.id, comments, ws, user, firmUsers }) %>
+
+</div>
 </div>
 
 <script>
@@ -652,6 +514,20 @@
 // `window` so the inline on* attributes can still reach them.
 (function () {
 const QUESTION_TEXTS = <%- JSON.stringify(questions || []) %>;
+
+// A saved conclusion flips its tile in the band on the next page. Capture
+// phase, because the draft handler stops the submit event from bubbling on.
+const form = document.getElementById('assessForm');
+if (form) form.addEventListener('submit', (e) => {
+  const action = e.submitter && e.submitter.value;
+  if (action === 'save' || action === 'save_next') { try { sessionStorage.setItem('a42-saved', <%- JSON.stringify(item.id) %>); } catch (_) {} }
+}, true);
+
+// On a wide page the guidance sits open beside the work; on a narrow one it
+// stays folded below the conclusion and the evidence.
+const guide = document.querySelector('.assessment-guide-box[data-open-wide]');
+const page = guide && guide.closest('.assessment-page');
+if (guide && page && page.offsetWidth >= 1000) guide.open = true;
 
 window.applySuggested = function (e) {
   if (e) e.preventDefault();
@@ -706,6 +582,8 @@ window.recomputeSuggested = function () {
   const text = document.getElementById('suggestedStatusText');
   if (!hint || !text) return;
   const applyLink = document.getElementById('applySuggestedLink');
+  const label = document.getElementById('suggestedStatusLabel');
+  if (label) label.style.display = count ? '' : 'none';
   if (count < QUESTION_COUNT) {
     hint.style.display = 'flex';
     text.textContent = `${count} of ${QUESTION_COUNT} answered…`;

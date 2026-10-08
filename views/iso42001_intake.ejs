@@ -1,62 +1,66 @@
-<%- include('partials/header', { title: 'ISO 42001 intake', user, ws, active: 'iso42001-intake' }) %>
-
-<style>
-  @media(max-width:760px){
-    .iso42-intake-head-actions{align-items:stretch!important;display:grid!important;grid-template-columns:minmax(0,1fr);width:100%}
-    .iso42-intake-head-actions form,.iso42-intake-head-actions .btn{width:100%}
-    .iso42-intake-notice{grid-template-columns:24px minmax(0,1fr)!important}
-    .iso42-intake-notice>.btn{grid-column:1/-1;width:100%}
-    .iso42-intake-save{align-items:stretch!important;flex-direction:column}
-    .iso42-intake-save .btn{width:100%}
-    #intakeForm .label{align-items:flex-start!important;flex-wrap:wrap}
-  }
-</style>
+<%- include('partials/header', { title: 'ISO 42001 intake', user, ws, active: 'iso42001-intake', shellClass: 'a42-scope' }) %>
+<link rel="stylesheet" href="/fonts/source-serif-4.css">
+<%
+  // Scoping studio: the questions on one side; on the other, the AIMS boundary
+  // they draw and the clause 4.3 scope statement they write, both redrawn as
+  // the consultant types. Every block and every line comes from a question.
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const all = sections.flatMap(s => s.questions);
+  const has = id => String(answers[id] || '').trim() !== '';
+  const inLayer = key => all.filter(q => q.layer === key);
+  const doneIn = list => list.filter(q => has(q.id)).length;
+  const requiredOpen = all.filter(q => q.required && !has(q.id)).length;
+  const layer = key => layers.find(l => l.key === key);
+  const cell = q => `<button type="button" class="sc-cell${has(q.id) ? ' is-set' : ''}" data-cell="${q.id}" title="${q.text.replace(/"/g, '&quot;')}">${q.short}</button>`;
+  const ring = key => { const l = layer(key), qs = inLayer(key); return { l, qs, done: doneIn(qs) }; };
+  const core = ring('core'), org = ring('org'), obl = ring('obligations'), edge = ring('edge');
+  const engagement = inLayer('engagement');
+%>
 
 <div class="page-head">
   <div>
-    <h1 class="page-title">ISO 42001 client setup</h1>
-    <div class="page-subtitle">Capture AI context, role determination, AI footprint, regulatory obligations, and scope. Apply pushes the draft into the AIMS - clause 4.1, 4.2, 4.3 notes.</div>
+    <h1 class="page-title">Scope the AI management system</h1>
+    <div class="page-subtitle">Context, AI footprint, obligations and dependencies. The clause 4.3 scope statement writes itself as you answer; Apply pushes it into clauses 4.1, 4.2 and 4.3.</div>
+    <div class="a42-facts">
+      <span><strong data-sc-total><%= answered %></strong> of <%= total %> answered</span>
+      <span data-sc-required><%= requiredOpen ? `${requiredOpen} required still open` : 'Every required question answered' %></span>
+    </div>
   </div>
-  <div class="iso42-intake-head-actions" style="display:flex;gap:8px;align-items:center;">
-    <span class="meta text-base"><strong><%= answered %></strong> / <%= total %> answered</span>
+  <div>
     <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/intake/apply" onsubmit="return confirm('Apply the draft scope statement to clause 4.3 notes, seed clauses 4.1 / 4.2 from intake answers, and set the target cert date? Existing notes are not overwritten.');">
-      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-      <button class="btn btn-primary btn-xs" <%= answered === 0 ? 'disabled' : '' %>>Apply to client</button>
+      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+      <button class="btn btn-primary" <%= answered === 0 ? 'disabled' : '' %>>Apply to client</button>
     </form>
   </div>
 </div>
 
-<% if (answered === 0) { %>
-  <div class="panel iso42-intake-notice" style="margin-bottom:14px;background:var(--bg-subtle);padding:14px 18px;display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:center;">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-    <div>
-      <div style="font-size:13.5px;font-weight: 500;margin-bottom:3px;">New AIMS rollout - finish the intake first</div>
-      <div class="meta text-base" style="line-height:1.5;">Send this intake to the client 3 days before kickoff (just the URL works). When they're done, hit <strong>Apply to client</strong> above to push the scope statement into clauses 4.1, 4.2, 4.3 and set the target cert date.</div>
-    </div>
-    <a href="/workspaces/<%= ws.id %>" class="btn btn-ghost btn-xs">Skip for now →</a>
-  </div>
-<% } %>
+<div class="sc-studio">
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/intake" id="intakeForm" class="sc-questions">
+    <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/iso42001/intake" id="intakeForm" style="display:flex;flex-direction:column;gap:18px;">
-  <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-  <% sections.forEach(sec => { %>
-    <div class="panel">
-      <div class="panel-head" style="border-bottom:1px solid var(--border);">
-        <div>
-          <h2 style="margin:0;"><%= sec.title %></h2>
-          <div class="meta text-base" style="margin-top:4px;"><%= sec.blurb %></div>
-        </div>
+    <% if (answered === 0) { %>
+      <div class="sc-note">
+        <strong>New AIMS rollout - finish the intake first</strong>
+        <p>Send this intake to the client 3 days before kickoff (just the URL works). When they're done, choose <strong>Apply to client</strong> to push the scope statement into clauses 4.1, 4.2, 4.3 and set the target cert date.</p>
+        <a href="/workspaces/<%= ws.id %>">Skip for now →</a>
       </div>
-      <div class="panel-pad" style="display:grid;gap:16px;">
+    <% } %>
+
+    <% sections.forEach((sec, si) => { const done = doneIn(sec.questions); %>
+      <section class="sc-section" aria-labelledby="scSec<%= si %>">
+        <header>
+          <div><h2 id="scSec<%= si %>"><%= sec.title %></h2><p><%= sec.blurb %></p></div>
+          <span class="sc-section-count"><b data-sc-section="<%= si %>"><%= done %></b> of <%= sec.questions.length %></span>
+        </header>
         <% sec.questions.forEach(q => { %>
-          <div>
-            <label class="label" for="q-<%= q.id %>" style="display:flex;align-items:center;gap:8px;">
-              <span><%= q.text %><%= q.required ? ' *' : '' %></span>
-              <% if (q.clause) { %><span class="tag tag-neutral text-xxs">clause <%= q.clause %></span><% } %>
-            </label>
-            <% if (q.hint) { %>
-              <div class="meta text-sm text-tertiary" style="margin-bottom:6px;"><%= q.hint %></div>
-            <% } %>
+          <div class="sc-q<%= has(q.id) ? ' is-set' : '' %>" data-q="<%= q.id %>" data-section="<%= si %>">
+            <label for="q-<%= q.id %>"><%= q.text %></label>
+            <div class="sc-q-meta">
+              <% if (q.clause) { %><span>Clause <%= q.clause %></span><% } %>
+              <% if (q.required) { %><span>Required</span><% } %>
+              <span class="sc-q-where"><%= q.layer === 'engagement' ? 'Engagement' : layer(q.layer).name %></span>
+            </div>
+            <% if (q.hint) { %><p class="sc-q-hint"><%= q.hint %></p><% } %>
             <% if (q.type === 'textarea') { %>
               <textarea class="textarea" id="q-<%= q.id %>" name="<%= q.id %>" rows="3" <%= q.required ? 'required' : '' %>><%= answers[q.id] || '' %></textarea>
             <% } else if (q.type === 'date') { %>
@@ -66,24 +70,124 @@
             <% } %>
           </div>
         <% }) %>
-      </div>
+      </section>
+    <% }) %>
+
+    <div class="sc-savebar">
+      <button type="submit" class="btn btn-primary">Save intake</button>
+      <span data-sc-savestate>Saving doesn't apply yet - review the draft scope, then choose <strong>Apply to client</strong>.</span>
     </div>
-  <% }) %>
+  </form>
 
-  <div class="iso42-intake-save" style="display:flex;gap:10px;align-items:center;">
-    <button type="submit" class="btn btn-primary">Save intake</button>
-    <span class="meta text-sm">Saving doesn't apply yet - review the draft scope below, then click <strong>Apply to client</strong> at the top.</span>
-  </div>
-</form>
+  <aside class="sc-aside" aria-label="The scope as it stands">
+    <section class="sc-board" aria-labelledby="scMapTitle">
+      <header>
+        <h2 id="scMapTitle">The AIMS boundary</h2>
+        <p>Each block is a question, placed where it sits in the scope. It fills as it is answered; select one to go to it.</p>
+      </header>
+      <div class="sc-map">
+        <div class="sc-ring sc-ring-obligations" data-layer="obligations">
+          <span class="sc-ring-name"><%= obl.l.name %> <i><%= obl.l.clause %></i><b data-sc-layer="obligations"><%= obl.done %>/<%= obl.qs.length %></b></span>
+          <div class="sc-cells"><%- obl.qs.map(cell).join('') %></div>
+          <div class="sc-ring sc-ring-org" data-layer="org">
+            <span class="sc-ring-name"><%= org.l.name %> <i><%= org.l.clause %></i><b data-sc-layer="org"><%= org.done %>/<%= org.qs.length %></b></span>
+            <div class="sc-cells"><%- org.qs.map(cell).join('') %></div>
+            <div class="sc-ring sc-ring-core" data-layer="core">
+              <span class="sc-ring-name"><%= core.l.name %> <i><%= core.l.clause %></i><b data-sc-layer="core"><%= core.done %>/<%= core.qs.length %></b></span>
+              <div class="sc-cells"><%- core.qs.map(cell).join('') %></div>
+            </div>
+          </div>
+        </div>
+        <div class="sc-edge" data-layer="edge">
+          <span class="sc-ring-name"><%= edge.l.name %> <i><%= edge.l.clause %></i><b data-sc-layer="edge"><%= edge.done %>/<%= edge.qs.length %></b></span>
+          <div class="sc-cells"><%- edge.qs.map(cell).join('') %></div>
+        </div>
+      </div>
+      <div class="sc-engagement">
+        <span>Engagement</span>
+        <div class="sc-cells"><%- engagement.map(cell).join('') %></div>
+      </div>
+    </section>
 
-<div class="panel" style="margin-top:22px;">
-  <div class="panel-head">
-    <h2 style="margin:0;">Draft AIMS scope statement (clause 4.3)</h2>
-    <span class="meta text-sm">Generated from your answers. Re-renders on save.</span>
-  </div>
-  <div class="panel-pad">
-    <pre class="text-lg" style="white-space:pre-wrap;font-family:inherit;line-height:1.55;margin:0;"><%= draftScope %></pre>
-  </div>
+    <article class="sc-sheet" aria-labelledby="scSheetTitle">
+      <header class="sc-sheet-head"><span>AIMS scope statement</span><span>Draft · clause 4.3</span></header>
+      <h3 id="scSheetTitle"><%= ws.client_name %></h3>
+      <dl class="sc-lines">
+        <% statementFields.forEach(f => { %>
+          <div class="sc-line<%= has(f.key) ? '' : ' is-empty' %>" data-line="<%= f.key %>">
+            <dt><%= f.label %></dt>
+            <dd><%= has(f.key) ? String(answers[f.key]).trim() : 'Not answered yet' %></dd>
+          </div>
+        <% }) %>
+      </dl>
+      <footer>Written from the answers above. Apply adds it to clause 4.3 without overwriting notes already there.</footer>
+    </article>
+  </aside>
 </div>
+
+<script>
+(function () {
+  const form = document.getElementById('intakeForm');
+  if (!form) return;
+  const required = <%- JSON.stringify(all.filter(q => q.required).map(q => q.id)) %>;
+  const layerOf = <%- JSON.stringify(Object.fromEntries(all.map(q => [q.id, q.layer]))) %>;
+  const filled = el => el && String(el.value || '').trim() !== '';
+  const field = id => form.elements[id];
+
+  function recount() {
+    const ids = Object.keys(layerOf);
+    const done = ids.filter(id => filled(field(id)));
+    const total = document.querySelector('[data-sc-total]');
+    if (total) total.textContent = done.length;
+    const open = required.filter(id => !filled(field(id))).length;
+    const req = document.querySelector('[data-sc-required]');
+    if (req) req.textContent = open ? `${open} required still open` : 'Every required question answered';
+    document.querySelectorAll('[data-sc-layer]').forEach(el => {
+      const key = el.getAttribute('data-sc-layer');
+      const inLayer = ids.filter(id => layerOf[id] === key);
+      el.textContent = `${inLayer.filter(id => filled(field(id))).length}/${inLayer.length}`;
+    });
+    document.querySelectorAll('[data-sc-section]').forEach(el => {
+      const si = el.getAttribute('data-sc-section');
+      el.textContent = [...form.querySelectorAll(`.sc-q[data-section="${si}"]`)].filter(q => filled(field(q.dataset.q))).length;
+    });
+  }
+
+  // Typing redraws the question's block on the boundary and its line in the
+  // statement. A block that fills for the first time settles into place.
+  form.addEventListener('input', (e) => {
+    const id = e.target.name;
+    if (!(id in layerOf)) return;
+    const on = filled(e.target);
+    const wrap = form.querySelector(`.sc-q[data-q="${CSS.escape(id)}"]`);
+    if (wrap) wrap.classList.toggle('is-set', on);
+    const block = document.querySelector(`[data-cell="${CSS.escape(id)}"]`);
+    if (block && block.classList.contains('is-set') !== on) {
+      block.classList.toggle('is-set', on);
+      if (on) { block.classList.remove('is-new'); void block.offsetWidth; block.classList.add('is-new'); }
+    }
+    const line = document.querySelector(`[data-line="${CSS.escape(id)}"]`);
+    if (line) {
+      const wasEmpty = line.classList.contains('is-empty');
+      line.classList.toggle('is-empty', !on);
+      line.querySelector('dd').textContent = on ? e.target.value.trim() : 'Not answered yet';
+      if (on && wasEmpty) { line.classList.remove('is-new'); void line.offsetWidth; line.classList.add('is-new'); }
+    }
+    recount();
+    const state = document.querySelector('[data-sc-savestate]');
+    if (state) { state.textContent = 'Unsaved changes. Save the intake to keep them.'; state.classList.add('is-dirty'); }
+  });
+
+  // A block on the boundary opens its question.
+  document.querySelectorAll('[data-cell]').forEach(b => b.addEventListener('click', () => {
+    const el = field(b.getAttribute('data-cell'));
+    const wrap = el && el.closest('.sc-q');
+    if (!el || !wrap) return;
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    wrap.classList.remove('is-target'); void wrap.offsetWidth; wrap.classList.add('is-target');
+    el.focus({ preventScroll: true });
+  }));
+})();
+</script>
 
 <%- include('partials/footer') %>

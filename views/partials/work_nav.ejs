@@ -1,5 +1,6 @@
+<%# Consultants don't get the Team workload tab; see the firm-level menu in header.ejs. %>
 <nav class="work-nav" aria-label="Delivery navigation">
- <% [['overview','Overview'],['queue',user.user_type==='client'?'My actions':workScope==='mine'?'My work':'Work queue'],['calendar','Calendar'],...(user.user_type==='firm'?[['workload','Team workload']]:[]),['reports','Reports']].forEach(([key,label])=>{ %>
+ <% [['overview','Overview'],['queue',user.user_type==='client'?'My actions':workScope==='mine'?'My work':'Work queue'],['calendar','Calendar'],...(user.user_type==='firm'&&!(typeof rbac!=='undefined'&&typeof rbac.normalizeRole==='function'&&rbac.normalizeRole(user.firm_role)==='consultant')?[['workload','Team workload']]:[]),['reports','Reports']].forEach(([key,label])=>{ %>
  <a href="<%= query({cursor:null,type:null,status:null,q:null,reviewer:null,priority:null,waiting:null,deadline:null,from:null,to:null,owner:key==='overview'||key==='reports'?null:filters.owner,scope:key==='reports'?'team':workScope},base+(key==='queue'?'':'/'+key)) %>" <%- view===key?'aria-current="page"':'' %>><%= label %></a>
  <% }) %>
 </nav>

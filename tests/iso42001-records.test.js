@@ -35,7 +35,7 @@ test('context issues and interested parties are kept as records, with obligation
   const page = await client.get(`${base()}/context`);
   assert.equal(page.status, 200);
   assert.match(page.text, /Patients triaged by the assistant/);
-  assert.match(page.text, /<div class="kpi-num">1<\/div><\/div><\/div>\s*<div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Past their review date/, 'one obligation is counted');
+  assert.match(page.text, /<span>Obligations<\/span><strong>1<\/strong>/, 'one obligation is counted');
   assert.equal(flagged(), false);
 });
 

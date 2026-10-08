@@ -175,6 +175,17 @@
             sticky "Back to <last>" button which always pointed at the
             same client forever - typically a stale demo. %>
         <% const allWs = (typeof firmWorkspaces !== 'undefined' ? firmWorkspaces : []); %>
+        <%
+          // Consultants get a short firm-level menu: My work, Clients and
+          // Calendar, with reference pages under "More tools". Review queues,
+          // team workload and cross-client portfolios are left out of their
+          // sidebar. Presentation only: routes still enforce permissions.
+          // The in-client equivalent lives in client_navigation.ejs.
+          const firmNavRole = typeof rbac.normalizeRole === 'function' ? rbac.normalizeRole(user.firm_role) : user.firm_role;
+          const firmNavTrimmed = user.user_type === 'firm' && firmNavRole === 'consultant';
+          const firmNavActive = typeof active !== 'undefined' ? active : '';
+          const firmNavView = typeof view !== 'undefined' ? view : '';
+        %>
         <% if (allWs.length > 0) { %>
           <details class="ws-switcher" style="margin:0 14px 12px;">
             <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--nav-hover);border-radius:6px;color:var(--text);font-size:13px;">
@@ -202,11 +213,11 @@
         <% if (shellExperience) { const firmView = typeof view !== 'undefined' ? view : ''; const firmActive = typeof active !== 'undefined' ? active : ''; %>
           <% [
             {label:'My work',url:'/work?scope=mine',selected:firmActive==='work' && firmView==='queue' && (typeof workScope==='undefined'||workScope==='mine') && (typeof filters==='undefined'||filters.type!=='review')},
-            {label:'Delivery overview',url:'/work/overview',selected:firmActive==='work' && firmView==='overview'},
+            {label:'Delivery overview',url:'/work/overview',selected:firmActive==='work' && firmView==='overview',more:true},
             {label:'Clients',url:'/dashboard?legacy=1',selected:firmActive==='dashboard'},
-            {label:'Reviews & decisions',url:'/work?type=review&scope=team',selected:firmActive==='work' && firmView==='queue' && typeof filters!=='undefined' && filters.type==='review'},
+            {label:'Reviews & decisions',url:'/work?type=review&scope=team',selected:firmActive==='work' && firmView==='queue' && typeof filters!=='undefined' && filters.type==='review',off:true},
             {label:'Calendar',url:'/work/calendar',selected:firmActive==='work' && firmView==='calendar'},
-            {label:'Reports',url:'/work/reports?scope=team',selected:firmActive==='work' && firmView==='reports'}
+            {label:'Reports',url:'/work/reports?scope=team',selected:firmActive==='work' && firmView==='reports',more:true}
           ].forEach((link,index)=>{ const icons=[
             '<path d="m9 11 3 3 9-10"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
             '<path d="M3 3v18h18M7 14v3M12 9v8M17 5v12"/>',
@@ -214,9 +225,10 @@
             '<circle cx="11" cy="11" r="8"/><path d="m21 21-5-5m-9-5 3 3 4-5"/>',
             '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
             '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>'
-          ]; %>
+          ]; if (firmNavTrimmed && (link.more || link.off)) return; %>
             <a href="<%= link.url %>" class="nav-item <%= link.selected?'active':'' %>" aria-label="<%= link.label %>" title="<%= link.label %>" <%- link.selected?'aria-current="page"':'' %>><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><%- icons[index] %></svg><span class="nav-item-text"><%= link.label %></span></a>
           <% }); %>
+          <% if (!firmNavTrimmed) { %>
           <details class="nav-domain"><summary class="nav-domain-summary" aria-label="Specialist portfolios" title="Specialist portfolios"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7h18v14H3zM8 7V3h8v4M3 12h18"/></svg><span class="nav-domain-text">Specialist portfolios</span><svg class="nav-domain-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></summary><div class="nav-domain-items">
             <a class="nav-subitem" href="/tprm">Third-party risk</a>
             <a class="nav-subitem" href="/portfolio/iso42001">ISO 42001 clients</a>
@@ -226,15 +238,18 @@
               <a class="nav-subitem" href="/work/workload">Team workload</a>
             <% } %>
           </div></details>
+          <% } %>
         <% } else { %>
         <a href="/dashboard" class="nav-item <%= (typeof active === 'undefined' || !['glossary','portfolio','firm-calendar','delivery-portfolio','tprm-portfolio','playbooks','firm-library','admin-users','admin-email','admin-activity'].includes(active)) ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="nav-item-text">Clients</span>
         </a>
+        <% if (!firmNavTrimmed) { %>
         <a href="/tprm" class="nav-item <%= (typeof active !== 'undefined' && active === 'tprm-portfolio') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 3.4 8.2 8 9 4.6-.8 8-4 8-9V6l-8-3Z"/><path d="M8 12h8M12 8v8"/></svg>
           <span class="nav-item-text">Third-party risk</span>
         </a>
+        <% } %>
         <% if (user && user.user_type === 'firm' && rbac.rolePermissions(user.firm_role).includes('firm.cross_view')) { %>
           <a href="/delivery-portfolio" class="nav-item <%= (typeof active !== 'undefined' && active === 'delivery-portfolio') ? 'active' : '' %>">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M8 7h8M8 11h8M8 15h5"/><path d="M2 19h20"/></svg>
@@ -250,6 +265,28 @@
           </a>
         <% } %>
         <% } %>
+        <% if (firmNavTrimmed) { %>
+          <%
+            const firmMore = [
+              ...(shellExperience ? [
+                { label: 'My overview', url: '/work/overview', selected: firmNavActive === 'work' && firmNavView === 'overview' },
+                { label: 'Reports', url: '/work/reports?scope=team', selected: firmNavActive === 'work' && firmNavView === 'reports' }
+              ] : []),
+              { label: 'Playbooks', url: '/playbooks', selected: firmNavActive === 'playbooks' },
+              { label: 'Library', url: '/firm/library', selected: firmNavActive === 'firm-library' },
+              { label: 'Glossary', url: '/glossary', selected: firmNavActive === 'glossary' }
+            ];
+            const firmMoreOpen = firmMore.some(link => link.selected);
+          %>
+          <details class="nav-domain <%= firmMoreOpen ? 'is-active' : '' %>" <%= firmMoreOpen ? 'open' : '' %>>
+            <summary class="nav-domain-summary" aria-label="More tools" title="More tools"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span class="nav-domain-text">More tools</span><svg class="nav-domain-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></summary>
+            <div class="nav-domain-items">
+              <% firmMore.forEach(link => { %>
+                <a class="nav-subitem <%= link.selected ? 'active' : '' %>" href="<%= link.url %>" <%- link.selected ? 'aria-current="page"' : '' %>><%= link.label %></a>
+              <% }) %>
+            </div>
+          </details>
+        <% } else { %>
         <div class="nav-group-label">Reference</div>
         <a href="/playbooks" class="nav-item <%= (typeof active !== 'undefined' && active === 'playbooks') ? 'active' : '' %>">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -263,6 +300,7 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           <span class="nav-item-text">Glossary</span>
         </a>
+        <% } %>
         <% if (user && rbac.isManager(user.firm_role)) { %>
           <div class="nav-group-label">Admin</div>
           <a href="/admin/users" class="nav-item <%= (typeof active !== 'undefined' && active === 'admin-users') ? 'active' : '' %>">
@@ -303,8 +341,16 @@
     </div>
   </aside>
 
-  <main class="main" id="mainContent" tabindex="-1">
-    <div class="main-inner">
+  <%
+    // ISO 42001 pages open with the module's band: the stylesheet, the stage
+    // runway and every requirement's conclusion. Rendered inside .main so an
+    // in-app navigation carries it with the page.
+    const a42Page = typeof active === 'string' && active.indexOf('iso42001') === 0
+      && typeof ws !== 'undefined' && ws && ws.id && typeof a42Masthead === 'function' && !shellClientMode;
+  %>
+  <main class="main<%= a42Page ? ' a42-main' : '' %>" id="mainContent" tabindex="-1">
+    <div class="main-inner<%= a42Page ? ' a42-shell' : '' %><%= a42Page && typeof shellClass === 'string' ? ' ' + shellClass : '' %>">
+      <% if (a42Page) { %><link rel="stylesheet" href="/iso42001.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>"><% } %>
       <div class="topbar">
         <button type="button" class="icon-btn menu-toggle" id="mobileMenuButton" onclick="toggleSidebar(true)" title="Menu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -373,6 +419,7 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </button>
       </div>
+      <% if (a42Page) { %><%- include('a42_masthead', { mast: a42Masthead(), currentItem: typeof item !== 'undefined' && item && item.id ? item.id : null }) %><% } %>
 <% } else { %>
 <div class="app" style="background:var(--bg-deep)">
   <main class="main" id="mainContent" tabindex="-1">

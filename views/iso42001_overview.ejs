@@ -34,12 +34,6 @@
   if (!priorities.length && nextCriteria.length) priorities.push({ label: 'Current phase', title: nextCriteria[0].label, note: 'Complete the supporting work and obtain the required approval to pass this phase.', href: eo.planHref, action: 'Open engagement plan', tone: 'review' });
   if (!priorities.length && !eo.plan) priorities.push({ label: 'Get started', title: 'Set up the engagement plan', note: 'Confirm the scope, owners and delivery dates for this engagement.', href: eo.planHref, action: 'Open engagement plan', tone: 'review' });
   const pendingDocs = [...docs.missingMandatory.map(t => ({ t, state: 'Not started' })), ...docs.awaitingApproval.map(t => ({ t, state: 'Awaiting approval' }))];
-  const countRows = s => [
-    ['not_started', 'Not started', s.counts.not_started], ['with_client', 'With client', s.counts.with_client],
-    ['to_review', 'To review', s.counts.to_review], ['ready', 'Ready to submit', s.counts.ready],
-    ['submitted', 'Submitted', s.counts.submitted], ['accepted', 'Accepted by auditor', s.counts.accepted], ['follow_up', 'Follow-up', s.counts.follow_up],
-    ['not_applicable', 'Not applicable', s.counts.not_applicable],
-  ].filter(([, , n]) => n > 0);
   const sources = { 'ai-systems': 'AI system register', 'ai-vendors': 'AI system suppliers', 'ai-changes': 'Change register', 'ai-incidents': 'Incident register' };
 %>
 <div class="a42 a42-overview">
@@ -52,125 +46,123 @@
     <a class="btn btn-secondary" href="<%= base %>/exec-brief">Executive brief <span aria-hidden="true">↗</span></a>
   </header>
 
-  <section class="a42ov-position panel" aria-labelledby="a42PositionTitle">
-    <div class="a42ov-position-main">
-      <div class="a42ov-position-copy">
-        <span class="a42ov-eyebrow"><%= eo.planScope === 'combined' ? 'Combined engagement · current phase' : 'Current phase' %></span>
-        <h2 id="a42PositionTitle"><%= phase?.name || (eo.plan ? 'Phase gates complete' : 'Ready to set up your engagement') %></h2>
-        <p><%= nextCriteria[0]?.label || (summary?.completionReady ? 'Completion criteria are satisfied. Review the engagement before closing.' : eo.plan ? 'Review the plan for remaining deliverables and completion criteria.' : 'Establish scope, responsibilities and the delivery plan to begin.') %></p>
-        <a class="btn btn-primary" href="<%= eo.planHref %>"><%= eo.plan ? 'Open engagement plan' : 'Set up engagement plan' %> <span aria-hidden="true">→</span></a>
-      </div>
-      <div class="a42ov-position-progress">
-        <span class="a42ov-state <%= summary?.completionReady ? 'is-complete' : '' %>"><i aria-hidden="true"></i><%= summary?.completionReady ? 'Ready for completion review' : eo.plan ? 'Engagement in progress' : 'Setup required' %></span>
-        <div class="a42ov-gates"><strong><%= summary?.phaseGatesPassed ?? '-' %></strong><span><%= summary ? `/ ${summary.phaseGatesTotal}` : '' %><small>phase gates passed</small></span></div>
-        <div class="a42ov-meter" role="img" aria-label="<%= gateLabel %>"><span style="width:<%= gatePct %>%"></span></div>
-        <p><%= summary ? `${summary.acceptedDeliverables} of ${summary.requiredDeliverables} required deliverables accepted` : 'Progress appears once the plan is created.' %></p>
-      </div>
+  <%
+    const TONE_OF = { attention: 'gap', review: 'gap', client: 'wip' };
+    const leadState = summary?.completionReady ? ['done', 'Ready for completion review'] : eo.plan ? ['part', 'Engagement in progress'] : ['open', 'Setup required'];
+    const reqHref = (stage, status) => `${base}/requests?stage=${stage}` + (status && status !== 'all' ? `&status=${status}` : '');
+  %>
+  <section class="panel a42-lead" aria-labelledby="a42PositionTitle">
+    <div class="a42-lead-copy">
+      <span class="a42-kicker"><%= eo.planScope === 'combined' ? 'Combined engagement · current phase' : 'Current phase' %></span>
+      <h2 id="a42PositionTitle"><%= phase?.name || (eo.plan ? 'Phase gates complete' : 'Ready to set up your engagement') %></h2>
+      <p><%= nextCriteria[0]?.label || (summary?.completionReady ? 'Completion criteria are satisfied. Review the engagement before closing.' : eo.plan ? 'Review the plan for remaining deliverables and completion criteria.' : 'Establish scope, responsibilities and the delivery plan to begin.') %></p>
+      <a class="btn btn-primary" href="<%= eo.planHref %>"><%= eo.plan ? 'Open engagement plan' : 'Set up engagement plan' %> <span aria-hidden="true">→</span></a>
     </div>
-    <% if (projection?.phases?.length) { %>
-    <ol class="a42ov-journey" aria-label="Engagement phases">
-      <% lifecycle.forEach((group, i) => { %>
-      <li class="<%= group.current ? 'is-current' : group.total && group.passed === group.total ? 'is-done' : '' %>" <%- group.current ? 'aria-current="step"' : '' %>>
-        <span class="a42ov-step" aria-hidden="true"><%= group.total && group.passed === group.total ? '✓' : String(i + 1).padStart(2, '0') %></span>
-        <div><strong><%= group.name %></strong><small><%= group.total ? `${group.passed}/${group.total} gates passed` : 'Not configured' %></small></div>
-      </li>
-      <% }) %>
-    </ol>
-    <% } %>
+    <dl class="a42-lead-facts">
+      <div><dt>Engagement</dt><dd><i class="a42-dot t-<%= leadState[0] %>" aria-hidden="true"></i><%= leadState[1] %></dd></div>
+      <div><dt>Phase gates passed</dt><dd><%= summary ? `${summary.phaseGatesPassed} of ${summary.phaseGatesTotal}` : 'No phase gates yet' %></dd></div>
+      <div><dt>Deliverables accepted</dt><dd><%= summary ? `${summary.acceptedDeliverables} of ${summary.requiredDeliverables}` : 'Once the plan exists' %></dd></div>
+    </dl>
   </section>
 
-  <section class="a42ov-metrics" aria-label="Engagement measures">
-    <a href="<%= eo.assessment.href %>" class="a42ov-metric">
+  <section class="a42-stats" aria-label="Engagement measures">
+    <a href="<%= eo.assessment.href %>" class="a42-stat">
       <span>Requirements assessed</span><strong><%= eo.assessment.assessed %><small> / <%= eo.assessment.total %></small></strong>
-      <span class="a42ov-metric-note"><%= eo.assessment.complete ? 'Independent review current' : 'Independent review outstanding' %></span>
+      <em><%= eo.assessment.complete ? 'Independent review current' : 'Independent review outstanding' %></em>
     </a>
-    <a href="<%= eo.findings.href %>" class="a42ov-metric <%= eo.findings.open ? 'has-attention' : '' %>">
-      <span>Open findings</span><strong><%= eo.findings.open %></strong><span class="a42ov-metric-note"><%= eo.findings.open ? 'Corrective action required' : 'No open findings recorded' %></span>
+    <a href="<%= eo.findings.href %>" class="a42-stat<%= eo.findings.open ? ' is-attention' : '' %>">
+      <span>Open findings</span><strong><%= eo.findings.open %></strong><em><%= eo.findings.open ? 'Corrective action required' : 'No open findings recorded' %></em>
     </a>
-    <a href="<%= eo.requests.href %>" class="a42ov-metric">
-      <span>Open client requests</span><strong><%= eo.requests.open %></strong><span class="a42ov-metric-note"><%= eo.requests.withClient %> with client · <%= eo.requests.toReview %> to review</span>
+    <a href="<%= eo.requests.href %>" class="a42-stat">
+      <span>Open client requests</span><strong><%= eo.requests.open %></strong><em><%= eo.requests.withClient %> with client · <%= eo.requests.toReview %> to review</em>
     </a>
-    <a href="<%= base %>/ai-systems" class="a42ov-metric">
-      <span>Impact assessments approved</span><strong><%= approvedIa %><small> / <%= inScope.length %></small></strong><span class="a42ov-metric-note">Across AI systems in scope</span>
+    <a href="<%= base %>/ai-systems" class="a42-stat">
+      <span>Impact assessments approved</span><strong><%= approvedIa %><small> / <%= inScope.length %></small></strong><em>Across AI systems in scope</em>
     </a>
   </section>
 
-  <div class="a42ov-workgrid">
+  <% if (typeof a42Masthead === 'function') { %><%- include('partials/a42_map', { mast: a42Masthead(), heading: 'The standard, requirement by requirement', intro: '27 management system clauses and 38 Annex A controls, coloured by the recorded conclusion. Select one to open its assessment.' }) %><% } %>
+
+  <div class="a42-grid">
     <section class="panel" aria-labelledby="a42PrioritiesTitle">
-      <div class="panel-head"><div><h2 id="a42PrioritiesTitle">What needs attention</h2><p class="a42ov-caption">The work that moves this engagement forward.</p></div><span class="a42ov-count"><%= priorities.length %></span></div>
+      <div class="panel-head"><div><h2 id="a42PrioritiesTitle">What needs attention</h2><p class="a42-caption">The work that moves this engagement forward.</p></div><span class="meta"><%= priorities.length %></span></div>
       <% if (priorities.length) { %>
-      <ol class="a42ov-priorities">
-        <% priorities.forEach((item, i) => { %>
-        <li><span class="a42ov-priority-index <%= item.tone %>" aria-hidden="true"><%= String(i + 1).padStart(2, '0') %></span><div><span class="a42ov-kicker"><%= item.label %></span><h3><a href="<%= item.href %>"><%= item.title %></a></h3><p><%= item.note %></p><a class="a42ov-text-link" href="<%= item.href %>"><%= item.action %> <span aria-hidden="true">→</span></a></div></li>
+      <ul class="a42-list">
+        <% priorities.forEach(item => { %>
+        <li>
+          <i class="a42-dot t-<%= TONE_OF[item.tone] || 'open' %>" aria-hidden="true"></i>
+          <div><a class="a42-list-title" href="<%= item.href %>"><%= item.title %></a><p><%= item.label %> · <%= item.note %></p></div>
+          <a class="a42-list-action" href="<%= item.href %>"><%= item.action %> <span aria-hidden="true">→</span></a>
+        </li>
         <% }) %>
-      </ol>
+      </ul>
       <% } else { %>
-      <div class="a42ov-empty">No open findings or client requests need attention. <a href="<%= eo.planHref %>">Review the engagement plan</a> for completion decisions.</div>
+      <p class="a42-empty">No open findings or client requests need attention. <a href="<%= eo.planHref %>">Review the engagement plan</a> for completion decisions.</p>
       <% } %>
     </section>
 
-    <aside class="a42ov-rail">
+    <div class="a42-stack">
       <section class="panel" aria-labelledby="a42AssuranceTitle">
-        <div class="panel-head"><h2 id="a42AssuranceTitle">Assurance checkpoints</h2></div>
-        <ul class="a42ov-checkpoints">
-          <li><div><strong>Assessment coverage</strong><span><%= eo.assessment.assessed %> of <%= eo.assessment.total %> conclusions recorded</span><div class="a42ov-meter" role="img" aria-label="<%= assessmentPct %>% of requirements assessed"><span style="width:<%= assessmentPct %>%"></span></div></div></li>
-          <li><a href="<%= eo.assessment.href %>"><strong>Independent review</strong><span><%= eo.assessment.complete ? 'Reviewed baseline is current' : eo.assessment.reviewed ? 'Assessment changed since review' : 'Review not completed' %></span></a><span class="a42ov-dot <%= eo.assessment.complete ? 'is-complete' : '' %>" aria-hidden="true"></span></li>
-          <li><a href="<%= eo.report.href %>"><strong>Controlled report</strong><span><%= eo.report.label %></span></a><span class="a42ov-dot <%= eo.report.published ? 'is-complete' : '' %>" aria-hidden="true"></span></li>
-          <li><a href="<%= eo.planHref %>"><strong>Engagement completion</strong><span><%= summary?.completionReady ? 'Criteria satisfied; ready for review' : 'Completion criteria outstanding' %></span></a><span class="a42ov-dot <%= summary?.completionReady ? 'is-complete' : '' %>" aria-hidden="true"></span></li>
+        <div class="panel-head"><div><h2 id="a42AssuranceTitle">Assurance checkpoints</h2><p class="a42-caption">Conclusions, approvals and published reports are tracked separately.</p></div></div>
+        <ul class="a42-list">
+          <li><i class="a42-dot t-<%= eo.assessment.assessed === eo.assessment.total ? 'done' : eo.assessment.assessed ? 'part' : 'open' %>" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= eo.assessment.href %>">Assessment coverage</a><p><%= eo.assessment.assessed %> of <%= eo.assessment.total %> conclusions recorded</p></div></li>
+          <li><i class="a42-dot t-<%= eo.assessment.complete ? 'done' : 'open' %>" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= eo.assessment.href %>">Independent review</a><p><%= eo.assessment.complete ? 'Reviewed baseline is current' : eo.assessment.reviewed ? 'Assessment changed since review' : 'Review not completed' %></p></div></li>
+          <li><i class="a42-dot t-<%= eo.report.published ? 'done' : 'open' %>" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= eo.report.href %>">Controlled report</a><p><%= eo.report.label %></p></div></li>
+          <li><i class="a42-dot t-<%= summary?.completionReady ? 'done' : 'open' %>" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= eo.planHref %>">Engagement completion</a><p><%= summary?.completionReady ? 'Criteria satisfied; ready for review' : 'Completion criteria outstanding' %></p></div></li>
         </ul>
-        <p class="a42ov-footnote">Conclusions, approvals and published reports are tracked separately.</p>
       </section>
       <section class="panel" aria-labelledby="a42ActivityTitle">
-        <div class="panel-head"><div><h2 id="a42ActivityTitle">Recent activity</h2><p class="a42ov-caption"><a class="a42ov-text-link" href="<%= eo.evidence.href %>"><%= plural(eo.evidence.total, 'current evidence file') %> <span aria-hidden="true">↗</span></a></p></div></div>
+        <div class="panel-head"><div><h2 id="a42ActivityTitle">Recent activity</h2><p class="a42-caption"><%= plural(eo.evidence.total, 'current evidence file') %></p></div><a class="a42-list-action" href="<%= eo.evidence.href %>">Evidence <span aria-hidden="true">→</span></a></div>
         <% if (eo.recentActivity.length) { %>
-        <ol class="a42ov-activity">
+        <ul class="a42-list">
           <% eo.recentActivity.forEach(item => { %>
-          <li><div><a href="<%= item.href %>"><%= item.title %></a><p><%= item.detail %></p><time datetime="<%= item.at %>"><%= fmtDate(item.at) %></time></div></li>
+          <li><i class="a42-dot t-quiet" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= item.href %>"><%= item.title %></a><p><%= item.detail %></p></div><time class="a42-list-aside" datetime="<%= item.at %>"><%= fmtDate(item.at) %></time></li>
           <% }) %>
-        </ol>
-        <% } else { %><p class="a42ov-empty">Client conversations and evidence activity will appear here as work begins.</p><% } %>
+        </ul>
+        <% } else { %><p class="a42-empty">Client conversations and evidence activity will appear here as work begins.</p><% } %>
       </section>
-    </aside>
+    </div>
   </div>
 
-  <div class="a42ov-supportgrid">
+  <div class="a42-grid a42-grid-even">
     <section class="panel" aria-labelledby="a42SystemsTitle">
-      <div class="panel-head"><div><h2 id="a42SystemsTitle">AI systems &amp; impact</h2><p class="a42ov-caption"><%= plural(inScope.length, 'system') %> in scope · <%= approvedIa %> impact assessments approved</p></div><a class="a42ov-text-link" href="<%= base %>/ai-systems">Register <span aria-hidden="true">↗</span></a></div>
+      <div class="panel-head"><div><h2 id="a42SystemsTitle">AI systems &amp; impact</h2><p class="a42-caption"><%= plural(inScope.length, 'system') %> in scope · <%= approvedIa %> impact assessments approved</p></div><a class="a42-list-action" href="<%= base %>/ai-systems">Register <span aria-hidden="true">→</span></a></div>
       <% if (inScope.length) { %>
-      <ul class="a42ov-records">
-        <% inScope.slice(0, 3).forEach(s => { %>
-        <li><div><a href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a><p><%= s.purpose ? s.purpose.slice(0, 100) + (s.purpose.length > 100 ? '…' : '') : 'Purpose not recorded' %></p></div><span class="status <%= s.ia_approved_at ? 's-done' : 's-todo' %>"><%= s.ia_approved_at ? 'Impact approved' : s.ia_status === 'draft' ? 'Impact in draft' : 'Impact pending' %></span></li>
+      <ul class="a42-list">
+        <% inScope.slice(0, 4).forEach(s => { %>
+        <li><i class="a42-dot t-<%= s.ia_approved_at ? 'done' : s.ia_status === 'draft' ? 'wip' : 'gap' %>" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a><p><%= s.purpose ? s.purpose.slice(0, 100) + (s.purpose.length > 100 ? '…' : '') : 'Purpose not recorded' %></p></div><span class="a42-list-aside"><%= s.ia_approved_at ? 'Impact approved' : s.ia_status === 'draft' ? 'Impact in draft' : 'Impact pending' %></span></li>
         <% }) %>
       </ul>
-      <% if (inScope.length > 3) { %><div class="a42ov-footnote"><a href="<%= base %>/ai-systems">View all <%= plural(inScope.length, 'system') %> →</a></div><% } %>
-      <% } else { %><div class="a42ov-empty">No AI systems are in scope yet. <% if (perms.manage) { %><a href="<%= base %>/ai-systems/new">Add an AI system</a> to record its purpose, ownership and impacts.<% } %></div><% } %>
+      <% if (inScope.length > 4) { %><p class="a42-more-link"><a href="<%= base %>/ai-systems">All <%= plural(inScope.length, 'system') %> →</a></p><% } %>
+      <% } else { %><p class="a42-empty">No AI systems are in scope yet. <% if (perms.manage) { %><a href="<%= base %>/ai-systems/new">Add an AI system</a> to record its purpose, ownership and impacts.<% } %></p><% } %>
     </section>
     <% if (canUseTemplates && docs.mandatory.total) { %>
     <section class="panel" aria-labelledby="a42DocsTitle">
-      <div class="panel-head"><div><h2 id="a42DocsTitle">AIMS documents</h2><p class="a42ov-caption"><%= docs.mandatory.approved %> of <%= docs.mandatory.total %> required documents approved</p></div><a class="a42ov-text-link" href="/workspaces/<%= ws.id %>/templates?framework=iso42001">Templates <span aria-hidden="true">↗</span></a></div>
-      <p class="a42ov-doc-status"><strong><%= docs.mandatory.drafted %> of <%= docs.mandatory.total %></strong> documents the standard requires are drafted.</p>
+      <div class="panel-head"><div><h2 id="a42DocsTitle">AIMS documents</h2><p class="a42-caption"><strong><%= docs.mandatory.drafted %> of <%= docs.mandatory.total %></strong> documents the standard requires are drafted. <%= docs.mandatory.approved %> approved.</p></div><a class="a42-list-action" href="/workspaces/<%= ws.id %>/templates?framework=iso42001">Templates <span aria-hidden="true">→</span></a></div>
       <% if (pendingDocs.length) { %>
-      <ul class="a42ov-records">
-        <% pendingDocs.slice(0, 3).forEach(({ t, state }) => { %>
-        <li><div><a href="<%= t.doc ? `/workspaces/${ws.id}/documents/${t.doc.doc_id}` : `/workspaces/${ws.id}/templates/${t.id}` %>"><%= t.name %></a></div><span class="status <%= t.doc ? 's-in_review' : 's-todo' %>"><%= state %></span></li>
+      <ul class="a42-list">
+        <% pendingDocs.slice(0, 4).forEach(({ t, state }) => { %>
+        <li><i class="a42-dot t-<%= t.doc ? 'wip' : 'open' %>" aria-hidden="true"></i><div><a class="a42-list-title" href="<%= t.doc ? `/workspaces/${ws.id}/documents/${t.doc.doc_id}` : `/workspaces/${ws.id}/templates/${t.id}` %>"><%= t.name %></a></div><span class="a42-list-aside"><%= state %></span></li>
         <% }) %>
       </ul>
-      <% if (pendingDocs.length > 3) { %><div class="a42ov-footnote"><a href="/workspaces/<%= ws.id %>/templates?framework=iso42001"><%= pendingDocs.length - 3 %> more required documents →</a></div><% } %>
+      <% if (pendingDocs.length > 4) { %><p class="a42-more-link"><a href="/workspaces/<%= ws.id %>/templates?framework=iso42001"><%= pendingDocs.length - 4 %> more required documents →</a></p><% } %>
       <% } %>
     </section>
     <% } %>
   </div>
 
-  <section class="panel a42ov-checklist" aria-labelledby="a42ChecklistTitle">
-    <div class="panel-head"><div><h2 id="a42ChecklistTitle">Certification requests</h2><p class="a42ov-caption">Evidence preparation for the auditor. Request status does not establish audit completion.</p></div><a class="a42ov-text-link" href="<%= base %>/requests">Request list <span aria-hidden="true">↗</span></a></div>
+  <section class="panel rq-flow" aria-labelledby="a42ChecklistTitle">
+    <div class="panel-head"><div><h2 id="a42ChecklistTitle">Certification requests</h2><p class="a42-caption">Evidence preparation for the auditor. Request status does not establish audit completion.</p></div><a class="a42-list-action" href="<%= base %>/requests">Request list <span aria-hidden="true">→</span></a></div>
     <% if (model.total) { %>
-    <div class="a42-runway">
-      <% [model.stage1, model.stage2, model.fieldwork].forEach(s => { %>
-      <div class="a42-stage"><div class="a42-stage-head"><strong><%= STAGE_LABELS[s.stage] %></strong><span><%= s.date ? fmtDate(s.date) : 'Date not set' %></span></div><p class="a42ov-caption"><%= STAGE_HINTS[s.stage] %></p><div class="a42-stage-num"><b><%= s.done %></b> / <%= s.total %> <%= s.stage === 'fieldwork' ? 'samples settled' : 'ready, sent or not applicable' %></div><div class="a42ov-meter" role="img" aria-label="<%= s.done %> of <%= s.total %> requests ready, sent or not applicable"><span style="width:<%= s.total ? Math.round(100 * s.done / s.total) : 0 %>%"></span></div><ul class="a42-counts"><% countRows(s).forEach(([status, label, n]) => { %><li><a href="<%= base %>/requests?stage=<%= s.stage %>&status=<%= status %>"><%= label %></a><span><%= n %></span></li><% }) %></ul></div>
-      <% }) %>
-    </div>
-    <% } else { %><div class="a42ov-empty">Start the certification checklist when you are ready to prepare the auditor's evidence requests.<% if (perms.manage) { %><form method="POST" action="<%= base %>/checklist"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-secondary" type="submit">Start the checklist</button></form><% } %></div><% } %>
-    <% if (perms.manage && checklist.updateAvailable) { %><form class="a42ov-footnote" method="POST" action="<%= base %>/checklist"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-secondary btn-xs" type="submit">Update checklist to <%= checklist.latest %></button></form><% } %>
+      <%- include('partials/a42_pipeline', {
+        stages: [model.stage1, model.stage2, model.fieldwork].map(s => ({ key: s.stage, label: STAGE_LABELS[s.stage], total: s.total, overdue: s.overdue,
+          byStatus: Object.fromEntries(Object.entries(s.counts).filter(([k]) => k !== 'withdrawn')),
+          note: `${STAGE_HINTS[s.stage]} · ${s.date ? fmtDate(s.date) : 'date not set'}` })),
+        href: reqHref, STATUS_LABELS, active: null, keys: true }) %>
+    <% } else { %>
+      <div class="a42-empty">Start the certification checklist when you are ready to prepare the auditor's evidence requests.<% if (perms.manage) { %><form method="POST" action="<%= base %>/checklist"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-secondary" type="submit">Start the checklist</button></form><% } %></div>
+    <% } %>
+    <% if (perms.manage && checklist.updateAvailable) { %><form class="a42-more-link" method="POST" action="<%= base %>/checklist"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-secondary btn-xs" type="submit">Update checklist to <%= checklist.latest %></button></form><% } %>
   </section>
 
   <div class="a42ov-details">

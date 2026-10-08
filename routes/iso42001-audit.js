@@ -150,8 +150,17 @@ function register(app, deps) {
       withdrawn: all.filter(r => r.effective === 'withdrawn').length,
     };
     const itemTitle = filters.item ? (db.prepare('SELECT title FROM iso42001_items WHERE id=?').get(filters.item) || {}).title : null;
+    // Every live request by stage and state, for the pipeline at the top.
+    const inStage = { stage1: r => r.stage === 'stage1' && r.kind !== 'population', stage2: r => r.stage === 'stage2' && r.kind !== 'population',
+      population: r => r.kind === 'population', fieldwork: r => r.stage === 'fieldwork' };
+    const pipeline = Object.entries(inStage).map(([key, test]) => {
+      const list = all.filter(r => test(r) && r.effective !== 'withdrawn');
+      const byStatus = {};
+      for (const r of list) byStatus[r.effective] = (byStatus[r.effective] || 0) + 1;
+      return { key, total: list.length, byStatus, overdue: list.filter(r => r.overdue).length };
+    }).filter(s => s.total);
     render(res, 'iso42001_requests', req, {
-      title: 'Certification requests', active: 'iso42001-requests', rows, counts, filters, itemTitle,
+      title: 'Certification requests', active: 'iso42001-requests', rows, counts, filters, itemTitle, pipeline,
       checklist: audit.checklistStatus(db, req.workspace), STAGE_HINTS: audit.STAGE_HINTS,
       programme: audit.programme(db, req.workspace), clientMembers: audit.clientMembers(db, req.workspace),
       STATUS_LABELS: audit.STATUS_LABELS, today: today(),

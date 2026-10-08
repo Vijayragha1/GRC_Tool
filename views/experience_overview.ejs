@@ -1,13 +1,145 @@
 <%- include('partials/header',{title,user,ws,active:'work'}) %>
 <link rel="stylesheet" href="/work-experience.css">
+<%
+  const counts=result.counts,digest=result.digest||{reviews:[],reviewCount:0,upcoming:[],upcomingCount:0};
+  const queue=changes=>query({cursor:null,...changes},base);
+  const plural=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
+  const humanize=value=>String(value||'').replaceAll('_',' ');
+  const engagements=health?health.active.length:0;
+%>
 <div class="work-shell">
- <header class="work-head"><div><h1><%= title %></h1><p><%= isManager?'See where delivery needs intervention, who owns the next step and what is waiting.':'Pick up your next action and keep track of the work you have handed over.' %></p></div><a class="btn btn-secondary" href="<%= user.user_type==='client'&&ws?'/workspaces/'+ws.id+'/client-portal':'/dashboard?legacy=1' %>"><%= user.user_type==='client'?'Client portal':'Clients' %></a></header>
+ <div class="page-head">
+  <div>
+   <h1 class="page-title"><%= title %></h1>
+   <div class="page-subtitle">
+    <% if(health){ %><%= plural(engagements,'active engagement') %> · <% } %><%= plural(counts.total,'open item') %><% if(counts.overdue){ %> · <a class="status-bad" href="<%= queue({status:'overdue'}) %>"><%= counts.overdue %> late</a><% } %>
+   </div>
+  </div>
+  <div class="row-center">
+   <a class="btn btn-secondary" href="<%= base %>">View all <%= counts.total %></a>
+   <a class="btn btn-secondary" href="<%= ws?'/workspaces/'+ws.id:'/dashboard?legacy=1' %>"><%= ws?'Client workspace':'Clients' %></a>
+  </div>
+ </div>
  <%- include('partials/work_nav') %>
- <% if(result.nextAction){ const next=result.nextAction; %><section class="work-next" aria-labelledby="next-work-title"><p class="work-muted">Recommended next step</p><h2 id="next-work-title"><%= next.title %></h2><p><%= next.workspaceName %> · <%= next.programmeLabel %></p><p><strong>Responsible:</strong> <%= next.ownerName || "Needs assignment" %> · <%= next.dueDate ? "Due " + next.dueDate : "No due date set" %></p><a class="btn btn-primary" href="<%= detailHref(next.href) %>"><%= next.actionLabel %></a></section><% } %>
- <div class="work-metrics"><% [['actionRequired','Action required','action_required'],['overdue','Overdue','overdue'],['waiting','Waiting on others','waiting'],['blocked','Blocked','blocked'],['unassigned','Needs assignment','']].forEach(([key,label,status])=>{ %><a class="work-metric" href="<%= query({status,owner:key==='unassigned'?'unassigned':'',cursor:null},base) %>"><strong><%= result.counts[key] %></strong><%= label %></a><% }) %></div>
- <section class="work-panel"><div class="work-panel-head"><h2><%= isManager?'Delivery requiring attention':'Open commitments' %></h2><a href="<%= base %>" class="btn btn-secondary">View all <%= result.counts.total %></a></div><ul class="work-list"><% result.items.slice(0,6).forEach(item=>{ %><%- include('partials/work_item',{item}) %><% }) %></ul><% if(!result.items.length){ %><div class="work-empty"><strong>No open work in this scope</strong><p>Open your programme to start its next governed step, or change the work scope.</p></div><% } %></section>
- <div class="work-grid"><% result.programmeSummaries.forEach(programme=>{ %><section class="work-programme"><h3><%= programme.label %></h3><p><%= programme.actionRequired %> actions · <%= programme.waiting %> waiting · <%= programme.blocked %> blocked · <%= programme.overdue %> overdue</p><p class="work-muted"><%= programme.endpoint %></p><a href="<%= query({programme:programme.code,cursor:null},base) %>" class="btn btn-secondary">Open programme work</a></section><% }) %></div>
- <% if(programmes.length){ %><section style="margin-top:24px"><h2 style="font-size:19px;font-weight:500">Programmes</h2><div class="work-grid"><% programmes.forEach(programme=>{ %><section class="work-programme"><h3><%= programme.label %></h3><p><%= programme.endpoint %></p><a class="btn btn-secondary" href="<%= programme.href %>">Open <%= programme.label %></a></section><% }) %></div></section><% } %>
- <p class="work-caption">Work is ordered by overdue status, priority and due date. Source programmes retain their own review, approval and publication rules.</p>
+
+<% if(health){ %>
+ <%# Manager: decisions only a manager can make, then engagement health, the team and the month ahead. %>
+ <% const decisions=digest.reviewCount+(counts.unassigned?1:0)+(counts.blocked?1:0); %>
+ <section class="panel mgr-section" aria-labelledby="mgr-decide">
+  <div class="panel-head"><h2 id="mgr-decide">Needs your decision</h2></div>
+  <% if(digest.reviewCount){ %>
+  <div class="mgr-decision">
+   <div><strong><%= plural(digest.reviewCount,'item') %> <%= digest.reviewCount===1?'is':'are' %> waiting for your review</strong><p>Approve or return each one so delivery can move to its next step.</p></div>
+   <a class="btn btn-secondary btn-xs" href="<%= queue({reviewer:'me'}) %>">Open reviews</a>
+  </div>
+  <table class="t mgr-table">
+   <thead><tr><th>Item</th><th>Client</th><th>Owner</th><th>Due</th><th><span class="sr-only">Action</span></th></tr></thead>
+   <tbody>
+    <% digest.reviews.forEach(item=>{ const due=relativeDue(item.dueDate,result.today); %>
+    <tr>
+     <td data-label="Item"><a href="<%= detailHref(item.href) %>"><%= item.title %></a><span class="mgr-sub"><%= humanize(item.sourceType) %> · <%= humanize(item.status) %></span></td>
+     <td data-label="Client"><%= item.workspaceName %></td>
+     <td data-label="Owner"><%= item.ownerName||'No owner' %></td>
+     <td class="mgr-num status-<%= due.tone %>"><%= due.label %></td>
+     <td class="mgr-action"><a class="btn btn-secondary btn-xs" href="<%= detailHref(item.href) %>"><%= item.actionLabel %></a></td>
+    </tr>
+    <% }) %>
+   </tbody>
+  </table>
+  <% } %>
+  <% if(counts.unassigned){ const byClient=[...health.active,...health.complete].filter(row=>row.counts.unassigned).sort((a,b)=>b.counts.unassigned-a.counts.unassigned); %>
+  <div class="mgr-decision">
+   <div><strong><%= plural(counts.unassigned,'item') %> <%= counts.unassigned===1?'has':'have' %> no owner</strong>
+    <p><% byClient.forEach((row,i)=>{ %><%= i?' · ':'' %><a href="<%= queue({owner:'unassigned',workspace:row.id}) %>"><%= row.name %> <%= row.counts.unassigned %></a><% }) %></p></div>
+   <a class="btn btn-secondary btn-xs" href="<%= queue({owner:'unassigned'}) %>">Assign owners</a>
+  </div>
+  <% } %>
+  <% if(counts.blocked){ %>
+  <div class="mgr-decision">
+   <div><strong><%= plural(counts.blocked,'item') %> <%= counts.blocked===1?'is':'are' %> blocked</strong><p>Each one names what it is waiting for.</p></div>
+   <a class="btn btn-secondary btn-xs" href="<%= queue({status:'blocked'}) %>">See blockers</a>
+  </div>
+  <% } %>
+  <% if(!decisions){ %><div class="mgr-decision"><div><strong>Nothing is waiting on you</strong><p>No reviews, unowned work or blockers in this scope.</p></div></div><% } %>
+ </section>
+
+ <section class="panel mgr-section" aria-labelledby="mgr-engagements">
+  <div class="panel-head"><h2 id="mgr-engagements">Engagements</h2><% if(crossView){ %><a class="btn btn-secondary btn-xs" href="/delivery-portfolio">Portfolio and fees</a><% } %></div>
+  <% if(health.active.length){ %>
+  <table class="t mgr-table">
+   <thead><tr><th>Client</th><th>Current phase</th><th>Schedule</th><th>Open work</th><th>Hours</th></tr></thead>
+   <tbody>
+    <% health.active.forEach(row=>{ %>
+    <tr>
+     <td data-label="Client"><a href="<%= row.href %>"><strong><%= row.name %></strong></a><span class="mgr-sub"><%= [row.programme,row.service].filter(Boolean).join(' · ') %></span><span class="mgr-sub" title="<%= row.reviewer?`Reviewer: ${row.reviewer}`:'' %>">Lead: <%= row.lead||'not set' %></span></td>
+     <td data-label="Current phase"><%= row.phase %><% if(row.phaseNote){ %><span class="mgr-sub<%= row.phaseLate?' status-bad':'' %>"><%= row.phaseNote %></span><% } %><% if(row.planAt){ %><span class="mgr-sub"><%= row.planAt %></span><% } %><% if(row.total){ %><span class="mgr-sub"><%= row.done %> of <%= row.total %> phases complete</span><% } %></td>
+     <td data-label="Schedule"><span class="status-<%= row.schedule.tone %>"><%= row.schedule.label %></span><% if(row.schedule.detail){ %><span class="mgr-sub"><%= row.schedule.detail %></span><% } %></td>
+     <td data-label="Open work" class="mgr-num"><a href="<%= queue({workspace:row.id}) %>"><%= row.counts.open %> open</a><% if(row.counts.overdue||row.counts.unassigned){ %><span class="mgr-sub"><% if(row.counts.overdue){ %><a class="status-bad" href="<%= queue({workspace:row.id,status:'overdue'}) %>"><%= row.counts.overdue %> late</a><% } %><%= row.counts.overdue&&row.counts.unassigned?' · ':'' %><% if(row.counts.unassigned){ %><a href="<%= queue({workspace:row.id,owner:'unassigned'}) %>"><%= row.counts.unassigned %> unowned</a><% } %></span><% } %></td>
+     <td data-label="Hours" class="mgr-num"><% if(row.hours){ %><%= row.hours.actual %><%= row.hours.planned?` of ${row.hours.planned}`:'' %> h<% if(row.hours.pct!==null){ %><span class="mgr-sub"><%= row.hours.pct %>% of budget used</span><% } %><% }else{ %><span class="mgr-sub">No budget set</span><% } %></td>
+    </tr>
+    <% }) %>
+   </tbody>
+  </table>
+  <% }else{ %><div class="mgr-decision"><div><strong>No active engagements in this scope</strong></div></div><% } %>
+  <% if(health.complete.length||health.quiet.length){ %>
+  <p class="mgr-foot">
+   <% if(health.complete.length){ %>Complete: <% health.complete.forEach((row,i)=>{ %><%= i?', ':'' %><a href="<%= row.href %>"><%= row.name %></a><%= row.service?` (${row.service.toLowerCase()})`:'' %><% }) %><% } %>
+   <% if(health.complete.length&&health.quiet.length){ %> · <% } %>
+   <% if(health.quiet.length){ %>No engagement yet: <% health.quiet.forEach((quiet,i)=>{ %><%= i?', ':'' %><a href="<%= quiet.href %>"><%= quiet.name %></a><% }) %><% } %>
+  </p>
+  <% } %>
+ </section>
+
+ <% const dueItems=digest.upcoming.map(item=>({date:item.dueDate,title:item.title,client:item.workspaceName,href:detailHref(item.href),owner:item.ownerName}));
+    // A phase end and the plan item of the same name on the same day are one event.
+    const phaseEnds=health.active.flatMap(row=>row.milestones).filter(end=>!dueItems.some(item=>item.date===end.date&&item.client===end.client&&end.title.startsWith(item.title)));
+    const dated=[...phaseEnds,...dueItems].sort((a,b)=>a.date.localeCompare(b.date)).slice(0,10); %>
+ <div class="stack-grid mgr-pair" style="--cols:minmax(0,1fr) minmax(0,1fr)">
+  <section class="panel" aria-labelledby="mgr-team">
+   <div class="panel-head"><h2 id="mgr-team">Team</h2><a class="btn btn-secondary btn-xs" href="<%= query({cursor:null},base+'/workload') %>">Team workload</a></div>
+   <% if(result.workload.length){ %>
+   <table class="t mgr-team">
+    <thead><tr><th>Responsible</th><th class="mgr-r">Open</th><th class="mgr-r">Late</th><th class="mgr-r">Estimated</th></tr></thead>
+    <tbody>
+     <% result.workload.slice(0,8).forEach(group=>{ const href=group.waitingOn?queue({waiting:group.waitingOn}):group.ownerId?queue({owner:group.ownerId}):queue({owner:'unassigned'}); %>
+     <tr>
+      <td><a href="<%= href %>"><%= group.name %></a></td>
+      <td class="mgr-r mgr-num"><%= group.total %></td>
+      <td class="mgr-r mgr-num<%= group.overdue?' status-bad':'' %>"><%= group.overdue||'–' %></td>
+      <td class="mgr-r mgr-num"><%= group.estimatedMinutes?`${Math.round(group.estimatedMinutes/60)} h`:'–' %></td>
+     </tr>
+     <% }) %>
+    </tbody>
+   </table>
+   <% }else{ %><div class="t-empty">No open work in this scope.</div><% } %>
+  </section>
+
+  <section class="panel" aria-labelledby="mgr-month">
+   <div class="panel-head"><h2 id="mgr-month">Next 30 days</h2><a class="btn btn-secondary btn-xs" href="<%= query({cursor:null,from:result.today,to:digest.until},base+'/calendar') %>">Calendar</a></div>
+   <% if(dated.length){ %>
+   <ul class="mgr-dates">
+    <% dated.forEach(entry=>{ %>
+    <li><time datetime="<%= entry.date %>"><%= weekday(entry.date) %> <%= shortDate(entry.date,result.today) %></time><div><a href="<%= entry.href %>"><%= entry.title %></a><span class="mgr-sub"><%= entry.client %><%= entry.owner?` · ${entry.owner}`:'' %></span></div></li>
+    <% }) %>
+   </ul>
+   <% }else{ %><div class="t-empty">Nothing is dated in the next 30 days.</div><% } %>
+  </section>
+ </div>
+
+<% }else{ %>
+ <%# Consultant: their own next step and commitments. %>
+ <% const next=result.nextAction; if(next){ const due=relativeDue(next.dueDate,result.today); %>
+ <section class="panel mgr-section" aria-labelledby="mine-next">
+  <div class="panel-head"><h2 id="mine-next">Your next step</h2></div>
+  <div class="mgr-decision">
+   <div><strong><a href="<%= detailHref(next.href) %>"><%= next.title %></a></strong><p><%= next.workspaceName %> · <%= next.programmeLabel %> · <span class="status-<%= due.tone %>"><%= due.label %></span></p></div>
+   <a class="btn btn-primary btn-xs" href="<%= detailHref(next.href) %>"><%= next.actionLabel %></a>
+  </div>
+ </section>
+ <% } %>
+ <section class="work-panel"><div class="work-panel-head"><h2>Open commitments</h2></div><ul class="work-list"><% result.items.slice(0,8).forEach(item=>{ %><%- include('partials/work_item',{item}) %><% }) %></ul><% if(!result.items.length){ %><div class="work-empty"><strong>No open work in this scope</strong><p>Open your programme to start its next governed step, or change the work scope.</p></div><% } %></section>
+<% } %>
+
+ <p class="work-caption">Work is ordered by lateness, priority and due date. Each programme keeps its own review, approval and publication rules.</p>
 </div>
 <%- include('partials/footer') %>

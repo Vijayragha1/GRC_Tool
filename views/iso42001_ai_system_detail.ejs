@@ -14,11 +14,14 @@
   <div class="page-head">
     <div>
       <h1 class="page-title"><%= s.name %></h1>
+      <% const stages = Object.keys(registry.LIFECYCLE); const at = stages.indexOf(s.lifecycle_stage); %>
+      <ol class="ai-life ai-life-band" aria-label="Life cycle: <%= registry.LIFECYCLE[s.lifecycle_stage] %>">
+        <% stages.forEach((k, i) => { %><li class="<%= i < at ? 'is-past' : i === at ? 'is-now' : '' %>"<%- i === at ? ' aria-current="step"' : '' %>><%= registry.LIFECYCLE[k] %></li><% }) %>
+      </ol>
       <div class="a42-facts">
-        <span><strong><%= registry.LIFECYCLE[s.lifecycle_stage] %></strong></span>
         <% if (s.go_live_date) { %><span>Went live <strong><%= fmtDate(s.go_live_date) %></strong></span><% } %>
         <span><%= s.roles.length ? s.roles.map(r => registry.ROLES[r]).join('; ') : 'Organisation\'s role not recorded' %></span>
-        <span class="status <%= s.in_scope ? 's-done' : 's-na' %>"><%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
+        <span><i class="a42-dot t-<%= s.in_scope ? 'done' : 'na' %>" aria-hidden="true"></i> <%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
       </div>
     </div>
     <% if (perms.manage && !edit) { %><a class="btn btn-secondary" href="<%= sysBase %>?edit=1">Edit</a><% } %>
@@ -63,7 +66,7 @@
       <span class="meta">Clause 6.1.4 and 8.4, Annex A.5</span>
     </div>
     <% if (typeof reassessment !== 'undefined' && reassessment && reassessment.state === 'due') { %>
-      <div class="a42-note" style="border-left:3px solid #b45309;color:#8a5a00;"><strong>Reassessment due.</strong> <%= reassessment.reason %>. Start a new version to reassess.</div>
+      <div class="a42-note a42-callout"><i class="a42-dot t-gap" aria-hidden="true"></i> <strong>Reassessment due.</strong> <%= reassessment.reason %>. Start a new version to reassess.</div>
     <% } %>
     <% if (!assessments.length) { %>
       <div class="a42-note">No impact assessment yet. The auditor asks for the documented results of the most recent assessment for each system, and for evidence of how it informed the design or use of the system.</div>
@@ -75,7 +78,7 @@
               <a href="<%= sysBase %>/impact-assessments/<%= a.id %>">Version <%= a.version_no %></a>
               <span class="meta"><%= a.status === 'approved' ? `Approved ${fmtDate(a.approved_at)} by ${a.approved_by_name || 'a reviewer'}` : a.status === 'superseded' ? `Superseded; approved ${fmtDate(a.approved_at)}` : `Draft, prepared by ${a.prepared_by_name || 'a consultant'}` %><%= a.residual_level ? ` · residual ${a.residual_level}` : '' %><%= a.decision ? ` · ${registry.DECISIONS[a.decision].toLowerCase()}` : '' %></span>
             </div>
-            <span class="status <%= a.status === 'approved' ? 's-done' : a.status === 'draft' ? 's-in_review' : 's-na' %>"><%= a.status === 'approved' ? 'Current' : a.status === 'draft' ? 'Draft' : 'Superseded' %></span>
+            <span class="status"><i class="a42-dot t-<%= a.status === 'approved' ? 'done' : a.status === 'draft' ? 'wip' : 'na' %>" aria-hidden="true"></i><%= a.status === 'approved' ? 'Current' : a.status === 'draft' ? 'Draft' : 'Superseded' %></span>
           </li>
         <% }) %>
       </ul>
@@ -143,6 +146,8 @@
       </div>
     <% } %>
     <% if (perms.manage) { %>
+      <details class="a42-fold"<%= suppliers.length ? '' : ' open' %>>
+      <summary>Add a vendor</summary>
       <div class="a42-attach">
         <form method="POST" action="<%= sysBase %>/suppliers" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end;">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -154,6 +159,7 @@
           <datalist id="supRoles"><option value="Model provider"><option value="Data provider"><option value="Labelling service"><option value="Hosting and compute"><option value="System integrator"><option value="Monitoring service"></datalist>
         </form>
       </div>
+      </details>
     <% } %>
   </section>
 

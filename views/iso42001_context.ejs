@@ -1,15 +1,10 @@
 <%- include('partials/header', { title, user, ws, active }) %>
-<style>
-  .ctx-row { display: grid; grid-template-columns: 120px minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 150px 140px auto; gap: 8px; align-items: end; }
-  .ctx-party { display: grid; grid-template-columns: minmax(0, 1fr) 170px minmax(0, 1.4fr) 170px minmax(0, 1.2fr) 130px 140px auto; gap: 8px; align-items: end; }
-  .ctx-item { padding: 10px 16px; border-top: 1px solid var(--border); }
-  .ctx-item:first-of-type { border-top: 0; }
-  @media (max-width: 1100px) { .ctx-row, .ctx-party { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-  @media (max-width: 760px) { .ctx-row, .ctx-party { grid-template-columns: minmax(0, 1fr); } }
-</style>
 <%
   const csrf = typeof csrfToken !== 'undefined' ? csrfToken : null;
   const overdue = (d) => d && d < today;
+  const labelOf = (list, key) => (list.find(k => k.key === key) || {}).label || String(key || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  const fmtDay = d => d ? new Date(`${String(d).slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+  const tone = (review, addressed) => overdue(review) ? 'gap' : addressed ? 'done' : 'wip';
 %>
 <div class="page-head">
   <div>
@@ -18,70 +13,108 @@
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
-  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Issues</div><div class="kpi-num"><%= context.issues.length %></div></div></div>
-  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Interested parties</div><div class="kpi-num"><%= context.parties.length %></div></div></div>
-  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Obligations</div><div class="kpi-num"><%= context.obligations %></div></div></div>
-  <div class="panel kpi"><div class="panel-pad"><div class="meta text-sm">Past their review date</div><div class="kpi-num" style="<%= context.overdue ? 'color:#b91c1c;' : '' %>"><%= context.overdue %></div></div></div>
-</div>
+<section class="a42-stats" aria-label="Context measures">
+  <div class="a42-stat"><span>Issues</span><strong><%= context.issues.length %></strong><em>Clause 4.1</em></div>
+  <div class="a42-stat"><span>Interested parties</span><strong><%= context.parties.length %></strong><em>Clause 4.2</em></div>
+  <div class="a42-stat"><span>Obligations</span><strong><%= context.obligations %></strong><em>Legal, regulatory or contractual</em></div>
+  <div class="a42-stat<%= context.overdue ? ' is-attention' : '' %>"><span>Past their review date</span><strong><%= context.overdue %></strong><em><%= context.overdue ? 'Review and update them' : 'Nothing overdue' %></em></div>
+</section>
 
-<section class="panel" style="margin-bottom:16px;">
-  <div class="panel-head"><h2>Issues</h2><span class="meta">Clause 4.1</span></div>
-  <% if (!context.issues.length) { %><div class="t-empty">No issues recorded. Start with the intake answers: markets, laws on AI, customers' expectations, the organisation's AI strategy and capabilities.</div><% } %>
-  <% context.issues.forEach(i => { %>
-    <form method="POST" action="<%= base %>/context/issues/<%= i.id %>" class="ctx-item ctx-row">
-      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
-      <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= i.kind === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
-      <div><label class="label">Issue</label><input class="input" name="issue" value="<%= i.issue %>" required></div>
-      <div><label class="label">Effect on the AIMS</label><input class="input" name="effect" value="<%= i.effect || '' %>"></div>
-      <div><label class="label">How it is addressed</label><input class="input" name="response" value="<%= i.response || '' %>"></div>
-      <div><label class="label">Owner</label><input class="input" name="owner" value="<%= i.owner || '' %>"></div>
-      <div><label class="label">Next review</label><input class="input" type="date" name="next_review" value="<%= i.next_review || '' %>" style="<%= overdue(i.next_review) ? 'border-color:#b91c1c;' : '' %>"></div>
-      <div style="display:flex;gap:4px;"><% if (perms.manage) { %><button class="btn btn-secondary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/issues/<%= i.id %>/delete" onclick="return confirm('Remove this issue?')">×</button><% } %></div>
-    </form>
-  <% }) %>
+<section class="panel" aria-labelledby="ctxIssuesTitle">
+  <div class="panel-head"><div><h2 id="ctxIssuesTitle">Issues</h2><p class="a42-caption">Internal and external issues that shape the AI management system.</p></div><span class="meta">Clause 4.1</span></div>
+  <% if (!context.issues.length) { %><p class="a42-empty">No issues recorded. Start with the intake answers: markets, laws on AI, customers' expectations, the organisation's AI strategy and capabilities.</p><% } else { %>
+  <ul class="a42-list a42-events">
+    <% context.issues.forEach(i => { %>
+      <li>
+        <i class="a42-dot t-<%= tone(i.next_review, i.response) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= i.issue %></span>
+          <p><%= labelOf(K.ISSUE_KINDS, i.kind) %><% if (i.effect) { %> &middot; <%= i.effect %><% } %></p>
+          <p><%= i.response ? `Addressed by: ${i.response}` : 'How it is addressed is not recorded yet' %><% if (i.owner) { %> &middot; <%= i.owner %><% } %><% if (i.next_review) { %> &middot; <span class="<%= overdue(i.next_review) ? 'a42-warn-text' : '' %>">review <%= fmtDay(i.next_review) %></span><% } %></p>
+          <% if (perms.manage) { %>
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit</summary>
+            <form method="POST" action="<%= base %>/context/issues/<%= i.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+              <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= i.kind === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+              <div style="grid-column:span 2;"><label class="label">Issue</label><input class="input" name="issue" value="<%= i.issue %>" required></div>
+              <div><label class="label">Effect on the AIMS</label><input class="input" name="effect" value="<%= i.effect || '' %>"></div>
+              <div style="grid-column:span 2;"><label class="label">How it is addressed</label><input class="input" name="response" value="<%= i.response || '' %>"></div>
+              <div><label class="label">Owner</label><input class="input" name="owner" value="<%= i.owner || '' %>"></div>
+              <div><label class="label">Next review</label><input class="input<%= overdue(i.next_review) ? ' is-late' : '' %>" type="date" name="next_review" value="<%= i.next_review || '' %>"></div>
+              <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/issues/<%= i.id %>/delete" onclick="return confirm('Remove this issue?')">Remove</button></div>
+            </form>
+          </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+  <% } %>
   <% if (perms.manage) { %>
-    <form method="POST" action="<%= base %>/context/issues" class="ctx-item ctx-row" style="background:var(--bg-subtle);">
-      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
-      <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
-      <div><label class="label">Issue</label><input class="input" name="issue" required placeholder="e.g. Customers now ask for evidence of AI governance in tenders"></div>
-      <div><label class="label">Effect on the AIMS</label><input class="input" name="effect"></div>
-      <div><label class="label">How it is addressed</label><input class="input" name="response"></div>
-      <div><label class="label">Owner</label><input class="input" name="owner"></div>
-      <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
-      <div><button class="btn btn-primary btn-xs">Add issue</button></div>
-    </form>
+    <details class="a42-fold">
+      <summary>Add an issue</summary>
+      <form method="POST" action="<%= base %>/context/issues" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+        <div style="grid-column:span 2;"><label class="label">Issue</label><input class="input" name="issue" required placeholder="e.g. Customers now ask for evidence of AI governance in tenders"></div>
+        <div><label class="label">Effect on the AIMS</label><input class="input" name="effect"></div>
+        <div style="grid-column:span 2;"><label class="label">How it is addressed</label><input class="input" name="response"></div>
+        <div><label class="label">Owner</label><input class="input" name="owner"></div>
+        <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add issue</button></div>
+      </form>
+    </details>
   <% } %>
 </section>
 
-<section class="panel">
-  <div class="panel-head"><h2>Interested parties and their requirements</h2><span class="meta">Clause 4.2</span></div>
-  <% if (!context.parties.length) { %><div class="t-empty">No interested parties recorded. Include the people affected by the AI systems' decisions, not only customers and regulators.</div><% } %>
-  <% context.parties.forEach(p => { %>
-    <form method="POST" action="<%= base %>/context/parties/<%= p.id %>" class="ctx-item ctx-party">
-      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
-      <div><label class="label">Party</label><input class="input" name="party" value="<%= p.party %>" required></div>
-      <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>" <%= p.party_type === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
-      <div><label class="label">Requirement</label><input class="input" name="needs" value="<%= p.needs || '' %>"></div>
-      <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= (p.requirement_kind || 'need') === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
-      <div><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed" value="<%= p.how_addressed || '' %>"></div>
-      <div><label class="label">Owner</label><input class="input" name="owner" value="<%= p.owner || '' %>"></div>
-      <div><label class="label">Next review</label><input class="input" type="date" name="next_review" value="<%= p.next_review || '' %>" style="<%= overdue(p.next_review) ? 'border-color:#b91c1c;' : '' %>"></div>
-      <div style="display:flex;gap:4px;"><% if (perms.manage) { %><button class="btn btn-secondary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/parties/<%= p.id %>/delete" onclick="return confirm('Remove this interested party?')">×</button><% } %></div>
-    </form>
-  <% }) %>
+<section class="panel" aria-labelledby="ctxPartiesTitle">
+  <div class="panel-head"><div><h2 id="ctxPartiesTitle">Interested parties and their requirements</h2><p class="a42-caption">Include the people affected by the AI systems' decisions, not only customers and regulators.</p></div><span class="meta">Clause 4.2</span></div>
+  <% if (!context.parties.length) { %><p class="a42-empty">No interested parties recorded yet.</p><% } else { %>
+  <ul class="a42-list a42-events">
+    <% context.parties.forEach(pt => { %>
+      <li>
+        <i class="a42-dot t-<%= tone(pt.next_review, pt.how_addressed) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= pt.party %></span>
+          <p><%= labelOf(K.PARTY_TYPES, pt.party_type) %> &middot; <%= labelOf(K.REQUIREMENT_KINDS, pt.requirement_kind || 'need') %><% if (pt.needs) { %>: <%= pt.needs %><% } %></p>
+          <p><%= pt.how_addressed ? `Addressed by: ${pt.how_addressed}` : 'How the AIMS addresses it is not recorded yet' %><% if (pt.owner) { %> &middot; <%= pt.owner %><% } %><% if (pt.next_review) { %> &middot; <span class="<%= overdue(pt.next_review) ? 'a42-warn-text' : '' %>">review <%= fmtDay(pt.next_review) %></span><% } %></p>
+          <% if (perms.manage) { %>
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit</summary>
+            <form method="POST" action="<%= base %>/context/parties/<%= pt.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+              <div><label class="label">Party</label><input class="input" name="party" value="<%= pt.party %>" required></div>
+              <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>" <%= pt.party_type === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+              <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= (pt.requirement_kind || 'need') === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+              <div style="grid-column:span 3;"><label class="label">Requirement</label><input class="input" name="needs" value="<%= pt.needs || '' %>"></div>
+              <div style="grid-column:span 3;"><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed" value="<%= pt.how_addressed || '' %>"></div>
+              <div><label class="label">Owner</label><input class="input" name="owner" value="<%= pt.owner || '' %>"></div>
+              <div><label class="label">Next review</label><input class="input<%= overdue(pt.next_review) ? ' is-late' : '' %>" type="date" name="next_review" value="<%= pt.next_review || '' %>"></div>
+              <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/parties/<%= pt.id %>/delete" onclick="return confirm('Remove this interested party?')">Remove</button></div>
+            </form>
+          </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+  <% } %>
   <% if (perms.manage) { %>
-    <form method="POST" action="<%= base %>/context/parties" class="ctx-item ctx-party" style="background:var(--bg-subtle);">
-      <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
-      <div><label class="label">Party</label><input class="input" name="party" required placeholder="e.g. Patients triaged by the assistant"></div>
-      <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
-      <div><label class="label">Requirement</label><input class="input" name="needs" placeholder="What they need or require of the AIMS"></div>
-      <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
-      <div><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed"></div>
-      <div><label class="label">Owner</label><input class="input" name="owner"></div>
-      <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
-      <div><button class="btn btn-primary btn-xs">Add party</button></div>
-    </form>
+    <details class="a42-fold">
+      <summary>Add an interested party</summary>
+      <form method="POST" action="<%= base %>/context/parties" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <div><label class="label">Party</label><input class="input" name="party" required placeholder="e.g. Patients triaged by the assistant"></div>
+        <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+        <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+        <div style="grid-column:span 3;"><label class="label">Requirement</label><input class="input" name="needs" placeholder="What they need or require of the AIMS"></div>
+        <div style="grid-column:span 3;"><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed"></div>
+        <div><label class="label">Owner</label><input class="input" name="owner"></div>
+        <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add party</button></div>
+      </form>
+    </details>
   <% } %>
 </section>
 

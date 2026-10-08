@@ -1,0 +1,44 @@
+<%#
+  The band at the top of every ISO 42001 page. The strip is the whole
+  standard: 27 clauses then 38 Annex A controls, each coloured by its
+  conclusion and linked to its assessment. The requirement a consultant just
+  saved flips into its new colour when the next page opens; nothing else moves.
+%>
+<header class="a42-mast" aria-label="ISO/IEC 42001 engagement">
+  <div class="a42-mast-top">
+    <div class="a42-mast-id">
+      <span class="a42-mast-std">ISO/IEC 42001 · AI management system</span>
+      <span class="a42-mast-client"><%= ws.client_name %></span>
+    </div>
+    <ol class="a42-mast-runway" aria-label="Engagement stages">
+      <% mast.stages.forEach(s => { %>
+        <li class="<%= s.done ? 'is-done' : s.current ? 'is-current' : '' %>"<%- s.current ? ' aria-current="step"' : '' %>><%= s.name %></li>
+      <% }) %>
+    </ol>
+  </div>
+  <div class="a42-strip">
+    <a class="a42-strip-count" href="<%= mast.base %>/gap-assessment"><strong><%= mast.assessed %></strong> of <%= mast.total %> requirements concluded<% if (!mast.hasPlan) { %><span> · no delivery plan yet</span><% } else if (mast.phaseName) { %><span> · <%= mast.phaseName %></span><% } %></a>
+    <div class="a42-strip-cells" aria-hidden="true">
+      <% [['Clauses 4 to 10', mast.clauses], ['Annex A', mast.controls]].forEach(([label, list]) => { %>
+        <div class="a42-strip-group" style="--n:<%= list.length %>">
+          <div class="a42-strip-row">
+            <% list.forEach(r => { %><a class="a42-cell t-<%= r.tone %><%= r.id === currentItem ? ' is-here' : '' %>" href="<%= mast.base %>/gap/<%= r.id %>" tabindex="-1" data-id="<%= r.id %>" data-label="<%= r.ref %> · <%= r.title %> · <%= r.status %>"></a><% }) %>
+          </div>
+          <span class="a42-strip-label"><%= label %></span>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</header>
+<script>
+(function () {
+  // Flip the requirement saved on the previous page into its new colour.
+  let saved = null;
+  try { saved = sessionStorage.getItem('a42-saved'); sessionStorage.removeItem('a42-saved'); } catch (_) {}
+  if (!saved) return;
+  const flip = () => document.querySelectorAll('.a42-cell[data-id="' + CSS.escape(saved) + '"], .a42-tile[data-id="' + CSS.escape(saved) + '"]')
+    .forEach(el => el.classList.add('is-fresh'));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', flip, { once: true });
+  else flip();
+})();
+</script>

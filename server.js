@@ -839,6 +839,9 @@ function requireWorkspace(req, res, next) {
   res.locals.tprmModule = ws.tprm_module;
   res.locals.workspaceEntities = [];
   res.locals.userPerms = permissionsFor(req.user, ws);
+  // The ISO 42001 band; built only when an ISO 42001 page's header asks.
+  let a42Masthead;
+  res.locals.a42Masthead = () => (a42Masthead ||= require('./lib/iso42001-masthead').build(db, ws, req.user.id));
   res.locals.experienceEnabled = require('./lib/experience-flags').enabledFor(db,{actor:req.user,workspace:ws});
   // Risk reads use the built-in methodology until an explicit configuration
   // command stores a version. Opening a workspace must not seed domain rows.

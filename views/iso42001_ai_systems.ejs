@@ -26,7 +26,7 @@
   </div>
 
   <section class="panel" aria-labelledby="aiListTitle">
-    <div class="panel-head"><h2 id="aiListTitle">Systems</h2></div>
+    <div class="panel-head"><h2 id="aiListTitle">Systems</h2><% if (systems.length) { %><span class="meta"><%= inScope.length %> in scope<%= excluded.length ? ` · ${excluded.length} excluded` : "" %></span><% } %></div>
     <% if (!systems.length) { %>
       <div class="empty-state">
         <div class="empty-title">No AI systems recorded</div>
@@ -34,27 +34,32 @@
         <% if (perms.manage) { %><a class="btn btn-primary" href="<%= base %>/ai-systems/new">Add the first system</a><% } %>
       </div>
     <% } else { %>
-      <div style="overflow-x:auto;">
-        <table class="t a42-stack">
-          <thead><tr>
-            <th scope="col">System</th><th scope="col">Organisation's role</th><th scope="col">Stage</th><th scope="col" class="num">Went live</th>
-            <th scope="col">Impact assessment</th><th scope="col" class="num">Vendors</th><th scope="col" class="num">Changes</th><th scope="col" class="num">Incidents</th>
-          </tr></thead>
-          <tbody>
-            <% systems.forEach(s => { const [ia, cls] = iaLabel(s); %>
-              <tr>
-                <td><a class="a42-title" href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a><% if (!s.in_scope) { %><span class="a42-codes">Excluded from scope</span><% } else if (s.purpose) { %><span class="a42-codes"><%= s.purpose.length > 80 ? s.purpose.slice(0, 77) + '...' : s.purpose %></span><% } %></td>
-                <td data-label="Role"><%= s.roles.length ? s.roles.map(r => registry.ROLES[r].replace(/ \(.*\)$/, '')).join(', ') : 'Not recorded' %></td>
-                <td data-label="Stage"><%= registry.LIFECYCLE[s.lifecycle_stage] %></td>
-                <td class="num" data-label="Went live"><%= s.go_live_date ? fmtDate(s.go_live_date) : '' %></td>
-                <td><span class="status <%= cls %>"><%= ia %></span><% if (s.ia_residual) { %><span class="a42-codes">Residual <%= s.ia_residual %></span><% } %></td>
-                <td class="num" data-label="Vendors"><%= s.supplier_count || '' %></td>
-                <td class="num" data-label="Changes"><%= s.change_count || '' %></td>
-                <td class="num" data-label="Incidents"><%= s.incident_count || '' %></td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
+      <div class="ai-cards">
+        <% systems.forEach(s => { const [ia, cls] = iaLabel(s); const stages = Object.keys(registry.LIFECYCLE); const at = stages.indexOf(s.lifecycle_stage); const needsIa = s.in_scope && !s.ia_approved_at && s.lifecycle_stage !== 'retired'; %>
+          <article class="ai-card<%= s.in_scope ? '' : ' is-out' %><%= needsIa ? ' needs-ia' : '' %>">
+            <header>
+              <h3><a class="a42-title" href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a></h3>
+              <p><%= !s.in_scope ? 'Excluded from scope' : s.purpose ? (s.purpose.length > 140 ? s.purpose.slice(0, 137) + '...' : s.purpose) : 'Purpose not recorded' %></p>
+            </header>
+            <ol class="ai-life" aria-label="Life cycle: <%= registry.LIFECYCLE[s.lifecycle_stage] %>">
+              <% stages.forEach((k, i) => { %><li class="<%= i < at ? 'is-past' : i === at ? 'is-now' : '' %>"<%- i === at ? ' aria-current="step"' : '' %>><%= registry.LIFECYCLE[k] %></li><% }) %>
+            </ol>
+            <dl class="ai-facts">
+              <div><dt>Organisation's role</dt><dd><%= s.roles.length ? s.roles.map(r => registry.ROLES[r].replace(/ \(.*\)$/, '')).join(', ') : 'Not recorded' %></dd></div>
+              <div><dt>Human oversight</dt><dd><%= s.automation_level ? registry.AUTOMATION[s.automation_level] : 'Not recorded' %></dd></div>
+              <div><dt>Went live</dt><dd><%= s.go_live_date ? fmtDate(s.go_live_date) : 'Not yet' %></dd></div>
+            </dl>
+            <div class="ai-ia">
+              <span>Impact assessment</span>
+              <strong class="status <%= cls %>"><%= ia %></strong><% if (s.ia_residual) { %><em>residual risk <%= s.ia_residual %></em><% } else if (needsIa) { %><em>The auditor samples this</em><% } %>
+            </div>
+            <footer>
+              <a href="<%= base %>/ai-systems/<%= s.id %>#suppliers"><b><%= s.supplier_count || 0 %></b> vendor<%= s.supplier_count === 1 ? '' : 's' %></a>
+              <a href="<%= base %>/ai-systems/<%= s.id %>#changes"><b><%= s.change_count || 0 %></b> change<%= s.change_count === 1 ? '' : 's' %></a>
+              <a href="<%= base %>/ai-systems/<%= s.id %>#incidents"><b><%= s.incident_count || 0 %></b> incident<%= s.incident_count === 1 ? '' : 's' %></a>
+            </footer>
+          </article>
+        <% }) %>
       </div>
     <% } %>
   </section>
