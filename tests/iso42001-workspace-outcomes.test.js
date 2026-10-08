@@ -76,7 +76,12 @@ test('ISO 42001 creation requires outcome and seeds only the correct engagement/
 });
 
 test('ISO 42001 can be enabled later and completed gap history survives confirmed upgrade',()=>{
-  const neutral=create('AI added later','certification_support',[]);
+  // A client created before programmes were required can have none; creating
+  // one now is refused.
+  assert.equal(call('/workspaces',{client_name:'AI added later',frameworks:[]}).statusCode,400);
+  const neutralId=Number(db.prepare(`INSERT INTO workspaces (firm_id,client_name,scope,lead_consultant_id,frameworks,engagement_outcome)
+    VALUES (?,'AI added later','AI support service',?,'[]','certification_support')`).run(user.firm_id,user.id).lastInsertRowid);
+  const neutral=workspace(neutralId);
   assert.equal(db.prepare('SELECT count(*) c FROM consulting_engagements WHERE workspace_id=?').get(neutral.id).c,0);
   assert.equal(call('/workspaces/:wsId/frameworks',{frameworks:'iso42001'},neutral).statusCode,400);
   assert.equal(call('/workspaces/:wsId/frameworks',{frameworks:'iso42001',engagement_outcome:'gap_assessment_only'},neutral).statusCode,302);

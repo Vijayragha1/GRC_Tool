@@ -32,6 +32,13 @@ function submittedFrameworks(value) {
   return [...new Set(values.filter(code => ALLOWED_FRAMEWORKS.includes(code)))];
 }
 
+// A client must have at least one programme: a standard, or the vCISO or
+// third-party risk service. Nothing is assumed for a client created without
+// one; an empty selection used to be kept as a planning state, and a database
+// row without a value still defaults to several standards at once.
+const NO_PROGRAMME = 'Choose at least one programme for this client: a standard such as ISO 27001 or ISO 42001, or the vCISO or third-party risk service.';
+const hasService = (ws) => Number(ws && ws.vciso_enabled || 0) === 1 || Number(ws && ws.tprm_enabled || 0) === 1;
+
 function firmUserCan(user, permission) {
   if (!user || user.user_type !== 'firm') return false;
   return rbac.rolePermissions(rbac.normalizeRole(user.firm_role) || 'consultant').includes(permission);
@@ -225,6 +232,9 @@ function register(app, deps) {
       return renderNewWorkspace(res, req.user, req.body,
         'Choose how the Third-party risk service will be delivered.', 400);
     }
+    if (!frameworks.length && !vcisoRequested && !tprmRequested) {
+      return renderNewWorkspace(res, req.user, req.body, NO_PROGRAMME, 400);
+    }
     const hasIso = isoLifecycle.hasIsoManagementSystem(frameworks);
     if (hasIso && !isoLifecycle.isValidOutcome(engagement_outcome)) {
       return renderNewWorkspace(res, req.user, req.body,
@@ -234,8 +244,7 @@ function register(app, deps) {
       ? isoLifecycle.normalizeOutcome(engagement_outcome)
       : 'certification_support'; // storage compatibility; not presented as an ISO contract
     const storedTargetDate = !hasIso || isoLifecycle.isGapOnly(outcome) ? null : (target_cert_date || null);
-    // Every programme is optional at client creation. An empty array is a
-    // governed planning state, not a signal to silently enable every framework.
+    // The client's programmes exactly as chosen: never the column default.
     const id = db.transaction(() => {
       const workspaceId = Number(db.prepare(`INSERT INTO workspaces
         (firm_id,client_name,industry,scope,target_cert_date,lead_consultant_id,frameworks,engagement_outcome)
@@ -553,6 +562,9 @@ function register(app, deps) {
         message: `${isoLifecycle.frameworkLabel(removedIso)} cannot be removed after its contracted delivery engagement has been created. Use the governed engagement cancellation process instead.`
       });
     }
+    if (!frameworks.length && !hasService(req.workspace)) {
+      return res.status(400).render('error', { user: req.user, message: NO_PROGRAMME });
+    }
     if (requestedHasIso && !isoLifecycle.isValidOutcome(req.body.engagement_outcome)) {
       return res.status(400).render('error', {
         user: req.user,
@@ -706,6 +718,9 @@ function register(app, deps) {
         user: req.user,
         message: `${isoLifecycle.frameworkLabel(removedIso)} cannot be removed after its contracted delivery engagement has been created. Use the governed engagement cancellation process instead.`
       });
+    }
+    if (req.body.frameworks_present === '1' && !frameworks.length && !hasService(req.workspace)) {
+      return res.status(400).render('error', { user: req.user, message: NO_PROGRAMME });
     }
     if (deliveryHistory && (fullDeliveryHistory || !isoLifecycle.isGapOnly(storedOutcome)) && isoLifecycle.isGapOnly(requestedOutcome)) {
       return res.status(409).render('error', {
