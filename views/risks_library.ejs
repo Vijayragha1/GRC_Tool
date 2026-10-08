@@ -36,7 +36,8 @@
             <%
               // Chips for the controls that will be linked: ISO 27001 ones and
               // ISO 42001 ones, each shown only where the client works to it.
-              const libFrameworks = (() => { try { return JSON.parse(ws.frameworks || '[]'); } catch (_) { return []; } })();
+              // requireWorkspace has already parsed the frameworks into an array.
+              const libFrameworks = Array.isArray(ws.frameworks) ? ws.frameworks : (() => { try { return JSON.parse(ws.frameworks || '[]'); } catch (_) { return []; } })();
               const libChips = [
                 ...(libFrameworks.includes('iso27001') || !libFrameworks.length ? (r.suggested_controls || []).map(c => c.replace('annex-', '').toUpperCase()) : []),
                 ...(libFrameworks.includes('iso42001') ? (r.ai_controls || []).map(c => 'ISO 42001 ' + c.replace(/^ai-annex-a-/, 'A.').replace(/-/g, '.')) : []),

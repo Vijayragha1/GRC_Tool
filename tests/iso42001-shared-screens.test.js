@@ -120,6 +120,9 @@ test('a risk is linked to ISO 42001 controls from the risk page and the library,
   assert.equal(db.prepare('SELECT COUNT(*) c FROM iso42001_risk_controls WHERE risk_id=?').get(riskId).c, 0);
 
   const library = require('../data/risk-library');
+  const libraryPage = await client.get(`/workspaces/${wsAi}/risks/library`);
+  assert.equal(libraryPage.status, 200);
+  assert.match(libraryPage.text, /ISO 42001 A\.6\.2\.4/, 'the library shows the ISO 42001 controls each risk will be linked to');
   const idx = library.findIndex((r) => r.title.startsWith('Prompt injection'));
   await client.post(`/workspaces/${wsAi}/risks/library`, { pick: [String(idx)] });
   const added = db.prepare(`SELECT id FROM risks WHERE workspace_id=? AND title LIKE 'Prompt injection%'`).get(wsAi);
