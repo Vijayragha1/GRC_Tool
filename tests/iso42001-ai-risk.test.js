@@ -76,7 +76,9 @@ test('each risk assessment run is kept as a sealed record with the next one due'
   assert.equal(res.status, 302);
   const rec = db.prepare('SELECT * FROM risk_assessment_records WHERE workspace_id=?').get(wsAi);
   assert.equal(rec.scope, 'ai');
-  assert.equal(rec.risk_count, 1, 'only AI risks are in an AI-scoped record');
+  // A client whose only management system is ISO 42001 has one register, the
+  // AIMS's, so every risk is in its record (migration 079).
+  assert.equal(rec.risk_count, 2, 'the AIMS register holds every risk of an ISO 42001-only client');
   const rows = JSON.parse(rec.payload);
   assert.equal(rows[0].ai_system, 'Triage assistant');
   assert.equal(rows[0].impact_individuals, 5);

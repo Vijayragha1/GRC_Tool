@@ -3613,24 +3613,39 @@ function defaultMethodology() {
   };
 }
 
-function ensureWorkspaceMethodology(wsId) {
-  const existing = db.prepare(`SELECT id FROM risk_methodologies WHERE workspace_id=? AND is_active=1`).get(wsId);
+// Each management system keeps its own risk method (migration 079): the
+// ISMS's risk criteria and the AIMS's AI risk criteria (ISO 42001 clause
+// 6.1.1) are separate records. A caller that names no system gets the
+// client's primary one: the AIMS's on an ISO 42001-only client, the ISMS's
+// everywhere else.
+function methodologySystem(wsId, system) {
+  const riskOwner = require('./lib/risk-owner');
+  if (riskOwner.SYSTEMS.includes(system)) return system;
+  const ws = db.prepare('SELECT frameworks FROM workspaces WHERE id=?').get(wsId);
+  return riskOwner.primary(ws || {});
+}
+
+function ensureWorkspaceMethodology(wsId, system) {
+  const owner = methodologySystem(wsId, system);
+  const existing = db.prepare(`SELECT id FROM risk_methodologies WHERE workspace_id=? AND management_system=? AND is_active=1`).get(wsId, owner);
   if (existing) return existing.id;
   const m = defaultMethodology();
-  const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+  const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       wsId, m.name, m.description,
       JSON.stringify(m.likelihood_scale),
       JSON.stringify(m.impact_scale),
       JSON.stringify(m.matrix),
-      JSON.stringify(m.thresholds)
+      JSON.stringify(m.thresholds),
+      owner
     ).lastInsertRowid;
   return id;
 }
 
-function getActiveMethodology(wsId) {
-  const row = db.prepare(`SELECT * FROM risk_methodologies WHERE workspace_id=? AND is_active=1`).get(wsId);
-  if (!row) return { ...defaultMethodology(), id: null, workspace_id: wsId, is_active: 1, built_in: true };
+function getActiveMethodology(wsId, system) {
+  const owner = methodologySystem(wsId, system);
+  const row = db.prepare(`SELECT * FROM risk_methodologies WHERE workspace_id=? AND management_system=? AND is_active=1 ORDER BY id DESC`).get(wsId, owner);
+  if (!row) return { ...defaultMethodology(), id: null, workspace_id: wsId, is_active: 1, built_in: true, management_system: owner };
   return {
     ...row,
     likelihood_scale: JSON.parse(row.likelihood_scale),

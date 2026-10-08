@@ -694,9 +694,10 @@ function register(app, deps) {
       WHERE workspace_id=? AND id NOT IN (${docLinks.linkedDocIdsSubquery()})
       ORDER BY name`).all(req.workspace.id, 'iso42001', item.id);
 
-    // Risks not yet linked to this control - candidates for the link dropdown.
+    // AIMS risks not yet linked to this control - candidates for the link
+    // dropdown. ISMS risks are treated by ISO 27001 controls only.
     const linkableRisks = db.prepare(`SELECT id, title, likelihood, impact FROM risks
-      WHERE workspace_id=? AND id NOT IN (
+      WHERE workspace_id=? AND management_system='iso42001' AND id NOT IN (
         SELECT risk_id FROM iso42001_risk_controls WHERE iso_item_id=?
       ) ORDER BY (likelihood * impact) DESC, title`).all(req.workspace.id, item.id);
 
@@ -855,8 +856,8 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const { risk_id } = req.body;
     if (!risk_id) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
-    // Sanity check the risk belongs to this workspace.
-    const risk = db.prepare(`SELECT id FROM risks WHERE id=? AND workspace_id=?`).get(risk_id, req.workspace.id);
+    // The risk must be one of this workspace's AIMS risks.
+    const risk = db.prepare(`SELECT id FROM risks WHERE id=? AND workspace_id=? AND management_system='iso42001'`).get(risk_id, req.workspace.id);
     if (!risk) return res.status(404).send('Risk not found');
     db.prepare(`INSERT OR IGNORE INTO iso42001_risk_controls (risk_id, iso_item_id) VALUES (?, ?)`)
       .run(risk_id, req.params.isoId);
@@ -1097,8 +1098,12 @@ function register(app, deps) {
     const liveSystems = count(`SELECT COUNT(*) c FROM ai_systems WHERE workspace_id=? AND in_scope=1 AND lifecycle_stage != 'retired'`, wsId);
     const systemsAssessed = count(`SELECT COUNT(*) c FROM ai_systems s WHERE s.workspace_id=? AND s.in_scope=1 AND s.lifecycle_stage != 'retired'
         AND EXISTS (SELECT 1 FROM ai_impact_assessments ia WHERE ia.ai_system_id=s.id AND ia.status='approved')`, wsId);
-    const recentRiskRecord = count(`SELECT COUNT(*) c FROM risk_assessment_records WHERE workspace_id=? AND performed_on >= date('now','-12 months')`, wsId) > 0;
-    const aiRiskTreated = count(`SELECT COUNT(DISTINCT r.id) c FROM risks r JOIN iso42001_risk_controls rc ON rc.risk_id=r.id WHERE r.workspace_id=?`, wsId) > 0;
+    // The AIMS's own risk assessment and treatment records (migration 079): a
+    // record of the ISO 42001 register, and AIMS risks treated by ISO 42001
+    // controls. On an ISO 42001-only client every record is the AIMS's.
+    const aiRecords = require('../lib/risk-owner').hasBoth(wsRow || {}) ? ` AND scope='ai'` : '';
+    const recentRiskRecord = count(`SELECT COUNT(*) c FROM risk_assessment_records WHERE workspace_id=?${aiRecords} AND performed_on >= date('now','-12 months')`, wsId) > 0;
+    const aiRiskTreated = count(`SELECT COUNT(DISTINCT r.id) c FROM risks r JOIN iso42001_risk_controls rc ON rc.risk_id=r.id WHERE r.workspace_id=? AND r.management_system='iso42001'`, wsId) > 0;
     // Shared with the delivery plan's readiness gate (lib/aims-shared-records.js).
     const aimsAudit = aimsShared.reportedAudits(db, wsRow || { id: wsId }) > 0;
     const reviewHeld = aimsShared.heldReviews(db, wsRow || { id: wsId }, { withinMonths: 12 }) > 0;
@@ -1388,7 +1393,7 @@ function register(app, deps) {
     // a high one has been formally accepted. No money figure is shown, because
     // the register does not record one.
     const { getActiveMethodology, methodologyBand } = require('../db');
-    const methodology = getActiveMethodology(wsId);
+    const methodology = getActiveMethodology(wsId, 'iso42001');
     const openRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.residual_likelihood, r.residual_impact, r.owner_name, r.status,
         EXISTS (SELECT 1 FROM risk_acceptances ra WHERE ra.risk_id = r.id AND ra.revoked_at IS NULL) AS accepted
       FROM risks r WHERE r.workspace_id=? AND r.status != 'closed' AND ${aiRisk.isAiRiskSql('r')}

@@ -32,6 +32,9 @@
   <div>
     <h1 class="page-title">Risks</h1>
     <div class="page-subtitle">Customize the likelihood scale, impact scale, and risk matrix used across the risk register. Saving a new methodology activates it for all subsequent scoring; existing risk scores are kept as-is until re-assessed.</div>
+    <% if (typeof bothSystems !== 'undefined' && bothSystems) { const other = standard === 'iso42001' ? 'iso27001' : 'iso42001'; %>
+      <div class="page-subtitle" style="margin-top:6px;">Each management system has its own risk method. This is the <strong><%= standard === 'iso42001' ? 'ISO 42001 AI risk criteria' : 'ISO 27001 risk method' %></strong>. <a href="/workspaces/<%= ws.id %>/risk-methodology?standard=<%= other %>">Open the <%= other === 'iso42001' ? 'ISO 42001' : 'ISO 27001' %> one</a>.</div>
+    <% } %>
   </div>
   <div class="row-center risk-methodology-actions">
     <%
@@ -55,7 +58,7 @@
       <div class="risk-methodology-preset-panel" style="position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:5;box-shadow:var(--shadow-lg);min-width:340px;max-width:380px;">
         <div class="text-xs text-secondary" style="padding:8px 10px;border-bottom:1px solid var(--border);line-height:1.45;">Replaces the current methodology with one of four standard templates. <strong>Existing risk scores are kept as-is until re-assessed.</strong></div>
         <% presets.forEach(p => { %>
-          <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= p.key %>" style="margin:0;" onsubmit="return appConfirmForm(event, 'Apply the <%= p.label %> preset? This replaces likelihood / impact scales and the matrix bands; existing risk scores are not recalculated.');">
+          <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/preset/<%= p.key %>" style="margin:0;" onsubmit="return appConfirmForm(event, 'Apply the <%= p.label %> preset? This replaces likelihood / impact scales and the matrix bands; existing risk scores are not recalculated.');"><%- include('partials/risk_method_scope') %>
             <button class="btn btn-ghost btn-xs" style="width:100%;text-align:left;justify-content:flex-start;align-items:flex-start;flex-direction:column;padding:10px 12px;line-height:1.4;height:auto;">
               <span class="text-md" style="font-weight: 500;"><%= p.label %></span>
               <span class="text-xs text-secondary" style="font-weight:400;margin-top:3px;white-space:normal;"><%= p.desc %></span>
@@ -64,7 +67,7 @@
         <% }) %>
       </div>
     </details>
-    <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/reset" onsubmit="return appConfirmForm(event, 'Reset to the default 5×5 methodology?')">
+    <form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology/reset" onsubmit="return appConfirmForm(event, 'Reset to the default 5×5 methodology?')"><%- include('partials/risk_method_scope') %>
       <button class="btn btn-secondary btn-xs" title="Restore the default 5×5 methodology that ships with the tool">Reset</button>
     </form>
   </div>
@@ -72,7 +75,7 @@
 
 <%- include('partials/risk_tabs', { ws, active: 'methodology' }) %>
 
-<form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology" id="methForm">
+<form method="POST" action="/workspaces/<%= ws.id %>/risk-methodology" id="methForm"><%- include('partials/risk_method_scope') %>
   <div class="panel" style="margin-bottom:16px">
     <div class="panel-head"><h2>Identification</h2></div>
     <div class="panel-pad" style="display:grid;grid-template-columns:1fr 2fr;gap:12px">

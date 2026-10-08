@@ -150,7 +150,9 @@ test("the management review pack takes the client's AI records and names the AIM
   assert.match(mrm.performance_review, /Impact assessments: 1 in-scope system has an approved assessment, 1 does not/);
   assert.match(mrm.performance_review, /Incidents involving an AI system in the last 12 months: 1 \(1 still open\)/);
   assert.match(mrm.performance_review, /Nonconformities against ISO 42001 requirements: 0 open/);
-  assert.match(mrm.risk_treatment_status, /Open risks treated by ISO 42001 controls: 1/);
+  // Every risk of a client whose only management system is ISO 42001 is on
+  // the AIMS register (migration 079).
+  assert.match(mrm.risk_treatment_status, /Open risks on the AIMS register: 2/);
 
   const both = await client.post(`/workspaces/${wsBoth}/mrms`, { meeting_date: '2026-11-20' });
   assert.equal(both.status, 302);

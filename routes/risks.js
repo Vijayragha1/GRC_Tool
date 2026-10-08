@@ -6,6 +6,7 @@ const fts = require('../lib/fts');
 const csvImport = require('../lib/csv-import');
 const riskLinks = require('../lib/risk-control-links');
 const aiRisk = require('../lib/ai-risk');
+const riskOwner = require('../lib/risk-owner');
 const aiSystems = require('../lib/ai-systems');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
@@ -28,7 +29,7 @@ function register(app, deps) {
   // Record the risk assessment as performed: a sealed snapshot of the
   // register (or of its AI risks) with who performed it and when.
   app.post('/workspaces/:wsId/risks/assessments', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
-    const methodology = getActiveMethodology(req.workspace.id);
+    const methodology = getActiveMethodology(req.workspace.id, aiRisk.scopeSystem(req.workspace, req.body.scope));
     const appetite = (r) => ['high', 'critical', 'very high', 'extreme'].includes(String(methodologyBand(methodology, r.likelihood, r.impact) || '').toLowerCase());
     const id = aiRisk.record(db, req.workspace, req.user.id, req.body, { methodologyName: methodology.name, aboveAppetite: appetite });
     logAction(req.user.id, req.workspace.id, 'record_risk_assessment', 'risk_assessment_record', id, { scope: req.body.scope || 'all' }, auditCtx(req));
@@ -43,16 +44,20 @@ function register(app, deps) {
 
   app.get('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
     const ef = activeEntityFilter(req, 'r');
+    // The client's primary register: on a client with ISO 27001 and ISO 42001
+    // this is the ISMS's, and AI risks are kept in the ISO 42001 module.
+    const system = riskOwner.primary(req.workspace);
+    const owned = ` AND ${riskOwner.ownedSql('r', system)}`;
     // Heatmap aggregates span the FULL register; only the table paginates.
     const heatRisks = db.prepare(`SELECT likelihood, impact FROM risks r
-      WHERE r.workspace_id = ?${ef.sql}`).all(req.workspace.id, ...ef.params);
+      WHERE r.workspace_id = ?${owned}${ef.sql}`).all(req.workspace.id, ...ef.params);
     const pgRisks = paginate(db, req, {
-      count: `SELECT COUNT(*) c FROM risks r WHERE r.workspace_id = ?${ef.sql}`,
+      count: `SELECT COUNT(*) c FROM risks r WHERE r.workspace_id = ?${owned}${ef.sql}`,
       rows: `SELECT r.*, a.name AS asset_name, e.name AS entity_name, s.name AS ai_system_name FROM risks r
       LEFT JOIN assets a ON a.id = r.asset_id
       LEFT JOIN entities e ON e.id = r.entity_id
       LEFT JOIN ai_systems s ON s.id = r.ai_system_id AND s.workspace_id = r.workspace_id
-      WHERE r.workspace_id = ?${ef.sql} ORDER BY (r.likelihood * r.impact) DESC`,
+      WHERE r.workspace_id = ?${owned}${ef.sql} ORDER BY (r.likelihood * r.impact) DESC`,
       params: [req.workspace.id, ...ef.params], perPage: 100,
     });
     const assets = db.prepare('SELECT id, name FROM assets WHERE workspace_id = ? ORDER BY name').all(req.workspace.id);
@@ -61,7 +66,7 @@ function register(app, deps) {
     const enriched = pgRisks.rows.map(r => ({ ...r, band: methodologyBand(methodology, r.likelihood, r.impact) }));
     res.render('risks', { user: req.user, ws: req.workspace, risks: enriched, heatRisks, assets, methodology,
       pg: pgRisks, pagerHref: p => pageHref(req, p), ...aiRiskLocals(req.workspace),
-      assessmentRecords: aiRisk.records(db, req.workspace).slice(0, 5), assessmentDue: aiRisk.nextDue(db, req.workspace) });
+      assessmentRecords: aiRisk.records(db, req.workspace, system).slice(0, 5), assessmentDue: aiRisk.nextDue(db, req.workspace, system) });
   });
 
   app.post('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
@@ -74,6 +79,7 @@ function register(app, deps) {
            threat || null, vulnerability || null,
            parseInt(likelihood) || 3, parseInt(impact) || 3,
            treatment || 'modify', owner_name || null).lastInsertRowid;
+    riskOwner.assign(db, req.workspace, id, req.body);
     // AI system, risk source and the individual and societal impact (lib/ai-risk).
     aiRisk.apply(db, req.workspace, id, req.body, { impactMax: getActiveMethodology(req.workspace.id).impact_scale.length, organisationImpact: impact });
     fts.refresh(req.workspace.id, 'risk', id);
@@ -107,6 +113,7 @@ function register(app, deps) {
         const r = RISK_LIBRARY[parseInt(idxStr)];
         if (!r) return;
         const rid = ins.run(req.workspace.id, req.entityScopeId || null, r.title, r.description, r.threat || null, r.vulnerability || null).lastInsertRowid;
+        riskOwner.assign(db, req.workspace, rid);
         // Each suggestion is linked only where the client works to its
         // framework: ISO 27001 controls in suggested_controls, ISO 42001
         // controls in ai_controls.
@@ -266,6 +273,7 @@ function register(app, deps) {
           validTreatments.has(r.treatment) ? r.treatment : 'modify',
           String(r.owner_name || '').slice(0, 200) || null
         ).lastInsertRowid;
+        riskOwner.assign(db, req.workspace, rid);
         (Array.isArray(r.suggested_controls) ? r.suggested_controls : []).forEach(c => {
           const cid = String(c).trim().toLowerCase();
           if (controlIds.has(cid)) riskLinks.link(db, req.workspace, rid, cid);
@@ -373,6 +381,7 @@ function register(app, deps) {
           p.treatment || 'modify',
           p.owner_name || null
         );
+        riskOwner.assign(db, req.workspace, info.lastInsertRowid, p);
         importedIds.push(info.lastInsertRowid);
       });
     });
@@ -392,9 +401,9 @@ function register(app, deps) {
       WHERE r.id = ? AND r.workspace_id = ?`).get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Not found');
     const linked = riskLinks.linked(db, req.workspace, risk.id);
-    const controlGroups = riskLinks.pickerGroups(db, req.workspace);
+    const controlGroups = riskLinks.pickerGroups(db, req.workspace, risk.id);
     const assets = db.prepare('SELECT id, name FROM assets WHERE workspace_id = ?').all(req.workspace.id);
-    const methodology = getActiveMethodology(req.workspace.id);
+    const methodology = getActiveMethodology(req.workspace.id, risk.management_system);
     const inherentBand = methodologyBand(methodology, risk.likelihood, risk.impact);
     const residualBand = (risk.residual_likelihood && risk.residual_impact) ? methodologyBand(methodology, risk.residual_likelihood, risk.residual_impact) : null;
     // Tier 1.1 - treatment plan actions for this risk

@@ -529,7 +529,7 @@ function register(app, deps) {
     const aims = req.query.framework === 'iso42001' ? codes.includes('iso42001') : (codes.includes('iso42001') && !codes.includes('iso27001'));
     const risks = db.prepare(`SELECT r.*, s.name AS ai_system_name FROM risks r
       LEFT JOIN ai_systems s ON s.id = r.ai_system_id AND s.workspace_id = r.workspace_id
-      WHERE r.workspace_id=? ${aims ? `AND ${aiRisk.isAiRiskSql('r')}` : ''}
+      WHERE r.workspace_id=? AND ${aims ? aiRisk.isAiRiskSql('r') : "r.management_system='iso27001'"}
       ORDER BY (r.likelihood * r.impact) DESC, r.id`).all(ws.id);
     const actionsByRisk = {};
     const ctrlByRisk = {};

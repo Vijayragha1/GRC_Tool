@@ -464,7 +464,7 @@ function register(app, deps) {
     if (!detail) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'AI system not found.' });
     // Risks the consultant has tied to this system (lib/ai-risk.js).
     const systemRisks = db.prepare(`SELECT id, title, likelihood, impact, status, treatment, risk_source FROM risks
-      WHERE workspace_id=? AND ai_system_id=? ORDER BY (likelihood * impact) DESC, id`).all(req.workspace.id, detail.system.id);
+      WHERE workspace_id=? AND ai_system_id=? AND management_system='iso42001' ORDER BY (likelihood * impact) DESC, id`).all(req.workspace.id, detail.system.id);
     render(res, 'iso42001_ai_system_detail', req, { title: detail.system.name, active: 'iso42001-ai-systems', ...detail, registry, edit: req.query.edit === '1',
       systemRisks, riskSourceLabel: require('../lib/ai-risk').SOURCE_LABEL, datasets: aiDatasets.forSystem(db, req.workspace, detail.system.id), DS: aiDatasets,
       reassessment: registry.reassessment(db, req.workspace, detail.system.id) });

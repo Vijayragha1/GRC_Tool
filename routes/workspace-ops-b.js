@@ -12,6 +12,8 @@ const rbac = require('../lib/rbac');
 const ctlReads = require('../lib/control-reads');
 const reqOpts = require('../lib/requirement-options');
 const riskLinks = require('../lib/risk-control-links');
+const riskOwner = require('../lib/risk-owner');
+const { moduleReturn } = require('../lib/module-return');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const changesSince = require('../lib/changes-since');
@@ -345,10 +347,20 @@ function register(app, deps) {
   });
 
   // ==================== RISK METHODOLOGY ====================
+  // Each management system has its own risk method (migration 079). The page
+  // edits the one named by `standard`, or the client's primary one; the ISO
+  // 42001 module passes standard=iso42001 and a return_to inside the module.
+  const methodSystem = req => riskOwner.requested(req.workspace, (req.body && req.body.standard) || req.query.standard);
+  const methodPage = (req, system) => moduleReturn(req)
+    || `/workspaces/${req.workspace.id}/risk-methodology${riskOwner.hasBoth(req.workspace) ? `?standard=${system}` : ''}`;
+  const deactivateMethods = (wsId, system) => db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=? AND management_system=?`).run(wsId, system);
+
   app.get('/workspaces/:wsId/risk-methodology', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
-    const m = getActiveMethodology(req.workspace.id);
-    const all = db.prepare('SELECT id, name, description, is_active, updated_at FROM risk_methodologies WHERE workspace_id=? ORDER BY is_active DESC, name').all(req.workspace.id);
-    res.render('risk_methodology', { user: req.user, ws: req.workspace, methodology: m, all });
+    const system = methodSystem(req);
+    const m = getActiveMethodology(req.workspace.id, system);
+    const all = db.prepare('SELECT id, name, description, is_active, updated_at FROM risk_methodologies WHERE workspace_id=? AND management_system=? ORDER BY is_active DESC, name').all(req.workspace.id, system);
+    res.render('risk_methodology', { user: req.user, ws: req.workspace, methodology: m, all, standard: system,
+      bothSystems: riskOwner.hasBoth(req.workspace), returnTo: moduleReturn(req) });
   });
 
   app.post('/workspaces/:wsId/risk-methodology', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
@@ -370,29 +382,31 @@ function register(app, deps) {
       return res.status(400).render('error', { user: req.user, message: 'Invalid methodology: ' + e.message });
     }
 
-    const before = getActiveMethodology(req.workspace.id);
+    const system = methodSystem(req);
+    const before = getActiveMethodology(req.workspace.id, system);
     // Deactivate old, insert new active version (audit-friendly versioning)
-    db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
-    const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+    deactivateMethods(req.workspace.id, system);
+    const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       req.workspace.id, name || 'Custom', description || null,
-      JSON.stringify(lScale), JSON.stringify(iScale), JSON.stringify(mat), JSON.stringify(thr)
+      JSON.stringify(lScale), JSON.stringify(iScale), JSON.stringify(mat), JSON.stringify(thr), system
     ).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'update_risk_methodology', 'methodology', id,
-      { name }, { ...auditCtx(req), before: { id: before.id, name: before.name }, after: { id, name } });
-    res.redirect(withToast('/workspaces/' + req.workspace.id + '/risk-methodology', 'Methodology updated'));
+      { name, management_system: system }, { ...auditCtx(req), before: { id: before.id, name: before.name }, after: { id, name } });
+    res.redirect(withToast(methodPage(req, system), 'Methodology updated'));
   });
 
   app.post('/workspaces/:wsId/risk-methodology/reset', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
-    db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
+    const system = methodSystem(req);
+    deactivateMethods(req.workspace.id, system);
     const m = defaultMethodology();
-    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       req.workspace.id, m.name, m.description,
       JSON.stringify(m.likelihood_scale), JSON.stringify(m.impact_scale),
-      JSON.stringify(m.matrix), JSON.stringify(m.thresholds));
-    logAction(req.user.id, req.workspace.id, 'reset_risk_methodology', 'methodology', null, null, auditCtx(req));
-    res.redirect('/workspaces/' + req.workspace.id + '/risk-methodology');
+      JSON.stringify(m.matrix), JSON.stringify(m.thresholds), system);
+    logAction(req.user.id, req.workspace.id, 'reset_risk_methodology', 'methodology', null, { management_system: system }, auditCtx(req));
+    res.redirect(methodPage(req, system));
   });
 
   // ==================== ENHANCED ACTIVITY LOG ====================
@@ -476,8 +490,8 @@ function register(app, deps) {
     const treatments = reqOpts.nameRows(req.workspace, db.prepare(`SELECT t.*, rq.title AS iso_title, rq_fw.code AS iso_framework
       FROM risk_treatments t ${reqOpts.joinSql('t.iso_item_id')}
       WHERE t.risk_id=? ORDER BY t.due_date IS NULL, t.due_date`).all(risk.id));
-    // The implementing control can be from any ISO framework the client works to.
-    const controlGroups = riskLinks.pickerGroups(db, req.workspace);
+    // The implementing control comes from the risk's own management system.
+    const controlGroups = riskLinks.pickerGroups(db, req.workspace, risk.id);
     res.render('risk_treatments', { user: req.user, ws: req.workspace, risk, treatments, controlGroups });
   });
 
@@ -532,14 +546,15 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/risk-methodology/preset/:key', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
     const preset = METHODOLOGY_PRESETS[req.params.key];
     if (!preset) return redirectBack(req, res);
-    db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
-    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+    const system = methodSystem(req);
+    deactivateMethods(req.workspace.id, system);
+    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       req.workspace.id, preset.name, preset.description,
       JSON.stringify(preset.likelihood_scale), JSON.stringify(preset.impact_scale),
-      JSON.stringify(preset.matrix), JSON.stringify(preset.thresholds));
-    logAction(req.user.id, req.workspace.id, 'apply_methodology_preset', 'methodology', null, { preset: req.params.key }, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/risk-methodology`);
+      JSON.stringify(preset.matrix), JSON.stringify(preset.thresholds), system);
+    logAction(req.user.id, req.workspace.id, 'apply_methodology_preset', 'methodology', null, { preset: req.params.key, management_system: system }, auditCtx(req));
+    res.redirect(methodPage(req, system));
   });
 
   // ==================== SOA SNAPSHOTS + PER-ENTITY ====================
@@ -871,6 +886,7 @@ function register(app, deps) {
         if (have.has(r.title)) continue;
         const info = ins.run(req.workspace.id, r.title, r.description, r.threat, r.vulnerability,
           r.suggested_likelihood || 3, r.suggested_impact || 3, '');
+        riskOwner.assign(db, req.workspace, info.lastInsertRowid);
         clonedIds.push(info.lastInsertRowid);
         added++;
       }
