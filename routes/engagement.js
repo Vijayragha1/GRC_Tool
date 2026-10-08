@@ -327,9 +327,9 @@ function register(app, deps) {
   app.use('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, requireIso27001Plan);
   const contractedProjection = req => delivery.getProjection(db, req.workspace, req.user.id);
   const requireMutableReportEvidence = req => {
-    if (!aimsDelivery.isAims(req.workspace)) return;
+    if (!aimsDelivery.reportKey(req.workspace)) return;
     const row = db.prepare(`SELECT d.status,m.milestone_key FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
-    if (row?.milestone_key === 'gap-controlled-report' && ['submitted','accepted','superseded'].includes(row.status)) throw new Error('Request changes or create a revision before changing controlled report evidence.');
+    if (aimsDelivery.isReportMilestone(req.workspace, row?.milestone_key) && ['submitted','accepted','superseded'].includes(row.status)) throw new Error('Request changes or create a revision before changing controlled report evidence.');
   };
   const requireContractedRow = (req, type, id) => {
     const projection = contractedProjection(req);
@@ -407,16 +407,14 @@ function register(app, deps) {
 
   // AIMS uses the same delivery acceptance and event trail, with an explicit
   // publication and closure decision tied to the reviewed assessment hash.
+  // On a combined client this publishes the separate ISO 42001 report.
   app.post('/workspaces/:wsId/engagement-plan/publish-report', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
     runPlanAction(req, res, () => {
-      if (!aimsDelivery.isAims(req.workspace)) throw new Error('Use the governed assessment report workflow for this framework.');
+      if (!aimsDelivery.reportKey(req.workspace)) throw new Error('Use the governed assessment report workflow for this framework.');
       const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
-      const gap = aimsDelivery.gapContext(db, req.workspace);
-      if (!gap.report || !gap.complete) throw new Error('Independently accept the report for the current reviewed assessment first.');
-      if (Number(gap.report.accepted_by) !== Number(req.user.id)) throw new Error('The independent report approver must publish the approved report.');
-      if (!gap.publication) delivery.event(db, req.workspace.id, plan.id, req.user.id, 'deliverable', gap.report.id, 'aims_report_published', 'accepted', 'published', { report_id: gap.report.id, assessment_hash: gap.snapshotHash, approval_hash: aimsDelivery.approvalHash(gap.report) });
-      logAction(req.user.id, req.workspace.id, 'publish_iso42001_report', 'engagement_deliverable', gap.report.id, { assessment_hash: gap.snapshotHash }, auditCtx(req));
-    }, 'The independently approved report is published to the client.');
+      const published = aimsDelivery.publishReport(db, req.workspace, req.user.id, plan, delivery.event);
+      logAction(req.user.id, req.workspace.id, 'publish_iso42001_report', 'engagement_deliverable', published.report.id, { assessment_hash: published.snapshotHash }, auditCtx(req));
+    }, aimsDelivery.isCombined(req.workspace) ? 'The independently approved ISO 42001 report is published to the client.' : 'The independently approved report is published to the client.');
   });
   app.post('/workspaces/:wsId/engagement-plan/close-gap', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
     runPlanAction(req, res, () => {
@@ -538,7 +536,7 @@ function register(app, deps) {
       if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
       const presentation = clientPresentation(req);
       const governed = requireContractedRow(req, 'deliverable', req.params.deliverableId).row;
-      const report = aimsDelivery.isAims(req.workspace) && db.prepare('SELECT milestone_key FROM engagement_delivery_milestones WHERE id=?').get(governed.milestone_id)?.milestone_key === 'gap-controlled-report';
+      const report = aimsDelivery.isReportMilestone(req.workspace, db.prepare('SELECT milestone_key FROM engagement_delivery_milestones WHERE id=?').get(governed.milestone_id)?.milestone_key);
       if (report && (!req.body.is_required || !req.body.requires_evidence || !presentation.visible || presentation.frameworkCode !== 'iso42001')) throw new Error('The controlled report must remain required, evidenced and visible to the client under ISO 42001.');
       if (report && governed.status === 'accepted') throw new Error('Request changes before editing an accepted controlled report.');
       const result = db.prepare(`UPDATE engagement_delivery_deliverables SET title=?,description=?,acceptance_criteria=?,client_title=?,client_description=?,

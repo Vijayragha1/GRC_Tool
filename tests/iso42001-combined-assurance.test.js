@@ -36,7 +36,7 @@ test('successful ISMS gap closure cannot complete a combined contract without in
   assert.equal(combined.summary.completionReady, false);
   assert.equal(combined.summary.combinedFrameworkAssurance.assessmentReviewed, false);
   assert.ok(combined.summary.completionBlockers.some(text => /current ISO 42001 assessment/.test(text)));
-  assert.ok(combined.summary.completionBlockers.some(text => /dedicated ISO 42001 engagement/.test(text)));
+  assert.ok(combined.summary.completionBlockers.some(text => /ISO 42001 assessment report.*separate from the ISO 27001 report/.test(text)));
   assert.ok(!combined.summary.completionBlockers.some(text => /Formally close the gap-assessment/.test(text)),
     'do not misleadingly ask to repeat the already completed ISMS closure');
   assert.equal(db.prepare('SELECT COUNT(*) c FROM iso42001_assessment_passes WHERE workspace_id=?').get(ws.id).c, 0,
@@ -107,9 +107,77 @@ test('generic consulting closure cannot bypass the AI plan or the combined contr
       assert.match(res.redirected, /toastKind=error/);
       const message = decodeURIComponent(res.redirected);
       assert.match(message, /ISO 42001/);
-      if (frameworks.length === 2) assert.match(message, /dedicated ISO 42001 engagement/);
+      if (frameworks.length === 2) assert.match(message, /separate from the ISO 27001 report/);
       assert.equal(db.prepare('SELECT status FROM consulting_engagements WHERE id=?').get(engagementId).status, 'active');
       assert.equal(db.prepare('SELECT status FROM engagement_delivery_plans WHERE id=?').get(plan.id).status, 'active');
     }
   }
+});
+
+test('a combined contract closes once its separate ISO 42001 report is approved by a second person and published, and reopens when the assessment changes', t => {
+  const ws = workspace('gap_assessment_only');
+  t.mock.method(gapFieldwork, 'assessmentContext', () => ({
+    pass: { status: 'completed' }, engagement: null,
+    completed: { mobilisation: true, fieldwork: true, validation: true, report: true },
+    closure: { ready: true, complete: true, blockers: [], independentlyApprovedReports: 1 }
+  }));
+  // The ISO 42001 assessment is independently reviewed and frozen.
+  const assessment = require('../lib/iso42001-assessment');
+  let assessmentHash = 'a'.repeat(64);
+  t.mock.method(assessment, 'getGapState', () => ({ complete: true, reviewed: true, blockers: [],
+    pass: { id: 1, status: 'completed' }, snapshot: { snapshot_hash: assessmentHash } }));
+  const aims = require('../lib/iso42001-delivery');
+  const { createReportVisibility } = require('../lib/iso42001-client-publication');
+  const person = email => Number(db.prepare(`INSERT INTO users(email,password_hash,name,firm_id,user_type,firm_role,active)
+    VALUES (?,'unused',?,?,'firm','manager',1)`).run(email, email, firmId).lastInsertRowid);
+  const author = person('aims-report-author@example.test');
+  const approver = person('aims-report-approver@example.test');
+
+  const isms = workspace('gap_assessment_only');
+  db.prepare(`UPDATE workspaces SET frameworks='["iso27001"]' WHERE id=?`).run(isms.id);
+  const ismsPlan = delivery.ensurePlan(db, { ...isms, frameworks: ['iso27001'] }, author);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=? AND milestone_key='aims-controlled-report'`).get(ismsPlan.id).c, 0,
+    'an ISO 27001-only plan has no ISO 42001 report step');
+
+  const plan = delivery.ensurePlan(db, ws, author);
+  delivery.ensurePlan(db, ws, author);
+  const steps = db.prepare(`SELECT * FROM engagement_delivery_milestones WHERE plan_id=? AND milestone_key='aims-controlled-report'`).all(plan.id);
+  assert.equal(steps.length, 1, 'added once, however often the plan is opened');
+  const report = db.prepare('SELECT * FROM engagement_delivery_deliverables WHERE milestone_id=?').get(steps[0].id);
+  assert.equal(report.framework_code, 'iso42001');
+  assert.equal(report.requires_evidence, 1);
+
+  const contents = Buffer.from('ISO 42001 assessment report');
+  const evidenceId = Number(db.prepare(`INSERT INTO evidence (workspace_id,filename,stored_path,sha256,size_bytes,uploaded_by)
+    VALUES (?,'aims-report.pdf','aims-report.pdf',?,?,?)`).run(ws.id, require('node:crypto').createHash('sha256').update(contents).digest('hex'), contents.length, author).lastInsertRowid);
+  db.prepare('INSERT INTO engagement_delivery_evidence(workspace_id,deliverable_id,evidence_id,linked_by) VALUES (?,?,?,?)').run(ws.id, report.id, evidenceId, author);
+  db.prepare('UPDATE engagement_delivery_deliverables SET owner_id=?,approver_id=? WHERE id=?').run(author, approver, report.id);
+  delivery.transitionDeliverable(db, ws, author, report.id, 'submit', 'Report prepared from the frozen assessment.');
+  assert.throws(() => delivery.transitionDeliverable(db, ws, author, report.id, 'accept', 'Self approval'), /approver/);
+  delivery.transitionDeliverable(db, ws, approver, report.id, 'accept', 'Checked against the frozen ISO 42001 assessment.');
+  assert.equal(JSON.parse(db.prepare('SELECT evidence_snapshot_json j FROM engagement_delivery_deliverables WHERE id=?').get(report.id).j).assessment_hash, assessmentHash);
+
+  let summary = delivery.getProjection(db, ws, approver).summary;
+  assert.deepEqual([summary.combinedFrameworkAssurance.report.accepted, summary.combinedFrameworkAssurance.report.published], [true, false]);
+  assert.equal(summary.completionReady, false);
+  assert.ok(summary.completionBlockers.some(text => /Publish the approved ISO 42001 assessment report/.test(text)));
+  assert.equal(createReportVisibility(db, ws)({ id: report.id }), false, 'the client cannot see it before publication');
+  assert.notEqual(delivery.getProjection(db, ws, approver).milestones.find(m => m.milestone_key === 'aims-controlled-report').effective_status, 'complete',
+    'acceptance alone does not complete the step');
+
+  assert.throws(() => aims.publishReport(db, ws, author, plan, delivery.event), /approver must publish/);
+  aims.publishReport(db, ws, approver, plan, delivery.event);
+  const projection = delivery.getProjection(db, ws, approver);
+  summary = projection.summary;
+  assert.equal(summary.combinedFrameworkAssurance.ready, true, summary.combinedFrameworkAssurance.blockers.join(' '));
+  assert.equal(summary.completionReady, true, summary.completionBlockers.join(' '));
+  assert.equal(projection.milestones.find(m => m.milestone_key === 'aims-controlled-report').effective_status, 'complete');
+  assert.equal(createReportVisibility(db, ws)({ id: report.id }), true);
+
+  // A new reviewed assessment leaves the published report describing an old one.
+  assessmentHash = 'b'.repeat(64);
+  summary = delivery.getProjection(db, ws, approver).summary;
+  assert.equal(summary.combinedFrameworkAssurance.report.accepted, false);
+  assert.equal(summary.completionReady, false);
+  assert.equal(createReportVisibility(db, ws)({ id: report.id }), false);
 });

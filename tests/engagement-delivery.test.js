@@ -38,8 +38,13 @@ test('adaptive plan seeds flexible phases, milestones and deliverables once', as
   const plan = db.prepare('SELECT * FROM engagement_delivery_plans WHERE workspace_id=?').get(workspaceId);
   assert.ok(plan);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_phases WHERE plan_id=?').get(plan.id).c, 12);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=?').get(plan.id).c, 31);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_deliverables WHERE plan_id=?').get(plan.id).c, 29);
+  // The workspace takes the default programmes, ISO 27001 and ISO 42001
+  // among them, so its plan also holds the separate ISO 42001 report step
+  // (tests/iso42001-combined-assurance.test.js). Count the ISO 27001 template.
+  const iso27001Template = "milestone_key != 'aims-controlled-report'";
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=? AND ${iso27001Template}`).get(plan.id).c, 31);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id
+    WHERE d.plan_id=? AND m.${iso27001Template}`).get(plan.id).c, 29);
   assert.ok(db.prepare(`SELECT 1 FROM engagement_delivery_phases WHERE plan_id=? AND phase_key='gap_assessment'`).get(plan.id));
   const evidencePeriod = db.prepare(`SELECT * FROM engagement_delivery_milestones
     WHERE plan_id=? AND milestone_key='w12-evidence'`).get(plan.id);

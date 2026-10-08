@@ -67,6 +67,16 @@
   <p class="meta text-sm">Legacy checklist ticks are retained as history and do not satisfy these gates. Assessment sign-off, report approval and publication require retained evidence.</p>
 </div>
 <% } %>
+<% const aimsReport = summary.combinedFrameworkAssurance && summary.combinedFrameworkAssurance.applicable ? summary.combinedFrameworkAssurance.report : null; %>
+<% if (aimsReport) { %>
+<div class="panel" style="padding:14px;margin-bottom:14px;">
+  <strong>ISO 42001 assessment report</strong>
+  <p class="text-sm" style="margin:6px 0;"><%= aimsReport.published ? 'Published to the client.' : aimsReport.accepted ? 'Approved for the current ISO 42001 assessment, not yet published. The client cannot see it until it is published.' : 'Not yet approved for the current ISO 42001 assessment.' %></p>
+  <p class="meta text-sm">Separate from the ISO 27001 report. It is prepared by one person and accepted by another against the frozen ISO 42001 assessment, then published to the client by its approver. Its plan step completes only on publication.</p>
+  <a class="btn btn-secondary btn-xs" href="<%= aimsReport.href %>">Review the ISO 42001 assessment</a>
+  <% if (aimsReport.accepted && !aimsReport.published) { %><form method="POST" action="/workspaces/<%= ws.id %>/engagement-plan/publish-report" style="display:inline;"><button class="btn btn-secondary btn-xs">Publish approved ISO 42001 report</button></form><% } %>
+</div>
+<% } %>
 
 <div class="delivery-summary-grid">
   <div class="panel kpi"><div class="kpi-num" style="font-size:19px;"><%= currentPhase ? currentPhase.name : 'Complete' %></div><div class="kpi-label">Current phase</div><div class="kpi-meta"><%= summary.phaseGatesPassed %>/<%= summary.phaseGatesTotal %> gates decided</div></div>
