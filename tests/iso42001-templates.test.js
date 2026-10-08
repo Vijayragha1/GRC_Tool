@@ -167,5 +167,8 @@ test('a certification request drafts its document from the matching template in 
   const gapWs = db.prepare('SELECT * FROM workspaces WHERE id=?').get(gapOnly);
   const gapReq = audit.addManualRequest(db, gapWs, actor.id, { ref: 'R-9', description: 'AI policy', stage: 'stage1', requirements: '5.2' });
   const refused = await client.post(`/workspaces/${gapOnly}/iso42001/requests/${gapReq}/from-template`, { template_id: tpl('AI Policy').id });
-  assert.match(decodeURIComponent(refused.location), /outside this gap-assessment-only engagement/);
+  // The certification request tracker is closed to a gap-only contract as a
+  // whole, so the refusal comes from its gate rather than the template step.
+  assert.equal(refused.status, 409);
+  assert.match(refused.text, /outside this gap-assessment-only engagement/);
 });

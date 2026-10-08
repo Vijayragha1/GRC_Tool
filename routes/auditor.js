@@ -20,6 +20,9 @@ const ctlReads = require('../lib/control-reads');
 const docLinks = require('../lib/doc-links');
 const documentHtml = require('../lib/document-html');
 const outcomeScope = require('../lib/engagement-outcome-scope');
+const reqOpts = require('../lib/requirement-options');
+const aimsView = require('../lib/aims-audit-view');
+const aimsReports = require('../lib/aims-reports');
 
 const hashAuditorToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
 
@@ -85,6 +88,7 @@ function register(app, deps) {
     // The raw credential exists only for this request. It is never copied onto
     // the database row or logged, but downstream links still need the URL token.
     res.locals.auditorToken = token;
+    res.locals.auditorStandards = aimsView.standards(workspace);
     next();
   }
 
@@ -97,6 +101,13 @@ function register(app, deps) {
     return (n / 1048576).toFixed(2) + ' MB';
   }
 
+  // The control catalogues a document can be linked to, for the client's standards.
+  const DOC_CATALOGUE = { iso27001: 'iso_items', iso42001: 'iso42001_items' };
+  function docFrameworks(req) {
+    const std = aimsView.standards(req.workspace);
+    return [std.isms ? 'iso27001' : null, std.aims ? 'iso42001' : null].filter(Boolean);
+  }
+
   function renderAuditorView(res, view, locals) {
     res.render(view, Object.assign({ token: res.locals.auditorToken, share: locals.share, ws: locals.workspace, fmtDate, bytes }, locals));
   }
@@ -105,8 +116,14 @@ function register(app, deps) {
   app.get('/auditor/:token', requireAuditorToken, requireAuditorService, (req, res) => {
     // Roll-up counts for the section tiles so the auditor sees scope at a
     // glance before clicking through.
+    const std = res.locals.auditorStandards;
+    const aims = std.aims ? aimsView.gather(db, req.workspace) : null;
     const counts = {
-      soa_total: db.prepare(`SELECT COUNT(*) c FROM v_control_states WHERE workspace_id=?`).get(req.workspace.id).c,
+      soa_total: std.isms ? db.prepare(`SELECT COUNT(*) c FROM v_control_states WHERE workspace_id=?`).get(req.workspace.id).c : 0,
+      ai_soa_total: aims ? aims.soa.counts.total : 0,
+      ai_soa_from: aims ? aims.soa.from : null,
+      ai_systems: aims ? aims.systems.filter(s => s.in_scope).length : 0,
+      ai_assessments: aims ? aims.assessments.filter(a => a.status === 'approved').length : 0,
       soa_snapshots: db.prepare(`SELECT COUNT(*) c FROM soa_snapshots WHERE workspace_id=?`).get(req.workspace.id).c,
       risks: db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=?`).get(req.workspace.id).c,
       risks_open: db.prepare(`SELECT COUNT(*) c FROM risks WHERE workspace_id=? AND status='open'`).get(req.workspace.id).c,
@@ -124,6 +141,7 @@ function register(app, deps) {
 
   // ---- SoA ----
   app.get('/auditor/:token/soa', requireAuditorToken, requireAuditorService, (req, res) => {
+    if (!res.locals.auditorStandards.isms) return res.redirect(`/auditor/${res.locals.auditorToken}/aims/soa`);
     // Prefer the most recent snapshot if there is one - that's the version
     // the auditor should see. Live state is a fallback for never-snapshotted
     // workspaces, clearly flagged.
@@ -168,11 +186,39 @@ function register(app, deps) {
     renderAuditorView(res, 'auditor_soa', { share: req.share, workspace: req.workspace, rows, from: 'snapshot', snapshot, counts, allSnaps });
   });
 
+  // ---- ISO 42001: SoA, AI system register, impact assessments ----
+  const requireAims = (req, res, next) => (res.locals.auditorStandards.aims ? next()
+    : res.status(404).render('error', { user: null, message: 'ISO 42001 is not part of this engagement.' }));
+
+  app.get('/auditor/:token/aims/soa', requireAuditorToken, requireAuditorService, requireAims, (req, res) => {
+    renderAuditorView(res, 'auditor_soa', { share: req.share, workspace: req.workspace, framework: 'iso42001', ...aimsView.soa(db, req.workspace) });
+  });
+
+  app.get('/auditor/:token/aims/soa/snapshots/:id(\\d+)', requireAuditorToken, requireAuditorService, requireAims, (req, res) => {
+    const view = aimsView.soa(db, req.workspace, Number(req.params.id));
+    if (!view) return res.status(404).render('error', { user: null, message: 'Snapshot not found.' });
+    renderAuditorView(res, 'auditor_soa', { share: req.share, workspace: req.workspace, framework: 'iso42001', ...view });
+  });
+
+  app.get('/auditor/:token/aims/systems', requireAuditorToken, requireAuditorService, requireAims, (req, res) => {
+    renderAuditorView(res, 'auditor_ai_systems', { share: req.share, workspace: req.workspace,
+      systems: aimsView.systems(db, req.workspace), assessments: aimsView.assessments(db, req.workspace) });
+  });
+
+  app.get('/auditor/:token/aims/systems/:id(\\d+)/impact-assessments/:iaId(\\d+)', requireAuditorToken, requireAuditorService, requireAims, (req, res) => {
+    const ia = db.prepare(`SELECT status FROM ai_impact_assessments WHERE id=? AND ai_system_id=? AND workspace_id=?`)
+      .get(Number(req.params.iaId), Number(req.params.id), req.workspace.id);
+    if (!ia || ia.status === 'draft') return res.status(404).render('error', { user: null, message: 'Impact assessment not found.' });
+    const report = aimsReports.impactAssessment(db, req.workspace, Number(req.params.id), Number(req.params.iaId));
+    renderAuditorView(res, 'auditor_impact_assessment', { share: req.share, workspace: req.workspace, report, status: ia.status });
+  });
+
   // ---- RISKS ----
   app.get('/auditor/:token/risks', requireAuditorToken, requireAuditorService, (req, res) => {
     const methodology = getActiveMethodology(req.workspace.id);
-    const risks = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r
+    const risks = db.prepare(`SELECT r.*, a.name AS asset_name, s.name AS ai_system_name FROM risks r
       LEFT JOIN assets a ON a.id = r.asset_id
+      LEFT JOIN ai_systems s ON s.id = r.ai_system_id AND s.workspace_id = r.workspace_id
       WHERE r.workspace_id = ?
       ORDER BY (COALESCE(r.likelihood,0) * COALESCE(r.impact,0)) DESC, r.id`).all(req.workspace.id);
     const enriched = risks.map(r => ({ ...r, band: methodologyBand(methodology, r.likelihood, r.impact) }));
@@ -205,7 +251,7 @@ function register(app, deps) {
   app.get('/auditor/:token/documents', requireAuditorToken, requireAuditorService, (req, res) => {
     const docs = db.prepare(`SELECT d.id, d.name, d.category, d.status, d.version, d.next_review_date,
         d.published_at, d.approved_at, u.name AS approver,
-        (SELECT COUNT(*) FROM ${docLinks.docControlsExpr('iso27001')} dc WHERE dc.document_id = d.id) AS control_count
+        ${docFrameworks(req).map(c => `(SELECT COUNT(*) FROM ${docLinks.docControlsExpr(c)} dc WHERE dc.document_id = d.id)`).join(' + ')} AS control_count
       FROM generated_docs d
       LEFT JOIN users u ON u.id = d.approved_by
       WHERE d.workspace_id = ? AND d.status IN ('approved','published') AND d.retired_at IS NULL
@@ -222,9 +268,11 @@ function register(app, deps) {
     const body = enc.decryptIfNeeded(doc.content || '', req.workspace.id);
     const rendered = body && /^<[a-z]/i.test(body.trim()) ? body : mdRenderer.render(body || '');
     const html = documentHtml.sanitizeDocumentHtml(rendered);
-    const links = db.prepare(`SELECT dc.iso_item_id, i.title FROM ${docLinks.docControlsExpr('iso27001')} dc
-      INNER JOIN iso_items i ON i.id = dc.iso_item_id WHERE dc.document_id=?
-      ORDER BY i.sort_order`).all(doc.id);
+    const frameworks = docFrameworks(req);
+    const links = db.prepare(frameworks.map(c => `SELECT dc.iso_item_id, i.title, '${c}' AS framework, i.sort_order, ${frameworks.indexOf(c)} AS fw_order
+      FROM ${docLinks.docControlsExpr(c)} dc INNER JOIN ${DOC_CATALOGUE[c]} i ON i.id = dc.iso_item_id WHERE dc.document_id=?`).join(' UNION ALL ')
+      + ' ORDER BY fw_order, sort_order').all(...frameworks.map(() => doc.id))
+      .map(l => ({ ...l, code: reqOpts.codeOf({ id: l.iso_item_id, title: l.title }), fwLabel: frameworks.length > 1 ? reqOpts.label(l.framework) : null }));
     renderAuditorView(res, 'auditor_document_detail', { share: req.share, workspace: req.workspace, doc, html, links });
   });
 
@@ -233,10 +281,10 @@ function register(app, deps) {
     const audits = db.prepare(`SELECT * FROM audits WHERE workspace_id=? ORDER BY audit_date DESC, id DESC`).all(req.workspace.id);
     const findingsByAudit = {};
     if (audits.length) {
-      const findings = db.prepare(`SELECT f.*, i.title AS iso_title FROM audit_findings f
-        LEFT JOIN iso_items i ON i.id = f.iso_item_id
+      const findings = reqOpts.nameRows(req.workspace, db.prepare(`SELECT f.*, rq.title AS iso_title, rq_fw.code AS iso_framework FROM audit_findings f
+        ${reqOpts.joinSql('f.iso_item_id')}
         INNER JOIN audits a ON a.id = f.audit_id
-        WHERE a.workspace_id = ? ORDER BY f.created_at`).all(req.workspace.id);
+        WHERE a.workspace_id = ? ORDER BY f.created_at`).all(req.workspace.id));
       findings.forEach(f => { (findingsByAudit[f.audit_id] = findingsByAudit[f.audit_id] || []).push(f); });
     }
     const ncs = db.prepare(`SELECT * FROM nonconformities WHERE workspace_id=? ORDER BY (status='open') DESC, created_at DESC`).all(req.workspace.id);
@@ -261,7 +309,7 @@ function register(app, deps) {
       const firm = db.prepare(`SELECT name FROM firms WHERE id=?`).get(req.workspace.firm_id) || {};
       const pdfRaw = await auditPack.renderPDF(html, {
         headerLeft: firm.name || '',
-        headerRight: `${req.workspace.client_name} · ISMS Audit Pack`,
+        headerRight: `${req.workspace.client_name} · ${res.locals.auditorStandards.system} Audit Pack`,
         footerLeft: 'Confidential · For audit and management review purposes only'
       });
       const pdf = Buffer.isBuffer(pdfRaw) ? pdfRaw : Buffer.from(pdfRaw);

@@ -21,6 +21,7 @@ const uploadSecurity = require('../lib/upload-security');
 const { requestPolicy, requestCapabilities, clientWorkPolicy } = require('../lib/client-request-policy');
 const notifications = require('../lib/notification-delivery');
 const { listWork } = require('../lib/work-projection');
+const { createReportVisibility } = require('../lib/iso42001-client-publication');
 const drafts = require('../lib/form-drafts');
 const { withToast, auditCtx } = require('../lib/http-helpers');
 const { todayFor } = require('../lib/dates');
@@ -107,6 +108,10 @@ function register(app, deps) {
   }
 
   function deliveryVisibleToActor(req, row, clientPreview = false) {
+    if (req.user.user_type !== 'firm' || clientPreview) {
+      const reportVisible = req.aimsReportVisible || (req.aimsReportVisible = createReportVisibility(db, req.workspace));
+      if (!reportVisible(row)) return false;
+    }
     const assignedToClient = row.owner_id != null || row.approver_id != null;
     if (req.user.user_type === 'firm') return clientPreview ? assignedToClient : true;
     if (isContributor(req)) {
@@ -670,7 +675,7 @@ function register(app, deps) {
 
   function reconcileDeliveryCompletion(req, context = {}) {
     const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    if (!frameworks.includes('iso27001')) return;
+    if (!frameworks.some(code => ['iso27001', 'iso42001'].includes(code))) return;
     if (!db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) return;
     delivery.reconcileCompletionState(db, req.workspace, req.user.id, context);
     delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
@@ -924,7 +929,7 @@ function register(app, deps) {
       }
 
       const workspaceFrameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-      const deliveryProjection = workspaceFrameworks.includes('iso27001')
+      const deliveryProjection = workspaceFrameworks.some(code => ['iso27001', 'iso42001'].includes(code))
         ? delivery.getProjection(db, req.workspace, portalActorId, { ensure: false })
         : null;
       let deliveryWork = [];
@@ -1373,7 +1378,7 @@ function register(app, deps) {
 
   function loadVisibleDelivery(req, id) {
     const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    if (!frameworks.includes('iso27001')) return null;
+    if (!frameworks.some(code => ['iso27001', 'iso42001'].includes(code))) return null;
     // `client_visible` is only the authoring flag.  The contracted lifecycle
     // projection is the authoritative boundary: a gap-assessment-only client
     // must not be able to act on retained implementation/certification rows by

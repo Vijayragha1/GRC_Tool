@@ -20,6 +20,7 @@ const { deleteWorkspace, workspaceStoredPaths } = require('../lib/workspace-dele
 const consultingDelivery = require('../lib/consulting-delivery');
 const engagementDelivery = require('../lib/engagement-delivery');
 const isoLifecycle = require('../lib/iso-lifecycle');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 const gapFieldwork = require('../lib/gap-fieldwork');
 const { buildGapAssessmentOverview } = require('../lib/workspace-outcome-overview');
 const tprmDomain = require('../lib/tprm-domain');
@@ -48,15 +49,26 @@ function renderNewWorkspace(res, user, form = {}, formError = null, status = 200
 
 function outcomeEngagementName(workspace, outcome) {
   return isoLifecycle.isGapOnly(outcome)
-    ? `${workspace.client_name} ISO 27001 gap assessment`
-    : `${workspace.client_name} ISO 27001 certification support`;
+    ? `${workspace.client_name} ${isoLifecycle.frameworkLabel(workspace)} gap assessment`
+    : `${workspace.client_name} ${isoLifecycle.frameworkLabel(workspace)} certification support`;
 }
 
-function hasIso27001DeliveryHistory(db, workspaceId) {
+// Whether an ISO 42001 engagement has moved past the gap assessment: an
+// internal audit or certification audit request exists. From then on it can
+// no longer be shortened to a gap-assessment-only contract.
+function aimsCertificationStarted(db, workspaceId) {
+  const row = db.prepare(`SELECT
+      EXISTS (SELECT 1 FROM aims_audit_requests WHERE workspace_id=? AND withdrawn_at IS NULL) AS requests,
+      EXISTS (SELECT 1 FROM audits WHERE workspace_id=?) AS audits`).get(workspaceId, workspaceId);
+  const ws = db.prepare('SELECT frameworks FROM workspaces WHERE id=?').get(workspaceId);
+  return !!(ws && /iso42001/.test(ws.frameworks || '') && (row.requests || row.audits));
+}
+
+function hasIsoDeliveryHistory(db, workspaceId) {
   const engagement = db.prepare(`SELECT 1 FROM consulting_engagements e
     WHERE e.workspace_id=? AND EXISTS (
       SELECT 1 FROM json_each(CASE WHEN json_valid(e.framework_scope_json) THEN e.framework_scope_json ELSE '[]' END)
-      WHERE value='iso27001'
+      WHERE value IN ('iso27001','iso42001')
     ) LIMIT 1`).get(workspaceId);
   const plan = db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=? LIMIT 1').get(workspaceId);
   return !!engagement || !!plan;
@@ -67,12 +79,12 @@ function hasFullCertificationDeliveryHistory(db, workspaceId) {
     WHERE e.workspace_id=? AND e.engagement_type IN ('implementation','readiness','advisory')
       AND EXISTS (
         SELECT 1 FROM json_each(CASE WHEN json_valid(e.framework_scope_json) THEN e.framework_scope_json ELSE '[]' END)
-        WHERE value='iso27001'
+        WHERE value IN ('iso27001','iso42001')
       )
     LIMIT 1`).get(workspaceId);
   const fullPlan = db.prepare(`SELECT 1 FROM engagement_delivery_plans p
     WHERE p.workspace_id=? AND (
-      p.name='ISO 27001 certification support delivery plan'
+      p.name IN ('ISO 27001 certification support delivery plan','ISO 42001 certification support delivery plan','ISO 27001 + ISO 42001 certification support delivery plan')
       OR p.objective LIKE '%Stage 1 and Stage 2%'
       OR p.completion_criteria LIKE '%Stage 1%Stage 2%'
       OR EXISTS (
@@ -83,16 +95,24 @@ function hasFullCertificationDeliveryHistory(db, workspaceId) {
   return !!implementationEngagement || !!fullPlan;
 }
 
-function syncCertificationDeadlineAnswer(db, workspaceId, targetDate, actorId) {
-  if (!targetDate) {
-    db.prepare("DELETE FROM engagement_intake WHERE workspace_id=? AND question_id='cert-deadline'").run(workspaceId);
-    return;
+function syncCertificationDeadlineAnswer(db, workspace, targetDate, actorId) {
+  const frameworks = isoLifecycle.isoFrameworkCodes(workspace);
+  if (frameworks.includes('iso27001')) {
+    if (!targetDate) db.prepare("DELETE FROM engagement_intake WHERE workspace_id=? AND question_id='cert-deadline'").run(workspace.id);
+    else db.prepare(`INSERT INTO engagement_intake (workspace_id,question_id,answer,answered_by,answered_at)
+      VALUES (?,'cert-deadline',?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(workspace_id,question_id) DO UPDATE SET
+        answer=excluded.answer,answered_by=excluded.answered_by,answered_at=CURRENT_TIMESTAMP`)
+      .run(workspace.id, targetDate, actorId);
   }
-  db.prepare(`INSERT INTO engagement_intake (workspace_id,question_id,answer,answered_by,answered_at)
-    VALUES (?,'cert-deadline',?,?,CURRENT_TIMESTAMP)
-    ON CONFLICT(workspace_id,question_id) DO UPDATE SET
-      answer=excluded.answer,answered_by=excluded.answered_by,answered_at=CURRENT_TIMESTAMP`)
-    .run(workspaceId, targetDate, actorId);
+  if (frameworks.includes('iso42001')) {
+    if (!targetDate) db.prepare("DELETE FROM iso42001_intake_answers WHERE workspace_id=? AND question_key='target-cert-date'").run(workspace.id);
+    else db.prepare(`INSERT INTO iso42001_intake_answers (workspace_id,question_key,answer,updated_at)
+      VALUES (?,'target-cert-date',?,CURRENT_TIMESTAMP)
+      ON CONFLICT(workspace_id,question_key) DO UPDATE SET answer=excluded.answer,updated_at=CURRENT_TIMESTAMP`)
+      .run(workspace.id, targetDate);
+    require('../lib/iso42001-assessment').reconcileDelivery(db, workspace.id, actorId, 'Workspace scope or certification intake context changed.');
+  }
 }
 
 function createCertificationFollowOn(db, workspace, actorId) {
@@ -194,7 +214,7 @@ function register(app, deps) {
     if (!firmUserCan(req.user, 'workspace.create')) return res.status(403).send('Forbidden');
     const { client_name, industry, scope, target_cert_date, engagement_outcome } = req.body;
     if (!client_name) return res.redirect('/dashboard');
-    // The contracted endpoint applies only to ISO 27001. NIST CSF, ISO 42001
+    // Both ISO management systems use the contracted endpoint. NIST CSF
     // and programme-neutral clients must not be forced into an ISO lifecycle
     // or labelled as certification-support work because of the legacy default.
     const frameworks = submittedFrameworks(req.body.frameworks);
@@ -205,15 +225,15 @@ function register(app, deps) {
       return renderNewWorkspace(res, req.user, req.body,
         'Choose how the Third-party risk service will be delivered.', 400);
     }
-    const hasIso27001 = frameworks.includes('iso27001');
-    if (hasIso27001 && !isoLifecycle.isValidOutcome(engagement_outcome)) {
+    const hasIso = isoLifecycle.hasIsoManagementSystem(frameworks);
+    if (hasIso && !isoLifecycle.isValidOutcome(engagement_outcome)) {
       return renderNewWorkspace(res, req.user, req.body,
         'Choose whether this engagement ends after the gap-assessment report or continues through certification support.', 400);
     }
-    const outcome = hasIso27001
+    const outcome = hasIso
       ? isoLifecycle.normalizeOutcome(engagement_outcome)
       : 'certification_support'; // storage compatibility; not presented as an ISO contract
-    const storedTargetDate = !hasIso27001 || isoLifecycle.isGapOnly(outcome) ? null : (target_cert_date || null);
+    const storedTargetDate = !hasIso || isoLifecycle.isGapOnly(outcome) ? null : (target_cert_date || null);
     // Every programme is optional at client creation. An empty array is a
     // governed planning state, not a signal to silently enable every framework.
     const id = db.transaction(() => {
@@ -226,13 +246,8 @@ function register(app, deps) {
       // Seed the intake's cert-deadline answer only for a certification-support
       // contract. A report-only engagement must not inherit certification
       // pressure or a Stage 1/2 deadline from a stale form value.
-      if (storedTargetDate) {
-        db.prepare(`INSERT INTO engagement_intake (workspace_id, question_id, answer, answered_by, answered_at)
-          VALUES (?, 'cert-deadline', ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(workspace_id, question_id) DO UPDATE SET answer=excluded.answer, answered_by=excluded.answered_by, answered_at=CURRENT_TIMESTAMP`)
-          .run(workspaceId, storedTargetDate, req.user.id);
-      }
-      if (frameworks.includes('iso27001')) {
+      if (hasIso) syncCertificationDeadlineAnswer(db, { id: workspaceId, frameworks }, storedTargetDate, req.user.id);
+      if (hasIso) {
         const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(workspaceId);
         workspace.frameworks = frameworks;
         synchronizeOutcomeEngagement(db, workspace, req.user.id, outcome, { forceName: true });
@@ -258,7 +273,7 @@ function register(app, deps) {
       {
         client_name,
         frameworks,
-        engagement_outcome: hasIso27001 ? outcome : null,
+        engagement_outcome: hasIso ? outcome : null,
         tprm_enabled: tprmRequested,
         tprm_service_model: tprmRequested ? tprmServiceModel : null,
         vciso_enabled: vcisoRequested,
@@ -307,6 +322,8 @@ function register(app, deps) {
       ws,
       active: 'setup',
       setup: clientSetup(db, ws),
+      canUpdateWorkspace: rbac.hasPermission(res.locals.userPerms || [], 'workspace.update'),
+      isoContract: isoLifecycle.hasIsoManagementSystem(ws) ? { label: isoLifecycle.frameworkLabel(ws), outcome: isoLifecycle.normalizeOutcome(ws.engagement_outcome), options: isoLifecycle.OUTCOME_OPTIONS } : null,
       hasTprm: !!tprmModule,
       // res.locals.userPerms, not req.userPerms: the latter is only populated
       // by requirePermission middleware, which this route does not use.
@@ -525,30 +542,36 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/frameworks', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req,res) => {
     const frameworks = submittedFrameworks(req.body.frameworks);
     const currentFrameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    const currentHasIso27001 = currentFrameworks.includes('iso27001');
-    const requestedHasIso27001 = frameworks.includes('iso27001');
-    const deliveryHistory = hasIso27001DeliveryHistory(db, req.workspace.id);
+    const requestedHasIso = isoLifecycle.hasIsoManagementSystem(frameworks);
+    const deliveryHistory = hasIsoDeliveryHistory(db, req.workspace.id);
     const fullDeliveryHistory = hasFullCertificationDeliveryHistory(db, req.workspace.id);
     const storedOutcome = isoLifecycle.normalizeOutcome(req.workspace.engagement_outcome);
-    if (currentHasIso27001 && !requestedHasIso27001 && deliveryHistory) {
+    const removedIso = isoLifecycle.isoFrameworkCodes(currentFrameworks).filter(code => !frameworks.includes(code));
+    if (removedIso.length && deliveryHistory) {
       return res.status(409).render('error', {
         user: req.user,
-        message: 'ISO 27001 cannot be removed after its contracted delivery engagement has been created. Use the governed engagement cancellation process instead.'
+        message: `${isoLifecycle.frameworkLabel(removedIso)} cannot be removed after its contracted delivery engagement has been created. Use the governed engagement cancellation process instead.`
       });
     }
-    if (requestedHasIso27001 && !isoLifecycle.isValidOutcome(req.body.engagement_outcome)) {
+    if (requestedHasIso && !isoLifecycle.isValidOutcome(req.body.engagement_outcome)) {
       return res.status(400).render('error', {
         user: req.user,
-        message: 'Choose whether the ISO 27001 engagement ends at the gap-assessment report or continues through full certification support.'
+        message: `Choose whether the ${isoLifecycle.frameworkLabel(frameworks)} engagement ends at the gap-assessment report or continues through full certification support.`
       });
     }
-    const requestedOutcome = requestedHasIso27001
+    const requestedOutcome = requestedHasIso
       ? isoLifecycle.normalizeOutcome(req.body.engagement_outcome)
       : storedOutcome;
+    if (aimsCertificationStarted(db, req.workspace.id) && !isoLifecycle.isGapOnly(storedOutcome) && isoLifecycle.isGapOnly(requestedOutcome)) {
+      return res.status(409).render('error', {
+        user: req.user,
+        message: 'Certification support cannot be shortened to gap assessment only once internal audit or certification audit work has started.'
+      });
+    }
     if (deliveryHistory && (fullDeliveryHistory || !isoLifecycle.isGapOnly(storedOutcome)) && isoLifecycle.isGapOnly(requestedOutcome)) {
       return res.status(409).render('error', {
         user: req.user,
-        message: 'Full certification support cannot be shortened to gap assessment only, including by disabling and re-enabling ISO 27001.'
+        message: 'Full certification support cannot be shortened to gap assessment only, including by disabling and re-enabling an ISO programme.'
       });
     }
     if (deliveryHistory && !fullDeliveryHistory && isoLifecycle.isGapOnly(storedOutcome) && !isoLifecycle.isGapOnly(requestedOutcome)
@@ -558,23 +581,23 @@ function register(app, deps) {
         message: 'Confirm the one-way change to full certification support before expanding this engagement.'
       });
     }
-    const storedTargetDate = requestedHasIso27001 && !isoLifecycle.isGapOnly(requestedOutcome)
+    const storedTargetDate = requestedHasIso && !isoLifecycle.isGapOnly(requestedOutcome)
       ? (req.body.target_cert_date || null)
       : null;
     db.transaction(() => {
       db.prepare(`UPDATE workspaces SET frameworks=?,engagement_outcome=?,target_cert_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`)
         .run(JSON.stringify(frameworks), requestedOutcome, storedTargetDate, req.workspace.id);
-      if (requestedHasIso27001) {
+      if (requestedHasIso) {
         const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(req.workspace.id);
         workspace.frameworks = frameworks;
         synchronizeOutcomeEngagement(db, workspace, req.user.id, requestedOutcome, { forceName: true });
         engagementDelivery.syncCertificationTarget(db, workspace, req.user.id);
-        syncCertificationDeadlineAnswer(db, workspace.id, storedTargetDate, req.user.id);
+        syncCertificationDeadlineAnswer(db, workspace, storedTargetDate, req.user.id);
       }
     })();
     logAction(req.user.id,req.workspace.id,'update_workspace_frameworks','workspace',req.workspace.id,{
       frameworks,
-      engagement_outcome: requestedHasIso27001 ? requestedOutcome : null,
+      engagement_outcome: requestedHasIso ? requestedOutcome : null,
     },auditCtx(req));
     const message = frameworks.length ? 'Assessment programmes updated' : 'Client left without an assigned assessment programme';
     res.redirect(withToast(`/workspaces/${req.workspace.id}`,message));
@@ -653,34 +676,41 @@ function register(app, deps) {
       ? submittedFrameworks(req.body.frameworks)
       : (Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : []);
     const currentFrameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    const currentHasIso27001 = currentFrameworks.includes('iso27001');
-    const requestedHasIso27001 = frameworks.includes('iso27001');
-    const deliveryHistory = hasIso27001DeliveryHistory(db, req.workspace.id);
+    const currentHasIso = isoLifecycle.hasIsoManagementSystem(currentFrameworks);
+    const requestedHasIso = isoLifecycle.hasIsoManagementSystem(frameworks);
+    const deliveryHistory = hasIsoDeliveryHistory(db, req.workspace.id);
     const fullDeliveryHistory = hasFullCertificationDeliveryHistory(db, req.workspace.id);
     const storedOutcome = isoLifecycle.normalizeOutcome(req.workspace.engagement_outcome);
-    const currentOutcome = currentHasIso27001
+    const currentOutcome = currentHasIso
       ? storedOutcome
       : null;
     const outcomeWasSubmitted = Object.prototype.hasOwnProperty.call(req.body || {}, 'engagement_outcome');
-    if (requestedHasIso27001 && (!outcomeWasSubmitted || !isoLifecycle.isValidOutcome(req.body.engagement_outcome))) {
+    if (requestedHasIso && (!outcomeWasSubmitted || !isoLifecycle.isValidOutcome(req.body.engagement_outcome))) {
       return res.status(400).render('error', {
         user: req.user,
-        message: 'Choose whether the ISO 27001 engagement ends at the gap-assessment report or continues through full certification support.'
+        message: `Choose whether the ${isoLifecycle.frameworkLabel(frameworks)} engagement ends at the gap-assessment report or continues through full certification support.`
       });
     }
-    const requestedOutcome = requestedHasIso27001
+    const requestedOutcome = requestedHasIso
       ? isoLifecycle.normalizeOutcome(req.body.engagement_outcome)
-      : storedOutcome; // retain contract history while ISO 27001 is not enabled
-    if (currentHasIso27001 && !requestedHasIso27001 && deliveryHistory) {
+      : storedOutcome; // retain contract history while no ISO programme is enabled
+    if (aimsCertificationStarted(db, req.workspace.id) && !isoLifecycle.isGapOnly(storedOutcome) && isoLifecycle.isGapOnly(requestedOutcome)) {
       return res.status(409).render('error', {
         user: req.user,
-        message: 'ISO 27001 cannot be removed after its contracted delivery engagement has been created. Use the governed engagement cancellation process instead.'
+        message: 'Certification support cannot be shortened to gap assessment only once internal audit or certification audit work has started.'
+      });
+    }
+    const removedIso = isoLifecycle.isoFrameworkCodes(currentFrameworks).filter(code => !frameworks.includes(code));
+    if (removedIso.length && deliveryHistory) {
+      return res.status(409).render('error', {
+        user: req.user,
+        message: `${isoLifecycle.frameworkLabel(removedIso)} cannot be removed after its contracted delivery engagement has been created. Use the governed engagement cancellation process instead.`
       });
     }
     if (deliveryHistory && (fullDeliveryHistory || !isoLifecycle.isGapOnly(storedOutcome)) && isoLifecycle.isGapOnly(requestedOutcome)) {
       return res.status(409).render('error', {
         user: req.user,
-        message: 'Full certification support cannot be shortened to gap assessment only, including by disabling and re-enabling ISO 27001. Create a separately scoped gap-assessment engagement if that is the new requirement.'
+        message: 'Full certification support cannot be shortened to gap assessment only, including by disabling and re-enabling an ISO programme. Create a separately scoped gap-assessment engagement if that is the new requirement.'
       });
     }
     if (deliveryHistory && !fullDeliveryHistory && isoLifecycle.isGapOnly(storedOutcome)
@@ -691,8 +721,7 @@ function register(app, deps) {
         message: 'Confirm the one-way change to full certification support before expanding this engagement.'
       });
     }
-    const outcomeChanged = requestedHasIso27001 && (!currentHasIso27001 || requestedOutcome !== storedOutcome);
-    const storedTargetDate = !requestedHasIso27001 || isoLifecycle.isGapOnly(requestedOutcome)
+    const storedTargetDate = !requestedHasIso || isoLifecycle.isGapOnly(requestedOutcome)
       ? null
       : (target_cert_date || null);
     // Optimistic concurrency: client roundtrips workspaces.updated_at as a
@@ -726,12 +755,12 @@ function register(app, deps) {
     if (usingCAS) args.push(updated_at_snapshot);
     const result = db.transaction(() => {
       const update = db.prepare(sql).run(...args);
-      if (update.changes && requestedHasIso27001) {
+      if (update.changes && requestedHasIso) {
         const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(req.workspace.id);
         workspace.frameworks = frameworks;
-        if (outcomeChanged) synchronizeOutcomeEngagement(db, workspace, req.user.id, requestedOutcome, { forceName: true });
+        synchronizeOutcomeEngagement(db, workspace, req.user.id, requestedOutcome, { forceName: true });
         engagementDelivery.syncCertificationTarget(db, workspace, req.user.id);
-        syncCertificationDeadlineAnswer(db, workspace.id, storedTargetDate, req.user.id);
+        syncCertificationDeadlineAnswer(db, workspace, storedTargetDate, req.user.id);
       }
       return update;
     })();
@@ -743,7 +772,7 @@ function register(app, deps) {
     }
     logAction(req.user.id, req.workspace.id, 'update_workspace', 'workspace', req.workspace.id, {
       frameworks,
-      engagement_outcome: requestedHasIso27001 ? requestedOutcome : null,
+      engagement_outcome: requestedHasIso ? requestedOutcome : null,
       previous_engagement_outcome: currentOutcome,
     });
     res.redirect('/workspaces/' + req.workspace.id);

@@ -42,7 +42,8 @@
     </tr></thead>
     <tbody>
       <% rows.forEach(r => {
-           const code = r.id.replace('annex-','').toUpperCase();
+           const code = r.code || r.id.replace('annex-','').toUpperCase();
+           const href = r.href || `/workspaces/${ws.id}/controls/assess/${r.id}`;
            const bandColors = {
              green: { bg: 'rgba(22,163,74,0.10)', fg: '#15803d', label: 'Sufficient' },
              amber: { bg: 'rgba(202,138,4,0.10)', fg: '#a16207', label: 'Needs support' },
@@ -54,9 +55,9 @@
         <tr>
           <td><span class="mono meta text-xs"><%= code %></span></td>
           <td>
-            <a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="link-muted">
+            <a href="<%= href %>" class="link-muted">
               <%= r.title.replace(/^A\.[0-9.]+ /, '') %>
-            </a>
+            </a><% if (typeof multiFramework !== 'undefined' && multiFramework) { %> <span class="meta text-xs"><%= r.frameworkLabel %></span><% } %>
             <% if (r.expectedCount > 0 && r.expected.length > 0) { %>
               <div class="meta text-xs" style="margin-top:3px;line-height:1.4;">
                 <% r.expected.slice(0, 3).forEach((e, i) => { %><%= e.item %><% if (i < Math.min(r.expected.length, 3) - 1) { %><span style="color:var(--text-tertiary);"> &middot; </span><% } %><% }) %>
@@ -71,7 +72,7 @@
           <td>
             <span class="tag" style="background:<%= b.bg %>;color:<%= b.fg %>;font-size:11px;font-weight: 500;border:1px solid <%= b.fg %>;"><%= b.label %></span>
           </td>
-          <td><a href="/workspaces/<%= ws.id %>/controls/assess/<%= r.id %>" class="btn btn-secondary btn-xs">Open →</a></td>
+          <td><a href="<%= href %>" class="btn btn-secondary btn-xs">Open →</a></td>
         </tr>
       <% }) %>
       <% if (rows.length === 0) { %>

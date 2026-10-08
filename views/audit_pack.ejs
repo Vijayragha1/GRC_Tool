@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ISMS Audit Pack · <%= preparedFor %></title>
+<title><%= standards.system %> Audit Pack · <%= preparedFor %></title>
 <style>
   <% if (typeof serifDataUri !== 'undefined' && serifDataUri) { %>
   /* Source Serif 4 inlined as data URI: the PDF is rendered by Puppeteer's
@@ -188,6 +188,10 @@
     if (a === 'excluded') return 'bad';
     return 'neutral';
   }
+  // Sections are numbered in the order they appear, since which ones appear
+  // depends on the options chosen and on the client's standards.
+  let sectionNo = 0;
+  function nextSection() { sectionNo += 1; return sectionNo; }
   function severityChipKind(s) {
     s = String(s || '').toLowerCase();
     if (s === 'major' || s === 'critical' || s === 'high') return 'bad';
@@ -200,8 +204,8 @@
 <% if (sections.cover) { %>
 <div class="cover">
   <div class="cover-firm-wordmark"><%= brand.displayName %></div>
-  <div class="cover-eyebrow">An ISO/IEC 27001:2022 deliverable</div>
-  <div class="cover-title">ISMS Audit Pack</div>
+  <div class="cover-eyebrow">An <%= standards.standardText %> deliverable</div>
+  <div class="cover-title"><%= standards.system %> Audit Pack</div>
   <div class="cover-subtitle">Prepared for <%= preparedFor %><% if (workspace.scope) { %> · <%= workspace.scope %><% } %></div>
 
   <div class="cover-spacer"></div>
@@ -222,12 +226,19 @@
     </div>
     <div>
       <div class="cover-meta-label">Standard</div>
-      <div class="cover-meta-value">ISO/IEC 27001:2022</div>
+      <div class="cover-meta-value"><%= standards.standardText %></div>
       <% if (workspace.target_cert_date) { %><div class="cover-meta-sub">Target cert: <%= fmt(workspace.target_cert_date) %></div><% } %>
     </div>
+    <% if (typeof aims !== 'undefined' && aims.soa && aims.soa.snapshot) { %>
+    <div>
+      <div class="cover-meta-label">ISO 42001 SoA</div>
+      <div class="cover-meta-value"><%= aims.soa.snapshot.label || 'Untitled snapshot' %><%= aims.soa.snapshot.version ? ' · v' + aims.soa.snapshot.version : '' %></div>
+      <div class="cover-meta-sub"><%= aims.soa.from === 'approved' ? 'Approved ' + fmt(aims.soa.snapshot.approved_on) : 'Not approved' %> · <span class="mono">SHA-256 <%= (aims.soa.snapshot.payload_hash || '').slice(0,16) %>…</span></div>
+    </div>
+    <% } %>
     <% if (sections.soa && typeof soa !== 'undefined' && soa.snapshot) { %>
     <div>
-      <div class="cover-meta-label">SoA snapshot</div>
+      <div class="cover-meta-label"><%= standards.aims ? 'ISO 27001 SoA' : 'SoA snapshot' %></div>
       <div class="cover-meta-value"><%= soa.snapshot.label || 'Untitled snapshot' %></div>
       <div class="cover-meta-sub mono">SHA-256 <%= (soa.snapshot.payload_hash || '').slice(0,16) %>…</div>
     </div>
@@ -245,7 +256,7 @@
 <%# ============= EXECUTIVE SUMMARY ============= %>
 <% if (sections.summary) { %>
 <div class="section">
-  <div class="section-eyebrow">Section 1</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Executive summary</h2>
   <div class="section-rule"></div>
   <p>A snapshot of the management system as of <%= generatedAt.toISOString().slice(0,10) %>. Detail for each figure is in the sections that follow.</p>
@@ -256,6 +267,20 @@
         <div class="kpi-label">SoA · Applicable controls</div>
         <div class="kpi-num"><%= soa.counts.included %> <span class="mini">/ <%= soa.counts.total %></span></div>
         <div class="kpi-meta"><%= soa.counts.excluded %> excluded · <%= soa.counts.undecided %> undecided</div>
+      </div>
+    <% } %>
+    <% if (typeof aims !== 'undefined' && aims.soa) { %>
+      <div class="kpi brand">
+        <div class="kpi-label">ISO 42001 SoA · Applicable controls</div>
+        <div class="kpi-num"><%= aims.soa.counts.included %> <span class="mini">/ <%= aims.soa.counts.total %></span></div>
+        <div class="kpi-meta"><%= aims.soa.from === 'approved' ? 'Approved' : aims.soa.from === 'snapshot' ? 'Not yet approved' : 'Live state' %> · <%= aims.soa.counts.undecided %> undecided</div>
+      </div>
+    <% } %>
+    <% if (typeof aims !== 'undefined' && aims.systems) { const inScope = aims.systems.filter(x => x.in_scope); const noIa = inScope.filter(x => x.assessment.state === 'none').length; %>
+      <div class="kpi <%= noIa ? 'bad' : (inScope.some(x => x.assessment.state === 'due') ? 'warn' : 'good') %>">
+        <div class="kpi-label">AI systems in scope</div>
+        <div class="kpi-num"><%= inScope.length %></div>
+        <div class="kpi-meta"><%= noIa %> without an approved impact assessment</div>
       </div>
     <% } %>
     <% if (typeof risks !== 'undefined') { %>
@@ -314,8 +339,8 @@
 <%# ============= STATEMENT OF APPLICABILITY ============= %>
 <% if (sections.soa && typeof soa !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 2</div>
-  <h2 class="section-title">Statement of Applicability</h2>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
+  <h2 class="section-title">Statement of Applicability<%= standards.aims ? ' · ISO/IEC 27001' : '' %></h2>
   <div class="section-rule"></div>
   <% if (soa.snapshot) { %>
     <p class="mini">Frozen snapshot · <strong><%= soa.snapshot.label || 'Untitled' %></strong> · captured <%= fmt(soa.snapshot.created_at) %> · SHA-256 <span class="hash"><%= soa.snapshot.payload_hash %></span></p>
@@ -352,10 +377,90 @@
 </div>
 <% } %>
 
+<%# ============= ISO 42001: SoA, AI system register ============= %>
+<% if (typeof aims !== 'undefined' && aims.soa) { %>
+<div class="section">
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
+  <h2 class="section-title">Statement of Applicability<%= standards.isms ? ' · ISO/IEC 42001' : '' %></h2>
+  <div class="section-rule"></div>
+  <% if (aims.soa.from === 'approved') { %>
+    <p class="mini">Approved<%= aims.soa.snapshot.version ? ' version ' + aims.soa.snapshot.version : '' %> · approved by <strong><%= aims.soa.snapshot.approved_by_name %></strong> on <%= fmt(aims.soa.snapshot.approved_on) %><%= aims.soa.snapshot.owner ? ' · owner ' + aims.soa.snapshot.owner : '' %> · SHA-256 <span class="hash"><%= aims.soa.snapshot.payload_hash %></span></p>
+  <% } else if (aims.soa.snapshot) { %>
+    <div class="callout warn">This snapshot (<%= aims.soa.snapshot.label || 'untitled' %>, captured <%= fmt(aims.soa.snapshot.created_at) %>) has not been approved. SHA-256 <span class="hash"><%= aims.soa.snapshot.payload_hash %></span></div>
+  <% } else { %>
+    <div class="callout warn">No ISO 42001 SoA snapshot exists yet. The table below reflects the current live SoA state.</div>
+  <% } %>
+  <table class="t">
+    <thead><tr>
+      <th style="width:18mm;">Control</th>
+      <th>Title</th>
+      <th style="width:22mm;">Applicability</th>
+      <th style="width:24mm;">Status</th>
+      <th>Justification</th>
+    </tr></thead>
+    <tbody>
+      <% aims.soa.rows.forEach(r => { const justification = r.applicability === 'excluded' ? r.exclusion_justification : r.inclusion_justification; %>
+        <tr>
+          <td><span class="iso-ref"><%= r.code %></span></td>
+          <td><%= r.title %></td>
+          <td><%- chip(r.applicability, appChipKind(r.applicability)) %></td>
+          <td><%- chip(r.status, statusChipKind(r.status)) %></td>
+          <td class="mini"><%= (justification || '').slice(0, 220) %><%= (justification && justification.length > 220) ? '…' : '' %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (typeof aims !== 'undefined' && aims.systems) { %>
+<div class="section">
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
+  <h2 class="section-title">AI system register and impact assessments</h2>
+  <div class="section-rule"></div>
+  <% if (!aims.systems.length) { %>
+    <div class="empty">No AI systems recorded.</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>System</th><th style="width:34mm;">Organisation's role</th><th style="width:20mm;">Lifecycle</th><th style="width:28mm;">Owner</th><th style="width:40mm;">Impact assessment</th></tr></thead>
+      <tbody>
+        <% aims.systems.forEach(x => { %>
+          <tr>
+            <td><strong><%= x.name %></strong><%= x.in_scope ? '' : ' (outside scope)' %><% if (x.purpose) { %><div class="mini"><%= x.purpose %></div><% } %></td>
+            <td class="mini"><%= x.rolesText || '-' %></td>
+            <td class="mini"><%= x.lifecycleText || '-' %></td>
+            <td class="mini"><%= x.system_owner || '-' %></td>
+            <td><%- chip(x.assessment.state === 'current' ? 'Current' : x.assessment.state === 'due' ? 'Reassessment due' : 'None approved', x.assessment.state === 'current' ? 'good' : x.assessment.state === 'due' ? 'warn' : 'bad') %><div class="mini"><%= x.assessment.reason %></div></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <% if (aims.assessments.length) { %>
+    <h3 style="margin-top:6mm;">Approved impact assessments</h3>
+    <table class="t">
+      <thead><tr><th>System</th><th style="width:14mm;">Version</th><th style="width:34mm;">Approved</th><th style="width:22mm;">Residual</th><th style="width:34mm;">Decision</th><th style="width:22mm;">Next review</th></tr></thead>
+      <tbody>
+        <% aims.assessments.forEach(a => { %>
+          <tr>
+            <td><%= a.system_name %><%= a.status === 'superseded' ? ' (superseded)' : '' %></td>
+            <td class="mini">v<%= a.version_no %></td>
+            <td class="mini"><%= fmt(a.approved_at) %><%= a.approved_by_name ? ' · ' + a.approved_by_name : '' %></td>
+            <td class="mini"><%= a.residualText || '-' %></td>
+            <td class="mini"><%= a.decisionText || '-' %></td>
+            <td class="mini"><%= fmt(a.next_review_date) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
 <%# ============= RISK REGISTER ============= %>
 <% if (sections.risks && typeof risks !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 3</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Risk register</h2>
   <div class="section-rule"></div>
   <% if (risks.methodology) { %>
@@ -441,7 +546,7 @@
 <%# ============= EVIDENCE INDEX ============= %>
 <% if (sections.evidence && typeof evidence !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 4</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Evidence index</h2>
   <div class="section-rule"></div>
   <p class="mini"><strong><%= evidence.count %></strong> evidence files · <%= bytes(evidence.totalBytes) %> · each row carries a SHA-256 so an auditor can verify integrity offline.</p>
@@ -478,7 +583,7 @@
 <%# ============= INTERNAL AUDIT ============= %>
 <% if (sections.audits && typeof audits !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 5</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Internal audit programme</h2>
   <div class="section-rule"></div>
 
@@ -528,7 +633,7 @@
 <%# ============= NONCONFORMITIES ============= %>
 <% if (sections.ncs && typeof ncs !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 6</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Nonconformity log</h2>
   <div class="section-rule"></div>
   <p class="mini"><strong><%= ncs.open %></strong> open · <strong><%= ncs.closed %></strong> closed · <%= ncs.majorOpen %> major open</p>
@@ -567,7 +672,7 @@
 <%# ============= MRMS ============= %>
 <% if (sections.mrms && typeof mrms !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 7</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Management review</h2>
   <div class="section-rule"></div>
   <p class="mini"><strong><%= mrms.held %></strong> review<%= mrms.held === 1 ? '' : 's' %> held · last <%= mrms.lastMeetingDate ? fmt(mrms.lastMeetingDate) : 'none' %></p>
@@ -599,7 +704,7 @@
 <%# ============= IMPROVEMENTS ============= %>
 <% if (sections.improvements && typeof improvements !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 8</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Improvement log</h2>
   <div class="section-rule"></div>
   <p class="mini"><strong><%= improvements.open %></strong> active · <strong><%= improvements.done %></strong> completed</p>
@@ -634,7 +739,7 @@
 <%# ============= AUDIT TRAIL ============= %>
 <% if (sections.audit_trail && typeof audit_trail !== 'undefined') { %>
 <div class="section">
-  <div class="section-eyebrow">Section 9</div>
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
   <h2 class="section-title">Audit trail · recent activity</h2>
   <div class="section-rule"></div>
   <p class="mini"><strong><%= audit_trail.total %></strong> total events logged. The 50 most recent are shown below; the full chain is verifiable in-tool via the Activity → Verify chain workflow.</p>

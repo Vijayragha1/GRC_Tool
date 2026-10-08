@@ -13,7 +13,9 @@
 
   <% if (certificationLineage) { %>
     <div class="panel-pad" style="border-bottom:1px solid var(--border);background:var(--bg-subtle);">
-      <strong>Retained <%= certificationLineage.event_type === 'stage_1' ? 'Stage 1' : 'Stage 2' %> certification finding</strong>
+      <% const lineageLabels = { stage_1: 'Stage 1', stage_2: 'Stage 2', surveillance_y1: 'Year 1 surveillance', surveillance_y2: 'Year 2 surveillance', recertification: 'Recertification' }; %>
+      <strong>Retained <%= certificationLineage.framework === 'iso42001' ? 'ISO 42001 ' : '' %><%= lineageLabels[certificationLineage.event_type] || 'certification' %> audit finding</strong>
+      <% if (certificationLineage.framework === 'iso42001') { %> <a class="meta" href="/workspaces/<%= ws.id %>/iso42001/cert-cycle#event-<%= certificationLineage.cert_event_id %>">Open the certification cycle</a><% } %>
       <div class="meta" style="margin-top:4px;line-height:1.5;">The audit source and finding record are immutable. Closure requires corrective action, an effectiveness conclusion and independent validation evidence<%= ['major','minor'].includes(String(nc.severity || '').toLowerCase()) ? ', plus root-cause analysis' : '' %>.</div>
     </div>
   <% } %>
@@ -30,14 +32,11 @@
     <div><label class="label">Source reference</label><input class="input" name="source_ref" value="<%= nc.source_ref || '' %>" <%= certificationLineage ? 'disabled aria-disabled="true"' : '' %>></div>
     <div><label class="label">Severity</label>
       <select class="select" name="severity">
-        <% ['major','minor','observation'].forEach(s => { %><option value="<%= s %>" <%= nc.severity === s ? 'selected' : '' %>><%= s %></option><% }) %>
+        <% ['major','minor','observation','opportunity'].forEach(s => { %><option value="<%= s %>" <%= nc.severity === s ? 'selected' : '' %>><%= s === 'opportunity' ? 'opportunity for improvement' : s %></option><% }) %>
       </select>
     </div>
-    <div><label class="label">Related ISO item</label>
-      <select class="select" name="iso_item_id">
-        <option value="">- none -</option>
-        <% allItems.forEach(i => { %><option value="<%= i.id %>" <%= nc.iso_item_id === i.id ? 'selected' : '' %>><%= i.title %></option><% }) %>
-      </select>
+    <div><label class="label">Related requirement</label>
+      <%- include('partials/requirement_select', { groups: requirementGroups, name: 'iso_item_id', selected: nc.iso_item_id }) %>
     </div>
     <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= nc.description || '' %></textarea></div>
 

@@ -1,0 +1,18 @@
+<%- include('partials/header', { title: 'Reviewed ISO 42001 assessment', user, ws, active: 'iso42001-gap' }) %>
+<style>@media print{aside,nav,.no-print{display:none!important} main{margin:0!important} table{font-size:10px} tr{break-inside:avoid} .assessment-hash{overflow-wrap:anywhere}}</style>
+<div class="page-head"><div><h1>Reviewed ISO 42001 assessment</h1><p><%= ws.client_name %> · Pass <%= snapshot.data.pass_number %> · <%= snapshot.data.name %></p></div><a class="btn btn-secondary no-print" href="/workspaces/<%= ws.id %>/iso42001/gap-assessment">Assessment passes</a></div>
+<div class="panel panel-pad">
+  <p><%= snapshot.data.conclusion %></p>
+  <p>Retained scope: <%= snapshot.data.assessment_context?.scope || 'No separate workspace scope recorded; see the clause 4.3 conclusion below.' %></p>
+  <p>Prepared by <%= snapshot.data.prepared_by.name %>. Independently reviewed by <%= snapshot.data.reviewed_by.name %> on <%= snapshot.reviewed_at %>.</p>
+  <p>This report retains the conclusions and evidence metadata reviewed at sign-off. Later operational changes do not alter it. A recorded gap is an assessment conclusion, not proof of conformity.</p>
+  <p class="assessment-hash">Snapshot <%= snapshot.id %> · SHA-256 <code><%= snapshot.snapshot_hash %></code></p>
+</div>
+<div class="panel" style="overflow:auto;margin-top:16px"><table class="t"><thead><tr><th>Requirement</th><th>Conclusion and applicability</th><th>Recorded rationale</th><th>Retained evidence</th></tr></thead><tbody>
+<% snapshot.data.items.forEach(item=>{ %><tr>
+  <td><strong><%= item.id %></strong><br><%= item.title %><br><small>Source pass <%= item.source_pass_id %>, record <%= item.source_history_id %></small></td>
+  <td><%= item.status %><br><%= item.applicability %></td>
+  <td style="white-space:pre-wrap"><%= item.notes || '' %><% if(item.exclusion_justification){ %><br>Exclusion: <%= item.exclusion_justification %><% } %><% if(item.inclusion_justification){ %><br>Inclusion: <%= item.inclusion_justification %><% } %></td>
+  <td><% if(!item.evidence.length){ %>No linked evidence retained.<% } %><% item.evidence.forEach(e=>{ %><div style="margin-bottom:12px"><strong><%= e.filename %></strong> (#<%= e.id %>)<br><span style="overflow-wrap:anywhere"><%= e.sha256 || 'No file hash' %></span><br><%= e.description || '' %><br><small><%= e.period_label || '' %> <%= e.valid_from || '' %> <%= e.valid_until ? 'to '+e.valid_until : '' %></small></div><% }) %></td>
+</tr><% }) %></tbody></table></div>
+<%- include('partials/footer') %>

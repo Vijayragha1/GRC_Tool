@@ -80,6 +80,7 @@
             <td class="mono meta">R-<%= String(r.id).padStart(3,'0') %></td>
             <td>
               <%= r.title %>
+              <% if (r.ai_system_name) { %><div class="meta text-sm" style="margin-top:3px;">AI system: <%= r.ai_system_name %></div><% } %>
               <% if (r.description) { %><div class="meta text-sm" style="margin-top:3px;"><%= r.description.slice(0,140) %><%= r.description.length > 140 ? '…' : '' %></div><% } %>
             </td>
             <td class="meta"><%= r.asset_name || '-' %></td>

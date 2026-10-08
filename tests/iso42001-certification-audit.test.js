@@ -69,15 +69,17 @@ function workbook(rows) {
 const HEADER = ['Req ID', 'Class', 'Category', 'Type', 'Description', 'Service', 'Requirement', 'Location', 'Due', 'Status', 'Example CB Guidance'];
 function listRows(overrides = {}) {
   const rows = [
-    ['P-1', 'General', 'Population', 'Population', 'Provide a population of newly implemented AI systems', 'ISO 42001', '', 'Main', us(STAGE2), 'Open', ''],
-    ['P-2', 'General', 'Population', 'Population', 'Provide a listing of vendors involved in the AI system lifecycle', 'ISO 42001', '', 'Main', us(STAGE2), 'Open', ''],
-    ['R-10', 'Management', 'Compliance', 'General', 'Provide AI management system scope document with version and approval date (S1)', 'ISO 42001', 'ISO 42001 Clause 4.3', 'Main', us(STAGE1), 'Open', 'Scope document with version and approval date'],
-    ['R-11', 'Management', 'Compliance', 'Policy', 'Provide AI Policy with version and approval date (S1)', 'ISO 42001', 'ISO 42001 Clause 5.2', 'Main', us(STAGE1), 'Open', ''],
-    ['R-12', 'Risk', 'Risk Management', 'General', 'Provide a Statement of applicability with version and approval date (S1)', 'ISO 42001', 'ISO 42001 Clause 6.1.3.d', 'Main', us(STAGE1), 'Open', ''],
-    ['R-13', 'Management', 'Compliance', 'General', 'Provide internal audit program and internal audit plan (S1)', 'ISO 42001', 'ISO 42001 Clause 9.2.2, ISO 42001 Annex A.2.2', 'Main', us(STAGE1), 'Open', ''],
-    ['R-20', 'Risk', 'Risk Management', 'General', 'Documentation of AI system impact assessments', 'ISO 42001', 'ISO 42001 Annex A.5.3, ISO 42001 Annex A.5.4', 'Main', us(STAGE2), 'Open', ''],
-    ['R-21', 'Other', 'Prefieldwork', 'General', 'Request for remote audit', 'ISO 42001', 'Prefieldwork', 'Main', us(STAGE2), 'Open', ''],
-    ['R-30', 'Training', 'Training Program', 'Sample', 'AI Awareness and Competency Training for a sample of new hires', 'ISO 42001', 'ISO 42001 Clause 7.2', 'Main', '', 'Potential Sample', ''],
+    // A made-up certification body list in a typical export layout. The wording
+    // is written for this test, so no real certification body's list is copied.
+    ['P-1', 'General', 'Population', 'Population', 'Share the list of AI systems that went live during the audit period', 'ISO 42001', '', 'Main', us(STAGE2), 'Open', ''],
+    ['P-2', 'General', 'Population', 'Population', 'Share the list of AI suppliers and partners for the systems in scope', 'ISO 42001', '', 'Main', us(STAGE2), 'Open', ''],
+    ['R-10', 'Management', 'Compliance', 'General', 'AIMS scope statement, current version, showing who approved it (S1)', 'ISO 42001', 'ISO 42001 Clause 4.3', 'Main', us(STAGE1), 'Open', 'Scope statement showing version and approver'],
+    ['R-11', 'Management', 'Compliance', 'Policy', 'Current AI policy showing version and approver (S1)', 'ISO 42001', 'ISO 42001 Clause 5.2', 'Main', us(STAGE1), 'Open', ''],
+    ['R-12', 'Risk', 'Risk Management', 'General', 'Current Statement of Applicability showing version and approver (S1)', 'ISO 42001', 'ISO 42001 Clause 6.1.3.d', 'Main', us(STAGE1), 'Open', ''],
+    ['R-13', 'Management', 'Compliance', 'General', 'Internal audit programme for the cycle and the plan for the next audit (S1)', 'ISO 42001', 'ISO 42001 Clause 9.2.2, ISO 42001 Annex A.2.2', 'Main', us(STAGE1), 'Open', ''],
+    ['R-20', 'Risk', 'Risk Management', 'General', 'Completed impact assessments for the AI systems in scope', 'ISO 42001', 'ISO 42001 Annex A.5.3, ISO 42001 Annex A.5.4', 'Main', us(STAGE2), 'Open', ''],
+    ['R-21', 'Other', 'Prefieldwork', 'General', 'Confirm whether any part of the audit can be held remotely', 'ISO 42001', 'Prefieldwork', 'Main', us(STAGE2), 'Open', ''],
+    ['R-30', 'Training', 'Training Program', 'Sample', 'Training and competence records for sampled joiners in AI roles', 'ISO 42001', 'ISO 42001 Clause 7.2', 'Main', '', 'Potential Sample', ''],
   ];
   return rows.map(r => (overrides[r[0]] ? overrides[r[0]](r.slice()) : r)).filter(Boolean);
 }
@@ -174,13 +176,14 @@ test('parsing maps sub-clauses to the catalogue, finds both audit dates and sort
   assert.match(dup.warnings.join(' '), /R-10 appears more than once/);
 });
 
-test('a 42001 workspace opens on the programme overview, which leads with the gap assessment until a list arrives', async () => {
+test('a 42001 workspace opens on the engagement overview with assessment work and optional certification preparation', async () => {
   const home = await client.get(`/workspaces/${wsId}`);
   assert.equal(home.location, `${base}/overview`);
   const overview = await client.get(`${base}/overview`);
   assert.equal(overview.status, 200);
-  assert.match(overview.text, /Start the gap assessment/);
-  assert.match(overview.text, /Start the certification checklist/, 'the checklist can be started during the gap assessment');
+  assert.match(overview.text, /Continue assessment/);
+  assert.match(overview.text, /Start the checklist/, 'the checklist can be started during the gap assessment');
+  assert.match(overview.text, /Independent review outstanding/);
   for (const label of ['Programme overview', 'Gap assessment', 'Certification requests', 'AI system register', 'Requirements', 'Statement of Applicability'])
     assert.match(overview.text, new RegExp(`>${label}<`), `${label} is in the ISO 42001 navigation`);
 
@@ -214,8 +217,8 @@ test('importing the list previews first, then creates stage-sorted requests with
   assert.match(list.text, /R-10/);
   assert.doesNotMatch(list.text, /R-20/, 'the Stage 1 tab lists only Stage 1 requests');
   const overview = await client.get(`${base}/overview`);
-  assert.match(overview.text, /4 Stage 1 requests have not been started/);
-  assert.match(overview.text, /Not on the auditor's list/);
+  assert.match(overview.text, /stage=stage1&status=not_started">Not started<\/a><span>4<\/span>/);
+  assert.match(overview.text, /Requirements outside the request list/);
 });
 
 test('sending to the client creates portal requests the client can see, and the client cannot enter the programme', async () => {
@@ -235,14 +238,14 @@ test('sending to the client creates portal requests the client can see, and the 
   assert.match(cr.request_reason, /Example CB will ask for this when it reviews the AI management system documents at Stage 1/);
   assert.match(cr.request_reason, /Their reference is R-10/);
   assert.match(cr.request_reason, /clause 4\.3/);
-  assert.equal(cr.acceptable_examples, 'Scope document with version and approval date');
+  assert.equal(cr.acceptable_examples, 'Scope statement showing version and approver');
   assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND title LIKE '%new requests%'").get(clientUser).c, 1, 'one notification for the batch');
 
   const ines = await loginAs('ines@aurora.example', 'client-pass-1234');
   try {
     const portal = await ines.get(`/workspaces/${wsId}/client-portal?view=actions`);
     assert.equal(portal.status, 200);
-    assert.match(portal.text, /R-10 · Provide AI management system scope document/);
+    assert.match(portal.text, /R-10 · AIMS scope statement, current version/);
     const detail = await ines.get(`/workspaces/${wsId}/client-portal/requests/${cr.id}`);
     assert.match(detail.text, /Example CB will ask for this/);
     for (const path of ['overview', 'requests', `requests/${req10.id}`, 'ai-systems']) {
@@ -354,13 +357,13 @@ test('a newer list updates what the auditor owns, keeps consultant work, and wit
 
   const newDue = addDays(STAGE1, 7);
   const csv = csvOf(listRows({
-    'R-10': r => { r[4] = 'Provide the approved AIMS scope document (S1)'; return r; },
+    'R-10': r => { r[4] = 'AIMS scope statement as approved for the audit (S1)'; return r; },
     'R-11': r => { r[8] = us(newDue); return r; },
     'R-21': () => null,
   }));
   await importCsv(csv);
   const r10 = byRef('R-10');
-  assert.equal(r10.description, 'Provide the approved AIMS scope document (S1)');
+  assert.equal(r10.description, 'AIMS scope statement as approved for the audit (S1)');
   assert.equal(r10.status, 'ready', 'an import never touches the consultant status');
   assert.ok(r10.client_request_id, 'or the client hand-off');
   assert.equal(byRef('R-11').due_date, newDue);
@@ -401,18 +404,28 @@ test('the AI system register feeds the populations, and an impact assessment nee
   // The manager prepares the assessment through the page, so the manager cannot approve it.
   const started = await client.post(`${base}/ai-systems/${systemId}/impact-assessments`, {});
   const iaId = Number(started.location.match(/impact-assessments\/(\d+)/)[1]);
-  const fields = { affected_parties: 'Inpatients', potential_harms: 'Missed sepsis; alert fatigue', mitigations: 'Clinician review of every alert', residual_level: 'medium', decision: 'proceed' };
+  const fields = {
+    affected_parties: 'Inpatients', potential_harms: 'Missed sepsis; alert fatigue',
+    societal_impacts: 'Wider trust in automated triage across the hospital network',
+    harm_severity: 4, harm_likelihood: 2,
+    mitigations: 'Clinician review of every alert', residual_level: 'medium', decision: 'proceed',
+    deployment_context: 'Inpatient wards, alerts on the nursing station dashboard', jurisdictions: 'India: DPDP Act 2023', retention_period: 'Six years',
+  };
   await client.post(`${base}/ai-systems/${systemId}/impact-assessments/${iaId}`, { ...fields, version: 1 });
   const ia = () => db.prepare('SELECT * FROM ai_impact_assessments WHERE id=?').get(iaId);
   const selfApprove = await client.post(`${base}/ai-systems/${systemId}/impact-assessments/${iaId}/approve`, { version: ia().version });
   assert.match(decodeURIComponent(selfApprove.location), /cannot approve it/);
+  // Rewriting the preparer no longer lets an editor approve: every editor is recorded.
   const consultant = Number(db.prepare(`INSERT INTO users (email, password_hash, name, firm_id, user_type, firm_role, active) VALUES ('rui@firm.example', '!noauth', 'Rui', ?, 'firm', 'consultant', 1)`).run(actor.firm_id).lastInsertRowid);
   db.prepare('UPDATE ai_impact_assessments SET prepared_by=? WHERE id=?').run(consultant, iaId);
-  const approved = await client.post(`${base}/ai-systems/${systemId}/impact-assessments/${iaId}/approve`, { version: ia().version });
-  assert.equal(approved.status, 302);
+  assert.throws(() => registry.approveAssessment(db, ws, actor.id, systemId, iaId, { version: ia().version }), /cannot approve it/);
+  const reviewer = Number(db.prepare(`INSERT INTO users (email, password_hash, name, firm_id, user_type, firm_role, active) VALUES ('lena@firm.example', '!noauth', 'Lena', ?, 'firm', 'manager', 1)`).run(actor.firm_id).lastInsertRowid);
+  registry.approveAssessment(db, ws, reviewer, systemId, iaId, { version: ia().version });
   assert.equal(ia().status, 'approved');
   assert.equal(ia().snapshot_hash, registry.contentHash(ia()));
+  assert.ok(ia().next_review_date, 'approval sets the next review date when none was chosen');
   assert.throws(() => db.prepare("UPDATE ai_impact_assessments SET potential_harms='edited later' WHERE id=?").run(iaId), /frozen/);
+  assert.throws(() => db.prepare("UPDATE ai_impact_assessments SET societal_impacts='edited later' WHERE id=?").run(iaId), /frozen/);
   const view = await client.get(`${base}/ai-systems/${systemId}/impact-assessments/${iaId}`);
   assert.match(view.text, /matches the stored text/);
 
@@ -423,7 +436,8 @@ test('the AI system register feeds the populations, and an impact assessment nee
   assert.throws(() => registry.approveAssessment(db, ws, actor.id, systemId, v2.id, { version: v2.version }), /cannot approve it/);
   assert.equal(v2.decision, null, 'a reassessment records its own decision');
   registry.saveAssessment(db, ws, consultant, systemId, v2.id, { ...fields, trigger_reason: 'Retrained model', version: v2.version });
-  registry.approveAssessment(db, ws, actor.id, systemId, v2.id, { version: v2.version + 1 });
+  assert.throws(() => registry.approveAssessment(db, ws, consultant, systemId, v2.id, { version: v2.version + 1 }), /cannot approve it/, 'the consultant edited it');
+  registry.approveAssessment(db, ws, reviewer, systemId, v2.id, { version: v2.version + 1 });
   assert.equal(ia().status, 'superseded');
 });
 

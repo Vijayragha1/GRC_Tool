@@ -26,12 +26,17 @@ const serviceCapabilities = require('../lib/tprm-capabilities');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const evReads = require('../lib/evidence-reads');
+const reqOpts = require('../lib/requirement-options');
+const { TOPICS: AI_TOPICS, LABEL: AI_TOPIC_LABEL } = require('../data/iso42001-objective-topics');
+const auditChecklists = require('../lib/audit-checklists');
+const aiRisk = require('../lib/ai-risk');
 const reports = require('../lib/reports');
 const handoverExport = require('../lib/handover-export');
 const reportTemplateAccess = require('../lib/report-template-access');
 const assessmentPassQuality = require('../lib/assessment-pass-quality');
 const gapAssessmentReport = require('../lib/gap-assessment-report');
 const auditPack = require('../lib/audit-pack');
+const aimsReports = require('../lib/aims-reports');
 const { computeReadiness } = require('../lib/readiness');
 const delivery = require('../lib/engagement-delivery');
 const outcomeScope = require('../lib/engagement-outcome-scope');
@@ -168,6 +173,25 @@ function register(app, deps) {
     res.render('playbook_detail', { user: req.user, ws: null, playbook: pb }); // firm-level page - firm sidebar
   });
 
+  // The plan behind an objective (clause 6.2) and the management system it
+  // belongs to (views/partials/objective_plan_fields.ejs).
+  function objectivePlan(workspace, b) {
+    const text = (v, max = 4000) => (v == null ? null : (String(v).trim().slice(0, max) || null));
+    const date = text(b.communicated_on, 10);
+    const fw = ['iso27001', 'iso42001'].includes(b.framework) && reqOpts.enabledCodes(workspace).includes(b.framework) ? b.framework : null;
+    const single = reqOpts.enabledCodes(workspace).filter(code => code === 'iso27001' || code === 'iso42001');
+    const framework = fw || (single.length === 1 ? single[0] : null);
+    // The AI topic an objective serves (data/iso42001-objective-topics.js),
+    // kept only for a client with the ISO 42001 programme and an objective
+    // that is not the ISMS's alone.
+    const aiTopic = reqOpts.enabledCodes(workspace).includes('iso42001') && framework !== 'iso27001' && AI_TOPIC_LABEL[b.ai_topic] ? b.ai_topic : null;
+    return {
+      plan_actions: text(b.plan_actions), resources: text(b.resources, 1000), evaluation_method: text(b.evaluation_method, 1000),
+      communicated_on: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
+      framework, ai_topic: aiTopic,
+    };
+  }
+
   // ==================== INFORMATION SECURITY OBJECTIVES (clause 6.2) ====================
   app.get('/workspaces/:wsId/objectives', requireAuth, requireWorkspace, (req, res) => {
     const rows = performanceObjectives.listObjectives(db, req.workspace.id);
@@ -179,7 +203,7 @@ function register(app, deps) {
       attention: rows.filter(row => ['at_risk', 'off_track', 'no_data'].includes(row.effectiveStatus)).length,
     };
     res.render('objectives', {
-      user: req.user, ws: req.workspace, title: 'Performance & objectives', active: 'objectives', rows, metrics, objectiveCounts
+      user: req.user, ws: req.workspace, title: 'Performance & objectives', active: 'objectives', rows, metrics, objectiveCounts, aiTopics: AI_TOPICS
     });
   });
 
@@ -188,13 +212,16 @@ function register(app, deps) {
     if (!b.title || !b.title.trim()) return redirectBack(req, res, 'Objective title is required', 'error');
     const metric = b.metric_id ? performanceObjectives.metricForWorkspace(db, b.metric_id, req.workspace.id) : null;
     if (b.metric_id && !metric) return redirectBack(req, res, 'Select a measure adopted by this client.', 'error');
+    const plan = objectivePlan(req.workspace, b);
     db.prepare(`INSERT INTO security_objectives
-      (workspace_id, title, description, measurement, target_value, current_value, owner, due_date, status, notes, metric_id, status_mode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      (workspace_id, title, description, measurement, target_value, current_value, owner, due_date, status, notes, metric_id, status_mode,
+       plan_actions, resources, evaluation_method, communicated_on, framework, ai_topic)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(req.workspace.id, b.title.trim(), b.description || null, b.measurement || null,
            b.target_value || null, b.current_value || null, b.owner || null,
            b.due_date || null, b.status || 'on_track', b.notes || null,
-           metric ? metric.id : null, metric ? 'metric' : 'manual');
+           metric ? metric.id : null, metric ? 'metric' : 'manual',
+           plan.plan_actions, plan.resources, plan.evaluation_method, plan.communicated_on, plan.framework, plan.ai_topic);
     logAction(req.user.id, req.workspace.id, 'create_objective', 'objective', null, { title: b.title, metric_id: metric?.id || null });
     res.redirect(withToast(`/workspaces/${req.workspace.id}/objectives`, metric ? 'Objective linked to live measure' : 'Objective added'));
   });
@@ -206,15 +233,17 @@ function register(app, deps) {
     if (!objective) return res.status(404).render('error', { user: req.user, message: 'Objective not found.' });
     const metric = b.metric_id ? performanceObjectives.metricForWorkspace(db, b.metric_id, req.workspace.id) : null;
     if (b.metric_id && !metric) return redirectBack(req, res, 'Select a measure adopted by this client.', 'error');
+    const plan = objectivePlan(req.workspace, b);
     db.prepare(`UPDATE security_objectives SET
       title=?, description=?, measurement=?, target_value=?, current_value=?, owner=?, due_date=?, status=?, notes=?,
-      metric_id=?,status_mode=?,
+      metric_id=?,status_mode=?, plan_actions=?, resources=?, evaluation_method=?, communicated_on=?, framework=?, ai_topic=?,
       updated_at=datetime('now')
       WHERE id=? AND workspace_id=?`)
       .run(b.title.trim(), b.description || null, b.measurement || null,
            b.target_value || null, b.current_value || null, b.owner || null,
            b.due_date || null, b.status || 'on_track', b.notes || null,
            metric ? metric.id : null, metric ? 'metric' : 'manual',
+           plan.plan_actions, plan.resources, plan.evaluation_method, plan.communicated_on, plan.framework, plan.ai_topic,
            req.params.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'update_objective', 'objective', objective.id, { metric_id: metric?.id || null });
     res.redirect(withToast(`/workspaces/${req.workspace.id}/objectives`, 'Objective updated'));
@@ -487,65 +516,187 @@ function register(app, deps) {
 
   // Risk Treatment Plan (clause 6.1.3.e) - formal document export pulling from
   // the live risk register.
+  // Risk Treatment Plan (clause 6.1.3) - formal document export pulling from
+  // the live risk register. ?framework=iso42001, or a client working only to
+  // ISO 42001, gives the AIMS plan: the AI risks, the ISO 42001 controls that
+  // treat them, and each risk's impact on the organisation, on individuals or
+  // groups and on society (lib/ai-risk.js).
   app.get('/workspaces/:wsId/export/rtp.docx', requireAuth, requireWorkspace,
     requirePermission('workspace.export'), requirePermission('risk.view'),
     requirePermission('control.view'), async (req, res) => {
     const ws = req.workspace;
-    const risks = db.prepare(`SELECT r.* FROM risks r
-      WHERE r.workspace_id=? ORDER BY (r.likelihood * r.impact) DESC, r.id`).all(ws.id);
+    const codes = reqOpts.enabledCodes(ws);
+    const aims = req.query.framework === 'iso42001' ? codes.includes('iso42001') : (codes.includes('iso42001') && !codes.includes('iso27001'));
+    const risks = db.prepare(`SELECT r.*, s.name AS ai_system_name FROM risks r
+      LEFT JOIN ai_systems s ON s.id = r.ai_system_id AND s.workspace_id = r.workspace_id
+      WHERE r.workspace_id=? ${aims ? `AND ${aiRisk.isAiRiskSql('r')}` : ''}
+      ORDER BY (r.likelihood * r.impact) DESC, r.id`).all(ws.id);
     const actionsByRisk = {};
+    const ctrlByRisk = {};
+    const acceptanceByRisk = {};
     if (risks.length) {
       const rids = risks.map(r => r.id);
       const ph = rids.map(() => '?').join(',');
       db.prepare(`SELECT * FROM risk_treatment_actions WHERE risk_id IN (${ph}) ORDER BY due_date IS NULL, due_date`)
         .all(...rids).forEach(a => { (actionsByRisk[a.risk_id] = actionsByRisk[a.risk_id] || []).push(a); });
-    }
-    const ctrlByRisk = {};
-    if (risks.length) {
-      const rids = risks.map(r => r.id);
-      const ph = rids.map(() => '?').join(',');
-      db.prepare(`SELECT rc.risk_id, rc.iso_item_id, i.title FROM risk_controls rc
-        INNER JOIN iso_items i ON i.id = rc.iso_item_id WHERE rc.risk_id IN (${ph})`)
+      const [linkTable, catalogue] = aims ? ['iso42001_risk_controls', 'iso42001_items'] : ['risk_controls', 'iso_items'];
+      db.prepare(`SELECT rc.risk_id, rc.iso_item_id, i.title FROM ${linkTable} rc
+        INNER JOIN ${catalogue} i ON i.id = rc.iso_item_id WHERE rc.risk_id IN (${ph}) ORDER BY i.sort_order`)
         .all(...rids).forEach(c => { (ctrlByRisk[c.risk_id] = ctrlByRisk[c.risk_id] || []).push(c); });
+      db.prepare(`SELECT risk_id, accepter_name AS signed_by_name, signed_at, expires_at FROM risk_acceptances
+        WHERE risk_id IN (${ph}) AND revoked_at IS NULL ORDER BY signed_at`).all(...rids)
+        .forEach(a => { acceptanceByRisk[a.risk_id] = a; });
     }
 
-    let body = '<h2>Methodology</h2><p>This Risk Treatment Plan documents, for every risk in the register, the chosen treatment option, the controls applied, the responsible owner, and the implementation timeframe - as required by ISO/IEC 27001:2022 clause 6.1.3.e.</p>';
+    const standard = aims ? 'ISO/IEC 42001:2023' : 'ISO/IEC 27001:2022';
+    let body = `<h2>Methodology</h2><p>This Risk Treatment Plan documents, for every ${aims ? 'AI risk' : 'risk'} in the register, the chosen treatment option, the controls applied, the responsible owner, and the implementation timeframe - as required by ${standard} clause 6.1.3.</p>`;
+    if (aims) body += '<p>Each AI risk is rated for its impact on the organisation, on individuals or groups, and on society, and is scored on the highest of the three.</p>';
     body += `<p>Risks: <strong>${risks.length}</strong></p>`;
     body += '<h2>Treatment plan by risk</h2>';
     if (risks.length === 0) {
       body += '<p><em>No risks recorded yet.</em></p>';
     } else {
-      body += '<table><thead><tr><th width="8%">ID</th><th>Risk</th><th width="10%">L×I</th><th width="10%">Treatment</th><th width="14%">Owner</th><th>Controls applied</th><th>Actions</th></tr></thead><tbody>';
+      body += `<table><thead><tr><th width="8%">ID</th><th>Risk</th><th width="10%">L×I</th>${aims ? '<th width="12%">Impact: org · people · society</th>' : ''}<th width="10%">Treatment</th><th width="12%">Owner</th><th>Controls applied</th><th>Actions</th><th width="10%">Residual</th></tr></thead><tbody>`;
       for (const r of risks) {
-        const ctrls = (ctrlByRisk[r.id] || []).map(c => escHtml(c.iso_item_id.replace('annex-','').toUpperCase()) + ' ' + escHtml(c.title.replace(/^A\.[0-9.]+ /,''))).join('<br>') || '<em class="meta">-</em>';
-        const acts = (actionsByRisk[r.id] || []).map(a => `<strong>${escHtml(a.title)}</strong><br><span class="meta">${escHtml(a.assignee_role || '')}${a.due_date ? ' · due ' + escHtml(a.due_date) : ''} · ${escHtml(a.status || '')}</span>`).join('<br><br>') || '<em class="meta">-</em>';
-        body += `<tr><td>R-${r.id}</td><td><strong>${escHtml(r.title)}</strong>${r.description ? '<br><span class="meta">' + escHtml(r.description) + '</span>' : ''}</td><td>${r.likelihood || '-'}×${r.impact || '-'}</td><td>${escHtml(r.treatment || '-')}</td><td>${escHtml(r.owner_name || '-')}</td><td>${ctrls}</td><td>${acts}</td></tr>`;
+        const ctrls = (ctrlByRisk[r.id] || []).map(c => escHtml(c.title)).join('<br>') || '<em class="meta">-</em>';
+        const acts = (actionsByRisk[r.id] || []).map(a => `<strong>${escHtml(a.title)}</strong><br><span class="meta">${escHtml(a.owner_name || a.assignee_role || '')}${a.due_date ? ' · due ' + escHtml(a.due_date) : ''} · ${escHtml(a.status || '')}</span>`).join('<br><br>') || '<em class="meta">-</em>';
+        const acc = acceptanceByRisk[r.id];
+        const residual = (r.residual_likelihood && r.residual_impact ? `${r.residual_likelihood}×${r.residual_impact}` : '-')
+          + (acc ? `<br><span class="meta">accepted by ${escHtml(acc.signed_by_name || '')}${acc.signed_at ? ' on ' + escHtml(String(acc.signed_at).slice(0, 10)) : ''}</span>` : '');
+        const context = [r.ai_system_name ? 'AI system: ' + escHtml(r.ai_system_name) : null, r.risk_source && aiRisk.SOURCE_LABEL[r.risk_source] ? escHtml(aiRisk.SOURCE_LABEL[r.risk_source]) : null].filter(Boolean).join(' · ');
+        const impacts = aims ? `<td>${r.impact_organisation ?? r.impact ?? '-'} · ${r.impact_individuals ?? '-'} · ${r.impact_society ?? '-'}</td>` : '';
+        body += `<tr><td>R-${r.id}</td><td><strong>${escHtml(r.title)}</strong>${context ? '<br><span class="meta">' + context + '</span>' : ''}${r.description ? '<br><span class="meta">' + escHtml(r.description) + '</span>' : ''}</td><td>${r.likelihood || '-'}×${r.impact || '-'}</td>${impacts}<td>${escHtml(r.treatment || '-')}</td><td>${escHtml(r.owner_name || '-')}</td><td>${ctrls}</td><td>${acts}</td><td>${residual}</td></tr>`;
       }
       body += '</tbody></table>';
     }
-    const buf = await brandedDocx(ws, 'Risk Treatment Plan', body);
+    const buf = await brandedDocx(ws, aims ? 'AI Risk Treatment Plan' : 'Risk Treatment Plan', body);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="risk-treatment-plan-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${aims ? 'ai-' : ''}risk-treatment-plan-${ws.id}-${new Date().toISOString().slice(0,10)}.docx"`);
     res.send(buf);
   });
 
-  function loadReportPass(req) {
+  function loadReportPass(req, framework = 'iso27001') {
     const ws = req.workspace;
     const passId = req.query.pass ? parseInt(req.query.pass, 10) : null;
     if (!passId) return null;
-    return db.prepare(`SELECT * FROM assessment_passes WHERE id=? AND workspace_id=?`).get(passId, ws.id) || null;
+    const table = gapAssessmentReport.profileFor(framework).passTable;
+    return db.prepare(`SELECT * FROM ${table} WHERE id=? AND workspace_id=?`).get(passId, ws.id) || null;
   }
 
-  function gapReportData(req, res) {
+  function gapReportData(req, res, framework = 'iso27001') {
     const ws = req.workspace;
-    const pass = loadReportPass(req);
+    const profile = gapAssessmentReport.profileFor(framework);
+    const pass = loadReportPass(req, framework);
     if (req.query.pass && !pass) {
-      res.redirect(withToast(`/workspaces/${ws.id}/gap-assessment`,
+      res.redirect(withToast(`/workspaces/${ws.id}/${profile.gapPath}`,
         'The selected assessment pass no longer exists. Download the current status report instead.', 'error'));
       return null;
     }
-    return gapAssessmentReport.buildGapAssessmentReportData(db, ws, pass, { currentState: !pass });
+    return gapAssessmentReport.buildGapAssessmentReportData(db, ws, pass, { currentState: !pass, framework });
   }
+
+  // The same controlled report for an ISO 42001 gap assessment, which every
+  // ISO 42001 client receives, including those whose engagement ends with it.
+  const requireIso42001Programme = (req, res, next) => {
+    if (reqOpts.enabledCodes(req.workspace).includes('iso42001')) return next();
+    return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'ISO 42001 is not part of this client\'s programme.' });
+  };
+  const gapReportPermissions = [requirePermission('workspace.export'), requirePermission('control.view'),
+    requirePermission('evidence.view'), requirePermission('evidence.export'), requirePermission('task.manage'),
+    requirePermission('nc.manage'), requirePermission('members.view'), requirePermission('audit.manage')];
+
+  app.get('/workspaces/:wsId/iso42001/gap-report.docx', requireAuth, requireWorkspace, requireIso42001Programme, ...gapReportPermissions, async (req, res) => {
+    const data = gapReportData(req, res, 'iso42001');
+    if (!data) return;
+    const title = data.currentState ? 'ISO/IEC 42001:2023 Gap Assessment - Current Status' : `ISO/IEC 42001:2023 Gap Assessment - Pass ${data.pass.pass_number}`;
+    const html = gapAssessmentReport.renderGapAssessmentHtml(data);
+    const buf = await htmlToDocxPooled(html, gapAssessmentReport.reportHeader(data), {
+      title, subject: `${data.workspace.client_name} - ${title}`, creator: data.firmName,
+      header: true, footer: true, pageNumber: true, skipFirstHeaderFooter: false, table: { row: { cantSplit: true } },
+    }, gapAssessmentReport.reportFooter(data));
+    logAction(req.user.id, data.workspace.id, 'export_iso42001_gap_assessment_docx', data.currentState ? 'assessment_status' : 'iso42001_assessment_pass', data.currentState ? data.reportId : data.pass.id,
+      { report_id: data.reportId, not_assessed: data.notAssessedCount, snapshot_hash: data.reportHash, bytes: buf.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${data.reportId}-${new Date().toISOString().slice(0,10)}.docx"`);
+    res.setHeader('Content-Length', buf.length);
+    res.send(buf);
+  });
+
+  app.get('/workspaces/:wsId/iso42001/gap-report.pdf', requireAuth, requireWorkspace, requireIso42001Programme, ...gapReportPermissions, async (req, res) => {
+    const data = gapReportData(req, res, 'iso42001');
+    if (!data) return;
+    const html = gapAssessmentReport.renderGapAssessmentHtml(data);
+    const raw = await auditPack.renderPDF(html, {
+      headerLeft: data.firmName,
+      headerRight: `ISO/IEC 42001:2023 GAP ASSESSMENT - ${data.workspace.client_name}`,
+      footerLeft: `CONFIDENTIAL - CLIENT COPY - ${data.reportId} - REV ${data.revision}`,
+    });
+    const pdf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    logAction(req.user.id, data.workspace.id, 'export_iso42001_gap_assessment_pdf', data.currentState ? 'assessment_status' : 'iso42001_assessment_pass', data.currentState ? data.reportId : data.pass.id,
+      { report_id: data.reportId, not_assessed: data.notAssessedCount, snapshot_hash: data.reportHash, bytes: pdf.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${data.reportId}-${new Date().toISOString().slice(0,10)}.pdf"`);
+    res.setHeader('Content-Length', pdf.length);
+    res.send(pdf);
+  });
+
+  // The report as a page, for review before it is exported.
+  app.get('/workspaces/:wsId/iso42001/gap-report', requireAuth, requireWorkspace, requireIso42001Programme, ...gapReportPermissions, (req, res) => {
+    const data = gapReportData(req, res, 'iso42001');
+    if (!data) return;
+    res.type('html').send(gapAssessmentReport.renderGapAssessmentHtml(data));
+  });
+
+  // The records an AIMS hands to the client and the certification body, as
+  // branded Word documents built from what the tool already holds
+  // (lib/aims-reports.js). Management review minutes and the internal audit
+  // report serve either standard.
+  const sendReport = async (req, res, report, action, entity, entityId) => {
+    if (!report) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That record was not found.' });
+    const buf = await brandedDocx(req.workspace, report.title, report.body);
+    logAction(req.user.id, req.workspace.id, action, entity, entityId, { bytes: buf.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${report.filename}-${new Date().toISOString().slice(0, 10)}.docx"`);
+    res.send(buf);
+  };
+  const requireAuditService = outcomeScope.requirePostGapService('Internal audit delivery is outside this gap-assessment-only engagement.');
+  const requireReviewService = outcomeScope.requirePostGapService('Management review delivery is outside this gap-assessment-only engagement.');
+
+  app.get('/workspaces/:wsId/iso42001/ai-systems/:id(\\d+)/impact-assessments/:iaId(\\d+)/report.docx', requireAuth, requireWorkspace,
+    requireIso42001Programme, requirePermission('workspace.export'), async (req, res) => {
+    const report = aimsReports.impactAssessment(db, req.workspace, Number(req.params.id), Number(req.params.iaId));
+    await sendReport(req, res, report, 'export_ai_impact_assessment', 'ai_impact_assessment', Number(req.params.iaId));
+  });
+
+  app.get('/workspaces/:wsId/iso42001/soa/snapshots/:snapId(\\d+)/report.docx', requireAuth, requireWorkspace,
+    requireIso42001Programme, requirePermission('workspace.export'), requirePermission('control.view'), async (req, res) => {
+    const snapshot = require('../lib/iso42001-soa').load(db, req.workspace, Number(req.params.snapId));
+    await sendReport(req, res, snapshot && aimsReports.soaSnapshot(db, req.workspace, snapshot), 'export_iso42001_soa', 'iso42001_soa_snapshot', Number(req.params.snapId));
+  });
+
+  app.get('/workspaces/:wsId/iso42001/ai-register.docx', requireAuth, requireWorkspace,
+    requireIso42001Programme, requirePermission('workspace.export'), async (req, res) => {
+    await sendReport(req, res, aimsReports.aiRegister(db, req.workspace), 'export_ai_register', 'workspace', req.workspace.id);
+  });
+
+  app.get('/workspaces/:wsId/iso42001/ai-register.csv', requireAuth, requireWorkspace,
+    requireIso42001Programme, requirePermission('workspace.export'), (req, res) => {
+    const csv = aimsReports.aiRegisterCsv(db, req.workspace);
+    logAction(req.user.id, req.workspace.id, 'export_ai_register_csv', 'workspace', req.workspace.id, { bytes: csv.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="ai-system-register-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send('﻿' + csv);
+  });
+
+  app.get('/workspaces/:wsId/mrms/:id(\\d+)/minutes.docx', requireAuth, requireWorkspace, requireReviewService,
+    requirePermission('workspace.export'), async (req, res) => {
+    await sendReport(req, res, aimsReports.managementReview(db, req.workspace, Number(req.params.id)), 'export_mrm_minutes', 'mrm', Number(req.params.id));
+  });
+
+  app.get('/workspaces/:wsId/audits/:id(\\d+)/report.docx', requireAuth, requireWorkspace, requireAuditService,
+    requirePermission('workspace.export'), async (req, res) => {
+    await sendReport(req, res, aimsReports.internalAudit(db, req.workspace, Number(req.params.id)), 'export_internal_audit_report', 'audit', Number(req.params.id));
+  });
 
   // Gap Assessment Report - a controlled, editorial-style deliverable based on
   // the immutable assessment-pass lineage. PDF is the client-ready record;
@@ -1834,61 +1985,16 @@ function register(app, deps) {
   // Mirrors the category-based generator below but is the right choice once the
   // SoA has been worked through - auditors shouldn't be testing excluded controls.
 
-  // Sample-size heuristics keyed to Annex A control prefixes. Each entry returns
-  // guidance the auditor pastes into the observation. Numbers are auditor-norms
-  // (BSI / IRCA guidance) not standards-mandated.
-  const SAMPLE_SIZE_HINTS = {
-    // Access control - clauses where "5 users" is the typical sample
-    'annex-a.5.15': 'Sample 10 users (mix of joiner / mover / leaver).',
-    'annex-a.5.16': 'Sample 10 user accounts created in the last 6 months.',
-    'annex-a.5.17': 'Sample 5 authentication records (MFA enrolment, password reset).',
-    'annex-a.5.18': 'Sample 10 access rights changes; verify approval evidence.',
-    'annex-a.8.2': 'Sample 5 privileged-access requests; verify approval + revocation.',
-    'annex-a.8.3': 'Sample 5 systems for least-privilege configuration.',
-    'annex-a.8.5': 'Sample 5 admin authentications; verify phishing-resistant MFA.',
-    // Logging + monitoring
-    'annex-a.8.15': 'Sample 10 consecutive days of logs; verify retention.',
-    'annex-a.8.16': 'Sample 3 alert investigations from the last 90 days.',
-    // Backups + BCP
-    'annex-a.8.13': 'Sample 3 restore tests; verify RTO/RPO met.',
-    'annex-a.5.29': 'Sample 1 BCP test conducted in the last 12 months.',
-    'annex-a.5.30': 'Sample evidence of ICT readiness for BC.',
-    // Suppliers
-    'annex-a.5.19': 'Sample 5 active suppliers; verify security clauses + review records.',
-    'annex-a.5.20': 'Sample 5 supplier contracts.',
-    'annex-a.5.21': 'Sample 5 ICT supply-chain risk assessments.',
-    'annex-a.5.22': 'Sample 5 supplier reviews from the last 12 months.',
-    // Incidents
-    'annex-a.5.24': 'Verify incident response procedure exists + has been exercised.',
-    'annex-a.5.25': 'Sample 5 incidents from the last 12 months.',
-    'annex-a.5.26': 'Sample 5 incident responses; verify lessons-learned captured.',
-    'annex-a.5.27': 'Sample 3 post-incident reviews.',
-    // Risk
-    'annex-a.6.3': 'Sample 5 training completion records.',
-    // Default
-    '_default': 'Sample 3–5 records or 1 process walkthrough.'
-  };
-
-  function sampleHintFor(controlId) {
-    return SAMPLE_SIZE_HINTS[controlId] || SAMPLE_SIZE_HINTS._default;
-  }
-
+  // Checklists come from the SoA and catalogue sections of each framework the
+  // client works to (lib/audit-checklists), so an ISO 42001 internal audit is
+  // generated from the ISO 42001 SoA rather than the ISO 27001 one.
   app.post('/workspaces/:wsId/audits/:id/checklist-from-soa', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
 
     // Pull every included control with its linkage counts so the auditor sees
     // immediately which controls have evidence + a policy backing them.
-    const rows = db.prepare(`
-      SELECT i.id, i.title, i.category,
-        cs.status,
-        ${docLinks.docCountSubquery('iso27001')} AS doc_count,
-        ${evReads.checklistEvidenceCountSubquery()} AS evi_count
-      FROM iso_items i
-      INNER JOIN v_control_states cs ON cs.iso_item_id = i.id AND cs.workspace_id = ?
-      WHERE i.type='control' AND cs.applicability='included'
-      ORDER BY i.sort_order
-    `).all(req.workspace.id, req.workspace.id, req.workspace.id);
+    const rows = auditChecklists.includedControls(db, req.workspace);
 
     if (!rows.length) {
       return res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`,
@@ -1901,16 +2007,7 @@ function register(app, deps) {
 
     const ins = db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, status) VALUES (?, ?, ?, 'open')`);
     const tx = db.transaction(() => {
-      toInsert.forEach(r => {
-        const code = r.id.replace('annex-', '').toUpperCase();
-        const cleanTitle = r.title.replace(/^A\.[0-9.]+ /, '');
-        const linkLine = `Linked policies: ${r.doc_count} - Linked evidence: ${r.evi_count}`;
-        const sampleLine = `Sample size suggestion: ${sampleHintFor(r.id)}`;
-        const testLine = `Test: (1) Is there a documented procedure? (2) Is it operating in practice - sample evidence below. (3) Has it been reviewed in the last 12 months?`;
-        const findingLine = `Finding template: [Conformance / Observation / Minor NC / Major NC] - [describe what was tested, what was seen, root cause if NC, evidence references]`;
-        const description = `${code} - ${cleanTitle}\n\n${testLine}\n\n${linkLine}\n${sampleLine}\n\n${findingLine}`;
-        ins.run(audit.id, r.id, description);
-      });
+      toInsert.forEach(r => ins.run(audit.id, r.id, auditChecklists.soaItemText(req.workspace, r)));
     });
     tx();
     logAction(req.user.id, req.workspace.id, 'generate_audit_checklist_from_soa', 'audit', audit.id,
@@ -1925,12 +2022,9 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/audits/:id/checklist', requireAuth, requireWorkspace, requireInternalAuditService, requirePermission('audit.manage'), (req, res) => {
     const audit = db.prepare('SELECT id FROM audits WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!audit) return res.status(404).send('Not found');
-    const category = req.body.category;
-    const validCats = ['org','people','physical','tech','clauses'];
-    if (!validCats.includes(category)) return redirectBack(req, res);
-    const controls = category === 'clauses'
-      ? db.prepare(`SELECT id, title FROM iso_items WHERE type='clause' ORDER BY sort_order`).all()
-      : db.prepare(`SELECT id, title FROM iso_items WHERE type='control' AND category=? ORDER BY sort_order`).all(category);
+    const section = auditChecklists.parseSection(req.workspace, req.body.category);
+    if (!section) return redirectBack(req, res);
+    const controls = auditChecklists.sectionItems(db, section);
 
     const existing = new Set(db.prepare(`SELECT iso_item_id FROM audit_observations WHERE audit_id=? AND iso_item_id IS NOT NULL`)
       .all(audit.id).map(r => r.iso_item_id));
@@ -1938,18 +2032,14 @@ function register(app, deps) {
 
     const ins = db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, status) VALUES (?, ?, ?, 'open')`);
     const tx = db.transaction(() => {
-      toInsert.forEach(c => {
-        const cleanTitle = c.title.replace(/^A\.[0-9.]+ /, '').replace(/^Clause [0-9.]+ /, '');
-        const q = `${c.id.replace('annex-','').replace('clause-','').toUpperCase()} - ${cleanTitle}: Is there a documented process? Is it operating in practice (sample evidence)? Has it been reviewed in the last 12 months?`;
-        ins.run(audit.id, c.id, q);
-      });
+      toInsert.forEach(c => ins.run(audit.id, c.id, auditChecklists.sectionItemText(req.workspace, section.framework, c)));
     });
     tx();
     logAction(req.user.id, req.workspace.id, 'generate_audit_checklist', 'audit', audit.id,
-      { category, added: toInsert.length, skipped_existing: controls.length - toInsert.length }, auditCtx(req));
+      { framework: section.framework, category: section.category, added: toInsert.length, skipped_existing: controls.length - toInsert.length }, auditCtx(req));
     const skipped = controls.length - toInsert.length;
     const msg = skipped > 0
-      ? `Added ${toInsert.length} new checklist item${toInsert.length === 1 ? '' : 's'} from ${category} · ${skipped} already existed and were kept`
+      ? `Added ${toInsert.length} new checklist item${toInsert.length === 1 ? '' : 's'} · ${skipped} already existed and were kept`
       : `Generated ${toInsert.length} checklist item${toInsert.length === 1 ? '' : 's'} - fill in findings against each`;
     res.redirect(withToast(`/workspaces/${req.workspace.id}/audits/${audit.id}`, msg));
   });
@@ -1959,8 +2049,9 @@ function register(app, deps) {
     if (!audit) return res.status(404).send('Audit not found');
     const { iso_item_id, description, recommendation } = req.body;
     if (!description) return redirectBack(req, res);
+    const requirement = iso_item_id && reqOpts.belongs(db, req.workspace, iso_item_id) ? iso_item_id : null;
     db.prepare(`INSERT INTO audit_observations (audit_id, iso_item_id, description, recommendation) VALUES (?, ?, ?, ?)`)
-      .run(req.params.id, iso_item_id || null, description, recommendation || null);
+      .run(req.params.id, requirement, description, recommendation || null);
     res.redirect(`/workspaces/${req.workspace.id}/audits/${req.params.id}`);
   });
 

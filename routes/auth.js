@@ -77,12 +77,12 @@ function register(app, deps) {
 
   function renderPublic(req, res, page, extra = {}) {
     const pages = {
-      home: ['Evaluate Compliance Sphere', 'Evidence-backed GRC delivery for consulting firms and client teams.'],
+      home: ['Your compliance programme, in one place', 'The platform our consultants deliver ISO 27001, ISO 42001, NIST CSF and DPDPA engagements on, with a portal for your team.'],
       access: ['Request access', 'Access is invite-only so every account starts in an explicitly assigned firm or client workspace.'],
       security: ['Security', 'How the product protects access, governed records, uploads, and external sharing.'],
       privacy: ['Privacy', 'What this site processes and which responsibilities belong to the organization operating it.'],
       terms: ['Terms of use', 'Plain-language conditions for evaluating and using this software.'],
-      contact: ['Request an evaluation', 'Choose the next step without creating an unscoped account.']
+      contact: ['Talk to us', 'Tell us about your compliance programme.']
     };
     const [title, description] = pages[page] || pages.home;
     return res.render('auth/public', {
@@ -104,6 +104,16 @@ function register(app, deps) {
     dpdpa: 'obligations',
   });
 
+  // What an engagement on each framework hands the client, in the product's
+  // own terms. Keyed by registry code so a new framework shows no claim until
+  // one is written for it.
+  const PROGRAMME_OUTPUTS = Object.freeze({
+    iso27001: 'Gap report, Statement of Applicability, policy set, internal audit, management review, readiness pack',
+    iso42001: 'AI system register, impact assessments, AIMS documents, certification request tracker',
+    csf: 'Business profile, maturity scores, priorities and roadmap, executive report',
+    dpdpa: 'Obligation-by-obligation gap assessment and report, set against the commencement dates',
+  });
+
   function programmeRegister() {
     return frameworks.FRAMEWORK_LIST.map((f) => ({
       code: f.tagLabel,
@@ -111,12 +121,24 @@ function register(app, deps) {
       descriptor: f.descriptor,
       count: frameworks.catalogueSize(f.code),
       unit: PROGRAMME_UNITS[f.code] || 'requirements',
+      outputs: PROGRAMME_OUTPUTS[f.code] || '',
     })).filter((p) => p.count > 0);
+  }
+
+  // Figures the home page quotes, read from what this deployment holds.
+  function homeFacts(programmes) {
+    let templates = 0;
+    try { templates = db.prepare('SELECT COUNT(*) c FROM doc_templates WHERE is_system=1').get().c; } catch (_) {}
+    return {
+      requirements: programmes.reduce((n, p) => n + p.count, 0),
+      templates,
+    };
   }
 
   app.get('/', (req, res) => {
     if (req.session && req.session.userId) return res.redirect('/dashboard');
-    return renderPublic(req, res, 'home', { programmes: programmeRegister() });
+    const programmes = programmeRegister();
+    return renderPublic(req, res, 'home', { programmes, facts: homeFacts(programmes) });
   });
 
   app.get('/security', (req, res) => renderPublic(req, res, 'security'));
@@ -210,7 +232,7 @@ function register(app, deps) {
   // model and offers a useful next step instead of looping back to sign-in.
   app.get('/register', (req, res) => renderPublic(req, res, 'access'));
   app.post('/register', (req, res) => renderPublic(req, res.status(405), 'access', {
-    accessNotice: 'Self-signup is disabled. Request an evaluation or use the single-use invitation sent by your administrator.'
+    accessNotice: 'Self-signup is disabled. Use the single-use invitation sent by your engagement team, or talk to us to get started.'
   }));
 
   // -------- User invitations (Phase 3) --------

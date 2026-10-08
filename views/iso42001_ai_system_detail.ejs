@@ -7,6 +7,9 @@
   const current = assessments.find(a => a.status === 'approved');
   const sysBase = `${base}/ai-systems/${s.id}`;
   const text = v => v || 'Not recorded';
+  // A register entry opens in the third-party risk module, which a client may
+  // not have; without it the entry is named but not linked.
+  const supplierPages = Number(ws.tprm_enabled || 0) === 1 && perms.tprmView;
 %>
 
 <div class="a42">
@@ -14,11 +17,14 @@
   <div class="page-head">
     <div>
       <h1 class="page-title"><%= s.name %></h1>
+      <% const stages = Object.keys(registry.LIFECYCLE); const at = stages.indexOf(s.lifecycle_stage); %>
+      <ol class="ai-life ai-life-band" aria-label="Life cycle: <%= registry.LIFECYCLE[s.lifecycle_stage] %>">
+        <% stages.forEach((k, i) => { %><li class="<%= i < at ? 'is-past' : i === at ? 'is-now' : '' %>"<%- i === at ? ' aria-current="step"' : '' %>><%= registry.LIFECYCLE[k] %></li><% }) %>
+      </ol>
       <div class="a42-facts">
-        <span><strong><%= registry.LIFECYCLE[s.lifecycle_stage] %></strong></span>
         <% if (s.go_live_date) { %><span>Went live <strong><%= fmtDate(s.go_live_date) %></strong></span><% } %>
         <span><%= s.roles.length ? s.roles.map(r => registry.ROLES[r]).join('; ') : 'Organisation\'s role not recorded' %></span>
-        <span class="status <%= s.in_scope ? 's-done' : 's-na' %>"><%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
+        <span><i class="a42-dot t-<%= s.in_scope ? 'done' : 'na' %>" aria-hidden="true"></i> <%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
       </div>
     </div>
     <% if (perms.manage && !edit) { %><a class="btn btn-secondary" href="<%= sysBase %>?edit=1">Edit</a><% } %>
@@ -62,6 +68,9 @@
       <h2 id="aiIaTitle">Impact assessment</h2>
       <span class="meta">Clause 6.1.4 and 8.4, Annex A.5</span>
     </div>
+    <% if (typeof reassessment !== 'undefined' && reassessment && reassessment.state === 'due') { %>
+      <div class="a42-note a42-callout"><i class="a42-dot t-gap" aria-hidden="true"></i> <strong>Reassessment due.</strong> <%= reassessment.reason %>. Start a new version to reassess.</div>
+    <% } %>
     <% if (!assessments.length) { %>
       <div class="a42-note">No impact assessment yet. The auditor asks for the documented results of the most recent assessment for each system, and for evidence of how it informed the design or use of the system.</div>
     <% } else { %>
@@ -72,7 +81,7 @@
               <a href="<%= sysBase %>/impact-assessments/<%= a.id %>">Version <%= a.version_no %></a>
               <span class="meta"><%= a.status === 'approved' ? `Approved ${fmtDate(a.approved_at)} by ${a.approved_by_name || 'a reviewer'}` : a.status === 'superseded' ? `Superseded; approved ${fmtDate(a.approved_at)}` : `Draft, prepared by ${a.prepared_by_name || 'a consultant'}` %><%= a.residual_level ? ` · residual ${a.residual_level}` : '' %><%= a.decision ? ` · ${registry.DECISIONS[a.decision].toLowerCase()}` : '' %></span>
             </div>
-            <span class="status <%= a.status === 'approved' ? 's-done' : a.status === 'draft' ? 's-in_review' : 's-na' %>"><%= a.status === 'approved' ? 'Current' : a.status === 'draft' ? 'Draft' : 'Superseded' %></span>
+            <span class="status"><i class="a42-dot t-<%= a.status === 'approved' ? 'done' : a.status === 'draft' ? 'wip' : 'na' %>" aria-hidden="true"></i><%= a.status === 'approved' ? 'Current' : a.status === 'draft' ? 'Draft' : 'Superseded' %></span>
           </li>
         <% }) %>
       </ul>
@@ -92,10 +101,65 @@
     <% } %>
   </section>
 
+  <section class="panel" id="risks" aria-labelledby="aiRiskTitle">
+    <div class="panel-head"><h2 id="aiRiskTitle">Risks from this system</h2><span class="meta">Clause 6.1.2</span></div>
+    <% const sysRisks = typeof systemRisks !== 'undefined' ? systemRisks : []; %>
+    <% if (!sysRisks.length) { %>
+      <div class="a42-note">No risks are tied to this system yet. On the risk register, choose this system on a risk and rate its impact on people and society.</div>
+    <% } else { %>
+      <div style="overflow-x:auto;">
+        <table class="t">
+          <thead><tr><th>Risk</th><th style="width:90px;" class="num">L × I</th><th style="width:110px;">Treatment</th><th style="width:100px;">Status</th></tr></thead>
+          <tbody>
+            <% sysRisks.forEach(r => { %>
+              <tr>
+                <td><a class="link-muted" href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><%= r.title %></a><% if (r.risk_source && riskSourceLabel[r.risk_source]) { %><div class="meta text-xs"><%= riskSourceLabel[r.risk_source] %></div><% } %></td>
+                <td class="num"><%= r.likelihood %> × <%= r.impact %></td>
+                <td><%= r.treatment || '-' %></td>
+                <td><%= r.status %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+    <div class="a42-note"><a href="/workspaces/<%= ws.id %>/risks">Open the risk register</a></div>
+  </section>
+
+  <section class="panel" id="datasets" aria-labelledby="aiDataTitle">
+    <div class="panel-head"><h2 id="aiDataTitle">Datasets</h2><span class="meta">Annex A.7</span></div>
+    <% if (!datasets.linked.length) { %>
+      <div class="a42-note">No datasets linked. Link what the system was trained and tested on and what it reads in production, from the <a href="<%= base %>/datasets">dataset register</a>.</div>
+    <% } else { %>
+      <ul class="a42-files">
+        <% datasets.linked.forEach(d => { %>
+          <li>
+            <div><a href="<%= base %>/datasets/<%= d.id %>"><%= d.name %></a><span class="meta"><%= DS.USES[d.use] %> · <%= d.a7.count %> of <%= d.a7.total %> A.7 records<%= ['personal', 'sensitive'].includes(d.personal_data) ? ' · personal data' : '' %></span></div>
+            <% if (perms.manage) { %><form method="POST" action="<%= sysBase %>/datasets/<%= d.id %>/<%= d.use %>/delete"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-ghost btn-xs" type="submit">Unlink</button></form><% } else { %><span></span><% } %>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (perms.manage) { %>
+      <% if (datasets.all.length) { %>
+        <div class="a42-attach">
+          <form method="POST" action="<%= sysBase %>/datasets" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) auto;--cols-sm:1fr;align-items:end;">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <div><label class="label" for="linkDataset">Dataset</label><select id="linkDataset" class="select" name="dataset_id" required><option value="">Choose</option><% datasets.all.forEach(d => { %><option value="<%= d.id %>"><%= d.name %></option><% }) %></select></div>
+            <div><label class="label" for="linkUse">Used for</label><select id="linkUse" class="select" name="use" required><option value="">Choose</option><% Object.entries(DS.USES).forEach(([k, l]) => { %><option value="<%= k %>"><%= l %></option><% }) %></select></div>
+            <button class="btn btn-secondary btn-xs" type="submit">Link</button>
+          </form>
+        </div>
+      <% } else { %>
+        <div class="a42-note" style="padding-top:0;">The register is empty. <a href="<%= base %>/datasets/new">Add the first dataset</a>.</div>
+      <% } %>
+    <% } %>
+  </section>
+
   <section class="panel" id="suppliers" aria-labelledby="aiSupTitle">
     <div class="panel-head"><h2 id="aiSupTitle">Vendors in the lifecycle</h2><span class="meta">Annex A.10</span></div>
     <% if (!suppliers.length) { %>
-      <div class="a42-note">No vendors recorded. Include model and API providers, data suppliers, labelling services and hosting.</div>
+      <div class="a42-note">No vendors recorded. Include model and API providers, data suppliers, labelling services and hosting. Choose a vendor from the supplier register where it is there, so its due diligence and reviews are one click away.</div>
     <% } else { %>
       <div style="overflow-x:auto;">
         <table class="t a42-stack">
@@ -103,7 +167,7 @@
           <tbody>
             <% suppliers.forEach(v => { %>
               <tr>
-                <td><strong style="font-weight:500;"><%= v.supplier_name %></strong></td>
+                <td><strong style="font-weight:500;"><%= v.supplier_name %></strong><% if (v.supplier_id) { const inRegister = `In the supplier register${v.register_name && v.register_name !== v.supplier_name ? ` as ${v.register_name}` : ''}`; %><div class="meta text-xs"><% if (supplierPages) { %><a href="/workspaces/<%= ws.id %>/vendors/<%= v.supplier_id %>"><%= inRegister %></a><% } else { %><%= inRegister %><% } %></div><% } %></td>
                 <td data-label="Role"><%= v.lifecycle_role %></td>
                 <td data-label="Service"><%= v.service || '' %></td>
                 <td data-label="Assurance"><%= v.assurance || '' %></td>
@@ -115,10 +179,14 @@
       </div>
     <% } %>
     <% if (perms.manage) { %>
+      <details class="a42-fold"<%= suppliers.length ? '' : ' open' %>>
+      <summary>Add a vendor</summary>
       <div class="a42-attach">
-        <form method="POST" action="<%= sysBase %>/suppliers" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end;">
+        <% const fromRegister = linkable.registerSuppliers.length > 0; %>
+        <form method="POST" action="<%= sysBase %>/suppliers" class="stack-grid" style="--cols:<%= fromRegister ? 'minmax(0,1fr) ' : '' %>minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;--cols-sm:1fr;align-items:end;">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
-          <div><label class="label" for="supName">Vendor</label><input id="supName" class="input" name="supplier_name" maxlength="160" required></div>
+          <% if (fromRegister) { %><div><label class="label" for="supRegister">From the supplier register</label><select id="supRegister" class="select" name="supplier_id"><option value="">Not in the register</option><% linkable.registerSuppliers.forEach(r => { %><option value="<%= r.id %>"><%= r.name %></option><% }) %></select></div><% } %>
+          <div><label class="label" for="supName">Vendor</label><input id="supName" class="input" name="supplier_name" maxlength="160"<%- fromRegister ? ' placeholder="The register name if left blank"' : ' required' %>></div>
           <div><label class="label" for="supRole">Role</label><input id="supRole" class="input" name="lifecycle_role" maxlength="120" required list="supRoles" placeholder="e.g. Model provider"></div>
           <div><label class="label" for="supService">Service</label><input id="supService" class="input" name="service" maxlength="500"></div>
           <div><label class="label" for="supAssurance">Assurance held</label><input id="supAssurance" class="input" name="assurance" maxlength="500" placeholder="e.g. SOC 2 Type II, reviewed May 2026"></div>
@@ -126,6 +194,7 @@
           <datalist id="supRoles"><option value="Model provider"><option value="Data provider"><option value="Labelling service"><option value="Hosting and compute"><option value="System integrator"><option value="Monitoring service"></datalist>
         </form>
       </div>
+      </details>
     <% } %>
   </section>
 

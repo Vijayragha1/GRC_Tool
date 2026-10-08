@@ -14,6 +14,14 @@
   const statusOptions = [['all', 'Any status'], ['open', 'Still open'], ...Object.entries(STATUS_LABELS).filter(([k]) => k !== 'withdrawn' || counts.withdrawn)];
   const sendable = r => ['not_started', 'follow_up'].includes(r.effective);
   const canSend = perms.send && clientMembers.length;
+  // The pipeline reads left to right, from the checklist to the auditor.
+  const FLOW = ['not_started', 'with_client', 'to_review', 'follow_up', 'ready', 'submitted', 'accepted', 'not_applicable'];
+  const FLOW_NAMES = { stage1: 'Stage 1', stage2: 'Stage 2', population: 'Populations', fieldwork: 'Samples' };
+  const FLOW_TONE = { not_started: 'open', with_client: 'wip', to_review: 'gap', follow_up: 'gap', ready: 'part', submitted: 'part', accepted: 'done', not_applicable: 'na', withdrawn: 'na' };
+  const flowDate = key => key === 'stage1' ? programme.stage1_date : key === 'stage2' || key === 'fieldwork' ? programme.stage2_date : null;
+  const flowTotals = Object.fromEntries(FLOW.map(k => [k, (pipeline || []).reduce((n, s) => n + (s.byStatus[k] || 0), 0)]));
+  const flowAll = (pipeline || []).reduce((n, s) => n + s.total, 0);
+  const flowSettled = flowTotals.submitted + flowTotals.accepted + flowTotals.not_applicable;
 %>
 
 <div class="a42">
@@ -68,6 +76,27 @@
       </div>
     </section>
   <% } else { %>
+
+  <% if ((pipeline || []).length) { %>
+  <section class="panel rq-flow" aria-labelledby="rqFlowTitle">
+    <div class="rq-flow-head">
+      <div>
+        <h2 id="rqFlowTitle">Where every request stands</h2>
+        <p>From the checklist, through the client, to the auditor. Select a segment to list those requests.</p>
+      </div>
+      <div class="rq-flow-total"><strong><%= flowSettled %></strong> of <%= flowAll %> with the auditor or settled</div>
+    </div>
+    <%- include('partials/a42_pipeline', {
+      stages: pipeline.map(st => ({ key: st.key, label: FLOW_NAMES[st.key], total: st.total, byStatus: st.byStatus, overdue: st.overdue,
+        note: `${st.total} request${st.total === 1 ? '' : 's'}${flowDate(st.key) ? ` · ${fmtDate(flowDate(st.key))}` : ''}` })),
+      href: (stage, status) => qs({ stage, status, q: '', item: '' }), STATUS_LABELS, active: filters, keys: false }) %>
+    <ul class="rq-flow-legend">
+      <% FLOW.filter(k => flowTotals[k]).forEach(k => { %>
+        <li><a href="<%= qs({ stage: 'all', status: k, q: '', item: '' }) %>"><i class="a42-dot t-<%= FLOW_TONE[k] %>" aria-hidden="true"></i><%= STATUS_LABELS[k] %> <b><%= flowTotals[k] %></b></a></li>
+      <% }) %>
+    </ul>
+  </section>
+  <% } %>
 
   <nav class="subtabs" aria-label="Request stages">
     <% tabs.forEach(([key, label, n]) => { %>
@@ -134,7 +163,7 @@
                 <a class="a42-title" href="<%= base %>/requests/<%= r.id %>"><%= r.title %></a>
                 <span class="a42-codes"><%= r.kind_label %><%= r.codes.length ? ` · ${r.codes.join(', ')}` : '' %><% if (r.due_date) { %> · <span class="<%= r.overdue ? 'a42-late' : '' %>">due <%= fmtDate(r.due_date) %></span><% } %></span>
               </td>
-              <td><span class="status <%= r.status_class %>"><%= r.status_label %></span></td>
+              <td><span class="status <%= r.status_class %>"><i class="a42-dot t-<%= FLOW_TONE[r.effective] || 'open' %>" aria-hidden="true"></i><%= r.status_label %></span></td>
               <td data-label="Client owner"><%= r.client_assignee_name || '' %></td>
               <td class="num" data-label="Files"><%= r.kind === 'sample' && r.sample_count ? `${r.sample_count - r.samples_open}/${r.sample_count}` : (r.record_count || '') %></td>
               <td class="nowrap" data-label="Stage"><%= r.kind === 'population' ? 'Population' : r.stage_label %></td>
@@ -166,5 +195,33 @@
   })();
 </script>
 <% } %>
+
+<section class="panel" style="margin-top:16px;" aria-labelledby="rqRoundsTitle">
+  <div class="panel-head"><h2 id="rqRoundsTitle">Audit rounds</h2><span class="meta">Each audit keeps its own record of what was asked and supplied</span></div>
+  <% const roundList = typeof rounds !== 'undefined' ? rounds : []; %>
+  <% if (roundList.length) { %>
+    <table class="t">
+      <thead><tr><th>Round</th><th style="width:110px;" class="num">Requests</th><th style="width:110px;" class="num">Accepted</th><th style="width:170px;">Closed</th></tr></thead>
+      <tbody>
+        <% roundList.forEach(r => { %>
+          <tr><td><a class="link-muted" href="<%= base %>/requests/rounds/<%= r.id %>"><%= r.label %></a></td><td class="num"><%= r.request_count %></td><td class="num"><%= r.accepted_count %></td><td class="meta"><%= String(r.closed_at).slice(0, 10) %> · <%= r.closed_by_name || '' %></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <div class="a42-note">When an audit is over, seal its requests as a round. The list then resets for the next audit, so a surveillance audit starts from current evidence and the earlier audit's record is kept.</div>
+  <% } %>
+  <% if (perms.manage) { %>
+    <form method="POST" action="<%= base %>/requests/rounds" class="panel-pad" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;border-top:1px solid var(--border);" onsubmit="return confirm('Seal the current requests as a finished audit round and reset the list for the next audit?');">
+      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+      <div><label class="label">The audit these requests were for</label>
+        <select class="select" name="cycle_event_id"><option value="">- not recorded on the cycle -</option>
+          <% (typeof cycleAudits !== 'undefined' ? cycleAudits : []).forEach(e => { %><option value="<%= e.id %>"><%= e.event_type %> · cycle <%= e.cycle_no %><%= e.actual_date || e.planned_date ? ' · ' + (e.actual_date || e.planned_date) : '' %></option><% }) %>
+        </select></div>
+      <div><label class="label">Round name <span class="meta">optional</span></label><input class="input" name="label" placeholder="e.g. Stage 1 and Stage 2, 2027"></div>
+      <div><button class="btn btn-secondary btn-xs">Close this audit round</button></div>
+    </form>
+  <% } %>
+</section>
 
 <%- include('partials/footer') %>

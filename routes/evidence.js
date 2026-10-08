@@ -11,6 +11,7 @@ const rbac = require('../lib/rbac');
 const evReads = require('../lib/evidence-reads');
 const evWrites = require('../lib/evidence-writes');
 const evidenceRetrieval = require('../lib/evidence-retrieval');
+const aimsAssessment = require('../lib/iso42001-assessment');
 const { PolicyRetrievalError } = require('../lib/policy-retrieval');
 const { paginate, paginateArray, pageHref } = require('../lib/paginate');
 const { ALLOWED_FRAMEWORKS } = require('../lib/frameworks');
@@ -312,6 +313,7 @@ function register(app, deps) {
       try { fs.unlinkSync(req.file.path); } catch (_) {}
       if (linkCount) {
         db.transaction(() => attachSelectedEvidenceRefs(existing.id, selected, clause_section))();
+        aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'Evidence was linked to the AIMS assessment.');
       }
       logAction(req.user.id, req.workspace.id, 'dedupe_evidence', 'evidence', existing.id, {
         sha, link_count: linkCount,
@@ -337,6 +339,7 @@ function register(app, deps) {
     if (linkCount) {
       db.transaction(() => attachSelectedEvidenceRefs(evId, selected, clause_section))();
     }
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'Evidence was added to the AIMS assessment.');
     logAction(req.user.id, req.workspace.id, 'upload_evidence', 'evidence', evId, {
       filename: req.file.originalname, link_count: linkCount,
       framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
@@ -431,6 +434,7 @@ function register(app, deps) {
       created, deduped, link_count: linkCount,
       framework_counts: Object.fromEntries(Object.entries(selected).map(([framework, refs]) => [framework, refs.length]))
     });
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'Evidence was uploaded or linked to the AIMS assessment.');
     const msg = `Uploaded ${created} file${created === 1 ? '' : 's'}` + (deduped ? ` · ${deduped} re-linked (already existed)` : '');
     res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, msg));
   });
@@ -465,6 +469,7 @@ function register(app, deps) {
     // Mark old as superseded - kept for audit trail but hidden from active view.
     db.prepare(`UPDATE evidence SET superseded_at=datetime('now'), superseded_by_id=? WHERE id=?`).run(newId, old.id);
     evidenceRetrieval.markEvidenceStale(db, req.workspace.id, old.id);
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'AIMS assessment evidence was superseded.');
     logAction(req.user.id, req.workspace.id, 'supersede_evidence', 'evidence', old.id, { new_id: newId, filename: req.file.originalname });
     res.redirect(withToast(`/workspaces/${req.workspace.id}/evidence`, `Superseded ${old.filename} → ${req.file.originalname}`));
   });
@@ -575,7 +580,8 @@ function register(app, deps) {
     const tx = db.transaction(() => {
       for (const ref of filtered) evWrites.attachCrossLink(db, ev.id, framework, ref, req.body.section_ref || null);
     });
-    try { tx(); } catch (_) {}
+    try { tx(); } catch (_) { return redirectBack(req,res,'Evidence links were not saved.','error'); }
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'AIMS requirement evidence links changed.');
     logAction(req.user.id, req.workspace.id, 'link_evidence_cross_framework', 'evidence', ev.id,
               { framework, refs: filtered, count: filtered.length }, auditCtx(req));
     redirectBack(req, res);
@@ -590,6 +596,7 @@ function register(app, deps) {
     // /controls flow which has additional primary-key bookkeeping.
     const link = evWrites.unlinkCrossLink(db, ev.id, req.params.linkId);
     if (link) {
+      aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'An AIMS evidence link was removed.');
       logAction(req.user.id, req.workspace.id, 'unlink_evidence_cross_framework', 'evidence', ev.id,
                 { framework: link.framework, item_ref: link.item_ref }, auditCtx(req));
     }
@@ -623,6 +630,7 @@ function register(app, deps) {
     if (!ev) return res.status(404).send('Not found');
     const newRef = (req.body.section_ref || '').toString().trim() || null;
     evWrites.updateSection(db, ev.id, req.params.linkId, newRef);
+    aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'An AIMS evidence section reference changed.');
     redirectBack(req, res);
   });
 
@@ -665,6 +673,7 @@ function register(app, deps) {
       const fp = resolveUploadPath(ev.stored_path, req.workspace.firm_id);
       if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
       db.prepare('DELETE FROM evidence WHERE id = ?').run(ev.id);
+      aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'AIMS assessment evidence was deleted.');
       logAction(req.user.id, req.workspace.id, 'delete_evidence', 'evidence', ev.id, null);
     }
     redirectBack(req, res);

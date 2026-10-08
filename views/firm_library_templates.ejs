@@ -1,0 +1,40 @@
+<%- include('partials/header', { title: 'Firm templates', user, ws: null, active: 'firm-library' }) %>
+
+<a href="/firm/library" class="link-muted text-base">← Library</a>
+<div class="page-head" style="margin-top:8px;">
+  <div>
+    <h1 class="page-title">Firm templates</h1>
+    <div class="page-subtitle">Documents saved from a client's document page with that client's name taken out. Every client of the firm sees them in its template library, under the standard they serve.</div>
+  </div>
+</div>
+
+<div class="panel" style="overflow:hidden;">
+  <% if (!templates.length) { %>
+    <div class="t-empty">No firm templates yet. Open a finished document for any client and choose "Save as firm template".</div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr><th>Template</th><th style="width:130px;">Standard</th><th style="width:110px;">Tier</th><th style="width:120px;">Documents made</th><th style="width:120px;">Saved</th><% if (canManage) { %><th style="width:90px;"></th><% } %></tr></thead>
+      <tbody>
+        <% templates.forEach(t => { %>
+          <tr>
+            <td><strong><%= t.name %></strong><div class="meta text-xs"><%= t.category %></div></td>
+            <td class="meta"><%= t.framework === 'iso42001' ? 'ISO 42001' : 'ISO 27001' %></td>
+            <td class="meta"><%= t.tier || 'recommended' %></td>
+            <td class="num meta"><%= t.used %></td>
+            <td class="meta"><%= String(t.created_at || '').slice(0, 10) %></td>
+            <% if (canManage) { %>
+              <td>
+                <form method="POST" action="/firm/library/templates/<%= t.id %>/delete" onsubmit="return appConfirmForm(event, 'Remove this firm template? Documents already made from it stay as they are.');" style="margin:0;">
+                  <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                  <button class="btn btn-ghost btn-xs text-danger">Remove</button>
+                </form>
+              </td>
+            <% } %>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

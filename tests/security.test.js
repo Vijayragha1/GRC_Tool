@@ -37,12 +37,14 @@ test('Public trust path explains evaluation, access, security, privacy, and disc
   conn.close();
 
   const expected = new Map([
-    ['/', /Request an evaluation/],
+    // The home page's call to action reads "Talk to us"; what matters is that
+    // it leads to the evaluation route before sign-in.
+    ['/', /href="\/contact"[^>]*>Talk to us/],
     ['/register', /Access starts with an invitation/],
     ['/security', /Security boundaries should be testable/],
     ['/privacy', /Privacy responsibilities are shared/],
     ['/terms', /does not itself certify conformity/],
-    ['/contact', /Start with the workflow you need to test/],
+    ['/contact', /Tell us about your compliance programme/],
   ]);
   for (const [url, marker] of expected) {
     const response = await client.get(url);

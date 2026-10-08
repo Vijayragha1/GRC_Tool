@@ -1,9 +1,17 @@
-<%- include('partials/auditor_header', { title: 'Statement of Applicability', token, share, workspace, active: 'soa' }) %>
+<%
+  const aims = typeof framework !== 'undefined' && framework === 'iso42001';
+  const soaBase = aims ? '/aims/soa' : '/soa';
+%>
+<%- include('partials/auditor_header', { title: 'Statement of Applicability', token, share, workspace, active: aims ? 'aims-soa' : 'soa' }) %>
 
 <div class="a-page-head">
-  <h1 class="a-page-title">Statement of Applicability</h1>
+  <h1 class="a-page-title">Statement of Applicability<% if (aims) { %> · ISO/IEC 42001<% } %></h1>
   <div class="a-page-sub">
-    <% if (from === 'snapshot' && snapshot) { %>
+    <% if (from === 'approved' && snapshot) { %>
+      Approved<% if (snapshot.version) { %> version <strong><%= snapshot.version %></strong><% } %> by <strong><%= snapshot.approved_by_name %></strong> on <%= fmtDate(snapshot.approved_on) %><% if (snapshot.owner) { %> · owner <%= snapshot.owner %><% } %>. SHA-256 <span class="hash"><%= snapshot.payload_hash %></span>.
+    <% } else if (aims && from === 'snapshot' && snapshot) { %>
+      Snapshot <strong><%= snapshot.label || '(unlabelled)' %></strong> captured <%= fmtDate(snapshot.created_at) %>, <strong>not yet approved</strong>. SHA-256 <span class="hash"><%= snapshot.payload_hash %></span>.
+    <% } else if (from === 'snapshot' && snapshot) { %>
       Frozen snapshot <strong><%= snapshot.label || '(unlabelled)' %></strong> captured <%= fmtDate(snapshot.created_at) %>. SHA-256 <span class="hash"><%= snapshot.payload_hash %></span>.
     <% } else { %>
       <strong>Live state</strong>: no snapshot has been captured yet, so this reflects the SoA at the moment of viewing.
@@ -19,7 +27,7 @@
       <% allSnaps.forEach(s => {
            const isCurrent = (snapshot && s.id === snapshot.id) || (!snapshot && false);
       %>
-        <a href="/auditor/<%= token %>/soa/snapshots/<%= s.id %>" class="chip <%= isCurrent ? 'chip-accent' : 'chip-neutral' %>" style="text-decoration:none;font-weight:500;"><%= s.label || '(unlabelled)' %> · <%= fmtDate(s.created_at) %></a>
+        <a href="/auditor/<%= token %><%= soaBase %>/snapshots/<%= s.id %>" class="chip <%= isCurrent ? 'chip-accent' : 'chip-neutral' %>" style="text-decoration:none;font-weight:500;"><%= s.label || '(unlabelled)' %><% if (s.version) { %> v<%= s.version %><% } %> · <%= fmtDate(s.created_at) %><% if (s.approval_status === 'approved') { %> · approved<% } %></a>
       <% }) %>
     </div>
   </div>
@@ -75,7 +83,7 @@
                               : ['not implemented','not-implemented','not assessed','not_assessed'].includes(statusS) ? 'bad' : 'neutral';
         %>
           <tr>
-            <td><span class="iso-ref"><%= String(r.id || '').replace('annex-','').toUpperCase() %></span></td>
+            <td><span class="iso-ref"><%= r.code || String(r.id || '').replace('annex-','').toUpperCase() %></span></td>
             <td><%= r.title %></td>
             <td><span class="chip chip-<%= appKind %>"><%= r.applicability %></span></td>
             <td><span class="chip chip-<%= statusKind %>"><%= r.status %></span></td>

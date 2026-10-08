@@ -30,6 +30,43 @@
   Methodology in use: <strong><%= methodology.name %></strong> · <%= lScale.length %>×<%= iScale.length %> matrix
 </div>
 
+<%
+  const records = (typeof assessmentRecords !== 'undefined') ? assessmentRecords : [];
+  const due = (typeof assessmentDue !== 'undefined') ? assessmentDue : { last: null, due: null };
+  const todayIso = new Date().toISOString().slice(0, 10);
+%>
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-head">
+    <h2>Risk assessment records</h2>
+    <span class="meta"><% if (due.last) { %>Last performed <%= due.last %> · next due <strong style="<%= due.due < todayIso ? 'color:#b91c1c;' : '' %>"><%= due.due %></strong><% } else { %>No assessment recorded yet. Record one each time the register is assessed; auditors ask for the retained results.<% } %></span>
+  </div>
+  <% if (records.length) { %>
+    <table class="t">
+      <thead><tr><th>Record</th><th style="width:120px;">Performed</th><th style="width:90px;" class="num">Risks</th><th style="width:130px;" class="num">Above appetite</th><th style="width:160px;">Recorded by</th></tr></thead>
+      <tbody>
+        <% records.forEach(rec => { %>
+          <tr>
+            <td><a class="link-muted" href="/workspaces/<%= ws.id %>/risks/assessments/<%= rec.id %>"><%= rec.label %></a></td>
+            <td class="meta"><%= rec.performed_on %></td>
+            <td class="num"><%= rec.risk_count %></td>
+            <td class="num"><%= rec.above_appetite %></td>
+            <td class="meta"><%= rec.recorded_by_name || '-' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/risks/assessments" class="panel-pad" style="display:grid;grid-template-columns:minmax(0,1.4fr) 150px 170px minmax(0,1fr) auto;gap:8px;align-items:end;border-top:1px solid var(--border);background:var(--bg-subtle);">
+    <div><label class="label">Record name <span class="meta">optional</span></label><input class="input" name="label" placeholder="e.g. Annual risk assessment"></div>
+    <div><label class="label">Performed on</label><input class="input" type="date" name="performed_on" value="<%= todayIso %>"></div>
+    <div><label class="label">Scope</label>
+      <select class="select" name="scope"><option value="all">Whole register</option><% if (typeof aiRiskEnabled !== 'undefined' && aiRiskEnabled) { %><option value="ai">AI risks only</option><% } %></select>
+    </div>
+    <div><label class="label">Notes <span class="meta">optional</span></label><input class="input" name="notes" placeholder="Who took part, what changed"></div>
+    <div><button class="btn btn-secondary btn-xs">Record this assessment</button></div>
+  </form>
+</div>
+
 <div id="newRisk" class="hidden panel" style="margin-bottom:16px">
   <div class="panel-head"><h2>New risk</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/risks" class="panel-pad grid-2">
@@ -71,6 +108,9 @@
       </select>
     </div>
     <div></div>
+    <% if (typeof aiRiskEnabled !== 'undefined' && aiRiskEnabled) { %>
+      <%- include('partials/ai_risk_fields', { iScale, aiSystemOptions, riskSources }) %>
+    <% } %>
     <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>
@@ -125,7 +165,7 @@
       %>
         <tr>
           <td class="mono meta" style="white-space:nowrap;">R-<%= String(r.id).padStart(3, '0') %></td>
-          <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="font-weight:500;"><%= r.title %></a></td>
+          <td><a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>" class="link-muted" style="font-weight:500;"><%= r.title %></a><% if (r.ai_system_name) { %><div class="meta text-xs">AI system: <%= r.ai_system_name %></div><% } %></td>
           <% if (typeof workspaceEntities !== 'undefined' && workspaceEntities.length) { %><td class="meta"><%= r.entity_name || '-' %></td><% } %>
           <td class="text-secondary text-base"><%= r.asset_name || '-' %></td>
           <td class="num meta"><%= r.likelihood %> · <%= r.impact %></td>

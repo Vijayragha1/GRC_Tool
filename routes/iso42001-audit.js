@@ -13,7 +13,11 @@ const path = require('path');
 const crypto = require('crypto');
 const audit = require('../lib/iso42001-audit');
 const registry = require('../lib/ai-systems');
+const aiDatasets = require('../lib/ai-datasets');
+const aiConcerns = require('../lib/ai-concerns');
+const aimsContext = require('../lib/aims-context');
 const aimsTemplates = require('../lib/iso42001-templates');
+const aimsOverview = require('../lib/iso42001-overview');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const { parseWorkspaceFrameworks } = require('../lib/frameworks');
 const { withToast, auditCtx } = require('../lib/http-helpers');
@@ -44,6 +48,12 @@ function register(app, deps) {
 
   const view = [requireAuth, requireWorkspace, requireProgramme];
   const manage = [...view, requirePermission('control.update')];
+  // The certification body's requests belong to certification support; a
+  // gap-assessment-only engagement ends with the report, before any audit.
+  const requireCertificationService = outcomeScope.requirePostGapService(
+    'Certification audit requests are outside this gap-assessment-only engagement. Continue the client to full certification support to prepare for Stage 1 and Stage 2.');
+  const certView = [...view, requireCertificationService];
+  const certManage = [...manage, requireCertificationService];
   const base = req => `/workspaces/${req.workspace.id}/iso42001`;
 
   function perms(req, res) {
@@ -56,6 +66,7 @@ function register(app, deps) {
       export: has('workspace.export'),
       upload: has('evidence.upload'),
       docCreate: has('document.create'),
+      tprmView: has('tprm.third_party.view'),
     };
   }
 
@@ -83,13 +94,15 @@ function register(app, deps) {
   // ------------------------------------------------------------ overview
 
   app.get('/workspaces/:wsId/iso42001/overview', ...view, (req, res) => {
+    if (outcomeScope.isGapAssessmentOnly(req.workspace)) return res.redirect(`/workspaces/${req.workspace.id}/engagement-plan`);
     const model = audit.overview(db, req.workspace, today());
     const systems = registry.list(db, req.workspace);
     const period = { start: model.programme.review_period_start, end: model.programme.review_period_end };
     const populationCounts = Object.fromEntries(Object.keys(registry.POPULATIONS)
       .map(k => [k, registry.population(db, req.workspace, k, period).rows.length]));
     render(res, 'iso42001_overview', req, {
-      title: 'ISO 42001 certification', active: 'iso42001-overview', model, systems, populationCounts,
+      title: 'ISO 42001 overview', active: 'iso42001-overview', model, systems, populationCounts,
+      engagementOverview: aimsOverview.buildOverview(db, req.workspace, req.user.id),
       docs: aimsTemplates.documentationStatus(db, req.workspace.id),
       checklist: audit.checklistStatus(db, req.workspace), STAGE_HINTS: audit.STAGE_HINTS,
       canUseTemplates: !outcomeScope.isGapAssessmentOnly(req.workspace),
@@ -101,18 +114,19 @@ function register(app, deps) {
   // Gives this client its own copy of the standard certification checklist,
   // or brings an existing copy up to the latest version. Repeatable: requests
   // already worked on keep their status, owner, client hand-off and files.
-  app.post('/workspaces/:wsId/iso42001/checklist', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/checklist', ...certManage, handle((req, res) => {
     const before = audit.checklistStatus(db, req.workspace);
     const result = audit.applyStandardChecklist(db, req.workspace, req.user.id);
     logAction(req.user.id, req.workspace.id, before.applied ? 'update_iso42001_checklist' : 'start_iso42001_checklist', 'workspace', req.workspace.id,
-      { version: result.version, added: result.added, updated: result.updated, withdrawn: result.withdrawn }, auditCtx(req));
+      { version: result.version, added: result.added, updated: result.updated, withdrawn: result.withdrawn, kept: result.kept }, auditCtx(req));
     const msg = before.applied
       ? `Checklist brought up to version ${result.version}: ${result.added} added, ${result.updated} updated, ${result.withdrawn} withdrawn`
+        + (result.kept ? `, ${result.kept} kept as your own request${result.kept === 1 ? '' : 's'} because work had started on ${result.kept === 1 ? 'it' : 'them'}` : '')
       : `Certification checklist started: ${result.added} requests`;
     res.redirect(withToast(`${base(req)}/requests`, msg));
   }, req => `${base(req)}/overview`));
 
-  app.post('/workspaces/:wsId/iso42001/programme', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/programme', ...certManage, handle((req, res) => {
     audit.updateProgramme(db, req.workspace, req.user.id, req.body);
     logAction(req.user.id, req.workspace.id, 'update_iso42001_audit_programme', 'workspace', req.workspace.id,
       { stage1_date: req.body.stage1_date || null, stage2_date: req.body.stage2_date || null }, auditCtx(req));
@@ -121,7 +135,7 @@ function register(app, deps) {
 
   // ------------------------------------------------------------ request list
 
-  app.get('/workspaces/:wsId/iso42001/requests', ...view, (req, res) => {
+  app.get('/workspaces/:wsId/iso42001/requests', ...certView, (req, res) => {
     const filters = {
       stage: ['stage1', 'stage2', 'fieldwork', 'population', 'all'].includes(req.query.stage) ? req.query.stage : 'all',
       status: Object.prototype.hasOwnProperty.call(audit.STATUS_LABELS, req.query.status) || req.query.status === 'open' ? req.query.status : 'all',
@@ -139,15 +153,41 @@ function register(app, deps) {
       withdrawn: all.filter(r => r.effective === 'withdrawn').length,
     };
     const itemTitle = filters.item ? (db.prepare('SELECT title FROM iso42001_items WHERE id=?').get(filters.item) || {}).title : null;
+    // Every live request by stage and state, for the pipeline at the top.
+    const inStage = { stage1: r => r.stage === 'stage1' && r.kind !== 'population', stage2: r => r.stage === 'stage2' && r.kind !== 'population',
+      population: r => r.kind === 'population', fieldwork: r => r.stage === 'fieldwork' };
+    const pipeline = Object.entries(inStage).map(([key, test]) => {
+      const list = all.filter(r => test(r) && r.effective !== 'withdrawn');
+      const byStatus = {};
+      for (const r of list) byStatus[r.effective] = (byStatus[r.effective] || 0) + 1;
+      return { key, total: list.length, byStatus, overdue: list.filter(r => r.overdue).length };
+    }).filter(s => s.total);
     render(res, 'iso42001_requests', req, {
-      title: 'Certification requests', active: 'iso42001-requests', rows, counts, filters, itemTitle,
+      title: 'Certification requests', active: 'iso42001-requests', rows, counts, filters, itemTitle, pipeline,
       checklist: audit.checklistStatus(db, req.workspace), STAGE_HINTS: audit.STAGE_HINTS,
       programme: audit.programme(db, req.workspace), clientMembers: audit.clientMembers(db, req.workspace),
       STATUS_LABELS: audit.STATUS_LABELS, today: today(),
+      rounds: audit.rounds(db, req.workspace),
+      cycleAudits: db.prepare(`SELECT id, event_type, planned_date, actual_date, cycle_no FROM iso42001_cert_cycle_events
+        WHERE workspace_id=? AND event_key IN ('stage1','stage2','surv1','surv2','recert') ORDER BY cycle_no, planned_date`).all(req.workspace.id),
     });
   });
 
-  app.get('/workspaces/:wsId/iso42001/requests/export.csv', ...view, requirePermission('workspace.export'), (req, res) => {
+  // Seal this audit's requests as a round and reset the tracker for the next
+  // audit (lib/iso42001-audit.js closeRound).
+  app.post('/workspaces/:wsId/iso42001/requests/rounds', ...certManage, handle((req, res) => {
+    const id = audit.closeRound(db, req.workspace, req.user.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'close_iso42001_audit_round', 'workspace', req.workspace.id, { round_id: id }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/requests/rounds/${id}`, 'Audit round sealed. The request list is ready for the next audit.'));
+  }));
+
+  app.get('/workspaces/:wsId/iso42001/requests/rounds/:roundId(\\d+)', ...certView, (req, res) => {
+    const round = audit.loadRound(db, req.workspace, req.params.roundId);
+    if (!round) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That audit round was not found.' });
+    render(res, 'iso42001_audit_round', req, { title: round.label, active: 'iso42001-requests', round, STATUS_LABELS: audit.STATUS_LABELS, STAGE_LABELS: audit.STAGE_LABELS });
+  });
+
+  app.get('/workspaces/:wsId/iso42001/requests/export.csv', ...certView, requirePermission('workspace.export'), (req, res) => {
     const csv = audit.requestsCsv(db, req.workspace, today());
     logAction(req.user.id, req.workspace.id, 'export_iso42001_request_list', 'workspace', req.workspace.id, {}, auditCtx(req));
     res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -155,7 +195,7 @@ function register(app, deps) {
     res.send(csv);
   });
 
-  app.get('/workspaces/:wsId/iso42001/requests/import', ...manage, (req, res) => {
+  app.get('/workspaces/:wsId/iso42001/requests/import', ...certManage, (req, res) => {
     const preview = req.query.preview ? audit.loadImport(db, req.workspace, req.query.preview) : null;
     const history = db.prepare(`SELECT i.id, i.source_filename, i.committed_at, u.name AS committed_by_name, i.summary_json
       FROM aims_request_imports i LEFT JOIN users u ON u.id=i.committed_by
@@ -168,12 +208,12 @@ function register(app, deps) {
     });
   });
 
-  app.post('/workspaces/:wsId/iso42001/requests/import/preview', ...manage, requestListUpload.single('file'), handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/import/preview', ...certManage, requestListUpload.single('file'), handle((req, res) => {
     const id = audit.previewImport(db, req.workspace, req.user.id, req.file);
     res.redirect(`${base(req)}/requests/import?preview=${id}`);
   }, req => `${base(req)}/requests/import`));
 
-  app.post('/workspaces/:wsId/iso42001/requests/import/:importId/commit', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/import/:importId/commit', ...certManage, handle((req, res) => {
     const result = audit.commitImport(db, req.workspace, req.user.id, req.params.importId, req.body);
     logAction(req.user.id, req.workspace.id, 'import_iso42001_request_list', 'workspace', req.workspace.id,
       { import_id: Number(req.params.importId), ...result }, auditCtx(req));
@@ -182,18 +222,18 @@ function register(app, deps) {
     res.redirect(withToast(`${base(req)}/overview`, `Request list imported: ${parts.join(', ')}`));
   }, req => `${base(req)}/requests/import?preview=${encodeURIComponent(req.params.importId)}`));
 
-  app.post('/workspaces/:wsId/iso42001/requests/import/:importId/discard', ...manage, (req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/import/:importId/discard', ...certManage, (req, res) => {
     audit.discardImport(db, req.workspace, req.params.importId);
     res.redirect(withToast(`${base(req)}/requests/import`, 'Preview discarded'));
   });
 
-  app.post('/workspaces/:wsId/iso42001/requests/new', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/new', ...certManage, handle((req, res) => {
     const id = audit.addManualRequest(db, req.workspace, req.user.id, req.body);
     logAction(req.user.id, req.workspace.id, 'add_iso42001_audit_request', 'aims_audit_request', id, { ref: req.body.ref }, auditCtx(req));
     res.redirect(withToast(`${base(req)}/requests/${id}`, 'Request added'));
   }, req => `${base(req)}/requests`));
 
-  app.post('/workspaces/:wsId/iso42001/requests/send', ...manage, requirePermission('client_request.manage'), handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/send', ...certManage, requirePermission('client_request.manage'), handle((req, res) => {
     const ids = [].concat(req.body.request_ids || []);
     const result = audit.sendToClient(db, req.workspace, req.user.id, ids, req.body, today());
     logAction(req.user.id, req.workspace.id, 'send_iso42001_requests_to_client', 'workspace', req.workspace.id,
@@ -209,10 +249,10 @@ function register(app, deps) {
       WHERE workspace_id=? AND superseded_at IS NULL ORDER BY uploaded_at DESC LIMIT 300`).all(req.workspace.id);
   }
 
-  app.get('/workspaces/:wsId/iso42001/requests/:id', ...view, (req, res) => {
+  app.get('/workspaces/:wsId/iso42001/requests/:id', ...certView, (req, res) => {
     const detail = audit.requestDetail(db, req.workspace, req.params.id, today());
     if (!detail) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Request not found.' });
-    const populationKey = detail.request.kind === 'population' ? registry.populationForRequest(detail.request.description) : null;
+    const populationKey = detail.request.kind === 'population' ? registry.populationForRequest(detail.request) : null;
     const prog = audit.programme(db, req.workspace);
     render(res, 'iso42001_request_detail', req, {
       title: `${detail.request.ref} · Certification request`, active: 'iso42001-requests', ...detail,
@@ -232,7 +272,7 @@ function register(app, deps) {
 
   const requestPage = req => `${base(req)}/requests/${encodeURIComponent(req.params.id)}`;
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/transition', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/transition', ...certManage, handle((req, res) => {
     const action = String(req.body.action || '');
     audit.transition(db, req.workspace, req.user.id, req.params.id, action, req.body, today());
     logAction(req.user.id, req.workspace.id, 'transition_iso42001_audit_request', 'aims_audit_request', Number(req.params.id), { action }, auditCtx(req));
@@ -241,7 +281,7 @@ function register(app, deps) {
     res.redirect(withToast(requestPage(req), done));
   }, requestPage));
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/send', ...manage, requirePermission('client_request.manage'), handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/send', ...certManage, requirePermission('client_request.manage'), handle((req, res) => {
     const result = audit.sendToClient(db, req.workspace, req.user.id, [req.params.id], req.body, today());
     if (!result.sent.length) throw new audit.AuditError(`Not sent: this request is ${result.skipped[0].reason}.`);
     logAction(req.user.id, req.workspace.id, 'send_iso42001_requests_to_client', 'aims_audit_request', Number(req.params.id),
@@ -249,19 +289,19 @@ function register(app, deps) {
     res.redirect(withToast(requestPage(req), `Sent to ${result.assignee.name}`));
   }, requestPage));
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/owner', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/owner', ...certManage, handle((req, res) => {
     audit.setOwner(db, req.workspace, req.user.id, req.params.id, req.body.owner_id || null, req.body, today());
     res.redirect(withToast(requestPage(req), 'Owner updated'));
   }, requestPage));
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/records', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/records', ...certManage, handle((req, res) => {
     audit.linkRecord(db, req.workspace, req.user.id, req.params.id, req.body, today());
     logAction(req.user.id, req.workspace.id, 'link_iso42001_audit_record', 'aims_audit_request', Number(req.params.id),
       { record_type: req.body.record_type, record_id: Number(req.body.record_id) }, auditCtx(req));
     res.redirect(withToast(requestPage(req), 'Linked'));
   }, requestPage));
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/records/:recordId/delete', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/records/:recordId/delete', ...certManage, handle((req, res) => {
     audit.unlinkRecord(db, req.workspace, req.user.id, req.params.id, req.params.recordId, today());
     res.redirect(withToast(requestPage(req), 'Link removed'));
   }, requestPage));
@@ -269,7 +309,7 @@ function register(app, deps) {
   // Starts the client's document from an ISO 42001 template and links it to
   // the request in one step. If the client already has a document from that
   // template, it is linked instead of a second draft being created.
-  app.post('/workspaces/:wsId/iso42001/requests/:id/from-template', ...manage, requirePermission('document.create'), handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/from-template', ...certManage, requirePermission('document.create'), handle((req, res) => {
     if (outcomeScope.isGapAssessmentOnly(req.workspace)) throw new audit.AuditError('Document implementation is outside this gap-assessment-only engagement.', 409);
     const request = audit.loadRequest(db, req.workspace, req.params.id, today());
     if (!request) throw new audit.AuditError('Request not found.', 404);
@@ -301,7 +341,7 @@ function register(app, deps) {
     return { id, deduped: false, sha };
   }
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/upload', ...manage, requirePermission('evidence.upload'), upload.single('file'), handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/upload', ...certManage, requirePermission('evidence.upload'), upload.single('file'), handle((req, res) => {
     const cleanup = () => { try { if (req.file && req.file.path) fs.unlinkSync(req.file.path); } catch (_) {} };
     const request = audit.loadRequest(db, req.workspace, req.params.id, today());
     if (!request) { cleanup(); throw new audit.AuditError('Request not found.', 404); }
@@ -325,10 +365,10 @@ function register(app, deps) {
 
   // Attaches the population as it stands today, so the file the auditor
   // received is kept even after the register moves on.
-  app.post('/workspaces/:wsId/iso42001/requests/:id/population', ...manage, requirePermission('evidence.upload'), handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/population', ...certManage, requirePermission('evidence.upload'), handle((req, res) => {
     const request = audit.loadRequest(db, req.workspace, req.params.id, today());
     if (!request) throw new audit.AuditError('Request not found.', 404);
-    const key = registry.populationForRequest(request.description);
+    const key = registry.populationForRequest(request);
     if (request.kind !== 'population' || !key) throw new audit.AuditError('This request is not one of the AI register populations.');
     const prog = audit.programme(db, req.workspace);
     const pop = registry.population(db, req.workspace, key, { start: prog.review_period_start, end: prog.review_period_end });
@@ -356,17 +396,46 @@ function register(app, deps) {
     res.redirect(withToast(requestPage(req), stored.deduped ? 'This export was already attached' : `Population attached (${pop.rows.length} rows)`));
   }, requestPage));
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/samples', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/samples', ...certManage, handle((req, res) => {
     const added = audit.addSamples(db, req.workspace, req.user.id, req.params.id, req.body, today());
     res.redirect(withToast(requestPage(req), `${added} item${added === 1 ? '' : 's'} added to the sample`));
   }, requestPage));
 
-  app.post('/workspaces/:wsId/iso42001/requests/:id/samples/:sampleId', ...manage, handle((req, res) => {
+  app.post('/workspaces/:wsId/iso42001/requests/:id/samples/:sampleId', ...certManage, handle((req, res) => {
     audit.updateSample(db, req.workspace, req.user.id, req.params.id, req.params.sampleId, req.body, today());
     res.redirect(withToast(`${requestPage(req)}#samples`, 'Sample item updated'));
   }, requestPage));
 
   // ------------------------------------------------------------ AI systems
+
+  // ------------------------------------------------------------ context
+  // Internal and external issues and interested parties (lib/aims-context.js).
+
+  app.get('/workspaces/:wsId/iso42001/context', ...view, (req, res) => {
+    render(res, 'iso42001_context', req, { title: 'Context and interested parties', active: 'iso42001-context',
+      context: aimsContext.list(db, req.workspace), K: aimsContext, edit: req.query.edit || null, today: today() });
+  });
+
+  const contextAction = (fn, message, anchor = '') => (req, res) => {
+    try {
+      fn(req);
+      logAction(req.user.id, req.workspace.id, 'update_iso42001_context', 'workspace', req.workspace.id, { path: req.path }, auditCtx(req));
+      return res.redirect(withToast(`${base(req)}/context`, message) + anchor);
+    } catch (e) {
+      if (e instanceof aimsContext.ContextError) return res.redirect(withToast(`${base(req)}/context`, e.message, 'error') + anchor);
+      throw e;
+    }
+  };
+  app.post('/workspaces/:wsId/iso42001/context/issues', ...manage, contextAction(req => aimsContext.saveIssue(db, req.workspace, req.user.id, null, req.body), 'Issue added'));
+  app.post('/workspaces/:wsId/iso42001/context/issues/:id(\\d+)', ...manage, contextAction(req => aimsContext.saveIssue(db, req.workspace, req.user.id, Number(req.params.id), req.body), 'Issue saved'));
+  app.post('/workspaces/:wsId/iso42001/context/issues/:id(\\d+)/delete', ...manage, contextAction(req => aimsContext.deleteIssue(db, req.workspace, Number(req.params.id)), 'Issue removed'));
+  app.post('/workspaces/:wsId/iso42001/context/parties', ...manage, contextAction(req => aimsContext.saveParty(db, req.workspace, null, req.body), 'Interested party added'));
+  app.post('/workspaces/:wsId/iso42001/context/parties/:id(\\d+)', ...manage, contextAction(req => aimsContext.saveParty(db, req.workspace, Number(req.params.id), req.body), 'Interested party saved'));
+  app.post('/workspaces/:wsId/iso42001/context/parties/:id(\\d+)/delete', ...manage, contextAction(req => aimsContext.deleteParty(db, req.workspace, Number(req.params.id)), 'Interested party removed'));
+  app.post('/workspaces/:wsId/iso42001/context/climate', ...manage, contextAction(req => aimsContext.saveClimate(db, req.workspace, req.user.id, req.body), 'Climate decision recorded', '#climate'));
+  app.post('/workspaces/:wsId/iso42001/context/risks-opportunities', ...manage, contextAction(req => aimsContext.saveRiskOpp(db, req.workspace, req.user.id, null, req.body), 'Added to the plan', '#plan'));
+  app.post('/workspaces/:wsId/iso42001/context/risks-opportunities/:id(\\d+)', ...manage, contextAction(req => aimsContext.saveRiskOpp(db, req.workspace, req.user.id, Number(req.params.id), req.body), 'Saved', '#plan'));
+  app.post('/workspaces/:wsId/iso42001/context/risks-opportunities/:id(\\d+)/delete', ...manage, contextAction(req => aimsContext.deleteRiskOpp(db, req.workspace, Number(req.params.id)), 'Removed from the plan', '#plan'));
 
   app.get('/workspaces/:wsId/iso42001/ai-systems', ...view, (req, res) => {
     const prog = audit.programme(db, req.workspace);
@@ -393,7 +462,12 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/iso42001/ai-systems/:id', ...view, (req, res) => {
     const detail = registry.detail(db, req.workspace, req.params.id);
     if (!detail) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'AI system not found.' });
-    render(res, 'iso42001_ai_system_detail', req, { title: detail.system.name, active: 'iso42001-ai-systems', ...detail, registry, edit: req.query.edit === '1' });
+    // Risks the consultant has tied to this system (lib/ai-risk.js).
+    const systemRisks = db.prepare(`SELECT id, title, likelihood, impact, status, treatment, risk_source FROM risks
+      WHERE workspace_id=? AND ai_system_id=? ORDER BY (likelihood * impact) DESC, id`).all(req.workspace.id, detail.system.id);
+    render(res, 'iso42001_ai_system_detail', req, { title: detail.system.name, active: 'iso42001-ai-systems', ...detail, registry, edit: req.query.edit === '1',
+      systemRisks, riskSourceLabel: require('../lib/ai-risk').SOURCE_LABEL, datasets: aiDatasets.forSystem(db, req.workspace, detail.system.id), DS: aiDatasets,
+      reassessment: registry.reassessment(db, req.workspace, detail.system.id) });
   });
 
   app.post('/workspaces/:wsId/iso42001/ai-systems/:id', ...manage, handle((req, res) => {
@@ -460,6 +534,89 @@ function register(app, deps) {
     registry.discardAssessment(db, req.workspace, req.params.id, req.params.iaId);
     res.redirect(withToast(systemPage(req), 'Draft discarded'));
   }, iaPage));
+
+  // ------------------------------------------------------------ datasets
+  // The dataset register (lib/ai-datasets.js): what Annex A.7 asks the
+  // organisation to know about each dataset, and which systems use it.
+
+  const datasetPage = req => `${base(req)}/datasets/${encodeURIComponent(req.params.id)}`;
+
+  app.get('/workspaces/:wsId/iso42001/datasets', ...view, (req, res) => {
+    const prog = audit.programme(db, req.workspace);
+    render(res, 'iso42001_datasets', req, { title: 'Dataset register', active: 'iso42001-datasets', datasets: aiDatasets.list(db, req.workspace), DS: aiDatasets,
+      population: registry.population(db, req.workspace, 'ai-datasets', { start: prog.review_period_start, end: prog.review_period_end }) });
+  });
+
+  app.get('/workspaces/:wsId/iso42001/datasets/new', ...manage, (req, res) => {
+    render(res, 'iso42001_dataset_form', req, { title: 'Add dataset', active: 'iso42001-datasets', dataset: null, DS: aiDatasets });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/datasets', ...manage, handle((req, res) => {
+    const id = aiDatasets.create(db, req.workspace, req.user.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'create_ai_dataset', 'ai_dataset', id, { name: req.body.name }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/datasets/${id}`, 'Dataset added'));
+  }, req => `${base(req)}/datasets/new`));
+
+  app.get('/workspaces/:wsId/iso42001/datasets/:id(\\d+)', ...view, (req, res) => {
+    const detail = aiDatasets.detail(db, req.workspace, req.params.id);
+    if (!detail) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Dataset not found.' });
+    render(res, 'iso42001_dataset_detail', req, { title: detail.dataset.name, active: 'iso42001-datasets', ...detail, DS: aiDatasets, edit: req.query.edit === '1',
+      dpdpa: parseWorkspaceFrameworks(req.workspace.frameworks).includes('dpdpa') });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/datasets/:id(\\d+)', ...manage, handle((req, res) => {
+    aiDatasets.update(db, req.workspace, req.params.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'update_ai_dataset', 'ai_dataset', Number(req.params.id), {}, auditCtx(req));
+    res.redirect(withToast(datasetPage(req), 'Saved'));
+  }, req => `${datasetPage(req)}?edit=1`));
+
+  app.post('/workspaces/:wsId/iso42001/datasets/:id(\\d+)/delete', ...manage, handle((req, res) => {
+    aiDatasets.remove(db, req.workspace, req.params.id);
+    logAction(req.user.id, req.workspace.id, 'delete_ai_dataset', 'ai_dataset', Number(req.params.id), {}, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/datasets`, 'Dataset removed'));
+  }, datasetPage));
+
+  // A use can be recorded from either side: the dataset page or the system page.
+  app.post('/workspaces/:wsId/iso42001/datasets/:id(\\d+)/systems', ...manage, handle((req, res) => {
+    aiDatasets.link(db, req.workspace, req.user.id, req.body.ai_system_id, req.params.id, req.body.use);
+    res.redirect(withToast(`${datasetPage(req)}#uses`, 'Use recorded'));
+  }, datasetPage));
+
+  app.post('/workspaces/:wsId/iso42001/ai-systems/:id/datasets', ...manage, handle((req, res) => {
+    aiDatasets.link(db, req.workspace, req.user.id, req.params.id, req.body.dataset_id, req.body.use);
+    res.redirect(withToast(`${systemPage(req)}#datasets`, 'Dataset linked'));
+  }, systemPage));
+
+  app.post('/workspaces/:wsId/iso42001/ai-systems/:id/datasets/:datasetId/:use/delete', ...manage, handle((req, res) => {
+    aiDatasets.unlink(db, req.workspace, req.params.id, req.params.datasetId, req.params.use);
+    const back = req.body.return_to === 'dataset' ? `${base(req)}/datasets/${encodeURIComponent(req.params.datasetId)}#uses` : `${systemPage(req)}#datasets`;
+    res.redirect(withToast(back, 'Link removed'));
+  }, systemPage));
+
+  // ------------------------------------------------------------ concerns and reports
+  // Concerns raised inside the organisation (A.3.3) and adverse impacts
+  // reported from outside (A.8.3), with what happened to each
+  // (lib/ai-concerns.js). Entries are corrected, not deleted: the log is
+  // what the auditor samples.
+
+  app.get('/workspaces/:wsId/iso42001/concerns', ...view, (req, res) => {
+    render(res, 'iso42001_concerns', req, { title: 'Concerns and reports', active: 'iso42001-concerns', log: aiConcerns.list(db, req.workspace, today()),
+      C: aiConcerns, areas: registry.IMPACT_AREAS, today: today(),
+      systems: db.prepare('SELECT id, name FROM ai_systems WHERE workspace_id=? ORDER BY name').all(req.workspace.id),
+      incidents: db.prepare(`SELECT id, title FROM incidents WHERE workspace_id=? AND COALESCE(is_tabletop,0)=0 ORDER BY id DESC LIMIT 200`).all(req.workspace.id) });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/concerns', ...manage, handle((req, res) => {
+    const id = aiConcerns.create(db, req.workspace, req.user.id, req.body, today());
+    logAction(req.user.id, req.workspace.id, 'record_ai_concern_report', 'ai_concern_report', id, { channel: req.body.channel }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/concerns#report-${id}`, 'Recorded'));
+  }, req => `${base(req)}/concerns`));
+
+  app.post('/workspaces/:wsId/iso42001/concerns/:id(\\d+)', ...manage, handle((req, res) => {
+    aiConcerns.update(db, req.workspace, req.params.id, req.body, today());
+    logAction(req.user.id, req.workspace.id, 'update_ai_concern_report', 'ai_concern_report', Number(req.params.id), { status: req.body.status }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/concerns#report-${Number(req.params.id)}`, 'Saved'));
+  }, req => `${base(req)}/concerns`));
 
   app.get('/workspaces/:wsId/iso42001/populations/:key.csv', ...view, requirePermission('workspace.export'), (req, res) => {
     const prog = audit.programme(db, req.workspace);

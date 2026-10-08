@@ -6,6 +6,8 @@
 const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const ctlReads = require('../lib/control-reads');
+const riskLinks = require('../lib/risk-control-links');
+const aiRisk = require('../lib/ai-risk');
 const csvImport = require('../lib/csv-import');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const { paginate, pageHref } = require('../lib/paginate');
@@ -642,35 +644,25 @@ function register(app, deps) {
            residual_likelihood ? parseInt(residual_likelihood) : null,
            residual_impact ? parseInt(residual_impact) : null,
            req.params.id, req.workspace.id);
+    // AI system, risk source and the individual and societal impact (lib/ai-risk).
+    aiRisk.apply(db, req.workspace, Number(req.params.id), req.body, {
+      impactMax: require('../db').getActiveMethodology(req.workspace.id).impact_scale.length, organisationImpact: impact,
+    });
     fts.refresh(req.workspace.id, 'risk', req.params.id);
     logAction(req.user.id, req.workspace.id, 'update_risk', 'risk', req.params.id, null);
     res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
   });
 
+  // A risk is linked to a control of any ISO framework the client works to;
+  // lib/risk-control-links records it in that framework's table and includes
+  // an undecided control on that framework's SoA.
   app.post('/workspaces/:wsId/risks/:id/link', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
     const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Risk not found');
-    const { iso_item_id } = req.body;
-    if (iso_item_id) {
-      try {
-        db.prepare('INSERT INTO risk_controls (risk_id, iso_item_id) VALUES (?, ?)')
-          .run(req.params.id, iso_item_id);
-        // Auto-mark control as included in SoA when a risk drives it.
-        // Cutover 4 (W4): converged write normalizes 'included' -> token; the WHERE
-        // filter compares the converged token. 014 mirrors back to legacy.
-        getOrCreateState(req.workspace.id, iso_item_id);
-        const wcRl = ctlWrites.converged(db, req.workspace.id);
-        const ridRl = wcRl ? ctlWrites.requirementId(db, 'iso27001', iso_item_id) : null;
-        if (wcRl && ridRl) {
-          db.prepare(`UPDATE control_instances SET applicability=?
-                      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL AND applicability=?`)
-            .run(ctlWrites.normApplic('included'), req.workspace.id, ridRl, ctlWrites.normApplic('undecided'));
-        } else {
-          db.prepare(`UPDATE control_states SET applicability = 'included'
-                      WHERE workspace_id = ? AND iso_item_id = ? AND applicability = 'undecided'`)
-            .run(req.workspace.id, iso_item_id);
-        }
-      } catch (e) { /* dup */ }
+    const itemId = String(req.body.iso_item_id || '').trim();
+    if (itemId) {
+      const framework = riskLinks.link(db, req.workspace, risk.id, itemId);
+      if (framework) logAction(req.user.id, req.workspace.id, 'link_risk_control', 'risk', risk.id, { iso_item_id: itemId, framework });
     }
     res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
   });
@@ -678,8 +670,9 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
     const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Risk not found');
-    db.prepare('DELETE FROM risk_controls WHERE risk_id = ? AND iso_item_id = ?')
-      .run(req.params.id, req.body.iso_item_id);
+    if (riskLinks.unlink(db, risk.id, String(req.body.iso_item_id || ''))) {
+      logAction(req.user.id, req.workspace.id, 'unlink_risk_control', 'risk', risk.id, { iso_item_id: req.body.iso_item_id });
+    }
     res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
   });
 

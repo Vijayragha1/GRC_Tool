@@ -56,8 +56,10 @@ function register(app,deps) {
   };
   const engagement = req => consulting.engagementFor(db,req.workspace,req.user.id,req.body.engagement_id||req.query.engagement);
   const completionPosition = (workspace,row,actorId) => {
-    const iso27001Contract=hasIso27001(workspace);
-    const gapOnlyContract=iso27001Contract&&isoLifecycle.isGapOnly(workspace.engagement_outcome);
+    const isoContract=isoLifecycle.hasIsoManagementSystem(workspace);
+    const aimsDelivery=require('../lib/iso42001-delivery');
+    const aimsContract=aimsDelivery.isAims(workspace);
+    const gapOnlyContract=isoContract&&isoLifecycle.isGapOnly(workspace.engagement_outcome);
     const gapOnly=gapOnlyContract&&row.engagement_type==='gap_assessment';
     const openWorkpapers=Number(db.prepare(`SELECT COUNT(*) c FROM consultant_workpapers
       WHERE engagement_id=? AND status NOT IN ('frozen','superseded')`).get(row.id).c||0);
@@ -65,14 +67,24 @@ function register(app,deps) {
       WHERE engagement_id=? AND status NOT IN ('accepted','cancelled')`).get(row.id).c||0);
     const openFindings=Number(db.prepare(`SELECT COUNT(*) c FROM consulting_findings
       WHERE engagement_id=? AND status NOT IN ('draft','withdrawn','closed')`).get(row.id).c||0);
-    const publishedReport=db.prepare(`SELECT id FROM consulting_report_snapshots
+    let publishedReport=db.prepare(`SELECT id FROM consulting_report_snapshots
       WHERE engagement_id=? AND report_type IN ('assessment','readiness') AND status='published'
         AND approved_by IS NOT NULL AND approved_at IS NOT NULL AND published_at IS NOT NULL
         AND approved_by<>generated_by ORDER BY published_at DESC,id DESC LIMIT 1`).get(row.id)||null;
     const blockers=[];
     if(openWorkpapers) blockers.push(`Freeze or supersede ${openWorkpapers} open workpaper${openWorkpapers===1?'':'s'}.`);
     if(openRequests) blockers.push(`Accept or cancel ${openRequests} open client request${openRequests===1?'':'s'}.`);
-    if(gapOnly) {
+    if(gapOnly&&aimsContract) {
+      const governance=aimsDelivery.gapContext(db,workspace);
+      publishedReport=governance.publication?governance.report:null;
+      if(Number(governance.engagement?.id)!==Number(row.id)) blockers.push('Close the governed ISO 42001 engagement linked to this assessment.');
+      const projection=engagementDelivery.getProjection(db,workspace,actorId,{ensure:false});
+      if(!projection?.summary.completionReady) {
+        blockers.push(...(projection?.summary.completionBlockers?.length
+          ? projection.summary.completionBlockers
+          : ['Complete the governed ISO 42001 assessment, independent report publication and formal closure from the engagement plan.']));
+      }
+    } else if(gapOnly) {
       if(!publishedReport) blockers.push('Publish an independently approved assessment report before closing this engagement.');
       const governance=gapFieldwork.assessmentContext(db,workspace);
       if(Number(governance.engagement?.id)!==Number(row.id)) blockers.push('Close the governed gap-assessment engagement linked to this assessment.');
@@ -84,7 +96,7 @@ function register(app,deps) {
       if(!GAP_ONLY_ENGAGEMENT_TYPES.has(row.engagement_type)) blockers.push('Convert the service path to Full certification support before completing certification-only work.');
       if(openFindings) blockers.push(`Close or withdraw ${openFindings} confirmed finding${openFindings===1?'':'s'} before completing this engagement.`);
     } else {
-      const isContractedCertificationEngagement=iso27001Contract&&(row.engagement_type==='implementation'||!!db.prepare(`SELECT 1 FROM engagement_delivery_plans
+      const isContractedCertificationEngagement=isoContract&&(row.engagement_type==='implementation'||!!db.prepare(`SELECT 1 FROM engagement_delivery_plans
         WHERE workspace_id=? AND consulting_engagement_id=? LIMIT 1`).get(workspace.id,row.id));
       if(openFindings) blockers.push(`Close or withdraw ${openFindings} confirmed finding${openFindings===1?'':'s'} before completing ${isContractedCertificationEngagement?'certification-support delivery':'this engagement'}.`);
       if(isContractedCertificationEngagement) {
@@ -98,7 +110,8 @@ function register(app,deps) {
         }
       }
     }
-    return { gapOnly,openWorkpapers,openRequests,openFindings,publishedReport,blockers };
+    blockers.push(...require('../lib/iso42001-combined-assurance').combinedAssurance(db,workspace).blockers);
+    return { gapOnly,openWorkpapers,openRequests,openFindings,publishedReport,blockers:[...new Set(blockers)] };
   };
   const completionNote = (position,note) => {
     const supplied=consulting.clean(note,4000);

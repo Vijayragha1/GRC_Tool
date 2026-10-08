@@ -1,0 +1,66 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const c = log.counts;
+  const tone = r => r.status === 'resolved' ? 'done' : r.late ? 'gap' : r.status === 'investigating' ? 'wip' : 'open';
+%>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Concerns and reports</h1>
+      <div class="page-subtitle">Concerns raised by people working for the organisation about its role with an AI system (A.3.3), and adverse impacts reported by users, affected people and others outside it (A.8.3). The auditor asks how either can be raised, then samples what happened to what was. No reporter's name is kept here.</div>
+    </div>
+  </div>
+
+  <section class="a42-stats" aria-label="Log measures">
+    <div class="a42-stat"><span>Recorded</span><strong><%= c.total %></strong><em><%= c.concerns %> concern<%= c.concerns === 1 ? '' : 's' %>, <%= c.reports %> outside report<%= c.reports === 1 ? '' : 's' %></em></div>
+    <div class="a42-stat"><span>Open</span><strong><%= c.open %></strong><em>Received or being investigated</em></div>
+    <div class="a42-stat<%= c.late ? ' is-attention' : '' %>"><span>Past their response date</span><strong><%= c.late %></strong><em><%= c.late ? 'Respond or escalate' : 'Nothing overdue' %></em></div>
+    <div class="a42-stat"><span>Escalated to management</span><strong><%= c.escalated %></strong><em>Recorded with a date</em></div>
+  </section>
+
+  <section class="panel" aria-labelledby="logTitle">
+    <div class="panel-head"><div><h2 id="logTitle">Log</h2><p class="a42-caption">Open entries first. An entry is corrected rather than deleted, because the log is what the auditor samples.</p></div><span class="meta">Annex A.3.3, A.8.3</span></div>
+    <% if (!log.rows.length) { %>
+      <p class="a42-empty">Nothing recorded yet. An empty log is fine if nothing has been raised, but the auditor will still ask to see how a concern or report would be handled; that is the reporting procedure among the AIMS documents.</p>
+    <% } else { %>
+      <ul class="a42-list a42-events">
+        <% log.rows.forEach(r => { %>
+          <li id="report-<%= r.id %>">
+            <i class="a42-dot t-<%= tone(r) %>" aria-hidden="true"></i>
+            <div>
+              <span class="a42-list-title"><%= r.summary %></span>
+              <p><%= C.CHANNELS[r.channel] %> &middot; <%= fmtDate(r.received_on) %> &middot; <%= C.REPORTERS[r.reporter_type] %><%= r.anonymous ? ', anonymous' : '' %><% if (r.system_name) { %> &middot; <a href="<%= base %>/ai-systems/<%= r.ai_system_id %>"><%= r.system_name %></a><% } %><% if (r.impact_area) { %> &middot; <%= C.AREA_LABEL[r.impact_area] %><% } %><% if (r.severity) { %> &middot; <%= C.SEVERITY[r.severity] %> severity<% } %></p>
+              <p><%= C.STATUSES[r.status] %><% if (r.handler) { %> &middot; handled by <%= r.handler %><% } %><% if (r.respond_by && r.status !== 'resolved') { %> &middot; <span class="<%= r.late ? 'a42-warn-text' : '' %>">respond by <%= fmtDate(r.respond_by) %></span><% } %><% if (r.escalated_on) { %> &middot; escalated <%= fmtDate(r.escalated_on) %><% } %><% if (r.incident_id) { %> &middot; <a href="/workspaces/<%= ws.id %>/incidents/<%= r.incident_id %>">INC-<%= r.incident_id %></a><% } %></p>
+              <% if (r.resolution) { %><p>Resolved <%= r.resolved_on ? fmtDate(r.resolved_on) : '' %>: <%= r.resolution %></p><% } %>
+              <% if (perms.manage) { %>
+              <details class="a42-fold a42-fold-inline">
+                <summary>Update</summary>
+                <form method="POST" action="<%= base %>/concerns/<%= r.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+                  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="version" value="<%= r.version %>">
+                  <%- include('partials/a42_concern_fields', { r, C, areas, systems, incidents, today }) %>
+                  <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button></div>
+                </form>
+              </details>
+              <% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (perms.manage) { %>
+      <details class="a42-fold"<%= log.rows.length ? '' : ' open' %>>
+        <summary>Record a concern or report</summary>
+        <form method="POST" action="<%= base %>/concerns" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <%- include('partials/a42_concern_fields', { r: null, C, areas, systems, incidents, today }) %>
+          <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Record</button></div>
+        </form>
+      </details>
+    <% } %>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

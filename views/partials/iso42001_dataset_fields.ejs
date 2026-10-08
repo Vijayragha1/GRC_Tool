@@ -1,0 +1,18 @@
+<%# The dataset form, shared by the add page and the edit form on the dataset
+    page. Takes dataset (null when adding) and DS (lib/ai-datasets.js). %>
+<% const d = dataset || {}; %>
+<div class="stack-grid" style="--cols:minmax(0,2fr) minmax(0,1fr);--cols-sm:1fr;gap:12px;">
+  <div><label class="label" for="dsName">Name</label><input id="dsName" class="input" name="name" value="<%= d.name || '' %>" required maxlength="160" placeholder="e.g. Loan applications 2019 to 2025"></div>
+  <div><label class="label" for="dsOwner">Owner</label><input id="dsOwner" class="input" name="owner" value="<%= d.owner || '' %>" maxlength="160"></div>
+</div>
+<div class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:12px;">
+  <div><label class="label" for="dsSource">Source</label><select id="dsSource" class="select" name="source_type"><option value="">Not recorded</option><% Object.entries(DS.SOURCE_TYPES).forEach(([k, l]) => { %><option value="<%= k %>" <%= d.source_type === k ? 'selected' : '' %>><%= l %></option><% }) %></select></div>
+  <div><label class="label" for="dsOrigin">Supplied by</label><input id="dsOrigin" class="input" name="origin" value="<%= d.origin || '' %>" maxlength="300" placeholder="Team, customer, vendor or publisher"></div>
+  <div><label class="label" for="dsRefresh">How it changes</label><select id="dsRefresh" class="select" name="refresh"><option value="">Not recorded</option><% Object.entries(DS.REFRESH).forEach(([k, l]) => { %><option value="<%= k %>" <%= d.refresh === k ? 'selected' : '' %>><%= l %></option><% }) %></select></div>
+  <div><label class="label" for="dsPersonal">Personal data</label><select id="dsPersonal" class="select" name="personal_data"><% Object.entries(DS.PERSONAL).forEach(([k, l]) => { %><option value="<%= k %>" <%= (d.personal_data || 'unknown') === k ? 'selected' : '' %>><%= l %></option><% }) %></select></div>
+  <div><label class="label" for="dsChanged">Last changed</label><input id="dsChanged" class="input" type="date" name="last_changed" value="<%= d.last_changed || '' %>"></div>
+  <div><label class="label" for="dsChecked">Quality last checked</label><input id="dsChecked" class="input" type="date" name="quality_checked_on" value="<%= d.quality_checked_on || '' %>"></div>
+</div>
+<% DS.TEXT_FIELDS.forEach(([key, label, hint, ref]) => { %>
+  <div><label class="label" for="ds_<%= key %>"><%= label %><% if (ref) { %> <span class="meta"><%= ref %></span><% } %></label><textarea id="ds_<%= key %>" class="textarea" name="<%= key %>" rows="<%= ['acquisition', 'provenance', 'preparation', 'quality_requirements'].includes(key) ? 3 : 2 %>" maxlength="8000"><%= d[key] || '' %></textarea><span class="hint"><%= hint %></span></div>
+<% }) %>

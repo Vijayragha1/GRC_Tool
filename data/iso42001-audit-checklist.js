@@ -1,223 +1,236 @@
 'use strict';
 // Standard ISO/IEC 42001 certification evidence checklist.
 //
-// What a certification body's auditors ask for when they audit an AI
-// management system: the documents reviewed at Stage 1, the evidence that the
-// AIMS operates checked at Stage 2, the populations they sample from and the
-// samples themselves. It is the same for every client, so it is shipped once
-// and applied to each client's programme; a client's audit dates are the
-// client's own and are not part of it.
+// Built from the standard's own structure: one entry for the certification
+// application, one for each clause from 4.1 to 10.2, one for each of the 38
+// Annex A controls, then the populations an auditor samples from and the
+// samples themselves. Each entry says, in this product's words, what evidence
+// shows the requirement is met; the wording follows the guidance the gap
+// assessment gives for the same requirement (data/iso42001-content.js). No
+// certification body's request list is its skeleton, and it carries no dates:
+// a client's audit dates are the client's own.
 //
-// Written in this product's words from common certification practice. It is
-// not any one certification body's request list, and carries no due dates.
-// Keys are stable: a later version of the checklist updates the entries a
-// client already has by key and withdraws keys it no longer contains.
+// Stage rule, applied to every entry: Stage 1 holds the documents the auditor
+// reads before fieldwork (scope, policy, methods, the SoA, objectives,
+// procedures); Stage 2 holds the records that show the AI management system
+// running (results, minutes, logs, completed assessments). Samples are taken
+// during fieldwork. Most certification bodies expect one internal audit and one
+// management review to be complete before Stage 2.
 //
-//   key       stable reference shown to the consultant (S1-, S2-, POP-, SMP-)
-//   stage     stage1 (document review) | stage2 (operation) | fieldwork (samples)
-//   kind      evidence | policy | population | sample
-//   refs      ISO 42001 catalogue ids the request tests
-//   title     what the auditor asks for
-//   checks    what the auditor looks for in it
+// Keys are stable and name the requirement: PRE- (before the audit), CL- (a
+// clause), A- (an Annex A control), POP- (a population), SMP- (a sample). A
+// later version updates a client's copy by key; see applyStandardChecklist in
+// lib/iso42001-audit.js for what happens to entries a version drops.
+//
+//   key         stable reference shown to the consultant
+//   stage       stage1 | stage2 | fieldwork
+//   kind        evidence | policy | population | sample
+//   refs        ISO 42001 catalogue ids the entry tests
+//   title       what the auditor asks to see
+//   checks      what the auditor looks for in it
+//   population  for population entries backed by the AI system register: which
+//               register listing answers it (lib/ai-systems.js POPULATIONS)
 
-const VERSION = '2026.1';
+const VERSION = '2026.2';
 
-const r = (key, stage, kind, refs, title, checks) => ({ key, stage, kind, refs, title, checks });
-const c = n => `ai-clause-${n}`;
-const a = n => `ai-annex-a-${n.replace(/\./g, '-')}`;
+const c = (n) => `ai-clause-${n}`;
+const a = (n) => `ai-annex-a-${n.replace(/\./g, '-')}`;
+const r = (key, stage, kind, refs, title, checks, extra = {}) => ({ key, stage, kind, refs, title, checks, ...extra });
 
 const CHECKLIST = [
-  // ------------------------------------------------------------ Stage 1: before and around document review
-  r('S1-01', 'stage1', 'evidence', [], 'Signed certification application and audit agreement',
-    'Signed by an authorised person, on letterhead where the certification body asks for it, with the scope and sites the audit will cover.'),
-  r('S1-02', 'stage1', 'evidence', [c('4.1'), c('4.3')], 'Description of each AI system in scope: its purpose, users and context of use',
-    'A short account per system the auditor can use to plan interviews: what it does, who uses it, who is affected, where it runs.'),
-  r('S1-03', 'stage1', 'evidence', [c('4.1')], 'The organisation\'s role for each AI system (provider, producer, customer, partner, subject)',
-    'A role recorded per system, not one role for the organisation, and consistent with contracts and the scope statement.'),
-  r('S1-04', 'stage1', 'evidence', [c('4.1'), c('4.2')], 'Internal and external issues, interested parties and their requirements, and how the AIMS addresses them',
-    'Issues specific to the organisation, a list of interested parties including people affected by outputs, legal and contractual obligations, and a link from each requirement to a risk, objective or control.'),
-  r('S1-05', 'stage1', 'policy', [c('4.3')], 'AIMS scope statement, with version and approval date',
-    'Boundaries, units and locations, the AI systems in scope, interfaces with AI outside the scope, and justified exclusions.'),
-  r('S1-06', 'stage1', 'policy', [c('5.2'), a('2.2')], 'AI policy, with version and approval date',
-    'Approved by top management, fits the organisation\'s purpose, gives a framework for AI objectives, commits to meeting requirements and to improvement, and states the principles that guide AI work.'),
-  r('S1-07', 'stage1', 'evidence', [c('5.1'), c('5.3'), a('3.2')], 'Roles, responsibilities and authorities for the AIMS (RACI, job descriptions, appointment records)',
-    'Named people for AIMS ownership, risk, impact assessment, development, data quality, human oversight, suppliers and reporting to top management.'),
-  r('S1-08', 'stage1', 'policy', [c('6.1.1'), c('6.1.2')], 'AI risk assessment methodology, with version and approval date',
-    'Risk criteria and acceptance criteria, AI-specific risk sources, consequences for the organisation, individuals and society, and repeatable results.'),
-  r('S1-09', 'stage1', 'evidence', [c('6.1.1')], 'Evidence that risks and opportunities for the AIMS were identified and acted on by management',
-    'Meeting minutes or decision records showing management considered risks and opportunities and assigned actions.'),
-  r('S1-10', 'stage1', 'policy', [c('6.1.3')], 'AI risk treatment process, with version and approval date',
-    'How treatment options and controls are chosen, compared against Annex A, approved, and how residual risk is accepted.'),
-  r('S1-11', 'stage1', 'evidence', [c('6.1.3')], 'Statement of Applicability, with version, approval date and a justification for every inclusion and exclusion',
-    'All Annex A controls considered, justifications traceable to risk treatment, and additional controls listed.'),
-  r('S1-12', 'stage1', 'policy', [c('6.1.4'), a('5.2')], 'AI system impact assessment process, with version and approval date',
-    'When assessments are triggered, who performs and approves them, which individuals and groups are considered, and how results feed design and risk decisions.'),
-  r('S1-13', 'stage1', 'evidence', [c('8.4'), a('5.3'), a('5.4'), a('5.5')], 'Results of the most recent impact assessment for each AI system, and the assessment log',
-    'Impacts on individuals, groups and society, foreseeable failures and misuse, demographic groups considered, human oversight, measures and a recorded decision.'),
-  r('S1-14', 'stage1', 'evidence', [c('6.2')], 'AI objectives, and evidence they were communicated',
-    'Objectives consistent with the AI policy, measurable where practicable, with owners, resources and dates, and proof staff and interested parties were told.'),
-  r('S1-15', 'stage1', 'evidence', [c('6.2'), c('9.1')], 'Tracking of progress against the AI objectives',
-    'A tracker or KPI results showing measurement at the planned frequency and what was done about shortfalls.'),
-  r('S1-16', 'stage1', 'evidence', [c('6.3')], 'How changes to the AIMS are planned and carried out (change plan or log)',
-    'Changes to scope, policy, processes or roles recorded with purpose, consequences, resources and approval.'),
-  r('S1-17', 'stage1', 'evidence', [c('7.2'), c('7.3')], 'Evidence of AI policy awareness: training completion and policy acknowledgements',
-    'Completion logs with dates, and acknowledgements from employees, contractors and relevant interested parties, repeated at the planned interval.'),
-  r('S1-18', 'stage1', 'policy', [c('7.4')], 'Communication plan for the AIMS, and evidence it has been followed',
-    'What is communicated, to whom, when, how and by whom, internally and externally, with examples such as emails, memos or intranet posts.'),
-  r('S1-19', 'stage1', 'evidence', [c('7.5')], 'Where AIMS documented information is kept, who can access it and at what level',
-    'The repository location, a current user access list with roles, and control of versions, approval and changes.'),
-  r('S1-20', 'stage1', 'evidence', [c('4.4'), c('8.1')], 'Operational planning of AIMS activities and the criteria for running them',
-    'A schedule of risk assessments, impact assessment reviews, internal audits and management reviews, with the criteria each process is run against.'),
-  r('S1-21', 'stage1', 'evidence', [c('8.1')], 'Control of externally provided processes, products and services relevant to the AIMS',
-    'Which external providers affect the AIMS and how they are selected, controlled and reviewed.'),
-  r('S1-22', 'stage1', 'evidence', [c('8.2')], 'Results of the most recent AI risk assessment (risk register)',
-    'Every in-scope system assessed at planned intervals or after significant change, with results retained.'),
-  r('S1-23', 'stage1', 'evidence', [c('8.3')], 'Risk treatment plans and the results of treatment, including residual risk',
-    'Treatments implemented or scheduled, their effectiveness analysed, and residual risk accepted by the risk owner.'),
-  r('S1-24', 'stage1', 'evidence', [c('9.1')], 'Records of periodic reviews of AIMS performance',
-    'Monitoring and measurement results, KPI reports and evaluation of whether the AIMS is effective.'),
-  r('S1-25', 'stage1', 'policy', [c('9.2')], 'Internal audit procedure, with version and approval date',
-    'Audit criteria, auditor competence and independence, reporting and follow-up.'),
-  r('S1-26', 'stage1', 'evidence', [c('9.2')], 'Internal audit programme for the certification cycle and the plan for the current audit',
-    'Every clause and applicable Annex A control covered over the cycle, and a plan with scope, responsibilities and timing.'),
-  r('S1-27', 'stage1', 'evidence', [c('9.2')], 'Internal audit report and testing notes',
-    'A completed internal audit of the full AIMS before Stage 1, with working papers showing what was tested and the findings raised.'),
-  r('S1-28', 'stage1', 'evidence', [c('9.3')], 'Management review: invitation, agenda, minutes and actions',
-    'Held by top management before Stage 1, covering the required inputs, with decisions and actions recorded.'),
-  r('S1-29', 'stage1', 'evidence', [c('10.1'), c('10.2')], 'Nonconformities: root cause analysis, corrections, corrective actions and effectiveness checks',
-    'A record per nonconformity (for example from the internal audit), its cause, the actions taken and evidence the actions worked.'),
-  r('S1-30', 'stage1', 'policy', [a('2.2')], 'The latest reviewed and approved AI policy, showing the principles that guide AI activities',
-    'Principles that reflect business strategy, the risk of the AI systems, legal obligations and affected parties, and a route for exceptions.'),
-  r('S1-31', 'stage1', 'policy', [a('3.2')], 'Document defining who is responsible for AI development, deployment, monitoring and compliance',
-    'Responsibilities across risk, impact assessment, resources, security, privacy, development, performance, human oversight, suppliers and data quality.'),
-  r('S1-32', 'stage1', 'evidence', [a('4.2')], 'Documentation of the resources each AI system depends on, with data flow and architecture diagrams',
-    'Components, data, tooling, computing and people for each system, kept current.'),
-  r('S1-33', 'stage1', 'evidence', [a('5.3'), a('5.4'), a('5.5')], 'Documented impact assessments that follow the organisation\'s impact assessment process',
-    'Each assessment covers the elements the process requires and records positive and negative impacts on individuals and society.'),
-  r('S1-34', 'stage1', 'evidence', [a('6.1.2')], 'Objectives that guide responsible development of AI systems',
-    'Objectives such as fairness, reliability or explainability that are built into design and development.'),
-  r('S1-35', 'stage1', 'evidence', [a('6.1.2')], 'Evidence the responsible development objectives are built into development work',
-    'The objectives appear in requirements, data acquisition and preparation, training, and verification and validation.'),
-  r('S1-36', 'stage1', 'policy', [a('6.1.3')], 'AI system design and development procedure',
-    'Lifecycle stages, testing, human oversight, when impact assessments run, training data rules, release criteria, approvals and change control.'),
-  r('S1-37', 'stage1', 'evidence', [a('6.2.2')], 'Documented rationale for each AI system and its goals',
-    'Why the system is built (business case, customer request, policy) and how success is measured.'),
-  r('S1-38', 'stage1', 'evidence', [a('6.2.3')], 'Documented design and development choices for each AI system',
-    'Machine learning approach, model type, training and data quality needs, evaluation, components, AI-specific security threats, human interaction and interoperability.'),
-  r('S1-39', 'stage1', 'evidence', [a('6.2.3')], 'Final system architecture for each AI system',
-    'An architecture description or diagram that matches the system in production.'),
-  r('S1-40', 'stage1', 'policy', [a('7.2')], 'Data management policy and procedures for developing AI systems',
-    'Privacy and security implications of data use, transparency and provenance, representativeness of training data, accuracy and integrity.'),
-  r('S1-41', 'stage1', 'evidence', [a('7.2')], 'Example input and output data for each type of AI system',
-    'Representative examples the auditor can relate to the documented intended use.'),
-  r('S1-42', 'stage1', 'evidence', [a('8.2')], 'Information and notices given to users of AI systems',
-    'That users are told they are dealing with AI or AI-generated content, the purpose, how to override or get human review, limitations, performance and contact details.'),
-  r('S1-43', 'stage1', 'evidence', [a('9.2')], 'How the organisation decides whether to use a particular AI system, and the policies behind it',
-    'Required approvals, costs including ongoing monitoring, approved sourcing, and legal obligations considered before adoption.'),
-  r('S1-44', 'stage1', 'evidence', [a('9.3')], 'Objectives that guide the responsible use of AI systems',
-    'Objectives for human oversight, monitoring accuracy and reporting concerns, set at defined stages of the lifecycle.'),
-  r('S1-45', 'stage1', 'evidence', [a('10.2')], 'Responsibility matrix for the AI system lifecycle across the organisation, partners, suppliers and customers',
-    'Each lifecycle activity allocated to a party, consistent with contracts.'),
+  // ------------------------------------------------------------ Before the audit
+  r('PRE-APPLICATION', 'stage1', 'evidence', [c('4.3')], 'Signed certification application and audit agreement',
+    'Signed by someone authorised to commit the organisation, naming the scope, the sites and the AI systems the audit will cover.'),
 
-  // ------------------------------------------------------------ Stage 2: the AIMS in operation
-  r('S2-01', 'stage2', 'evidence', [], 'Remote audit arrangements, if any fieldwork will be remote',
-    'The technology, access and confidentiality arrangements agreed with the certification body.'),
-  r('S2-02', 'stage2', 'evidence', [a('2.3')], 'How the AI policy aligns with other organisational policies',
-    'Security, privacy, quality, procurement and HR policies checked against the AI policy, with conflicts resolved.'),
-  r('S2-03', 'stage2', 'evidence', [a('2.4')], 'Review and approval of the AI policy at planned intervals',
-    'Signatures or approval records from senior management, with management review results taken into account.'),
-  r('S2-04', 'stage2', 'evidence', [a('3.3')], 'A mechanism for employees to report concerns about AI systems',
-    'Confidential or anonymous options, promoted to staff, qualified investigators, timely escalation and protection from reprisal.'),
-  r('S2-05', 'stage2', 'evidence', [a('4.3')], 'Documentation of the data resources used by each AI system',
-    'Provenance, dates, categories, labelling, intended use and quality of the data.'),
-  r('S2-06', 'stage2', 'evidence', [a('4.4')], 'Documentation of the tooling resources used by each AI system',
-    'Algorithms and models, data conditioning, optimisation and evaluation methods, and development and deployment software.'),
-  r('S2-07', 'stage2', 'evidence', [a('4.5')], 'Documentation of the system and computing resources used by each AI system',
-    'Where it runs, processing, network and storage, constrained-resource needs and environmental impact of the hardware.'),
-  r('S2-08', 'stage2', 'evidence', [a('4.6')], 'Documentation of the people and expertise needed to build, run and oversee each AI system',
-    'Roles such as data scientists, human oversight reviewers and domain experts, in relation to the organisation\'s role.'),
-  r('S2-09', 'stage2', 'evidence', [a('5.2')], 'The documented impact assessment process in full',
-    'Triggers such as changes in purpose, automation or data; who performs it; how it informs design and approvals; and the elements of identification, analysis, evaluation, treatment and reporting.'),
-  r('S2-10', 'stage2', 'evidence', [a('6.2.4')], 'Verification and validation measures for each AI system, and the criteria for using them',
-    'Test methods and tools, test data representative of the intended domain, release criteria and acceptable error rates.'),
-  r('S2-11', 'stage2', 'evidence', [a('6.2.5')], 'Deployment plan and release criteria for each AI system',
-    'Environments, tests passed, metrics met, user testing and management sign-off before deployment.'),
-  r('S2-12', 'stage2', 'evidence', [a('6.2.6')], 'Monitoring, repair, update and support arrangements, with system-generated evidence of monitoring configuration and alerts',
-    'Performance monitored against design goals on production data, AI-specific threats watched for, and a response plan for errors and failures.'),
-  r('S2-13', 'stage2', 'evidence', [a('6.2.7')], 'Technical documentation for each audience (users, partners, authorities)',
-    'Intended purpose, usage instructions, technical assumptions, limitations, performance figures and how operators can influence the system.'),
-  r('S2-14', 'stage2', 'evidence', [a('6.2.8')], 'Event log configuration and an example log extract',
-    'What each AI system records during use, how long logs are kept, and how logs are used to detect operation outside intended conditions.'),
-  r('S2-15', 'stage2', 'policy', [a('7.3')], 'Data acquisition and selection procedure',
-    'Data categories and quantity, sources, source characteristics, data subject demographics, prior handling and provenance.'),
-  r('S2-16', 'stage2', 'evidence', [a('7.3')], 'System-generated evidence of the data sources used and their characteristics',
-    'Exports or screenshots from the data platform, not only a description.'),
-  r('S2-17', 'stage2', 'evidence', [a('7.4')], 'Data quality requirements for training, validation, test and production data',
-    'Defined, measurable requirements suited to each system\'s intended purpose.'),
-  r('S2-18', 'stage2', 'evidence', [a('7.4')], 'A completed review showing the data used met those requirements',
-    'Dated review results with any shortfalls and what was done about them.'),
-  r('S2-19', 'stage2', 'policy', [a('7.5')], 'How data provenance is recorded',
-    'Creation, updates, transformations, validation and transfers of control recorded for each dataset.'),
-  r('S2-20', 'stage2', 'evidence', [a('7.5')], 'Records showing data provenance was verified and recorded',
-    'Provenance entries for the datasets behind in-scope systems.'),
-  r('S2-21', 'stage2', 'policy', [a('7.6')], 'Documented data preparation methods',
-    'Exploration, cleaning, imputation, normalisation, scaling, labelling and encoding, as they apply.'),
-  r('S2-22', 'stage2', 'evidence', [a('7.6')], 'Evidence the data preparation methods were applied',
-    'Pipeline records, notebooks or logs showing the documented steps were followed.'),
-  r('S2-23', 'stage2', 'evidence', [a('8.3')], 'A channel for users and other external parties to report adverse impacts',
-    'Where it is published, contract or service terms that reference it, and how reports are handled.'),
-  r('S2-24', 'stage2', 'policy', [a('8.4')], 'Incident response plan for AI system failures and unexpected behaviour',
-    'Incident types that must be communicated, timelines, which authorities are notified and what is reported.'),
-  r('S2-25', 'stage2', 'evidence', [a('8.5')], 'Process for meeting jurisdictional requirements to share information with authorities',
-    'What may be shared (technical documentation, data sets, verification records, risks, impact assessments, logs) and who approves it.'),
-  r('S2-26', 'stage2', 'evidence', [a('9.3')], 'Mechanisms in place to achieve the responsible use objectives',
-    'Human reviewers with authority to override, monitoring of output accuracy, and routes for reporting concerns and changes in performance.'),
-  r('S2-27', 'stage2', 'evidence', [a('9.4')], 'Evidence each AI system is used according to its intended use and documentation',
-    'Use checked against the technical documentation and instructions, with deviations handled.'),
-  r('S2-28', 'stage2', 'policy', [a('10.3')], 'Supplier management procedure for AI-related suppliers',
-    'Due diligence, contract requirements, periodic review and monitoring of changes that affect AI systems.'),
-  r('S2-29', 'stage2', 'policy', [c('6.3'), a('10.3')], 'Change management policy and procedure for AI systems',
-    'How changes to AI systems are requested, assessed, tested, approved and communicated, including limits of the domain a system is valid for.'),
+  // ------------------------------------------------------------ Clause 4: context
+  r('CL-4.1', 'stage1', 'evidence', [c('4.1')], 'Internal and external issues that shape the AI management system, and the organisation\'s role for each AI system',
+    'Issues specific to this organisation rather than generic ones, a role recorded for each AI system in scope, and a visible link from the issues to the risks that follow from them.'),
+  r('CL-4.2', 'stage1', 'evidence', [c('4.2')], 'Interested parties, what they require of the AI management system, and which requirements are obligations',
+    'People affected by AI outputs are listed alongside customers and regulators, legal and contractual obligations are marked, and each requirement is traced to a risk, objective or control.'),
+  r('CL-4.3', 'stage1', 'policy', [c('4.3'), a('4.2')], 'AI management system scope statement, with version and approval',
+    'Boundaries, units and locations, the AI systems in scope and the stages of their life cycle covered, AI use left outside with a reason, and agreement with the AI system inventory.'),
+  r('CL-4.4', 'stage1', 'evidence', [c('4.4')], 'Overview of the processes that make up the AI management system and how they connect',
+    'Each process has an owner and produces records the auditor can later sample, such as risk assessments, impact assessments, audits and reviews.'),
+
+  // ------------------------------------------------------------ Clause 5: leadership
+  r('CL-5.1', 'stage2', 'evidence', [c('5.1')], 'Records of top management directing and supporting the AI management system',
+    'Attendance at management review, decisions on resources, acceptance of residual AI risks at the right level, and messages from leadership about responsible AI.'),
+  r('CL-5.2', 'stage1', 'policy', [c('5.2'), a('2.2')], 'AI policy, dated and approved by top management',
+    'Commitments suited to the organisation\'s AI activities, a framework for AI objectives, a commitment to improve, and approval at the level the organisation says it needs.'),
+  r('CL-5.3', 'stage1', 'evidence', [c('5.3'), a('3.2')], 'Roles, responsibilities and authorities for the AI management system',
+    'A roles matrix covering the management system and each AI system, with named people in post and who reports on the system\'s performance to top management.'),
+
+  // ------------------------------------------------------------ Clause 6: planning
+  r('CL-6.1.1', 'stage1', 'policy', [c('6.1.1')], 'How risks and opportunities for the AI management system itself are planned for',
+    'A planning approach and a register of risks and opportunities for the management system, kept apart from the risks of individual AI systems, with actions planned against them.'),
+  r('CL-6.1.2', 'stage1', 'policy', [c('6.1.2')], 'AI risk assessment method, with the criteria for judging and accepting risk',
+    'Criteria written down before the assessments were done, consequences for individuals, groups and society as well as the organisation, and a method that gives consistent results when repeated.'),
+  r('CL-6.1.3', 'stage1', 'policy', [c('6.1.3')], 'AI risk treatment plan and the Statement of Applicability',
+    'Every Annex A control decided with a reason for inclusion or exclusion, each included control traced to a risk it treats, treatment owners and dates, and approval of the SoA.'),
+  r('CL-6.1.4', 'stage1', 'policy', [c('6.1.4'), a('5.2')], 'AI system impact assessment method, and when an assessment is triggered',
+    'Who assesses, what is considered, how the depth of assessment is set by the system\'s potential for harm, and the events that require an assessment to be redone.'),
+  r('CL-6.2', 'stage1', 'evidence', [c('6.2')], 'AI objectives, each with a measure, a target, an owner and a plan',
+    'Objectives consistent with the AI policy, measurable where practical, with the actions, resources and dates needed to reach them and how results will be judged.'),
+  r('CL-6.3', 'stage1', 'policy', [c('6.3')], 'How changes to the AI management system are planned',
+    'Changes are considered for their purpose and consequences before they are made, with resources and responsibilities assigned.'),
+
+  // ------------------------------------------------------------ Clause 7: support
+  r('CL-7.1', 'stage2', 'evidence', [c('7.1')], 'Records that the resources the AI management system needs have been provided',
+    'Budget, people and tooling traced to the needs identified in planning, and management review judging whether they are enough.'),
+  r('CL-7.2', 'stage2', 'evidence', [c('7.2'), a('4.6')], 'Competence required for each AI role, and records that people meet it',
+    'Requirements per role, per person evidence of education, training or experience, and action taken where someone falls short.'),
+  r('CL-7.3', 'stage2', 'evidence', [c('7.3')], 'Records that people know the AI policy and their part in the AI management system',
+    'Awareness material, who has completed it, and staff able to explain what happens if they do not follow the AI policy.'),
+  r('CL-7.4', 'stage2', 'evidence', [c('7.4')], 'What is communicated about the AI management system, to whom, when and by whom, and records it happened',
+    'A communication plan covering internal and external audiences, including people affected by AI systems, and examples of communications that went out.'),
+  r('CL-7.5', 'stage1', 'policy', [c('7.5')], 'How documented information is created, approved, stored and kept, including AI system records',
+    'Version and approval control, access and retention rules that cover model documentation, datasets and evaluation reports as well as policies.'),
+
+  // ------------------------------------------------------------ Clause 8: operation
+  r('CL-8.1', 'stage2', 'evidence', [c('8.1')], 'Records that AI work is carried out as planned, including work done by others',
+    'Life cycle processes being followed, criteria applied, unplanned changes reviewed, and outsourced AI work controlled through contracts and oversight.'),
+  r('CL-8.2', 'stage2', 'evidence', [c('8.2')], 'Results of AI risk assessments, done on schedule and after significant change',
+    'An assessment for each AI system in scope, dated, using the documented method, and repeated when a trigger occurred.'),
+  r('CL-8.3', 'stage2', 'evidence', [c('8.3')], 'Results of AI risk treatment',
+    'Treatment actions completed or tracked to a date, controls checked for effect, and residual risk accepted by the right person.'),
+  r('CL-8.4', 'stage2', 'evidence', [c('8.4'), a('5.3')], 'Completed AI system impact assessments',
+    'A current, approved assessment for each AI system in scope, refreshed when its trigger criteria were met, with findings carried into treatment.'),
+
+  // ------------------------------------------------------------ Clause 9: performance evaluation
+  r('CL-9.1', 'stage2', 'evidence', [c('9.1')], 'Monitoring and measurement results for the AI management system and its AI systems',
+    'What is measured, how and how often, results against targets, and the analysis and action that followed when a threshold was crossed.'),
+  r('CL-9.2', 'stage2', 'evidence', [c('9.2')], 'Internal audit programme and the results of internal audits',
+    'A programme covering the whole scope over the cycle, auditors who did not audit their own work, reports with findings, and actions tracked to closure.'),
+  r('CL-9.3', 'stage2', 'evidence', [c('9.3')], 'Management review minutes',
+    'Every input the standard requires was considered, decisions on improvement and changes were made, and resulting actions can be traced to later records.'),
+
+  // ------------------------------------------------------------ Clause 10: improvement
+  r('CL-10.1', 'stage2', 'evidence', [c('10.1')], 'Records of continual improvement of the AI management system',
+    'Improvements made in the last year, where they came from, and management review discussing whether the system remains suitable and effective.'),
+  r('CL-10.2', 'stage2', 'evidence', [c('10.2')], 'Nonconformities, their causes and the corrective actions taken',
+    'A log with root causes that go beyond human error, corrective actions with owners and dates, and a check that each action worked.'),
+
+  // ------------------------------------------------------------ Annex A.2: policies related to AI
+  r('A-2.2', 'stage2', 'evidence', [a('2.2'), c('5.2')], 'Records that the AI policy has reached the people it applies to',
+    'Publication, training or acknowledgement records, and any public version saying the same as the internal one.'),
+  r('A-2.3', 'stage1', 'policy', [a('2.3')], 'How the AI policy fits with the organisation\'s other policies',
+    'A note or matrix showing where security, privacy, procurement, HR and quality policies were changed or cross-referenced to address AI.'),
+  r('A-2.4', 'stage2', 'evidence', [a('2.4')], 'Reviews of the AI policy',
+    'A review interval and triggers, records of reviews with the reviewer and the decisions taken, and the policy\'s version history.'),
+
+  // ------------------------------------------------------------ Annex A.3: internal organisation
+  r('A-3.2', 'stage2', 'evidence', [a('3.2'), c('5.3')], 'Decisions about AI systems taken by the people assigned to take them',
+    'A named owner for each AI system, and recent approvals, suspensions or escalations that can be traced to the role responsible.'),
+  r('A-3.3', 'stage2', 'evidence', [a('3.3')], 'How concerns about AI systems can be raised, and how raised concerns were handled',
+    'A channel people know about, protection for those who use it, and a record of concerns received, looked into and closed.'),
+
+  // ------------------------------------------------------------ Annex A.4: resources for AI systems
+  r('A-4.2', 'stage2', 'evidence', [a('4.2')], 'Inventory of the resources behind each AI system',
+    'Each AI system in scope listed with its data, tooling, computing and people, kept up to date and referred to by the risk register and the SoA.'),
+  r('A-4.3', 'stage2', 'evidence', [a('4.3'), a('7.3')], 'Records of the data resources each AI system uses',
+    'Dataset descriptions covering source, rights to use, known limitations and bias, for development and for operation.'),
+  r('A-4.4', 'stage2', 'evidence', [a('4.4')], 'Records of the tools used to build and run each AI system',
+    'Frameworks, libraries and platforms with versions, and any licence obligations that come with them.'),
+  r('A-4.5', 'stage2', 'evidence', [a('4.5')], 'Records of the computing resources each AI system relies on',
+    'Where each system runs, the capacity and reliability it needs, and the environmental footprint of the larger ones.'),
+  r('A-4.6', 'stage2', 'evidence', [a('4.6'), c('7.2')], 'Records of the people and skills each AI system depends on',
+    'Roles and competences needed across the system\'s life cycle, including people outside the organisation, linked to competence records.'),
+
+  // ------------------------------------------------------------ Annex A.5: assessing impacts of AI systems
+  r('A-5.2', 'stage1', 'policy', [a('5.2'), c('6.1.4')], 'The organisation\'s process for assessing the impact of AI systems',
+    'An approved process with rules for when an assessment is needed and how deep it goes, linked to risk treatment and to reassessment.'),
+  r('A-5.3', 'stage2', 'evidence', [a('5.3'), c('8.4')], 'Impact assessments recorded and kept for each AI system',
+    'A substantive assessment for each system in scope, approved at the right level, kept for the period the organisation set.'),
+  r('A-5.4', 'stage2', 'evidence', [a('5.4')], 'How each assessment considers the effect on individuals and groups',
+    'Effects on the people who use the system and the people its outputs affect, fairness across groups where it applies, and attention to vulnerable people.'),
+  r('A-5.5', 'stage2', 'evidence', [a('5.5')], 'How each assessment considers the effect on society',
+    'Wider effects on communities, public services, the environment and trust, and a reasoned conclusion where none are expected.'),
+
+  // ------------------------------------------------------------ Annex A.6: AI system life cycle
+  r('A-6.1.2', 'stage1', 'policy', [a('6.1.2')], 'Objectives for developing AI systems responsibly',
+    'Documented objectives that design reviews refer to, and a way of telling whether they are being met.'),
+  r('A-6.1.3', 'stage1', 'policy', [a('6.1.3')], 'The process for designing and developing AI systems responsibly',
+    'Defined stages and gates, the approvals needed at each, and checks that grow with the risk of the system.'),
+  r('A-6.2.2', 'stage2', 'evidence', [a('6.2.2')], 'Requirements and specifications for each AI system',
+    'Functional and responsible use requirements written down, and traced to the tests that show they are met.'),
+  r('A-6.2.3', 'stage2', 'evidence', [a('6.2.3')], 'Design and development records for each AI system',
+    'Design documents or model documentation, the reasons for significant choices, and the link from choices back to requirements.'),
+  r('A-6.2.4', 'stage2', 'evidence', [a('6.2.4')], 'Verification and validation results for each AI system',
+    'A test plan with acceptance thresholds set in advance, results against them, an approval decision, and retesting after retraining.'),
+  r('A-6.2.5', 'stage2', 'evidence', [a('6.2.5')], 'Deployment records for each AI system',
+    'Release criteria, a deployment plan, evidence the criteria were met before go live, and a way back if the release fails.'),
+  r('A-6.2.6', 'stage2', 'evidence', [a('6.2.6')], 'Records of operating and monitoring each AI system',
+    'Monitoring of performance and drift, what happens when an alert fires, and examples of action taken because of monitoring.'),
+  r('A-6.2.7', 'stage2', 'evidence', [a('6.2.7')], 'Technical documentation for each AI system',
+    'Documentation suited to each audience, kept in step with the system, and consistent with anything published about it.'),
+  r('A-6.2.8', 'stage2', 'evidence', [a('6.2.8')], 'Event logging for each AI system',
+    'What the system records and why, sample logs showing those events, and how long logs are kept and who can see them.'),
+
+  // ------------------------------------------------------------ Annex A.7: data for AI systems
+  r('A-7.2', 'stage1', 'policy', [a('7.2')], 'How data used to develop and improve AI systems is managed',
+    'A data management process for AI, a named steward, and links to the privacy and security controls that also apply.'),
+  r('A-7.3', 'stage2', 'evidence', [a('7.3')], 'Records of how each dataset was obtained',
+    'Where each dataset came from, the rights or consent to use it, and why it was chosen.'),
+  r('A-7.4', 'stage2', 'evidence', [a('7.4')], 'Data quality criteria and the results of checking them',
+    'Quality criteria for each dataset, the checks run, and what was done about the problems found.'),
+  r('A-7.5', 'stage2', 'evidence', [a('7.5')], 'Provenance records linking each model version to its data',
+    'Enough lineage to say which data and transformations produced a given model version.'),
+  r('A-7.6', 'stage2', 'evidence', [a('7.6')], 'Records of how data was prepared',
+    'Cleaning, labelling and transformation steps for each dataset, labelling instructions, and checks that anonymisation worked.'),
+
+  // ------------------------------------------------------------ Annex A.8: information for interested parties
+  r('A-8.2', 'stage2', 'evidence', [a('8.2')], 'Information given to the users of each AI system',
+    'Plain explanations of what the system does, where it can go wrong and its limits, with a way for users to give feedback.'),
+  r('A-8.3', 'stage2', 'evidence', [a('8.3')], 'How outside parties can report adverse effects, and what happened to their reports',
+    'A channel people outside the organisation can find, response times, and a record of reports and how they were resolved.'),
+  r('A-8.4', 'stage1', 'policy', [a('8.4')], 'Plan for telling people about incidents involving AI systems',
+    'Who is told, how quickly and by whom, with prepared wording, and evidence the plan has been exercised.'),
+  r('A-8.5', 'stage2', 'evidence', [a('8.5')], 'Information about AI systems given to interested parties, and the decisions behind it',
+    'What must be disclosed and what the organisation chooses to disclose, recent disclosures, and who approved them.'),
+
+  // ------------------------------------------------------------ Annex A.9: use of AI systems
+  r('A-9.2', 'stage1', 'policy', [a('9.2')], 'Processes for using AI systems responsibly',
+    'How each AI system should be used, who may override it and how, and training for the people who use it.'),
+  r('A-9.3', 'stage1', 'evidence', [a('9.3')], 'Objectives for using AI systems responsibly',
+    'Objectives for use set for each system or class of systems, communicated to users, and checked for achievement.'),
+  r('A-9.4', 'stage2', 'evidence', [a('9.4')], 'Records that AI systems are used as intended',
+    'A statement of intended use for each system, approval before any new use, and monitoring of how the system is actually used.'),
+
+  // ------------------------------------------------------------ Annex A.10: third party and customer relationships
+  r('A-10.2', 'stage1', 'evidence', [a('10.2')], 'How responsibilities are shared with partners, suppliers and customers',
+    'A responsibility split for each AI relationship, in a contract or appendix, consistent with the role recorded for each system.'),
+  r('A-10.3', 'stage2', 'evidence', [a('10.3')], 'Selection and oversight of suppliers of AI models, data and services',
+    'Suppliers with AI dependencies identified, checks before they were taken on, and ongoing reviews of changes they make.'),
+  r('A-10.4', 'stage2', 'evidence', [a('10.4')], 'How customers\' needs and expectations are addressed',
+    'Documentation given to customers, measures against misuse, and analysis of customer feedback and complaints.'),
 
   // ------------------------------------------------------------ Populations the auditor samples from
-  r('POP-1', 'stage2', 'population', [a('6.2.2'), a('6.2.5')], 'Population of newly implemented AI systems in the review period',
-    'A complete list from the AI system register, with go-live dates, so the auditor can select a sample.'),
-  r('POP-2', 'stage2', 'population', [a('10.2'), a('10.3')], 'Vendors involved in the AI system lifecycle',
-    'Every model, data, labelling, hosting and integration supplier, with the systems each supports.'),
-  r('POP-3', 'stage2', 'population', [c('6.3'), a('6.2.5')], 'Changes that affect an AI system in the review period',
-    'A complete list of changes linked to AI systems, from the change register.'),
-  r('POP-4', 'stage2', 'population', [a('8.4')], 'Incidents involving AI systems in the review period',
-    'A complete list of AI incidents, including ones closed without harm.'),
-  r('POP-5', 'stage2', 'population', [c('7.2'), c('7.3')], 'All current employees during the review period, with job titles and hire dates',
-    'An HR export the auditor samples for training and policy acknowledgement.'),
-  r('POP-6', 'stage2', 'population', [c('7.2'), c('7.3')], 'All new hires during the review period, with hire dates',
-    'An HR export the auditor samples for onboarding training and acknowledgement.'),
+  r('POP-SYSTEMS', 'stage2', 'population', [a('4.2'), a('6.2.5')], 'List of the AI systems in scope, showing those put into use during the review period',
+    'Complete against the scope statement, with each system\'s purpose, owner, life cycle stage and go live date.', { population: 'ai-systems' }),
+  r('POP-SUPPLIERS', 'stage2', 'population', [a('10.3')], 'List of suppliers and partners involved in the life cycle of the AI systems in scope',
+    'Every supplier of models, data, platforms or services to an AI system in scope, with the system each one serves.', { population: 'ai-vendors' }),
+  r('POP-CHANGES', 'stage2', 'population', [c('6.3'), a('6.2.5')], 'List of changes made to AI systems during the review period',
+    'Every change that touched an AI system in scope, including retraining and new versions, with its status and date.', { population: 'ai-changes' }),
+  r('POP-INCIDENTS', 'stage2', 'population', [a('8.4'), c('10.2')], 'List of incidents involving AI systems during the review period',
+    'Every incident an AI system caused or contributed to, with severity, status and the system concerned.', { population: 'ai-incidents' }),
+  r('POP-PEOPLE', 'stage2', 'population', [c('7.2'), a('4.6')], 'List of people in AI roles, showing those who joined during the review period',
+    'Everyone who builds, runs, oversees or assesses AI systems in scope, with their role and start date.'),
+  r('POP-DATASETS', 'stage2', 'population', [a('7.3'), a('7.5')], 'List of the datasets used to develop or run the AI systems in scope',
+    'Each dataset with its source, the systems that use it and when it was last changed.', { population: 'ai-datasets' }),
 
-  // ------------------------------------------------------------ Samples drawn during Stage 2 fieldwork
-  r('SMP-01', 'fieldwork', 'sample', [c('7.2')], 'AI awareness and competence training for a sample of current employees',
-    'Completion records with dates for each selected person, or a training log covering all personnel.'),
-  r('SMP-02', 'fieldwork', 'sample', [c('7.2')], 'AI awareness and competence training for a sample of new hires',
-    'Training completed within the onboarding period for each selected new hire.'),
-  r('SMP-03', 'fieldwork', 'sample', [c('7.3')], 'AI policy acknowledgement for a sample of new hires',
-    'A signed or recorded acknowledgement for each selected new hire.'),
-  r('SMP-04', 'fieldwork', 'sample', [c('7.3')], 'Policy acknowledgements for a sample of current employees, repeated at the planned interval',
-    'Acknowledgements dated within the current cycle for each selected employee.'),
-  r('SMP-05', 'fieldwork', 'sample', [c('7.4')], 'Completed general training for a sample of current employees and new hires',
-    'Records for each selected person, or a log showing all personnel and completion dates.'),
-  r('SMP-06', 'fieldwork', 'sample', [c('6.3'), a('6.2.2'), a('6.2.3'), a('6.2.5'), a('6.2.8')], 'Requirements and specifications for a sample of newly implemented AI systems',
-    'For each selected system: requirements, design record, deployment approval and logging set up.'),
-  r('SMP-07', 'fieldwork', 'sample', [c('6.3'), a('6.2.2'), a('6.2.3'), a('6.2.5'), a('6.2.8')], 'Requirements and specifications for a sample of changes to existing AI systems',
-    'For each selected change: requirements, design impact, testing and release approval.'),
-  r('SMP-08', 'fieldwork', 'sample', [c('6.3'), a('10.4'), a('6.2.5'), a('6.2.7')], 'Change records for a sample of AI changes showing customer expectations were considered',
-    'Tickets, specifications or communications that show customer requirements shaped the change.'),
-  r('SMP-09', 'fieldwork', 'sample', [a('10.2'), a('10.3')], 'Formal review of attestation reports for a sample of AI-related suppliers',
-    'Meeting minutes or a review checklist for each selected supplier\'s SOC report or certificate.'),
-  r('SMP-10', 'fieldwork', 'sample', [a('10.2'), a('10.3')], 'Supplier questionnaires or review forms for a sample of AI-related suppliers',
-    'Completed due diligence for each selected supplier.'),
-  r('SMP-11', 'fieldwork', 'sample', [a('10.2'), a('10.3')], 'Contracts for a sample of AI-related suppliers',
-    'Signed contracts with the responsibilities, change notification and incident terms the procedure requires.'),
-  r('SMP-12', 'fieldwork', 'sample', [a('8.4')], 'Incident tickets with resolution details for a sample of AI incidents',
-    'For each selected incident: classification, containment, root cause, resolution and any notification made.'),
+  // ------------------------------------------------------------ Samples taken during fieldwork
+  r('SMP-SYSTEMS', 'fieldwork', 'sample', [a('5.3'), a('6.2.4'), a('6.2.6')], 'For each sampled AI system: its impact assessment, risk assessment, test results and monitoring records',
+    'Records for the sampled systems that agree with one another and with the register, current at the time of the audit.'),
+  r('SMP-SUPPLIERS', 'fieldwork', 'sample', [a('10.2'), a('10.3')], 'For each sampled supplier: the agreement terms on AI responsibilities and the latest review',
+    'Responsibilities written into the agreement, and a review carried out when it was due.'),
+  r('SMP-CHANGES', 'fieldwork', 'sample', [c('6.3'), a('6.2.4'), a('6.2.5')], 'For each sampled change: the assessment of its effect, the testing and the approval to release',
+    'Impact on the AI system considered before release, testing proportionate to the change, and approval by the right person.'),
+  r('SMP-INCIDENTS', 'fieldwork', 'sample', [a('8.4'), c('10.2')], 'For each sampled incident: the record, who was told, and the corrective action',
+    'Communication to affected people as the plan requires, a cause identified, and corrective action checked for effect.'),
+  r('SMP-PEOPLE', 'fieldwork', 'sample', [c('7.2'), c('7.3')], 'For each sampled person: evidence of competence for the role and completed awareness training',
+    'Competence evidence matching the role requirements, and awareness completed before or soon after starting.'),
+  r('SMP-DATASETS', 'fieldwork', 'sample', [a('7.3'), a('7.4'), a('7.6')], 'For each sampled dataset: its acquisition record, quality checks and preparation steps',
+    'Rights to use confirmed, quality criteria checked, and preparation steps recorded well enough to repeat.'),
 ];
 
 module.exports = { VERSION, CHECKLIST };

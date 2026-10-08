@@ -1,135 +1,103 @@
 <%- include('partials/header', { title: 'ISO 42001 readiness', user, ws, active: 'iso42001-readiness' }) %>
 
-<style>
-  @media(max-width:760px){
-    .iso42-readiness-head{align-items:stretch!important;flex-direction:column;width:100%}
-    .iso42-readiness-head>a{width:100%}
-    .iso42-readiness-head>div{text-align:left!important}
-    .iso42-readiness-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-    .iso42-readiness-main{grid-template-columns:minmax(0,1fr)!important}
-    .iso42-readiness-status{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
-  }
-  @media(max-width:360px){.iso42-readiness-kpis{grid-template-columns:minmax(0,1fr)!important}}
-</style>
+<%
+  const gapLink = it => (it.id && (String(it.id).startsWith('ai-clause') || String(it.id).startsWith('ai-annex'))) ? `/workspaces/${ws.id}/iso42001/gap/${it.id}` : null;
+  const statusBar = [['done', 'Implemented', r.metrics.implemented], ['part', 'Partial', r.metrics.partial], ['wip', 'In progress', r.metrics.wip], ['gap', 'Not implemented', r.metrics.notImpl], ['na', 'N/A', r.metrics.na]];
+%>
 
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 certification readiness</h1>
     <div class="page-subtitle">Live assessment against ISO/IEC 42001:2023 Stage 1 (documentation) and Stage 2 (operational) audit requirements.</div>
+    <% if (r.daysToTarget !== null) { %><div class="a42-facts"><span><strong><%= r.daysToTarget %></strong> days to target cert &middot; <%= ws.target_cert_date %></span></div><% } %>
   </div>
-  <div class="iso42-readiness-head" style="display:flex;align-items:center;gap:14px;">
-    <a href="/workspaces/<%= ws.id %>/iso42001/readiness/blockers" class="btn btn-primary btn-xs">Pre-cert blocker check →</a>
-    <% if (r.daysToTarget !== null) { %>
-      <div style="text-align:right">
-        <div class="kpi-num num" style="color:<%= r.daysToTarget < 30 ? '#b91c1c' : r.daysToTarget < 90 ? '#a16207' : 'var(--text)' %>"><%= r.daysToTarget %><span class="text-lg text-tertiary" style="font-weight:400;"> days</span></div>
-        <div class="meta">to target cert &middot; <%= ws.target_cert_date %></div>
-      </div>
-    <% } %>
+  <div>
+    <a href="/workspaces/<%= ws.id %>/iso42001/readiness/blockers" class="btn btn-primary">Pre-cert blocker check →</a>
   </div>
 </div>
 
-<div class="callout" style="margin-bottom:16px"><strong>Compliance Sphere ISO 42001 Readiness Method v2026.1.</strong> The readiness bands and 0 to 4 capability scale are proprietary consulting measures. They are not an ISO score and do not replace a certification body's audit decision.</div>
+<section class="a42-stats" aria-label="Readiness measures">
+  <div class="a42-stat<%= r.stage1 < 50 ? ' is-attention' : '' %>"><span>Stage 1 readiness</span><strong><%= r.stage1 %><small>%</small></strong><em>documentation &amp; AIMS framework</em></div>
+  <div class="a42-stat<%= r.stage2 < 50 ? ' is-attention' : '' %>"><span>Stage 2 readiness</span><strong><%= r.stage2 %><small>%</small></strong><em>operational effectiveness</em></div>
+  <div class="a42-stat"><span>Documented information</span><strong><%= r.records.found %><small> / <%= r.records.total %></small></strong><em>mandatory + expected per ISO 42001</em></div>
+  <div class="a42-stat"><span>Average maturity</span><strong><%= r.metrics.avgMaturity %></strong><em>Compliance Sphere 0 to 4 capability scale</em></div>
+</section>
 
-<div class="iso42-readiness-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-  <div class="panel kpi">
-    <div class="kpi-num" style="color:<%= r.stage1 >= 80 ? '#15803d' : r.stage1 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage1 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-label">Stage 1 readiness</div>
-    <div class="kpi-meta">documentation &amp; AIMS framework</div>
-  </div>
-  <div class="panel kpi">
-    <div class="kpi-num" style="color:<%= r.stage2 >= 80 ? '#15803d' : r.stage2 >= 50 ? '#a16207' : '#b91c1c' %>"><%= r.stage2 %><span class="text-xl text-tertiary" style="font-weight:400;">%</span></div>
-    <div class="kpi-label">Stage 2 readiness</div>
-    <div class="kpi-meta">operational effectiveness</div>
-  </div>
-  <div class="panel kpi">
-    <div class="kpi-num"><%= r.records.found %><span class="text-tertiary" style="font-weight:400;">/<%= r.records.total %></span></div>
-    <div class="kpi-label">Documented information</div>
-    <div class="kpi-meta">mandatory + expected per ISO 42001</div>
-  </div>
-  <div class="panel kpi">
-    <div class="kpi-num num"><%= r.metrics.avgMaturity %></div>
-    <div class="kpi-label">Average maturity</div>
-    <div class="kpi-meta">Compliance Sphere 0 to 4 capability scale</div>
-  </div>
-</div>
-
-<div class="iso42-readiness-main" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-  <div class="panel">
-    <div class="panel-head"><h2>Detected gaps</h2><span class="meta"><%= r.flags.length %> total</span></div>
+<div class="a42-grid a42-grid-even">
+  <section class="panel" aria-labelledby="rdGapsTitle">
+    <div class="panel-head"><div><h2 id="rdGapsTitle">Detected gaps</h2><p class="a42-caption">What would hold up the audit, most serious first.</p></div><span class="meta"><%= r.flags.length %> total</span></div>
     <% if (r.flags.length === 0) { %>
-      <div class="t-empty text-success">No gaps detected.</div>
+      <p class="a42-empty">No gaps detected.</p>
     <% } else { %>
-      <div class="divide-row">
+      <ul class="a42-list">
         <% r.flags.forEach(f => { %>
-          <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-              <div style="flex:1;min-width:0;">
-                <div class="text-lg" style="font-weight:500;line-height:1.4;"><%= f.label %></div>
-                <% if (f.items.length) { %>
-                  <ul class="text-base text-secondary" style="margin-top:6px;list-style:none;padding:0;">
-                    <% f.items.slice(0, 5).forEach(it => { %>
-                      <li style="padding:1px 0;">·
-                        <% if (it.id && (String(it.id).startsWith('ai-clause') || String(it.id).startsWith('ai-annex'))) { %>
-                          <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= it.id %>" class="link-muted"><%= it.title %></a>
-                        <% } else if (f.kind === 'open_ncs') { %>
-                          <a href="/workspaces/<%= ws.id %>/nonconformities/<%= it.id %>" class="link-muted"><%= it.title %></a>
-                        <% } else { %><%= it.title %><% } %>
-                      </li>
-                    <% }) %>
-                    <% if (f.items.length > 5) { %><li class="text-tertiary">… and <%= f.items.length - 5 %> more</li><% } %>
-                  </ul>
-                <% } %>
-              </div>
-              <span class="tag <%= f.severity === 'high' ? 'tag-danger' : 'tag-warn' %>"><%= f.severity %></span>
+          <li>
+            <i class="a42-dot t-<%= f.severity === 'high' ? 'gap' : 'wip' %>" aria-hidden="true"></i>
+            <div>
+              <span class="a42-list-title"><%= f.label %></span>
+              <% if (f.items.length) { %>
+                <p><% f.items.slice(0, 5).forEach((it, i) => { const href = gapLink(it) || (f.kind === 'open_ncs' ? `/workspaces/${ws.id}/nonconformities/${it.id}` : null); %><%= i ? ' · ' : '' %><% if (href) { %><a href="<%= href %>"><%= it.title %></a><% } else { %><%= it.title %><% } %><% }) %><% if (f.items.length > 5) { %> · and <%= f.items.length - 5 %> more<% } %></p>
+              <% } %>
             </div>
-          </div>
+            <span class="a42-list-aside"><%= f.severity === 'high' ? 'High' : 'Medium' %></span>
+          </li>
         <% }) %>
-      </div>
+      </ul>
     <% } %>
-  </div>
+  </section>
 
-  <div class="panel">
-    <div class="panel-head"><h2>Documented information</h2><span class="meta">Heuristic - confirm manually</span></div>
-    <div class="panel-pad">
-      <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Mandatory per ISO 42001:2023 (<%= r.records.mandatory.found %>/<%= r.records.mandatory.total %>)</div>
-      <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:16px;">
-        <% r.records.mandatory.checks.forEach(c => { %>
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="flex-shrink:0;font-weight: 500;color:<%= c.found ? '#15803d' : '#b91c1c' %>;"><%= c.found ? '✓' : '✗' %></span>
-            <div style="flex:1;">
-              <span style="<%= c.found ? 'color:var(--text-secondary)' : 'color:var(--text);font-weight:500' %>"><%= c.name %></span>
-              <span class="mono meta" style="margin-left:6px;">Cl. <%= c.clause %></span>
-            </div>
+  <section class="panel" aria-labelledby="rdDocsTitle">
+    <div class="panel-head"><div><h2 id="rdDocsTitle">Documented information</h2><p class="a42-caption">Heuristic - confirm manually.</p></div></div>
+    <h3 class="a42-list-group">Mandatory per ISO 42001:2023 <span><%= r.records.mandatory.found %> of <%= r.records.mandatory.total %></span></h3>
+    <ul class="a42-list">
+      <% r.records.mandatory.checks.forEach(c => { %>
+        <li>
+          <i class="a42-dot t-<%= c.found ? 'done' : 'gap' %>" aria-hidden="true"></i>
+          <div>
+            <span class="a42-list-title"><%= c.name %></span>
+            <% if (c.basis) { %><p><%= c.basis %></p><% } %>
+            <% if (c.declaredOnly) { %><p class="a42-warn">Marked implemented, but the record was not found</p><% } %>
           </div>
-        <% }) %>
-      </div>
+          <span class="a42-list-aside">Cl. <%= c.clause %></span>
+        </li>
+      <% }) %>
+    </ul>
+    <h3 class="a42-list-group">Expected if the related Annex A control is included <span><%= r.records.expected.found %> of <%= r.records.expected.total %></span></h3>
+    <ul class="a42-list">
+      <% r.records.expected.checks.forEach(c => { %>
+        <li>
+          <i class="a42-dot t-<%= c.found ? 'done' : 'open' %>" aria-hidden="true"></i>
+          <div>
+            <span class="a42-list-title"><%= c.name %></span>
+            <% if (c.basis) { %><p><%= c.basis %></p><% } %>
+            <% if (c.declaredOnly) { %><p class="a42-warn">Marked implemented, but the record was not found</p><% } %>
+          </div>
+          <span class="a42-list-aside"><%= c.clause %></span>
+        </li>
+      <% }) %>
+    </ul>
+  </section>
+</div>
 
-      <div class="text-xs text-tertiary" style="font-weight:500;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Expected if related Annex A control is included (<%= r.records.expected.found %>/<%= r.records.expected.total %>)</div>
-      <div class="text-lg" style="display:grid;grid-template-columns:1fr;gap:6px;">
-        <% r.records.expected.checks.forEach(c => { %>
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="flex-shrink:0;font-weight: 500;color:<%= c.found ? '#15803d' : 'var(--text-tertiary)' %>;"><%= c.found ? '✓' : '○' %></span>
-            <div style="flex:1;">
-              <span class="text-secondary"><%= c.name %></span>
-              <span class="mono meta" style="margin-left:6px;"><%= c.clause %></span>
-            </div>
-          </div>
-        <% }) %>
+<section class="panel rq-flow" aria-labelledby="rdStatusTitle">
+  <div class="panel-head"><div><h2 id="rdStatusTitle">Control implementation status</h2><p class="a42-caption"><%= r.metrics.evidenceCount %> evidence file<%= r.metrics.evidenceCount === 1 ? '' : 's' %> on record.</p></div><a class="a42-list-action" href="/workspaces/<%= ws.id %>/iso42001/gap-assessment">Gap assessment <span aria-hidden="true">→</span></a></div>
+  <div class="rq-flow-rows">
+    <div class="rq-flow-row">
+      <span class="rq-flow-label"><b>Annex A controls</b><span>by recorded status</span></span>
+      <div>
+        <div class="rq-flow-bar">
+          <% statusBar.filter(([, , n]) => n).forEach(([tone, label, n]) => { %><span class="rq-seg t-<%= tone %>" style="--n:<%= n %>" title="<%= label %>: <%= n %>"><span><%= n %></span></span><% }) %>
+          <% if (!statusBar.some(([, , n]) => n)) { %><span class="rq-seg t-open" style="--n:1"><span>0</span></span><% } %>
+        </div>
+        <ul class="rq-flow-keys"><% statusBar.forEach(([tone, label, n]) => { %><li><i class="a42-dot t-<%= tone %>" aria-hidden="true"></i><%= label %><span><%= n %></span></li><% }) %></ul>
       </div>
     </div>
   </div>
-</div>
+</section>
 
-<div class="panel">
-  <div class="panel-head"><h2>Control implementation status</h2></div>
-  <div class="panel-pad iso42-readiness-status" style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
-    <div><div class="kpi-num num text-success"><%= r.metrics.implemented %></div><div class="kpi-meta">Implemented</div></div>
-    <div><div class="kpi-num num text-warn"><%= r.metrics.partial %></div><div class="kpi-meta">Partial</div></div>
-    <div><div class="kpi-num num" style="color:#1d4ed8"><%= r.metrics.wip %></div><div class="kpi-meta">In progress</div></div>
-    <div><div class="kpi-num num text-danger"><%= r.metrics.notImpl %></div><div class="kpi-meta">Not implemented</div></div>
-    <div><div class="kpi-num num text-tertiary"><%= r.metrics.na %></div><div class="kpi-meta">N/A</div></div>
-    <div><div class="kpi-num num"><%= r.metrics.evidenceCount %></div><div class="kpi-meta">Evidence files</div></div>
-  </div>
-</div>
+<details class="panel">
+  <summary><span>About the readiness method<small>Compliance Sphere ISO 42001 Readiness Method v2026.1</small></span></summary>
+  <p class="a42-empty">The readiness bands and 0 to 4 capability scale are proprietary consulting measures. They are not an ISO score and do not replace a certification body's audit decision.</p>
+</details>
 
 <%- include('partials/footer') %>

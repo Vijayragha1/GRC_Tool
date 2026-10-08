@@ -75,5 +75,8 @@ test('workspace template keeps report-only and certification surfaces explicitly
   assert.match(source, /certification-readiness percentages elsewhere in the workspace are diagnostic indicators only/i);
   assert.match(source, /gap-assessment\/fieldwork/);
   assert.doesNotMatch(source, /\/gap-fieldwork/);
-  assert.match(source, /name="target_cert_date"[^\n]*isGapAssessmentOnly \|\| !hasIso27001[^\n]*disabled aria-disabled="true"/);
+  // The target date belongs to certification support on either certifiable
+  // management system, ISO 27001 or ISO 42001.
+  assert.match(source, /name="target_cert_date"[^\n]*isGapAssessmentOnly \|\| !hasIsoContract[^\n]*disabled aria-disabled="true"/);
+  assert.match(source, /const isGapAssessmentOnly = hasIsoContract && engagementOutcome === 'gap_assessment_only'/, 'gap-only on either ISO standard');
 });

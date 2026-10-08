@@ -59,6 +59,7 @@ test('client summaries are rebuilt from only the programmes actually selected', 
     client_name: 'AI and Privacy Client',
     industry: 'Technology',
     frameworks: ['iso42001', 'dpdpa'],
+    engagement_outcome: 'certification_support',
   });
   assert.equal(created.status, 302);
   const id = workspaceId(created.location);
@@ -102,6 +103,7 @@ test('consultants see setup guidance only for clients assigned to them', async (
   const assigned = await client.post('/workspaces', {
     client_name: 'ASSIGNED-ONBOARDING-CLIENT',
     frameworks: ['iso42001'],
+    engagement_outcome: 'certification_support',
   });
   const assignedId = workspaceId(assigned.location);
   const hidden = await client.post('/workspaces', {

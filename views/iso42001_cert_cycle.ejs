@@ -1,128 +1,165 @@
 <%- include('partials/header', { title: 'ISO 42001 certification cycle', user, ws, active: 'iso42001-cert-cycle' }) %>
 
-<style>
-  @media(max-width:760px){
-    .iso42-cycle-add{grid-template-columns:minmax(0,1fr)!important}
-    .iso42-cycle-add .btn{width:100%}
-    .iso42-cycle-seed .btn{width:100%}
-  }
-</style>
 
 <%
-  const today = new Date().toISOString().slice(0,10);
-  const daysUntil = (d) => {
-    if (!d) return null;
-    const ms = new Date(d).getTime() - Date.now();
-    return Math.floor(ms / 86400000);
-  };
-  const upcoming = events.filter(e => e.status !== 'completed' && e.status !== 'cancelled' && e.planned_date && e.planned_date >= today)
-                          .sort((a,b) => (a.planned_date < b.planned_date ? -1 : 1))[0];
+  const today = new Date().toISOString().slice(0, 10);
+  const daysUntil = (d) => (d ? Math.floor((new Date(`${d}T00:00:00Z`).getTime() - Date.now()) / 86400000) : null);
+  const upcoming = events.filter(e => !['completed', 'cancelled'].includes(e.status) && e.planned_date && e.planned_date >= today)
+    .sort((a, b) => (a.planned_date < b.planned_date ? -1 : 1))[0];
+  const cycles = [...new Set(events.map(e => e.cycle_no))].sort((a, b) => a - b);
+  const severityLabel = Object.fromEntries(severities.map(s => [s.key, s.label]));
+  const SEV_TONE = { major: 'gap', minor: 'wip', observation: 'open', opportunity: 'open' };
+  const eventTone = e => e.status === 'completed' || e.actual_date ? 'done' : e.status === 'cancelled' ? 'na'
+    : (e.planned_date && e.planned_date < today) ? 'gap' : e.status === 'in_progress' ? 'part' : e.status === 'scheduled' ? 'wip' : 'open';
+  const fmtDay = d => d ? new Date(`${String(d).slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
 %>
 
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 certification cycle</h1>
-    <div class="page-subtitle">Stage 1 → Stage 2 → annual surveillance for two years → 3-year recertification. Plan the calendar, track actuals, never miss a surveillance window.</div>
+    <div class="page-subtitle">Stage 1 and Stage 2, surveillance in years one and two, recertification in year three. Record what the certification body finds at each audit and track it to closure with the client.</div>
   </div>
 </div>
 
-<% if (upcoming) {
-     const days = daysUntil(upcoming.planned_date);
-%>
-  <div class="panel kpi" style="margin-bottom:18px;">
-    <div class="panel-pad">
-      <div class="meta text-sm" style="text-transform:uppercase;letter-spacing:0.05em;">Next event</div>
-      <div style="font-size:18px;font-weight: 500;margin-top:4px;"><%= upcoming.event_type %></div>
-      <div class="meta text-lg" style="margin-top:2px;">
-        <%= upcoming.planned_date %>
-        <% if (days >= 0) { %>&middot; <strong style="color:<%= days < 30 ? '#b91c1c' : days < 90 ? '#a16207' : 'var(--text)' %>;"><%= days %> day<%= days === 1 ? '' : 's' %></strong> away<% } %>
-      </div>
-    </div>
+<section class="a42-stats a42-stats-2" aria-label="Certification cycle measures">
+  <div class="a42-stat">
+    <span>Next audit</span>
+    <% if (upcoming) { const days = daysUntil(upcoming.planned_date); %>
+      <strong class="a42-stat-text"><%= upcoming.label %></strong>
+      <em><%= fmtDay(upcoming.planned_date) %> &middot; <%= days %> day<%= days === 1 ? '' : 's' %> away</em>
+    <% } else { %>
+      <strong class="a42-stat-text">Nothing planned</strong><em>Plan the cycle to see the next audit here</em>
+    <% } %>
   </div>
-<% } %>
+  <div class="a42-stat<%= openFindings.major ? ' is-attention' : '' %>">
+    <span>Open certification findings</span>
+    <strong><%= openFindings.total %></strong>
+    <em><%= openFindings.major || 0 %> major &middot; <%= openFindings.minor || 0 %> minor &middot; <%= (openFindings.observation || 0) + (openFindings.opportunity || 0) %> other</em>
+  </div>
+</section>
 
 <% if (events.length === 0) { %>
-  <div class="panel" style="margin-bottom:18px;">
-    <div class="panel-head"><h2>No cycle planned yet</h2></div>
-    <div class="panel-pad">
-      <div class="text-lg" style="line-height:1.55;margin-bottom:14px;">
-        A typical first-cert path: Stage 1 in ~60 days, Stage 2 ~30 days after Stage 1, surveillance audits at year 1 and year 2, recertification at year 3. Seed these defaults to start, then edit the dates as the cert body confirms.
-      </div>
-      <form class="iso42-cycle-seed" method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/seed" style="display:inline;">
+  <section class="panel a42-lead a42-lead-single" aria-labelledby="cycleEmptyTitle">
+    <div class="a42-lead-copy">
+      <span class="a42-kicker">Certification cycle</span>
+      <h2 id="cycleEmptyTitle">No cycle planned yet</h2>
+      <p>Plan the standard cycle from the target certification date<% if (ws.target_cert_date) { %> (<%= ws.target_cert_date %>)<% } %>: Stage 2 on that date, Stage 1 a month before, surveillance at one and two years, recertification at three. Change the dates as the certification body confirms them.</p>
+      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/seed">
         <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-        <button class="btn btn-primary">Seed default cycle (5 events)</button>
+        <button class="btn btn-primary">Plan the standard cycle</button>
       </form>
     </div>
-  </div>
-<% } else { %>
-  <div class="panel" style="margin-bottom:18px;">
-    <div class="panel-head"><h2>Cycle (<%= events.length %>)</h2></div>
-    <table class="t">
-      <thead><tr>
-        <th style="width:240px;">Event</th>
-        <th style="width:130px;">Planned</th>
-        <th style="width:130px;">Actual</th>
-        <th style="width:120px;">Status</th>
-        <th>Notes</th>
-        <th style="width:80px;"></th>
-      </tr></thead>
-      <tbody>
-        <% events.forEach(e => {
-             const days = daysUntil(e.planned_date);
-             const overdue = e.planned_date && e.planned_date < today && e.status !== 'completed' && !e.actual_date;
-        %>
-          <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/<%= e.id %>/update" class="contents">
-            <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-            <tr>
-              <td>
-                <div class="text-lg" style="font-weight:500;"><%= e.event_type %></div>
-              </td>
-              <td>
-                <input type="date" name="planned_date" value="<%= e.planned_date || '' %>" class="input" style="font-size:12px;<%= overdue ? 'border-color:#b91c1c;color:#b91c1c;' : '' %>">
-                <% if (days != null && e.status !== 'completed' && !e.actual_date) { %>
-                  <div class="meta text-eyebrow"><%= days < 0 ? Math.abs(days) + 'd overdue' : days + 'd away' %></div>
-                <% } %>
-              </td>
-              <td><input type="date" name="actual_date" value="<%= e.actual_date || '' %>" class="input text-base"></td>
-              <td>
-                <select name="status" class="select text-base">
-                  <% ['planned','in_progress','completed','cancelled'].forEach(s => { %>
-                    <option value="<%= s %>" <%= e.status === s ? 'selected' : '' %>><%= s.replace(/_/g,' ') %></option>
-                  <% }) %>
-                </select>
-              </td>
-              <td><input type="text" name="notes" value="<%= e.notes || '' %>" class="input text-base" placeholder="-"></td>
-              <td>
-                <button class="btn btn-ghost btn-xs text-xs">Save</button>
-              </td>
-            </tr>
-          </form>
-        <% }) %>
-      </tbody>
-    </table>
-    <div style="padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-subtle);">
-      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/seed" onsubmit="return confirm('Append the 5 default cycle events?');" style="display:inline;">
-        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-        <button class="btn btn-ghost btn-xs">+ Add default 5-event cycle</button>
-      </form>
-    </div>
-  </div>
+  </section>
 <% } %>
 
-<div class="panel">
-  <div class="panel-head"><h2>Add ad-hoc event</h2></div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/add" class="panel-pad iso42-cycle-add" style="display:grid;grid-template-columns:240px 130px 1fr auto;gap:8px;align-items:end;">
+<% cycles.forEach(cycleNo => { const cycleEvents = events.filter(e => e.cycle_no === cycleNo); %>
+  <section class="panel" aria-labelledby="cycle<%= cycleNo %>Title">
+    <div class="panel-head">
+      <div><h2 id="cycle<%= cycleNo %>Title">Certification cycle <%= cycleNo %></h2><p class="a42-caption"><%= cycleNo === currentCycle ? 'current' : 'completed cycle' %> &middot; <%= cycleEvents.length %> event<%= cycleEvents.length === 1 ? '' : 's' %></p></div>
+    </div>
+    <ol class="a42-track" style="--n:<%= cycleEvents.length %>">
+      <% cycleEvents.forEach(e => { %>
+        <li><i class="a42-seg t-<%= eventTone(e) %>" aria-hidden="true"></i><b><%= e.label %></b><span><%= e.actual_date ? fmtDay(e.actual_date) : e.planned_date ? fmtDay(e.planned_date) : 'No date' %></span></li>
+      <% }) %>
+    </ol>
+    <ul class="a42-list a42-events">
+    <% cycleEvents.forEach(e => {
+         const days = daysUntil(e.planned_date);
+         const overdue = e.planned_date && e.planned_date < today && e.status !== 'completed' && !e.actual_date;
+    %>
+      <li id="event-<%= e.id %>">
+        <i class="a42-dot t-<%= eventTone(e) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= e.label %></span>
+          <p><%= e.status.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()) %><% if (e.actual_date) { %> &middot; took place <%= fmtDay(e.actual_date) %><% } else if (e.planned_date) { %> &middot; planned <%= fmtDay(e.planned_date) %><% if (days != null && e.status !== 'completed') { %> (<%= days < 0 ? Math.abs(days) + ' days overdue' : days + ' days away' %>)<% } %><% } %><% if (e.certification_body) { %> &middot; <%= e.certification_body %><% } %></p>
+          <% if (e.isAudit && (e.openMajor || e.openMinor || e.openOther)) { %>
+            <p><%= e.openMajor %> major &middot; <%= e.openMinor %> minor &middot; <%= e.openOther %> other open<% if (e.overdue) { %> &middot; <span class="a42-warn-text"><%= e.overdue %> past deadline</span><% } %></p>
+          <% } %>
+
+          <% if (e.isAudit && e.findings.length) { %>
+            <ul class="a42-sublist">
+              <% e.findings.forEach(f => { const late = f.due_date && f.due_date < today && !['closed','verified'].includes(f.status); %>
+                <li>
+                  <i class="a42-dot t-<%= ['closed','verified'].includes(f.status) ? 'done' : SEV_TONE[f.severity] || 'open' %>" aria-hidden="true"></i>
+                  <div>
+                    <a class="a42-list-title" href="/workspaces/<%= ws.id %>/nonconformities/<%= f.id %>"><%= f.title %></a>
+                    <p><%= severityLabel[f.severity] || f.severity %><% if (f.iso_title) { %> &middot; <%= f.iso_title %><% } %></p>
+                  </div>
+                  <span class="a42-list-aside<%= late ? ' a42-warn-text' : '' %>"><%= f.status.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()) %><% if (f.due_date) { %> &middot; due <%= fmtDay(f.due_date) %><% } %></span>
+                </li>
+              <% }) %>
+            </ul>
+          <% } %>
+
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit dates and status</summary>
+            <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/<%= e.id %>/update" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+              <div><label class="label">Planned</label><input type="date" name="planned_date" value="<%= e.planned_date || '' %>" class="input<%= overdue ? ' is-late' : '' %>"></div>
+              <div><label class="label">Took place</label><input type="date" name="actual_date" value="<%= e.actual_date || '' %>" class="input"></div>
+              <div><label class="label">Status</label>
+                <select name="status" class="select"><% statuses.forEach(st => { %><option value="<%= st %>" <%= e.status === st ? 'selected' : '' %>><%= st %></option><% }) %></select></div>
+              <div><label class="label">Certification body</label><input type="text" name="certification_body" value="<%= e.certification_body || '' %>" class="input" placeholder="-"></div>
+              <div style="grid-column:span 2;"><label class="label">Notes</label><input type="text" name="notes" value="<%= e.notes || '' %>" class="input" placeholder="-"></div>
+              <div class="a42-form-actions" style="grid-column:1 / -1;">
+                <button class="btn btn-primary btn-xs">Save</button>
+                <% if (!e.findings.length) { %><button class="btn btn-ghost btn-xs text-danger" formaction="/workspaces/<%= ws.id %>/iso42001/cert-cycle/<%= e.id %>/delete" formmethod="POST" onclick="return confirm('Remove this event from the cycle?')">Remove from the cycle</button><% } %>
+              </div>
+            </form>
+          </details>
+
+          <% if (e.isAudit) { %>
+            <details class="a42-fold a42-fold-inline">
+              <summary>Record a finding from this audit</summary>
+              <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/<%= e.id %>/findings" class="stack-grid" style="--cols:190px minmax(0,1fr) 150px;--cols-sm:1fr;gap:10px;">
+                <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+                <div><label class="label">Grade</label>
+                  <select name="severity" class="select" required><option value="">- choose -</option><% severities.forEach(sv => { %><option value="<%= sv.key %>"><%= sv.label %></option><% }) %></select></div>
+                <div><label class="label">Requirement</label>
+                  <%- include('partials/requirement_select', { groups: requirementGroups, name: 'iso_item_id', blank: '- not tied to one requirement -' }) %></div>
+                <div><label class="label">Closure deadline</label><input type="date" name="due_date" class="input"></div>
+                <div style="grid-column:1 / -1;"><label class="label">Title <span class="meta">optional</span></label><input type="text" name="title" class="input" maxlength="200" placeholder="Short name for the finding"></div>
+                <div style="grid-column:1 / -1;"><label class="label">What the auditor found</label><textarea name="description" class="textarea" rows="3" required placeholder="As the auditor wrote it in the report"></textarea></div>
+                <div style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Record finding</button></div>
+              </form>
+            </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+    </ul>
+  </section>
+<% }) %>
+
+<% if (canStartNextCycle) { %>
+  <section class="panel a42-lead a42-lead-single">
+    <div class="a42-lead-copy">
+      <span class="a42-kicker">Next cycle</span>
+      <h2>The recertification audit is complete</h2>
+      <p>Plan the next three-year cycle from its date.</p>
+      <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/next">
+        <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+        <button class="btn btn-primary">Start cycle <%= currentCycle + 1 %></button>
+      </form>
+    </div>
+  </section>
+<% } %>
+
+<details class="panel">
+  <summary><span>Add an audit or review<small>A surveillance visit, an extra review, or an audit the standard cycle does not cover</small></span></summary>
+  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/cert-cycle/add" class="panel-pad stack-grid" style="--cols:240px 150px minmax(0,1fr) minmax(0,1fr) auto;--cols-sm:1fr;gap:10px;align-items:end;">
     <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
     <div>
-      <label class="label">Event type</label>
-      <select name="event_type" class="select" required>
-        <% eventTypes.forEach(t => { %><option value="<%= t.label %>"><%= t.label %></option><% }) %>
+      <label class="label">Audit or review</label>
+      <select name="event_key" class="select" required>
+        <% eventTypes.forEach(t => { %><option value="<%= t.key %>"><%= t.label %></option><% }) %>
       </select>
     </div>
     <div><label class="label">Planned</label><input type="date" name="planned_date" class="input"></div>
-    <div><label class="label">Notes</label><input type="text" name="notes" class="input" placeholder="e.g., cert body confirmed"></div>
+    <div><label class="label">Certification body</label><input type="text" name="certification_body" class="input" placeholder="-"></div>
+    <div><label class="label">Notes</label><input type="text" name="notes" class="input" placeholder="e.g. dates confirmed by the auditor"></div>
     <div><button class="btn btn-primary">Add</button></div>
   </form>
-</div>
+</details>
 
 <%- include('partials/footer') %>

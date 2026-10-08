@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" />
   <link rel="stylesheet" href="/public.css?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" />
 </head>
-<body>
+<body class="page-<%= page %>">
   <a class="skip-link" href="#mainContent">Skip to content</a>
   <header class="site-header">
     <a class="brand" href="/" aria-label="Compliance Sphere home">
@@ -20,6 +20,8 @@
       <span>Compliance Sphere</span>
     </a>
     <nav aria-label="Public navigation">
+      <a href="/#frameworks">Frameworks</a>
+      <a href="/#process">How we work</a>
       <a href="/security"<%= page === 'security' ? ' aria-current="page"' : '' %>>Security</a>
       <a href="/privacy"<%= page === 'privacy' ? ' aria-current="page"' : '' %>>Privacy</a>
       <a href="/terms"<%= page === 'terms' ? ' aria-current="page"' : '' %>>Terms</a>
@@ -29,128 +31,162 @@
 
   <main id="mainContent">
     <% if (page === 'home') {
-      // The sample record quotes the ISO 27001 catalogue as loaded, so the
-      // "of N" figure cannot drift from what the product actually holds.
-      const iso = programmes.find(function (p) { return p.code === 'ISO 27001'; }) || { formalName: 'ISO/IEC 27001:2022', count: 118 };
-      const sampleConcluded = Math.max(iso.count - 37, 0);
+      // Written for the firm's clients and prospective clients. Every screen
+      // is a crop of the real platform (public/img/home) on the synthetic
+      // demo data. Motion lives in public/home.js and only ever responds to
+      // the reader; the page is complete without it.
+      const v = typeof assetVersion !== 'undefined' ? assetVersion : '0';
+      const img = function (n) { return '/img/home/' + n + '.webp?v=' + v; };
+      const f = typeof facts !== 'undefined' ? facts : { templates: 0 };
+      const names = programmes.map(function (p) { return p.code === 'CSF' ? 'NIST CSF' : p.code; });
+      const iso = programmes.find(function (p) { return p.code === 'ISO 27001'; }) || { count: 118 };
+      // The scroll sequence: where the work usually lives (raw), and the record
+      // it becomes on the platform (clean). "at" is where each artefact starts,
+      // as x and y offsets from the centre of the stage and a tilt in degrees.
+      const mess = [
+        { kind: 'mail', raw: 'RE: RE: FW: backup evidence (updated)', meta: '6 people · 14 messages', ref: 'A.8.13', clean: 'Information backup', status: 'Accepted', tone: 'good', at: [-330, -200, -9] },
+        { kind: 'sheet', raw: 'ISMS_tracker_FINAL_v7.xlsx', meta: 'Edited 3 weeks ago · 11 tabs', ref: 'Gap', clean: 'Gap assessment, ' + iso.count + ' of ' + iso.count + ' concluded', status: 'Issued', tone: 'good', at: [320, -225, 7] },
+        { kind: 'folder', raw: 'Evidence › 2026 › Q3 › New folder (2)', meta: '212 items, no index', ref: 'Evidence', clean: 'Evidence library, linked to requirements', status: '57 files', tone: 'ink', at: [-345, 55, 5] },
+        { kind: 'chat', raw: 'Did anyone send the auditor the SoA?', meta: '#compliance · 3 days ago', ref: 'SoA', clean: 'Statement of Applicability, version 3', status: 'Submitted', tone: 'good', at: [340, 30, -6] },
+        { kind: 'doc', raw: 'AI_Policy_draft_v2 (edits from legal).docx', meta: 'Tracked changes · 3 copies', ref: 'S1-06', clean: 'AI policy', status: 'Ready to submit', tone: 'ink', at: [-175, 215, -4] },
+        { kind: 'note', raw: 'Who approved the risk treatment plan?', meta: 'Sticky note on the audit prep board', ref: '6.1.3', clean: 'Risk treatment plan, approved by a second reviewer', status: 'Approved', tone: 'good', at: [215, 240, 9] },
+        { kind: 'cal', raw: 'Stage 1 audit (date to be confirmed)', meta: 'Tentative · no agenda', ref: 'Stage 1', clean: 'Stage 1 audit on 14 Oct, 41 of 45 ready', status: 'On track', tone: 'good', at: [40, -300, -3] },
+        { kind: 'mail', raw: 'Reminder: access review still outstanding', meta: 'Third reminder · no reply', ref: 'A.5.18', clean: 'Access rights, with your team', status: 'Due 3 Oct', tone: 'warn', at: [-60, -50, 3] }
+      ];
+      // How each framework is known in practice, when a client needs it, and
+      // the screen that shows the work. Names and sizes come from the registry.
+      const marks = {
+        'ISO 27001': { pre: 'ISO', mark: '27001', title: 'Information security',
+          body: 'Usually asked for by enterprise customers and in tenders. We take you from the gap assessment to the certification audit; the certificate itself comes from an accredited certification body.',
+          shot: ['heatmap', 1752, 748, 'The Annex A heatmap from an ISO 27001 gap assessment'], cap: 'Gap assessment heatmap. Each Annex A control, by theme, coloured by its conclusion.' },
+        'ISO 42001': { pre: 'ISO', mark: '42001', title: 'AI management',
+          body: 'For organisations that build or use AI systems and need to show they govern them. Your AI systems are kept in one register, and the auditor’s samples are drawn from it. The route to certification is the same as for ISO 27001, and the two can run together.',
+          shot: ['populations', 1752, 566, 'Sampling populations for the auditor, built from the AI system register'], cap: 'Sampling populations for the auditor, each built from the AI system register.' },
+        'CSF': { pre: 'NIST', mark: 'CSF 2.0', title: 'Cybersecurity maturity',
+          body: 'For a baseline your board can follow. There is no certificate: we score each of the six functions, agree a target with you, and hand over a roadmap and an executive report.',
+          shot: ['csf-maturity', 1800, 558, 'Demonstrated maturity and a score against target for each NIST CSF 2.0 function'], cap: 'Demonstrated maturity, and a score against the agreed target for each of the six functions.' },
+        'DPDPA': { pre: '', mark: 'DPDPA', title: 'Personal data protection',
+          body: 'India’s data protection law applies if you process digital personal data in India, or serve people in India from abroad. We assess you obligation by obligation and plan the work against the dates each part comes into force.',
+          shot: ['dpdpa-runway', 1756, 934, 'The DPDPA commencement runway and readiness across every obligation'], cap: 'The dates each part of the Act comes into force, and where you stand against every obligation.' }
+      };
+      const stages = [
+        { name: 'Onboarding', we: 'Agree the scope, the stakeholders and the engagement plan with you.', you: 'Gets its portal logins and names the people we will work with.', out: 'Engagement plan' },
+        { name: 'Gap assessment', we: 'Conclude every requirement against your evidence. A second consultant reviews each conclusion.', you: 'Answers our requests and uploads the evidence.', out: 'Gap assessment report', exit: true },
+        { name: 'Implementation', we: 'Write your policies, procedures and management system documents' + (f.templates ? ', starting from our ' + f.templates + ' templates.' : '.'), you: 'Puts the controls in place and signs off each document.', out: 'Statement of Applicability and policy set' },
+        { name: 'Internal audit', we: 'Audit your management system. Each finding becomes a nonconformity with a corrective action.', you: 'Closes the corrective actions with evidence.', out: 'Internal audit report' },
+        { name: 'Management review', we: 'Prepare the review inputs and record the decisions.', you: 'Leadership holds the review and owns the decisions.', out: 'Review minutes' },
+        { name: 'Stage 1 audit', we: 'Represent you before the certification body. The auditor gets a private link that opens approved records only.', you: 'Supplies what only you hold, such as HR records.', out: 'Readiness pack' },
+        { name: 'Stage 2 audit', we: 'Represent you again, then help you close any observations or nonconformities.', you: 'Shows the auditor your controls in operation.', out: 'Closure record' }
+      ];
+      const pad = function (i) { return String(i + 1).padStart(2, '0'); };
     %>
-      <section class="home-intro">
-        <h1>Run client compliance engagements from gap assessment to certification audit.</h1>
-        <p class="lede">Compliance Sphere is the working record for a consulting firm's engagements. Consultants conclude each requirement against linked evidence, the client's team answers requests in its own portal, and a manager approves every report before the client sees it.</p>
-        <div class="actions">
-          <a class="button primary" href="<%= evaluationUrl %>">Request an evaluation</a>
-          <a class="button secondary" href="/login">Sign in</a>
-        </div>
-        <p class="plain-note">Accounts are issued by invitation. There is no self-sign-up.</p>
-      </section>
-
-      <figure class="sample" aria-labelledby="sampleTitle">
-        <div class="sample-head">
-          <div>
-            <span class="sample-client">Harbourline Payments &middot; card platform and corporate IT</span>
-            <strong id="sampleTitle"><%= iso.formalName %> gap assessment</strong>
+      <section class="hero band" aria-labelledby="heroTitle">
+        <h1 id="heroTitle" class="hero-title"><span class="ln"><span>We prepare you for certification,</span></span> <span class="ln"><span>and sit beside you at the audit.</span></span></h1>
+        <div class="hero-foot">
+          <p class="hero-lede">Compliance Sphere is a consulting firm for <%= names.slice(0, -1).join(', ') %> and <%= names[names.length - 1] %>. We assess where you stand, write the documentation, run the internal audit and represent you before the certification body. Your team follows all of it on our platform.</p>
+          <div class="hero-actions">
+            <a class="btn btn-mint" href="<%= evaluationUrl %>">Talk to us <span aria-hidden="true">&rarr;</span></a>
+            <a class="btn btn-line" href="/login">Client sign in</a>
           </div>
-          <dl class="sample-facts">
-            <div><dt>Concluded</dt><dd><%= sampleConcluded %> <small>of <%= iso.count %></small></dd></div>
-            <div><dt>Evidence</dt><dd>146</dd></div>
-            <div><dt>Open requests</dt><dd>7</dd></div>
-          </dl>
         </div>
-        <div class="sample-scroll">
-          <table class="sample-table">
-            <thead>
-              <tr><th scope="col">Ref</th><th scope="col">Requirement</th><th scope="col">Conclusion</th><th scope="col">Evidence</th><th scope="col">Review</th></tr>
-            </thead>
-            <tbody>
-              <tr><td class="ref">6.1.2</td><td>Information security risk assessment</td><td><span class="s s-good">Implemented</span></td><td>3 files</td><td>Approved</td></tr>
-              <tr><td class="ref">A.5.15</td><td>Access control</td><td><span class="s s-warn">Partially implemented</span></td><td>2 files</td><td>Approved</td></tr>
-              <tr><td class="ref">A.5.19</td><td>Information security in supplier relationships</td><td><span class="s s-bad">Not implemented</span></td><td class="none">None</td><td>Awaiting review</td></tr>
-              <tr><td class="ref">A.8.8</td><td>Management of technical vulnerabilities</td><td><span class="s s-warn">Partially implemented</span></td><td>4 files</td><td>Changes requested</td></tr>
-              <tr><td class="ref">A.8.13</td><td>Information backup</td><td><span class="s s-idle">Not assessed</span></td><td class="none">Requested from client</td><td class="none">Not started</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <figcaption>
-          <span>Fieldwork sign-off is blocked until the remaining 37 requirements are concluded and the open requests are answered.</span>
-          <span class="sample-note">Sample data</span>
-        </figcaption>
+      </section>
+      <figure class="hero-shot">
+        <img src="<%= img('portal-home') %>" alt="The client portal home: the team's next action, what is next for the team and what is waiting on others" width="1180" height="728" fetchpriority="high" data-zoom>
+        <figcaption>What your team sees after signing in. Every screen on this page is the platform itself, shown with sample data.</figcaption>
       </figure>
 
-      <section class="home-section" aria-labelledby="lifecycleTitle">
-        <div class="home-section-head">
-          <h2 id="lifecycleTitle">How an ISO 27001 engagement runs</h2>
-          <p>Every engagement starts with onboarding and a gap assessment. At onboarding the firm records whether it ends at the gap report or carries on through certification.</p>
+      <section class="mess" data-mess aria-labelledby="messTitle">
+        <div class="mess-stage">
+          <div class="mess-head">
+            <h2 id="messTitle">Emails, spreadsheets and shared folders become one record.</h2>
+            <p class="mess-sub">Each request, file, conclusion and approval is kept with who did what and when.</p>
+          </div>
+          <div class="mess-field">
+            <% mess.forEach(function (m) { %>
+            <div class="mcard k-<%= m.kind %>" data-mcard style="--sx:<%= m.at[0] %>;--sy:<%= m.at[1] %>;--sr:<%= m.at[2] %>">
+              <div class="m-raw" aria-hidden="true"><span class="m-icon"></span><div><strong><%= m.raw %></strong><span><%= m.meta %></span></div></div>
+              <div class="m-clean"><span class="m-ref"><%= m.ref %></span><strong><%= m.clean %></strong><span class="m-status t-<%= m.tone %>"><%= m.status %></span></div>
+            </div>
+            <% }); %>
+          </div>
         </div>
-        <div class="stages-key" aria-hidden="true"><span></span><span>Stage</span><span>Output</span></div>
-        <ol class="stages">
-          <li><span class="stage-n">1</span><div><h3>Onboarding</h3><p>Kickoff, scope and stakeholders are recorded, and the engagement plan is set.</p></div><span class="stage-out">Engagement plan</span></li>
-          <li><span class="stage-n">2</span><div><h3>Gap assessment</h3><p>Each requirement is concluded against evidence, reviewed by a second consultant and, where required, validated by the client.</p></div><span class="stage-out">Gap assessment report</span></li>
-          <li><span class="stage-n">3</span><div><h3>Implementation</h3><p>Assets and risks are assessed and treated, and policies are drafted from the firm's templates and published to the client.</p></div><span class="stage-out">Statement of Applicability, policy set</span></li>
-          <li><span class="stage-n">4</span><div><h3>Internal audit</h3><p>An audit programme is run, and each finding becomes a nonconformity with a root cause, corrective action and due date.</p></div><span class="stage-out">Internal audit report</span></li>
-          <li><span class="stage-n">5</span><div><h3>Management review</h3><p>Review inputs are gathered and the meeting's decisions are tracked as actions until they close.</p></div><span class="stage-out">Management review minutes</span></li>
-          <li><span class="stage-n">6</span><div><h3>Stage 1 audit</h3><p>The firm prepares a readiness pack, represents the client and closes each observation the certification body raises.</p></div><span class="stage-out">Readiness pack</span></li>
-          <li><span class="stage-n">7</span><div><h3>Stage 2 audit</h3><p>Nonconformities from the certification audit are closed with evidence, then the ISMS moves onto a surveillance calendar.</p></div><span class="stage-out">Closure record</span></li>
-        </ol>
       </section>
 
-      <div class="home-pair">
-        <section class="home-section" aria-labelledby="programmesTitle">
-          <h2 id="programmesTitle">Frameworks</h2>
-          <p class="home-note">Each framework is assessed on its own method. Evidence collected once can be linked to more than one of them.</p>
-          <table class="register">
-            <thead>
-              <tr><th scope="col">Framework</th><th scope="col">Catalogue</th></tr>
-            </thead>
-            <tbody>
-              <% programmes.forEach(function (p) { %>
-              <tr>
-                <td>
-                  <span class="name"><%= p.formalName %></span>
-                  <span class="desc"><%= p.descriptor %></span>
-                </td>
-                <td><span class="count"><%= p.count %></span> <span class="unit"><%= p.unit %></span></td>
-              </tr>
-              <% }); %>
-            </tbody>
-          </table>
-        </section>
-
-        <section class="home-section" aria-labelledby="rolesTitle">
-          <h2 id="rolesTitle">Who works in it</h2>
-          <p class="home-note">Access is checked on every protected action. A client team sees the engagements assigned to it and nothing else.</p>
-          <dl class="roles">
-            <div><dt>Consultant</dt><dd>Runs fieldwork, links evidence, keeps workpapers and drafts reports.</dd></div>
-            <div><dt>Manager</dt><dd>Reviews and approves reports, manages access and sees the firm's whole portfolio.</dd></div>
-            <div><dt>Client team</dt><dd>Answers requests, uploads evidence and follows progress on its own engagement.</dd></div>
-            <div><dt>External auditor</dt><dd>Opens a time-limited link to approved records, without an account at the firm.</dd></div>
-          </dl>
-        </section>
-      </div>
-
-      <section class="home-section" aria-labelledby="rulesTitle">
-        <div class="home-section-head">
-          <h2 id="rulesTitle">Rules the software enforces</h2>
-          <p>A readiness conclusion is the firm's own assessment for a stated scope and date. It is not a certification decision, so the record behind it has to hold up.</p>
-        </div>
-        <ul class="rules">
-          <li><h3>Conclusions need evidence</h3><p>A requirement cannot be marked implemented without evidence linked to it. Coverage and sufficiency are reported separately, so one file does not pass for a complete evidence set.</p></li>
-          <li><h3>Approved reports are fixed</h3><p>An approved report is stored as a snapshot and cannot be edited. A reassessment opens a new version, and the approved one stays as it was issued.</p></li>
-          <li><h3>Drafting and approving are separate</h3><p>The person who drafts a report or recommendation cannot approve it. On third-party risk, the client's decision is stored apart from the firm's recommendation.</p></li>
-          <li><h3>Catalogues are versioned</h3><p>Every engagement records which catalogue release it was assessed against. A new release is added alongside the old one and does not overwrite it.</p></li>
+      <section class="fw" id="frameworks" aria-labelledby="programmesTitle">
+        <h2 id="programmesTitle">Frameworks we work with</h2>
+        <ul class="fw-list">
+          <% programmes.forEach(function (p) { const m = marks[p.code] || { pre: '', mark: p.code, title: p.descriptor, body: '' }; %>
+          <li class="fw-row">
+            <div class="fw-text">
+              <span class="fw-mark"><% if (m.pre) { %><small><%= m.pre %></small><% } %><%= m.mark %></span>
+              <h3><%= m.title %></h3>
+              <p class="fw-meta"><%= p.formalName %>, <%= p.count %> <%= p.unit %></p>
+              <% if (m.body) { %><p class="fw-body"><%= m.body %></p><% } %>
+            </div>
+            <% if (m.shot) { %>
+            <figure class="fw-shot" data-reveal>
+              <img src="<%= img(m.shot[0]) %>" alt="<%= m.shot[3] %>" width="<%= m.shot[1] / 2 %>" height="<%= m.shot[2] / 2 %>" loading="lazy" data-zoom>
+              <figcaption><%= m.cap %></figcaption>
+            </figure>
+            <% } %>
+          </li>
+          <% }); %>
         </ul>
       </section>
 
-      <section class="home-close" aria-labelledby="evaluationTitle">
-        <div>
-          <h2 id="evaluationTitle">Evaluate it on a real engagement</h2>
-          <p>Evaluations run in an isolated workspace. Tell us the framework, the roles you need and the evidence flow you want to test. It is also worth trying each rule above, for example approving your own draft or opening a client you were not assigned.</p>
+      <section class="process band" id="process" aria-labelledby="processTitle">
+        <div class="process-head">
+          <h2 id="processTitle">Who does what, stage by stage</h2>
+          <p>A certification engagement runs through all seven stages. A gap assessment engagement ends after the second, with the report.</p>
         </div>
-        <div class="actions">
-          <a class="button primary" href="<%= evaluationUrl %>">Request an evaluation</a>
-          <a class="button secondary" href="/security">Security overview</a>
+        <div class="stages" data-stages>
+          <div class="st-table">
+            <div class="st-cols" aria-hidden="true"><span>Stage</span><span>We</span><span>Your team</span><span class="st-col-out">You receive</span></div>
+            <ol class="st-list">
+              <% stages.forEach(function (s, i) { %>
+              <li class="st" data-stage>
+                <h3><span class="st-n"><%= pad(i) %></span><%= s.name %></h3>
+                <p><b class="st-l">We</b><%= s.we %></p>
+                <p><b class="st-l">Your team</b><%= s.you %></p>
+                <p class="st-out"><b class="st-l">You receive</b><%= s.out %></p>
+                <% if (s.exit) { %><p class="st-exit">Gap assessment engagements end here, with the report.</p><% } %>
+              </li>
+              <% }); %>
+            </ol>
+            <p class="st-end" data-stage-end>Certificate, issued by your certification body</p>
+          </div>
+          <div class="pile" aria-hidden="true">
+            <p class="pile-head">You receive</p>
+            <ol class="pile-list">
+              <% stages.forEach(function (s, i) { %>
+              <li class="tile" data-tile><span><%= pad(i) %></span><%= s.out %></li>
+              <% if (s.exit) { %><li class="pile-exit" data-tile-exit>A gap assessment ends here</li><% } %>
+              <% }); %>
+              <li class="tile tile-cert" data-tile><span aria-hidden="true"></span>Certificate<small>issued by your certification body</small></li>
+            </ol>
+          </div>
+        </div>
+        <dl class="st-notes">
+          <div><dt>Every report is checked before you see it.</dt><dd>The consultant who writes a report cannot approve it. A second consultant does, and once approved it stays exactly as issued.</dd></div>
+          <div><dt>The record cannot be quietly changed.</dt><dd>Every upload, change and approval is logged with who did it and when. The log is sealed, so an edit to an old entry shows up when the log is checked.</dd></div>
+        </dl>
+      </section>
+
+      <section class="closing" aria-labelledby="closingTitle">
+        <h2 id="closingTitle">Start with a gap assessment.</h2>
+        <div class="closing-body">
+          <p>Tell us the framework, your timeline and what is already in place. We will scope the assessment and walk you through how the work would run. How we protect your data is set out in the <a href="/security">security overview</a>.</p>
+          <div class="hero-actions">
+            <a class="btn btn-ink" href="<%= evaluationUrl %>">Talk to us <span aria-hidden="true">&rarr;</span></a>
+            <a class="btn btn-ghost" href="/login">Client sign in</a>
+          </div>
         </div>
       </section>
 
+      <dialog class="zoom" data-zoom-dialog aria-label="Screenshot">
+        <button type="button" class="zoom-close" data-zoom-close aria-label="Close">&times;</button>
+        <img alt="">
+      </dialog>
     <% } else if (page === 'access') { %>
       <section class="prose-page">
         <p class="eyebrow">Controlled access</p>
@@ -214,19 +250,19 @@
       </section>
     <% } else if (page === 'contact') { %>
       <section class="prose-page">
-        <p class="eyebrow"><%= topic === 'security' ? 'Security contact' : topic === 'privacy' ? 'Privacy contact' : 'Evaluation request' %></p>
-        <h1><%= topic === 'security' ? 'Report a security concern.' : topic === 'privacy' ? 'Contact the deployment operator.' : 'Start with the workflow you need to test.' %></h1>
+        <p class="eyebrow"><%= topic === 'security' ? 'Security contact' : topic === 'privacy' ? 'Privacy contact' : 'Get in touch' %></p>
+        <h1><%= topic === 'security' ? 'Report a security concern.' : topic === 'privacy' ? 'Contact the deployment operator.' : 'Tell us about your compliance programme.' %></h1>
         <% if (topic === 'security') { %>
           <p class="lede">Describe the affected page, observed behaviour and a safe way to reproduce it. Do not send passwords, access tokens, production evidence or unnecessary personal data.</p>
         <% } else if (topic === 'privacy') { %>
           <p class="lede">The organization operating this deployment handles privacy requests for its users and workspace data.</p>
         <% } else { %>
-          <p class="lede">A useful evaluation should include your target framework, expected roles, critical evidence flow and the security review your team intends to perform.</p>
+          <p class="lede">Let us know the framework or service you are considering, your timeline, and what is already in place, such as an earlier assessment or a booked certification audit.</p>
         <% } %>
         <% if (evaluationUrl !== '/contact' && topic === 'evaluation') { %>
-          <a class="button primary" href="<%= evaluationUrl %>">Open the evaluation request</a>
+          <a class="button primary" href="<%= evaluationUrl %>">Open the contact form</a>
         <% } else if ((topic === 'security' ? securityEmail : contactEmail)) { const email = topic === 'security' ? securityEmail : contactEmail; %>
-          <a class="button primary" href="mailto:<%= email %>?subject=<%= topic === 'security' ? 'Security%20report' : topic === 'privacy' ? 'Privacy%20request' : 'Compliance%20Sphere%20evaluation' %>">Email <%= email %></a>
+          <a class="button primary" href="mailto:<%= email %>?subject=<%= topic === 'security' ? 'Security%20report' : topic === 'privacy' ? 'Privacy%20request' : 'Compliance%20programme%20enquiry' %>">Email <%= email %></a>
         <% } else { %>
           <div class="caveat"><strong>No public contact has been configured for this deployment.</strong><p>Reply to the person who shared this address or contact the organization operating the site. Ask them to configure the appropriate evaluation, privacy or security contact before external use.</p></div>
         <% } %>
@@ -239,5 +275,6 @@
     <span>&copy; <%= new Date().getFullYear() %> Compliance Sphere</span>
     <nav aria-label="Footer navigation"><a href="/security">Security</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></nav>
   </footer>
+  <% if (page === 'home') { %><script src="/home.js?v=<%= typeof assetVersion !== 'undefined' ? assetVersion : '0' %>" defer></script><% } %>
 </body>
 </html>

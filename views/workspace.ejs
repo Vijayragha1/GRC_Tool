@@ -1,7 +1,10 @@
 <%- include('partials/header', { title: ws.client_name, user, ws, active: 'overview' }) %>
 <%
   const hasIso27001 = Array.isArray(ws.frameworks) && ws.frameworks.includes('iso27001');
-  const isGapAssessmentOnly = hasIso27001 && engagementOutcome === 'gap_assessment_only';
+  const hasIsoContract = Array.isArray(ws.frameworks) && ws.frameworks.some(code => ['iso27001', 'iso42001'].includes(code));
+  const contractFrameworkLabel = ['iso27001', 'iso42001'].filter(code => (ws.frameworks || []).includes(code)).map(code => code === 'iso42001' ? 'ISO 42001' : 'ISO 27001').join(' + ') || 'ISO management-system';
+  // Either ISO management system can be contracted as a gap assessment only.
+  const isGapAssessmentOnly = hasIsoContract && engagementOutcome === 'gap_assessment_only';
 %>
 
 <div class="page-head">
@@ -451,25 +454,25 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       <div><label class="label">Client name</label><input class="input" name="client_name" value="<%= ws.client_name %>" required></div>
       <div><label class="label">Industry</label><input class="input" name="industry" value="<%= ws.industry || '' %>"></div>
       <div class="col-full"><label class="label">Scope</label><input class="input" id="scope-input" name="scope" value="<%= ws.scope || '' %>"></div>
-      <div id="workspace-certification-target-field" <%= hasIso27001 ? '' : 'hidden' %>>
+      <div id="workspace-certification-target-field" <%= hasIsoContract ? '' : 'hidden' %>>
         <label class="label">Target certification date <% if (isGapAssessmentOnly) { %><span class="meta">full support only</span><% } %></label>
-        <input class="input" id="target-cert-date" name="target_cert_date" type="date" value="<%= isGapAssessmentOnly || !hasIso27001 ? '' : (ws.target_cert_date || '') %>" <%= isGapAssessmentOnly || !hasIso27001 ? 'disabled aria-disabled="true"' : '' %>>
+        <input class="input" id="target-cert-date" name="target_cert_date" type="date" value="<%= isGapAssessmentOnly || !hasIsoContract ? '' : (ws.target_cert_date || '') %>" <%= isGapAssessmentOnly || !hasIsoContract ? 'disabled aria-disabled="true"' : '' %>>
         <div id="gap-target-note" class="meta text-sm" <%= isGapAssessmentOnly ? '' : 'hidden' %> style="margin-top:5px;line-height:1.4;">Available only for full certification support. A gap-only engagement has no certification deadline.</div>
       </div>
-      <div id="workspace-iso-outcome-settings" class="col-full" <%= hasIso27001 ? '' : 'hidden' %> style="padding:13px;border:1px solid var(--border);border-radius:7px;">
-        <div class="label">Contracted ISO 27001 outcome</div>
-        <% if (!hasIso27001 || engagementOutcome === 'gap_assessment_only') { %>
-          <div class="meta text-sm" style="margin-bottom:9px;line-height:1.5;"><%= hasIso27001 ? 'This engagement currently ends when the independently reviewed gap-assessment report is issued. It can be continued into full certification support without recreating the client.' : 'Choose the contracted endpoint before enabling ISO 27001. This determines the delivery journey and completion gate.' %></div>
+      <div id="workspace-iso-outcome-settings" class="col-full" <%= hasIsoContract ? '' : 'hidden' %> style="padding:13px;border:1px solid var(--border);border-radius:7px;">
+        <div class="label">Contracted <%= contractFrameworkLabel %> outcome</div>
+        <% if (!hasIsoContract || engagementOutcome === 'gap_assessment_only') { %>
+          <div class="meta text-sm" style="margin-bottom:9px;line-height:1.5;"><%= hasIsoContract ? 'This engagement currently ends when the independently reviewed gap-assessment report is issued. It can be continued into full certification support without recreating the client.' : 'Choose the contracted endpoint before enabling an ISO management-system programme. This determines the delivery journey and completion gate.' %></div>
           <div style="display:flex;gap:18px;flex-wrap:wrap;">
             <% lifecycleOutcomes.forEach(option => { %>
               <label class="row-center" style="align-items:flex-start;gap:7px;cursor:pointer;max-width:390px;">
-                <input type="radio" name="engagement_outcome" value="<%= option.value %>" <%= hasIso27001 ? 'required' : '' %> <%= hasIso27001 && engagementOutcome===option.value?'checked':'' %> style="margin-top:3px;">
+                <input type="radio" name="engagement_outcome" value="<%= option.value %>" <%= hasIsoContract ? 'required' : '' %> <%= hasIsoContract && engagementOutcome===option.value?'checked':'' %> style="margin-top:3px;">
                 <span><strong><%= option.label %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option.description %></span></span>
               </label>
             <% }) %>
           </div>
-          <% if (hasIso27001) { %><div class="meta text-sm" style="margin-top:9px;">Continuing to full certification support is a one-way contract change. The engagement cannot later be shortened back to gap-assessment-only.</div><% } %>
-          <% if (hasIso27001) { %><label id="outcome-upgrade-confirmation" style="display:none;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;align-items:flex-start;gap:8px;background:var(--bg-subtle);">
+          <% if (hasIsoContract) { %><div class="meta text-sm" style="margin-top:9px;">Continuing to full certification support is a one-way contract change. The engagement cannot later be shortened back to gap-assessment-only.</div><% } %>
+          <% if (hasIsoContract) { %><label id="outcome-upgrade-confirmation" style="display:none;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;align-items:flex-start;gap:8px;background:var(--bg-subtle);">
             <input id="confirm-outcome-upgrade" type="checkbox" name="confirm_outcome_upgrade" value="1" style="margin-top:3px;">
             <span><strong>I confirm the client has continued to full certification support.</strong><span class="meta" style="display:block;line-height:1.4;margin-top:2px;">This activates implementation, consultancy-owned documentation, internal audit, management review, Stage 1 and Stage 2 support, and finding remediation.</span></span>
           </label><% } %>
@@ -499,7 +502,8 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
         <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;">
           <label class="row-center" style="gap:7px;<%= configuredFrameworks.includes('iso27001')?'cursor:not-allowed;opacity:.75;':'cursor:pointer;' %>"><input id="workspace-iso27001-programme" type="checkbox" name="frameworks" value="iso27001" <%= configuredFrameworks.includes('iso27001')?'checked disabled aria-disabled="true"':'' %>><span>ISO 27001:2022<%= configuredFrameworks.includes('iso27001') ? ' · governed contract' : '' %></span></label>
           <% if (configuredFrameworks.includes('iso27001')) { %><input type="hidden" name="frameworks" value="iso27001"><% } %>
-          <label class="row-center" style="gap:7px;cursor:pointer;"><input type="checkbox" name="frameworks" value="iso42001" <%= configuredFrameworks.includes('iso42001')?'checked':'' %>><span>ISO 42001:2023</span></label>
+          <label class="row-center" style="gap:7px;<%= configuredFrameworks.includes('iso42001')?'cursor:not-allowed;opacity:.75;':'cursor:pointer;' %>"><input id="workspace-iso42001-programme" type="checkbox" name="frameworks" value="iso42001" <%= configuredFrameworks.includes('iso42001')?'checked disabled aria-disabled="true"':'' %>><span>ISO 42001:2023<%= configuredFrameworks.includes('iso42001') ? ' · governed contract' : '' %></span></label>
+          <% if (configuredFrameworks.includes('iso42001')) { %><input type="hidden" name="frameworks" value="iso42001"><% } %>
           <label class="row-center" style="gap:7px;cursor:pointer;"><input type="checkbox" name="frameworks" value="csf" <%= configuredFrameworks.includes('csf')?'checked':'' %>><span>NIST CSF 2.0</span></label>
           <label class="row-center" style="gap:7px;cursor:pointer;"><input type="checkbox" name="frameworks" value="dpdpa" <%= configuredFrameworks.includes('dpdpa')?'checked':'' %>><span>India DPDPA</span></label>
         </div>
@@ -574,10 +578,10 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
     focusScope();
     window.addEventListener('hashchange', focusScope);
   })();
-  <% if (!hasIso27001 || isGapAssessmentOnly) { %>
+  <% if (!hasIsoContract || isGapAssessmentOnly) { %>
   (function () {
     const form = document.querySelector('#workspace-settings form[action$="/update"]');
-    const isoProgramme = document.getElementById('workspace-iso27001-programme');
+    const isoProgrammes = form ? Array.from(form.querySelectorAll('input[name="frameworks"][type="checkbox"]')).filter(input => ['iso27001', 'iso42001'].includes(input.value)) : [];
     const outcomeSettings = document.getElementById('workspace-iso-outcome-settings');
     const targetField = document.getElementById('workspace-certification-target-field');
     const targetDate = document.getElementById('target-cert-date');
@@ -585,10 +589,10 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
     const confirmation = document.getElementById('outcome-upgrade-confirmation');
     const checkbox = document.getElementById('confirm-outcome-upgrade');
     const choices = form ? form.querySelectorAll('input[name="engagement_outcome"]') : [];
-    if (!form || !isoProgramme || !outcomeSettings || !targetField || !targetDate) return;
+    if (!form || !isoProgrammes.length || !outcomeSettings || !targetField || !targetDate) return;
     const syncOutcomeControls = () => {
       const selected = form.querySelector('input[name="engagement_outcome"]:checked');
-      const isoEnabled = isoProgramme.checked;
+      const isoEnabled = isoProgrammes.some(input => input.checked);
       const fullSupport = isoEnabled && selected && selected.value === 'certification_support';
       outcomeSettings.hidden = !isoEnabled;
       targetField.hidden = !isoEnabled;
@@ -598,14 +602,14 @@ fetch('/api/workspaces/<%= ws.id %>/trends').then(r => r.json()).then(data => {
       if (!fullSupport) targetDate.value = '';
       if (targetNote) targetNote.hidden = !isoEnabled || !!fullSupport;
       if (confirmation && checkbox) {
-        const upgrading = <%= hasIso27001 ? 'true' : 'false' %> && fullSupport;
+        const upgrading = <%= hasIsoContract ? 'true' : 'false' %> && fullSupport;
         confirmation.style.display = upgrading ? 'flex' : 'none';
         checkbox.required = !!upgrading;
         if (!upgrading) checkbox.checked = false;
       }
     };
     choices.forEach(input => input.addEventListener('change', syncOutcomeControls));
-    isoProgramme.addEventListener('change', syncOutcomeControls);
+    isoProgrammes.forEach(input => input.addEventListener('change', syncOutcomeControls));
     syncOutcomeControls();
   })();
   <% } %>

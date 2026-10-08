@@ -3465,6 +3465,13 @@ function init() {
     console.error('[db] fresh-boot catalog backfill failed:', e.message);
   }
 
+  // The firm's ISO 27001 <-> ISO 42001 crosswalk, once the catalogue above exists.
+  try {
+    require('./lib/crosswalk-seed').seed(db);
+  } catch (e) {
+    console.error('[db] ISO 27001 / ISO 42001 crosswalk seed failed:', e.message);
+  }
+
   // ISO/IEC 42001 template pack. Runs last so its explicit framework, tier and
   // requirement mapping override the ISO 27001 name and description tagging
   // applied to every system template earlier in init().

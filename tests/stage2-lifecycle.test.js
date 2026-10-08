@@ -92,7 +92,9 @@ test('existing plans are repaired additively without replacing retained rows', (
   assert.equal(repaired.id, plan.id);
   assert.equal(db.prepare(`SELECT id FROM engagement_delivery_milestones WHERE plan_id=? AND milestone_key='w12-handoff'`).get(plan.id).id, handoff.id);
   assert.equal(db.prepare(`SELECT id FROM engagement_delivery_milestones WHERE plan_id=? AND milestone_key='w11-stage1'`).get(plan.id).id, stage1.id);
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=?`).get(plan.id).c, 31);
+  // The default programmes include ISO 42001, so the plan also holds the
+  // separate ISO 42001 report step; the ISO 27001 template is what is counted.
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM engagement_delivery_milestones WHERE plan_id=? AND milestone_key != 'aims-controlled-report'`).get(plan.id).c, 31);
   assert.equal(db.prepare(`SELECT title FROM engagement_delivery_milestones WHERE id=?`).get(handoff.id).title,
     'Close the engagement and transition the certified ISMS');
   assert.equal(db.prepare(`SELECT title FROM engagement_delivery_milestones WHERE id=?`).get(stage1.id).title,
