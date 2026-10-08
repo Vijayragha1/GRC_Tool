@@ -104,7 +104,9 @@ test('a client working to both standards sees both catalogues, grouped and named
 
 test('a risk is linked to ISO 42001 controls from the risk page and the library, and the SoA includes them', async () => {
   const riskId = Number(db.prepare(`INSERT INTO risks (workspace_id, title, likelihood, impact, status) VALUES (?, 'Triage model drifts after retraining', 3, 4, 'open')`).run(wsAi).lastInsertRowid);
-  const page = await client.get(`/workspaces/${wsAi}/risks/${riskId}`);
+  // An AIMS risk's page is in the ISO 42001 module (routes/iso42001-risks.js).
+  assert.equal((await client.get(`/workspaces/${wsAi}/risks/${riskId}`)).location, `/workspaces/${wsAi}/iso42001/risks/${riskId}`);
+  const page = await client.get(`/workspaces/${wsAi}/iso42001/risks/${riskId}`);
   assert.equal(page.status, 200);
   assert.match(page.text, /<option value="ai-annex-a-6-2-6"/);
   assert.doesNotMatch(page.text, /value="annex-a\.8\.16"/);
@@ -114,7 +116,7 @@ test('a risk is linked to ISO 42001 controls from the risk page and the library,
   assert.equal(db.prepare('SELECT COUNT(*) c FROM risk_controls WHERE risk_id=?').get(riskId).c, 0, 'no ISO 27001 link for an ISO 42001-only client');
   const state = db.prepare(`SELECT applicability FROM v_iso42001_control_states WHERE workspace_id=? AND iso_item_id='ai-annex-a-6-2-6'`).get(wsAi);
   assert.equal(state.applicability, 'included', 'the control a risk depends on is included on the ISO 42001 SoA');
-  const shown = await client.get(`/workspaces/${wsAi}/risks/${riskId}`);
+  const shown = await client.get(`/workspaces/${wsAi}/iso42001/risks/${riskId}`);
   assert.match(shown.text, /href="\/workspaces\/\d+\/iso42001\/gap\/ai-annex-a-6-2-6"/);
   await client.post(`/workspaces/${wsAi}/risks/${riskId}/unlink`, { iso_item_id: 'ai-annex-a-6-2-6' });
   assert.equal(db.prepare('SELECT COUNT(*) c FROM iso42001_risk_controls WHERE risk_id=?').get(riskId).c, 0);

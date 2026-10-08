@@ -153,7 +153,7 @@
                   <span class="meta">-</span>
                 <% } %>
               <% } else { %>
-                <% linkedRisks.slice(0, 3).forEach((rk, idx) => { %><a href="/workspaces/<%= ws.id %>/risks/<%= rk.risk_id %>" title="<%= rk.risk_title %> · L<%= rk.likelihood %>×I<%= rk.impact %>" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">R-<%= rk.risk_id %></a><% if (idx < Math.min(linkedRisks.length, 3) - 1) { %><span class="meta">, </span><% } %><% }) %><% if (linkedRisks.length > 3) { %><span class="meta"> +<%= linkedRisks.length - 3 %></span><% } %>
+                <% linkedRisks.slice(0, 3).forEach((rk, idx) => { %><a href="/workspaces/<%= ws.id %>/iso42001/risks/<%= rk.risk_id %>" title="<%= rk.risk_title %> · L<%= rk.likelihood %>×I<%= rk.impact %>" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent);">R-<%= rk.risk_id %></a><% if (idx < Math.min(linkedRisks.length, 3) - 1) { %><span class="meta">, </span><% } %><% }) %><% if (linkedRisks.length > 3) { %><span class="meta"> +<%= linkedRisks.length - 3 %></span><% } %>
               <% } %>
             </td>
             <td>

@@ -7,6 +7,7 @@ const csvImport = require('../lib/csv-import');
 const riskLinks = require('../lib/risk-control-links');
 const aiRisk = require('../lib/ai-risk');
 const riskOwner = require('../lib/risk-owner');
+const { moduleReturn } = require('../lib/module-return');
 const aiSystems = require('../lib/ai-systems');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, parseFormArray } = require('../lib/http-helpers');
@@ -43,6 +44,9 @@ function register(app, deps) {
   });
 
   app.get('/workspaces/:wsId/risks', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
+    // A client whose only management system is ISO 42001 keeps its register
+    // in the ISO 42001 module.
+    if (riskOwner.aimsOnly(req.workspace)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/risks`);
     const ef = activeEntityFilter(req, 'r');
     // The client's primary register: on a client with ISO 27001 and ISO 42001
     // this is the ISMS's, and AI risks are kept in the ISO 42001 module.
@@ -400,6 +404,8 @@ function register(app, deps) {
       LEFT JOIN entities e ON e.id = r.entity_id
       WHERE r.id = ? AND r.workspace_id = ?`).get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Not found');
+    // An AIMS risk has its page in the ISO 42001 module.
+    if (risk.management_system === 'iso42001') return res.redirect(`/workspaces/${req.workspace.id}/iso42001/risks/${risk.id}`);
     const linked = riskLinks.linked(db, req.workspace, risk.id);
     const controlGroups = riskLinks.pickerGroups(db, req.workspace, risk.id);
     const assets = db.prepare('SELECT id, name FROM assets WHERE workspace_id = ?').all(req.workspace.id);
@@ -421,7 +427,7 @@ function register(app, deps) {
     const risk = db.prepare('SELECT id FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Risk not found');
     const { title, description, owner_name, due_date } = req.body;
-    if (!title || !title.trim()) return redirectBack(req, res);
+    if (!title || !title.trim()) return moduleReturn(req) ? res.redirect(withToast(moduleReturn(req), 'Name the treatment action.', 'error')) : redirectBack(req, res);
     db.prepare(`INSERT INTO risk_treatment_actions
       (workspace_id, risk_id, title, description, owner_name, due_date, status, created_by)
       VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)`).run(
@@ -429,7 +435,7 @@ function register(app, deps) {
       owner_name || null, due_date || null, req.user.id
     );
     logAction(req.user.id, req.workspace.id, 'add_treatment_action', 'risk', req.params.id, { title }, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
+    res.redirect(moduleReturn(req) || `/workspaces/${req.workspace.id}/risks/${req.params.id}`);
   });
 
   app.post('/workspaces/:wsId/risks/:id/actions/:aid', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
@@ -451,13 +457,13 @@ function register(app, deps) {
         .run(parseInt(residual_likelihood), parseInt(residual_impact), req.params.id, req.workspace.id);
     }
     logAction(req.user.id, req.workspace.id, 'update_treatment_action', 'risk', req.params.id, { action_id: req.params.aid, status }, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
+    res.redirect(moduleReturn(req) || `/workspaces/${req.workspace.id}/risks/${req.params.id}`);
   });
 
   app.post('/workspaces/:wsId/risks/:id/actions/:aid/delete', requireAuth, requireWorkspace, requirePermission('risk.create'), (req, res) => {
     db.prepare(`DELETE FROM risk_treatment_actions WHERE id=? AND risk_id=? AND workspace_id=?`)
       .run(req.params.aid, req.params.id, req.workspace.id);
-    res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}`);
+    res.redirect(moduleReturn(req) || `/workspaces/${req.workspace.id}/risks/${req.params.id}`);
   });
 
 }

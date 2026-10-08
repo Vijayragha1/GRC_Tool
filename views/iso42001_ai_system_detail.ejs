@@ -105,7 +105,7 @@
     <div class="panel-head"><h2 id="aiRiskTitle">Risks from this system</h2><span class="meta">Clause 6.1.2</span></div>
     <% const sysRisks = typeof systemRisks !== 'undefined' ? systemRisks : []; %>
     <% if (!sysRisks.length) { %>
-      <div class="a42-note">No risks are tied to this system yet. On the risk register, choose this system on a risk and rate its impact on people and society.</div>
+      <div class="a42-note">No risks are tied to this system yet. On the <a href="/workspaces/<%= ws.id %>/iso42001/risks">AI risk register</a>, choose this system on a risk and rate its impact on people and society.</div>
     <% } else { %>
       <div style="overflow-x:auto;">
         <table class="t">
@@ -113,7 +113,7 @@
           <tbody>
             <% sysRisks.forEach(r => { %>
               <tr>
-                <td><a class="link-muted" href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><%= r.title %></a><% if (r.risk_source && riskSourceLabel[r.risk_source]) { %><div class="meta text-xs"><%= riskSourceLabel[r.risk_source] %></div><% } %></td>
+                <td><a class="link-muted" href="/workspaces/<%= ws.id %>/iso42001/risks/<%= r.id %>"><%= r.title %></a><% if (r.risk_source && riskSourceLabel[r.risk_source]) { %><div class="meta text-xs"><%= riskSourceLabel[r.risk_source] %></div><% } %></td>
                 <td class="num"><%= r.likelihood %> × <%= r.impact %></td>
                 <td><%= r.treatment || '-' %></td>
                 <td><%= r.status %></td>
@@ -123,7 +123,7 @@
         </table>
       </div>
     <% } %>
-    <div class="a42-note"><a href="/workspaces/<%= ws.id %>/risks">Open the risk register</a></div>
+    <div class="a42-note"><a href="/workspaces/<%= ws.id %>/iso42001/risks">Open the AI risk register</a></div>
   </section>
 
   <section class="panel" id="datasets" aria-labelledby="aiDataTitle">

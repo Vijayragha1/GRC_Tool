@@ -1,0 +1,84 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const c = register.counts;
+  const method = register.method;
+  const bandText = b => b ? b.charAt(0).toUpperCase() + b.slice(1) : 'Not rated';
+  const late = due.due && due.due < today;
+%>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">AI risk register</h1>
+      <div class="page-subtitle">The AIMS's own risks (clause 6.1.2), kept apart from the ISMS register. Each is rated on the AIMS's risk criteria by its worst consequence (for the organisation, for individuals or groups, or for society) and treated by ISO 42001 controls (clause 6.1.3).</div>
+    </div>
+    <a class="btn btn-secondary" href="<%= base %>/criteria">AI risk criteria</a>
+  </div>
+
+  <section class="a42-stats" aria-label="AI risk measures">
+    <div class="a42-stat"><span>Open AI risks</span><strong><%= c.open %></strong><em><%= c.withoutSystem %> not tied to an AI system</em></div>
+    <div class="a42-stat<%= c.above ? ' is-attention' : '' %>"><span>Above the criteria</span><strong><%= c.above %></strong><em>High or critical, not accepted</em></div>
+    <div class="a42-stat<%= c.untreated ? ' is-attention' : '' %>"><span>Not yet treated</span><strong><%= c.untreated %></strong><em>To reduce, with no control or action</em></div>
+    <div class="a42-stat<%= late || !due.last ? ' is-attention' : '' %>"><span>Next assessment</span><strong><%= due.due ? fmtDate(due.due) : 'Due now' %></strong><em><%= due.last ? `Last performed ${fmtDate(due.last)}` : 'Not yet performed' %></em></div>
+  </section>
+
+  <section class="panel" aria-labelledby="arListTitle">
+    <div class="panel-head"><div><h2 id="arListTitle">Risks</h2><p class="a42-caption">Rated on <strong><%= method.built_in ? 'the default criteria' : method.name %></strong><%= method.built_in ? '; set the AIMS\'s own before the first assessment' : '' %>. Residual ratings, where recorded, decide the colour.</p></div><span class="meta">Clause 6.1.2, 8.2</span></div>
+    <% if (!register.rows.length) { %>
+      <p class="a42-empty">No AI risks yet. Start from each AI system in the register and its impact assessment: what could go wrong for the organisation, for the people its outputs reach, and for society.</p>
+    <% } else { %>
+      <ul class="a42-list">
+        <% register.rows.forEach(r => { %>
+          <li>
+            <i class="a42-dot t-<%= r.tone %>" aria-hidden="true"></i>
+            <div>
+              <a class="a42-list-title" href="<%= base %>/<%= r.id %>"><%= r.title %></a>
+              <p><%= r.ai_system_name || 'Not tied to one system' %><% if (r.risk_source && sourceLabel[r.risk_source]) { %> &middot; <%= sourceLabel[r.risk_source] %><% } %> &middot; <%= bandText(r.band) %> (<%= r.likelihood %> × <%= r.impact %>)<% if (r.residualBand) { %>, residual <%= r.residualBand %><% } %> &middot; <%= R.STATUSES[r.status] || r.status %></p>
+              <p><%= R.TREATMENTS[r.treatment] || 'Treatment not chosen' %> &middot; <%= r.control_count %> ISO 42001 control<%= r.control_count === 1 ? '' : 's' %> &middot; <%= r.open_actions %> open action<%= r.open_actions === 1 ? '' : 's' %><% if (r.owner_name) { %> &middot; <%= r.owner_name %><% } %></p>
+            </div>
+            <a class="a42-list-action" href="<%= base %>/<%= r.id %>">Open <span aria-hidden="true">→</span></a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (riskPerms.create) { %>
+      <details class="a42-fold"<%= register.rows.length ? '' : ' open' %>>
+        <summary>Add an AI risk</summary>
+        <form method="POST" action="<%= base %>" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <%- include('partials/a42_ai_risk_fields', { r: null, method, systems, sources, R }) %>
+          <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add risk</button></div>
+        </form>
+      </details>
+    <% } %>
+  </section>
+
+  <section class="panel" aria-labelledby="arRecordsTitle">
+    <div class="panel-head"><div><h2 id="arRecordsTitle">Risk assessments performed</h2><p class="a42-caption">Each time the AI risk assessment is performed, the register is sealed as a record: the retained result clause 8.2 asks for. Repeat it at least every twelve months and after significant changes.</p></div><span class="meta">Clause 8.2</span></div>
+    <% if (!records.length) { %>
+      <p class="a42-empty">Not yet performed.</p>
+    <% } else { %>
+      <ul class="a42-files">
+        <% records.forEach(rec => { %>
+          <li><div><a href="<%= base %>/assessments/<%= rec.id %>"><%= rec.label %></a><span class="meta"><%= fmtDate(rec.performed_on) %> · <%= rec.risk_count %> risk<%= rec.risk_count === 1 ? '' : 's' %> · <%= rec.above_appetite %> above the criteria<% if (rec.recorded_by_name) { %> · <%= rec.recorded_by_name %><% } %></span></div><span></span></li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (riskPerms.update) { %>
+      <details class="a42-fold">
+        <summary>Record the assessment as performed</summary>
+        <form method="POST" action="<%= base %>/assessments" class="panel-pad stack-grid" style="--cols:minmax(0,180px) minmax(0,1fr);--cols-sm:1fr;gap:10px;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <div><label class="label" for="arPerformed">Performed on</label><input id="arPerformed" class="input" type="date" name="performed_on" value="<%= today %>" max="<%= today %>"></div>
+          <div><label class="label" for="arLabel">Label</label><input id="arLabel" class="input" name="label" maxlength="200" placeholder="e.g. AI risk assessment, Q4 review"></div>
+          <div style="grid-column:1 / -1;"><label class="label" for="arNotes">Notes</label><input id="arNotes" class="input" name="notes" maxlength="4000" placeholder="Who took part and what changed since the last one"></div>
+          <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Seal the register as assessed</button></div>
+        </form>
+      </details>
+    <% } %>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

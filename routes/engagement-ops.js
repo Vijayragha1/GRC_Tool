@@ -44,6 +44,7 @@ const performanceObjectives = require('../lib/performance-objectives');
 const { ymdLocal, ymLocal, isValidTimeZone, workspaceTimeZone } = require('../lib/dates');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, parseFormArray, extractMentions } = require('../lib/http-helpers');
+const { moduleReturn } = require('../lib/module-return');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
 const htmlToDocxPooled = require('../lib/workers').htmlToDocxPooled;
 
@@ -1685,6 +1686,7 @@ function register(app, deps) {
     if (!risk) return redirectBack(req, res);
     const { accepter_name, accepter_role, rationale, expires_at, attestation } = req.body;
     if (attestation !== '1' || !accepter_name || !rationale) {
+      if (moduleReturn(req)) return res.redirect(withToast(moduleReturn(req), 'Acceptance needs the name of who accepts, the rationale and the attestation.', 'error'));
       return res.status(400).render('error', { user: req.user, message: 'Acceptance requires accepter name, rationale, and attestation tickbox.' });
     }
     const residual = (risk.residual_likelihood || risk.likelihood) * (risk.residual_impact || risk.impact);
@@ -1699,7 +1701,7 @@ function register(app, deps) {
     db.prepare(`UPDATE risks SET status='accepted', accepted_until=?, last_acceptance_id=? WHERE id=? AND workspace_id=?`)
       .run(expires_at || null, id, risk.id, req.workspace.id);
     logAction(req.user.id, req.workspace.id, 'accept_risk', 'risk', risk.id, { acceptance_id: id, expires_at }, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/risks/${risk.id}`, 'Risk acceptance recorded'));
+    res.redirect(withToast(moduleReturn(req) || `/workspaces/${req.workspace.id}/risks/${risk.id}`, 'Risk acceptance recorded'));
   });
 
   app.get('/workspaces/:wsId/risks/:id/acceptances', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {

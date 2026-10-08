@@ -1313,6 +1313,7 @@ iso42001Routes.register(app, { db, requireAuth, requireWorkspace, requirePermiss
 require('./routes/iso42001-audit').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, upload, requestListUpload,
   adoptTemplate: (...args) => require('./routes/documents').shared.adoptTemplateForWorkspace(...args) });
+require('./routes/iso42001-risks').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction });
 
 // ==================== ERROR HANDLERS ====================
 app.use((req, res) => {

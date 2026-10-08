@@ -25,7 +25,9 @@ test.after(async () => { db?.close(); await client?.close(); });
 const risk = (title) => db.prepare('SELECT * FROM risks WHERE title=?').get(title);
 
 test('an AI risk names its system and source and is scored on its worst consequence', async () => {
-  const form = await client.get(`/workspaces/${wsAi}/risks`);
+  // An ISO 42001-only client's register is in the ISO 42001 module.
+  assert.equal((await client.get(`/workspaces/${wsAi}/risks`)).location, `/workspaces/${wsAi}/iso42001/risks`);
+  const form = await client.get(`/workspaces/${wsAi}/iso42001/risks`);
   assert.match(form.text, /name="impact_individuals"/);
   assert.match(form.text, new RegExp(`<option value="${systemId}"[^>]*>Triage assistant</option>`));
   assert.match(form.text, /Data: quality, bias, provenance or rights/);
@@ -56,9 +58,11 @@ test('an AI risk names its system and source and is scored on its worst conseque
   const page = await client.get(`/workspaces/${wsAi}/iso42001/ai-systems/${systemId}`);
   assert.match(page.text, /Risks from this system/);
   assert.match(page.text, /Triage assistant under-prioritises older patients/);
-  const detail = await client.get(`/workspaces/${wsAi}/risks/${r.id}`);
-  assert.match(detail.text, /Impact on the organisation/);
-  assert.match(detail.text, /Scored at 5, its highest consequence for people or society/);
+  assert.equal((await client.get(`/workspaces/${wsAi}/risks/${r.id}`)).location, `/workspaces/${wsAi}/iso42001/risks/${r.id}`, 'an AIMS risk opens in the module');
+  const detail = await client.get(`/workspaces/${wsAi}/iso42001/risks/${r.id}`);
+  assert.match(detail.text, /Impact on the organisation<\/dt><dd>2 · /);
+  assert.match(detail.text, /Impact on individuals or groups<\/dt><dd>5 · /);
+  assert.match(detail.text, /\(3 × 5\)/, 'scored on its highest consequence');
 });
 
 test('an ISO 27001 client keeps the single impact rating', async () => {
@@ -89,8 +93,9 @@ test('each risk assessment run is kept as a sealed record with the next one due'
   assert.match(view.text, /Triage assistant under-prioritises older patients/);
   assert.throws(() => db.prepare('UPDATE risk_assessment_records SET risk_count=9 WHERE id=?').run(rec.id), /cannot be changed/);
 
-  const list = await client.get(`/workspaces/${wsAi}/risks`);
-  assert.match(list.text, /Last performed 2026-09-01 · next due <strong[^>]*>2027-09-01<\/strong>/);
+  const list = await client.get(`/workspaces/${wsAi}/iso42001/risks`);
+  assert.match(list.text, /Last performed 1 Sept? 2026/);
+  assert.match(list.text, /<strong>1 Sept? 2027<\/strong>/);
   assert.equal((await client.get(`/workspaces/${wsOther}/risks/assessments/${rec.id}`)).status, 404, "another client's record is not reachable");
 });
 

@@ -12,6 +12,7 @@ const csvImport = require('../lib/csv-import');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const { paginate, pageHref } = require('../lib/paginate');
 const { withToast, redirectBack, auditCtx, escapeHtml, extractMentions } = require('../lib/http-helpers');
+const { moduleReturn } = require('../lib/module-return');
 const delivery = require('../lib/engagement-delivery');
 const generateDocxBuffer = require('../lib/workers').generateDocx;
 const htmlToDocxPooled = require('../lib/workers').htmlToDocxPooled;
@@ -664,7 +665,7 @@ function register(app, deps) {
       const framework = riskLinks.link(db, req.workspace, risk.id, itemId);
       if (framework) logAction(req.user.id, req.workspace.id, 'link_risk_control', 'risk', risk.id, { iso_item_id: itemId, framework });
     }
-    res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
+    res.redirect(moduleReturn(req) || '/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
   });
 
   app.post('/workspaces/:wsId/risks/:id/unlink', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
@@ -673,13 +674,13 @@ function register(app, deps) {
     if (riskLinks.unlink(db, risk.id, String(req.body.iso_item_id || ''))) {
       logAction(req.user.id, req.workspace.id, 'unlink_risk_control', 'risk', risk.id, { iso_item_id: req.body.iso_item_id });
     }
-    res.redirect('/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
+    res.redirect(moduleReturn(req) || '/workspaces/' + req.workspace.id + '/risks/' + req.params.id);
   });
 
   app.post('/workspaces/:wsId/risks/:id/delete', requireAuth, requireWorkspace, requirePermission('risk.delete'), (req, res) => {
     db.prepare('DELETE FROM risks WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspace.id);
     fts.removeEntity({ workspaceId: req.workspace.id, entityType: 'risk', entityId: req.params.id });
-    res.redirect('/workspaces/' + req.workspace.id + '/risks');
+    res.redirect(moduleReturn(req) || '/workspaces/' + req.workspace.id + '/risks');
   });
 
 
