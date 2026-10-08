@@ -1,0 +1,22 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<% const csrf = typeof csrfToken !== 'undefined' ? csrfToken : ''; %>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/datasets">Dataset register</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Add a dataset</h1>
+      <div class="page-subtitle">A dataset an AI system is built, tested or run on. Record what you know now; the four Annex A.7 records (how it was obtained, its quality, its provenance and how it is prepared) can follow.</div>
+    </div>
+  </div>
+  <section class="panel">
+    <form method="POST" action="<%= base %>/datasets" class="a42-form">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <%- include('partials/iso42001_dataset_fields', { dataset, DS }) %>
+      <div class="a42-form-actions"><button class="btn btn-primary" type="submit">Add dataset</button><a class="btn btn-ghost" href="<%= base %>/datasets">Cancel</a></div>
+    </form>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

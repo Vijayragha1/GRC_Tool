@@ -1109,6 +1109,16 @@ function register(app, deps) {
     const objectives = count(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND COALESCE(framework,'iso42001')='iso42001'
       AND plan_actions IS NOT NULL AND evaluation_method IS NOT NULL`, wsId);
     const approvedSoa = aimsSoa.latestApproved(db, wsRow || { id: wsId });
+    // The dataset register (lib/ai-datasets.js): in-scope live systems with a
+    // linked dataset, and the datasets they use that carry each A.7 record.
+    const systemsWithData = count(`SELECT COUNT(*) c FROM ai_systems s WHERE s.workspace_id=? AND s.in_scope=1 AND s.lifecycle_stage != 'retired'
+        AND EXISTS (SELECT 1 FROM ai_system_datasets sd WHERE sd.ai_system_id=s.id)`, wsId);
+    const usedDatasets = `FROM ai_datasets d WHERE d.workspace_id=? AND EXISTS (SELECT 1 FROM ai_system_datasets sd JOIN ai_systems s ON s.id=sd.ai_system_id
+        WHERE sd.dataset_id=d.id AND s.in_scope=1 AND s.lifecycle_stage != 'retired')`;
+    const datasetsInUse = count(`SELECT COUNT(*) c ${usedDatasets}`, wsId);
+    const datasetsWith = (cond) => count(`SELECT COUNT(*) c ${usedDatasets} AND ${cond}`, wsId);
+    const allDatasets = (cond) => datasetsInUse > 0 && datasetsWith(cond) === datasetsInUse;
+    const datasetBasis = (cond, what) => `${datasetsWith(cond)} of ${datasetsInUse} dataset${datasetsInUse === 1 ? '' : 's'} in use record ${what}`;
     // Risks and opportunities for the AIMS itself, each with an action and a
     // way to judge whether it worked (clause 6.1.1).
     const plannedRiskOpps = count(`SELECT COUNT(*) c FROM aims_risks_opportunities WHERE workspace_id=?
@@ -1146,13 +1156,21 @@ function register(app, deps) {
     });
     const expectedChecks = [
       expectedCheck('ai-annex-a-4-2', 'AI system inventory', liveSystems > 0, `${liveSystems} in-scope AI system${liveSystems === 1 ? '' : 's'} in the register`),
-      expectedCheck('ai-annex-a-4-3', 'Dataset documentation (datasheets)', linkedRecordFor('ai-annex-a-4-3'), 'A document or evidence linked to A.4.3'),
+      expectedCheck('ai-annex-a-4-3', 'Dataset documentation (datasheets)', (liveSystems > 0 && systemsWithData === liveSystems) || linkedRecordFor('ai-annex-a-4-3'),
+        liveSystems && systemsWithData ? `${systemsWithData} of ${liveSystems} in-scope AI systems have datasets on the register` : 'Datasets on the register for every in-scope system, or a document or evidence linked to A.4.3'),
+      expectedCheck('ai-annex-a-7-3', 'Data acquisition records', allDatasets('d.acquisition IS NOT NULL') || linkedRecordFor('ai-annex-a-7-3'),
+        datasetsInUse ? datasetBasis('d.acquisition IS NOT NULL', 'how they were obtained') : 'A document or evidence linked to A.7.3'),
+      expectedCheck('ai-annex-a-7-4', 'Data quality checks', allDatasets('d.quality_requirements IS NOT NULL AND d.quality_checked_on IS NOT NULL') || linkedRecordFor('ai-annex-a-7-4'),
+        datasetsInUse ? datasetBasis('d.quality_requirements IS NOT NULL AND d.quality_checked_on IS NOT NULL', 'quality requirements and a check') : 'A document or evidence linked to A.7.4'),
       expectedCheck('ai-annex-a-5-3', 'Impact assessment reports per system', liveSystems > 0 && systemsAssessed === liveSystems, `${systemsAssessed} of ${liveSystems} approved`),
       expectedCheck('ai-annex-a-6-2-3', 'Design / model documentation', linkedRecordFor('ai-annex-a-6-2-3'), 'A document or evidence linked to A.6.2.3'),
       expectedCheck('ai-annex-a-6-2-4', 'Verification & validation reports', linkedRecordFor('ai-annex-a-6-2-4'), 'A document or evidence linked to A.6.2.4'),
       expectedCheck('ai-annex-a-6-2-7', 'AI system technical documentation / model cards', linkedRecordFor('ai-annex-a-6-2-7'), 'A document or evidence linked to A.6.2.7'),
       expectedCheck('ai-annex-a-6-2-8', 'Event logs specification', linkedRecordFor('ai-annex-a-6-2-8'), 'A document or evidence linked to A.6.2.8'),
-      expectedCheck('ai-annex-a-7-5', 'Data lineage records', linkedRecordFor('ai-annex-a-7-5'), 'A document or evidence linked to A.7.5'),
+      expectedCheck('ai-annex-a-7-5', 'Data lineage records', allDatasets('d.provenance IS NOT NULL') || linkedRecordFor('ai-annex-a-7-5'),
+        datasetsInUse ? datasetBasis('d.provenance IS NOT NULL', 'their provenance') : 'A document or evidence linked to A.7.5'),
+      expectedCheck('ai-annex-a-7-6', 'Data preparation records', allDatasets('d.preparation IS NOT NULL') || linkedRecordFor('ai-annex-a-7-6'),
+        datasetsInUse ? datasetBasis('d.preparation IS NOT NULL', 'how they are prepared') : 'A document or evidence linked to A.7.6'),
     ];
     const expectedFound = expectedChecks.filter(c => c.found).length;
 

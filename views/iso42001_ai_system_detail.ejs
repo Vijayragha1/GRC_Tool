@@ -123,6 +123,36 @@
     <div class="a42-note"><a href="/workspaces/<%= ws.id %>/risks">Open the risk register</a></div>
   </section>
 
+  <section class="panel" id="datasets" aria-labelledby="aiDataTitle">
+    <div class="panel-head"><h2 id="aiDataTitle">Datasets</h2><span class="meta">Annex A.7</span></div>
+    <% if (!datasets.linked.length) { %>
+      <div class="a42-note">No datasets linked. Link what the system was trained and tested on and what it reads in production, from the <a href="<%= base %>/datasets">dataset register</a>.</div>
+    <% } else { %>
+      <ul class="a42-files">
+        <% datasets.linked.forEach(d => { %>
+          <li>
+            <div><a href="<%= base %>/datasets/<%= d.id %>"><%= d.name %></a><span class="meta"><%= DS.USES[d.use] %> · <%= d.a7.count %> of <%= d.a7.total %> A.7 records<%= ['personal', 'sensitive'].includes(d.personal_data) ? ' · personal data' : '' %></span></div>
+            <% if (perms.manage) { %><form method="POST" action="<%= sysBase %>/datasets/<%= d.id %>/<%= d.use %>/delete"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn btn-ghost btn-xs" type="submit">Unlink</button></form><% } else { %><span></span><% } %>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (perms.manage) { %>
+      <% if (datasets.all.length) { %>
+        <div class="a42-attach">
+          <form method="POST" action="<%= sysBase %>/datasets" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) auto;--cols-sm:1fr;align-items:end;">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <div><label class="label" for="linkDataset">Dataset</label><select id="linkDataset" class="select" name="dataset_id" required><option value="">Choose</option><% datasets.all.forEach(d => { %><option value="<%= d.id %>"><%= d.name %></option><% }) %></select></div>
+            <div><label class="label" for="linkUse">Used for</label><select id="linkUse" class="select" name="use" required><option value="">Choose</option><% Object.entries(DS.USES).forEach(([k, l]) => { %><option value="<%= k %>"><%= l %></option><% }) %></select></div>
+            <button class="btn btn-secondary btn-xs" type="submit">Link</button>
+          </form>
+        </div>
+      <% } else { %>
+        <div class="a42-note" style="padding-top:0;">The register is empty. <a href="<%= base %>/datasets/new">Add the first dataset</a>.</div>
+      <% } %>
+    <% } %>
+  </section>
+
   <section class="panel" id="suppliers" aria-labelledby="aiSupTitle">
     <div class="panel-head"><h2 id="aiSupTitle">Vendors in the lifecycle</h2><span class="meta">Annex A.10</span></div>
     <% if (!suppliers.length) { %>

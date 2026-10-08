@@ -13,6 +13,7 @@ const path = require('path');
 const crypto = require('crypto');
 const audit = require('../lib/iso42001-audit');
 const registry = require('../lib/ai-systems');
+const aiDatasets = require('../lib/ai-datasets');
 const aimsContext = require('../lib/aims-context');
 const aimsTemplates = require('../lib/iso42001-templates');
 const aimsOverview = require('../lib/iso42001-overview');
@@ -463,7 +464,7 @@ function register(app, deps) {
     const systemRisks = db.prepare(`SELECT id, title, likelihood, impact, status, treatment, risk_source FROM risks
       WHERE workspace_id=? AND ai_system_id=? ORDER BY (likelihood * impact) DESC, id`).all(req.workspace.id, detail.system.id);
     render(res, 'iso42001_ai_system_detail', req, { title: detail.system.name, active: 'iso42001-ai-systems', ...detail, registry, edit: req.query.edit === '1',
-      systemRisks, riskSourceLabel: require('../lib/ai-risk').SOURCE_LABEL,
+      systemRisks, riskSourceLabel: require('../lib/ai-risk').SOURCE_LABEL, datasets: aiDatasets.forSystem(db, req.workspace, detail.system.id), DS: aiDatasets,
       reassessment: registry.reassessment(db, req.workspace, detail.system.id) });
   });
 
@@ -531,6 +532,64 @@ function register(app, deps) {
     registry.discardAssessment(db, req.workspace, req.params.id, req.params.iaId);
     res.redirect(withToast(systemPage(req), 'Draft discarded'));
   }, iaPage));
+
+  // ------------------------------------------------------------ datasets
+  // The dataset register (lib/ai-datasets.js): what Annex A.7 asks the
+  // organisation to know about each dataset, and which systems use it.
+
+  const datasetPage = req => `${base(req)}/datasets/${encodeURIComponent(req.params.id)}`;
+
+  app.get('/workspaces/:wsId/iso42001/datasets', ...view, (req, res) => {
+    const prog = audit.programme(db, req.workspace);
+    render(res, 'iso42001_datasets', req, { title: 'Dataset register', active: 'iso42001-datasets', datasets: aiDatasets.list(db, req.workspace), DS: aiDatasets,
+      population: registry.population(db, req.workspace, 'ai-datasets', { start: prog.review_period_start, end: prog.review_period_end }) });
+  });
+
+  app.get('/workspaces/:wsId/iso42001/datasets/new', ...manage, (req, res) => {
+    render(res, 'iso42001_dataset_form', req, { title: 'Add dataset', active: 'iso42001-datasets', dataset: null, DS: aiDatasets });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/datasets', ...manage, handle((req, res) => {
+    const id = aiDatasets.create(db, req.workspace, req.user.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'create_ai_dataset', 'ai_dataset', id, { name: req.body.name }, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/datasets/${id}`, 'Dataset added'));
+  }, req => `${base(req)}/datasets/new`));
+
+  app.get('/workspaces/:wsId/iso42001/datasets/:id(\\d+)', ...view, (req, res) => {
+    const detail = aiDatasets.detail(db, req.workspace, req.params.id);
+    if (!detail) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Dataset not found.' });
+    render(res, 'iso42001_dataset_detail', req, { title: detail.dataset.name, active: 'iso42001-datasets', ...detail, DS: aiDatasets, edit: req.query.edit === '1',
+      dpdpa: parseWorkspaceFrameworks(req.workspace.frameworks).includes('dpdpa') });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/datasets/:id(\\d+)', ...manage, handle((req, res) => {
+    aiDatasets.update(db, req.workspace, req.params.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'update_ai_dataset', 'ai_dataset', Number(req.params.id), {}, auditCtx(req));
+    res.redirect(withToast(datasetPage(req), 'Saved'));
+  }, req => `${datasetPage(req)}?edit=1`));
+
+  app.post('/workspaces/:wsId/iso42001/datasets/:id(\\d+)/delete', ...manage, handle((req, res) => {
+    aiDatasets.remove(db, req.workspace, req.params.id);
+    logAction(req.user.id, req.workspace.id, 'delete_ai_dataset', 'ai_dataset', Number(req.params.id), {}, auditCtx(req));
+    res.redirect(withToast(`${base(req)}/datasets`, 'Dataset removed'));
+  }, datasetPage));
+
+  // A use can be recorded from either side: the dataset page or the system page.
+  app.post('/workspaces/:wsId/iso42001/datasets/:id(\\d+)/systems', ...manage, handle((req, res) => {
+    aiDatasets.link(db, req.workspace, req.user.id, req.body.ai_system_id, req.params.id, req.body.use);
+    res.redirect(withToast(`${datasetPage(req)}#uses`, 'Use recorded'));
+  }, datasetPage));
+
+  app.post('/workspaces/:wsId/iso42001/ai-systems/:id/datasets', ...manage, handle((req, res) => {
+    aiDatasets.link(db, req.workspace, req.user.id, req.params.id, req.body.dataset_id, req.body.use);
+    res.redirect(withToast(`${systemPage(req)}#datasets`, 'Dataset linked'));
+  }, systemPage));
+
+  app.post('/workspaces/:wsId/iso42001/ai-systems/:id/datasets/:datasetId/:use/delete', ...manage, handle((req, res) => {
+    aiDatasets.unlink(db, req.workspace, req.params.id, req.params.datasetId, req.params.use);
+    const back = req.body.return_to === 'dataset' ? `${base(req)}/datasets/${encodeURIComponent(req.params.datasetId)}#uses` : `${systemPage(req)}#datasets`;
+    res.redirect(withToast(back, 'Link removed'));
+  }, systemPage));
 
   app.get('/workspaces/:wsId/iso42001/populations/:key.csv', ...view, requirePermission('workspace.export'), (req, res) => {
     const prog = audit.programme(db, req.workspace);

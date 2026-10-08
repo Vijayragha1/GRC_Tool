@@ -216,7 +216,7 @@ const CHECKLIST = [
   r('POP-PEOPLE', 'stage2', 'population', [c('7.2'), a('4.6')], 'List of people in AI roles, showing those who joined during the review period',
     'Everyone who builds, runs, oversees or assesses AI systems in scope, with their role and start date.'),
   r('POP-DATASETS', 'stage2', 'population', [a('7.3'), a('7.5')], 'List of the datasets used to develop or run the AI systems in scope',
-    'Each dataset with its source, the systems that use it and when it was last changed.'),
+    'Each dataset with its source, the systems that use it and when it was last changed.', { population: 'ai-datasets' }),
 
   // ------------------------------------------------------------ Samples taken during fieldwork
   r('SMP-SYSTEMS', 'fieldwork', 'sample', [a('5.3'), a('6.2.4'), a('6.2.6')], 'For each sampled AI system: its impact assessment, risk assessment, test results and monitoring records',
