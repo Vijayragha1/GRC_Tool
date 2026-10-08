@@ -1109,6 +1109,10 @@ function register(app, deps) {
     const objectives = count(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND COALESCE(framework,'iso42001')='iso42001'
       AND plan_actions IS NOT NULL AND evaluation_method IS NOT NULL`, wsId);
     const approvedSoa = aimsSoa.latestApproved(db, wsRow || { id: wsId });
+    // Risks and opportunities for the AIMS itself, each with an action and a
+    // way to judge whether it worked (clause 6.1.1).
+    const plannedRiskOpps = count(`SELECT COUNT(*) c FROM aims_risks_opportunities WHERE workspace_id=?
+      AND action IS NOT NULL AND effectiveness_method IS NOT NULL`, wsId);
 
     const record = (clauseId, name, found, basis) => ({
       name, clause: clauseId.replace('ai-clause-', ''), found: !!found, basis,
@@ -1117,6 +1121,8 @@ function register(app, deps) {
     const mandatoryChecks = [
       record('ai-clause-4.3', 'AIMS scope', approvedDocFor('ai-clause-4.3'), 'An approved scope document linked to clause 4.3'),
       record('ai-clause-5.2', 'AI policy', approvedDocFor('ai-clause-5.2', 'ai-annex-a-2-2'), 'An approved AI policy linked to clause 5.2 or A.2.2'),
+      record('ai-clause-6.1.1', 'Actions on AIMS risks and opportunities', plannedRiskOpps > 0,
+        `${plannedRiskOpps} risk${plannedRiskOpps === 1 ? '' : 's'} or opportunit${plannedRiskOpps === 1 ? 'y' : 'ies'} for the AIMS with an action and a way to judge it`),
       record('ai-clause-6.1.2', 'AI risk assessment process', approvedDocFor('ai-clause-6.1.2'), 'An approved risk assessment method linked to clause 6.1.2'),
       record('ai-clause-6.1.3', 'AI risk treatment process & SoA', !!approvedSoa, approvedSoa ? `SoA approved by ${approvedSoa.approved_by_name}` : 'An SoA snapshot approved by a second person'),
       record('ai-clause-6.1.4', 'AI system impact assessment process', approvedDocFor('ai-clause-6.1.4', 'ai-annex-a-5-2'), 'An approved impact assessment procedure linked to clause 6.1.4 or A.5.2'),
@@ -1214,6 +1220,9 @@ function register(app, deps) {
     const contextIssues = count('SELECT COUNT(*) c FROM context_issues WHERE workspace_id=?', wsId);
     const contextParties = count('SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?', wsId);
     if (!contextIssues || !contextParties) flags.push({ kind: 'context_missing', label: 'Internal and external issues or interested parties are not recorded (clauses 4.1 and 4.2)', severity: 'medium', items: [] });
+    if (!count('SELECT COUNT(*) c FROM aims_climate_decision WHERE workspace_id=?', wsId)) {
+      flags.push({ kind: 'climate_undecided', label: 'No recorded decision on whether climate change is a relevant issue (clause 4.1)', severity: 'medium', items: [] });
+    }
     const cbOpen = aimsCycle.openFindings(db, wsRow || { id: wsId });
     if (cbOpen.total) flags.push({ kind: 'open_cb_findings', label: `Open certification body findings (${cbOpen.major || 0} major, ${cbOpen.minor || 0} minor)`, severity: 'high', items: [] });
 

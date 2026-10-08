@@ -725,6 +725,20 @@
 .a42-list-action { font-size: 12.5px; font-weight: 600; color: var(--a42-heading); text-decoration: none; white-space: nowrap; }
 .a42-list-action span { display: inline-block; transition: transform .2s var(--a42-ease); }
 .a42-list-action:hover span { transform: translateX(3px); }
+
+/* Areas of impact on an impact assessment: one row per area, its state and a
+   line on why. Read back as a list of tone dots. */
+.a42-areas { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.a42-areas legend { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 0; }
+.a42-area-row { display: grid; grid-template-columns: minmax(150px, 220px) 160px minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+.a42-area-name { font-size: 13px; color: var(--text); }
+.a42-area-list { display: grid; gap: 5px; margin: 6px 0 0; padding: 0; list-style: none; }
+.a42-area-list li { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; line-height: 1.5; }
+.a42-area-list strong { font-weight: 600; }
+@media (max-width: 760px) {
+  .a42-area-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .a42-area-row .input { grid-column: 1 / -1; }
+}
 .a42-list-aside { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
 
 /* Pipeline keys under each bar on the overview. */

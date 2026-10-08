@@ -413,13 +413,13 @@ function register(app, deps) {
       context: aimsContext.list(db, req.workspace), K: aimsContext, edit: req.query.edit || null, today: today() });
   });
 
-  const contextAction = (fn, message) => (req, res) => {
+  const contextAction = (fn, message, anchor = '') => (req, res) => {
     try {
       fn(req);
       logAction(req.user.id, req.workspace.id, 'update_iso42001_context', 'workspace', req.workspace.id, { path: req.path }, auditCtx(req));
-      return res.redirect(withToast(`${base(req)}/context`, message));
+      return res.redirect(withToast(`${base(req)}/context`, message) + anchor);
     } catch (e) {
-      if (e instanceof aimsContext.ContextError) return res.redirect(withToast(`${base(req)}/context`, e.message, 'error'));
+      if (e instanceof aimsContext.ContextError) return res.redirect(withToast(`${base(req)}/context`, e.message, 'error') + anchor);
       throw e;
     }
   };
@@ -429,6 +429,10 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/iso42001/context/parties', ...manage, contextAction(req => aimsContext.saveParty(db, req.workspace, null, req.body), 'Interested party added'));
   app.post('/workspaces/:wsId/iso42001/context/parties/:id(\\d+)', ...manage, contextAction(req => aimsContext.saveParty(db, req.workspace, Number(req.params.id), req.body), 'Interested party saved'));
   app.post('/workspaces/:wsId/iso42001/context/parties/:id(\\d+)/delete', ...manage, contextAction(req => aimsContext.deleteParty(db, req.workspace, Number(req.params.id)), 'Interested party removed'));
+  app.post('/workspaces/:wsId/iso42001/context/climate', ...manage, contextAction(req => aimsContext.saveClimate(db, req.workspace, req.user.id, req.body), 'Climate decision recorded', '#climate'));
+  app.post('/workspaces/:wsId/iso42001/context/risks-opportunities', ...manage, contextAction(req => aimsContext.saveRiskOpp(db, req.workspace, req.user.id, null, req.body), 'Added to the plan', '#plan'));
+  app.post('/workspaces/:wsId/iso42001/context/risks-opportunities/:id(\\d+)', ...manage, contextAction(req => aimsContext.saveRiskOpp(db, req.workspace, req.user.id, Number(req.params.id), req.body), 'Saved', '#plan'));
+  app.post('/workspaces/:wsId/iso42001/context/risks-opportunities/:id(\\d+)/delete', ...manage, contextAction(req => aimsContext.deleteRiskOpp(db, req.workspace, Number(req.params.id)), 'Removed from the plan', '#plan'));
 
   app.get('/workspaces/:wsId/iso42001/ai-systems', ...view, (req, res) => {
     const prog = audit.programme(db, req.workspace);

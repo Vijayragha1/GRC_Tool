@@ -50,6 +50,9 @@ test('an impact assessment records societal impact and harm ratings, and no edit
   registry.saveAssessment(db, ws, editor, systemId, iaId, { ...base, version: ia().version });
   assert.throws(() => registry.approveAssessment(db, ws, reviewer, systemId, iaId, { version: ia().version }), /impact on society, how severe and likely/);
   registry.saveAssessment(db, ws, editor, systemId, iaId, { ...base, societal_impacts: 'Trust in automated triage', harm_severity: 4, harm_likelihood: 2, version: ia().version });
+  assert.throws(() => registry.approveAssessment(db, ws, reviewer, systemId, iaId, { version: ia().version }), /deployed, the jurisdictions/);
+  registry.saveAssessment(db, ws, editor, systemId, iaId, { ...base, societal_impacts: 'Trust in automated triage', harm_severity: 4, harm_likelihood: 2,
+    deployment_context: 'Hospital emergency department, on the triage nurse workstation', jurisdictions: 'India: DPDP Act 2023', retention_period: 'Six years', version: ia().version });
   assert.throws(() => registry.approveAssessment(db, ws, actor.id, systemId, iaId, { version: ia().version }), /prepared or edited/, 'the person who started it edited it');
   assert.throws(() => registry.approveAssessment(db, ws, editor, systemId, iaId, { version: ia().version }), /prepared or edited/);
   registry.approveAssessment(db, ws, reviewer, systemId, iaId, { version: ia().version });

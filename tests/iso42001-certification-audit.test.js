@@ -409,6 +409,7 @@ test('the AI system register feeds the populations, and an impact assessment nee
     societal_impacts: 'Wider trust in automated triage across the hospital network',
     harm_severity: 4, harm_likelihood: 2,
     mitigations: 'Clinician review of every alert', residual_level: 'medium', decision: 'proceed',
+    deployment_context: 'Inpatient wards, alerts on the nursing station dashboard', jurisdictions: 'India: DPDP Act 2023', retention_period: 'Six years',
   };
   await client.post(`${base}/ai-systems/${systemId}/impact-assessments/${iaId}`, { ...fields, version: 1 });
   const ia = () => db.prepare('SELECT * FROM ai_impact_assessments WHERE id=?').get(iaId);

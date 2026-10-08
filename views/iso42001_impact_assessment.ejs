@@ -5,6 +5,8 @@
   const sysBase = `${base}/ai-systems/${system.id}`;
   const draft = ia.status === 'draft';
   const editable = draft && perms.manage;
+  const areas = registry.decodeAreas(ia.impact_areas);
+  const considered = registry.areasConsidered(ia.impact_areas);
 %>
 
 <div class="a42">
@@ -26,8 +28,24 @@
     <form method="POST" action="<%= sysBase %>/impact-assessments/<%= ia.id %>" class="panel a42-form" id="iaForm">
       <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="version" value="<%= ia.version %>">
       <% registry.IA_FIELDS.forEach(([key, label, hint]) => { %>
-        <div><label class="label" for="ia_<%= key %>"><%= label %></label><textarea id="ia_<%= key %>" class="textarea" name="<%= key %>" rows="<%= ['potential_harms', 'mitigations', 'affected_parties'].includes(key) ? 4 : 3 %>" maxlength="8000"><%= ia[key] || '' %></textarea><span class="hint"><%= hint %></span></div>
+        <div><label class="label" for="ia_<%= key %>"><%= label %></label><textarea id="ia_<%= key %>" class="textarea" name="<%= key %>" rows="<%= ['potential_harms', 'mitigations', 'affected_parties', 'deployment_context'].includes(key) ? 4 : 3 %>" maxlength="8000"><%= ia[key] || '' %></textarea><span class="hint"><%= hint %></span></div>
+        <% if (key === 'societal_impacts') { %>
+          <fieldset class="a42-areas">
+            <legend class="label">Areas of impact <span class="meta"><%= considered %> of <%= registry.IMPACT_AREAS.length %> considered</span></legend>
+            <span class="hint">Mark each area affected or not affected, with a line on why. An unmarked area reads as not yet considered.</span>
+            <% registry.IMPACT_AREAS.forEach(([akey, alabel]) => { const a = areas[akey] || {}; %>
+              <div class="a42-area-row">
+                <label class="a42-area-name" for="area_<%= akey %>"><%= alabel %></label>
+                <select id="area_<%= akey %>" class="select" name="area_<%= akey %>"><option value="">Not yet considered</option>
+                  <% Object.entries(registry.AREA_STATES).forEach(([k, l]) => { %><option value="<%= k %>" <%= a.state === k ? 'selected' : '' %>><%= l %></option><% }) %>
+                </select>
+                <input class="input" name="area_<%= akey %>_note" value="<%= a.note || '' %>" maxlength="2000" aria-label="<%= alabel %>: why">
+              </div>
+            <% }) %>
+          </fieldset>
+        <% } %>
       <% }) %>
+      <div><label class="label" for="iaRetention">How long the result is kept</label><input id="iaRetention" class="input" name="retention_period" maxlength="200" value="<%= ia.retention_period || '' %>" placeholder="e.g. Six years after the system is retired"><span class="hint">A defined period, as the records retention policy sets it. A first assessment starts from the client's records retention period when one is set.</span></div>
       <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);">
         <div><label class="label" for="iaSeverity">Severity of the worst harm</label>
           <select id="iaSeverity" class="select" name="harm_severity"><option value="">Not rated</option>
@@ -77,7 +95,19 @@
       <dl class="a42-dl" style="grid-template-columns:200px minmax(0,1fr);">
         <% registry.IA_FIELDS.forEach(([key, label]) => { %>
           <dt><%= label %></dt><dd style="white-space:pre-line;"><%= ia[key] || 'Not recorded' %></dd>
+          <% if (key === 'societal_impacts') { %>
+            <dt>Areas of impact</dt>
+            <dd>
+              <p class="meta"><%= considered %> of <%= registry.IMPACT_AREAS.length %> considered</p>
+              <ul class="a42-area-list">
+                <% registry.IMPACT_AREAS.forEach(([akey, alabel]) => { const a = areas[akey] || {}; %>
+                  <li><i class="a42-dot t-<%= a.state === 'affected' ? 'gap' : a.state === 'not_affected' ? 'done' : 'open' %>" aria-hidden="true"></i><strong><%= alabel %></strong> &middot; <%= a.state ? registry.AREA_STATES[a.state] : 'Not yet considered' %><% if (a.note) { %>: <%= a.note %><% } %></li>
+                <% }) %>
+              </ul>
+            </dd>
+          <% } %>
         <% }) %>
+        <dt>Result kept for</dt><dd><%= ia.retention_period || 'Not recorded' %></dd>
         <dt>Severity and likelihood</dt><dd><%= ia.harm_severity ? registry.HARM_SEVERITY[ia.harm_severity] : 'Not rated' %> · <%= ia.harm_likelihood ? registry.HARM_LIKELIHOOD[ia.harm_likelihood] : 'Not rated' %></dd>
         <dt>Residual impact</dt><dd><%= ia.residual_level ? registry.RESIDUAL[ia.residual_level] : 'Not concluded' %></dd>
         <dt>Next review</dt><dd><%= ia.next_review_date || 'Not set' %></dd>

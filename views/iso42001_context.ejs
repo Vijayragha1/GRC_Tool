@@ -9,15 +9,46 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">Context and interested parties</h1>
-    <div class="page-subtitle">The internal and external issues that shape the AI management system (clause 4.1), and the interested parties whose requirements it addresses (clause 4.2). Mark each requirement that is a legal, regulatory or contractual obligation.</div>
+    <div class="page-subtitle">The internal and external issues that shape the AI management system (clause 4.1), the interested parties whose requirements it addresses (clause 4.2), and the risks and opportunities for the management system that follow from both (clause 6.1.1). Mark each requirement that is a legal, regulatory or contractual obligation.</div>
   </div>
 </div>
+<% const climate = context.climate; %>
 
 <section class="a42-stats" aria-label="Context measures">
   <div class="a42-stat"><span>Issues</span><strong><%= context.issues.length %></strong><em>Clause 4.1</em></div>
   <div class="a42-stat"><span>Interested parties</span><strong><%= context.parties.length %></strong><em>Clause 4.2</em></div>
   <div class="a42-stat"><span>Obligations</span><strong><%= context.obligations %></strong><em>Legal, regulatory or contractual</em></div>
   <div class="a42-stat<%= context.overdue ? ' is-attention' : '' %>"><span>Past their review date</span><strong><%= context.overdue %></strong><em><%= context.overdue ? 'Review and update them' : 'Nothing overdue' %></em></div>
+</section>
+
+<section class="panel" id="climate" aria-labelledby="ctxClimateTitle">
+  <div class="panel-head"><div><h2 id="ctxClimateTitle">Is climate change a relevant issue?</h2><p class="a42-caption">Clause 4.1 asks the organisation to decide, and an auditor asks to see the decision and the reasoning behind it. Think of the energy and water that training and running the AI systems use, customers' and investors' climate commitments, and climate risks to operations.</p></div><span class="meta">Clause 4.1</span></div>
+  <% if (climate) { %>
+    <ul class="a42-list a42-events">
+      <li>
+        <i class="a42-dot t-<%= overdue(climate.next_review) ? 'gap' : 'done' %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= climate.relevant === 'yes' ? 'Yes, climate change is a relevant issue' : 'No, climate change is not a relevant issue' %></span>
+          <p><%= climate.rationale %></p>
+          <p>Decided <%= fmtDay(climate.decided_at) %><% if (climate.decided_by_name) { %> by <%= climate.decided_by_name %><% } %><% if (climate.next_review) { %> &middot; <span class="<%= overdue(climate.next_review) ? 'a42-warn-text' : '' %>">review <%= fmtDay(climate.next_review) %></span><% } %><% if (climate.relevant === 'yes') { %> &middot; record how it bears on the AIMS as an issue below<% } %></p>
+        </div>
+      </li>
+    </ul>
+  <% } else { %>
+    <p class="a42-empty">Not decided yet. Record the decision either way: a "no" with its reasoning is as good as a "yes" to an auditor.</p>
+  <% } %>
+  <% if (perms.manage) { %>
+    <details class="a42-fold"<%= climate ? '' : ' open' %>>
+      <summary><%= climate ? 'Revisit the decision' : 'Record the decision' %></summary>
+      <form method="POST" action="<%= base %>/context/climate" class="panel-pad stack-grid" style="--cols:minmax(0,180px) minmax(0,1fr) minmax(0,180px);--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <div><label class="label" for="climateRelevant">Relevant?</label><select id="climateRelevant" class="select" name="relevant" required><option value="">Choose</option><option value="yes" <%= climate && climate.relevant === 'yes' ? 'selected' : '' %>>Yes</option><option value="no" <%= climate && climate.relevant === 'no' ? 'selected' : '' %>>No</option></select></div>
+        <div><label class="label" for="climateWhy">Why</label><input id="climateWhy" class="input" name="rationale" required maxlength="2000" value="<%= climate ? climate.rationale : '' %>" placeholder="e.g. Models run on a cloud region with a renewable supply; no customer sets climate terms"></div>
+        <div><label class="label" for="climateReview">Next review</label><input id="climateReview" class="input" type="date" name="next_review" value="<%= climate && climate.next_review || '' %>"></div>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save decision</button></div>
+      </form>
+    </details>
+  <% } %>
 </section>
 
 <section class="panel" aria-labelledby="ctxIssuesTitle">
@@ -113,6 +144,49 @@
         <div><label class="label">Owner</label><input class="input" name="owner"></div>
         <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
         <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add party</button></div>
+      </form>
+    </details>
+  <% } %>
+</section>
+
+<%
+  const roTone = (r) => r.status === 'done' ? 'done' : (r.due_date && overdue(r.due_date)) ? 'gap' : (r.action && r.effectiveness_method) ? 'wip' : 'open';
+%>
+<section class="panel" id="plan" aria-labelledby="ctxPlanTitle">
+  <div class="panel-head"><div><h2 id="ctxPlanTitle">Risks and opportunities for the AIMS</h2><p class="a42-caption">What could stop the management system achieving its results, or help it do better, drawn from the issues and requirements above. These are the AIMS's own, such as depending on one person for impact assessments; the risks each AI system poses belong on the risk register. <strong><%= context.planned %> of <%= context.riskOpps.length %></strong> have an action and a way to judge it.</p></div><span class="meta">Clause 6.1.1</span></div>
+  <% if (!context.riskOpps.length) { %><p class="a42-empty">Nothing planned yet. Work down the issues and requirements above and ask of each: what could go wrong for the AIMS here, and what could go better?</p><% } else { %>
+  <ul class="a42-list a42-events">
+    <% context.riskOpps.forEach(r => { %>
+      <li>
+        <i class="a42-dot t-<%= roTone(r) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= r.description %></span>
+          <p><%= K.RO_KIND_LABEL[r.kind] %> &middot; <%= K.RO_STATUS_LABEL[r.status] %><% if (r.issue_text) { %> &middot; from the issue “<%= r.issue_text %>”<% } %><% if (r.party_name) { %> &middot; from <%= r.party_name %><% } %></p>
+          <p><%= r.action ? `Action: ${r.action}` : 'No action planned yet' %><% if (r.owner) { %> &middot; <%= r.owner %><% } %><% if (r.due_date) { %> &middot; <span class="<%= r.status !== 'done' && overdue(r.due_date) ? 'a42-warn-text' : '' %>">due <%= fmtDay(r.due_date) %></span><% } %></p>
+          <% if (r.integration) { %><p>Built into the AIMS through: <%= r.integration %></p><% } %>
+          <p><%= r.effectiveness_method ? `Effectiveness judged by: ${r.effectiveness_method}` : 'How effectiveness is judged is not recorded yet' %><% if (r.effectiveness_result) { %> &middot; result: <%= r.effectiveness_result %><% } %></p>
+          <% if (perms.manage) { %>
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit</summary>
+            <form method="POST" action="<%= base %>/context/risks-opportunities/<%= r.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+              <%- include('partials/a42_risk_opp_fields', { r, K, context, overdue }) %>
+              <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/risks-opportunities/<%= r.id %>/delete" onclick="return confirm('Remove this from the plan?')">Remove</button></div>
+            </form>
+          </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+  <% } %>
+  <% if (perms.manage) { %>
+    <details class="a42-fold">
+      <summary>Add a risk or opportunity</summary>
+      <form method="POST" action="<%= base %>/context/risks-opportunities" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <%- include('partials/a42_risk_opp_fields', { r: null, K, context, overdue }) %>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add to the plan</button></div>
       </form>
     </details>
   <% } %>
