@@ -1,5 +1,7 @@
 <%#
-  The band at the top of every ISO 42001 page. The strip is the whole
+  The band at the top of every ISO 42001 page. The runway is the
+  engagement's stages, each a link to its page; the stage the open page
+  belongs to is marked. The strip is the whole
   standard: 27 clauses then 38 Annex A controls, each coloured by its
   conclusion and linked to its assessment. The requirement a consultant just
   saved flips into its new colour when the next page opens; nothing else moves.
@@ -12,7 +14,7 @@
     </div>
     <ol class="a42-mast-runway" aria-label="Engagement stages">
       <% mast.stages.forEach(s => { %>
-        <li class="<%= s.done ? 'is-done' : s.current ? 'is-current' : '' %>"<%- s.current ? ' aria-current="step"' : '' %>><%= s.name %></li>
+        <li class="<%= [s.done ? 'is-done' : s.current ? 'is-current' : '', s.key === here ? 'is-here' : ''].filter(Boolean).join(' ') %>"<%- s.current ? ' aria-current="step"' : '' %>><a href="<%= mast.base %>/stages/<%= s.key %>"<%- s.key === here ? ' aria-current="page"' : '' %>><%= s.name %></a></li>
       <% }) %>
     </ol>
   </div>

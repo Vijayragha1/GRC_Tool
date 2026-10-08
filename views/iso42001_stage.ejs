@@ -1,0 +1,66 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%
+  const s = stage;
+  const base = `/workspaces/${ws.id}/iso42001`;
+  const stepsDone = s.steps.filter(st => st.tone === 'done' || st.tone === 'na').length;
+%>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <span class="a42-kicker">Stage <%= s.number %> of <%= s.count %><%= s.done ? ' · complete' : s.current ? ' · the engagement is here' : '' %></span>
+      <h1 class="page-title"><%= s.name %></h1>
+      <div class="page-subtitle"><%= s.purpose %></div>
+    </div>
+    <nav class="a42-stage-pager" aria-label="Other stages">
+      <% if (s.prev) { %><a class="btn btn-secondary btn-xs" href="<%= base %>/stages/<%= s.prev.key %>"><span aria-hidden="true">←</span> <%= s.prev.name %></a><% } %>
+      <% if (s.next) { %><a class="btn btn-secondary btn-xs" href="<%= base %>/stages/<%= s.next.key %>"><%= s.next.name %> <span aria-hidden="true">→</span></a><% } %>
+    </nav>
+  </div>
+
+  <section class="a42-stats a42-stats-2" aria-label="Where this stage stands">
+    <div class="a42-stat"><span>Work in place</span><strong><%= s.inPlace %> <small>of <%= s.tracked %></small></strong><em>Records and registers this stage produces</em></div>
+    <div class="a42-stat"><span>Plan steps complete</span><strong><%= stepsDone %> <small>of <%= s.steps.length %></small></strong><em><%= s.hasPlan ? 'Accepted on the engagement plan' : 'No delivery plan yet' %></em></div>
+  </section>
+
+  <section class="panel" aria-labelledby="stWorkTitle">
+    <div class="panel-head"><div><h2 id="stWorkTitle">Work in this stage</h2><p class="a42-caption">Each line opens where the work is done. Its state is read from the records themselves, the same way the readiness check reads them.</p></div></div>
+    <ul class="a42-list">
+      <% s.work.forEach(w => { %>
+        <li>
+          <i class="a42-dot t-<%= w.tone %>" aria-hidden="true"></i>
+          <div>
+            <a class="a42-list-title" href="<%= w.href %>"><%= w.title %></a>
+            <p><strong><%= w.status %></strong><% if (w.detail) { %> · <%= w.detail %><% } %></p>
+            <p><%= w.ref %><% if (w.shared) { %> · opens outside the module<% } %></p>
+          </div>
+          <a class="a42-list-action" href="<%= w.href %>">Open <span aria-hidden="true">→</span></a>
+        </li>
+      <% }) %>
+    </ul>
+  </section>
+
+  <section class="panel" aria-labelledby="stPlanTitle">
+    <div class="panel-head"><div><h2 id="stPlanTitle">Plan steps in this stage</h2><p class="a42-caption">The delivery plan's steps for this stage. They are submitted, reviewed and accepted on the engagement plan.</p></div><a class="a42-list-action" href="/workspaces/<%= ws.id %>/engagement-plan">Engagement plan <span aria-hidden="true">→</span></a></div>
+    <% if (!s.hasPlan) { %>
+      <p class="a42-empty">No delivery plan yet. Open the engagement plan to set it up; its steps then appear under each stage.</p>
+    <% } else if (!s.steps.length) { %>
+      <p class="a42-empty">The delivery plan has no steps in this stage.</p>
+    <% } else { %>
+      <ul class="a42-list">
+        <% s.steps.forEach(st => { %>
+          <li>
+            <i class="a42-dot t-<%= st.tone %>" aria-hidden="true"></i>
+            <div>
+              <span class="a42-list-title"><%= st.title %></span>
+              <p><%= st.text %><% if (st.due) { %> · due <%= st.due %><% } %><% if (!st.required) { %> · optional<% } %></p>
+            </div>
+            <span></span>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

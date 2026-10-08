@@ -18,6 +18,7 @@ const docLinks = require('../lib/doc-links');
 const auditRequests = require('../lib/iso42001-audit');
 const aimsCycle = require('../lib/iso42001-cycle');
 const aimsSoa = require('../lib/iso42001-soa');
+const aimsStages = require('../lib/iso42001-stages');
 const reqOpts = require('../lib/requirement-options');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const aiRisk = require('../lib/ai-risk');
@@ -1282,6 +1283,20 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/iso42001/readiness', requireAuth, requireWorkspace, (req, res) => {
     const r = computeIso42001Readiness(req.workspace.id);
     res.render('iso42001_readiness', { user: req.user, ws: req.workspace, r });
+  });
+
+  // The engagement's stages (lib/iso42001-stages.js): each stage's work with
+  // its live state and the delivery-plan steps it covers. /stages opens the
+  // stage the engagement is in.
+  app.get('/workspaces/:wsId/iso42001/stages', requireAuth, requireWorkspace, (req, res) => {
+    const list = aimsStages.list(res.locals.a42Masthead());
+    const here = list.find(s => s.current) || list.find(s => !s.done) || list[0];
+    res.redirect(`/workspaces/${req.workspace.id}/iso42001/stages/${here.key}`);
+  });
+  app.get('/workspaces/:wsId/iso42001/stages/:key([a-z]+)', requireAuth, requireWorkspace, (req, res) => {
+    const stage = aimsStages.build(db, req.workspace, res.locals.a42Masthead(), req.params.key, computeIso42001Readiness);
+    if (!stage) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That stage is not part of this engagement.' });
+    res.render('iso42001_stage', { user: req.user, ws: req.workspace, title: stage.name, active: `iso42001-stage-${stage.key}`, stage });
   });
 
   // Unified readiness view - the "executive brief" moment. Shows a headline

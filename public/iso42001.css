@@ -400,6 +400,10 @@
 .a42-mast-runway li.is-done::after { content: "✓"; margin-left: 5px; color: var(--mint); font-size: 11px; }
 .a42-mast-runway li.is-current { color: var(--mint); font-weight: 600; }
 .a42-mast-runway li.is-current::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--mint); }
+.a42-mast-runway a { color: inherit; text-decoration: none; border-radius: 4px; }
+.a42-mast-runway a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.a42-mast-runway a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.a42-mast-runway li.is-here a { color: #fff; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .5); text-underline-offset: 3px; }
 
 /* The strip: the whole standard in 65 cells. */
 .a42-strip { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px 24px; margin-top: 16px; }
@@ -869,6 +873,7 @@ span.rq-seg:hover { transform: none; box-shadow: none; }
 [data-theme="dark"] .a42-warn-text { color: #ef9189; }
 .a42-shell .input.is-late { border-color: #b42318; color: #b42318; }
 .a42-stats-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.a42-stage-pager { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; }
 .a42-stat > strong.a42-stat-text { font-size: 20px; line-height: 1.25; letter-spacing: -.015em; }
 .a42-lead-single { grid-template-columns: minmax(0, 1fr); }
 .a42-lead-copy form { margin: 0; }
