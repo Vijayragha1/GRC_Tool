@@ -10,6 +10,7 @@ const enc = require('../lib/encryption');
 const jobs = require('../lib/jobs');
 const ctlReads = require('../lib/control-reads');
 const aimsScope = require('../lib/iso42001-scope');
+const aimsShared = require('../lib/aims-shared-records');
 const ctlWrites = require('../lib/control-writes');
 const personalDrafts = require('../lib/form-drafts');
 const diagnostics = require('../lib/assessment-diagnostics');
@@ -1098,12 +1099,9 @@ function register(app, deps) {
         AND EXISTS (SELECT 1 FROM ai_impact_assessments ia WHERE ia.ai_system_id=s.id AND ia.status='approved')`, wsId);
     const recentRiskRecord = count(`SELECT COUNT(*) c FROM risk_assessment_records WHERE workspace_id=? AND performed_on >= date('now','-12 months')`, wsId) > 0;
     const aiRiskTreated = count(`SELECT COUNT(DISTINCT r.id) c FROM risks r JOIN iso42001_risk_controls rc ON rc.risk_id=r.id WHERE r.workspace_id=?`, wsId) > 0;
-    const aimsAudit = count(`SELECT COUNT(*) c FROM audits a WHERE a.workspace_id=?
-        AND (COALESCE(a.lifecycle_stage,'') IN ('report','follow_up','closed') OR a.status IN ('complete','completed','closed'))
-        AND (EXISTS (SELECT 1 FROM audit_observations o WHERE o.audit_id=a.id AND o.iso_item_id LIKE 'ai-%')
-          OR EXISTS (SELECT 1 FROM audit_findings f WHERE f.audit_id=a.id AND f.iso_item_id LIKE 'ai-%')
-          OR EXISTS (SELECT 1 FROM audit_samples sm WHERE sm.audit_id=a.id AND sm.iso_item_id LIKE 'ai-%'))`, wsId) > 0;
-    const reviewHeld = count(`SELECT COUNT(*) c FROM mrms WHERE workspace_id=? AND status='complete' AND meeting_date >= date('now','-12 months')`, wsId) > 0;
+    // Shared with the delivery plan's readiness gate (lib/aims-shared-records.js).
+    const aimsAudit = aimsShared.reportedAudits(db, wsRow || { id: wsId }) > 0;
+    const reviewHeld = aimsShared.heldReviews(db, wsRow || { id: wsId }, { withinMonths: 12 }) > 0;
     const aimsNcs = count(`SELECT COUNT(*) c FROM nonconformities WHERE workspace_id=? AND iso_item_id LIKE 'ai-%'`, wsId);
     // Objectives for the AIMS with the plan clause 6.2 asks for behind them.
     const objectives = count(`SELECT COUNT(*) c FROM security_objectives WHERE workspace_id=? AND COALESCE(framework,'iso42001')='iso42001'

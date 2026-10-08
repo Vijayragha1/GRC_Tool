@@ -72,7 +72,7 @@ test('complete AI certification delivery passes real assessment, acceptance and 
   db.prepare(`INSERT INTO audits(workspace_id,title,scope,audit_date,status,summary,created_by)
     VALUES (?,'AIMS internal audit','ISO 42001 scoped AI service','2026-07-01','complete','All scoped requirements tested; findings closed.',?)`).run(ws.id, reviewer);
   db.prepare(`INSERT INTO mrms(workspace_id,meeting_date,attendees,status,decisions,created_by)
-    VALUES (?,'2026-07-15','Sponsor and AI owner','completed','Approved AIMS performance, resources and improvement actions.',?)`).run(ws.id, author);
+    VALUES (?,'2026-07-15','Sponsor and AI owner','complete','Approved AIMS performance, resources and improvement actions.',?)`).run(ws.id, author);
   const stage1 = Number(db.prepare(`INSERT INTO iso42001_cert_cycle_events
     (workspace_id,event_type,actual_date,status) VALUES (?,'Stage 1 audit','2026-08-01','completed')`).run(ws.id).lastInsertRowid);
   const stage2 = Number(db.prepare(`INSERT INTO iso42001_cert_cycle_events

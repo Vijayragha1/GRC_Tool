@@ -88,7 +88,8 @@ test('an AI supplier can be the client\'s supplier register entry', async () => 
   assert.deepEqual(rows, [{ supplier_name: 'Bureau partner', supplier_id: null }, { supplier_name: 'Northwind Cloud', supplier_id: supplierId }]);
 
   const page = await client.get(`${base()}/ai-systems/${systemId}`);
-  assert.match(page.text, new RegExp(`href="/workspaces/${wsId}/vendors/${supplierId}">In the supplier register`));
+  assert.match(page.text, /In the supplier register/);
+  assert.doesNotMatch(page.text, new RegExp(`/vendors/${supplierId}`), 'no third-party risk module, so no link to a page that would refuse it');
   const pop = require('../lib/ai-systems').population(db, { id: wsId }, 'ai-vendors');
   assert.deepEqual(pop.rows.map((r) => [r[0], r[5]]), [['Bureau partner', 'No'], ['Northwind Cloud', 'Yes']]);
 });

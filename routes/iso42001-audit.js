@@ -66,6 +66,7 @@ function register(app, deps) {
       export: has('workspace.export'),
       upload: has('evidence.upload'),
       docCreate: has('document.create'),
+      tprmView: has('tprm.third_party.view'),
     };
   }
 

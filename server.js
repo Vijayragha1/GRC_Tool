@@ -781,6 +781,12 @@ function requireWorkspace(req, res, next) {
   const ws = getWorkspace(req.params.wsId, req.user);
   if (!ws) return res.status(403).render('error', { user: req.user, message: 'This workspace doesn\'t exist, or it belongs to a different firm. If you recently switched tenants, the old workspace URL won\'t resolve. Use the Clients dashboard to pick a workspace in the active firm.' });
   ws.frameworks = parseWorkspaceFrameworks(ws.frameworks);
+  // ISO 42001 pages exist only for a client with that programme. Checked here,
+  // after access to the workspace is established, so every route under the
+  // path is covered and no other client's programmes are disclosed.
+  if (/^\/workspaces\/[^/]+\/iso42001(?:\/|$)/.test(String(req.originalUrl || req.url).split('?')[0]) && !ws.frameworks.includes('iso42001')) {
+    return res.status(404).render('error', { user: req.user, ws, message: 'ISO 42001 is not part of this client\'s programme.' });
+  }
   ws.effective_timezone = workspaceTimeZone(ws);
   // Operational modules are independent of assessment frameworks. Attach the
   // authoritative TPRM service period once so navigation and every workspace
