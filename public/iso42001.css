@@ -117,6 +117,10 @@
 .a42-form .hint { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.45; }
 .a42-checks { display: grid; gap: 6px; }
 .a42-checks label { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--ink); }
+/* A part of the AI system register that applies by role (partials/iso42001_ai_system_fields.ejs). */
+.a42-role-section { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
+.a42-role-section[hidden], .a42-role-empty[hidden] { display: none; }
+.a42-role-section > legend { padding: 0; }
 /* The role questions (partials/a42_role_questions.ejs). */
 .a42-role-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
 .a42-role-q { min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -483,6 +487,9 @@
 .a42-shell .panel-head { border-bottom-color: var(--a42-line); }
 .a42-shell .panel-head h2, .a42-shell .panel-head h3, .a42-shell .a42 h2 { font-family: var(--a42-face); font-size: 15.5px; font-weight: 650; letter-spacing: -.012em; color: var(--a42-heading); }
 .a42-shell .panel + .panel, .a42-shell .panel + section, .a42-shell section + .panel { margin-top: 16px; }
+/* Panels side by side in a grid are spaced by the grid's gap, not stacked margins. */
+.a42-shell .stack-grid > .panel { margin-top: 0; }
+.a42-shell .stack-grid + .stack-grid { margin-top: 16px; }
 .a42-shell > .panel, .a42-shell > section.panel { margin-bottom: 16px; }
 .a42-shell table.t th { background: transparent; }
 .a42-shell .btn-primary:not(:is(.page-head, .a42ov-heading) .btn) { background: var(--g); border-color: var(--g); color: #fff; }
