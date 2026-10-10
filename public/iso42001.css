@@ -413,6 +413,21 @@
 .a42-mast-runway a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .a42-mast-runway li.is-here a { color: #fff; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .5); text-underline-offset: 3px; }
 
+/* The next step on the engagement's path (lib/iso42001-journey.js), at the foot of the band. */
+.a42-path { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .14); font-size: 13px; line-height: 1.45; color: rgba(255, 255, 255, .82); }
+.a42-path p { margin: 0; min-width: 0; }
+.a42-path strong { color: #fff; font-weight: 600; }
+.a42-path-step { margin-right: 4px; color: var(--mint); font-weight: 600; }
+.a42-path-detail { color: rgba(255, 255, 255, .6); }
+.a42-path .btn { flex: none; }
+
+/* The path as a list of steps, grouped by stage (partials/a42_path.ejs). */
+.a42-steps > li.is-next { background: var(--bg-subtle); }
+.a42-steps > li.is-skip .a42-list-title, .a42-steps > li.is-done .a42-list-title { font-weight: 500; }
+.a42-step-no { margin-right: 6px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; font-weight: 600; }
+.a42-step-state { font-weight: 600; color: var(--text); }
+
 /* The strip: the whole standard in 65 cells. */
 .a42-strip { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px 24px; margin-top: 16px; }
 .a42-strip-count { padding-top: 1px; color: rgba(255, 255, 255, .78); font-size: 12.5px; text-decoration: none; white-space: nowrap; }

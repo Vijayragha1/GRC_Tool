@@ -29,8 +29,6 @@
   if (model.queues.followUp.length) priorities.push({ label: 'Auditor follow-up', title: `The auditor has come back on ${plural(model.queues.followUp.length, 'request')}`, note: 'Review the auditor’s question and prepare the additional evidence requested.', href: `${base}/requests?status=follow_up`, action: 'Review auditor follow-up', tone: 'attention' });
   if (eo.requests.toReview) priorities.push({ label: 'Assessor review', title: `${plural(eo.requests.toReview, 'client response')} ready for review`, note: 'Check the response and its evidence, then accept it or request changes.', href: eo.requests.href, action: 'Review responses', tone: 'review' });
   if (eo.findings.open) priorities.push({ label: 'Corrective action', title: `${plural(eo.findings.open, 'open finding')} to resolve`, note: eo.findings.rows[0]?.title || 'Record the correction, supporting evidence and closure review.', href: eo.findings.href, action: 'Review findings', tone: 'attention' });
-  // The roles decide which controls weigh most, so they come before the assessment.
-  if (roles.toConfirm.length) priorities.push({ label: 'AI roles', title: `Record what the organisation does with ${plural(roles.toConfirm.length, 'AI system')}`, note: 'Its role for each system (customer or user, producer, provider or partner) decides which controls weigh most.', href: `${base}/roles`, action: 'Answer the role questions', tone: 'attention' });
   if (!eo.assessment.complete) priorities.push({ label: 'Assessment', title: eo.assessment.assessed < eo.assessment.total ? `${plural(eo.assessment.total - eo.assessment.assessed, 'requirement')} still need a conclusion` : 'Assessment needs independent review', note: eo.assessment.reviewed ? 'The reviewed baseline no longer matches the current assessment. Review the changes.' : 'Record conclusions and evidence, then complete independent review.', href: eo.assessment.href, action: 'Continue assessment', tone: 'review' });
   if (eo.requests.withClient) priorities.push({ label: 'With client', title: `${plural(eo.requests.withClient, 'request')} awaiting the client`, note: 'Follow up with the assigned owners. A response still needs assessor review.', href: eo.requests.href, action: 'View client requests', tone: 'client' });
   if (!priorities.length && nextCriteria.length) priorities.push({ label: 'Current phase', title: nextCriteria[0].label, note: 'Complete the supporting work and obtain the required approval to pass this phase.', href: eo.planHref, action: 'Open engagement plan', tone: 'review' });
@@ -50,19 +48,26 @@
 
   <%
     const TONE_OF = { attention: 'gap', review: 'gap', client: 'wip' };
-    const leadState = summary?.completionReady ? ['done', 'Ready for completion review'] : eo.plan ? ['part', 'Engagement in progress'] : ['open', 'Setup required'];
     const reqHref = (stage, status) => `${base}/requests?stage=${stage}` + (status && status !== 'all' ? `&status=${status}` : '');
+  %>
+  <%
+    // The next step on the engagement's path (lib/iso42001-journey.js).
+    const journey = typeof a42Journey === 'function' ? a42Journey() : null;
+    const nx = journey && journey.next;
   %>
   <section class="panel a42-lead" aria-labelledby="a42PositionTitle">
     <div class="a42-lead-copy">
-      <span class="a42-kicker"><%= eo.planScope === 'combined' ? 'Combined engagement · current phase' : 'Current phase' %></span>
-      <h2 id="a42PositionTitle"><%= phase?.name || (eo.plan ? 'Phase gates complete' : 'Ready to set up your engagement') %></h2>
-      <p><%= nextCriteria[0]?.label || (summary?.completionReady ? 'Completion criteria are satisfied. Review the engagement before closing.' : eo.plan ? 'Review the plan for remaining deliverables and completion criteria.' : 'Establish scope, responsibilities and the delivery plan to begin.') %></p>
-      <a class="btn btn-primary" href="<%= eo.planHref %>"><%= eo.plan ? 'Open engagement plan' : 'Set up engagement plan' %> <span aria-hidden="true">→</span></a>
+      <span class="a42-kicker"><%= nx ? `Your path · step ${nx.number} of ${journey.total}` : 'Your path' %></span>
+      <h2 id="a42PositionTitle"><%= nx ? nx.title : 'Every step is done' %></h2>
+      <p><%= nx ? nx.why : 'The AIMS now runs. Keep answering concerns and prepare for the surveillance audits.' %><% if (nx && nx.detail) { %> <strong><%= nx.detail %>.</strong><% } %></p>
+      <div class="row-center" style="gap:12px;flex-wrap:wrap;">
+        <% if (nx) { %><a class="btn btn-primary" href="<%= nx.href %>">Start step <%= nx.number %> <span aria-hidden="true">→</span></a><% } %>
+        <a class="a42-list-action" href="<%= base %>/path">The whole path <span aria-hidden="true">→</span></a>
+      </div>
     </div>
     <dl class="a42-lead-facts">
-      <div><dt>Engagement</dt><dd><i class="a42-dot t-<%= leadState[0] %>" aria-hidden="true"></i><%= leadState[1] %></dd></div>
-      <div><dt>Phase gates passed</dt><dd><%= summary ? `${summary.phaseGatesPassed} of ${summary.phaseGatesTotal}` : 'No phase gates yet' %></dd></div>
+      <div><dt>Steps done</dt><dd><i class="a42-dot t-<%= journey && journey.done === journey.total ? 'done' : journey && journey.done ? 'part' : 'open' %>" aria-hidden="true"></i><%= journey ? `${journey.done} of ${journey.total}` : 'Not available' %></dd></div>
+      <div><dt>Delivery plan</dt><dd><a href="<%= eo.planHref %>"><%= phase?.name || (eo.plan ? 'Phase gates complete' : 'Not set up yet') %></a></dd></div>
       <div><dt>Deliverables accepted</dt><dd><%= summary ? `${summary.acceptedDeliverables} of ${summary.requiredDeliverables}` : 'Once the plan exists' %></dd></div>
     </dl>
   </section>

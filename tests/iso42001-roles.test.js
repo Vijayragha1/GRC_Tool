@@ -97,12 +97,14 @@ test('the system form asks the same questions and keeps roles it is not given', 
 test('the overview, the Mobilise stage and readiness ask for the roles still missing', async () => {
   const overview = await client.get(`${base()}/overview`);
   assert.match(overview.text, /The organisation&#39;s AI roles|The organisation's AI roles/);
-  assert.match(overview.text, /Record what the organisation does with 1 AI system/, 'Fraud alerts was ticked, not answered');
+  assert.match(overview.text, /Your path · step 1 of \d+/, 'the overview opens on the next step: the scoping questions come first');
 
-  const mobilise = await client.get(`${base()}/stages/mobilise`);
-  const line = mobilise.text.slice(mobilise.text.indexOf('>AI roles</a>'), mobilise.text.indexOf('</li>', mobilise.text.indexOf('>AI roles</a>')));
-  assert.match(line, /In progress/);
-  assert.match(line, /2 of 3 AI systems answered/);
+  const title = '>Say what the organisation does with each AI system</a>';
+  for (const page of [`${base()}/stages/mobilise`, `${base()}/path`]) {
+    const html = (await client.get(page)).text;
+    const step = html.slice(html.indexOf(title), html.indexOf('</li>', html.indexOf(title)));
+    assert.match(step, /2 of 3 AI systems answered/, 'Fraud alerts was ticked, not answered');
+  }
 
   const bare = Number(db.prepare(`INSERT INTO ai_systems (workspace_id, name, lifecycle_stage, in_scope, created_by) VALUES (?, 'Unlabelled model', 'in_use', 1, ?)`).run(wsId, actor.id).lastInsertRowid);
   const { shared } = require('../routes/iso42001');

@@ -19,25 +19,13 @@
   </div>
 
   <section class="a42-stats a42-stats-2" aria-label="Where this stage stands">
-    <div class="a42-stat"><span>Work in place</span><strong><%= s.inPlace %> <small>of <%= s.tracked %></small></strong><em>Records and registers this stage produces</em></div>
+    <div class="a42-stat"><span>Steps done</span><strong><%= s.inPlace %> <small>of <%= s.tracked %></small></strong><em>In this stage of the path</em></div>
     <div class="a42-stat"><span>Plan steps complete</span><strong><%= stepsDone %> <small>of <%= s.steps.length %></small></strong><em><%= s.hasPlan ? 'Accepted on the engagement plan' : 'No delivery plan yet' %></em></div>
   </section>
 
   <section class="panel" aria-labelledby="stWorkTitle">
-    <div class="panel-head"><div><h2 id="stWorkTitle">Work in this stage</h2><p class="a42-caption">Each line opens where the work is done. Its state is read from the records themselves, the same way the readiness check reads them.</p></div></div>
-    <ul class="a42-list">
-      <% s.work.forEach(w => { %>
-        <li>
-          <i class="a42-dot t-<%= w.tone %>" aria-hidden="true"></i>
-          <div>
-            <a class="a42-list-title" href="<%= w.href %>"><%= w.title %></a>
-            <p><strong><%= w.status %></strong><% if (w.detail) { %> · <%= w.detail %><% } %></p>
-            <p><%= w.ref %><% if (w.shared) { %> · opens outside the module<% } %></p>
-          </div>
-          <a class="a42-list-action" href="<%= w.href %>">Open <span aria-hidden="true">→</span></a>
-        </li>
-      <% }) %>
-    </ul>
+    <div class="panel-head"><div><h2 id="stWorkTitle">Steps in this stage</h2><p class="a42-caption">The steps of this stage, in order, numbered along the whole path. Each ticks off by itself once its records exist.</p></div><a class="a42-list-action" href="<%= base %>/path">The whole path <span aria-hidden="true">→</span></a></div>
+    <%- include('partials/a42_path', { steps: s.work }) %>
   </section>
 
   <section class="panel" aria-labelledby="stPlanTitle">

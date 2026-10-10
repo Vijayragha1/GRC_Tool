@@ -77,6 +77,7 @@ test('the readiness page and the stage pages say which records are not expected 
 
   await client.post(`${base()}/soa/ai-annex-a-4-3`, { applicability: 'excluded', justification: 'No data of ours goes into the assistant' });
   const assess = await client.get(`${base()}/stages/assess`);
-  const at = assess.text.indexOf('>Datasets</a>');
-  assert.match(assess.text.slice(at, assess.text.indexOf('</li>', at)), /Not expected[\s\S]*A\.4\.3 is excluded in the Statement of Applicability/);
+  const at = assess.text.indexOf('>Record the data behind each AI system</a>');
+  assert.ok(at > 0, 'the data step is shown');
+  assert.match(assess.text.slice(at, assess.text.indexOf('</li>', at)), /Not needed<\/span> · A\.4\.3 is excluded in the Statement of Applicability/);
 });

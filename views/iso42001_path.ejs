@@ -1,0 +1,23 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<% const nx = journey.next; %>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Your path</h1>
+      <div class="page-subtitle">Every step of the ISO 42001 engagement, in order. Work down the list: each step ticks off by itself once its records exist, and the next one is always marked.</div>
+    </div>
+    <% if (nx) { %><a class="btn btn-primary" href="<%= nx.href %>">Start step <%= nx.number %> <span aria-hidden="true">→</span></a><% } %>
+  </div>
+
+  <section class="a42-stats a42-stats-2" aria-label="Where the path stands">
+    <div class="a42-stat"><span>Steps done</span><strong><%= journey.done %> <small>of <%= journey.total %></small></strong><em><%= journey.steps.some(s => s.status === 'skip') ? 'Steps this organisation does not need are left out' : 'Across the whole engagement' %></em></div>
+    <div class="a42-stat"><span>Next step</span><strong class="a42-stat-text"><%= nx ? nx.title : 'Every step is done' %></strong><em><%= nx ? nx.why : 'Keep answering concerns and prepare for the surveillance audits.' %></em></div>
+  </section>
+
+  <section class="panel" aria-label="The steps, by stage">
+    <%- include('partials/a42_path', { groups }) %>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

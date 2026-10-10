@@ -75,30 +75,32 @@ test('each module page marks its stage on the runway', async () => {
   assert.equal(here((await client.get(`${base(aimsId)}/overview`)).text), null, 'the overview spans every stage');
 });
 
-test('a stage\'s work shows its state from the records', async () => {
+test('a stage\'s steps show their state from the records', async () => {
   const before = await client.get(`${base(aimsId)}/stages/assess`);
-  assert.match(line(before.text, 'AI risk register and assessment'), /Not yet/);
-  assert.match(line(before.text, 'AI risk criteria'), /Default criteria/);
-  assert.match(line(before.text, 'Gap assessment'), /0 of 65 requirements concluded/);
+  assert.match(line(before.text, 'Assess the AI risks and record the assessment'), /After step \d+<\/span> · Set the AIMS&#39;s risk criteria/, 'a step waits on the one it needs');
+  assert.match(line(before.text, 'Set the AIMS&#39;s risk criteria'), /The default criteria are still in use/);
+  assert.match(line(before.text, 'Assess every requirement of the standard'), /0 of 65 requirements concluded/);
 
   await client.post(`${base(aimsId)}/risks/assessments`, { label: 'AI risk assessment, Q4', performed_on: new Date().toISOString().slice(0, 10) });
   const after = await client.get(`${base(aimsId)}/stages/assess`);
-  assert.match(line(after.text, 'AI risk register and assessment'), /In place/);
-  assert.match(after.text, /Work in place<\/span><strong>1 <small>of 5<\/small>/);
+  assert.match(line(after.text, 'Assess the AI risks and record the assessment'), /Done/);
+  assert.match(after.text, /Steps done<\/span><strong>1 <small>of 5<\/small>/);
 });
 
 test('a gap-assessment-only engagement has the assessment and its report', async () => {
   const assess = await client.get(`${base(gapId)}/stages/assess`);
   assert.equal(assess.status, 200);
   assert.match(assess.text, /Stage 1 of 2/);
-  for (const title of ['Gap assessment', 'Context and interested parties', 'AI systems and impact assessments', 'AI risk register and assessment']) line(assess.text, title);
+  for (const title of ['Answer the scoping questions', 'List the AI systems in scope', 'Say what the organisation does with each AI system',
+    'Record the context and interested parties', 'Assess every requirement of the standard']) line(assess.text, title);
   assert.match(assess.text, />1\. Assess</);
   assert.match(assess.text, />2\. Report</);
   assert.doesNotMatch(assess.text, />3\. /);
 
   const report = await client.get(`${base(gapId)}/stages/report`);
   assert.equal(report.status, 200);
-  assert.match(line(report.text, 'Gap assessment report'), /Not started|In progress|Waiting/);
+  assert.match(line(report.text, 'Have the assessment independently reviewed'), /After step 5/);
+  line(report.text, 'Publish the gap assessment report');
   assert.equal((await client.get(`${base(gapId)}/stages/mobilise`)).status, 404, 'no certification stages on a gap assessment');
   assert.equal(here((await client.get(`${base(gapId)}/context`)).text), 'assess', 'every module page is part of the assessment');
 });

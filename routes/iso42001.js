@@ -1373,8 +1373,16 @@ function register(app, deps) {
     const here = list.find(s => s.current) || list.find(s => !s.done) || list[0];
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/stages/${here.key}`);
   });
+  // The whole path of the engagement (lib/iso42001-journey.js), by stage.
+  app.get('/workspaces/:wsId/iso42001/path', requireAuth, requireWorkspace, (req, res) => {
+    const mast = res.locals.a42Masthead();
+    const journey = res.locals.a42Journey();
+    const groups = aimsStages.list(mast).map(st => ({ key: st.key, name: st.name,
+      href: `/workspaces/${req.workspace.id}/iso42001/stages/${st.key}`, steps: journey.forStage(st.key) }));
+    res.render('iso42001_path', { user: req.user, ws: req.workspace, title: 'Your path', active: 'iso42001-path', journey, groups });
+  });
   app.get('/workspaces/:wsId/iso42001/stages/:key([a-z]+)', requireAuth, requireWorkspace, (req, res) => {
-    const stage = aimsStages.build(db, req.workspace, res.locals.a42Masthead(), req.params.key, computeIso42001Readiness);
+    const stage = aimsStages.build(db, req.workspace, res.locals.a42Masthead(), req.params.key, res.locals.a42Journey());
     if (!stage) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That stage is not part of this engagement.' });
     res.render('iso42001_stage', { user: req.user, ws: req.workspace, title: stage.name, active: `iso42001-stage-${stage.key}`, stage });
   });
