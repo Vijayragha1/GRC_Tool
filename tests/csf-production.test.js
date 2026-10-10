@@ -49,7 +49,7 @@ test('cybersecurity maturity programme renders decision, workbench, assurance, r
   const programme=await client.get(`/workspaces/${workspaceId}/csf`);assert.equal(programme.status,200,programme.text.slice(0,500));
   assert.match(programme.text,/NIST Cybersecurity Framework 2\.0/);assert.match(programme.text,/Cybersecurity maturity programme/);
   assert.match(programme.text,/Assessment status/);assert.match(programme.text,/Function-level maturity/);
-  for(const [href,label]of [[`/workspaces/${workspaceId}/gap-assessment`,'ISO 27001'],[`/workspaces/${workspaceId}/csf`,'CSF'],[`/workspaces/${workspaceId}/iso42001/gap-assessment`,'ISO 42001']]){
+  for(const [href,label]of [[`/workspaces/${workspaceId}/gap-assessment`,'ISO 27001'],[`/workspaces/${workspaceId}/csf`,'CSF'],[`/workspaces/${workspaceId}/iso42001/path`,'ISO 42001']]){
     assert.ok(programme.text.includes(`href="${href}"`),`${label} must retain its native programme destination`);
     assert.match(programme.text,new RegExp(label));
   }

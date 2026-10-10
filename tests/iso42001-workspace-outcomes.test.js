@@ -127,11 +127,14 @@ test('ISO 42001 navigation uses one shared plan and respects the gap-only servic
     const gap=await render('gap_assessment_only',experienceEnabled);
     assert.equal((gap.match(/href="\/workspaces\/42\/engagement-plan"/g)||[]).length,1);
     assert.match(gap,/href="\/workspaces\/42\/iso42001\/intake"/);
-    assert.match(gap,/href="\/workspaces\/42\/iso42001\/gap-assessment"/);
-    assert.doesNotMatch(gap,/href="\/workspaces\/42\/(?:audits|mrms|iso42001\/cert-cycle|iso42001\/requests)"/);
+    // The module's menu is its path and stages; a gap assessment has two.
+    assert.match(gap,/href="\/workspaces\/42\/iso42001\/path"/);
+    assert.match(gap,/href="\/workspaces\/42\/iso42001\/stages\/assess"/);
+    assert.match(gap,/href="\/workspaces\/42\/iso42001\/stages\/report"/);
+    assert.doesNotMatch(gap,/href="\/workspaces\/42\/(?:audits|mrms|iso42001\/cert-cycle|iso42001\/requests|iso42001\/stages\/certification)"/);
     assert.doesNotMatch(gap,/ISO 27001/);
     const full=await render('certification_support',experienceEnabled);
-    assert.match(full,/href="\/workspaces\/42\/iso42001\/cert-cycle"/);
+    assert.match(full,/href="\/workspaces\/42\/iso42001\/stages\/certification"/);
     assert.match(full,/href="\/workspaces\/42\/audits"/);
   }
   const portal=await ejs.renderFile(path.join(__dirname,'../views/partials/client_portal_navigation.ejs'),{ws:{id:42,frameworks:['iso42001'],engagement_outcome:'gap_assessment_only'}});

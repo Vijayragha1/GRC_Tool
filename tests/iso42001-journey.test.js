@@ -100,3 +100,23 @@ test('a gap assessment opens on its short path, which ends with the report', asy
   const nav = await client.get(`${base()}/soa`);
   assert.match(nav.text, new RegExp(`href="${base()}/path" class="nav-subitem\\s*"[^>]*><span>Your path</span>`), 'the path is in the menu');
 });
+
+test('the menu holds the overview, the path and the stages, and an open page marks its stage', async () => {
+  const group = (html) => {
+    const at = html.indexOf('aria-label="ISO 42001"');
+    return html.slice(at, html.indexOf('</details>', at));
+  };
+  const soa = await client.get(`${base()}/soa`);
+  const labels = [...group(soa.text).matchAll(/class="nav-subitem[^"]*"[^>]*><span>([^<]+)<\/span>/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ['Programme overview', 'Your path', '1. Mobilise', '2. Assess', '3. Implement', '4. Assure', '5. Readiness', '6. Certification']);
+  assert.match(group(soa.text), new RegExp(`href="${base()}/stages/implement" class="nav-subitem active"`), 'the SoA marks Implement');
+  assert.match(group((await client.get(`${base()}/ai-systems`)).text), new RegExp(`href="${base()}/stages/assess" class="nav-subitem active"`));
+
+  const gapLabels = [...group((await client.get(`${base(gapId)}/context`)).text).matchAll(/class="nav-subitem[^"]*"[^>]*><span>([^<]+)<\/span>/g)].map((m) => m[1]);
+  assert.deepEqual(gapLabels, ['Your path', '1. Assess', '2. Report']);
+
+  const path = await client.get(`${base()}/path`);
+  assert.match(path.text, /<summary>Every page in the module<\/summary>/);
+  assert.match(path.text, new RegExp(`<h3 class="a42-list-group">Implement</h3>[\\s\\S]*?href="${base()}/soa">Statement of Applicability`));
+  assert.doesNotMatch((await client.get(`${base(gapId)}/path`)).text, />Certification cycle</, 'a gap assessment has no certification pages');
+});

@@ -19,6 +19,9 @@
   const csfOnly = hasCsf && !hasIso27001 && !hasIso42001 && !hasDpdpa;
   // The ISO 42001 engagement's stages (lib/iso42001-masthead.js LIFECYCLE and
   // GAP_ONLY_STEPS): a gap assessment only has the assessment and its report.
+  // The stage the open ISO 42001 page belongs to, if any.
+  const a42StageOfPage = typeof a42PageStage === 'function' && typeof navActive === 'string' && navActive.indexOf('iso42001-') === 0
+    ? a42PageStage(navActive, gapAssessmentOnly) : null;
   const a42Stages = gapAssessmentOnly
     ? [['assess', 'Assess'], ['report', 'Report']]
     : [['mobilise', 'Mobilise'], ['assess', 'Assess'], ['implement', 'Implement'], ['assure', 'Assure'], ['readiness', 'Readiness'], ['certification', 'Certification']];
@@ -79,28 +82,16 @@
     ...(hasIso42001 ? [{
       id: 'ai-programme', label: gapAssessmentOnly ? 'ISO 42001 gap assessment' : 'AI management system',
       icon: '<path d="M12 3a4 4 0 0 0-4 4v1H7a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1v1a4 4 0 0 0 8 0v-1h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-1V7a4 4 0 0 0-4-4z"/><path d="M9 10h6M9 14h6"/>',
-      // Ordered the way an ISO 42001 engagement is worked: the overview, the
-      // engagement's stages (each a page listing its work, the same steps as
-      // the masthead runway, lib/iso42001-masthead.js), then the gap
-      // assessment every engagement opens with, the certification body's
-      // request list and the registers and requirement screens that answer
-      // it. Readiness scoring, the catalogue, the roadmap and the executive
-      // brief are reached from the stage they belong to.
+      // Every module page keeps the group open.
       active: [...a42Stages.map(([key]) => `iso42001-stage-${key}`), 'iso42001-overview', 'iso42001-path', 'iso42001-roles', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-datasets', 'iso42001-concerns', 'iso42001-context', 'iso42001-risks', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
+      // The overview, the path and the stages only. Every other module page
+      // is a step on the path, reached from its stage, and marks that stage
+      // here when it is open (lib/iso42001-masthead.js PAGE_STAGE).
       items: [
-        { label: 'Programme overview', href: `/workspaces/${ws.id}/iso42001/overview`, active: ['iso42001-overview', 'iso42001-readiness', 'iso42001-exec-brief'] },
+        ...(!gapAssessmentOnly ? [{ label: 'Programme overview', href: `/workspaces/${ws.id}/iso42001/overview`, active: ['iso42001-overview'] }] : []),
         { label: 'Your path', href: `/workspaces/${ws.id}/iso42001/path`, active: ['iso42001-path'] },
-        ...a42Stages.map(([key, name], i) => ({ label: `${i + 1}. ${name}`, href: `/workspaces/${ws.id}/iso42001/stages/${key}`, active: [`iso42001-stage-${key}`] })),
-        { label: 'Gap assessment', href: `/workspaces/${ws.id}/iso42001/gap-assessment`, active: ['iso42001-gap'] },
-        ...(!gapAssessmentOnly ? [{ label: 'Certification requests', href: `/workspaces/${ws.id}/iso42001/requests`, active: ['iso42001-requests'] }] : []),
-        { label: 'AI system register', href: `/workspaces/${ws.id}/iso42001/ai-systems`, active: ['iso42001-ai-systems'] },
-        { label: 'Dataset register', href: `/workspaces/${ws.id}/iso42001/datasets`, active: ['iso42001-datasets'] },
-        { label: 'Context and interested parties', href: `/workspaces/${ws.id}/iso42001/context`, active: ['iso42001-context'] },
-        { label: 'AI risk register', href: `/workspaces/${ws.id}/iso42001/risks`, active: ['iso42001-risks'] },
-        { label: 'Concerns and reports', href: `/workspaces/${ws.id}/iso42001/concerns`, active: ['iso42001-concerns'] },
-        { label: 'Requirements', href: `/workspaces/${ws.id}/iso42001/controls`, active: ['iso42001-controls', 'iso42001-catalog', 'iso42001-roadmap'] },
-        { label: 'Statement of Applicability', href: `/workspaces/${ws.id}/iso42001/soa`, active: ['iso42001-soa'] },
-        ...(!gapAssessmentOnly ? [{ label: 'Certification cycle', moreLabel: 'ISO 42001 certification cycle', href: `/workspaces/${ws.id}/iso42001/cert-cycle`, active: ['iso42001-cert-cycle'], lead: true }] : [])
+        ...a42Stages.map(([key, name], i) => ({ label: `${i + 1}. ${name}`, href: `/workspaces/${ws.id}/iso42001/stages/${key}`,
+          active: [`iso42001-stage-${key}`, ...(a42StageOfPage === key ? [navActive] : [])] })),
       ]
     }] : []),
     ...(hasDpdpa ? [{

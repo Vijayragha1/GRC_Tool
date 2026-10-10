@@ -1379,7 +1379,12 @@ function register(app, deps) {
     const journey = res.locals.a42Journey();
     const groups = aimsStages.list(mast).map(st => ({ key: st.key, name: st.name,
       href: `/workspaces/${req.workspace.id}/iso42001/stages/${st.key}`, steps: journey.forStage(st.key) }));
-    res.render('iso42001_path', { user: req.user, ws: req.workspace, title: 'Your path', active: 'iso42001-path', journey, groups });
+    // Every page of the module by stage, for jumping straight to one.
+    const masthead = require('../lib/iso42001-masthead');
+    const pages = groups.map(g => ({ name: g.name, pages: masthead.PAGES
+      .filter(p => masthead.stageOf(p.active, mast.gapOnly) === g.key && !(mast.gapOnly && p.certification))
+      .map(p => ({ label: p.label, href: `/workspaces/${req.workspace.id}/iso42001${p.path}` })) })).filter(g => g.pages.length);
+    res.render('iso42001_path', { user: req.user, ws: req.workspace, title: 'Your path', active: 'iso42001-path', journey, groups, pages });
   });
   app.get('/workspaces/:wsId/iso42001/stages/:key([a-z]+)', requireAuth, requireWorkspace, (req, res) => {
     const stage = aimsStages.build(db, req.workspace, res.locals.a42Masthead(), req.params.key, res.locals.a42Journey());

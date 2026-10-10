@@ -30,7 +30,7 @@ test('the AI risk register lists and adds the AIMS\'s risks only', async () => {
   assert.equal(empty.status, 200);
   assert.match(empty.text, /AI risk register/);
   assert.doesNotMatch(empty.text, /Office flood/, 'the ISMS risk stays on the shared register');
-  assert.match(empty.text, /href="\/workspaces\/\d+\/iso42001\/risks"[^>]*>[\s\S]{0,80}AI risk register/, 'the module menu has the register');
+  assert.match(empty.text, /href="\/workspaces\/\d+\/iso42001\/stages\/assess" class="nav-subitem active"/, 'the register marks its stage in the menu');
 
   const nameless = await client.post(base(), { likelihood: 3, impact: 3 });
   assert.match(toast(nameless), /Name the risk/);

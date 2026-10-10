@@ -850,6 +850,8 @@ function requireWorkspace(req, res, next) {
   res.locals.a42Masthead = () => (a42Masthead ||= require('./lib/iso42001-masthead').build(db, ws, req.user.id));
   // The engagement's path of steps and the next one (lib/iso42001-journey.js),
   // built only when an ISO 42001 page asks.
+  // Which stage each module page belongs to, for the sidebar (static).
+  res.locals.a42PageStage = require('./lib/iso42001-masthead').stageOf;
   let a42Journey;
   res.locals.a42Journey = () => (a42Journey ||= require('./lib/iso42001-journey').build(db, ws, res.locals.a42Masthead(),
     require('./routes/iso42001').shared.computeIso42001Readiness));

@@ -426,6 +426,13 @@
 .a42-path-detail { color: rgba(255, 255, 255, .6); }
 .a42-path .btn { flex: none; }
 
+/* Every page of the module, at the foot of the path page. */
+.a42-pages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 24px; padding: 0 20px 16px; }
+.a42-pages ul { margin: 0; padding: 0; list-style: none; }
+.a42-pages li { padding: 3px 0; font-size: 13px; }
+.a42-pages .a42-list-group { padding: 12px 0 4px; }
+@media (max-width: 760px) { .a42-pages { grid-template-columns: minmax(0, 1fr); } }
+
 /* The path as a list of steps, grouped by stage (partials/a42_path.ejs). */
 .a42-steps > li.is-next { background: var(--bg-subtle); }
 .a42-steps > li.is-skip .a42-list-title, .a42-steps > li.is-done .a42-list-title { font-weight: 500; }

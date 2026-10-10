@@ -46,18 +46,18 @@ for (const experienceEnabled of [true, false]) {
 
   test(`${mode} sidebar: consultants keep delivery tools in the rail and lead tools under More tools`, async () => {
     const html = await render('consultant', { experienceEnabled });
-    for (const route of ['/tasks', '/gap-assessment', '/controls', '/soa', '/iso42001/ai-systems',
+    for (const route of ['/tasks', '/gap-assessment', '/controls', '/soa', '/iso42001/path',
       '/tprm/third-parties', '/risks', '/documents', '/evidence', '/audits', '/nonconformities']) {
       assert.match(rail(html), new RegExp(`href="/workspaces/9${route}"`), `${route} stays in the rail`);
     }
     for (const route of ['/engagement-plan', '/readiness', '/crosswalks', '/assurance',
-      '/cert-cycle', '/iso42001/cert-cycle', '/setup']) {
+      '/cert-cycle', '/setup']) {
       assert.doesNotMatch(rail(html), new RegExp(`href="/workspaces/9${route}"`), `${route} leaves the rail`);
       assert.match(moreTools(html), new RegExp(`href="/workspaces/9${route}"`), `${route} is under More tools`);
     }
-    // The two certification cycles need their programme to tell them apart.
+    // The ISO 42001 cycle is a step on that module's path, not a menu entry.
     assert.match(moreTools(html), /ISO 27001 certification cycle/);
-    assert.match(moreTools(html), /ISO 42001 certification cycle/);
+    assert.doesNotMatch(html, /href="\/workspaces\/9\/iso42001\/cert-cycle"/);
   });
 
   test(`${mode} sidebar: consultants lose exactly the oversight and admin pages`, async () => {
