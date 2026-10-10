@@ -82,6 +82,48 @@
   </ul>
 </section>
 
+<%
+  // Proposed applicability from the organisation's AI roles (lib/aims-soa-proposals.js).
+  const propRefs = st => rows.filter(r => proposalStates[r.id] === st);
+  const propKind = (st, kind) => propRefs(st).filter(r => proposals.byId[r.id].kind === kind);
+  const toApply = propKind('pending', 'include'), toExclude = propKind('pending', 'exclude');
+  const toReview = propRefs('review'), contradicted = propRefs('contradicted'), wider = propRefs('wider');
+  const refLinks = list => list.map(r => `<a href="#soa-${r.id}">${soaRef(r)}</a>`).join(', ');
+  const PROPOSAL_LABEL = { pending: { include: 'Proposed: applies', exclude: 'Proposed: can be excluded' }, review: 'Decide on the facts',
+    contradicted: 'Excluded, but the roles say it applies', wider: 'Included, though the roles say it could be excluded' };
+  // The same tones as the summary above.
+  const PROPOSAL_TONE = { include: 'wip', exclude: 'na', review: 'open', contradicted: 'gap', wider: 'part' };
+%>
+<section class="panel soa-proposals" aria-labelledby="soaPropTitle">
+  <div class="panel-head"><div><h2 id="soaPropTitle">Proposed from the organisation's AI roles</h2><p class="a42-caption"><%= proposals.ready ? `${proposals.profile.sentence}. Each control is proposed from these roles (clause 4.1); nothing changes until you accept it.` : 'Each control can be proposed from what the organisation does with its AI systems (clause 4.1).' %></p></div><a class="a42-list-action" href="/workspaces/<%= ws.id %>/iso42001/roles">AI roles <span aria-hidden="true">→</span></a></div>
+  <% if (!proposals.ready) { %>
+    <p class="a42-empty">Record what the organisation does with each AI system on the AI roles page. Each control then gets a proposal: it applies, it can be excluded, or it is decided on the facts.</p>
+  <% } else { %>
+    <ul class="a42-list">
+      <% if (toApply.length) { %>
+        <li><i class="a42-dot t-wip" aria-hidden="true"></i><div><span class="a42-list-title"><%= toApply.length %> undecided control<%= toApply.length === 1 ? '' : 's' %> the roles say apply</span><p>Accepting marks them as applying and writes the drafted reason wherever no reason is written yet.</p></div>
+          <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/accept-proposals" onsubmit="return confirm('Mark the <%= toApply.length %> undecided controls the roles say apply as applying, with the drafted reasons?')"><% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %><button class="btn btn-primary btn-xs">Accept <%= toApply.length %></button></form></li>
+      <% } %>
+      <% if (toExclude.length) { %>
+        <li><i class="a42-dot t-na" aria-hidden="true"></i><div><span class="a42-list-title"><%= toExclude.length %> undecided control<%= toExclude.length === 1 ? '' : 's' %> the roles say can be excluded</span><p>The certification body checks every exclusion, so each is accepted on its own row: <%- refLinks(toExclude) %>.</p></div><span></span></li>
+      <% } %>
+      <% if (toReview.length) { %>
+        <li><i class="a42-dot t-open" aria-hidden="true"></i><div><span class="a42-list-title"><%= toReview.length %> undecided control<%= toReview.length === 1 ? '' : 's' %> to decide on the facts</span><p>The roles alone cannot settle these; each row says what to decide: <%- refLinks(toReview) %>.</p></div><span></span></li>
+      <% } %>
+      <% if (contradicted.length) { %>
+        <li><i class="a42-dot t-gap" aria-hidden="true"></i><div><span class="a42-list-title"><%= contradicted.length %> excluded control<%= contradicted.length === 1 ? '' : 's' %> the roles now say apply</span><p>A role changed after the decision, or the exclusion needs a second look: <%- refLinks(contradicted) %>.</p></div><span></span></li>
+      <% } %>
+      <% if (wider.length) { %>
+        <li><i class="a42-dot t-part" aria-hidden="true"></i><div><span class="a42-list-title"><%= wider.length %> included control<%= wider.length === 1 ? '' : 's' %> the roles say could be excluded</span><p>Including more than the roles need is allowed. Check the reasons still hold: <%- refLinks(wider) %>.</p></div><span></span></li>
+      <% } %>
+      <% if (!toApply.length && !toExclude.length && !toReview.length && !contradicted.length && !wider.length) { %>
+        <li><i class="a42-dot t-done" aria-hidden="true"></i><div><span class="a42-list-title">Every decision agrees with the roles</span><p>Change the roles and the proposals follow; decisions that stop agreeing show here.</p></div><span></span></li>
+      <% } %>
+    </ul>
+    <% if (proposals.roleless.length) { %><p class="a42-more-link"><a href="/workspaces/<%= ws.id %>/iso42001/roles"><%= proposals.roleless.length %> AI system<%= proposals.roleless.length === 1 ? ' has' : 's have' %> no role yet; the proposals may change once <%= proposals.roleless.length === 1 ? 'it does' : 'they do' %> →</a></p><% } %>
+  <% } %>
+</section>
+
 <details class="panel" style="margin-bottom:10px;" <%= !approvedSoa ? 'open' : '' %>>
   <summary>
     <span>SoA version and approval
@@ -182,9 +224,23 @@
             </td>
           </tr>
         </form>
+        <% const pr = proposals.byId[r.id], ps = proposalStates[r.id]; if (pr && ['pending', 'review', 'contradicted', 'wider'].includes(ps)) { %>
+          <tr class="soa-proposal-row">
+            <td></td>
+            <td colspan="6">
+              <div class="soa-proposal is-<%= ps %>">
+                <div><i class="a42-dot t-<%= PROPOSAL_TONE[ps === 'pending' ? pr.kind : ps] %>" aria-hidden="true"></i><strong><%= ps === 'pending' ? PROPOSAL_LABEL.pending[pr.kind] : PROPOSAL_LABEL[ps] %></strong> <span class="meta">· <%= pr.basis %></span><p><%= pr.reason %></p></div>
+                <% if (ps === 'pending' || ps === 'contradicted') { %><button class="btn btn-secondary btn-xs" form="soaAccept-<%= r.id %>"<% if (pr.kind === 'exclude') { %> onclick="return confirm('Exclude <%= soaRef(r) %> with the drafted reason?')"<% } %>><%= ps === 'contradicted' ? 'Include it' : pr.kind === 'exclude' ? 'Exclude' : 'Accept' %></button><% } %>
+              </div>
+            </td>
+          </tr>
+        <% } %>
       <% }) %>
     </tbody>
   </table>
+  <% rows.filter(r => ['pending', 'contradicted'].includes(proposalStates[r.id])).forEach(r => { %>
+    <form id="soaAccept-<%= r.id %>" method="POST" action="/workspaces/<%= ws.id %>/iso42001/soa/<%= r.id %>/accept-proposal" hidden><% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %></form>
+  <% }) %>
 </div>
 
 <!-- Custom controls -->

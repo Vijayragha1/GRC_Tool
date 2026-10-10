@@ -48,6 +48,8 @@
           </li>
         <% }) %>
       </ul>
+      <% const pc = proposals.counts; %>
+      <p class="a42-more-link"><a href="<%= base %>/soa">For the Statement of Applicability: <%= pc.include %> control<%= pc.include === 1 ? ' applies' : 's apply' %>, <%= pc.exclude %> can be excluded, <%= pc.review %> to decide on the facts →</a></p>
     <% } %>
   </section>
 

@@ -19,6 +19,7 @@ const auditRequests = require('../lib/iso42001-audit');
 const aimsCycle = require('../lib/iso42001-cycle');
 const aimsSoa = require('../lib/iso42001-soa');
 const aimsStages = require('../lib/iso42001-stages');
+const soaProposals = require('../lib/aims-soa-proposals');
 const reqOpts = require('../lib/requirement-options');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const aiRisk = require('../lib/ai-risk');
@@ -216,7 +217,9 @@ function register(app, deps) {
     const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, approval_status, created_at
         FROM iso42001_soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(req.workspace.id);
 
-    res.render('iso42001_soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl,
+    const proposals = soaProposals.forWorkspace(db, req.workspace);
+    const proposalStates = Object.fromEntries(rows.map(r => [r.id, soaProposals.compare(proposals.byId[r.id], r.applicability)]));
+    res.render('iso42001_soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl, proposals, proposalStates,
       customControls, soaMeta: latestSnap || {}, approvedSoa: aimsSoa.latestApproved(db, req.workspace),
       soaIssues: aimsSoa.issues(aimsSoa.payloadFor(db, req.workspace)) });
   });
@@ -307,6 +310,60 @@ function register(app, deps) {
     logAction(req.user.id, req.workspace.id, 'iso42001_soa_auto_justify', 'iso42001_item', null, { affected });
     aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'ISO 42001 applicability justifications changed.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
+  });
+
+  // Proposed applicability from the organisation's AI roles
+  // (lib/aims-soa-proposals.js). A proposal changes nothing until a person
+  // accepts it here; the proposal is worked out again from the current roles,
+  // never taken from the form. The drafted reason fills the justification for
+  // that side only where none is written, and the audit log records who
+  // accepted which proposal and the roles behind it.
+  function acceptProposal(req, isoId, proposal) {
+    const wsId = req.workspace.id;
+    const rid = ctlWrites.requirementId(db, 'iso42001', isoId);
+    if (!rid) return false;
+    getOrCreate42State(wsId, isoId);
+    const side = proposal.kind === 'exclude' ? 'exclusion_justification' : 'inclusion_justification';
+    db.prepare(`UPDATE control_instances SET applicability=?, ${side} = COALESCE(NULLIF(${side}, ''), ?), last_updated=CURRENT_TIMESTAMP
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(ctlWrites.normApplic(proposal.kind === 'exclude' ? 'excluded' : 'included'), proposal.reason, wsId, rid);
+    return true;
+  }
+  const proposalAudit = (p, proposals) => ({ kind: p.kind, basis: p.basis, roles: proposals.profile.held,
+    systems: proposals.profile.counted.filter((sys) => sys.roles.length).map((sys) => sys.name) });
+
+  app.post('/workspaces/:wsId/iso42001/soa/accept-proposals', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const soa = `/workspaces/${req.workspace.id}/iso42001/soa`;
+    const proposals = soaProposals.forWorkspace(db, req.workspace);
+    if (!proposals.ready) return res.redirect(withToast(soa, 'Record the organisation\'s role for its AI systems first.', 'error'));
+    const T = ctlReads.tables(db, req.workspace.id);
+    const decided = new Map(db.prepare(`SELECT iso_item_id, COALESCE(applicability,'undecided') AS applicability FROM ${T.cs42} WHERE workspace_id=?`)
+      .all(req.workspace.id).map((r) => [r.iso_item_id, r.applicability]));
+    // Only controls that apply, and only where nothing is decided: an
+    // exclusion is accepted one control at a time.
+    const accepted = [];
+    db.transaction(() => {
+      for (const p of Object.values(proposals.byId)) {
+        if (p.kind === 'include' && (decided.get(p.id) || 'undecided') === 'undecided' && acceptProposal(req, p.id, p)) accepted.push(p.id);
+      }
+    })();
+    logAction(req.user.id, req.workspace.id, 'accept_iso42001_soa_proposals', 'iso42001_item', null,
+      { accepted, roles: proposals.profile.held }, auditCtx(req));
+    if (accepted.length) aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'ISO 42001 applicability proposals were accepted.');
+    res.redirect(withToast(soa, accepted.length ? `${accepted.length} control${accepted.length === 1 ? '' : 's'} marked as applying, with the drafted reasons` : 'No undecided control had a proposal to apply'));
+  });
+
+  app.post('/workspaces/:wsId/iso42001/soa/:isoId/accept-proposal', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const soa = `/workspaces/${req.workspace.id}/iso42001/soa`;
+    if (!soaProposals.RULES[req.params.isoId]) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That Annex A control was not found.' });
+    const proposals = soaProposals.forWorkspace(db, req.workspace);
+    const p = proposals.byId[req.params.isoId];
+    if (!p) return res.redirect(withToast(soa, 'Record the organisation\'s role for its AI systems first.', 'error'));
+    if (p.kind === 'review') return res.redirect(withToast(`${soa}#soa-${req.params.isoId}`, 'The roles leave this control to you. Decide it on the facts and write the reason.', 'error'));
+    acceptProposal(req, req.params.isoId, p);
+    logAction(req.user.id, req.workspace.id, 'accept_iso42001_soa_proposal', 'iso42001_item', req.params.isoId, proposalAudit(p, proposals), auditCtx(req));
+    aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'An ISO 42001 applicability proposal was accepted.');
+    res.redirect(withToast(`${soa}#soa-${req.params.isoId}`, p.kind === 'exclude' ? 'Excluded, with the drafted reason' : 'Marked as applying, with the drafted reason'));
   });
 
   // Custom (non-Annex-A) controls
@@ -419,7 +476,7 @@ function register(app, deps) {
 
   // Per-row SoA update.
   app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
-    if (['bulk'].includes(req.params.isoId)) return nextMw();
+    if (['bulk', 'accept-proposals'].includes(req.params.isoId)) return nextMw();
     getOrCreate42State(req.workspace.id, req.params.isoId);
     const { applicability, status } = req.body;
     const just = soaJustifications(req.body);

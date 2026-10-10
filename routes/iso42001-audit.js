@@ -451,7 +451,8 @@ function register(app, deps) {
   // The organisation's role for each AI system (lib/ai-roles.js, clause 4.1):
   // the profile, and the questions per system.
   app.get('/workspaces/:wsId/iso42001/roles', ...view, (req, res) => {
-    render(res, 'iso42001_roles', req, { title: 'AI roles', active: 'iso42001-roles', profile: aiRoles.profile(db, req.workspace),
+    const profile = aiRoles.profile(db, req.workspace);
+    render(res, 'iso42001_roles', req, { title: 'AI roles', active: 'iso42001-roles', profile, proposals: require('../lib/aims-soa-proposals').propose(profile),
       questions: aiRoles.QUESTIONS, ROLE_INFO: aiRoles.ROLE_INFO, joinRoles: aiRoles.joinRoles });
   });
 
