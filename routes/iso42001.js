@@ -1210,12 +1210,28 @@ function register(app, deps) {
     ];
     const mandatoryFound = mandatoryChecks.filter(c => c.found).length;
 
-    const expectedCheck = (ctlId, name, found, basis) => ({
-      name, clause: ctlId.replace('ai-annex-','').toUpperCase().replace(/-/g,'.'),
-      found: !!found, basis,
-      declaredOnly: !found && !!(controlStatusById[ctlId] && controlStatusById[ctlId].status === 'Implemented'),
-    });
-    const expectedChecks = [
+    // An expected record belongs to an Annex A control, so it is expected only
+    // where the control applies: as decided in the Statement of Applicability,
+    // or, while the control is undecided, as the organisation's AI roles
+    // propose (lib/aims-soa-proposals.js). An organisation that only uses
+    // bought AI is not asked for model documentation it will never hold.
+    const proposals = soaProposals.forWorkspace(db, wsRow || { id: wsId });
+    const applies = (ctlId, ref) => {
+      const decided = (controlStatusById[ctlId] && controlStatusById[ctlId].applicability) || 'undecided';
+      if (decided === 'excluded') return { expected: false, why: `${ref} is excluded in the Statement of Applicability.` };
+      if (decided === 'included') return { expected: true };
+      const p = proposals.byId[ctlId];
+      if (p && p.kind === 'exclude') return { expected: false, proposed: true, why: `The organisation's AI roles propose excluding ${ref}. Confirm it in the Statement of Applicability.` };
+      if (p && p.kind === 'review') return { expected: true, note: `Expected unless ${ref} is excluded: the roles leave it to be decided in the Statement of Applicability.` };
+      return { expected: true };
+    };
+    const expectedCheck = (ctlId, name, found, basis) => {
+      const clause = ctlId.replace('ai-annex-','').toUpperCase().replace(/-/g,'.');
+      return { name, clause, control: ctlId, found: !!found, basis,
+        declaredOnly: !found && !!(controlStatusById[ctlId] && controlStatusById[ctlId].status === 'Implemented'),
+        ...applies(ctlId, clause) };
+    };
+    const allExpectedChecks = [
       expectedCheck('ai-annex-a-4-2', 'AI system inventory', liveSystems > 0, `${liveSystems} in-scope AI system${liveSystems === 1 ? '' : 's'} in the register`),
       expectedCheck('ai-annex-a-4-3', 'Dataset documentation (datasheets)', (liveSystems > 0 && systemsWithData === liveSystems) || linkedRecordFor('ai-annex-a-4-3'),
         liveSystems && systemsWithData ? `${systemsWithData} of ${liveSystems} in-scope AI systems have datasets on the register` : 'Datasets on the register for every in-scope system, or a document or evidence linked to A.4.3'),
@@ -1233,6 +1249,8 @@ function register(app, deps) {
       expectedCheck('ai-annex-a-7-6', 'Data preparation records', allDatasets('d.preparation IS NOT NULL') || linkedRecordFor('ai-annex-a-7-6'),
         datasetsInUse ? datasetBasis('d.preparation IS NOT NULL', 'how they are prepared') : 'A document or evidence linked to A.7.6'),
     ];
+    const expectedChecks = allExpectedChecks.filter(c => c.expected);
+    const notExpected = allExpectedChecks.filter(c => !c.expected);
     const expectedFound = expectedChecks.filter(c => c.found).length;
 
     // Detected gaps - flags by category, severity
@@ -1329,8 +1347,9 @@ function register(app, deps) {
         total: mandatoryChecks.length + expectedChecks.length,
         found: mandatoryFound + expectedFound,
         mandatory: { total: mandatoryChecks.length, found: mandatoryFound, checks: mandatoryChecks },
-        expected: { total: expectedChecks.length, found: expectedFound, checks: expectedChecks }
+        expected: { total: expectedChecks.length, found: expectedFound, checks: expectedChecks, notExpected }
       },
+      roles: { ready: proposals.ready, sentence: proposals.profile.sentence },
       metrics: {
         implemented: m.implemented || 0, partial: m.partial || 0, wip: m.wip || 0,
         notImpl: m.notImpl || 0, na: m.na || 0, unassessed: m.unassessed || 0,
