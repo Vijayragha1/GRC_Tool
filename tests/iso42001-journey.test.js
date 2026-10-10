@@ -87,7 +87,9 @@ test('a step waits on the one it needs, and a step the organisation does not nee
   assert.match(pathLine((await client.get(`${base()}/soa`)).text), / of 23\./, 'a skipped step leaves the count');
 });
 
-test('a gap assessment has a short path that ends with the report', async () => {
+test('a gap assessment opens on its short path, which ends with the report', async () => {
+  assert.equal((await client.get(`/workspaces/${gapId}`)).location, `${base(gapId)}/overview`);
+  assert.equal((await client.get(`${base(gapId)}/overview`)).location, `${base(gapId)}/path`, 'opening the client lands on the path');
   const page = await client.get(`${base(gapId)}/path`);
   assert.equal(page.status, 200);
   assert.doesNotMatch(page.text, /class="a42-path"/, 'the path page leads with the next step itself');

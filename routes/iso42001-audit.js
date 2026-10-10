@@ -95,7 +95,9 @@ function register(app, deps) {
   // ------------------------------------------------------------ overview
 
   app.get('/workspaces/:wsId/iso42001/overview', ...view, (req, res) => {
-    if (outcomeScope.isGapAssessmentOnly(req.workspace)) return res.redirect(`/workspaces/${req.workspace.id}/engagement-plan`);
+    // A gap assessment has no certification overview; it opens on its path,
+    // which leads to the engagement plan for the report.
+    if (outcomeScope.isGapAssessmentOnly(req.workspace)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/path`);
     const model = audit.overview(db, req.workspace, today());
     const systems = registry.list(db, req.workspace);
     const period = { start: model.programme.review_period_start, end: model.programme.review_period_end };
