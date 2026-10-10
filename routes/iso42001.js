@@ -1241,6 +1241,10 @@ function register(app, deps) {
     if (dueSystems.length) flags.push({ kind: 'reassessment_due', label: 'AI systems whose impact assessment is due for review or was overtaken by a change', severity: 'medium', items: dueSystems });
     const contextIssues = count('SELECT COUNT(*) c FROM context_issues WHERE workspace_id=?', wsId);
     const contextParties = count('SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?', wsId);
+    // Clause 4.1: the organisation's role for each AI system (lib/ai-roles.js).
+    const roleless = db.prepare(`SELECT id, name AS title FROM ai_systems WHERE workspace_id=? AND in_scope=1 AND lifecycle_stage != 'retired'
+      AND COALESCE(org_roles, '[]') IN ('[]', '') ORDER BY name LIMIT 20`).all(wsId);
+    if (roleless.length) flags.push({ kind: 'roles_missing', label: 'In-scope AI systems with no recorded role for the organisation (clause 4.1)', severity: 'medium', items: roleless });
     if (!contextIssues || !contextParties) flags.push({ kind: 'context_missing', label: 'Internal and external issues or interested parties are not recorded (clauses 4.1 and 4.2)', severity: 'medium', items: [] });
     const lateReports = db.prepare(`SELECT id, summary AS title FROM ai_concern_reports WHERE workspace_id=? AND status != 'resolved'
       AND respond_by < date('now') ORDER BY respond_by LIMIT 20`).all(wsId);

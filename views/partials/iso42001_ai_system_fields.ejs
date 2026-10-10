@@ -12,18 +12,13 @@
 </div>
 <div><label class="label" for="aiPurpose">Purpose and context</label><textarea id="aiPurpose" class="textarea" name="purpose" rows="3" maxlength="4000" placeholder="What it does, for whom, and the decision or output it produces"><%= sv.purpose || '' %></textarea><span class="hint">The auditor asks for the general purpose and context of each AI system before fieldwork.</span></div>
 <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
-  <div><span class="label">The organisation's role for this system</span>
-    <div class="a42-checks">
-      <% Object.entries(registry.ROLES).forEach(([k, label]) => { %>
-        <label><input type="checkbox" name="org_roles" value="<%= k %>" <%= roles.includes(k) ? 'checked' : '' %>> <span><%= label %></span></label>
-      <% }) %>
-    </div>
-    <span class="hint">Clause 4.1. One organisation can hold several roles for the same system.</span>
-  </div>
-  <div class="a42-form" style="padding:0;gap:12px;">
-    <div><label class="label" for="aiUsers">Who uses it</label><input id="aiUsers" class="input" name="intended_users" maxlength="2000" value="<%= sv.intended_users || '' %>" placeholder="e.g. Claims handlers; customers via the app"></div>
-    <div><label class="label" for="aiOwner">System owner</label><input id="aiOwner" class="input" name="system_owner" maxlength="160" value="<%= sv.system_owner || '' %>" placeholder="Name and role"></div>
-  </div>
+  <div><label class="label" for="aiUsers">Who uses it</label><input id="aiUsers" class="input" name="intended_users" maxlength="2000" value="<%= sv.intended_users || '' %>" placeholder="e.g. Claims handlers; customers via the app"></div>
+  <div><label class="label" for="aiOwner">System owner</label><input id="aiOwner" class="input" name="system_owner" maxlength="160" value="<%= sv.system_owner || '' %>" placeholder="Name and role"></div>
+</div>
+<div>
+  <span class="label">What the organisation does with this system</span>
+  <span class="hint">Clause 4.1. The answers decide the organisation's role for it<%= roles.length ? `, now ${roles.map(r => registry.ROLE_INFO[r].name).join(', ')}` : '' %>, and the role decides which controls weigh most. Leave a question you cannot answer yet.</span>
+  <%- include('a42_role_questions', { questions: registry.ROLE_QUESTIONS, answers: sv.answers || {}, prefix: 'aiRole' }) %>
 </div>
 <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,2fr);">
   <div><label class="label" for="aiAuto">How much it decides on its own</label>

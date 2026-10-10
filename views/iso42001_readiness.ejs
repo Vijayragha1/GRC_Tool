@@ -36,7 +36,7 @@
             <div>
               <span class="a42-list-title"><%= f.label %></span>
               <% if (f.items.length) { %>
-                <p><% f.items.slice(0, 5).forEach((it, i) => { const href = gapLink(it) || (f.kind === 'open_ncs' ? `/workspaces/${ws.id}/nonconformities/${it.id}` : null); %><%= i ? ' · ' : '' %><% if (href) { %><a href="<%= href %>"><%= it.title %></a><% } else { %><%= it.title %><% } %><% }) %><% if (f.items.length > 5) { %> · and <%= f.items.length - 5 %> more<% } %></p>
+                <p><% f.items.slice(0, 5).forEach((it, i) => { const href = gapLink(it) || (f.kind === 'open_ncs' ? `/workspaces/${ws.id}/nonconformities/${it.id}` : f.kind === 'roles_missing' ? `/workspaces/${ws.id}/iso42001/roles#system-${it.id}` : null); %><%= i ? ' · ' : '' %><% if (href) { %><a href="<%= href %>"><%= it.title %></a><% } else { %><%= it.title %><% } %><% }) %><% if (f.items.length > 5) { %> · and <%= f.items.length - 5 %> more<% } %></p>
               <% } %>
             </div>
             <span class="a42-list-aside"><%= f.severity === 'high' ? 'High' : 'Medium' %></span>

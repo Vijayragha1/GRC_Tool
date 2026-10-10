@@ -45,7 +45,7 @@
               <% stages.forEach((k, i) => { %><li class="<%= i < at ? 'is-past' : i === at ? 'is-now' : '' %>"<%- i === at ? ' aria-current="step"' : '' %>><%= registry.LIFECYCLE[k] %></li><% }) %>
             </ol>
             <dl class="ai-facts">
-              <div><dt>Organisation's role</dt><dd><%= s.roles.length ? s.roles.map(r => registry.ROLES[r].replace(/ \(.*\)$/, '')).join(', ') : 'Not recorded' %></dd></div>
+              <div><dt>Organisation's role</dt><dd><% if (s.roles.length) { %><%= s.roles.map(r => registry.ROLE_INFO[r].name).join(', ') %><% } else { %><a href="<%= base %>/roles#system-<%= s.id %>">Not recorded</a><% } %></dd></div>
               <div><dt>Human oversight</dt><dd><%= s.automation_level ? registry.AUTOMATION[s.automation_level] : 'Not recorded' %></dd></div>
               <div><dt>Went live</dt><dd><%= s.go_live_date ? fmtDate(s.go_live_date) : 'Not yet' %></dd></div>
             </dl>

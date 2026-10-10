@@ -23,7 +23,7 @@
       </ol>
       <div class="a42-facts">
         <% if (s.go_live_date) { %><span>Went live <strong><%= fmtDate(s.go_live_date) %></strong></span><% } %>
-        <span><%= s.roles.length ? s.roles.map(r => registry.ROLES[r]).join('; ') : 'Organisation\'s role not recorded' %></span>
+        <span><a href="<%= base %>/roles#system-<%= s.id %>"><%= s.roles.length ? s.roles.map(r => registry.ROLE_INFO[r].name).join(', ') : 'Organisation\'s role not recorded' %></a></span>
         <span><i class="a42-dot t-<%= s.in_scope ? 'done' : 'na' %>" aria-hidden="true"></i> <%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
       </div>
     </div>

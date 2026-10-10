@@ -29,6 +29,8 @@
   if (model.queues.followUp.length) priorities.push({ label: 'Auditor follow-up', title: `The auditor has come back on ${plural(model.queues.followUp.length, 'request')}`, note: 'Review the auditor’s question and prepare the additional evidence requested.', href: `${base}/requests?status=follow_up`, action: 'Review auditor follow-up', tone: 'attention' });
   if (eo.requests.toReview) priorities.push({ label: 'Assessor review', title: `${plural(eo.requests.toReview, 'client response')} ready for review`, note: 'Check the response and its evidence, then accept it or request changes.', href: eo.requests.href, action: 'Review responses', tone: 'review' });
   if (eo.findings.open) priorities.push({ label: 'Corrective action', title: `${plural(eo.findings.open, 'open finding')} to resolve`, note: eo.findings.rows[0]?.title || 'Record the correction, supporting evidence and closure review.', href: eo.findings.href, action: 'Review findings', tone: 'attention' });
+  // The roles decide which controls weigh most, so they come before the assessment.
+  if (roles.toConfirm.length) priorities.push({ label: 'AI roles', title: `Record what the organisation does with ${plural(roles.toConfirm.length, 'AI system')}`, note: 'Its role for each system (customer or user, producer, provider or partner) decides which controls weigh most.', href: `${base}/roles`, action: 'Answer the role questions', tone: 'attention' });
   if (!eo.assessment.complete) priorities.push({ label: 'Assessment', title: eo.assessment.assessed < eo.assessment.total ? `${plural(eo.assessment.total - eo.assessment.assessed, 'requirement')} still need a conclusion` : 'Assessment needs independent review', note: eo.assessment.reviewed ? 'The reviewed baseline no longer matches the current assessment. Review the changes.' : 'Record conclusions and evidence, then complete independent review.', href: eo.assessment.href, action: 'Continue assessment', tone: 'review' });
   if (eo.requests.withClient) priorities.push({ label: 'With client', title: `${plural(eo.requests.withClient, 'request')} awaiting the client`, note: 'Follow up with the assigned owners. A response still needs assessor review.', href: eo.requests.href, action: 'View client requests', tone: 'client' });
   if (!priorities.length && nextCriteria.length) priorities.push({ label: 'Current phase', title: nextCriteria[0].label, note: 'Complete the supporting work and obtain the required approval to pass this phase.', href: eo.planHref, action: 'Open engagement plan', tone: 'review' });
@@ -123,6 +125,18 @@
       </section>
     </div>
   </div>
+
+  <section class="panel" aria-labelledby="a42RolesTitle">
+    <div class="panel-head"><div><h2 id="a42RolesTitle">The organisation's AI roles</h2><p class="a42-caption"><%= roles.sentence || (roles.counted.length ? 'No role is recorded for a system in scope yet.' : 'Roles are recorded per AI system once systems are in scope.') %></p></div><a class="a42-list-action" href="<%= base %>/roles">AI roles <span aria-hidden="true">→</span></a></div>
+    <% if (roles.byRole.length) { %>
+    <ul class="a42-list">
+      <% roles.byRole.forEach(r => { %>
+      <li><i class="a42-dot t-done" aria-hidden="true"></i><div><span class="a42-list-title"><%= r.name %></span><p><%= r.brings %></p></div><span class="a42-list-aside"><%= plural(r.systems.length, 'system') %></span></li>
+      <% }) %>
+    </ul>
+    <% } %>
+    <% if (roles.toConfirm.length) { %><p class="a42-more-link"><a href="<%= base %>/roles"><%= plural(roles.toConfirm.length, 'system') %> still to answer →</a></p><% } %>
+  </section>
 
   <div class="a42-grid a42-grid-even">
     <section class="panel" aria-labelledby="a42SystemsTitle">

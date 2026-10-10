@@ -13,6 +13,7 @@ const path = require('path');
 const crypto = require('crypto');
 const audit = require('../lib/iso42001-audit');
 const registry = require('../lib/ai-systems');
+const aiRoles = require('../lib/ai-roles');
 const aiDatasets = require('../lib/ai-datasets');
 const aiConcerns = require('../lib/ai-concerns');
 const aimsContext = require('../lib/aims-context');
@@ -103,7 +104,7 @@ function register(app, deps) {
     render(res, 'iso42001_overview', req, {
       title: 'ISO 42001 overview', active: 'iso42001-overview', model, systems, populationCounts,
       engagementOverview: aimsOverview.buildOverview(db, req.workspace, req.user.id),
-      docs: aimsTemplates.documentationStatus(db, req.workspace.id),
+      docs: aimsTemplates.documentationStatus(db, req.workspace.id), roles: aiRoles.profile(db, req.workspace), ROLE_INFO: aiRoles.ROLE_INFO,
       checklist: audit.checklistStatus(db, req.workspace), STAGE_HINTS: audit.STAGE_HINTS,
       canUseTemplates: !outcomeScope.isGapAssessmentOnly(req.workspace),
       STAGE_LABELS: audit.STAGE_LABELS, STATUS_LABELS: audit.STATUS_LABELS, STATUS_CLASS: audit.STATUS_CLASS,
@@ -446,6 +447,24 @@ function register(app, deps) {
       programme: prog, registry,
     });
   });
+
+  // The organisation's role for each AI system (lib/ai-roles.js, clause 4.1):
+  // the profile, and the questions per system.
+  app.get('/workspaces/:wsId/iso42001/roles', ...view, (req, res) => {
+    render(res, 'iso42001_roles', req, { title: 'AI roles', active: 'iso42001-roles', profile: aiRoles.profile(db, req.workspace),
+      questions: aiRoles.QUESTIONS, ROLE_INFO: aiRoles.ROLE_INFO, joinRoles: aiRoles.joinRoles });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/roles/:id(\\d+)', ...manage, handle((req, res) => {
+    const { system, before, after } = registry.saveRoles(db, req.workspace, req.user.id, req.params.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'update_ai_system_roles', 'ai_system', system.id, { before, after }, auditCtx(req));
+    const gained = after.filter(r => !before.includes(r));
+    const message = !after.length ? `${system.name}: these answers give no role yet`
+      : !before.length ? `${system.name}: the organisation is its ${aiRoles.joinRoles(after)}`
+        : gained.length ? `${system.name}: the organisation is now also its ${aiRoles.joinRoles(gained)}`
+          : `${system.name}: saved`;
+    res.redirect(withToast(`${base(req)}/roles#system-${system.id}`, message));
+  }, req => `${base(req)}/roles#system-${encodeURIComponent(req.params.id)}`));
 
   app.get('/workspaces/:wsId/iso42001/ai-systems/new', ...manage, (req, res) => {
     render(res, 'iso42001_ai_system_form', req, { title: 'Add AI system', active: 'iso42001-ai-systems', system: null, registry });
