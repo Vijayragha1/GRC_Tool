@@ -787,6 +787,14 @@ function requireWorkspace(req, res, next) {
   if (/^\/workspaces\/[^/]+\/iso42001(?:\/|$)/.test(String(req.originalUrl || req.url).split('?')[0]) && !ws.frameworks.includes('iso42001')) {
     return res.status(404).render('error', { user: req.user, ws, message: 'ISO 42001 is not part of this client\'s programme.' });
   }
+  // The reverse for a client that runs ISO 42001 without ISO 27001: ISO
+  // 27001's control register, SoA, gap assessment and readiness pages open the
+  // module's own page instead of listing ISO 27001's requirements.
+  const iso27001Page = String(req.originalUrl || req.url).split('?')[0].match(/^\/workspaces\/[^/]+\/(controls|soa|gap-assessment|readiness)(?:\/|$)/);
+  if (iso27001Page && ws.frameworks.includes('iso42001') && !ws.frameworks.includes('iso27001')) {
+    if (req.method === 'GET') return res.redirect(`/workspaces/${ws.id}/iso42001/${iso27001Page[1]}`);
+    return res.status(404).render('error', { user: req.user, ws, message: 'ISO 27001 is not part of this client\'s programme.' });
+  }
   ws.effective_timezone = workspaceTimeZone(ws);
   // Operational modules are independent of assessment frameworks. Attach the
   // authoritative TPRM service period once so navigation and every workspace

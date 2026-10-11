@@ -120,6 +120,24 @@ function register(app, deps) {
     res.json(rows);
   });
 
+  // The palette's pages for a client whose only ISO programme is ISO 42001:
+  // the module's pages, then the shared pages that serve it, without ISO
+  // 27001's control register, SoA, gap assessment, readiness and risk pages.
+  const ISO27001_PAGES = new Set(['', '/readiness', '/gap-assessment', '/roadmap', '/controls', '/assets', '/risks', '/objectives',
+    '/risk-methodology', '/risk-acceptances', '/soa', '/soa/snapshots', '/cert-cycle']);
+  const AIMS_ALIASES = {
+    '/controls': 'controls annex a clauses requirements', '/soa': 'soa statement of applicability annex a inclusion exclusion',
+    '/risks': 'risks risk register criteria methodology', '/readiness': 'stage 1 stage 2 cert ready', '/gap-assessment': 'gap pass',
+    '/ai-systems': 'ai system register inventory', '/roles': 'provider producer customer user', '/concerns': 'whistleblowing report concern',
+  };
+  function aimsNav(ws, shared) {
+    const masthead = require('../lib/iso42001-masthead');
+    const gapOnly = require('../lib/engagement-outcome-scope').isGapAssessmentOnly(ws);
+    const module = [['ISO 42001 overview', '/iso42001/overview', 'overview dashboard home programme'], ['Your path', '/iso42001/path', 'next step journey stages'],
+      ...masthead.PAGES.filter((p) => !(gapOnly && p.certification)).map((p) => [p.label, `/iso42001${p.path}`, AIMS_ALIASES[p.path] || ''])];
+    return [...module, ...shared.filter(([, path]) => !ISO27001_PAGES.has(path))];
+  }
+
   // ==================== COMMAND PALETTE SEARCH ====================
   app.get('/api/search', requireAuth, (req, res) => {
     const q = (req.query.q || '').toLowerCase().trim();
@@ -223,7 +241,11 @@ function register(app, deps) {
           ['Team & access', '/team', 'team members users access permissions rbac'],
           ['Activity log', '/activity-log', 'audit trail history']
         ];
-        nav.filter(([n, , aliases]) => n.toLowerCase().includes(q) || (aliases && aliases.toLowerCase().includes(q)))
+        // A client that runs ISO 42001 without ISO 27001 gets the module's
+        // pages in place of ISO 27001's (the same pages redirect there).
+        const codes = reqOpts.enabledCodes(ws);
+        const pages = codes.includes('iso42001') && !codes.includes('iso27001') ? aimsNav(ws, nav) : nav;
+        pages.filter(([n, , aliases]) => n.toLowerCase().includes(q) || (aliases && aliases.toLowerCase().includes(q)))
           .slice(0, 8)
           .forEach(([n, p]) => {
             results.push({ type: 'Page', label: n, sublabel: ws.client_name, href: '/workspaces/' + wsId + p });
