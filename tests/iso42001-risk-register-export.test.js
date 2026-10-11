@@ -182,6 +182,10 @@ test('the audit pack, the ZIP and the auditor portal keep the two registers apar
   assert.doesNotMatch(zip['02_AI_Risk_Register.csv'], /Laptop theft/);
   assert.match(zip['00_MANIFEST.txt'], /02_AI_Risk_Register\.csv \(1 AI risks, live register; no AI risk assessment has been recorded\)/);
 
+  const shared = (await client.get(`/workspaces/${bothId}/export/risks.csv`)).text;
+  assert.match(shared, /Laptop theft/);
+  assert.doesNotMatch(shared, /Forecast model/, 'the shared register\'s CSV is the ISMS\'s on a client with both');
+
   const aimsZip = unzip((await client.get(`/workspaces/${aimsId}/audit-pack/zip`)).buffer);
   assert.equal(aimsZip['02_Risk_Register.csv'], undefined, 'no ISO 27001-shaped register for an ISO 42001-only client');
   assert.match(aimsZip['00_MANIFEST.txt'], /02_AI_Risk_Register\.csv \(\d+ AI risks, from the risk assessment performed 2026-10-01, sealed\)/);

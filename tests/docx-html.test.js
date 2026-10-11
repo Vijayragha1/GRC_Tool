@@ -1,6 +1,6 @@
 'use strict';
 // The pinned html-to-docx drops headings, header cells, header rows, <em> and
-// <b>, and crashes on a <strong> holding a <span>. lib/docx-html.js rewrites
+// <b>, and crashes on an <i> or <strong> holding a <span>. lib/docx-html.js rewrites
 // report HTML into markup it keeps; tests/iso42001-risk-register-export.test.js
 // checks a real Word file through the worker.
 
@@ -28,13 +28,15 @@ test('emphasis the converter drops becomes markup it keeps, and nothing else is 
     '<p><i>Note</i> and <strong>bold</strong><br><body><blockquote>q</blockquote><embed></p>');
   assert.equal(normalise('<html><head><title>T</title><style>th,td{border:1pt} h1{font-size:22pt}</style></head></html>'),
     '<html><head><title>T</title><style>th,td{border:1pt} h1{font-size:22pt}</style></head></html>');
+  assert.equal(normalise('<p><em>a <span>b</span></em> <b><span class="x">c</span></b></p>'), '<p>a <span>b</span> <span class="x">c</span></p>',
+    'emphasis around markup is unwrapped: an <i> or <strong> holding a <span> crashes the converter');
   assert.equal(normalise(null), null);
 });
 
 test('a whole report converts without the converter failing', async () => {
   const htmlToDocx = require('html-to-docx');
   const html = normalise(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><div><h1>Title</h1><h2>Section</h2>
-    <table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td><strong>x</strong><br><span class="meta">y</span></td><td><em>z</em></td></tr></tbody></table></div></body></html>`);
+    <table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td><strong>x</strong><br><span class="meta">y</span></td><td><em>z</em> <b><span>w</span></b></td></tr></tbody></table></div></body></html>`);
   const log = console.log;
   console.log = (...a) => { if (!(a.length === 1 && typeof a[0] === 'boolean')) log(...a); };
   try {

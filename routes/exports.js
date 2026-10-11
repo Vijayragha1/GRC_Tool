@@ -49,9 +49,12 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/export/risks.csv', requireAuth, requireWorkspace,
     requirePermission('workspace.export'), requirePermission('risk.view'),
     requirePermission('asset.view'), (req, res) => {
+    // The client's primary register: the ISMS's on a client with both. The
+    // AIMS's risks export from the ISO 42001 module (lib/aims-reports.js).
+    const riskOwner = require('../lib/risk-owner');
     const rows = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r
       LEFT JOIN assets a ON a.id = r.asset_id
-      WHERE r.workspace_id = ? ORDER BY (r.likelihood * r.impact) DESC`).all(req.workspace.id);
+      WHERE r.workspace_id = ? AND ${riskOwner.ownedSql('r', riskOwner.primary(req.workspace))} ORDER BY (r.likelihood * r.impact) DESC`).all(req.workspace.id);
     const esc = v => v == null ? '' : `"${String(v).replace(/"/g, '""')}"`;
     const lines = ['ID,Title,Asset,Threat,Vulnerability,Likelihood,Impact,Score,Treatment,Owner,Status,Residual L,Residual I'];
     rows.forEach(r => {
