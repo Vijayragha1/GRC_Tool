@@ -31,7 +31,10 @@ test.before(async () => {
 test.after(async () => { db?.close(); await client?.close(); });
 
 test('sending a request to the client queues an email as well as the in-app notice', async () => {
-  const res = await client.post(`/workspaces/${wsId}/iso42001/requests/${requestId}/send`, { assignee_id: String(clientUser), due_date: '2026-10-10', note: 'The signed copy, please' });
+  // A month ahead: the module refuses a date in the past, so a fixed date here
+  // would start failing once the calendar passed it.
+  const askBy = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const res = await client.post(`/workspaces/${wsId}/iso42001/requests/${requestId}/send`, { assignee_id: String(clientUser), due_date: askBy, note: 'The signed copy, please' });
   assert.equal(res.status, 302, res.text.slice(0, 200));
   const outbox = db.prepare(`SELECT o.*, n.title, n.link FROM notification_outbox o JOIN notifications n ON n.id = o.notification_id WHERE o.recipient_id=?`).all(clientUser);
   assert.equal(outbox.length, 1);
@@ -44,7 +47,7 @@ test('sending a request to the client queues an email as well as the in-app noti
   assert.equal(result.sent, 1);
   assert.equal(delivered[0].toEmail, 'owner@aurora.example');
   assert.match(delivered[0].body, /The signed copy, please/);
-  assert.match(delivered[0].body, /Please respond by 2026-10-10/);
+  assert.match(delivered[0].body, new RegExp(`Please respond by ${askBy}`));
 });
 
 test('an unanswered request is chased once for each due date, and the consultant is told', () => {
