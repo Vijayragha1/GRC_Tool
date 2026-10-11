@@ -70,7 +70,7 @@
     : `${files.length} file${files.length === 1 ? '' : 's'}${expiredCount ? `, ${expiredCount} expired` : expiringCount ? `, ${expiringCount} expiring soon` : ''}`;
   const evidenceClass = !files.length || expiredCount ? 's-not-impl' : expiringCount ? 's-partial' : 's-implemented';
   const applicabilityText = { included: 'Included', excluded: 'Excluded', undecided: 'Undecided' }[recordedState.applicability] || 'Undecided';
-  const hasGuidance = !!(item.purpose || item.what_good_looks_like);
+  const hasGuidance = !!(item.purpose || item.what_good_looks_like || item.minimum_certifiable);
 %>
 
 <div class="iso42-assessment assessment-page">
@@ -312,6 +312,7 @@
     <summary>What the auditor looks for</summary>
     <% if (hasGuidance) { %>
       <% if (item.what_good_looks_like) { %><div class="assessment-guide-section"><h3>What good looks like</h3><p><%= item.what_good_looks_like %></p></div><% } %>
+      <% if (item.minimum_certifiable) { %><div class="assessment-guide-section"><h3>Minimum to pass Stage 2</h3><p><%= item.minimum_certifiable %></p></div><% } %>
       <% if (item.purpose) { %><div class="assessment-guide-section"><h3>What this is for</h3><p><%= item.purpose %></p></div><% } %>
       <% if (item.common_pitfalls && item.common_pitfalls.length) { %>
         <div class="assessment-guide-section"><h3>Where it usually goes wrong</h3><ul><% item.common_pitfalls.forEach(p => { %><li><%= p %></li><% }) %></ul></div>
