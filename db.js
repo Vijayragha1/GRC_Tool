@@ -3184,11 +3184,14 @@ function init() {
   addColumnIfMissing('iso42001_items', 'scoping_notes', 'TEXT');
   addColumnIfMissing('iso42001_items', 'maturity_ladder', 'TEXT');         // JSON {1,2,3,4}
   addColumnIfMissing('iso42001_items', 'related_items', 'TEXT');           // JSON array of ids
+  // "The smallest version that will still pass Stage 2" - same role as the
+  // ISO 27001 column above, surfaced in the AIMS wizard guidance panel.
+  addColumnIfMissing('iso42001_items', 'minimum_certifiable', 'TEXT');
   try {
     const content42 = require('./data/iso42001-content');
     const upd42 = db.prepare(`UPDATE iso42001_items SET
       purpose=?, what_good_looks_like=?, common_pitfalls=?, evidence_to_look_for=?,
-      scoping_notes=?, maturity_ladder=?, related_items=? WHERE id=?`);
+      scoping_notes=?, maturity_ladder=?, related_items=?, minimum_certifiable=? WHERE id=?`);
     let n42 = 0;
     for (const [id, c] of Object.entries(content42)) {
       const r = upd42.run(
@@ -3199,6 +3202,7 @@ function init() {
         c.scoping_notes || null,
         c.maturity_ladder ? JSON.stringify(c.maturity_ladder) : null,
         c.related_items ? JSON.stringify(c.related_items) : null,
+        c.minimum_certifiable || null,
         id
       );
       if (r.changes > 0) n42++;
