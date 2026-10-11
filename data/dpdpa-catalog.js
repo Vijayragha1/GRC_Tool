@@ -8,12 +8,24 @@
 // calendar anniversaries of the 13 November 2025 Gazette publication; the
 // notification itself expresses them as relative one-year / eighteen-month
 // periods.
+//
+// On the publication date: the Gazette of India Extraordinary carrying
+// G.S.R. 846(E) is issue No. 760 of Thursday, 13 November 2025, and the
+// notification's own date line reads "New Delhi, the 13th November, 2025".
+// The e-Gazette identifier on the same page is CG-DL-E-14112025-267650, so
+// the electronic upload stamp is 14 November 2025, which is where the
+// 14 November reading in some professional commentary comes from. The same
+// one-day lag appears on the corrigendum (issue No. 806 of 11 December 2025,
+// CG-DL-E-12122025-268455). This catalogue computes from 13 November 2025:
+// it is the date printed on the Gazette issue, it is the date MeitY itself
+// uses in G.S.R. 892(E) when referring back to G.S.R. 846(E), and it is the
+// earlier - therefore conservative - of the two candidate deadlines.
 
 const crypto = require('node:crypto');
 
 const SCHEMA_VERSION = '1.0.0';
-const CATALOG_VERSION = '2026.08.21';
-const REVIEWED_AS_OF = '2026-08-21';
+const CATALOG_VERSION = '2026.10.11';
+const REVIEWED_AS_OF = '2026-10-11';
 
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -67,6 +79,25 @@ const SOURCES = [
     identifier: 'G.S.R. 892(E)',
     publicationDate: '2025-12-11',
     url: 'https://egazette.gov.in/WriteReadData/2025/268455.pdf'
+  },
+  {
+    id: 'dpdp-rod-order-2026',
+    type: 'removal_of_difficulties_order',
+    title: 'Digital Personal Data Protection (Removal of Difficulties) Order, 2026',
+    identifier: 'S.O. 5458(E)',
+    publicationDate: '2026-10-06',
+    url: null,
+    // Made under s. 43 of the Act (power to remove difficulties). The order
+    // is dated 5 October 2026 and was published in, and took effect from,
+    // the Official Gazette of 6 October 2026; publicationDate carries the
+    // Gazette date, matching the convention used by the four entries above.
+    // The official e-Gazette PDF could not be retrieved at review time, so
+    // url is null rather than a guessed or secondary link. The identifier,
+    // both dates, the enabling power and both amendment texts were confirmed
+    // against four independent professional sources; the Gazette copy itself
+    // is still outstanding and must be checked before an audit deliverable
+    // quotes this order verbatim.
+    verification: 'secondary_sources_only'
   }
 ];
 
@@ -217,12 +248,12 @@ const OBLIGATIONS = [
   obligation({
     ref: 'DPDPA-BAS-03', domain: 'processing_grounds', sortOrder: 6,
     title: 'Map every other certain legitimate use to an exact statutory limb',
-    sourceSectionRule: 'DPDP Act s. 7(b)-(i); Rule 5 and Second Schedule where applicable',
-    sourceRefs: [sourceRef('dpdp-act-2023', 's. 7(b)', 's. 7(c)', 's. 7(d)', 's. 7(e)', 's. 7(f)', 's. 7(g)', 's. 7(h)', 's. 7(i)'), sourceRef('dpdp-rules-2025', 'Rule 5', 'Second Schedule')],
+    sourceSectionRule: 'DPDP Act s. 7(b)-(i); Rule 5(1) and Second Schedule where applicable',
+    sourceRefs: [sourceRef('dpdp-act-2023', 's. 7(b)', 's. 7(c)', 's. 7(d)', 's. 7(e)', 's. 7(f)', 's. 7(g)', 's. 7(h)', 's. 7(i)'), sourceRef('dpdp-rules-2025', 'Rule 5(1)', 'Second Schedule')],
     phase: 'phase_3_substantive', flags: ['certain_legitimate_use', 'state_or_instrumentality', 'legal_mandate', 'emergency_public_interest', 'employment'],
     condition: 'Applies when relying on a State benefit/service use, State function, legal disclosure, judgment/order, medical emergency, public-health event, disaster/public-order event or employment use.',
     requirement: 'Document the exact section 7 limb, triggering facts and statutory limits for each certain legitimate use other than section 7(a).',
-    guidance: ['Use a closed list of DPDP grounds and require evidence of the trigger.', 'For State processing under section 7(b), assess the Rule 5 and Second Schedule standards.'],
+    guidance: ['Use a closed list of DPDP grounds and require evidence of the trigger.', 'For State processing under section 7(b), assess the Rule 5(1) and Second Schedule standards; the Second Schedule’s own cross-reference reads "[See rules 5(1) and 16]".', 'Second Schedule standard (g) adds a distinct duty for section 7(b) processing: give the Data Principal an intimation, the business contact information of a person who can answer questions on the Data Fiduciary’s behalf, and the communication link for exercising rights.'],
     evidence: ['Ground-specific decision record and supporting trigger evidence.', 'Employment-purpose or emergency-use procedure where relevant.', 'State-processing standards assessment where relevant.'],
     severity: 'critical', weight: 5
   }),
@@ -520,7 +551,7 @@ const OBLIGATIONS = [
     sourceSectionRule: 'Rule 8(3) and Seventh Schedule',
     sourceRefs: [sourceRef('dpdp-rules-2025', 'Rule 8(3)', 'Seventh Schedule')], phase: 'phase_3_substantive',
     flags: ['all_data_fiduciaries', 'minimum_one_year_retention', 'regulatory_information_request'],
-    condition: 'Applies to personal-data processing undertaken by or for a Data Fiduciary for the Seventh Schedule purposes.',
+    condition: 'Applies to every Data Fiduciary, and to processing undertaken on its behalf by a Data Processor; the Seventh Schedule specifies the purposes for which the retained data and logs may be called for, not a limit on who must retain them.',
     requirement: 'Retain the personal data, associated traffic data and other processing logs for at least one year from processing, including at processors, before erasure unless another law or Government notification requires longer retention.',
     guidance: ['Model this minimum separately from business-purpose retention and security-log retention.', 'Reconcile processor retention and deletion settings.'],
     evidence: ['Retention schedule citing Rule 8(3).', 'System and processor retention configurations.', 'Deletion evidence after the applicable period.'],
@@ -543,8 +574,8 @@ const OBLIGATIONS = [
   obligation({
     ref: 'DPDPA-CHD-01', domain: 'children_guardians', sortOrder: 32,
     title: 'Obtain verifiable parental consent before child-data processing',
-    sourceSectionRule: 'DPDP Act s. 2(f), s. 9(1); Rule 10',
-    sourceRefs: [sourceRef('dpdp-act-2023', 's. 2(f)', 's. 9(1)'), sourceRef('dpdp-rules-2025', 'Rule 10')], phase: 'phase_3_substantive',
+    sourceSectionRule: 'DPDP Act s. 2(f), s. 9(1) as corrected by S.O. 5458(E); Rule 10',
+    sourceRefs: [sourceRef('dpdp-act-2023', 's. 2(f)', 's. 9(1)'), sourceRef('dpdp-rod-order-2026', 's. 9(1)'), sourceRef('dpdp-rules-2025', 'Rule 10')], phase: 'phase_3_substantive',
     flags: ['child_data', 'under_eighteen', 'verifiable_parental_consent'],
     condition: 'Applies before processing personal data of an individual who has not completed eighteen years, unless a precise Fourth Schedule exception applies.',
     requirement: 'Use technical and organisational measures to obtain verifiable parental consent and check that the person identifying as parent is an identifiable adult using reliable held details or voluntarily supplied authorised-entity identity/age details or token.',
@@ -555,8 +586,8 @@ const OBLIGATIONS = [
   obligation({
     ref: 'DPDPA-GRD-01', domain: 'children_guardians', sortOrder: 33,
     title: 'Verify lawful guardianship for relevant persons with disability',
-    sourceSectionRule: 'DPDP Act s. 9(1); Rule 11',
-    sourceRefs: [sourceRef('dpdp-act-2023', 's. 9(1)'), sourceRef('dpdp-rules-2025', 'Rule 11')], phase: 'phase_3_substantive',
+    sourceSectionRule: 'DPDP Act s. 9(1) as corrected by S.O. 5458(E); Rule 11',
+    sourceRefs: [sourceRef('dpdp-act-2023', 's. 9(1)'), sourceRef('dpdp-rod-order-2026', 's. 9(1)'), sourceRef('dpdp-rules-2025', 'Rule 11')], phase: 'phase_3_substantive',
     flags: ['person_with_disability', 'lawful_guardian', 'verifiable_guardian_consent'],
     condition: 'Applies before relying on a guardian’s consent for a person with disability who is unable to take legally binding decisions within Rule 11.',
     requirement: 'Verify that the individual claiming to be guardian was appointed by a court, designated authority or local level committee under the applicable guardianship law.',
@@ -580,7 +611,7 @@ const OBLIGATIONS = [
     ref: 'DPDPA-CHD-03', domain: 'children_guardians', sortOrder: 35,
     title: 'Prohibit child tracking, behavioural monitoring and targeted advertising',
     sourceSectionRule: 'DPDP Act s. 9(3)-(4); Rule 12 and Fourth Schedule',
-    sourceRefs: [sourceRef('dpdp-act-2023', 's. 9(3)', 's. 9(4)'), sourceRef('dpdp-rules-2025', 'Rule 12', 'Fourth Schedule'), sourceRef('dpdp-rules-corrigendum-2025', 'item (v)')], phase: 'phase_3_substantive',
+    sourceRefs: [sourceRef('dpdp-act-2023', 's. 9(3)', 's. 9(4)'), sourceRef('dpdp-rules-2025', 'Rule 12', 'Fourth Schedule'), sourceRef('dpdp-rules-corrigendum-2025', 'item (v)(a) [page 38, line 2]', 'item (v)(b) [page 38, lines 1 to 15]')], phase: 'phase_3_substantive',
     flags: ['child_data', 'tracking', 'behavioural_monitoring', 'targeted_advertising', 'conditional_exception'],
     condition: 'Applies unless the exact Data Fiduciary class/purpose and every condition in the corrected Fourth Schedule are satisfied.',
     requirement: 'Prevent tracking or behavioural monitoring of children and targeted advertising directed at children, and invoke a Fourth Schedule exception only within its narrow purpose and conditions.',
@@ -692,7 +723,7 @@ const OBLIGATIONS = [
     ref: 'DPDPA-REG-01', domain: 'transfers_exemptions', sortOrder: 44,
     title: 'Respond securely to authorised Government information orders',
     sourceSectionRule: 'DPDP Act s. 36; Rule 23 as corrected by G.S.R. 892(E)',
-    sourceRefs: [sourceRef('dpdp-act-2023', 's. 36'), sourceRef('dpdp-rules-2025', 'Rule 23', 'Seventh Schedule'), sourceRef('dpdp-rules-corrigendum-2025', 'item (iii)')], phase: 'phase_3_substantive',
+    sourceRefs: [sourceRef('dpdp-act-2023', 's. 36'), sourceRef('dpdp-rules-2025', 'Rule 23', 'Seventh Schedule'), sourceRef('dpdp-rules-corrigendum-2025', 'item (iii) [page 32, line 4]')], phase: 'phase_3_substantive',
     flags: ['regulatory_information_request', 'data_fiduciary', 'intermediary', 'restricted_disclosure'],
     condition: 'Applies when the corresponding authorised person calls for information for a Seventh Schedule purpose within the period specified in the order.',
     requirement: 'Authenticate, preserve and furnish information within the order’s period, and where directed for sovereignty, integrity or State-security reasons, do not disclose the furnishing without prior written permission.',
@@ -740,14 +771,14 @@ const OBLIGATIONS = [
   }),
   obligation({
     ref: 'DPDPA-SDF-04', domain: 'significant_data_fiduciary', sortOrder: 48,
-    title: 'Complete annual DPIA and audit and report significant observations',
-    sourceSectionRule: 'DPDP Act s. 10(2)(c); Rule 13(1)-(2)',
-    sourceRefs: [sourceRef('dpdp-act-2023', 's. 10(2)(c)'), sourceRef('dpdp-rules-2025', 'Rule 13(1)', 'Rule 13(2)')], phase: 'phase_3_substantive',
+    title: 'Complete annual DPIA and data audit and report significant observations',
+    sourceSectionRule: 'DPDP Act s. 10(2)(c), s. 10(2)(c)(ii) as corrected by S.O. 5458(E); Rule 13(1)-(2)',
+    sourceRefs: [sourceRef('dpdp-act-2023', 's. 10(2)(c)'), sourceRef('dpdp-rod-order-2026', 's. 10(2)(c)(ii)'), sourceRef('dpdp-rules-2025', 'Rule 13(1)', 'Rule 13(2)')], phase: 'phase_3_substantive',
     flags: ['significant_data_fiduciary', 'annual_dpia', 'annual_audit', 'board_reporting'],
     condition: 'Applies every twelve months from the date of SDF notification or inclusion in a notified class.',
-    requirement: 'Undertake a DPIA and compliance audit in each twelve-month period and cause the assessor/auditor to give the Board a report containing significant observations.',
-    guidance: ['Anchor the due date to designation, not the calendar year.', 'Cover purpose, Data Principal rights, risks and mitigations and retain submission proof.'],
-    evidence: ['DPIA and audit schedule tied to designation date.', 'Completed DPIA/audit and issue register.', 'Significant-observation report and Board submission evidence.'],
+    requirement: 'Undertake a Data Protection Impact Assessment and a periodic data audit in each twelve-month period and cause the assessor/auditor to give the Board a report containing significant observations.',
+    guidance: ['Anchor the due date to designation, not the calendar year.', 'Scope the engagement as a data audit in the sense of s. 10(2)(b) and (c)(ii), not a general compliance or IT audit; S.O. 5458(E) substituted "data audit" for "audit" in s. 10(2)(c)(ii) to settle that point.', 'Cover purpose, Data Principal rights, risks and mitigations and retain submission proof.'],
+    evidence: ['DPIA and data-audit schedule tied to designation date.', 'Completed DPIA and data audit with issue register.', 'Significant-observation report and Board submission evidence.'],
     severity: 'critical', weight: 5
   }),
   obligation({
@@ -827,13 +858,25 @@ const OBLIGATIONS = [
   obligation({
     ref: 'DPDPA-CM-05', domain: 'statutory_consent_manager', sortOrder: 55,
     title: 'Prevent conflicts and publish required ownership and management disclosures',
-    sourceSectionRule: 'First Schedule Part B items 9-12, corrected by G.S.R. 892(E)',
-    sourceRefs: [sourceRef('dpdp-rules-2025', 'First Schedule Part B item 9', 'First Schedule Part B item 10', 'First Schedule Part B item 11', 'First Schedule Part B item 12'), sourceRef('dpdp-rules-corrigendum-2025', 'item (iv)')], phase: 'phase_2_consent_manager',
-    flags: ['statutory_consent_manager', 'conflict_of_interest', 'ownership_transparency', 'board_audit'],
+    sourceSectionRule: 'Rule 4(6); First Schedule Part B items 9-12, corrected by G.S.R. 892(E)',
+    sourceRefs: [sourceRef('dpdp-rules-2025', 'Rule 4(6)', 'First Schedule Part B item 9', 'First Schedule Part B item 10', 'First Schedule Part B item 11', 'First Schedule Part B item 12'), sourceRef('dpdp-rules-corrigendum-2025', 'item (iv)(a) [page 34, line 1]')], phase: 'phase_2_consent_manager',
+    flags: ['statutory_consent_manager', 'conflict_of_interest', 'ownership_transparency', 'board_audit', 'board_information_request'],
     condition: 'Applies only to a registered statutory Consent Manager.',
-    requirement: 'Avoid conflicts with Data Fiduciaries, prevent management/director financial or employment conflicts, publish the required promoter, director, management, shareholder and related-body information, and submit to Board audit and corrective directions.',
-    guidance: ['Run appointment, periodic and event-driven conflict checks.', 'Keep public disclosures current and preserve Board-audit response evidence.'],
-    evidence: ['Conflict policy, declarations and screening results.', 'Published ownership/management disclosures and change logs.', 'Board audit, direction and remediation records where applicable.'],
+    requirement: 'Avoid conflicts with Data Fiduciaries, prevent management/director financial or employment conflicts, publish the required promoter, director, management, shareholder and related-body information, operate the Part B item 12 audit mechanisms and report their outcome to the Board, and furnish any information the Board calls for under Rule 4(6).',
+    guidance: ['Run appointment, periodic and event-driven conflict checks.', 'Keep public disclosures current and preserve Board-audit response evidence.', 'Hold a named owner and a defined turnaround for Rule 4(6) Board information requests; it is a standing duty, not an incident response.'],
+    evidence: ['Conflict policy, declarations and screening results.', 'Published ownership/management disclosures and change logs.', 'Board audit, direction and remediation records where applicable.', 'Register of Board information requests under Rule 4(6) with the response furnished and its date.'],
+    severity: 'critical', weight: 5
+  }),
+  obligation({
+    ref: 'DPDPA-CM-06', domain: 'statutory_consent_manager', sortOrder: 56,
+    title: 'Obtain prior Board approval before any change of control of the Consent Manager',
+    sourceSectionRule: 'First Schedule Part B item 13',
+    sourceRefs: [sourceRef('dpdp-rules-2025', 'First Schedule Part B item 13')], phase: 'phase_2_consent_manager',
+    flags: ['statutory_consent_manager', 'change_of_control', 'prior_board_approval', 'merger_or_sale'],
+    condition: 'Applies only to a registered statutory Consent Manager, on any transfer of control of the registered company by sale, merger or otherwise.',
+    requirement: 'Do not transfer control of the company registered as the Consent Manager by way of sale, merger or otherwise without the previous approval of the Board, and meet any conditions the Board specifies in that behalf.',
+    guidance: ['Treat registration as non-portable: a transaction that moves control needs Board approval before completion, not notification after it.', 'Build the approval into the transaction timetable as a condition precedent, with an owner for the Board application and for evidencing each specified condition.', 'Use the Companies Act, 2013 meaning of "control" carried into the Schedule by the First Schedule Note, so indirect and negative-control changes are caught.'],
+    evidence: ['Change-of-control procedure naming Board approval as a condition precedent.', 'Board application, supporting submissions and the approval or refusal received.', 'Record of each condition the Board specified and evidence it was fulfilled.', 'Board minutes or transaction documents showing completion followed approval.'],
     severity: 'critical', weight: 5
   })
 ];
@@ -894,7 +937,7 @@ const CORPUS_BASIS = {
 };
 
 const CONTENT_HASH = computeContentHash(CORPUS_BASIS);
-const SOURCE_REFERENCE = 'Digital Personal Data Protection Act, 2023 (Act 22 of 2023); G.S.R. 843(E); G.S.R. 846(E), corrected by G.S.R. 892(E)';
+const SOURCE_REFERENCE = 'Digital Personal Data Protection Act, 2023 (Act 22 of 2023); G.S.R. 843(E); G.S.R. 846(E), corrected by G.S.R. 892(E); as amended by S.O. 5458(E)';
 
 const METADATA = {
   code: 'dpdpa',
@@ -907,7 +950,7 @@ const METADATA = {
   domainCount: DOMAINS.length,
   hashAlgorithm: 'sha256',
   contentHash: CONTENT_HASH,
-  effectiveDateNotice: 'Phase 2 and phase 3 calendar dates are computed anniversaries; G.S.R. 843(E) and Rule 1 state the legally controlling relative periods.',
+  effectiveDateNotice: 'Phase 2 and phase 3 calendar dates are computed anniversaries; G.S.R. 843(E) and Rule 1 state the legally controlling relative periods. They run from publication in the Official Gazette, computed here from the printed Gazette issue date of 13 November 2025. The e-Gazette upload stamp on the same document is 14 November 2025 (CG-DL-E-14112025-267650) and some professional commentary computes 14 November 2026 / 14 May 2027 from it, so treat each phase date as carrying a one-day uncertainty and plan to the earlier date.',
   scopeNotice: 'Gap-assessment legal catalog only; this corpus is not a privacy-operations implementation or legal advice.'
 };
 
