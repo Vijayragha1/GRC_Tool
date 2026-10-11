@@ -19,7 +19,7 @@
 <section class="a42-stats" aria-label="Readiness measures">
   <div class="a42-stat<%= r.stage1 < 50 ? ' is-attention' : '' %>"><span>Stage 1 readiness</span><strong><%= r.stage1 %><small>%</small></strong><em>documentation &amp; AIMS framework</em></div>
   <div class="a42-stat<%= r.stage2 < 50 ? ' is-attention' : '' %>"><span>Stage 2 readiness</span><strong><%= r.stage2 %><small>%</small></strong><em>operational effectiveness</em></div>
-  <div class="a42-stat"><span>Documented information</span><strong><%= r.records.found %><small> / <%= r.records.total %></small></strong><em>mandatory + expected per ISO 42001</em></div>
+  <div class="a42-stat"><span>Documented information</span><strong><%= r.records.found %><small> / <%= r.records.total %></small></strong><em>mandatory, and expected for the controls that apply</em></div>
   <div class="a42-stat"><span>Average maturity</span><strong><%= r.metrics.avgMaturity %></strong><em>Compliance Sphere 0 to 4 capability scale</em></div>
 </section>
 
@@ -36,7 +36,7 @@
             <div>
               <span class="a42-list-title"><%= f.label %></span>
               <% if (f.items.length) { %>
-                <p><% f.items.slice(0, 5).forEach((it, i) => { const href = gapLink(it) || (f.kind === 'open_ncs' ? `/workspaces/${ws.id}/nonconformities/${it.id}` : null); %><%= i ? ' · ' : '' %><% if (href) { %><a href="<%= href %>"><%= it.title %></a><% } else { %><%= it.title %><% } %><% }) %><% if (f.items.length > 5) { %> · and <%= f.items.length - 5 %> more<% } %></p>
+                <p><% f.items.slice(0, 5).forEach((it, i) => { const href = it.href || gapLink(it) || (f.kind === 'open_ncs' ? `/workspaces/${ws.id}/nonconformities/${it.id}` : f.kind === 'roles_missing' ? `/workspaces/${ws.id}/iso42001/roles#system-${it.id}` : null); %><%= i ? ' · ' : '' %><% if (href) { %><a href="<%= href %>"><%= it.title %></a><% } else { %><%= it.title %><% } %><% }) %><% if (f.items.length > 5) { %> · and <%= f.items.length - 5 %> more<% } %></p>
               <% } %>
             </div>
             <span class="a42-list-aside"><%= f.severity === 'high' ? 'High' : 'Medium' %></span>
@@ -47,7 +47,7 @@
   </section>
 
   <section class="panel" aria-labelledby="rdDocsTitle">
-    <div class="panel-head"><div><h2 id="rdDocsTitle">Documented information</h2><p class="a42-caption">Heuristic - confirm manually.</p></div></div>
+    <div class="panel-head"><div><h2 id="rdDocsTitle">Documented information</h2><p class="a42-caption"><% if (r.roles.ready) { %>Read against the organisation's AI roles (<%= r.roles.sentence %>) and its Statement of Applicability. Heuristic: confirm manually.<% } else { %>Heuristic: confirm manually. <a href="/workspaces/<%= ws.id %>/iso42001/roles">Record the AI roles</a> so records the organisation will never hold drop out.<% } %></p></div></div>
     <h3 class="a42-list-group">Mandatory per ISO 42001:2023 <span><%= r.records.mandatory.found %> of <%= r.records.mandatory.total %></span></h3>
     <ul class="a42-list">
       <% r.records.mandatory.checks.forEach(c => { %>
@@ -62,7 +62,7 @@
         </li>
       <% }) %>
     </ul>
-    <h3 class="a42-list-group">Expected if the related Annex A control is included <span><%= r.records.expected.found %> of <%= r.records.expected.total %></span></h3>
+    <h3 class="a42-list-group">Expected for the Annex A controls that apply <span><%= r.records.expected.found %> of <%= r.records.expected.total %></span></h3>
     <ul class="a42-list">
       <% r.records.expected.checks.forEach(c => { %>
         <li>
@@ -70,12 +70,30 @@
           <div>
             <span class="a42-list-title"><%= c.name %></span>
             <% if (c.basis) { %><p><%= c.basis %></p><% } %>
+            <% if (c.note) { %><p><%= c.note %></p><% } %>
             <% if (c.declaredOnly) { %><p class="a42-warn">Marked implemented, but the record was not found</p><% } %>
           </div>
           <span class="a42-list-aside"><%= c.clause %></span>
         </li>
       <% }) %>
     </ul>
+    <% const notExpected = r.records.expected.notExpected || []; if (notExpected.length) { %>
+      <details class="a42-fold">
+        <summary>Not expected for this organisation (<%= notExpected.length %>)</summary>
+        <ul class="a42-list">
+          <% notExpected.forEach(c => { %>
+            <li>
+              <i class="a42-dot t-na" aria-hidden="true"></i>
+              <div>
+                <span class="a42-list-title"><%= c.name %></span>
+                <p><%= c.why %><% if (c.proposed) { %> <a href="/workspaces/<%= ws.id %>/iso42001/soa#soa-<%= c.control %>">Open the row</a><% } %></p>
+              </div>
+              <span class="a42-list-aside"><%= c.clause %></span>
+            </li>
+          <% }) %>
+        </ul>
+      </details>
+    <% } %>
   </section>
 </div>
 

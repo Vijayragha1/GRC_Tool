@@ -13,6 +13,7 @@ const path = require('path');
 const crypto = require('crypto');
 const audit = require('../lib/iso42001-audit');
 const registry = require('../lib/ai-systems');
+const aiRoles = require('../lib/ai-roles');
 const aiDatasets = require('../lib/ai-datasets');
 const aiConcerns = require('../lib/ai-concerns');
 const aimsContext = require('../lib/aims-context');
@@ -94,7 +95,9 @@ function register(app, deps) {
   // ------------------------------------------------------------ overview
 
   app.get('/workspaces/:wsId/iso42001/overview', ...view, (req, res) => {
-    if (outcomeScope.isGapAssessmentOnly(req.workspace)) return res.redirect(`/workspaces/${req.workspace.id}/engagement-plan`);
+    // A gap assessment has no certification overview; it opens on its path,
+    // which leads to the engagement plan for the report.
+    if (outcomeScope.isGapAssessmentOnly(req.workspace)) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/path`);
     const model = audit.overview(db, req.workspace, today());
     const systems = registry.list(db, req.workspace);
     const period = { start: model.programme.review_period_start, end: model.programme.review_period_end };
@@ -103,7 +106,7 @@ function register(app, deps) {
     render(res, 'iso42001_overview', req, {
       title: 'ISO 42001 overview', active: 'iso42001-overview', model, systems, populationCounts,
       engagementOverview: aimsOverview.buildOverview(db, req.workspace, req.user.id),
-      docs: aimsTemplates.documentationStatus(db, req.workspace.id),
+      docs: aimsTemplates.documentationStatus(db, req.workspace.id), roles: aiRoles.profile(db, req.workspace), ROLE_INFO: aiRoles.ROLE_INFO,
       checklist: audit.checklistStatus(db, req.workspace), STAGE_HINTS: audit.STAGE_HINTS,
       canUseTemplates: !outcomeScope.isGapAssessmentOnly(req.workspace),
       STAGE_LABELS: audit.STAGE_LABELS, STATUS_LABELS: audit.STATUS_LABELS, STATUS_CLASS: audit.STATUS_CLASS,
@@ -447,6 +450,25 @@ function register(app, deps) {
     });
   });
 
+  // The organisation's role for each AI system (lib/ai-roles.js, clause 4.1):
+  // the profile, and the questions per system.
+  app.get('/workspaces/:wsId/iso42001/roles', ...view, (req, res) => {
+    const profile = aiRoles.profile(db, req.workspace);
+    render(res, 'iso42001_roles', req, { title: 'AI roles', active: 'iso42001-roles', profile, proposals: require('../lib/aims-soa-proposals').propose(profile),
+      questions: aiRoles.QUESTIONS, ROLE_INFO: aiRoles.ROLE_INFO, joinRoles: aiRoles.joinRoles });
+  });
+
+  app.post('/workspaces/:wsId/iso42001/roles/:id(\\d+)', ...manage, handle((req, res) => {
+    const { system, before, after } = registry.saveRoles(db, req.workspace, req.user.id, req.params.id, req.body);
+    logAction(req.user.id, req.workspace.id, 'update_ai_system_roles', 'ai_system', system.id, { before, after }, auditCtx(req));
+    const gained = after.filter(r => !before.includes(r));
+    const message = !after.length ? `${system.name}: these answers give no role yet`
+      : !before.length ? `${system.name}: the organisation is its ${aiRoles.joinRoles(after)}`
+        : gained.length ? `${system.name}: the organisation is now also its ${aiRoles.joinRoles(gained)}`
+          : `${system.name}: saved`;
+    res.redirect(withToast(`${base(req)}/roles#system-${system.id}`, message));
+  }, req => `${base(req)}/roles#system-${encodeURIComponent(req.params.id)}`));
+
   app.get('/workspaces/:wsId/iso42001/ai-systems/new', ...manage, (req, res) => {
     render(res, 'iso42001_ai_system_form', req, { title: 'Add AI system', active: 'iso42001-ai-systems', system: null, registry });
   });
@@ -464,7 +486,7 @@ function register(app, deps) {
     if (!detail) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'AI system not found.' });
     // Risks the consultant has tied to this system (lib/ai-risk.js).
     const systemRisks = db.prepare(`SELECT id, title, likelihood, impact, status, treatment, risk_source FROM risks
-      WHERE workspace_id=? AND ai_system_id=? ORDER BY (likelihood * impact) DESC, id`).all(req.workspace.id, detail.system.id);
+      WHERE workspace_id=? AND ai_system_id=? AND management_system='iso42001' ORDER BY (likelihood * impact) DESC, id`).all(req.workspace.id, detail.system.id);
     render(res, 'iso42001_ai_system_detail', req, { title: detail.system.name, active: 'iso42001-ai-systems', ...detail, registry, edit: req.query.edit === '1',
       systemRisks, riskSourceLabel: require('../lib/ai-risk').SOURCE_LABEL, datasets: aiDatasets.forSystem(db, req.workspace, detail.system.id), DS: aiDatasets,
       reassessment: registry.reassessment(db, req.workspace, detail.system.id) });

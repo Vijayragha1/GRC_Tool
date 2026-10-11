@@ -1,0 +1,91 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const p = profile;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+  const TONE = { answered: 'done', partial: 'wip', ticked: 'part', missing: 'open' };
+  const answeredCount = p.counted.filter(s => s.roleState === 'answered').length;
+  // Open the first system still to answer, so the page starts where the work is.
+  const firstOpen = perms.manage ? (p.systems.find(s => s.counted && s.roleState !== 'answered') || {}).id : null;
+  const stateText = (s) => s.roleState === 'answered' ? 'All questions answered'
+    : s.roleState === 'partial' ? `${Object.keys(s.answers).length} of ${questions.length} questions answered`
+      : s.roleState === 'ticked' ? 'Ticked before the questions existed; answer them to confirm'
+        : 'Not answered yet';
+%>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">AI roles</h1>
+      <div class="page-subtitle">What the organisation does with each AI system decides its role for that system: customer or user, producer, provider or partner (clause 4.1). The roles decide which controls weigh most, so they come before the gap assessment and the Statement of Applicability.</div>
+    </div>
+    <a class="btn btn-secondary" href="<%= base %>/ai-systems">AI system register</a>
+  </div>
+
+  <section class="a42-stats a42-stats-2" aria-label="Where the roles stand">
+    <div class="a42-stat<%= p.counted.length && answeredCount < p.counted.length ? ' is-attention' : '' %>"><span>Systems with every question answered</span><strong><%= answeredCount %> <small>of <%= p.counted.length %></small></strong><em>AI systems in scope and not retired</em></div>
+    <div class="a42-stat"><span>Roles the organisation holds</span><strong class="a42-stat-text"><%= p.held.length ? p.held.map(r => ROLE_INFO[r].short).join(', ').replace(/^./, c => c.toUpperCase()) : 'None recorded' %></strong><em><%= p.missing.length ? `${plural(p.missing.length, 'system')} with no role yet` : 'Across the systems in scope' %></em></div>
+  </section>
+
+  <section class="panel" aria-labelledby="rolesProfileTitle">
+    <div class="panel-head"><div><h2 id="rolesProfileTitle">The organisation's profile</h2><p class="a42-caption"><%= p.sentence || 'No role is recorded for a system in scope yet.' %></p></div><span class="meta">Clause 4.1</span></div>
+    <% if (!p.counted.length) { %>
+      <p class="a42-empty">No AI system is in the AIMS scope yet. <% if (perms.manage) { %><a href="<%= base %>/ai-systems/new">Add one to the register</a>, then answer the questions here.<% } %></p>
+    <% } else if (!p.byRole.length) { %>
+      <p class="a42-empty">Answer the questions for each system below. The profile is the roles the organisation holds across them.</p>
+    <% } else { %>
+      <ul class="a42-list">
+        <% p.byRole.forEach(r => { %>
+          <li>
+            <i class="a42-dot t-done" aria-hidden="true"></i>
+            <div>
+              <span class="a42-list-title"><%= r.name %></span>
+              <p><%= plural(r.systems.length, 'system') %>: <%= r.systems.map(s => s.name).join(', ') %></p>
+              <p><%= r.brings %></p>
+            </div>
+            <span></span>
+          </li>
+        <% }) %>
+      </ul>
+      <% const pc = proposals.counts; %>
+      <p class="a42-more-link"><a href="<%= base %>/soa">For the Statement of Applicability: <%= pc.include %> control<%= pc.include === 1 ? ' applies' : 's apply' %>, <%= pc.exclude %> can be excluded, <%= pc.review %> to decide on the facts →</a></p>
+    <% } %>
+  </section>
+
+  <% if (p.systems.length) { %>
+  <section class="panel" aria-labelledby="rolesSystemsTitle">
+    <div class="panel-head"><div><h2 id="rolesSystemsTitle">Each AI system</h2><p class="a42-caption">Answer what the organisation does with the system, not which role it thinks it has. A system the organisation uses but has started to train, fine-tune or connect to its own data makes it that system's producer.</p></div></div>
+    <ul class="a42-list">
+      <% p.systems.forEach(s => { %>
+        <li id="system-<%= s.id %>">
+          <i class="a42-dot t-<%= s.counted ? TONE[s.roleState] : 'na' %>" aria-hidden="true"></i>
+          <div>
+            <a class="a42-list-title" href="<%= base %>/ai-systems/<%= s.id %>"><%= s.name %></a>
+            <p><strong><%= s.roles.length ? s.roles.map(r => ROLE_INFO[r].name).join(', ') : 'No role yet' %></strong> · <%= stateText(s) %><% if (!s.counted) { %> · outside the AIMS scope or retired, so not counted<% } %></p>
+            <% if (s.supplier_count) { %><p><%= plural(s.supplier_count, 'supplier') %> recorded on the register</p><% } %>
+            <% if (perms.manage) { %>
+              <details class="a42-fold"<%= s.id === firstOpen ? ' open' : '' %>>
+                <summary><%= s.roleState === 'answered' ? 'Change the answers' : 'Answer the questions' %></summary>
+                <form method="POST" action="<%= base %>/roles/<%= s.id %>" class="panel-pad a42-form">
+                  <input type="hidden" name="_csrf" value="<%= csrf %>">
+                  <input type="hidden" name="version" value="<%= s.version %>">
+                  <%- include('partials/a42_role_questions', { questions, answers: s.answers, prefix: `sys${s.id}` }) %>
+                  <div class="a42-form-actions"><button class="btn btn-primary btn-xs">Save the roles</button></div>
+                </form>
+              </details>
+            <% } else if (Object.keys(s.answers).length) { %>
+              <ul class="a42-sublist">
+                <% questions.filter(q => s.answers[q.key]).forEach(q => { %><li><%= q.text %> <strong><%= s.answers[q.key] === 'yes' ? 'Yes' : 'No' %></strong></li><% }) %>
+              </ul>
+            <% } %>
+          </div>
+          <span></span>
+        </li>
+      <% }) %>
+    </ul>
+  </section>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,8 +1,9 @@
-<%- include('partials/header', { title: record.label, user, ws, active: 'risks' }) %>
+<% const inAims = typeof inModule !== 'undefined' && inModule; %>
+<%- include('partials/header', { title: record.label, user, ws, active: inAims ? 'iso42001-risks' : 'risks' }) %>
 
 <div class="page-head">
   <div>
-    <div class="eyebrow"><a href="/workspaces/<%= ws.id %>/risks" class="link-muted">Risk register</a> · Risk assessment record</div>
+    <div class="eyebrow"><a href="/workspaces/<%= ws.id %><%= inAims ? '/iso42001/risks' : '/risks' %>" class="link-muted"><%= inAims ? 'AI risk register' : 'Risk register' %></a> · Risk assessment record</div>
     <h1 class="page-title"><%= record.label %></h1>
     <div class="page-subtitle">Performed <%= record.performed_on %> · recorded by <%= record.recorded_by_name || 'unknown' %> on <%= String(record.created_at).slice(0, 10) %><% if (record.methodology_name) { %> · method: <%= record.methodology_name %><% } %></div>
   </div>

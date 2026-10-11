@@ -18,6 +18,8 @@ const docLinks = require('../lib/doc-links');
 const auditRequests = require('../lib/iso42001-audit');
 const aimsCycle = require('../lib/iso42001-cycle');
 const aimsSoa = require('../lib/iso42001-soa');
+const aimsStages = require('../lib/iso42001-stages');
+const soaProposals = require('../lib/aims-soa-proposals');
 const reqOpts = require('../lib/requirement-options');
 const outcomeScope = require('../lib/engagement-outcome-scope');
 const aiRisk = require('../lib/ai-risk');
@@ -215,7 +217,9 @@ function register(app, deps) {
     const latestSnap = db.prepare(`SELECT id, label, version, owner, approved_by, approved_at, approval_status, created_at
         FROM iso42001_soa_snapshots WHERE workspace_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(req.workspace.id);
 
-    res.render('iso42001_soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl,
+    const proposals = soaProposals.forWorkspace(db, req.workspace);
+    const proposalStates = Object.fromEntries(rows.map(r => [r.id, soaProposals.compare(proposals.byId[r.id], r.applicability)]));
+    res.render('iso42001_soa', { user: req.user, ws: req.workspace, rows, docsByControl, risksByControl, proposals, proposalStates,
       customControls, soaMeta: latestSnap || {}, approvedSoa: aimsSoa.latestApproved(db, req.workspace),
       soaIssues: aimsSoa.issues(aimsSoa.payloadFor(db, req.workspace)) });
   });
@@ -306,6 +310,60 @@ function register(app, deps) {
     logAction(req.user.id, req.workspace.id, 'iso42001_soa_auto_justify', 'iso42001_item', null, { affected });
     aimsAssessment.reconcileDelivery(db,req.workspace.id,req.user.id,'ISO 42001 applicability justifications changed.');
     res.redirect(`/workspaces/${req.workspace.id}/iso42001/soa`);
+  });
+
+  // Proposed applicability from the organisation's AI roles
+  // (lib/aims-soa-proposals.js). A proposal changes nothing until a person
+  // accepts it here; the proposal is worked out again from the current roles,
+  // never taken from the form. The drafted reason fills the justification for
+  // that side only where none is written, and the audit log records who
+  // accepted which proposal and the roles behind it.
+  function acceptProposal(req, isoId, proposal) {
+    const wsId = req.workspace.id;
+    const rid = ctlWrites.requirementId(db, 'iso42001', isoId);
+    if (!rid) return false;
+    getOrCreate42State(wsId, isoId);
+    const side = proposal.kind === 'exclude' ? 'exclusion_justification' : 'inclusion_justification';
+    db.prepare(`UPDATE control_instances SET applicability=?, ${side} = COALESCE(NULLIF(${side}, ''), ?), last_updated=CURRENT_TIMESTAMP
+      WHERE workspace_id=? AND requirement_id=? AND entity_id IS NULL`)
+      .run(ctlWrites.normApplic(proposal.kind === 'exclude' ? 'excluded' : 'included'), proposal.reason, wsId, rid);
+    return true;
+  }
+  const proposalAudit = (p, proposals) => ({ kind: p.kind, basis: p.basis, roles: proposals.profile.held,
+    systems: proposals.profile.counted.filter((sys) => sys.roles.length).map((sys) => sys.name) });
+
+  app.post('/workspaces/:wsId/iso42001/soa/accept-proposals', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const soa = `/workspaces/${req.workspace.id}/iso42001/soa`;
+    const proposals = soaProposals.forWorkspace(db, req.workspace);
+    if (!proposals.ready) return res.redirect(withToast(soa, 'Record the organisation\'s role for its AI systems first.', 'error'));
+    const T = ctlReads.tables(db, req.workspace.id);
+    const decided = new Map(db.prepare(`SELECT iso_item_id, COALESCE(applicability,'undecided') AS applicability FROM ${T.cs42} WHERE workspace_id=?`)
+      .all(req.workspace.id).map((r) => [r.iso_item_id, r.applicability]));
+    // Only controls that apply, and only where nothing is decided: an
+    // exclusion is accepted one control at a time.
+    const accepted = [];
+    db.transaction(() => {
+      for (const p of Object.values(proposals.byId)) {
+        if (p.kind === 'include' && (decided.get(p.id) || 'undecided') === 'undecided' && acceptProposal(req, p.id, p)) accepted.push(p.id);
+      }
+    })();
+    logAction(req.user.id, req.workspace.id, 'accept_iso42001_soa_proposals', 'iso42001_item', null,
+      { accepted, roles: proposals.profile.held }, auditCtx(req));
+    if (accepted.length) aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'ISO 42001 applicability proposals were accepted.');
+    res.redirect(withToast(soa, accepted.length ? `${accepted.length} control${accepted.length === 1 ? '' : 's'} marked as applying, with the drafted reasons` : 'No undecided control had a proposal to apply'));
+  });
+
+  app.post('/workspaces/:wsId/iso42001/soa/:isoId/accept-proposal', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const soa = `/workspaces/${req.workspace.id}/iso42001/soa`;
+    if (!soaProposals.RULES[req.params.isoId]) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That Annex A control was not found.' });
+    const proposals = soaProposals.forWorkspace(db, req.workspace);
+    const p = proposals.byId[req.params.isoId];
+    if (!p) return res.redirect(withToast(soa, 'Record the organisation\'s role for its AI systems first.', 'error'));
+    if (p.kind === 'review') return res.redirect(withToast(`${soa}#soa-${req.params.isoId}`, 'The roles leave this control to you. Decide it on the facts and write the reason.', 'error'));
+    acceptProposal(req, req.params.isoId, p);
+    logAction(req.user.id, req.workspace.id, 'accept_iso42001_soa_proposal', 'iso42001_item', req.params.isoId, proposalAudit(p, proposals), auditCtx(req));
+    aimsAssessment.reconcileDelivery(db, req.workspace.id, req.user.id, 'An ISO 42001 applicability proposal was accepted.');
+    res.redirect(withToast(`${soa}#soa-${req.params.isoId}`, p.kind === 'exclude' ? 'Excluded, with the drafted reason' : 'Marked as applying, with the drafted reason'));
   });
 
   // Custom (non-Annex-A) controls
@@ -418,7 +476,7 @@ function register(app, deps) {
 
   // Per-row SoA update.
   app.post('/workspaces/:wsId/iso42001/soa/:isoId', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res, nextMw) => {
-    if (['bulk'].includes(req.params.isoId)) return nextMw();
+    if (['bulk', 'accept-proposals'].includes(req.params.isoId)) return nextMw();
     getOrCreate42State(req.workspace.id, req.params.isoId);
     const { applicability, status } = req.body;
     const just = soaJustifications(req.body);
@@ -694,9 +752,10 @@ function register(app, deps) {
       WHERE workspace_id=? AND id NOT IN (${docLinks.linkedDocIdsSubquery()})
       ORDER BY name`).all(req.workspace.id, 'iso42001', item.id);
 
-    // Risks not yet linked to this control - candidates for the link dropdown.
+    // AIMS risks not yet linked to this control - candidates for the link
+    // dropdown. ISMS risks are treated by ISO 27001 controls only.
     const linkableRisks = db.prepare(`SELECT id, title, likelihood, impact FROM risks
-      WHERE workspace_id=? AND id NOT IN (
+      WHERE workspace_id=? AND management_system='iso42001' AND id NOT IN (
         SELECT risk_id FROM iso42001_risk_controls WHERE iso_item_id=?
       ) ORDER BY (likelihood * impact) DESC, title`).all(req.workspace.id, item.id);
 
@@ -855,8 +914,8 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/iso42001/controls/:isoId/risks', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const { risk_id } = req.body;
     if (!risk_id) return res.redirect(`/workspaces/${req.workspace.id}/iso42001/gap/${req.params.isoId}`);
-    // Sanity check the risk belongs to this workspace.
-    const risk = db.prepare(`SELECT id FROM risks WHERE id=? AND workspace_id=?`).get(risk_id, req.workspace.id);
+    // The risk must be one of this workspace's AIMS risks.
+    const risk = db.prepare(`SELECT id FROM risks WHERE id=? AND workspace_id=? AND management_system='iso42001'`).get(risk_id, req.workspace.id);
     if (!risk) return res.status(404).send('Risk not found');
     db.prepare(`INSERT OR IGNORE INTO iso42001_risk_controls (risk_id, iso_item_id) VALUES (?, ?)`)
       .run(risk_id, req.params.isoId);
@@ -1097,8 +1156,12 @@ function register(app, deps) {
     const liveSystems = count(`SELECT COUNT(*) c FROM ai_systems WHERE workspace_id=? AND in_scope=1 AND lifecycle_stage != 'retired'`, wsId);
     const systemsAssessed = count(`SELECT COUNT(*) c FROM ai_systems s WHERE s.workspace_id=? AND s.in_scope=1 AND s.lifecycle_stage != 'retired'
         AND EXISTS (SELECT 1 FROM ai_impact_assessments ia WHERE ia.ai_system_id=s.id AND ia.status='approved')`, wsId);
-    const recentRiskRecord = count(`SELECT COUNT(*) c FROM risk_assessment_records WHERE workspace_id=? AND performed_on >= date('now','-12 months')`, wsId) > 0;
-    const aiRiskTreated = count(`SELECT COUNT(DISTINCT r.id) c FROM risks r JOIN iso42001_risk_controls rc ON rc.risk_id=r.id WHERE r.workspace_id=?`, wsId) > 0;
+    // The AIMS's own risk assessment and treatment records (migration 079): a
+    // record of the ISO 42001 register, and AIMS risks treated by ISO 42001
+    // controls. On an ISO 42001-only client every record is the AIMS's.
+    const aiRecords = require('../lib/risk-owner').hasBoth(wsRow || {}) ? ` AND scope='ai'` : '';
+    const recentRiskRecord = count(`SELECT COUNT(*) c FROM risk_assessment_records WHERE workspace_id=?${aiRecords} AND performed_on >= date('now','-12 months')`, wsId) > 0;
+    const aiRiskTreated = count(`SELECT COUNT(DISTINCT r.id) c FROM risks r JOIN iso42001_risk_controls rc ON rc.risk_id=r.id WHERE r.workspace_id=? AND r.management_system='iso42001'`, wsId) > 0;
     // Shared with the delivery plan's readiness gate (lib/aims-shared-records.js).
     const aimsAudit = aimsShared.reportedAudits(db, wsRow || { id: wsId }) > 0;
     const reviewHeld = aimsShared.heldReviews(db, wsRow || { id: wsId }, { withinMonths: 12 }) > 0;
@@ -1147,12 +1210,28 @@ function register(app, deps) {
     ];
     const mandatoryFound = mandatoryChecks.filter(c => c.found).length;
 
-    const expectedCheck = (ctlId, name, found, basis) => ({
-      name, clause: ctlId.replace('ai-annex-','').toUpperCase().replace(/-/g,'.'),
-      found: !!found, basis,
-      declaredOnly: !found && !!(controlStatusById[ctlId] && controlStatusById[ctlId].status === 'Implemented'),
-    });
-    const expectedChecks = [
+    // An expected record belongs to an Annex A control, so it is expected only
+    // where the control applies: as decided in the Statement of Applicability,
+    // or, while the control is undecided, as the organisation's AI roles
+    // propose (lib/aims-soa-proposals.js). An organisation that only uses
+    // bought AI is not asked for model documentation it will never hold.
+    const proposals = soaProposals.forWorkspace(db, wsRow || { id: wsId });
+    const applies = (ctlId, ref) => {
+      const decided = (controlStatusById[ctlId] && controlStatusById[ctlId].applicability) || 'undecided';
+      if (decided === 'excluded') return { expected: false, why: `${ref} is excluded in the Statement of Applicability.` };
+      if (decided === 'included') return { expected: true };
+      const p = proposals.byId[ctlId];
+      if (p && p.kind === 'exclude') return { expected: false, proposed: true, why: `The organisation's AI roles propose excluding ${ref}. Confirm it in the Statement of Applicability.` };
+      if (p && p.kind === 'review') return { expected: true, note: `Expected unless ${ref} is excluded: the roles leave it to be decided in the Statement of Applicability.` };
+      return { expected: true };
+    };
+    const expectedCheck = (ctlId, name, found, basis) => {
+      const clause = ctlId.replace('ai-annex-','').toUpperCase().replace(/-/g,'.');
+      return { name, clause, control: ctlId, found: !!found, basis,
+        declaredOnly: !found && !!(controlStatusById[ctlId] && controlStatusById[ctlId].status === 'Implemented'),
+        ...applies(ctlId, clause) };
+    };
+    const allExpectedChecks = [
       expectedCheck('ai-annex-a-4-2', 'AI system inventory', liveSystems > 0, `${liveSystems} in-scope AI system${liveSystems === 1 ? '' : 's'} in the register`),
       expectedCheck('ai-annex-a-4-3', 'Dataset documentation (datasheets)', (liveSystems > 0 && systemsWithData === liveSystems) || linkedRecordFor('ai-annex-a-4-3'),
         liveSystems && systemsWithData ? `${systemsWithData} of ${liveSystems} in-scope AI systems have datasets on the register` : 'Datasets on the register for every in-scope system, or a document or evidence linked to A.4.3'),
@@ -1170,6 +1249,8 @@ function register(app, deps) {
       expectedCheck('ai-annex-a-7-6', 'Data preparation records', allDatasets('d.preparation IS NOT NULL') || linkedRecordFor('ai-annex-a-7-6'),
         datasetsInUse ? datasetBasis('d.preparation IS NOT NULL', 'how they are prepared') : 'A document or evidence linked to A.7.6'),
     ];
+    const expectedChecks = allExpectedChecks.filter(c => c.expected);
+    const notExpected = allExpectedChecks.filter(c => !c.expected);
     const expectedFound = expectedChecks.filter(c => c.found).length;
 
     // Detected gaps - flags by category, severity
@@ -1235,7 +1316,19 @@ function register(app, deps) {
     if (dueSystems.length) flags.push({ kind: 'reassessment_due', label: 'AI systems whose impact assessment is due for review or was overtaken by a change', severity: 'medium', items: dueSystems });
     const contextIssues = count('SELECT COUNT(*) c FROM context_issues WHERE workspace_id=?', wsId);
     const contextParties = count('SELECT COUNT(*) c FROM interested_parties WHERE workspace_id=?', wsId);
+    // Clause 4.1: the organisation's role for each AI system (lib/ai-roles.js).
+    const roleless = db.prepare(`SELECT id, name AS title FROM ai_systems WHERE workspace_id=? AND in_scope=1 AND lifecycle_stage != 'retired'
+      AND COALESCE(org_roles, '[]') IN ('[]', '') ORDER BY name LIMIT 20`).all(wsId);
+    if (roleless.length) flags.push({ kind: 'roles_missing', label: 'In-scope AI systems with no recorded role for the organisation (clause 4.1)', severity: 'medium', items: roleless });
     if (!contextIssues || !contextParties) flags.push({ kind: 'context_missing', label: 'Internal and external issues or interested parties are not recorded (clauses 4.1 and 4.2)', severity: 'medium', items: [] });
+    // Incidents and changes as ISO 42001 reads them (lib/aims-operations.js).
+    const aimsOps = require('../lib/aims-operations');
+    const lateNotices = aimsOps.lateNotices(db, wsRow || { id: wsId });
+    if (lateNotices.length) flags.push({ kind: 'incident_notice_late', label: 'AI incidents whose users or others were not told by the deadline (A.8.4)', severity: 'high',
+      items: lateNotices.map(i => ({ id: i.id, title: i.title, href: `/workspaces/${wsId}/incidents/${i.id}#aims` })) });
+    const unassessed = aimsOps.unassessedChanges(db, wsRow || { id: wsId });
+    if (unassessed.length) flags.push({ kind: 'changes_unassessed', label: 'Significant changes to AI systems not yet followed by a new impact or risk assessment (clauses 8.2, 8.4)', severity: 'medium',
+      items: unassessed.map(c => ({ id: c.id, title: c.title, href: `/workspaces/${wsId}/changes/${c.id}#aims` })) });
     const lateReports = db.prepare(`SELECT id, summary AS title FROM ai_concern_reports WHERE workspace_id=? AND status != 'resolved'
       AND respond_by < date('now') ORDER BY respond_by LIMIT 20`).all(wsId);
     if (lateReports.length) flags.push({ kind: 'concerns_late', label: 'Concerns or reported adverse impacts past their response date (A.3.3, A.8.3)', severity: 'medium', items: lateReports });
@@ -1262,8 +1355,9 @@ function register(app, deps) {
         total: mandatoryChecks.length + expectedChecks.length,
         found: mandatoryFound + expectedFound,
         mandatory: { total: mandatoryChecks.length, found: mandatoryFound, checks: mandatoryChecks },
-        expected: { total: expectedChecks.length, found: expectedFound, checks: expectedChecks }
+        expected: { total: expectedChecks.length, found: expectedFound, checks: expectedChecks, notExpected }
       },
+      roles: { ready: proposals.ready, sentence: proposals.profile.sentence },
       metrics: {
         implemented: m.implemented || 0, partial: m.partial || 0, wip: m.wip || 0,
         notImpl: m.notImpl || 0, na: m.na || 0, unassessed: m.unassessed || 0,
@@ -1277,6 +1371,33 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/iso42001/readiness', requireAuth, requireWorkspace, (req, res) => {
     const r = computeIso42001Readiness(req.workspace.id);
     res.render('iso42001_readiness', { user: req.user, ws: req.workspace, r });
+  });
+
+  // The engagement's stages (lib/iso42001-stages.js): each stage's work with
+  // its live state and the delivery-plan steps it covers. /stages opens the
+  // stage the engagement is in.
+  app.get('/workspaces/:wsId/iso42001/stages', requireAuth, requireWorkspace, (req, res) => {
+    const list = aimsStages.list(res.locals.a42Masthead());
+    const here = list.find(s => s.current) || list.find(s => !s.done) || list[0];
+    res.redirect(`/workspaces/${req.workspace.id}/iso42001/stages/${here.key}`);
+  });
+  // The whole path of the engagement (lib/iso42001-journey.js), by stage.
+  app.get('/workspaces/:wsId/iso42001/path', requireAuth, requireWorkspace, (req, res) => {
+    const mast = res.locals.a42Masthead();
+    const journey = res.locals.a42Journey();
+    const groups = aimsStages.list(mast).map(st => ({ key: st.key, name: st.name,
+      href: `/workspaces/${req.workspace.id}/iso42001/stages/${st.key}`, steps: journey.forStage(st.key) }));
+    // Every page of the module by stage, for jumping straight to one.
+    const masthead = require('../lib/iso42001-masthead');
+    const pages = groups.map(g => ({ name: g.name, pages: masthead.PAGES
+      .filter(p => masthead.stageOf(p.active, mast.gapOnly) === g.key && !(mast.gapOnly && p.certification))
+      .map(p => ({ label: p.label, href: `/workspaces/${req.workspace.id}/iso42001${p.path}` })) })).filter(g => g.pages.length);
+    res.render('iso42001_path', { user: req.user, ws: req.workspace, title: 'Your path', active: 'iso42001-path', journey, groups, pages });
+  });
+  app.get('/workspaces/:wsId/iso42001/stages/:key([a-z]+)', requireAuth, requireWorkspace, (req, res) => {
+    const stage = aimsStages.build(db, req.workspace, res.locals.a42Masthead(), req.params.key, res.locals.a42Journey());
+    if (!stage) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That stage is not part of this engagement.' });
+    res.render('iso42001_stage', { user: req.user, ws: req.workspace, title: stage.name, active: `iso42001-stage-${stage.key}`, stage });
   });
 
   // Unified readiness view - the "executive brief" moment. Shows a headline
@@ -1388,7 +1509,7 @@ function register(app, deps) {
     // a high one has been formally accepted. No money figure is shown, because
     // the register does not record one.
     const { getActiveMethodology, methodologyBand } = require('../db');
-    const methodology = getActiveMethodology(wsId);
+    const methodology = getActiveMethodology(wsId, 'iso42001');
     const openRisks = db.prepare(`SELECT r.id, r.title, r.likelihood, r.impact, r.residual_likelihood, r.residual_impact, r.owner_name, r.status,
         EXISTS (SELECT 1 FROM risk_acceptances ra WHERE ra.risk_id = r.id AND ra.revoked_at IS NULL) AS accepted
       FROM risks r WHERE r.workspace_id=? AND r.status != 'closed' AND ${aiRisk.isAiRiskSql('r')}

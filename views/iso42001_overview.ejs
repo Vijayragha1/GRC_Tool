@@ -48,19 +48,26 @@
 
   <%
     const TONE_OF = { attention: 'gap', review: 'gap', client: 'wip' };
-    const leadState = summary?.completionReady ? ['done', 'Ready for completion review'] : eo.plan ? ['part', 'Engagement in progress'] : ['open', 'Setup required'];
     const reqHref = (stage, status) => `${base}/requests?stage=${stage}` + (status && status !== 'all' ? `&status=${status}` : '');
+  %>
+  <%
+    // The next step on the engagement's path (lib/iso42001-journey.js).
+    const journey = typeof a42Journey === 'function' ? a42Journey() : null;
+    const nx = journey && journey.next;
   %>
   <section class="panel a42-lead" aria-labelledby="a42PositionTitle">
     <div class="a42-lead-copy">
-      <span class="a42-kicker"><%= eo.planScope === 'combined' ? 'Combined engagement · current phase' : 'Current phase' %></span>
-      <h2 id="a42PositionTitle"><%= phase?.name || (eo.plan ? 'Phase gates complete' : 'Ready to set up your engagement') %></h2>
-      <p><%= nextCriteria[0]?.label || (summary?.completionReady ? 'Completion criteria are satisfied. Review the engagement before closing.' : eo.plan ? 'Review the plan for remaining deliverables and completion criteria.' : 'Establish scope, responsibilities and the delivery plan to begin.') %></p>
-      <a class="btn btn-primary" href="<%= eo.planHref %>"><%= eo.plan ? 'Open engagement plan' : 'Set up engagement plan' %> <span aria-hidden="true">→</span></a>
+      <span class="a42-kicker"><%= nx ? `Your path · step ${nx.number} of ${journey.total}` : 'Your path' %></span>
+      <h2 id="a42PositionTitle"><%= nx ? nx.title : 'Every step is done' %></h2>
+      <p><%= nx ? nx.why : 'The AIMS now runs. Keep answering concerns and prepare for the surveillance audits.' %><% if (nx && nx.detail) { %> <strong><%= nx.detail %>.</strong><% } %></p>
+      <div class="row-center" style="gap:12px;flex-wrap:wrap;">
+        <% if (nx) { %><a class="btn btn-primary" href="<%= nx.href %>">Start step <%= nx.number %> <span aria-hidden="true">→</span></a><% } %>
+        <a class="a42-list-action" href="<%= base %>/path">The whole path <span aria-hidden="true">→</span></a>
+      </div>
     </div>
     <dl class="a42-lead-facts">
-      <div><dt>Engagement</dt><dd><i class="a42-dot t-<%= leadState[0] %>" aria-hidden="true"></i><%= leadState[1] %></dd></div>
-      <div><dt>Phase gates passed</dt><dd><%= summary ? `${summary.phaseGatesPassed} of ${summary.phaseGatesTotal}` : 'No phase gates yet' %></dd></div>
+      <div><dt>Steps done</dt><dd><i class="a42-dot t-<%= journey && journey.done === journey.total ? 'done' : journey && journey.done ? 'part' : 'open' %>" aria-hidden="true"></i><%= journey ? `${journey.done} of ${journey.total}` : 'Not available' %></dd></div>
+      <div><dt>Delivery plan</dt><dd><a href="<%= eo.planHref %>"><%= phase?.name || (eo.plan ? 'Phase gates complete' : 'Not set up yet') %></a></dd></div>
       <div><dt>Deliverables accepted</dt><dd><%= summary ? `${summary.acceptedDeliverables} of ${summary.requiredDeliverables}` : 'Once the plan exists' %></dd></div>
     </dl>
   </section>
@@ -123,6 +130,18 @@
       </section>
     </div>
   </div>
+
+  <section class="panel" aria-labelledby="a42RolesTitle">
+    <div class="panel-head"><div><h2 id="a42RolesTitle">The organisation's AI roles</h2><p class="a42-caption"><%= roles.sentence || (roles.counted.length ? 'No role is recorded for a system in scope yet.' : 'Roles are recorded per AI system once systems are in scope.') %></p></div><a class="a42-list-action" href="<%= base %>/roles">AI roles <span aria-hidden="true">→</span></a></div>
+    <% if (roles.byRole.length) { %>
+    <ul class="a42-list">
+      <% roles.byRole.forEach(r => { %>
+      <li><i class="a42-dot t-done" aria-hidden="true"></i><div><span class="a42-list-title"><%= r.name %></span><p><%= r.brings %></p></div><span class="a42-list-aside"><%= plural(r.systems.length, 'system') %></span></li>
+      <% }) %>
+    </ul>
+    <% } %>
+    <% if (roles.toConfirm.length) { %><p class="a42-more-link"><a href="<%= base %>/roles"><%= plural(roles.toConfirm.length, 'system') %> still to answer →</a></p><% } %>
+  </section>
 
   <div class="a42-grid a42-grid-even">
     <section class="panel" aria-labelledby="a42SystemsTitle">

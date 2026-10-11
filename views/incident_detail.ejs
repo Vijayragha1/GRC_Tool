@@ -25,9 +25,7 @@
     <div class="col-full"><label class="label">Title</label><input class="input" name="title" value="<%= inc.title %>" required></div>
     <div><label class="label">Category</label>
       <select class="select" name="category">
-        <% ['malware','phishing','breach','dos','physical','insider','supplier','other'].forEach(c => { %>
-          <option value="<%= c %>" <%= inc.category === c ? 'selected' : '' %>><%= c %></option>
-        <% }) %>
+        <%- include('partials/register_category_options', { groups: aims.categories, selected: inc.category || 'other' }) %>
       </select>
     </div>
     <div><label class="label">Severity</label>
@@ -55,7 +53,7 @@
     <div class="col-full"><label class="label">Containment actions</label><textarea class="textarea" name="containment_actions" rows="2"><%= inc.containment_actions || '' %></textarea></div>
     <div class="col-full"><label class="label">Eradication actions</label><textarea class="textarea" name="eradication_actions" rows="2"><%= inc.eradication_actions || '' %></textarea></div>
     <div class="col-full"><label class="label">Recovery actions</label><textarea class="textarea" name="recovery_actions" rows="2"><%= inc.recovery_actions || '' %></textarea></div>
-    <div class="col-full"><label class="label">External notification (regulators, customers, law enforcement)</label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
+    <div class="col-full"><label class="label"><%= aims.iso42001 ? 'What was told, and to whom (users, customers, regulators, law enforcement)' : 'External notification (regulators, customers, law enforcement)' %></label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
     <div class="col-full"><label class="label">Lessons learned (A.5.27)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
 
     <div class="col-full row">
@@ -66,6 +64,32 @@
     </div>
   </form>
 </div>
+
+<% if (aims.iso42001) {
+  // ISO 42001 A.8.4 (lib/aims-operations.js): the AI systems affected, and who
+  // must be told, by when, and when they were told. The deadline is the same
+  // one the regulator clock below sets.
+  const dt = v => v ? String(v).replace(' ', 'T').substring(0, 16) : '';
+  const unlinked = aims.systems.filter(sys => !aims.linked.some(l => l.id === sys.id));
+%>
+<div class="panel" id="aims" style="margin-top:14px">
+  <div class="panel-head"><h2>AI systems and telling those affected</h2><span class="meta">ISO 42001 A.8.4, A.6.2.6</span></div>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+    <span class="label">AI systems affected</span>
+    <div class="text-base"><% if (aims.linked.length) { %><% aims.linked.forEach((sys, i) => { %><%= i ? ', ' : '' %><a href="/workspaces/<%= ws.id %>/iso42001/ai-systems/<%= sys.id %>" style="color:var(--accent);"><%= sys.name %></a><% }) %><% } else { %>None linked<% } %></div>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/ai" class="panel-pad grid-2">
+    <% if (unlinked.length) { %>
+      <div class="col-full"><label class="label">Link an AI system</label>
+        <select class="select" name="ai_system_id"><option value="">None</option><% unlinked.forEach(sys => { %><option value="<%= sys.id %>"><%= sys.name %></option><% }) %></select></div>
+    <% } %>
+    <div class="col-full"><label class="label">Who must be told</label><input class="input" name="notify_who" maxlength="500" value="<%= inc.notify_who || '' %>" placeholder="e.g. Users of the claims assistant; affected applicants; the regulator"></div>
+    <div><label class="label">Tell them by</label><input class="input" type="datetime-local" name="notification_required_by" value="<%= dt(inc.notification_required_by) %>"></div>
+    <div><label class="label">Told on</label><input class="input" type="datetime-local" name="notification_sent_at" value="<%= dt(inc.notification_sent_at) %>"></div>
+    <div class="col-full"><button class="btn btn-primary btn-xs">Save</button></div>
+  </form>
+</div>
+<% } %>
 
 <% if (inc.notification_required_by) {
   const remainingMs = new Date(inc.notification_required_by) - new Date();

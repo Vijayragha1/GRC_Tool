@@ -6,6 +6,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const fts = require('../lib/fts');
+const aimsOps = require('../lib/aims-operations');
 const enc = require('../lib/encryption');
 const email = require('../lib/email');
 const supplierRisk = require('../lib/supplier-risk');
@@ -20,6 +21,17 @@ const { withToast, redirectBack, auditCtx, escapeHtml } = require('../lib/http-h
 function register(app, deps) {
   const { db, requireAuth, requireWorkspace, requirePermission, logAction,
           upload, resolveUploadPath, activeEntityFilter } = deps;
+
+  // What the incident and change pages show for ISO 42001
+  // (lib/aims-operations.js): the wording, the category groups and the AI
+  // systems to link.
+  function aimsView(ws, type, targetId = null) {
+    const f = aimsOps.framing(ws);
+    return { ...f, label: aimsOps.label,
+      categories: type === 'incident' ? aimsOps.incidentCategories(ws) : aimsOps.changeCategories(ws),
+      systems: f.iso42001 ? aimsOps.systemChoices(db, ws) : [],
+      linked: f.iso42001 && targetId ? aimsOps.linkedSystems(db, ws, type, targetId) : [] };
+  }
 
   function requireExactPermission(permission) {
     return (req, res, next) => {
@@ -49,15 +61,20 @@ function register(app, deps) {
       params: [req.workspace.id], perPage: 100,
     });
     res.render('incidents', { user: req.user, ws: req.workspace, incidents: pgInc.rows, filter,
-      pg: pgInc, pagerHref: p => pageHref(req, p) });
+      pg: pgInc, pagerHref: p => pageHref(req, p), aims: aimsView(req.workspace, 'incident') });
   });
 
   app.post('/workspaces/:wsId/incidents', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
     const { title, category, severity, detected_at, reported_by, description } = req.body;
     if (!title) return redirectBack(req, res);
-    const id = db.prepare(`INSERT INTO incidents (workspace_id, title, category, severity, detected_at, reported_by, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.workspace.id, title, category || 'other', severity || 'medium',
-      detected_at || null, reported_by || null, description || null).lastInsertRowid;
+    const id = db.transaction(() => {
+      const newId = db.prepare(`INSERT INTO incidents (workspace_id, title, category, severity, detected_at, reported_by, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.workspace.id, title, category || 'other', severity || 'medium',
+        detected_at || null, reported_by || null, description || null).lastInsertRowid;
+      // The AI system it affected (lib/aims-operations.js), when one is chosen.
+      if (req.body.ai_system_id) aimsOps.linkSystem(db, req.workspace, req.user.id, 'incident', newId, req.body.ai_system_id);
+      return newId;
+    })();
     fts.refresh(req.workspace.id, 'incident', id);
     logAction(req.user.id, req.workspace.id, 'create_incident', 'incident', id, { title });
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/incidents/' + id, 'Incident logged'));
@@ -73,7 +90,8 @@ function register(app, deps) {
       runbook = db.prepare('SELECT * FROM runbooks WHERE id=?').get(inc.runbook_id);
       if (runbook) runbook.steps = JSON.parse(runbook.steps);
     }
-    res.render('incident_detail', { user: req.user, ws: req.workspace, inc, events, runbooks, runbook });
+    res.render('incident_detail', { user: req.user, ws: req.workspace, inc, events, runbooks, runbook,
+      aims: aimsView(req.workspace, 'incident', inc.id) });
   });
 
   app.post('/workspaces/:wsId/incidents/:id', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
@@ -89,6 +107,21 @@ function register(app, deps) {
       logAction(req.user.id, req.workspace.id, 'update_incident', 'incident', req.params.id, null);
     }
     res.redirect('/workspaces/' + req.workspace.id + '/incidents/' + req.params.id);
+  });
+
+  // ISO 42001 (A.8.4): the AI systems an incident affected, and who must be
+  // told, by when, and when they were told.
+  app.post('/workspaces/:wsId/incidents/:id/ai', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
+    const inc = db.prepare('SELECT id FROM incidents WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!inc) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Incident not found.' });
+    const when = (v) => (String(v || '').trim() ? String(v).trim().replace('T', ' ') : null);
+    db.transaction(() => {
+      db.prepare(`UPDATE incidents SET notify_who=?, notification_required_by=?, notification_sent_at=? WHERE id=? AND workspace_id=?`)
+        .run(String(req.body.notify_who || '').trim() || null, when(req.body.notification_required_by), when(req.body.notification_sent_at), inc.id, req.workspace.id);
+      if (req.body.ai_system_id) aimsOps.linkSystem(db, req.workspace, req.user.id, 'incident', inc.id, req.body.ai_system_id);
+    })();
+    logAction(req.user.id, req.workspace.id, 'update_incident_ai', 'incident', inc.id, null, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/incidents/${inc.id}#aims`, 'Saved'));
   });
 
   app.post('/workspaces/:wsId/incidents/:id/promote-nc', requireAuth, requireWorkspace, requirePermission('incident.manage'), (req, res) => {
@@ -307,7 +340,7 @@ function register(app, deps) {
       user: req.user, ws: req.workspace, changes,
       filters: { status: status || 'all', change_type: change_type || 'all', risk_level: risk_level || 'all' },
       stats: { total, openCount, emergencyCount, pendingApproval, pirPct },
-      pg: pgCh, pagerHref: p => pageHref(req, p)
+      pg: pgCh, pagerHref: p => pageHref(req, p), aims: aimsView(req.workspace, 'change')
     });
   });
 
@@ -315,19 +348,24 @@ function register(app, deps) {
     const change = db.prepare(`SELECT * FROM changes WHERE id=? AND workspace_id=?`).get(req.params.id, req.workspace.id);
     if (!change) return res.status(404).render('error', { user: req.user, message: 'Change request not found.' });
     const approvals = db.prepare(`SELECT * FROM change_approvals WHERE change_id=? AND workspace_id=? ORDER BY sequence, id`).all(change.id, req.workspace.id);
-    res.render('change_detail', { user: req.user, ws: req.workspace, change, approvals });
+    res.render('change_detail', { user: req.user, ws: req.workspace, change, approvals, aims: aimsView(req.workspace, 'change', change.id) });
   });
 
   app.post('/workspaces/:wsId/changes', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
     const { title, description, change_type, category, risk_assessment, risk_level, impact_assessment, rollback_plan, requester_name } = req.body;
     if (!title || !title.trim()) return redirectBack(req, res);
-    const id = db.prepare(`INSERT INTO changes (workspace_id, title, description, change_type, category, requester_name, requester_id, risk_assessment, risk_level, impact_assessment, rollback_plan, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      req.workspace.id, title.trim(), description || null, change_type || 'normal', category || null,
-      requester_name || req.user.name || req.user.email, req.user.id,
-      risk_assessment || null, risk_level || 'medium', impact_assessment || null, rollback_plan || null,
-      req.user.id
-    ).lastInsertRowid;
+    const id = db.transaction(() => {
+      const newId = db.prepare(`INSERT INTO changes (workspace_id, title, description, change_type, category, requester_name, requester_id, risk_assessment, risk_level, impact_assessment, rollback_plan, significant, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        req.workspace.id, title.trim(), description || null, change_type || 'normal', category || null,
+        requester_name || req.user.name || req.user.email, req.user.id,
+        risk_assessment || null, risk_level || 'medium', impact_assessment || null, rollback_plan || null,
+        aimsOps.significance(req.body.significant), req.user.id
+      ).lastInsertRowid;
+      // The AI system it changes (lib/aims-operations.js), when one is chosen.
+      if (req.body.ai_system_id) aimsOps.linkSystem(db, req.workspace, req.user.id, 'change', newId, req.body.ai_system_id);
+      return newId;
+    })();
     logAction(req.user.id, req.workspace.id, 'create_change', 'change', id, { title: title.trim() }, auditCtx(req));
     res.redirect(withToast('/workspaces/' + req.workspace.id + '/changes/' + id, 'Change request created'));
   });
@@ -345,6 +383,22 @@ function register(app, deps) {
     );
     logAction(req.user.id, req.workspace.id, 'update_change', 'change', req.params.id, null, auditCtx(req));
     res.redirect('/workspaces/' + req.workspace.id + '/changes/' + req.params.id);
+  });
+
+  // ISO 42001 (8.1, 8.2, 8.4): the AI systems a change affects, and whether it
+  // is significant. Open at any status: a change can turn out significant
+  // after approval.
+  app.post('/workspaces/:wsId/changes/:id/ai', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {
+    const change = db.prepare('SELECT id FROM changes WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
+    if (!change) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'Change request not found.' });
+    db.transaction(() => {
+      if (req.body.significant !== undefined) {
+        db.prepare('UPDATE changes SET significant=? WHERE id=? AND workspace_id=?').run(aimsOps.significance(req.body.significant), change.id, req.workspace.id);
+      }
+      if (req.body.ai_system_id) aimsOps.linkSystem(db, req.workspace, req.user.id, 'change', change.id, req.body.ai_system_id);
+    })();
+    logAction(req.user.id, req.workspace.id, 'update_change_ai', 'change', change.id, { significant: req.body.significant || null }, auditCtx(req));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/changes/${change.id}#aims`, 'Saved'));
   });
 
   app.post('/workspaces/:wsId/changes/:id/delete', requireAuth, requireWorkspace, requirePermission('control.update'), (req, res) => {

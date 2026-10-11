@@ -78,11 +78,20 @@ test('non-ISO and programme-neutral clients can be created without an ISO outcom
   assert.ok(csfRow, 'the non-ISO client should appear on the dashboard');
   assert.doesNotMatch(csfRow, /Gap assessment only|Full certification support/);
 
-  const neutralCreated = await client.post('/workspaces', { client_name: 'Programme Neutral Lifecycle Client' });
-  assert.equal(neutralCreated.status, 302);
+  const neutralRefused = await client.post('/workspaces', { client_name: 'Programme Neutral Lifecycle Client' });
+  assert.equal(neutralRefused.status, 400, 'a client needs a programme');
+  // A client created before programmes were required has none.
+  const lead = db.prepare('SELECT lead_consultant_id, firm_id FROM workspaces WHERE client_name=?').get('CSF Only Lifecycle Client');
+  db.prepare(`INSERT INTO workspaces (firm_id, client_name, lead_consultant_id, frameworks) VALUES (?, 'Programme Neutral Lifecycle Client', ?, '[]')`)
+    .run(lead.firm_id, lead.lead_consultant_id);
   const neutral = db.prepare("SELECT * FROM workspaces WHERE client_name='Programme Neutral Lifecycle Client'").get();
   neutralWorkspaceId = neutral.id;
   assert.deepEqual(JSON.parse(neutral.frameworks), []);
+  const csfClient = db.prepare("SELECT id FROM workspaces WHERE client_name='CSF Only Lifecycle Client'").get();
+  const emptied = await client.post(`/workspaces/${csfClient.id}/frameworks`, {});
+  assert.equal(emptied.status, 400, 'an edit cannot leave a client without any programme');
+  assert.match(emptied.text, /Choose at least one programme for this client/);
+  assert.deepEqual(JSON.parse(db.prepare('SELECT frameworks FROM workspaces WHERE id=?').get(csfClient.id).frameworks), ['csf']);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM consulting_engagements WHERE workspace_id=?').get(neutral.id).c, 0);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM engagement_delivery_plans WHERE workspace_id=?').get(neutral.id).c, 0);
 });

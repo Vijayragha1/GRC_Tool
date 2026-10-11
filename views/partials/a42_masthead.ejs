@@ -1,5 +1,7 @@
 <%#
-  The band at the top of every ISO 42001 page. The strip is the whole
+  The band at the top of every ISO 42001 page. The runway is the
+  engagement's stages, each a link to its page; the stage the open page
+  belongs to is marked. The strip is the whole
   standard: 27 clauses then 38 Annex A controls, each coloured by its
   conclusion and linked to its assessment. The requirement a consultant just
   saved flips into its new colour when the next page opens; nothing else moves.
@@ -12,7 +14,7 @@
     </div>
     <ol class="a42-mast-runway" aria-label="Engagement stages">
       <% mast.stages.forEach(s => { %>
-        <li class="<%= s.done ? 'is-done' : s.current ? 'is-current' : '' %>"<%- s.current ? ' aria-current="step"' : '' %>><%= s.name %></li>
+        <li class="<%= [s.done ? 'is-done' : s.current ? 'is-current' : '', s.key === here ? 'is-here' : ''].filter(Boolean).join(' ') %>"<%- s.current ? ' aria-current="step"' : '' %>><a href="<%= mast.base %>/stages/<%= s.key %>"<%- s.key === here ? ' aria-current="page"' : '' %>><%= s.name %></a></li>
       <% }) %>
     </ol>
   </div>
@@ -29,6 +31,30 @@
       <% }) %>
     </div>
   </div>
+  <% if (journey && !['iso42001-overview', 'iso42001-path'].includes(active)) {
+       // The next step on the engagement's path, or where this page sits on it.
+       // The overview and the path page lead with it already.
+       const onPage = journey.forPage(active);
+       const nx = journey.next;
+  %>
+    <div class="a42-path">
+      <% if (!nx) { %>
+        <p><strong>Every step is done.</strong> The AIMS now runs: keep answering concerns and prepare for the surveillance audits.</p>
+      <% } else if (onPage && onPage.key === nx.key) { %>
+        <p><span class="a42-path-step">Step <%= nx.number %> of <%= journey.total %></span> <strong><%= nx.title %></strong> is done on this page<% if (nx.detail) { %><span class="a42-path-detail"> · <%= nx.detail %></span><% } %></p>
+        <a class="btn btn-secondary btn-xs" href="<%= mast.base %>/path">The whole path</a>
+      <% } else if (onPage && onPage.status === 'done') { %>
+        <p><span class="a42-path-step">Step <%= onPage.number %> is done.</span> <%= nx.number < onPage.number ? `Step ${nx.number} is still open:` : `Next, step ${nx.number} of ${journey.total}:` %> <strong><%= nx.title %></strong></p>
+        <a class="btn btn-primary btn-xs" href="<%= nx.href %>">Go to step <%= nx.number %> <span aria-hidden="true">→</span></a>
+      <% } else if (onPage && nx.number < onPage.number) { %>
+        <p><span class="a42-path-step">This page is step <%= onPage.number %> of <%= journey.total %>.</span> Step <%= nx.number %> comes first: <strong><%= nx.title %></strong></p>
+        <a class="btn btn-primary btn-xs" href="<%= nx.href %>">Go to step <%= nx.number %> <span aria-hidden="true">→</span></a>
+      <% } else { %>
+        <p><span class="a42-path-step">Next, step <%= nx.number %> of <%= journey.total %></span> <strong><%= nx.title %></strong><% if (nx.detail) { %><span class="a42-path-detail"> · <%= nx.detail %></span><% } %></p>
+        <a class="btn btn-primary btn-xs" href="<%= nx.href %>">Start <span aria-hidden="true">→</span></a>
+      <% } %>
+    </div>
+  <% } %>
 </header>
 <script>
 (function () {

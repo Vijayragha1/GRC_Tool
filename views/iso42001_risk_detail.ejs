@@ -1,0 +1,161 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const r = risk;
+  const here = `${base}/${r.id}`;
+  const back = (anchor) => `<input type="hidden" name="return_to" value="${here}${anchor ? '#' + anchor : ''}">`;
+  const bandText = b => b ? b.charAt(0).toUpperCase() + b.slice(1) : 'Not rated';
+  const label = (scale, v) => { const l = scale.find(x => Number(x.value) === Number(v)); return l ? `${l.value} · ${l.label}` : 'Not rated'; };
+  const shared = `/workspaces/${ws.id}/risks/${r.id}`;
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>">AI risk register</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><%= r.title %></h1>
+      <div class="a42-facts">
+        <span><i class="a42-dot t-<%= tone %>" aria-hidden="true"></i> <%= bandText(band) %> (<%= r.likelihood %> × <%= r.impact %>)<% if (residualBand) { %>, residual <strong><%= residualBand %></strong><% } %></span>
+        <span><%= R.STATUSES[r.status] || r.status %></span>
+        <span><% if (system) { %><a href="/workspaces/<%= ws.id %>/iso42001/ai-systems/<%= system.id %>"><%= system.name %></a><% } else { %>Not tied to one system<% } %></span>
+        <% if (r.owner_name) { %><span>Owner <strong><%= r.owner_name %></strong></span><% } %>
+      </div>
+    </div>
+    <% if (riskPerms.update && !edit) { %><a class="btn btn-secondary" href="<%= here %>?edit=1">Edit</a><% } %>
+  </div>
+
+  <% if (edit && riskPerms.update) { %>
+    <section class="panel">
+      <form method="POST" action="<%= here %>" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <%- include('partials/a42_ai_risk_fields', { r, method, systems, sources, R }) %>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary">Save</button><a class="btn btn-ghost" href="<%= here %>">Cancel</a></div>
+      </form>
+      <% if (riskPerms.remove) { %>
+        <form method="POST" action="<%= shared %>/delete" class="a42-note" onsubmit="return confirm('Delete this AI risk, its treatment actions and its control links?')">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="return_to" value="<%= base %>">
+          <button class="btn btn-ghost btn-xs text-danger" type="submit">Delete this risk</button>
+        </form>
+      <% } %>
+    </section>
+  <% } else { %>
+    <section class="panel" aria-labelledby="arConseqTitle">
+      <div class="panel-head"><h2 id="arConseqTitle">What could happen, and to whom</h2><span class="meta">Clause 6.1.2</span></div>
+      <dl class="a42-dl" style="grid-template-columns:220px minmax(0,1fr);">
+        <dt>What could happen</dt><dd style="white-space:pre-line;"><%= r.description || 'Not recorded' %></dd>
+        <dt>Cause or threat</dt><dd><%= r.threat || 'Not recorded' %></dd>
+        <dt>Weakness it exploits</dt><dd><%= r.vulnerability || 'Not recorded' %></dd>
+        <dt>Where it comes from</dt><dd><%= r.risk_source && sourceLabel[r.risk_source] ? sourceLabel[r.risk_source] : 'Not classified' %></dd>
+        <dt>Likelihood</dt><dd><%= label(method.likelihood_scale, r.likelihood) %></dd>
+        <dt>Impact on the organisation</dt><dd><%= label(method.impact_scale, r.impact_organisation || r.impact) %></dd>
+        <dt>Impact on individuals or groups</dt><dd><%= label(method.impact_scale, r.impact_individuals) %></dd>
+        <dt>Impact on society</dt><dd><%= label(method.impact_scale, r.impact_society) %></dd>
+        <dt>Treatment</dt><dd><%= R.TREATMENTS[r.treatment] || 'Not chosen' %></dd>
+        <dt>Next review</dt><dd><%= r.next_review_date ? fmtDate(r.next_review_date) : 'Not set' %></dd>
+      </dl>
+    </section>
+  <% } %>
+
+  <section class="panel" id="controls" aria-labelledby="arCtlTitle">
+    <div class="panel-head"><div><h2 id="arCtlTitle">Treated by ISO 42001 controls</h2><p class="a42-caption">Linking a control marks it applicable on the Statement of Applicability, with this risk as the reason.</p></div><span class="meta">Clause 6.1.3</span></div>
+    <% if (!controls.length) { %>
+      <p class="a42-empty">No control linked yet.</p>
+    <% } else { %>
+      <ul class="a42-files">
+        <% controls.forEach(c => { %>
+          <li><div><a href="<%= c.href %>"><%= c.title %></a></div>
+            <% if (riskPerms.update) { %><form method="POST" action="<%= shared %>/unlink"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="iso_item_id" value="<%= c.id %>"><%- back('controls') %><button class="btn btn-ghost btn-xs" type="submit">Unlink</button></form><% } else { %><span></span><% } %>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (riskPerms.update) { %>
+      <div class="a42-attach">
+        <form method="POST" action="<%= shared %>/link" class="stack-grid" style="--cols:minmax(0,1fr) auto;--cols-sm:1fr;align-items:end;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><%- back('controls') %>
+          <div><label class="label" for="arLink">Link an ISO 42001 control</label>
+            <select id="arLink" class="select" name="iso_item_id" required><option value="">Choose</option>
+              <% controlGroups.forEach(g => { %><% g.items.forEach(o => { if (controls.some(c => c.id === o.id)) return; %><option value="<%= o.id %>"><%= o.title %></option><% }) %><% }) %>
+            </select></div>
+          <button class="btn btn-secondary btn-xs" type="submit">Link</button>
+        </form>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel" id="actions" aria-labelledby="arActTitle">
+    <div class="panel-head"><div><h2 id="arActTitle">Treatment actions</h2><p class="a42-caption">The treatment plan: who does what by when. Closing an action with a residual rating records the risk's residual level.</p></div><span class="meta">Clause 6.1.3, 8.3</span></div>
+    <% if (!actions.length) { %>
+      <p class="a42-empty">No treatment actions yet.</p>
+    <% } else { %>
+      <ul class="a42-list a42-events">
+        <% actions.forEach(a => { const overdue = a.status !== 'done' && a.due_date && a.due_date < today; %>
+          <li>
+            <i class="a42-dot t-<%= a.status === 'done' ? 'done' : overdue ? 'gap' : a.status === 'in_progress' ? 'wip' : 'open' %>" aria-hidden="true"></i>
+            <div>
+              <span class="a42-list-title"><%= a.title %></span>
+              <p><%= a.status === 'done' ? 'Done' : a.status === 'in_progress' ? 'Under way' : 'Planned' %><% if (a.owner_name) { %> &middot; <%= a.owner_name %><% } %><% if (a.due_date) { %> &middot; <span class="<%= overdue ? 'a42-warn-text' : '' %>">due <%= fmtDate(a.due_date) %></span><% } %></p>
+              <% if (riskPerms.create && a.status !== 'done') { %>
+                <details class="a42-fold a42-fold-inline">
+                  <summary>Update</summary>
+                  <form method="POST" action="<%= shared %>/actions/<%= a.id %>" class="stack-grid" style="--cols:repeat(4,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+                    <input type="hidden" name="_csrf" value="<%= csrf %>"><%- back('actions') %>
+                    <input type="hidden" name="title" value="<%= a.title %>"><input type="hidden" name="owner_name" value="<%= a.owner_name || '' %>"><input type="hidden" name="due_date" value="<%= a.due_date || '' %>"><input type="hidden" name="description" value="<%= a.description || '' %>">
+                    <div><label class="label">Status</label><select class="select" name="status"><option value="planned" <%= a.status === 'planned' ? 'selected' : '' %>>Planned</option><option value="in_progress" <%= a.status === 'in_progress' ? 'selected' : '' %>>Under way</option><option value="done">Done</option></select></div>
+                    <div><label class="label">Residual likelihood</label><select class="select" name="residual_likelihood"><option value="">Not rated</option><% method.likelihood_scale.forEach(l => { %><option value="<%= l.value %>"><%= l.value %> · <%= l.label %></option><% }) %></select></div>
+                    <div><label class="label">Residual impact</label><select class="select" name="residual_impact"><option value="">Not rated</option><% method.impact_scale.forEach(l => { %><option value="<%= l.value %>"><%= l.value %> · <%= l.label %></option><% }) %></select></div>
+                    <div class="a42-form-actions" style="align-self:end;"><button class="btn btn-primary btn-xs">Save</button></div>
+                  </form>
+                </details>
+              <% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (riskPerms.create) { %>
+      <details class="a42-fold">
+        <summary>Add a treatment action</summary>
+        <form method="POST" action="<%= shared %>/actions" class="panel-pad stack-grid" style="--cols:minmax(0,2fr) minmax(0,1fr) minmax(0,160px);--cols-sm:1fr;gap:10px;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><%- back('actions') %>
+          <div><label class="label" for="arActTitle2">Action</label><input id="arActTitle2" class="input" name="title" required maxlength="300" placeholder="e.g. Add a fairness test to the release criteria"></div>
+          <div><label class="label" for="arActOwner">Owner</label><input id="arActOwner" class="input" name="owner_name" maxlength="200"></div>
+          <div><label class="label" for="arActDue">Due</label><input id="arActDue" class="input" type="date" name="due_date"></div>
+          <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add action</button></div>
+        </form>
+      </details>
+    <% } %>
+  </section>
+
+  <section class="panel" id="acceptance" aria-labelledby="arAccTitle">
+    <div class="panel-head"><div><h2 id="arAccTitle">Acceptance of the residual risk</h2><p class="a42-caption">A risk kept above the criteria needs the designated management's formal acceptance (clause 6.1.3). The acceptance is signed and kept.</p></div><span class="meta">Clause 6.1.3</span></div>
+    <% if (acceptance) { %>
+      <ul class="a42-list a42-events">
+        <li><i class="a42-dot t-done" aria-hidden="true"></i><div>
+          <span class="a42-list-title">Accepted by <%= acceptance.accepter_name %><%= acceptance.accepter_role ? `, ${acceptance.accepter_role}` : '' %></span>
+          <p><%= acceptance.rationale %></p>
+          <p>Signed <%= fmtDate(acceptance.signed_at) %> at residual score <%= acceptance.residual_score %><% if (acceptance.expires_at) { %> &middot; <span class="<%= acceptance.expires_at < today ? 'a42-warn-text' : '' %>">until <%= fmtDate(acceptance.expires_at) %></span><% } %> &middot; <a href="/workspaces/<%= ws.id %>/risks/<%= r.id %>/acceptances">Signed record</a></p>
+        </div></li>
+      </ul>
+    <% } else { %>
+      <p class="a42-empty">Not formally accepted.</p>
+    <% } %>
+    <% if (riskPerms.update) { %>
+      <details class="a42-fold"<%= acceptance ? '' : '' %>>
+        <summary><%= acceptance ? 'Record a new acceptance' : 'Record acceptance' %></summary>
+        <form method="POST" action="<%= shared %>/accept" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><%- back('acceptance') %>
+          <div><label class="label" for="arAccName">Accepted by</label><input id="arAccName" class="input" name="accepter_name" required maxlength="200"></div>
+          <div><label class="label" for="arAccRole">Role</label><input id="arAccRole" class="input" name="accepter_role" maxlength="200" placeholder="e.g. Chief risk officer"></div>
+          <div><label class="label" for="arAccUntil">Valid until</label><input id="arAccUntil" class="input" type="date" name="expires_at"></div>
+          <div style="grid-column:1 / -1;"><label class="label" for="arAccWhy">Rationale</label><input id="arAccWhy" class="input" name="rationale" required maxlength="4000"></div>
+          <div style="grid-column:1 / -1;"><label class="label a42-check" style="margin-top:0;"><input type="checkbox" name="attestation" value="1" required> I am, or record the decision of, the management designated to accept this risk</label></div>
+          <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Sign the acceptance</button></div>
+        </form>
+      </details>
+    <% } %>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

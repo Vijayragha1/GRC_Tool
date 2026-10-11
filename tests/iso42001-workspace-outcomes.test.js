@@ -76,7 +76,12 @@ test('ISO 42001 creation requires outcome and seeds only the correct engagement/
 });
 
 test('ISO 42001 can be enabled later and completed gap history survives confirmed upgrade',()=>{
-  const neutral=create('AI added later','certification_support',[]);
+  // A client created before programmes were required can have none; creating
+  // one now is refused.
+  assert.equal(call('/workspaces',{client_name:'AI added later',frameworks:[]}).statusCode,400);
+  const neutralId=Number(db.prepare(`INSERT INTO workspaces (firm_id,client_name,scope,lead_consultant_id,frameworks,engagement_outcome)
+    VALUES (?,'AI added later','AI support service',?,'[]','certification_support')`).run(user.firm_id,user.id).lastInsertRowid);
+  const neutral=workspace(neutralId);
   assert.equal(db.prepare('SELECT count(*) c FROM consulting_engagements WHERE workspace_id=?').get(neutral.id).c,0);
   assert.equal(call('/workspaces/:wsId/frameworks',{frameworks:'iso42001'},neutral).statusCode,400);
   assert.equal(call('/workspaces/:wsId/frameworks',{frameworks:'iso42001',engagement_outcome:'gap_assessment_only'},neutral).statusCode,302);
@@ -122,12 +127,17 @@ test('ISO 42001 navigation uses one shared plan and respects the gap-only servic
     const gap=await render('gap_assessment_only',experienceEnabled);
     assert.equal((gap.match(/href="\/workspaces\/42\/engagement-plan"/g)||[]).length,1);
     assert.match(gap,/href="\/workspaces\/42\/iso42001\/intake"/);
-    assert.match(gap,/href="\/workspaces\/42\/iso42001\/gap-assessment"/);
-    assert.doesNotMatch(gap,/href="\/workspaces\/42\/(?:audits|mrms|iso42001\/cert-cycle|iso42001\/requests)"/);
+    // The module's menu is its path and stages; a gap assessment has two.
+    assert.match(gap,/href="\/workspaces\/42\/iso42001\/path"/);
+    assert.match(gap,/href="\/workspaces\/42\/iso42001\/stages\/assess"/);
+    assert.match(gap,/href="\/workspaces\/42\/iso42001\/stages\/report"/);
+    assert.doesNotMatch(gap,/href="\/workspaces\/42\/(?:audits|mrms|iso42001\/cert-cycle|iso42001\/requests|iso42001\/stages\/certification)"/);
     assert.doesNotMatch(gap,/ISO 27001/);
     const full=await render('certification_support',experienceEnabled);
-    assert.match(full,/href="\/workspaces\/42\/iso42001\/cert-cycle"/);
-    assert.match(full,/href="\/workspaces\/42\/audits"/);
+    assert.match(full,/href="\/workspaces\/42\/iso42001\/stages\/certification"/);
+    // With ISO 42001 its only programme, internal audits are a step on the path.
+    assert.match(full,/href="\/workspaces\/42\/iso42001\/stages\/assure"/);
+    assert.doesNotMatch(full,/href="\/workspaces\/42\/audits"/);
   }
   const portal=await ejs.renderFile(path.join(__dirname,'../views/partials/client_portal_navigation.ejs'),{ws:{id:42,frameworks:['iso42001'],engagement_outcome:'gap_assessment_only'}});
   assert.match(portal,/Findings &amp; recommendations/);

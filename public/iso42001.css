@@ -10,6 +10,7 @@
 .a42 .panel + .panel, .a42 .panel + .stack-grid, .a42 .stack-grid + .panel, .a42 .a42-next + .panel { margin-top: 14px; }
 .a42-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
 .a42-facts strong { color: var(--ink); font-weight: 500; }
+.a42-facts a { color: inherit; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 3px; }
 .a42-crumb { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
 .a42-crumb a { color: var(--text-secondary); text-decoration: none; }
 .a42-crumb a:hover { color: var(--ink); text-decoration: underline; }
@@ -116,6 +117,16 @@
 .a42-form .hint { display: block; margin-top: 4px; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.45; }
 .a42-checks { display: grid; gap: 6px; }
 .a42-checks label { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--ink); }
+/* A part of the AI system register that applies by role (partials/iso42001_ai_system_fields.ejs). */
+.a42-role-section { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
+.a42-role-section[hidden], .a42-role-empty[hidden] { display: none; }
+.a42-role-section > legend { padding: 0; }
+/* The role questions (partials/a42_role_questions.ejs). */
+.a42-role-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+.a42-role-q { min-width: 0; margin: 0; padding: 0; border: 0; }
+.a42-role-q legend { padding: 0; font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.a42-role-q .hint { display: block; margin: 2px 0 6px; }
+.a42-role-q .a42-checks { grid-auto-flow: column; justify-content: start; gap: 18px; }
 .a42-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .a42-section-title { margin: 6px 0 -4px; font-size: 13px; font-weight: 600; color: var(--ink); }
 
@@ -134,6 +145,7 @@
   .a42-split > .a42-rail { order: -1; display: grid; gap: 14px; }
 }
 @media (max-width: 760px) {
+  .a42-role-qs { grid-template-columns: minmax(0, 1fr); }
   .a42-next { grid-template-columns: minmax(0, 1fr); }
   .a42-next .btn { justify-content: center; }
   .a42-runway { grid-template-columns: minmax(0, 1fr); }
@@ -400,6 +412,32 @@
 .a42-mast-runway li.is-done::after { content: "✓"; margin-left: 5px; color: var(--mint); font-size: 11px; }
 .a42-mast-runway li.is-current { color: var(--mint); font-weight: 600; }
 .a42-mast-runway li.is-current::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--mint); }
+.a42-mast-runway a { color: inherit; text-decoration: none; border-radius: 4px; }
+.a42-mast-runway a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.a42-mast-runway a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.a42-mast-runway li.is-here a { color: #fff; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, .5); text-underline-offset: 3px; }
+
+/* The next step on the engagement's path (lib/iso42001-journey.js), at the foot of the band. */
+.a42-path { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .14); font-size: 13px; line-height: 1.45; color: rgba(255, 255, 255, .82); }
+.a42-path p { margin: 0; min-width: 0; }
+.a42-path strong { color: #fff; font-weight: 600; }
+.a42-path-step { margin-right: 4px; color: var(--mint); font-weight: 600; }
+.a42-path-detail { color: rgba(255, 255, 255, .6); }
+.a42-path .btn { flex: none; }
+
+/* Every page of the module, at the foot of the path page. */
+.a42-pages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 24px; padding: 0 20px 16px; }
+.a42-pages ul { margin: 0; padding: 0; list-style: none; }
+.a42-pages li { padding: 3px 0; font-size: 13px; }
+.a42-pages .a42-list-group { padding: 12px 0 4px; }
+@media (max-width: 760px) { .a42-pages { grid-template-columns: minmax(0, 1fr); } }
+
+/* The path as a list of steps, grouped by stage (partials/a42_path.ejs). */
+.a42-steps > li.is-next { background: var(--bg-subtle); }
+.a42-steps > li.is-skip .a42-list-title, .a42-steps > li.is-done .a42-list-title { font-weight: 500; }
+.a42-step-no { margin-right: 6px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; font-weight: 600; }
+.a42-step-state { font-weight: 600; color: var(--text); }
 
 /* The strip: the whole standard in 65 cells. */
 .a42-strip { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px 24px; margin-top: 16px; }
@@ -435,6 +473,8 @@
 .a42-shell .page-head .page-subtitle, .a42-shell .page-head > div > p, .a42-shell .a42ov-heading .page-subtitle { max-width: 68ch; margin-top: 10px; font-size: 14px; line-height: 1.55; color: rgba(255, 255, 255, .76); }
 .a42-shell .page-head .meta, .a42-shell .page-head .a42-facts { color: rgba(255, 255, 255, .7); }
 .a42-shell .page-head .a42-facts strong { color: #fff; }
+.a42-shell .page-head .a42-facts a { color: #fff; text-decoration-color: rgba(255, 255, 255, .45); }
+.a42-shell .page-head .a42-facts a:hover { text-decoration-color: #fff; }
 /* The masthead already names the standard. */
 .a42-shell .a42ov-heading .a42ov-eyebrow { display: none; }
 .a42-shell :is(.page-head, .a42ov-heading, .assessment-topline) .btn:not(.panel .btn) { border-radius: 8px; font-weight: 600; transition: background .2s ease, border-color .2s ease, transform .2s var(--a42-ease); }
@@ -454,6 +494,9 @@
 .a42-shell .panel-head { border-bottom-color: var(--a42-line); }
 .a42-shell .panel-head h2, .a42-shell .panel-head h3, .a42-shell .a42 h2 { font-family: var(--a42-face); font-size: 15.5px; font-weight: 650; letter-spacing: -.012em; color: var(--a42-heading); }
 .a42-shell .panel + .panel, .a42-shell .panel + section, .a42-shell section + .panel { margin-top: 16px; }
+/* Panels side by side in a grid are spaced by the grid's gap, not stacked margins. */
+.a42-shell .stack-grid > .panel { margin-top: 0; }
+.a42-shell .stack-grid + .stack-grid { margin-top: 16px; }
 .a42-shell > .panel, .a42-shell > section.panel { margin-bottom: 16px; }
 .a42-shell table.t th { background: transparent; }
 .a42-shell .btn-primary:not(:is(.page-head, .a42ov-heading) .btn) { background: var(--g); border-color: var(--g); color: #fff; }
@@ -603,6 +646,16 @@
 .soa-tile.s-included, .soa-key.s-included { background: var(--t-done); color: var(--t-done-ink); box-shadow: none; }
 .soa-tile.s-excluded, .soa-key.s-excluded { background: repeating-linear-gradient(135deg, var(--t-na) 0 5px, transparent 5px 9px); color: var(--t-na-ink); box-shadow: inset 0 0 0 1px var(--a42-line); }
 .soa-tile.is-gap::after, .soa-key.is-gap::after { content: ""; position: absolute; top: -4px; right: -4px; width: 11px; height: 11px; border-radius: 50%; background: var(--t-gap-strong); box-shadow: 0 0 0 2px var(--a42-card); }
+/* A proposal from the AI roles, on a line under its SoA row (lib/aims-soa-proposals.js). */
+.soa-proposal-row > td { padding-top: 0 !important; border-top: 0 !important; }
+.soa-proposal { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 8px 12px; border-radius: 6px;
+  background: var(--bg-subtle); font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.soa-proposal > div { min-width: 0; }
+.soa-proposal .a42-dot { margin-right: 7px; }
+.soa-proposal strong { font-weight: 600; }
+.soa-proposal p { margin: 2px 0 0; color: var(--text-secondary); max-width: 90ch; }
+.soa-proposal .btn { flex: none; }
+.soa-proposals .a42-list > li form { margin: 0; }
 .soa-key { position: relative; display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 3px; background: var(--t-open); box-shadow: inset 0 0 0 1.5px var(--t-open-line); }
 .soa-key.is-gap { background: transparent; box-shadow: none; }
 .soa-key.is-gap::after { top: 0; right: 0; width: 11px; height: 11px; }
@@ -869,6 +922,7 @@ span.rq-seg:hover { transform: none; box-shadow: none; }
 [data-theme="dark"] .a42-warn-text { color: #ef9189; }
 .a42-shell .input.is-late { border-color: #b42318; color: #b42318; }
 .a42-stats-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.a42-stage-pager { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; }
 .a42-stat > strong.a42-stat-text { font-size: 20px; line-height: 1.25; letter-spacing: -.015em; }
 .a42-lead-single { grid-template-columns: minmax(0, 1fr); }
 .a42-lead-copy form { margin: 0; }

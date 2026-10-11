@@ -435,7 +435,7 @@
       <div style="max-height:200px;overflow-y:auto;">
         <% linkedRisks.forEach(r => { %>
           <div class="iso42-row text-base">
-            <a class="iso42-row-main" href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><span class="mono meta" style="margin-right:6px;">R-<%= r.id %></span><%= r.title %></a>
+            <a class="iso42-row-main" href="/workspaces/<%= ws.id %>/iso42001/risks/<%= r.id %>"><span class="mono meta" style="margin-right:6px;">R-<%= r.id %></span><%= r.title %></a>
             <span class="num meta text-xs"><%= r.likelihood %>×<%= r.impact %></span>
             <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/controls/<%= item.id %>/risks/<%= r.id %>/delete" onsubmit="return confirm('Unlink this risk?')" style="margin:0;">
               <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>

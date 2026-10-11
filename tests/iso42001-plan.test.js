@@ -99,8 +99,10 @@ test('the executive brief reports AI risks by band, with no invented money figur
   const page = await client.get(`${base()}/exec-brief`);
   assert.equal(page.status, 200, page.text.slice(0, 300));
   assert.doesNotMatch(page.text, /\$\d|50k|annual loss/i);
-  assert.match(page.text, /Open AI risks<\/div>\s*<div class="kpi-num exec-num" style="color:#b91c1c">2<\/div>/);
-  assert.match(page.text, /1 high or critical, 1 not formally accepted · 1 without a residual rating/);
+  // On a client whose only management system is ISO 42001 every risk is the
+  // AIMS's, Office flood included (migration 079); ISMS risks of a client
+  // with both systems stay out (tests/iso42001-risk-ownership.test.js).
+  assert.match(page.text, /Open AI risks<\/div>\s*<div class="kpi-num exec-num" style="color:#b91c1c">3<\/div>/);
+  assert.match(page.text, /2 high or critical, 2 not formally accepted · 2 without a residual rating/);
   assert.match(page.text, /Missed urgent referral/);
-  assert.doesNotMatch(page.text, /Office flood/, 'only AI risks are counted');
 });

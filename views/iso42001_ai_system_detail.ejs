@@ -23,7 +23,7 @@
       </ol>
       <div class="a42-facts">
         <% if (s.go_live_date) { %><span>Went live <strong><%= fmtDate(s.go_live_date) %></strong></span><% } %>
-        <span><%= s.roles.length ? s.roles.map(r => registry.ROLES[r]).join('; ') : 'Organisation\'s role not recorded' %></span>
+        <span><a href="<%= base %>/roles#system-<%= s.id %>"><%= s.roles.length ? s.roles.map(r => registry.ROLE_INFO[r].name).join(', ') : 'Organisation\'s role not recorded' %></a></span>
         <span><i class="a42-dot t-<%= s.in_scope ? 'done' : 'na' %>" aria-hidden="true"></i> <%= s.in_scope ? 'In the AIMS scope' : 'Excluded from scope' %></span>
       </div>
     </div>
@@ -55,12 +55,30 @@
         <div class="panel-head"><h2 id="aiResTitle">Resources</h2><span class="meta">Annex A.4</span></div>
         <dl class="a42-dl">
           <dt>Data</dt><dd style="white-space:pre-line;"><%= text(s.data_resources) %></dd>
-          <dt>Tooling</dt><dd style="white-space:pre-line;"><%= text(s.tooling_resources) %></dd>
-          <dt>Computing</dt><dd style="white-space:pre-line;"><%= text(s.compute_resources) %></dd>
           <dt>People</dt><dd style="white-space:pre-line;"><%= text(s.human_resources) %></dd>
         </dl>
       </section>
     </div>
+    <%
+      // The parts of the register that apply because of what the organisation
+      // does with the system (lib/ai-roles.js SECTIONS); a part holding data is
+      // shown whatever the answers.
+      const roleSections = registry.sectionsFor(s).filter(sec => sec.applies || sec.filled);
+    %>
+    <% if (roleSections.length) { %>
+      <div class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr);">
+        <% roleSections.forEach(sec => { %>
+          <section class="panel" aria-labelledby="aiSec<%= sec.key %>">
+            <div class="panel-head"><div><h2 id="aiSec<%= sec.key %>"><%= sec.title %></h2><p class="a42-caption"><%= sec.intro %><% if (!sec.applies) { %> Kept because it holds data, though the answers no longer call for it.<% } %></p></div><span class="meta"><%= sec.ref %></span></div>
+            <dl class="a42-dl">
+              <% sec.fields.forEach(f => { %><dt><%= f.label %></dt><dd style="white-space:pre-line;"><%= f.type === 'date' ? (s[f.name] ? fmtDate(s[f.name]) : 'Not recorded') : text(s[f.name]) %></dd><% }) %>
+            </dl>
+          </section>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <p class="a42-note"><a href="<%= base %>/roles#system-<%= s.id %>">Answer what the organisation does with this system</a>, and the register asks what that role needs: supplier terms for bought AI, the version and its checks for AI built here, user information for AI offered to others.</p>
+    <% } %>
   <% } %>
 
   <section class="panel" aria-labelledby="aiIaTitle">
@@ -105,7 +123,7 @@
     <div class="panel-head"><h2 id="aiRiskTitle">Risks from this system</h2><span class="meta">Clause 6.1.2</span></div>
     <% const sysRisks = typeof systemRisks !== 'undefined' ? systemRisks : []; %>
     <% if (!sysRisks.length) { %>
-      <div class="a42-note">No risks are tied to this system yet. On the risk register, choose this system on a risk and rate its impact on people and society.</div>
+      <div class="a42-note">No risks are tied to this system yet. On the <a href="/workspaces/<%= ws.id %>/iso42001/risks">AI risk register</a>, choose this system on a risk and rate its impact on people and society.</div>
     <% } else { %>
       <div style="overflow-x:auto;">
         <table class="t">
@@ -113,7 +131,7 @@
           <tbody>
             <% sysRisks.forEach(r => { %>
               <tr>
-                <td><a class="link-muted" href="/workspaces/<%= ws.id %>/risks/<%= r.id %>"><%= r.title %></a><% if (r.risk_source && riskSourceLabel[r.risk_source]) { %><div class="meta text-xs"><%= riskSourceLabel[r.risk_source] %></div><% } %></td>
+                <td><a class="link-muted" href="/workspaces/<%= ws.id %>/iso42001/risks/<%= r.id %>"><%= r.title %></a><% if (r.risk_source && riskSourceLabel[r.risk_source]) { %><div class="meta text-xs"><%= riskSourceLabel[r.risk_source] %></div><% } %></td>
                 <td class="num"><%= r.likelihood %> × <%= r.impact %></td>
                 <td><%= r.treatment || '-' %></td>
                 <td><%= r.status %></td>
@@ -123,7 +141,7 @@
         </table>
       </div>
     <% } %>
-    <div class="a42-note"><a href="/workspaces/<%= ws.id %>/risks">Open the risk register</a></div>
+    <div class="a42-note"><a href="/workspaces/<%= ws.id %>/iso42001/risks">Open the AI risk register</a></div>
   </section>
 
   <section class="panel" id="datasets" aria-labelledby="aiDataTitle">

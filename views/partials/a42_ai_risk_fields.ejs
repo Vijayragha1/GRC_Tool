@@ -1,0 +1,25 @@
+<%# Fields of an AI risk on the AIMS register (lib/aims-risks.js), shared by
+    the add form and the edit form. Takes r (null when adding), method (the
+    AIMS's risk criteria), systems, sources and R. Scales come from the
+    criteria, so a risk is rated on the AIMS's own method. %>
+<% const x = r || {}; const id = x.id ? `ar${x.id}` : 'arNew'; const L = method.likelihood_scale; const I = method.impact_scale;
+   const scale = (list, name, value, empty) => `<option value="">${empty}</option>` + list.map(l => `<option value="${l.value}"${Number(value) === Number(l.value) ? ' selected' : ''}>${l.value} · ${String(l.label).replace(/[&<>"]/g, '')}</option>`).join(''); %>
+<div style="grid-column:1 / -1;"><label class="label" for="<%= id %>Title">Risk</label><input id="<%= id %>Title" class="input" name="title" required maxlength="300" value="<%= x.title || '' %>" placeholder="e.g. Scores under-rate applicants with thin credit files"></div>
+<div><label class="label" for="<%= id %>System">AI system</label><select id="<%= id %>System" class="select" name="ai_system_id"><option value="">Not tied to one system</option><% systems.forEach(s => { %><option value="<%= s.id %>" <%= Number(x.ai_system_id) === s.id ? 'selected' : '' %>><%= s.name %></option><% }) %></select></div>
+<div><label class="label" for="<%= id %>Source">Where it comes from</label><select id="<%= id %>Source" class="select" name="risk_source"><option value="">Not classified</option><% sources.forEach(s => { %><option value="<%= s.key %>" <%= x.risk_source === s.key ? 'selected' : '' %>><%= s.label %></option><% }) %></select></div>
+<div><label class="label" for="<%= id %>Owner">Owner</label><input id="<%= id %>Owner" class="input" name="owner_name" maxlength="200" value="<%= x.owner_name || '' %>"></div>
+<div><label class="label" for="<%= id %>L">Likelihood</label><select id="<%= id %>L" class="select" name="likelihood" required><%- scale(L, 'likelihood', x.likelihood, 'Rate it') %></select></div>
+<div><label class="label" for="<%= id %>I">Impact on the organisation</label><select id="<%= id %>I" class="select" name="impact" required><%- scale(I, 'impact', x.impact_organisation || x.impact, 'Rate it') %></select></div>
+<div><label class="label" for="<%= id %>Treat">Treatment</label><select id="<%= id %>Treat" class="select" name="treatment"><% Object.entries(R.TREATMENTS).forEach(([k, l]) => { %><option value="<%= k %>" <%= (x.treatment || 'modify') === k ? 'selected' : '' %>><%= l %></option><% }) %></select></div>
+<div><label class="label" for="<%= id %>Ind">Impact on individuals or groups</label><select id="<%= id %>Ind" class="select" name="impact_individuals"><%- scale(I, 'impact_individuals', x.impact_individuals, 'Not rated') %></select></div>
+<div><label class="label" for="<%= id %>Soc">Impact on society</label><select id="<%= id %>Soc" class="select" name="impact_society"><%- scale(I, 'impact_society', x.impact_society, 'Not rated') %></select></div>
+<div><label class="label" for="<%= id %>Review">Next review</label><input id="<%= id %>Review" class="input" type="date" name="next_review_date" value="<%= x.next_review_date || '' %>"></div>
+<div style="grid-column:1 / -1;"><span class="hint">The risk is rated on its worst consequence: for the organisation, for individuals or groups, or for society.</span></div>
+<div style="grid-column:1 / -1;"><label class="label" for="<%= id %>Desc">What could happen</label><textarea id="<%= id %>Desc" class="textarea" name="description" rows="2" maxlength="4000"><%= x.description || '' %></textarea></div>
+<div style="grid-column:span 2;"><label class="label" for="<%= id %>Threat">Cause or threat</label><input id="<%= id %>Threat" class="input" name="threat" maxlength="1000" value="<%= x.threat || '' %>"></div>
+<div><label class="label" for="<%= id %>Vuln">Weakness it exploits</label><input id="<%= id %>Vuln" class="input" name="vulnerability" maxlength="1000" value="<%= x.vulnerability || '' %>"></div>
+<% if (x.id) { %>
+  <div><label class="label" for="<%= id %>Status">Status</label><select id="<%= id %>Status" class="select" name="status"><% Object.entries(R.STATUSES).forEach(([k, l]) => { %><option value="<%= k %>" <%= x.status === k ? 'selected' : '' %>><%= l %></option><% }) %></select></div>
+  <div><label class="label" for="<%= id %>RL">Residual likelihood</label><select id="<%= id %>RL" class="select" name="residual_likelihood"><%- scale(L, 'residual_likelihood', x.residual_likelihood, 'Not rated') %></select></div>
+  <div><label class="label" for="<%= id %>RI">Residual impact</label><select id="<%= id %>RI" class="select" name="residual_impact"><%- scale(I, 'residual_impact', x.residual_impact, 'Not rated') %></select></div>
+<% } %>

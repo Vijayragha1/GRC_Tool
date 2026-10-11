@@ -16,8 +16,19 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
 
+// Each boot seeds a full database in its own temp folder. Remove the folders
+// when the test process exits: left behind, every suite run adds hundreds of
+// them and they fill the disk.
+const bootDirs = [];
+process.once('exit', () => {
+  for (const dir of bootDirs) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* best effort */ }
+  }
+});
+
 function bootApp() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'iso27001-test-'));
+  bootDirs.push(tmpDir);
   const dbPath = path.join(tmpDir, 'iso27001.db');
   const keyPath = path.join(tmpDir, 'master.key');
   // Override env BEFORE require so server.js picks up the right DB / key paths.

@@ -866,6 +866,7 @@ function register(app, deps) {
           String(req.body.description || assessment.business_impact || assessment.outcome).trim(),
           String(req.body.threat || 'Cybersecurity event affecting the assessed outcome').trim(),
           String(req.body.vulnerability || assessment.effectiveness_conclusion || 'Capability gap identified by NIST CSF assessment').trim(),likelihood,impact).lastInsertRowid;
+      require('../lib/risk-owner').assign(db, req.workspace, riskId);
       db.prepare(`INSERT INTO csf_action_links (workspace_id,engagement_id,assessment_id,risk_id,linked_by) VALUES (?,?,?,?,?)`).run(req.workspace.id,engagement.id,assessment.id,riskId,req.user.id);
       return riskId;
     });

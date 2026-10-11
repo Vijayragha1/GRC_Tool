@@ -848,6 +848,13 @@ function requireWorkspace(req, res, next) {
   // The ISO 42001 band; built only when an ISO 42001 page's header asks.
   let a42Masthead;
   res.locals.a42Masthead = () => (a42Masthead ||= require('./lib/iso42001-masthead').build(db, ws, req.user.id));
+  // The engagement's path of steps and the next one (lib/iso42001-journey.js),
+  // built only when an ISO 42001 page asks.
+  // Which stage each module page belongs to, for the sidebar (static).
+  res.locals.a42PageStage = require('./lib/iso42001-masthead').stageOf;
+  let a42Journey;
+  res.locals.a42Journey = () => (a42Journey ||= require('./lib/iso42001-journey').build(db, ws, res.locals.a42Masthead(),
+    require('./routes/iso42001').shared.computeIso42001Readiness));
   res.locals.experienceEnabled = require('./lib/experience-flags').enabledFor(db,{actor:req.user,workspace:ws});
   // Risk reads use the built-in methodology until an explicit configuration
   // command stores a version. Opening a workspace must not seed domain rows.
@@ -1313,6 +1320,7 @@ iso42001Routes.register(app, { db, requireAuth, requireWorkspace, requirePermiss
 require('./routes/iso42001-audit').register(app, { db, requireAuth, requireWorkspace, requirePermission,
   logAction, upload, requestListUpload,
   adoptTemplate: (...args) => require('./routes/documents').shared.adoptTemplateForWorkspace(...args) });
+require('./routes/iso42001-risks').register(app, { db, requireAuth, requireWorkspace, requirePermission, logAction });
 
 // ==================== ERROR HANDLERS ====================
 app.use((req, res) => {

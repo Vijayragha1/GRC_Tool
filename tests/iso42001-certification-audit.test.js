@@ -184,7 +184,7 @@ test('a 42001 workspace opens on the engagement overview with assessment work an
   assert.match(overview.text, /Continue assessment/);
   assert.match(overview.text, /Start the checklist/, 'the checklist can be started during the gap assessment');
   assert.match(overview.text, /Independent review outstanding/);
-  for (const label of ['Programme overview', 'Gap assessment', 'Certification requests', 'AI system register', 'Requirements', 'Statement of Applicability'])
+  for (const label of ['Programme overview', 'Your path', '1. Mobilise', '2. Assess', '3. Implement', '4. Assure', '5. Readiness', '6. Certification'])
     assert.match(overview.text, new RegExp(`>${label}<`), `${label} is in the ISO 42001 navigation`);
 
   const other = Number(db.prepare('INSERT INTO workspaces (firm_id, client_name, frameworks) VALUES (?, ?, ?)').run(actor.firm_id, 'No AI client', '["iso27001"]').lastInsertRowid);
